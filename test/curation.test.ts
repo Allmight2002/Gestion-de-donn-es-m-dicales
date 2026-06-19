@@ -55,11 +55,24 @@ afterAll(async () => {
 });
 
 describe('pool global : visibilite + confidentialite', () => {
-  test('un curateur voit le pool (cas + documents) mais JAMAIS l identite', async () => {
-    expect((await rowsAs(curator1Id, 'select id from public.curation_task')).length).toBeGreaterThan(0);
-    expect((await rowsAs(curator1Id, 'select id from public.raw_document')).length).toBeGreaterThan(0);
+  test('un curateur voit la LISTE du pool mais PAS les documents avant reservation, ni l identite', async () => {
+    expect((await rowsAs(curator1Id, 'select id from public.curation_task')).length).toBeGreaterThan(0); // pool visible
+    // §5.1 : un curateur NON affecte ne voit AUCUN document (acces apres reservation seulement).
+    expect(await rowsAs(curator1Id, 'select id from public.raw_document')).toHaveLength(0);
     // Aucun acces base -> aucune identite.
     expect(await rowsAs(curator1Id, 'select id from public.patient_identity')).toHaveLength(0);
+  });
+
+  test('apres reservation, le curateur voit les documents de SA tache ; pas ceux d une autre', async () => {
+    const a = await openCase('NCH-005');
+    const b = await openCase('NCH-006');
+    // un document depose par le medecin sur chaque cas
+    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'doc A',$3,'application/pdf')", [a.subId, baseId, baseId + '/' + a.subId + '/a.pdf']);
+    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'doc B',$3,'application/pdf')", [b.subId, baseId, baseId + '/' + b.subId + '/b.pdf']);
+
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [a.taskId]); // curator1 reserve A
+    expect((await rowsAs(curator1Id, 'select id from public.raw_document where submission_id=$1', [a.subId])).length).toBe(1); // SA tache
+    expect(await rowsAs(curator1Id, 'select id from public.raw_document where submission_id=$1', [b.subId])).toHaveLength(0); // pas l autre
   });
 
   test('l analyste et l admin ne voient PAS les documents bruts du pool', async () => {
@@ -109,6 +122,13 @@ describe('structuration -> validation (pool)', () => {
     expect(await rowsAs(validatorId, 'select id from public.patient_identity')).toHaveLength(0);
     // Journalisation curation.
     expect((await db.admin.query("select 1 from public.audit_log where action='curation_validated' and entity_id=$1", [c.draftId])).rows.length).toBeGreaterThan(0);
+  });
+
+  test('validation SERVEUR (§5.4) : un brouillon hors bornes (Glasgow=78) est refuse', async () => {
+    const c = await claimAndDraft('NCH-010', {}, [
+      { encounter_type: 'consultation', encounter_date: '2024-05-10', age_unit: 'years', data: { glasgow_score: 78 } },
+    ]);
+    await expect(rowsAs(validatorId, 'select * from public.validate_curation_draft($1,$2,$3)', [c.draftId, 'approved', null])).rejects.toThrow(/maximum|glasgow/i);
   });
 
   test('un curateur ne peut PAS valider (reserve aux validateurs)', async () => {

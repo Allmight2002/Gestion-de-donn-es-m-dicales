@@ -62,3 +62,18 @@ create trigger trg_patient_updated
 create trigger trg_encounter_updated
   before update on public.encounter
   for each row execute function public.set_updated_at();
+
+-- 5) Propriete d'une base IMMUABLE (§7.3) : owner_user_id ne change jamais (deja garanti
+-- par la RLS base_update, mais rendu EXPLICITE et auditable ici, avec une erreur claire).
+create or replace function public.guard_base_owner_immutable()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if new.owner_user_id is distinct from old.owner_user_id then
+    raise exception 'Le proprietaire d''une base est immuable (owner_user_id)';
+  end if;
+  return new;
+end $$;
+
+create trigger trg_base_owner_immutable
+  before update on public.base
+  for each row execute function public.guard_base_owner_immutable();

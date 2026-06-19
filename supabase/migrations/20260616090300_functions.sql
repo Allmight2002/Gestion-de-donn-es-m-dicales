@@ -174,3 +174,66 @@ returns numeric language sql immutable as $$
     else extract(year from age(p_at, p_dob))::numeric
   end
 $$;
+
+-- =============================================================================
+-- Validation SERVEUR des donnees (§5.4/§5.5) : memes contraintes que le moteur React,
+-- re-appliquees cote base pour la saisie directe ET la curation. Verifie, pour chaque
+-- champ du gabarit (scope donne) present dans p_data : le TYPE (numerique), les BORNES
+-- (min/max) et les VALEURS AUTORISEES (select/multiselect). Les valeurs manquantes
+-- codifiees {"__missing__":...} ne sont permises que si allow_missing_codes. La
+-- completude (champs requis) reste geree par l'UI (saisie directe) et la revue
+-- (curation), pour ne pas bloquer un brouillon partiel.
+-- =============================================================================
+create or replace function public.assert_data_valid(p_version uuid, p_scope text, p_data jsonb)
+returns void language plpgsql stable set search_path = public, pg_temp as $$
+declare
+  f   record;
+  v   jsonb;
+  n   numeric;
+  txt text;
+begin
+  if p_data is null then return; end if;
+  for f in
+    select field_key, label, type, unit, allowed_values, min_value, max_value, allow_missing_codes
+    from public.template_field
+    where template_version_id = p_version and scope = p_scope
+  loop
+    if not (p_data ? f.field_key) then continue; end if;
+    v := p_data -> f.field_key;
+    if v is null or jsonb_typeof(v) = 'null' then continue; end if;
+
+    -- valeur manquante codifiee : {"__missing__":"code"}
+    if jsonb_typeof(v) = 'object' and (v ? '__missing__') then
+      if not f.allow_missing_codes then
+        raise exception 'Valeur manquante non autorisee pour "%"', f.label;
+      end if;
+      continue;
+    end if;
+
+    txt := v #>> '{}';
+    if txt is null or txt = '' then continue; end if;
+
+    if f.type in ('number','integer') then
+      begin
+        n := txt::numeric;
+      exception when others then
+        raise exception 'Valeur non numerique pour "%"', f.label;
+      end;
+      if f.min_value is not null and n < f.min_value then
+        raise exception '"%" en dessous du minimum autorise (%)', f.label, f.min_value;
+      end if;
+      if f.max_value is not null and n > f.max_value then
+        raise exception '"%" au dessus du maximum autorise (%)', f.label, f.max_value;
+      end if;
+    elsif f.type = 'select' then
+      if f.allowed_values is not null and not (f.allowed_values @> jsonb_build_array(txt)) then
+        raise exception 'Valeur non autorisee pour "%"', f.label;
+      end if;
+    elsif f.type = 'multiselect' then
+      if f.allowed_values is not null and jsonb_typeof(v) = 'array'
+         and exists (select 1 from jsonb_array_elements_text(v) el where not (f.allowed_values @> jsonb_build_array(el))) then
+        raise exception 'Valeur non autorisee pour "%"', f.label;
+      end if;
+    end if;
+  end loop;
+end $$;

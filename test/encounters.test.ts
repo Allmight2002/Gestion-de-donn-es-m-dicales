@@ -87,6 +87,12 @@ describe('age calcule (jamais saisi)', () => {
   });
 });
 
+describe('validation serveur (§5.4/§5.5)', () => {
+  test('une valeur hors bornes (Glasgow=78) est refusee cote serveur', async () => {
+    await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 78 }))).rejects.toThrow(/maximum|glasgow/i);
+  });
+});
+
 describe('RLS sur la saisie', () => {
   test('un analyste (lecture seule) ne peut pas creer de rencontre', async () => {
     await expect(rowsAs(annaId, CALL, encArgs({ glasgow_score: 10 }))).rejects.toThrow();

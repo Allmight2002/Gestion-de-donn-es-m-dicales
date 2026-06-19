@@ -105,6 +105,13 @@ returns boolean language sql stable security definer set search_path = public, p
   select exists (select 1 from public.curation_task t where t.id = p_task_id and t.assigned_to = auth.uid())
 $$;
 
+-- Le curateur courant a-t-il RESERVE la tache portant cette soumission ? Sert a ne donner
+-- acces aux DOCUMENTS qu'apres reservation (et seulement de SA tache), pas a tout le pool.
+create or replace function public.is_assigned_to_submission(p_submission_id uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from public.curation_task t where t.submission_id = p_submission_id and t.assigned_to = auth.uid())
+$$;
+
 -- =============================================================================
 -- Privileges + RLS (chaque table : RLS activee ; sans policy = tout refuse).
 -- =============================================================================
@@ -112,6 +119,7 @@ grant select, insert, update, delete on
   public.raw_submission, public.raw_document, public.curation_task,
   public.curation_draft, public.curation_review to authenticated;
 grant execute on function public.is_assigned_curator(uuid) to authenticated;
+grant execute on function public.is_assigned_to_submission(uuid) to authenticated;
 
 -- POOL GLOBAL : lecture par le medecin PROPRIETAIRE du cas (suivi) OU par le staff de
 -- curation (curateur/validateur — l'ANALYSTE est exclu) ; role GLOBAL, sans acces base,
@@ -127,11 +135,16 @@ create policy rs_update on public.raw_submission for update to authenticated
   using (public.is_base_owner(base_id) or public.is_curation_staff())
   with check (public.is_base_owner(base_id) or public.is_curation_staff());
 
--- raw_document : documents (deidentifies) du cas. Lus par le proprietaire + le staff ;
--- deposes par le proprietaire. Jamais l'analyste hors staff, jamais l'admin systeme.
+-- raw_document : documents (deidentifies) du cas. Lus par le PROPRIETAIRE, le curateur
+-- AYANT RESERVE ce cas, ou un VALIDATEUR (pour la revue). Un curateur NON affecte ne voit
+-- PAS les documents (il voit seulement la liste du pool) -> acces apres reservation (§5.1).
+-- Deposes par le proprietaire. Jamais l'analyste, jamais l'admin systeme.
 alter table public.raw_document enable row level security;
 create policy rd_select on public.raw_document for select to authenticated
-  using ((public.is_base_owner(base_id) or public.is_curation_staff()) and deleted_at is null);
+  using (
+    (public.is_base_owner(base_id) or public.is_assigned_to_submission(submission_id) or public.is_validateur())
+    and deleted_at is null
+  );
 create policy rd_insert on public.raw_document for insert to authenticated
   with check (public.is_base_owner(base_id));
 create policy rd_update on public.raw_document for update to authenticated
@@ -254,6 +267,9 @@ begin
   select date_of_birth into v_dob from public.patient_identity
    where base_id = v_base and patient_code = v_pat.patient_code and deleted_at is null;
 
+  -- 0) Re-validation SERVEUR (§5.4) : bornes / listes / type, comme la saisie directe.
+  perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'patient', d.patient_data);
+
   -- 1) Donnees permanentes : fusion + journal des champs reellement modifies.
   if d.patient_data <> '{}'::jsonb then
     for k in select jsonb_object_keys(d.patient_data) loop
@@ -274,6 +290,7 @@ begin
 
   -- 2) Rencontres proposees -> creees VERIFIEES (age calcule, hors data).
   for enc in select * from jsonb_array_elements(d.encounters) loop
+    perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
     v_unit := coalesce(enc ->> 'age_unit', 'years');
     v_age  := case
                 when v_dob is not null and (enc ->> 'encounter_date') is not null

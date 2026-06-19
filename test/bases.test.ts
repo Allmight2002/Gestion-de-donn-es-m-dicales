@@ -64,6 +64,13 @@ describe('creation et propriete d une base', () => {
       ]),
     ).rejects.toThrow();
   });
+
+  test('le proprietaire d une base est immuable (owner_user_id)', async () => {
+    const baseId = await bobCreatesBase();
+    await expect(
+      rowsAs(bobId, 'update public.base set owner_user_id = $2 where id = $1', [baseId, aliceId]),
+    ).rejects.toThrow(/immuable/i);
+  });
 });
 
 describe('visibilite : privee par defaut, partage explicite', () => {

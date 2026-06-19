@@ -29,6 +29,9 @@ begin
   select current_template_version_id into v_tv from public.base where id = p_base_id;
   if v_tv is null then raise exception 'La base n''a pas de version de gabarit courante'; end if;
 
+  -- Re-validation SERVEUR (§5.4/§5.5) : bornes / listes / type des donnees permanentes.
+  perform public.assert_data_valid(v_tv, 'patient', coalesce(p_permanent_data, '{}'::jsonb));
+
   insert into public.patient_identity
     (base_id, patient_code, full_name, date_of_birth, phone, address, external_identifier,
      data_use_authorization_status, data_use_authorization_date, created_by)

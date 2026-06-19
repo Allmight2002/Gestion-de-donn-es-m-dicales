@@ -21,6 +21,9 @@ begin
   select base_id, patient_code into v_base, v_code from public.patient where id = v_enc.patient_id;
   if not public.can_edit_structured_data(v_base) then raise exception 'Acces refuse'; end if;
 
+  -- Re-validation SERVEUR (§5.4/§5.5) : bornes / listes / type.
+  perform public.assert_data_valid(v_enc.template_version_id, 'encounter', coalesce(p_data, '{}'::jsonb) - 'age_at_encounter');
+
   select date_of_birth into v_dob
   from public.patient_identity where base_id = v_base and patient_code = v_code and deleted_at is null;
   v_age := public.compute_age(v_dob, v_enc.encounter_date, coalesce(v_enc.age_unit, 'years'));

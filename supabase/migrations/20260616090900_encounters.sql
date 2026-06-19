@@ -43,6 +43,9 @@ begin
 
   select current_template_version_id into v_tv from public.base where id = v_base;
 
+  -- Re-validation SERVEUR (§5.4/§5.5) : memes bornes/listes/type que le moteur React.
+  perform public.assert_data_valid(v_tv, 'encounter', coalesce(p_data, '{}'::jsonb) - 'age_at_encounter');
+
   v_unit := coalesce(p_age_unit, 'years');
   select date_of_birth into v_dob
   from public.patient_identity where base_id = v_base and patient_code = v_code and deleted_at is null;
