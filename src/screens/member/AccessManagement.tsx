@@ -1,0 +1,224 @@
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useI18n } from '../../i18n/useI18n';
+import type { MessageKey } from '../../i18n/messages';
+import { useAccessRepository, useBaseRepository } from '../../data/RepositoryProvider';
+import {
+  defaultPermissionsFor, type AccessItem, type AccessRole, type BasePermissions, type InvitationItem,
+} from '../../data/access';
+
+// Partage de base ENTRE MEDECINS uniquement (v3.0). Les roles curateur/validateur sont
+// des roles GLOBAUX (admin) qui travaillent le pool de curation, jamais invites ici.
+const ROLES: AccessRole[] = ['viewer', 'editor', 'analyst'];
+const PERMISSION_KEYS: (keyof BasePermissions)[] = [
+  'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canValidateData', 'canExportData', 'canManageAccess',
+];
+
+const permSummary = (p: BasePermissions, t: (k: MessageKey) => string): string =>
+  PERMISSION_KEYS.filter((k) => p[k]).map((k) => t(`access.perm.${k}` as MessageKey)).join(' · ') || '—';
+
+// Gestion des acces (cahier v3.0 §10) : inviter par email avec un role et 6
+// permissions granulaires ; voir / revoquer les invitations en attente ; voir,
+// ajuster les permissions et revoquer les acces actuels. Proprietaire (ou
+// can_manage_access) uniquement ; la base applique aussi les invariants par CHECK.
+export function AccessManagement() {
+  const { id: baseId } = useParams();
+  const navigate = useNavigate();
+  const { t } = useI18n();
+  const bases = useBaseRepository();
+  const accessRepo = useAccessRepository();
+
+  const [canManage, setCanManage] = useState(false);
+  const [invitations, setInvitations] = useState<InvitationItem[]>([]);
+  const [accessList, setAccessList] = useState<AccessItem[]>([]);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<AccessRole>('viewer');
+  const [perms, setPerms] = useState<BasePermissions>(defaultPermissionsFor('viewer'));
+  const [link, setLink] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+
+  const load = useCallback(async () => {
+    if (!baseId) return;
+    setLoading(true);
+    try {
+      const base = await bases.getBase(baseId);
+      const manage = base?.role === 'owner' || base?.permissions.canManageAccess === true;
+      setCanManage(manage);
+      if (manage) {
+        setInvitations(await accessRepo.listInvitations(baseId));
+        setAccessList(await accessRepo.listAccess(baseId));
+      }
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseId, bases, accessRepo]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  function changeRole(r: AccessRole) {
+    setRole(r);
+    setPerms(defaultPermissionsFor(r));
+  }
+
+  async function invite(e: FormEvent) {
+    e.preventDefault();
+    if (!baseId || !email.trim()) return;
+    setBusy(true);
+    try {
+      const { token } = await accessRepo.createInvitation(baseId, email.trim(), role, perms);
+      setLink(`${window.location.origin}/accept-invitation?token=${token}`);
+      setEmail('');
+      await load();
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+
+  return (
+    <section className="max-w-2xl space-y-6">
+      <div className="flex items-center gap-3">
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
+          ← {t('admin.back')}
+        </button>
+        <h1 className="text-2xl font-semibold">{t('access.title')}</h1>
+      </div>
+
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+
+      {!canManage ? (
+        <p className="text-slate-500">{t('access.owner_only')}</p>
+      ) : (
+        <>
+          <form onSubmit={invite} className="space-y-3 rounded border border-slate-200 p-4">
+            <h2 className="text-sm font-semibold text-slate-700">{t('access.invite')}</h2>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col text-xs text-slate-600">
+                {t('access.email')}
+                <input type="email" required className="rounded border border-slate-300 px-2 py-1 text-sm" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </label>
+              <label className="flex flex-col text-xs text-slate-600">
+                {t('access.role')}
+                <select
+                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  value={role}
+                  onChange={(e) => changeRole(e.target.value as AccessRole)}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`access.role_${r}` as MessageKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" disabled={busy} className="rounded bg-teal-700 px-3 py-1 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
+                {t('access.send_invite')}
+              </button>
+            </div>
+            <fieldset className="grid grid-cols-2 gap-1 text-xs text-slate-600 sm:grid-cols-3">
+              <legend className="mb-1 text-xs font-medium text-slate-500">{t('access.permissions')}</legend>
+              {PERMISSION_KEYS.map((k) => (
+                <label key={k} className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={perms[k]}
+                    onChange={(e) => setPerms((p) => ({ ...p, [k]: e.target.checked }))}
+                  />
+                  {t(`access.perm.${k}` as MessageKey)}
+                </label>
+              ))}
+            </fieldset>
+            {link && (
+              <div className="rounded bg-teal-50 p-2 text-xs">
+                <span className="text-teal-800">{t('access.link_created')}</span>
+                <code className="ml-1 break-all">{link}</code>
+              </div>
+            )}
+          </form>
+
+          <div>
+            <h2 className="mb-2 font-medium">{t('access.pending')}</h2>
+            {invitations.length === 0 ? (
+              <p className="text-sm text-slate-500">{t('access.no_pending')}</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {invitations.map((inv) => (
+                  <li key={inv.id} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1">
+                    <span>
+                      {inv.email} · {t(`access.role_${inv.role}` as MessageKey)}
+                      <span className="ml-1 text-xs text-slate-400">{permSummary(inv.permissions, t)}</span>
+                    </span>
+                    <button onClick={() => void run(() => accessRepo.revokeInvitation(inv.id))} className="text-xs text-red-600 hover:underline">
+                      {t('access.revoke')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <h2 className="mb-2 font-medium">{t('access.current')}</h2>
+            {accessList.length === 0 ? (
+              <p className="text-sm text-slate-500">{t('access.no_access')}</p>
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {accessList.map((a) => (
+                  <li key={a.id} className="rounded border border-slate-200 px-2 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">
+                        {a.fullName ?? a.userId.slice(0, 8)} · {t(`access.role_${a.role}` as MessageKey)}
+                      </span>
+                      <button onClick={() => void run(() => accessRepo.revokeAccess(a.id))} className="text-xs text-red-600 hover:underline">
+                        {t('access.revoke')}
+                      </button>
+                    </div>
+                    <fieldset className="mt-1 grid grid-cols-2 gap-1 text-xs text-slate-500 sm:grid-cols-3">
+                      {PERMISSION_KEYS.map((k) => (
+                        <label key={k} className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            disabled={busy}
+                            checked={a.permissions[k]}
+                            onChange={(e) => void run(() => accessRepo.setPermissions(a.id, { ...a.permissions, [k]: e.target.checked }))}
+                          />
+                          {t(`access.perm.${k}` as MessageKey)}
+                        </label>
+                      ))}
+                    </fieldset>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}

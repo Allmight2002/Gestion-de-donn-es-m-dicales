@@ -1,0 +1,100 @@
+import { createContext, useContext, type ReactNode } from 'react';
+import { templateRepository, type TemplateRepository } from './templates';
+import { baseRepository, type BaseRepository } from './bases';
+import { patientRepository, type PatientRepository } from './patients';
+import { attachmentRepository, type AttachmentRepository } from './attachments';
+import { cohortRepository, type CohortRepository } from './cohorts';
+import { exportRepository, type ExportRepository } from './exports';
+import { accessRepository, type AccessRepository } from './access';
+import { curationRepository, type CurationRepository } from './curation';
+import { adminRepository, type AdminRepository } from './admin';
+
+interface Repositories {
+  templates: TemplateRepository;
+  bases: BaseRepository;
+  patients: PatientRepository;
+  attachments: AttachmentRepository;
+  cohorts: CohortRepository;
+  exports: ExportRepository;
+  access: AccessRepository;
+  curation: CurationRepository;
+  admin: AdminRepository;
+}
+
+const RepositoryContext = createContext<Repositories>({
+  templates: templateRepository,
+  bases: baseRepository,
+  patients: patientRepository,
+  attachments: attachmentRepository,
+  cohorts: cohortRepository,
+  exports: exportRepository,
+  access: accessRepository,
+  curation: curationRepository,
+  admin: adminRepository,
+});
+
+export function RepositoryProvider({
+  children,
+  templates = templateRepository,
+  bases = baseRepository,
+  patients = patientRepository,
+  attachments = attachmentRepository,
+  cohorts = cohortRepository,
+  exports = exportRepository,
+  access = accessRepository,
+  curation = curationRepository,
+  admin = adminRepository,
+}: {
+  children: ReactNode;
+  templates?: TemplateRepository;
+  bases?: BaseRepository;
+  patients?: PatientRepository;
+  attachments?: AttachmentRepository;
+  cohorts?: CohortRepository;
+  exports?: ExportRepository;
+  access?: AccessRepository;
+  curation?: CurationRepository;
+  admin?: AdminRepository;
+}) {
+  return (
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin }}>
+      {children}
+    </RepositoryContext.Provider>
+  );
+}
+
+export function useTemplateRepository(): TemplateRepository {
+  return useContext(RepositoryContext).templates;
+}
+
+export function useBaseRepository(): BaseRepository {
+  return useContext(RepositoryContext).bases;
+}
+
+export function usePatientRepository(): PatientRepository {
+  return useContext(RepositoryContext).patients;
+}
+
+export function useAttachmentRepository(): AttachmentRepository {
+  return useContext(RepositoryContext).attachments;
+}
+
+export function useCohortRepository(): CohortRepository {
+  return useContext(RepositoryContext).cohorts;
+}
+
+export function useExportRepository(): ExportRepository {
+  return useContext(RepositoryContext).exports;
+}
+
+export function useAccessRepository(): AccessRepository {
+  return useContext(RepositoryContext).access;
+}
+
+export function useCurationRepository(): CurationRepository {
+  return useContext(RepositoryContext).curation;
+}
+
+export function useAdminRepository(): AdminRepository {
+  return useContext(RepositoryContext).admin;
+}

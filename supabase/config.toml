@@ -1,0 +1,35 @@
+# Configuration Supabase CLI (minimale).
+# Generee/mise a jour par `supabase init`. Ajustez major_version au besoin.
+# NB: les tests de securite (npm test) n'utilisent PAS ce fichier (Postgres embarque).
+
+project_id = "registre-clinique"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+# Le seed de demonstration (donnees fictives) joue par `supabase db reset`.
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 54323
+
+# Analytics (Logflare) desactive : lourd (Elixir) et inutile pour la demo ; evite un
+# conteneur OOM/unhealthy au demarrage sur une machine a memoire Docker limitee.
+[analytics]
+enabled = false
+
+[auth]
+enabled = true
+# URL de redirection du frontend (etape 3+).
+site_url = "http://127.0.0.1:5173"

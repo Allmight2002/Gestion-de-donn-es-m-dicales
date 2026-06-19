@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+
+# Secrets — NEVER commit. service_role must stay server-side only.
+.env
+.env.*
+!.env.example
+
+# Local embedded-postgres data dirs (tests)
+.pgdata*/
+
+# Supabase CLI local files
+supabase/.branches/
+supabase/.temp/
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
