@@ -23,6 +23,7 @@ export function CurationBoard() {
   const [patientList, setPatientList] = useState<PatientListItem[]>([]);
   const [targetPatient, setTargetPatient] = useState('');
   const [externalRef, setExternalRef] = useState('');
+  const [scope, setScope] = useState<'patient' | 'encounter'>('patient');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export function CurationBoard() {
     if (!baseId || !targetPatient) return;
     setBusy(true);
     try {
-      const { taskId } = await curation.createSubmission(baseId, targetPatient, externalRef.trim() || null);
+      const { taskId } = await curation.createSubmission(baseId, targetPatient, externalRef.trim() || null, scope);
       navigate(`/curation/${taskId}`); // -> deposer les documents deidentifies
     } catch (e) {
       setError(msg(e));
@@ -87,6 +88,13 @@ export function CurationBoard() {
               {patientList.map((p) => (
                 <option key={p.id} value={p.id}>{p.code}{p.identity?.fullName ? ` · ${p.identity.fullName}` : ''}</option>
               ))}
+            </select>
+          </label>
+          <label className="flex flex-col text-xs text-slate-600">
+            {t('curation.scope')}
+            <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={scope} onChange={(e) => setScope(e.target.value as 'patient' | 'encounter')}>
+              <option value="patient">{t('curation.scope_patient')}</option>
+              <option value="encounter">{t('curation.scope_encounter')}</option>
             </select>
           </label>
           <label className="flex flex-col text-xs text-slate-600">

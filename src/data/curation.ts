@@ -23,6 +23,7 @@ export interface CurationTaskItem {
   submissionId: string;
   status: string;
   caseCode: string | null; // code OPAQUE (ce que voit le staff) — jamais le patient_code
+  scope: 'patient' | 'encounter'; // donnees permanentes OU une rencontre
   templateVersionId: string | null; // gabarit a remplir (champs lisibles par le staff)
   assignedTo: string | null;
   assignedName: string | null;
@@ -74,8 +75,9 @@ export interface CurationRepository {
   /** Cas d'une base (suivi cote medecin proprietaire). */
   listBaseSubmissions(baseId: string): Promise<CurationTaskItem[]>;
   getTaskBundle(taskId: string): Promise<TaskBundle | null>;
-  /** Le medecin soumet un cas au pool (RPC atomique : soumission + tache ouverte + code). */
-  createSubmission(baseId: string, targetPatientId: string, externalRef: string | null): Promise<{ taskId: string; submissionId: string }>;
+  /** Le medecin soumet un cas au pool (RPC atomique : soumission + tache ouverte + code).
+   *  scope='patient' (donnees permanentes) ou 'encounter' (une rencontre). */
+  createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
   /** Un curateur RESERVE un cas ouvert (anti-collision). */
   claimTask(taskId: string): Promise<void>;
   /** Le curateur affecte libere un cas. */
@@ -92,7 +94,7 @@ const NOT_CONFIGURED = 'Backend Supabase non configure';
 
 type AssigneeRel = { full_name: string | null } | null;
 type PatientRel = { patient_code: string } | null;
-type SubmissionRel = { case_code: string; template_version_id: string | null; external_ref: string | null; status: string; target_patient_id: string; patient: PatientRel } | null;
+type SubmissionRel = { case_code: string; scope: 'patient' | 'encounter'; template_version_id: string | null; external_ref: string | null; status: string; target_patient_id: string; patient: PatientRel } | null;
 type TaskRow = {
   id: string; base_id: string; status: string; submission_id: string; assigned_to: string | null;
   assignee: AssigneeRel; raw_submission: SubmissionRel;
@@ -101,7 +103,7 @@ type DraftRow = { id: string; task_id: string; patient_data: Record<string, unkn
 
 const TASK_SELECT =
   'id, base_id, status, submission_id, assigned_to, assignee:assigned_to(full_name), ' +
-  'raw_submission:submission_id(case_code, template_version_id, external_ref, status, target_patient_id, patient:target_patient_id(patient_code))';
+  'raw_submission:submission_id(case_code, scope, template_version_id, external_ref, status, target_patient_id, patient:target_patient_id(patient_code))';
 
 const mapTask = (r: TaskRow): CurationTaskItem => ({
   id: r.id,
@@ -109,6 +111,7 @@ const mapTask = (r: TaskRow): CurationTaskItem => ({
   submissionId: r.submission_id,
   status: r.status,
   caseCode: r.raw_submission?.case_code ?? null,
+  scope: r.raw_submission?.scope ?? 'patient',
   templateVersionId: r.raw_submission?.template_version_id ?? null,
   assignedTo: r.assigned_to,
   assignedName: r.assignee?.full_name ?? null,
@@ -200,9 +203,9 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       };
     },
 
-    async createSubmission(baseId, targetPatientId, externalRef) {
+    async createSubmission(baseId, targetPatientId, externalRef, scope = 'patient') {
       const { data, error } = await client.rpc('create_curation_submission', {
-        p_base_id: baseId, p_target_patient_id: targetPatientId, p_external_ref: externalRef,
+        p_base_id: baseId, p_target_patient_id: targetPatientId, p_external_ref: externalRef, p_scope: scope,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string; submission_id: string };

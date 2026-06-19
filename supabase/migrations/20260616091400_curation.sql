@@ -268,7 +268,8 @@ begin
        set data = data || d.patient_data, validation_status = 'verified', collection_mode = 'assisted', updated_at = now()
      where id = v_pat.id;
   else
-    update public.patient set validation_status = 'verified', updated_at = now() where id = v_pat.id;
+    -- Portee 'rencontre' (aucune donnee permanente) : on ne re-verifie PAS le patient.
+    update public.patient set updated_at = now() where id = v_pat.id;
   end if;
 
   -- 2) Rencontres proposees -> creees VERIFIEES (age calcule, hors data).
@@ -303,7 +304,7 @@ grant execute on function public.validate_curation_draft(uuid, text, text) to au
 -- RPC : le MEDECIN soumet un cas au pool (atomique : soumission + tache OUVERTE +
 -- code opaque). Il deposera ensuite les documents DEIDENTIFIES (raw_document).
 -- =============================================================================
-create or replace function public.create_curation_submission(p_base_id uuid, p_target_patient_id uuid, p_external_ref text default null)
+create or replace function public.create_curation_submission(p_base_id uuid, p_target_patient_id uuid, p_external_ref text default null, p_scope text default 'patient')
 returns public.curation_task
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -312,15 +313,16 @@ declare
   v_task public.curation_task;
 begin
   if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  if p_scope not in ('patient','encounter') then raise exception 'Portee invalide: %', p_scope; end if;
   if not public.is_base_owner(p_base_id) then raise exception 'Reserve au proprietaire de la base'; end if;
   if not exists (select 1 from public.patient where id = p_target_patient_id and base_id = p_base_id and deleted_at is null) then
     raise exception 'Patient cible introuvable dans cette base';
   end if;
 
-  insert into public.raw_submission (base_id, target_patient_id, template_version_id, case_code, external_ref, status, submitted_by)
+  insert into public.raw_submission (base_id, target_patient_id, template_version_id, scope, case_code, external_ref, status, submitted_by)
   values (p_base_id, p_target_patient_id,
           (select current_template_version_id from public.base where id = p_base_id),
-          v_code, p_external_ref, 'in_curation', auth.uid())
+          p_scope, v_code, p_external_ref, 'in_curation', auth.uid())
   returning id into v_sub;
 
   insert into public.curation_task (base_id, submission_id, status, created_by)
@@ -329,7 +331,7 @@ begin
 
   return v_task;
 end $$;
-grant execute on function public.create_curation_submission(uuid, uuid, text) to authenticated;
+grant execute on function public.create_curation_submission(uuid, uuid, text, text) to authenticated;
 
 -- =============================================================================
 -- RPC : un CURATEUR reserve un cas OUVERT (anti-collision). Le `where status='open'

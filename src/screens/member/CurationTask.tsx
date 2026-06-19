@@ -31,6 +31,7 @@ export function CurationTask() {
   const [comment, setComment] = useState('');
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docLabel, setDocLabel] = useState('');
+  const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +109,7 @@ export function CurationTask() {
         <h1 className="text-2xl font-semibold">{t('curation.task_title')}</h1>
         <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs">{task.caseCode ?? '—'}</span>
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{t(`curstatus.${task.status}` as MessageKey)}</span>
+        <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs text-teal-700">{t(`curation.scope_${task.scope}` as MessageKey)}</span>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -159,13 +161,31 @@ export function CurationTask() {
           </ul>
         )}
         {canAddDocs && (
-          <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-amber-200 pt-3">
-            <p className="w-full text-xs text-amber-700">{t('curation.deident_note')}</p>
-            <label className="flex flex-col text-xs text-slate-600">
+          <div className="mt-4 space-y-3 border-t border-amber-200 pt-4">
+            <p className="text-xs text-amber-700">{t('curation.deident_note')}</p>
+            <label className="block text-xs text-slate-600">
               {t('curation.document_label')}
-              <input className="rounded border border-slate-300 px-2 py-1 text-sm" value={docLabel} onChange={(e) => setDocLabel(e.target.value)} />
+              <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm" value={docLabel} onChange={(e) => setDocLabel(e.target.value)} />
             </label>
-            <input type="file" className="text-xs" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
+
+            {/* Zone de glisser-deposer visible (ou clic pour parcourir). */}
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) setDocFile(f); }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-8 text-center text-sm transition-colors ${
+                dragging ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-300 bg-white text-slate-500 hover:border-teal-400 hover:bg-slate-50'
+              }`}
+            >
+              <span className="text-2xl">⬆️</span>
+              {docFile ? (
+                <span className="font-medium text-slate-700">📄 {docFile.name}</span>
+              ) : (
+                <span>{t('curation.dropzone')}</span>
+              )}
+              <input type="file" className="hidden" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
+            </label>
+
             <button
               type="button"
               disabled={busy || !docFile}
@@ -173,7 +193,7 @@ export function CurationTask() {
                 await curation.addRawDocument({ submissionId: task.submissionId, baseId: task.baseId, file: docFile!, label: docLabel || undefined });
                 setDocFile(null); setDocLabel('');
               }, t('curation.uploaded'))}
-              className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100 disabled:opacity-60"
+              className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
             >
               {t('curation.add_document')}
             </button>
@@ -198,17 +218,20 @@ export function CurationTask() {
       ) : (
         <div className="space-y-5">
           <fieldset disabled={!canEdit} className="space-y-5 disabled:opacity-70">
-            <div className="rounded border border-slate-200 p-4">
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
-              {patientFields.map((f) => (
-                <label key={f.id} className="mb-2 flex flex-col text-sm">
-                  <span className="text-slate-700">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
-                  <div className="mt-1">
-                    <FieldInput field={f} value={patientData[f.fieldKey]} onChange={(v) => setPatientData((p) => ({ ...p, [f.fieldKey]: v }))} />
-                  </div>
-                </label>
-              ))}
-            </div>
+            {/* Portee 'patient' : donnees permanentes. Portee 'encounter' : rencontre(s) seulement. */}
+            {task.scope !== 'encounter' && (
+              <div className="rounded border border-slate-200 p-4">
+                <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
+                {patientFields.map((f) => (
+                  <label key={f.id} className="mb-2 flex flex-col text-sm">
+                    <span className="text-slate-700">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
+                    <div className="mt-1">
+                      <FieldInput field={f} value={patientData[f.fieldKey]} onChange={(v) => setPatientData((p) => ({ ...p, [f.fieldKey]: v }))} />
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">

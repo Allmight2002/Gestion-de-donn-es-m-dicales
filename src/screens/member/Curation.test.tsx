@@ -25,7 +25,7 @@ const templateRepo = {
 } as unknown as TemplateRepository;
 
 const openTask: CurationTaskItem = {
-  id: 'tk1', baseId: 'b1', submissionId: 's1', status: 'open', caseCode: 'CASE-AB12',
+  id: 'tk1', baseId: 'b1', submissionId: 's1', status: 'open', caseCode: 'CASE-AB12', scope: 'patient',
   templateVersionId: 'v1', assignedTo: null, assignedName: null, targetPatientId: null, targetPatientCode: null, externalRef: null,
 };
 const bundle = (status: string, taskStatus: string): TaskBundle => ({

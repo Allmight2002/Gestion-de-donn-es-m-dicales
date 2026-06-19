@@ -132,4 +132,19 @@ describe('soumission de cas (medecin)', () => {
     const ok = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'x']);
     expect(ok[0].status).toBe('open');
   });
+
+  test('portee "rencontre" : scope=encounter ; la validation cree une rencontre', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-009'", [baseId])).rows[0].id;
+    const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3,$4)', [baseId, pid, 'ENC', 'encounter']);
+    expect((await db.admin.query('select scope from public.raw_submission where id=$1', [task[0].submission_id])).rows[0].scope).toBe('encounter');
+
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [task[0].id]);
+    const draft = await rowsAs(curator1Id,
+      "insert into public.curation_draft(task_id, base_id, encounters, status) values($1,$2,$3::jsonb,'draft') returning id",
+      [task[0].id, baseId, JSON.stringify([{ encounter_type: 'suivi', encounter_date: '2024-09-01', age_unit: 'years', data: { glasgow_score: 11 } }])]);
+    await rowsAs(curator1Id, 'select * from public.submit_curation_draft($1)', [draft[0].id]);
+    const before = Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [pid])).rows[0].n);
+    await rowsAs(validatorId, 'select * from public.validate_curation_draft($1,$2,$3)', [draft[0].id, 'approved', null]);
+    expect(Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [pid])).rows[0].n)).toBe(before + 1);
+  });
 });
