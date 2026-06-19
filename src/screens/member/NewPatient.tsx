@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
 
 const AUTH_STATUSES = ['not_requested', 'granted', 'refused', 'withdrawn', 'unknown'] as const;
 
-// Ecran "Nouveau patient" (cahier §8.5) : identite (zone restreinte) + code unique
-// + donnees PERMANENTES (champs scope=patient du gabarit courant). Les rencontres,
-// l'age calcule et les controles complets arrivent a l'etape 7.
-export function NewPatient() {
+// Ecran patient (cahier v3.0). Deux modes :
+//  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
+//  - 'submit'  : le medecin saisit SEULEMENT l'identite (nom + date de naissance requis),
+//                cree le patient, puis CONFIE le cas au staff (pool) -> page de depot des
+//                documents deidentifies. Les donnees analytiques seront saisies par le staff.
+export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) {
   const { id: baseId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const curation = useCurationRepository();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,9 +67,14 @@ export function NewPatient() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!baseId || !code.trim()) return;
+    // Mode "confier au staff" : nom complet + date de naissance OBLIGATOIRES.
+    if (mode === 'submit' && (!fullName.trim() || !dob)) {
+      setError(t('patient.identity_required'));
+      return;
+    }
     setBusy(true);
     try {
-      await patients.createPatient(baseId, {
+      const created = await patients.createPatient(baseId, {
         code: code.trim(),
         fullName: fullName.trim() || null,
         dateOfBirth: dob || null,
@@ -75,9 +83,15 @@ export function NewPatient() {
         externalIdentifier: externalId.trim() || null,
         authStatus,
         authDate: authDate || null,
-        permanentData: permanent,
+        permanentData: mode === 'submit' ? {} : permanent,
       });
-      navigate(`/bases/${baseId}`);
+      if (mode === 'submit') {
+        // Confie le cas au pool (portee patient) -> page de depot des documents.
+        const { taskId } = await curation.createSubmission(baseId, created.id, null, 'patient');
+        navigate(`/curation/${taskId}`);
+      } else {
+        navigate(`/bases/${baseId}/patients/${created.id}`);
+      }
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -93,9 +107,10 @@ export function NewPatient() {
         <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('patient.new')}</h1>
+        <h1 className="text-2xl font-semibold">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
       </div>
 
+      {mode === 'submit' && <p className="rounded bg-teal-50 p-2 text-sm text-teal-800">{t('patient.submit_hint')}</p>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <form onSubmit={submit} className="space-y-6">
@@ -110,8 +125,8 @@ export function NewPatient() {
           <p className="text-xs text-slate-500">{t('patient.identity_note')}</p>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
-              <span className="text-slate-700">{t('patient.full_name')}</span>
-              <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              <span className="text-slate-700">{t('patient.full_name')}{mode === 'submit' && <span className="text-red-500"> *</span>}</span>
+              <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={fullName} onChange={(e) => setFullName(e.target.value)} required={mode === 'submit'} />
             </label>
             <label className="block text-sm">
               <span className="text-slate-700">{t('patient.external_id')}</span>
@@ -120,8 +135,8 @@ export function NewPatient() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
-              <span className="text-slate-700">{t('patient.dob')}</span>
-              <input type="date" className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={dob} onChange={(e) => setDob(e.target.value)} />
+              <span className="text-slate-700">{t('patient.dob')}{mode === 'submit' && <span className="text-red-500"> *</span>}</span>
+              <input type="date" className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={dob} onChange={(e) => setDob(e.target.value)} required={mode === 'submit'} />
             </label>
             <label className="block text-sm">
               <span className="text-slate-700">{t('patient.phone')}</span>
@@ -150,26 +165,28 @@ export function NewPatient() {
           </div>
         </fieldset>
 
-        <fieldset className="space-y-3 rounded border border-slate-200 p-4">
-          <legend className="px-1 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</legend>
-          {fields.length === 0 && <p className="text-xs text-slate-400">—</p>}
-          {fields.map((f) => (
-            <label key={f.id} className="flex flex-col text-sm">
-              <span className="text-slate-700">
-                {f.label}
-                {f.required && <span className="text-red-500"> *</span>}
-                {f.unit && <span className="text-slate-400"> ({f.unit})</span>}
-              </span>
-              <div className="mt-1">
-                <FieldInput field={f} value={permanent[f.fieldKey]} onChange={(v) => setPermanent((p) => ({ ...p, [f.fieldKey]: v }))} />
-              </div>
-            </label>
-          ))}
-        </fieldset>
+        {mode === 'manual' && (
+          <fieldset className="space-y-3 rounded border border-slate-200 p-4">
+            <legend className="px-1 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</legend>
+            {fields.length === 0 && <p className="text-xs text-slate-400">—</p>}
+            {fields.map((f) => (
+              <label key={f.id} className="flex flex-col text-sm">
+                <span className="text-slate-700">
+                  {f.label}
+                  {f.required && <span className="text-red-500"> *</span>}
+                  {f.unit && <span className="text-slate-400"> ({f.unit})</span>}
+                </span>
+                <div className="mt-1">
+                  <FieldInput field={f} value={permanent[f.fieldKey]} onChange={(v) => setPermanent((p) => ({ ...p, [f.fieldKey]: v }))} />
+                </div>
+              </label>
+            ))}
+          </fieldset>
+        )}
 
         <div className="flex gap-2">
           <button type="submit" disabled={busy} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
-            {t('patient.save')}
+            {mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
           </button>
           <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
             {t('common.cancel')}

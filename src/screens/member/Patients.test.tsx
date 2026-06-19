@@ -69,7 +69,7 @@ describe('NewPatient', () => {
           <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
             <Routes>
               <Route path="/bases/:id/patients/new" element={<NewPatient />} />
-              <Route path="/bases/:id" element={<div>BASE PAGE</div>} />
+              <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
             </Routes>
           </MemoryRouter>
         </RepositoryProvider>
@@ -85,7 +85,7 @@ describe('NewPatient', () => {
     await user.type(screen.getByLabelText('Nom complet'), 'Marie Test');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
 
-    expect(await screen.findByText('BASE PAGE')).toBeInTheDocument();
+    expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
     expect(createPatient).toHaveBeenCalledTimes(1);
     expect(createPatient.mock.calls[0][1]).toMatchObject({ fullName: 'Marie Test' });
   });

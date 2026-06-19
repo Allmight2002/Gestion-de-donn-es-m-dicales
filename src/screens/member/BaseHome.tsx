@@ -79,8 +79,7 @@ export function BaseHome() {
               {t('access.manage')}
             </button>
           )}
-          {(listing.role === 'owner' || listing.permissions.canViewRawDocuments
-            || listing.permissions.canEditStructuredData || listing.permissions.canValidateData) && (
+          {listing.role === 'owner' && (
             <button
               onClick={() => navigate(`/bases/${id}/curation`)}
               className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"

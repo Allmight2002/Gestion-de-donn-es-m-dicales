@@ -58,7 +58,7 @@ function renderForm(patientRepo: PatientRepository) {
         <MemoryRouter initialEntries={['/bases/b1/patients/p1/encounters/new']}>
           <Routes>
             <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterForm />} />
-            <Route path="/bases/:id" element={<div>BASE PAGE</div>} />
+            <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
           </Routes>
         </MemoryRouter>
       </RepositoryProvider>
@@ -84,7 +84,7 @@ describe('EncounterForm', () => {
     fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(await screen.findByText('BASE PAGE')).toBeInTheDocument();
+    expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
     expect(createEncounter).toHaveBeenCalledTimes(1);
   });
 

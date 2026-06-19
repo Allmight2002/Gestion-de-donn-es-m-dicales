@@ -5,6 +5,8 @@ import { Dashboard } from '../screens/member/Dashboard';
 import { BaseHome } from '../screens/member/BaseHome';
 import { BaseTemplateEditor } from '../screens/member/BaseTemplateEditor';
 import { NewPatient } from '../screens/member/NewPatient';
+import { PatientCreateChoice } from '../screens/member/PatientCreateChoice';
+import { EncounterCreateChoice } from '../screens/member/EncounterCreateChoice';
 import { PatientDetail } from '../screens/member/PatientDetail';
 import { EncounterForm } from '../screens/member/EncounterForm';
 import { EditEncounter } from '../screens/member/EditEncounter';
@@ -115,7 +117,23 @@ export function AppRoutes() {
         path="/bases/:id/patients/new"
         element={
           <ProtectedRoute area="member">
-            <NewPatient />
+            <PatientCreateChoice />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/patients/new/manual"
+        element={
+          <ProtectedRoute area="member">
+            <NewPatient mode="manual" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/patients/new/submit"
+        element={
+          <ProtectedRoute area="member">
+            <NewPatient mode="submit" />
           </ProtectedRoute>
         }
       />
@@ -129,6 +147,14 @@ export function AppRoutes() {
       />
       <Route
         path="/bases/:id/patients/:patientId/encounters/new"
+        element={
+          <ProtectedRoute area="member">
+            <EncounterCreateChoice />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/patients/:patientId/encounters/new/manual"
         element={
           <ProtectedRoute area="member">
             <EncounterForm />

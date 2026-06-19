@@ -97,7 +97,7 @@ export function EncounterForm() {
       await patients.createEncounter(patientId, {
         encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: values,
       });
-      navigate(`/bases/${baseId}`);
+      navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -110,7 +110,7 @@ export function EncounterForm() {
   return (
     <section className="max-w-2xl space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
+        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm text-teal-700 hover:underline">
           ← {t('admin.back')}
         </button>
         <h1 className="text-2xl font-semibold">{t('encounter.new')}</h1>
@@ -178,7 +178,7 @@ export function EncounterForm() {
           <button type="submit" disabled={busy} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
             {t('encounter.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
+          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
             {t('common.cancel')}
           </button>
         </div>
