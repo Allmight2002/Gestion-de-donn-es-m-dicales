@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { ProtectedRoute, PublicOnly } from './ProtectedRoute';
 import { LoginScreen } from '../screens/LoginScreen';
+import { ResetPassword } from '../screens/ResetPassword';
 import { Dashboard } from '../screens/member/Dashboard';
 import { BaseHome } from '../screens/member/BaseHome';
 import { BaseTemplateEditor } from '../screens/member/BaseTemplateEditor';
@@ -33,6 +34,9 @@ export function AppRoutes() {
           </PublicOnly>
         }
       />
+      {/* Definition d'un nouveau mot de passe : accessible via le lien de l'email de
+          recuperation (session temporaire) — pas de garde de role. */}
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/accept-invitation"
         element={

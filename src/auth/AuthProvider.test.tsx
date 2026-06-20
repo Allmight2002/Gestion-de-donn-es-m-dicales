@@ -35,6 +35,7 @@ function fakeBackend(init: { user: SessionUser | null; profile: Profile | null }
       return init.profile;
     },
     async sendPasswordReset() {},
+    async updatePassword() {},
   };
 }
 

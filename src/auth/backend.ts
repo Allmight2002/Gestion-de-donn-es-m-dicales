@@ -12,6 +12,9 @@ export interface AuthBackend {
   signOut(): Promise<void>;
   fetchProfile(userId: string): Promise<Profile | null>;
   sendPasswordReset(email: string): Promise<void>;
+  /** Definit un nouveau mot de passe pour la session courante (ex. apres un lien de
+   *  recuperation, qui ouvre une session temporaire). */
+  updatePassword(newPassword: string): Promise<void>;
 }
 
 /** Backend inerte utilise quand Supabase n'est pas configure. */
@@ -31,6 +34,9 @@ export const unconfiguredBackend: AuthBackend = {
     return null;
   },
   async sendPasswordReset() {
+    throw new Error('Backend Supabase non configure');
+  },
+  async updatePassword() {
     throw new Error('Backend Supabase non configure');
   },
 };

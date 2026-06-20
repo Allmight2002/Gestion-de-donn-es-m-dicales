@@ -20,6 +20,7 @@ export interface AuthContextValue {
   signIn(email: string, password: string): Promise<boolean>;
   signOut(): Promise<void>;
   sendPasswordReset(email: string): Promise<boolean>;
+  updatePassword(newPassword: string): Promise<boolean>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -120,9 +121,26 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
     [backend],
   );
 
+  const updatePassword = useCallback(
+    async (newPassword: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await backend.updatePassword(newPassword);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Echec de la mise a jour');
+        return false;
+      } finally {
+        if (mounted.current) setBusy(false);
+      }
+    },
+    [backend],
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, profile, error, busy, signIn, signOut, sendPasswordReset }),
-    [status, user, profile, error, busy, signIn, signOut, sendPasswordReset],
+    () => ({ status, user, profile, error, busy, signIn, signOut, sendPasswordReset, updatePassword }),
+    [status, user, profile, error, busy, signIn, signOut, sendPasswordReset, updatePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

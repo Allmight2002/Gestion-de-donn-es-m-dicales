@@ -46,7 +46,14 @@ export function makeSupabaseBackend(client: SupabaseClient | null): AuthBackend 
     },
 
     async sendPasswordReset(email) {
-      const { error } = await client.auth.resetPasswordForEmail(email);
+      // Le lien de l'email renvoie vers l'ecran de definition du nouveau mot de passe.
+      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined;
+      const { error } = await client.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+      if (error) throw error;
+    },
+
+    async updatePassword(newPassword) {
+      const { error } = await client.auth.updateUser({ password: newPassword });
       if (error) throw error;
     },
   };
