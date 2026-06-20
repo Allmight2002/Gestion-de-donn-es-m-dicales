@@ -8,6 +8,7 @@ let db: TestDb;
 let aliceId: string;  // proprietaire
 let annaId: string;   // analyste (can_export_data)
 let bobId: string;    // membre sans acces (devient collaborateur)
+let adminId: string;  // system_admin : ni proprietaire, ni acces base, ni staff curation
 let baseId: string;
 let cohortId: string;
 let tvId: string;
@@ -27,6 +28,7 @@ beforeAll(async () => {
   aliceId = byEmail.get('alice@demo.test')!;
   annaId = byEmail.get('anna.analyst@demo.test')!;
   bobId = byEmail.get('bob@demo.test')!;
+  adminId = byEmail.get('admin@demo.test')!;
   baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
   cohortId = (await db.admin.query("select id from public.cohort where cohort_type='snapshot' limit 1")).rows[0].id;
   tvId = (await db.admin.query('select current_template_version_id tv from public.base where id=$1', [baseId])).rows[0].tv;
@@ -68,5 +70,28 @@ describe('lecture ciblee de l audit (RLS)', () => {
     expect((await rowsAs(aliceId, "select id from public.audit_log where action='access_granted' and base_id=$1", [baseId])).length).toBeGreaterThan(0);
     // ...mais PAS par l'analyste (ni auteur, ni proprietaire).
     expect(await rowsAs(annaId, "select id from public.audit_log where action='access_granted' and base_id=$1", [baseId])).toHaveLength(0);
+  });
+});
+
+describe('tracage des LECTURES sensibles (§7.1)', () => {
+  test('action invalide refusee ; proprietaire trace ; compte sans lien ignore en silence', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+
+    // Action hors liste -> refus.
+    await expect(rowsAs(aliceId, 'select public.log_sensitive_read($1,$2,$3,$4)', ['bogus', 'patient', pid, baseId]))
+      .rejects.toThrow(/invalide/i);
+
+    // Proprietaire : la lecture d'identite est tracee.
+    await rowsAs(aliceId, 'select public.log_sensitive_read($1,$2,$3,$4)', ['identity_read', 'patient', pid, baseId]);
+    expect((await db.admin.query("select 1 from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, aliceId])).rows.length).toBeGreaterThan(0);
+
+    // Compte sans lien avec la base (admin systeme : ni proprietaire, ni acces, ni staff) ->
+    // ignore SILENCIEUSEMENT (pas d'erreur, mais aucune trace inseree).
+    await rowsAs(adminId, 'select public.log_sensitive_read($1,$2,$3,$4)', ['identity_read', 'patient', pid, baseId]);
+    expect((await db.admin.query("select 1 from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, adminId])).rows).toHaveLength(0);
+
+    // La trace est lisible par le proprietaire, pas par un tiers (analyste).
+    expect((await rowsAs(aliceId, "select id from public.audit_log where action='identity_read' and entity_id=$1", [pid])).length).toBeGreaterThan(0);
+    expect(await rowsAs(annaId, "select id from public.audit_log where action='identity_read' and entity_id=$1", [pid])).toHaveLength(0);
   });
 });

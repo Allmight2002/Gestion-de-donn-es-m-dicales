@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import { useAttachmentRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, PatientListItem } from '../../data/patients';
 import type { AttachmentItem } from '../../data/attachments';
 import type { TemplateField } from '../../data/types';
@@ -20,6 +20,7 @@ export function PatientDetail() {
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const attachmentsRepo = useAttachmentRepository();
+  const audit = useAuditRepository();
 
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
@@ -53,6 +54,8 @@ export function PatientDetail() {
       setPatient(p);
       setEncounters(encs);
       setAttachments(atts);
+      // §7.1 : consultation de l'identite -> trace (best-effort) si l'identite a ete revelee.
+      if (p?.identity) void audit.logSensitiveRead('identity_read', 'patient', patientId, baseId);
       if (base?.base.currentTemplateVersionId) {
         const version = await templates.getVersion(base.base.currentTemplateVersionId);
         const sorted = [...version.fields].sort((a, b) => a.displayOrder - b.displayOrder);
@@ -66,7 +69,7 @@ export function PatientDetail() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patientId, bases, templates, patients, attachmentsRepo]);
+  }, [baseId, patientId, bases, templates, patients, attachmentsRepo, audit]);
 
   useEffect(() => {
     void load();

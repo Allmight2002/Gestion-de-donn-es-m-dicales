@@ -12,6 +12,7 @@ import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, Encounter, PatientListItem, FieldChange } from '../../data/patients';
 import type { AttachmentRepository } from '../../data/attachments';
+import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
 
 const stubAttachments = { async listAttachments() { return []; }, async addImage() { return { id: '' }; } } as unknown as AttachmentRepository;
@@ -63,10 +64,10 @@ function makePatients(over: Partial<PatientRepository> = {}): PatientRepository 
   } as unknown as PatientRepository;
 }
 
-function renderAt(path: string, patients: PatientRepository) {
+function renderAt(path: string, patients: PatientRepository, audit?: AuditRepository) {
   return render(
     <I18nProvider>
-      <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patients} attachments={stubAttachments}>
+      <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patients} attachments={stubAttachments} audit={audit}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} />
@@ -85,6 +86,13 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByText('Glasgow')).toBeInTheDocument(); // libelle champ rencontre
     expect(screen.getByText('12')).toBeInTheDocument(); // valeur de la rencontre
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
+  });
+
+  test('trace la consultation de l identite (§7.1)', async () => {
+    const logSensitiveRead = vi.fn(async () => {});
+    renderAt('/bases/b1/patients/p1', makePatients(), { logSensitiveRead } as unknown as AuditRepository);
+    await screen.findByText('Jean Test');
+    await waitFor(() => expect(logSensitiveRead).toHaveBeenCalledWith('identity_read', 'patient', 'p1', 'b1'));
   });
 
   test('supprimer le patient exige un motif puis appelle softDeletePatient', async () => {

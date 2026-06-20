@@ -8,6 +8,7 @@ import { exportRepository, type ExportRepository } from './exports';
 import { accessRepository, type AccessRepository } from './access';
 import { curationRepository, type CurationRepository } from './curation';
 import { adminRepository, type AdminRepository } from './admin';
+import { auditRepository, type AuditRepository } from './audit';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -19,6 +20,7 @@ interface Repositories {
   access: AccessRepository;
   curation: CurationRepository;
   admin: AdminRepository;
+  audit: AuditRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -31,6 +33,7 @@ const RepositoryContext = createContext<Repositories>({
   access: accessRepository,
   curation: curationRepository,
   admin: adminRepository,
+  audit: auditRepository,
 });
 
 export function RepositoryProvider({
@@ -44,6 +47,7 @@ export function RepositoryProvider({
   access = accessRepository,
   curation = curationRepository,
   admin = adminRepository,
+  audit = auditRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -55,9 +59,10 @@ export function RepositoryProvider({
   access?: AccessRepository;
   curation?: CurationRepository;
   admin?: AdminRepository;
+  audit?: AuditRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -97,4 +102,8 @@ export function useCurationRepository(): CurationRepository {
 
 export function useAdminRepository(): AdminRepository {
   return useContext(RepositoryContext).admin;
+}
+
+export function useAuditRepository(): AuditRepository {
+  return useContext(RepositoryContext).audit;
 }

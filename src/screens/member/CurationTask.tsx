@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
-import { useCurationRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useAuditRepository, useCurationRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
@@ -22,6 +22,7 @@ export function CurationTask() {
   const { user, profile } = useAuth();
   const templates = useTemplateRepository();
   const curation = useCurationRepository();
+  const audit = useAuditRepository();
 
   const [bundle, setBundle] = useState<TaskBundle | null>(null);
   const [patientFields, setPatientFields] = useState<TemplateField[]>([]);
@@ -166,7 +167,15 @@ export function CurationTask() {
             {documents.map((d) => (
               <li key={d.id}>
                 {d.signedUrl ? (
-                  <a href={d.signedUrl} target="_blank" rel="noreferrer" className="text-teal-700 hover:underline">{d.label ?? d.storagePath}</a>
+                  <a
+                    href={d.signedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => void audit.logSensitiveRead('raw_document_read', 'raw_document', d.id, task.baseId)}
+                    className="text-teal-700 hover:underline"
+                  >
+                    {d.label ?? d.storagePath}
+                  </a>
                 ) : (
                   <span>{d.label ?? d.storagePath}</span>
                 )}

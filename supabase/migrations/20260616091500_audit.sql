@@ -68,3 +68,25 @@ begin
 end $$;
 create trigger trg_audit_template_publish after update on public.template_version
   for each row execute function public.trg_audit_template_publish_fn();
+
+-- =============================================================================
+-- §7.1 — Tracage des LECTURES sensibles. Une lecture (consultation d'identite, ouverture
+-- d'un document brut, etc.) ne peut pas etre tracee par trigger ; l'UI appelle donc cette
+-- RPC au moment de reveler la donnee. Garde-fous : action whitelistee, et l'appelant doit
+-- avoir un lien LEGITIME avec la base (proprietaire, acces partage, ou staff de curation) —
+-- sinon on ignore silencieusement (pas d'erreur, pas de bruit dans le journal).
+-- =============================================================================
+create or replace function public.log_sensitive_read(p_action text, p_entity text, p_entity_id uuid, p_base_id uuid)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then return; end if;
+  if p_action not in ('identity_read','raw_document_read','attachment_read','export_read') then
+    raise exception 'Action de lecture invalide: %', p_action;
+  end if;
+  if not (public.is_base_owner(p_base_id) or public.has_base_access(p_base_id) or public.is_curation_staff()) then
+    return;
+  end if;
+  insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
+  values (auth.uid(), p_action, p_entity, p_entity_id, p_base_id, '{}'::jsonb);
+end $$;
+grant execute on function public.log_sensitive_read(text, text, uuid, uuid) to authenticated;
