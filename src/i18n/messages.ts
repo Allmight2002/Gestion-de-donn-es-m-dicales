@@ -133,6 +133,9 @@ export const messages = {
     'patient.phone': 'Téléphone',
     'patient.address': 'Adresse',
     'patient.external_id': 'Identifiant externe',
+    'patient.duplicate_warning': 'Un patient avec ce nom et cette date de naissance existe déjà dans cette base :',
+    'patient.duplicate_open': 'Ouvrir sa fiche',
+    'patient.duplicate_add_encounter': 'Ajouter une rencontre',
     'patient.save': 'Enregistrer le patient',
     'patient.identity_note':
       "La date de naissance exacte reste en zone restreinte ; seul l'âge calculé entrera dans l'analytique (étape 7).",
@@ -453,6 +456,9 @@ export const messages = {
     'patient.phone': 'Phone',
     'patient.address': 'Address',
     'patient.external_id': 'External identifier',
+    'patient.duplicate_warning': 'A patient with this name and date of birth already exists in this base:',
+    'patient.duplicate_open': 'Open record',
+    'patient.duplicate_add_encounter': 'Add an encounter',
     'patient.save': 'Save patient',
     'patient.identity_note':
       'The exact date of birth stays in the restricted zone; only the computed age will enter analytics (step 7).',

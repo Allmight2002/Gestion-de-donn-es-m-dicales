@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField } from '../../data/types';
+import type { IdentityMatch } from '../../data/patients';
 import { FieldInput } from './FieldInput';
 
 // Ecran patient (cahier v3.0). Deux modes :
@@ -31,8 +32,21 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [permanent, setPermanent] = useState<Record<string, unknown>>({});
+  const [matches, setMatches] = useState<IdentityMatch[]>([]);
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+
+  // Detection de doublon (confort) : des que nom + date de naissance sont saisis, on cherche
+  // un patient existant a la meme identite. Non bloquant ; on propose d'ouvrir sa fiche ou
+  // d'ajouter une rencontre plutot que de recreer un dossier.
+  useEffect(() => {
+    const name = fullName.trim();
+    if (!baseId || !name || !dob) { setMatches([]); return; }
+    const handle = setTimeout(() => {
+      patients.findIdentityMatches(baseId, name, dob).then(setMatches).catch(() => setMatches([]));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [baseId, fullName, dob, patients]);
 
   const load = useCallback(async () => {
     if (!baseId) return;
@@ -142,6 +156,23 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={address} onChange={(e) => setAddress(e.target.value)} />
           </label>
         </fieldset>
+
+        {/* Doublon potentiel (meme nom + date de naissance) : on previent sans bloquer. */}
+        {matches.length > 0 && (
+          <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-medium">⚠️ {t('patient.duplicate_warning')}</p>
+            <ul className="mt-2 space-y-1">
+              {matches.map((m) => (
+                <li key={m.patientId} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-mono text-xs">{m.code}</span>
+                  <span>{m.fullName ?? '—'}{m.dateOfBirth ? ` · ${m.dateOfBirth}` : ''}</span>
+                  <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}`)} className="text-teal-700 hover:underline">{t('patient.duplicate_open')}</button>
+                  <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}/encounters/new`)} className="text-teal-700 hover:underline">{t('patient.duplicate_add_encounter')}</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {mode === 'manual' && (
           <fieldset className="space-y-3 rounded border border-slate-200 p-4">

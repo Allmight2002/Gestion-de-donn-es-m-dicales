@@ -37,6 +37,7 @@ function renderAt(path: string, providers: { patients?: PatientRepository; curat
             <Route path="/bases/:id/patients/new/submit" element={<NewPatient mode="submit" />} />
             <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterCreateChoice />} />
             <Route path="/bases/:id/patients/:patientId/encounters/new/manual" element={<div>ENC MANUAL</div>} />
+            <Route path="/bases/:id/patients/:patientId" element={<div>FICHE</div>} />
             <Route path="/curation/:taskId" element={<div>CASE PAGE</div>} />
           </Routes>
         </MemoryRouter>
@@ -59,7 +60,7 @@ describe('NewPatient mode submit', () => {
   test('nom + date de naissance requis ; cree le patient puis la demande au pool', async () => {
     const createPatient = vi.fn(async (_b: string, _i: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
     const createSubmission = vi.fn(async () => ({ taskId: 'tk9', submissionId: 's9' }));
-    const patients = { async listPatients() { return []; }, createPatient } as unknown as PatientRepository;
+    const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; }, createPatient } as unknown as PatientRepository;
     const curation = { createSubmission } as unknown as CurationRepository;
 
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
@@ -71,6 +72,26 @@ describe('NewPatient mode submit', () => {
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
     expect(createPatient.mock.calls[0][1]).toMatchObject({ fullName: 'Marie Test', permanentData: {} });
     expect(createSubmission).toHaveBeenCalledWith('b1', 'p1', null, 'patient');
+  });
+});
+
+describe('NewPatient : detection de doublon', () => {
+  test('previent si un patient au meme nom + date de naissance existe, et ouvre sa fiche', async () => {
+    const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
+    const patients = {
+      async listPatients() { return []; },
+      findIdentityMatches,
+      async createPatient() { return { id: 'p1', code: 'P-0001' }; },
+    } as unknown as PatientRepository;
+    renderAt('/bases/b1/patients/new/submit', { patients });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+
+    expect(await screen.findByText(/existe déjà dans cette base/i)).toBeInTheDocument();
+    expect(screen.getByText('P-0009')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir sa fiche' }));
+    expect(await screen.findByText('FICHE')).toBeInTheDocument();
   });
 });
 

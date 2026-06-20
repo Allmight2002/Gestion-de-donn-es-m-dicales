@@ -32,6 +32,14 @@ export interface NewPatientInput {
   permanentData: Record<string, unknown>;
 }
 
+/** Doublon potentiel : un patient existant au MEME nom complet + date de naissance. */
+export interface IdentityMatch {
+  patientId: string;
+  code: string;
+  fullName: string | null;
+  dateOfBirth: string | null;
+}
+
 export interface NewEncounterInput {
   encounterType: string;
   encounterDate: string;
@@ -60,6 +68,8 @@ export interface FieldChange {
 
 export interface PatientRepository {
   listPatients(baseId: string): Promise<PatientListItem[]>;
+  /** Recherche un doublon potentiel par identite (nom + date de naissance). [] si rien. */
+  findIdentityMatches(baseId: string, fullName: string, dateOfBirth: string): Promise<IdentityMatch[]>;
   createPatient(baseId: string, input: NewPatientInput): Promise<{ id: string; code: string }>;
   getPatient(baseId: string, patientId: string): Promise<PatientListItem | null>;
   /** Age calcule par le systeme (DOB jamais exposee). null si pas de date de naissance. */
@@ -112,7 +122,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPatients: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
+      listPatients: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail,
     };
@@ -148,6 +158,36 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         validationStatus: p.validation_status,
         identity: idByCode.get(p.patient_code) ?? null,
       }));
+    },
+
+    async findIdentityMatches(baseId, fullName, dateOfBirth) {
+      const name = fullName.trim();
+      if (!name || !dateOfBirth) return [];
+      // Acces identite requis (RLS) ; meme nom (insensible a la casse) + meme date de naissance.
+      const { data: ids, error } = await client
+        .from('patient_identity')
+        .select('patient_code, full_name, date_of_birth')
+        .eq('base_id', baseId)
+        .eq('date_of_birth', dateOfBirth)
+        .ilike('full_name', name)
+        .is('deleted_at', null);
+      if (error) throw error;
+      const rows = (ids ?? []) as { patient_code: string; full_name: string | null; date_of_birth: string | null }[];
+      if (rows.length === 0) return [];
+
+      // Resolution code -> id patient (modele : pas de FK identite/patient, lien par code).
+      const { data: pats, error: e2 } = await client
+        .from('patient')
+        .select('id, patient_code')
+        .eq('base_id', baseId)
+        .in('patient_code', rows.map((r) => r.patient_code))
+        .is('deleted_at', null);
+      if (e2) throw e2;
+      const idByCode = new Map(((pats ?? []) as { id: string; patient_code: string }[]).map((p) => [p.patient_code, p.id]));
+
+      return rows
+        .filter((r) => idByCode.has(r.patient_code))
+        .map((r) => ({ patientId: idByCode.get(r.patient_code) as string, code: r.patient_code, fullName: r.full_name, dateOfBirth: r.date_of_birth }));
     },
 
     async createPatient(baseId, input) {
