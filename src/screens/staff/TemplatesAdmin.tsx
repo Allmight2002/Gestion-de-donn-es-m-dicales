@@ -83,20 +83,17 @@ export function TemplatesAdmin() {
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t('staff.admin.title')}</h1>
-        <button
-          onClick={() => navigate('/admin/roles')}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
+        <h1 className="page-title">{t('staff.admin.title')}</h1>
+        <button onClick={() => navigate('/admin/roles')} className="btn-secondary">
           {t('roleadmin.title')}
         </button>
       </div>
 
-      <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-slate-50 p-3">
+      <form onSubmit={create} className="card flex flex-wrap items-end gap-2 p-4">
         <label className="flex flex-col text-xs text-slate-600">
           {t('admin.name')}
           <input
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -105,16 +102,12 @@ export function TemplatesAdmin() {
         <label className="flex flex-col text-xs text-slate-600">
           {t('admin.specialty')}
           <input
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className="input"
             value={specialty}
             onChange={(e) => setSpecialty(e.target.value)}
           />
         </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded bg-teal-700 px-3 py-1 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-        >
+        <button type="submit" disabled={busy} className="btn-primary">
           {t('admin.new_template')}
         </button>
       </form>
@@ -125,7 +118,7 @@ export function TemplatesAdmin() {
 
       <ul className="space-y-2">
         {templates.map((tpl) => (
-          <li key={tpl.id} className="rounded border border-slate-200 p-3">
+          <li key={tpl.id} className="card p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="font-medium">
                 {tpl.name}
@@ -138,7 +131,7 @@ export function TemplatesAdmin() {
                 <button
                   onClick={() => void run(() => repo.promoteToGlobal(tpl.id))}
                   disabled={busy}
-                  className="rounded border border-teal-600 px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
+                  className="rounded-lg border border-teal-600 px-2.5 py-1 text-xs font-medium text-teal-700 transition hover:bg-teal-50 disabled:opacity-60"
                 >
                   {t('admin.promote_global')}
                 </button>
@@ -149,7 +142,7 @@ export function TemplatesAdmin() {
                 <button
                   key={v.id}
                   onClick={() => setSelected(v.id)}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+                  className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:bg-slate-50"
                 >
                   {t('admin.version')} {v.versionNumber} · {t(`status.${v.status}`)}
                 </button>

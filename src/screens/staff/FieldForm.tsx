@@ -6,7 +6,7 @@ const SCOPES: FieldScope[] = ['patient', 'encounter'];
 const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
 const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
 
-const inputCls = 'rounded border border-slate-300 px-2 py-1 text-sm';
+const inputCls = 'input';
 
 export function FieldForm({ onSubmit, busy }: { onSubmit: (f: NewField) => void; busy?: boolean }) {
   const { t } = useI18n();
@@ -26,7 +26,7 @@ export function FieldForm({ onSubmit, busy }: { onSubmit: (f: NewField) => void;
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-slate-50 p-3">
+    <form onSubmit={submit} className="card flex flex-wrap items-end gap-2 p-4">
       <label className="flex flex-col text-xs text-slate-600">
         {t('admin.field_key')}
         <input className={inputCls} value={fieldKey} onChange={(e) => setFieldKey(e.target.value)} required />
@@ -69,11 +69,7 @@ export function FieldForm({ onSubmit, busy }: { onSubmit: (f: NewField) => void;
         <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
         {t('admin.required')}
       </label>
-      <button
-        type="submit"
-        disabled={busy}
-        className="rounded bg-teal-700 px-3 py-1 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-      >
+      <button type="submit" disabled={busy} className="btn-primary">
         {t('admin.add_field')}
       </button>
     </form>

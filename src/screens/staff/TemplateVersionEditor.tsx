@@ -69,32 +69,22 @@ export function TemplateVersionEditor({
     <section className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-sm text-teal-700 hover:underline">
+          <button onClick={onBack} className="text-sm font-medium text-slate-500 hover:text-teal-700">
             ← {t('admin.back')}
           </button>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold tracking-tight">
             {t('admin.version')} {version.versionNumber}
           </h2>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-            {t(`status.${version.status}`)}
-          </span>
+          <span className="badge">{t(`status.${version.status}`)}</span>
         </div>
         {showVersionActions && (
           <div className="flex gap-2">
             {editable && (
-              <button
-                onClick={() => void run(() => repo.publishVersion(version.id))}
-                disabled={busy}
-                className="rounded bg-teal-700 px-3 py-1 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-              >
+              <button onClick={() => void run(() => repo.publishVersion(version.id))} disabled={busy} className="btn-primary">
                 {t('admin.publish')}
               </button>
             )}
-            <button
-              onClick={() => void run(() => repo.duplicateVersion(version.id))}
-              disabled={busy}
-              className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100"
-            >
+            <button onClick={() => void run(() => repo.duplicateVersion(version.id))} disabled={busy} className="btn-secondary">
               {t('admin.duplicate')}
             </button>
           </div>
@@ -102,45 +92,44 @@ export function TemplateVersionEditor({
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {!editable && <p className="rounded bg-amber-50 p-2 text-sm text-amber-800">{t('admin.published_readonly')}</p>}
+      {!editable && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{t('admin.published_readonly')}</p>}
 
       <div>
-        <h3 className="mb-2 font-medium">{t('admin.fields')}</h3>
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-slate-500">
-              <th className="py-1">{t('admin.field_key')}</th>
-              <th>{t('admin.label')}</th>
-              <th>{t('admin.scope')}</th>
-              <th>{t('admin.section')}</th>
-              <th>{t('admin.type')}</th>
-              <th>{t('admin.required')}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {fields.map((f) => (
-              <tr key={f.id} className="border-b">
-                <td className="py-1 font-mono text-xs">{f.fieldKey}</td>
-                <td>{f.label}</td>
-                <td>{t(`scope.${f.scope}`)}</td>
-                <td>{t(`section.${f.section}`)}</td>
-                <td>{f.type}</td>
-                <td>{f.required ? '✓' : ''}</td>
-                <td className="text-right">
-                  {editable && (
-                    <button
-                      onClick={() => void run(() => repo.deleteField(f.id))}
-                      className="text-xs text-red-600 hover:underline"
-                    >
-                      {t('admin.delete')}
-                    </button>
-                  )}
-                </td>
+        <h3 className="mb-3 text-sm font-semibold text-slate-700">{t('admin.fields')}</h3>
+        <div className="card overflow-hidden">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-2.5">{t('admin.field_key')}</th>
+                <th className="px-4 py-2.5">{t('admin.label')}</th>
+                <th className="px-4 py-2.5">{t('admin.scope')}</th>
+                <th className="px-4 py-2.5">{t('admin.section')}</th>
+                <th className="px-4 py-2.5">{t('admin.type')}</th>
+                <th className="px-4 py-2.5">{t('admin.required')}</th>
+                <th className="px-4 py-2.5" />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {fields.map((f) => (
+                <tr key={f.id} className="border-b border-slate-100 last:border-0">
+                  <td className="px-4 py-2.5 font-mono text-xs">{f.fieldKey}</td>
+                  <td className="px-4 py-2.5">{f.label}</td>
+                  <td className="px-4 py-2.5">{t(`scope.${f.scope}`)}</td>
+                  <td className="px-4 py-2.5">{t(`section.${f.section}`)}</td>
+                  <td className="px-4 py-2.5">{f.type}</td>
+                  <td className="px-4 py-2.5">{f.required ? '✓' : ''}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    {editable && (
+                      <button onClick={() => void run(() => repo.deleteField(f.id))} className="text-xs font-medium text-red-600 hover:underline">
+                        {t('admin.delete')}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {editable && (
           <div className="mt-3">
             <FieldForm busy={busy} onSubmit={(f) => void run(() => repo.addField(version.id, f))} />
@@ -149,10 +138,10 @@ export function TemplateVersionEditor({
       </div>
 
       <div>
-        <h3 className="mb-2 font-medium">{t('admin.rules')}</h3>
-        <ul className="space-y-1 text-sm">
+        <h3 className="mb-3 text-sm font-semibold text-slate-700">{t('admin.rules')}</h3>
+        <ul className="space-y-2 text-sm">
           {rules.map((r) => (
-            <li key={r.id} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1">
+            <li key={r.id} className="card flex items-center justify-between px-3 py-2">
               <code className="text-xs">{JSON.stringify(r.rule)}</code>
               <span className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">{t(`severity.${r.severity}`)}</span>

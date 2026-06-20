@@ -47,11 +47,11 @@ export function BaseTemplateEditor() {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button onClick={back} className="text-sm text-teal-700 hover:underline">← {t('admin.back')}</button>
-        <h1 className="text-2xl font-semibold">{t('basetemplate.title')}</h1>
+      <div>
+        <button onClick={back} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
+        <h1 className="page-title mt-2">{t('basetemplate.title')}</h1>
       </div>
-      <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">{t('basetemplate.hint')}</p>
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{t('basetemplate.hint')}</p>
       <TemplateVersionEditor versionId={listing.base.currentTemplateVersionId} onBack={back} showVersionActions={false} />
     </section>
   );

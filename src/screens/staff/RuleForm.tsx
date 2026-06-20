@@ -33,11 +33,11 @@ export function RuleForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+    <form onSubmit={submit} className="card space-y-2 p-4">
       <label className="block text-xs text-slate-600">
         {t('admin.rule_json')}
         <textarea
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+          className="input mt-1 font-mono text-xs"
           rows={2}
           placeholder={PLACEHOLDER}
           value={json}
@@ -47,28 +47,16 @@ export function RuleForm({
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-1 flex-col text-xs text-slate-600">
           {t('admin.message')}
-          <input
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
+          <input className="input" value={message} onChange={(e) => setMessage(e.target.value)} />
         </label>
         <label className="flex flex-col text-xs text-slate-600">
           {t('admin.severity')}
-          <select
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as RuleSeverity)}
-          >
+          <select className="input" value={severity} onChange={(e) => setSeverity(e.target.value as RuleSeverity)}>
             <option value="block">{t('severity.block')}</option>
             <option value="warn">{t('severity.warn')}</option>
           </select>
         </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded bg-teal-700 px-3 py-1 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-        >
+        <button type="submit" disabled={busy} className="btn-primary">
           {t('admin.add_rule')}
         </button>
       </div>
