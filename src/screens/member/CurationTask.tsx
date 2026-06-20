@@ -71,18 +71,20 @@ export function CurationTask() {
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
   if (!bundle) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
-  const { task, documents, draft, reviews } = bundle;
+  const { task, documents, draft, reviews, patientIdentity } = bundle;
   const role = profile?.globalRole;
   const assignedToMe = task.assignedTo === user?.id;
   const isCurator = role === 'curateur';
   const isValidator = role === 'validateur';
   const isOwnerMedecin = role === 'medecin'; // un medecin qui charge le cas en est proprietaire (RLS)
 
+  const isPreparing = task.status === 'preparing'; // pas encore envoye au pool
   const canClaim = isCurator && task.status === 'open';
   const canStartDraft = isCurator && assignedToMe && !draft && task.status === 'in_progress';
   const canEdit = isCurator && assignedToMe && !!draft && draft.status === 'draft';
   const canValidate = isValidator && !!draft && draft.status === 'submitted';
-  const canAddDocs = isOwnerMedecin;
+  const canAddDocs = isOwnerMedecin && isPreparing; // depot tant que le cas est en preparation
+  const canSubmitRequest = isOwnerMedecin && isPreparing; // envoyer au pool
 
   async function run(fn: () => Promise<unknown>, ok?: string) {
     setBusy(true);
@@ -115,11 +117,24 @@ export function CurationTask() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {notice && <p className="rounded bg-teal-50 p-2 text-sm text-teal-800">{notice}</p>}
 
-      {/* Le medecin proprietaire voit le patient cible ; le staff ne voit QUE le code opaque. */}
-      {task.targetPatientCode && (
+      {/* Le medecin proprietaire voit les donnees minimales (lecture seule) ; le staff ne
+          voit QUE le code opaque (la RLS ne lui renvoie aucune identite). */}
+      {patientIdentity ? (
+        <fieldset className="space-y-1 rounded border border-amber-200 bg-amber-50/40 p-3 text-sm">
+          <legend className="px-1 text-xs font-semibold text-amber-800">{t('curation.min_identity')}</legend>
+          <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patientIdentity.fullName ?? '—'}</div>
+          <div><span className="text-slate-500">{t('patient.dob')} :</span> {patientIdentity.dateOfBirth ?? '—'}</div>
+          <div><span className="text-slate-500">{t('patient.code')} :</span> <span className="font-mono">{task.targetPatientCode ?? '—'}</span></div>
+        </fieldset>
+      ) : task.targetPatientCode ? (
         <div className="text-sm text-slate-600">
           {t('curation.target_patient')} : <span className="font-mono">{task.targetPatientCode}</span>
         </div>
+      ) : null}
+
+      {/* Demande pas encore envoyee au pool : on explique la condition (documents requis). */}
+      {canSubmitRequest && (
+        <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">⚠️ {t('curation.preparing_banner')}</p>
       )}
 
       {canClaim && (
@@ -201,8 +216,32 @@ export function CurationTask() {
         )}
       </div>
 
-      {/* Brouillon (structuration par le curateur) */}
-      {!draft ? (
+      {/* Envoi de la demande au pool (medecin proprietaire) : exige >= 1 document. */}
+      {canSubmitRequest && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={busy || documents.length === 0}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await curation.submitRequest(task.id);
+                navigate(`/bases/${task.baseId}/curation`);
+              } catch (e) {
+                setError(msg(e));
+                setBusy(false);
+              }
+            }}
+            className="rounded bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+          >
+            {t('curation.submit_request')}
+          </button>
+          {documents.length === 0 && <p className="text-xs text-slate-500">{t('curation.submit_needs_doc')}</p>}
+        </div>
+      )}
+
+      {/* Brouillon (structuration par le curateur) — cote STAFF uniquement. */}
+      {!isOwnerMedecin && (!draft ? (
         <div className="rounded border border-slate-200 p-4">
           <p className="text-sm text-slate-500">{t('curation.no_draft')}</p>
           {canStartDraft && (
@@ -308,7 +347,7 @@ export function CurationTask() {
             </div>
           )}
         </div>
-      )}
+      ))}
 
       {reviews.length > 0 && (
         <div className="rounded border border-slate-200 p-4">

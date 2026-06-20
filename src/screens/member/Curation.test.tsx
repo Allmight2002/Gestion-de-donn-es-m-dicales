@@ -33,6 +33,7 @@ const bundle = (status: string, taskStatus: string): TaskBundle => ({
   documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', signedUrl: 'http://x/cr.pdf' }],
   draft: { id: 'dr1', taskId: 'tk1', patientData: {}, encounters: [], status },
   reviews: [],
+  patientIdentity: null,
 });
 
 function renderAt(path: string, curation: CurationRepository) {
@@ -43,6 +44,7 @@ function renderAt(path: string, curation: CurationRepository) {
           <Routes>
             <Route path="/curation" element={<CurationPool />} />
             <Route path="/curation/:taskId" element={<CurationTask />} />
+            <Route path="/bases/:id/curation" element={<div>SUIVI</div>} />
           </Routes>
         </MemoryRouter>
       </RepositoryProvider>
@@ -89,5 +91,32 @@ describe('CurationTask (pool)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Soumettre pour validation' }));
     await waitFor(() => expect(submitDraft).toHaveBeenCalledTimes(1));
     expect(saveDraft).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
+  const ownerBundle = (documents: TaskBundle['documents']): TaskBundle => ({
+    task: { ...openTask, status: 'preparing', targetPatientCode: 'P-0001' },
+    documents, draft: null, reviews: [],
+    patientIdentity: { fullName: 'Marie Test', dateOfBirth: '1990-01-01' },
+  });
+
+  test('voit l identite minimale (lecture seule) et soumet la demande au pool', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const submitRequest = vi.fn(async () => {});
+    const docs = [{ id: 'd1', label: 'CR', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', signedUrl: null }];
+    const curation = { async getTaskBundle() { return ownerBundle(docs); }, submitRequest } as unknown as CurationRepository;
+    renderAt('/curation/tk1', curation);
+    expect(await screen.findByText('Marie Test')).toBeInTheDocument(); // identite minimale visible
+    await userEvent.click(screen.getByRole('button', { name: 'Soumettre la demande au staff' }));
+    await waitFor(() => expect(submitRequest).toHaveBeenCalledWith('tk1'));
+    expect(await screen.findByText('SUIVI')).toBeInTheDocument(); // redirige vers le Suivi
+  });
+
+  test('sans document, le bouton Soumettre est desactive', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const curation = { async getTaskBundle() { return ownerBundle([]); } } as unknown as CurationRepository;
+    renderAt('/curation/tk1', curation);
+    expect(await screen.findByRole('button', { name: 'Soumettre la demande au staff' })).toBeDisabled();
   });
 });

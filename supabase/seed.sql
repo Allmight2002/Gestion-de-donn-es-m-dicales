@@ -225,3 +225,22 @@ begin
   insert into public.curation_task (base_id, submission_id, status, created_by)
   values (v_base, v_sub, 'open', '22222222-2222-2222-2222-222222222222');
 end $$;
+
+-- Cas en PREPARATION (cote medecin) : cree pour NCH-003 mais AUCUN document encore depose
+-- -> statut 'preparing', INVISIBLE du pool, en attente que le medecin le soumette ("Suivi
+-- des demandes" affiche « A completer — documents requis »).
+do $$
+declare
+  v_base uuid := '20000000-0000-0000-0000-000000000001';
+  v_pat  uuid;
+  v_sub  uuid;
+begin
+  select id into v_pat from public.patient where base_id = v_base and patient_code = 'NCH-003';
+
+  insert into public.raw_submission (base_id, target_patient_id, template_version_id, case_code, external_ref, status, submitted_by)
+  values (v_base, v_pat, '10000000-0000-0000-0000-0000000000a1', 'CASE-DEMO02', 'DOSSIER-2024-003', 'received', '22222222-2222-2222-2222-222222222222')
+  returning id into v_sub;
+
+  insert into public.curation_task (base_id, submission_id, status, created_by)
+  values (v_base, v_sub, 'preparing', '22222222-2222-2222-2222-222222222222');
+end $$;

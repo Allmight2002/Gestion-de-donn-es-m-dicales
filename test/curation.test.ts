@@ -19,11 +19,18 @@ let seedTaskId: string;  // tache OUVERTE du seed (avec document)
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
-// Cree un cas ouvert (soumission + tache) via la RPC, en tant que medecin proprietaire.
+// Cree un cas OUVERT (dans le pool) : la RPC le cree en 'preparing', puis on depose un
+// document (condition cote medecin) et on le SOUMET -> 'open', reservable par un curateur.
 async function openCase(target: string): Promise<{ taskId: string; subId: string; patientId: string }> {
   const pid = (await db.admin.query('select id from public.patient where base_id=$1 and patient_code=$2', [baseId, target])).rows[0].id;
   const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'REF-' + target]);
-  return { taskId: task[0].id, subId: task[0].submission_id, patientId: pid };
+  const taskId = task[0].id as string, subId = task[0].submission_id as string;
+  await db.admin.query(
+    "insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'doc',$3,'application/pdf')",
+    [subId, baseId, `${baseId}/${subId}/d.pdf`],
+  );
+  await rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId]);
+  return { taskId, subId, patientId: pid };
 }
 async function claimAndDraft(target: string, patientData: object, encounters: object[]) {
   const c = await openCase(target);
@@ -64,11 +71,8 @@ describe('pool global : visibilite + confidentialite', () => {
   });
 
   test('apres reservation, le curateur voit les documents de SA tache ; pas ceux d une autre', async () => {
-    const a = await openCase('NCH-005');
+    const a = await openCase('NCH-005'); // chaque cas porte deja 1 document (depose a la soumission)
     const b = await openCase('NCH-006');
-    // un document depose par le medecin sur chaque cas
-    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'doc A',$3,'application/pdf')", [a.subId, baseId, baseId + '/' + a.subId + '/a.pdf']);
-    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'doc B',$3,'application/pdf')", [b.subId, baseId, baseId + '/' + b.subId + '/b.pdf']);
 
     await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [a.taskId]); // curator1 reserve A
     expect((await rowsAs(curator1Id, 'select id from public.raw_document where submission_id=$1', [a.subId])).length).toBe(1); // SA tache
@@ -150,7 +154,29 @@ describe('soumission de cas (medecin)', () => {
     const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-008'", [baseId])).rows[0].id;
     await expect(rowsAs(curator1Id, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'x'])).rejects.toThrow(/proprietaire/i);
     const ok = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'x']);
-    expect(ok[0].status).toBe('open');
+    // Le cas naît en PREPARATION : il n'entre PAS encore dans le pool.
+    expect(ok[0].status).toBe('preparing');
+  });
+
+  test('un cas n entre dans le pool qu apres soumission, et seulement avec >= 1 document', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-001'", [baseId])).rows[0].id;
+    const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'prep']);
+    const taskId = task[0].id as string, subId = task[0].submission_id as string;
+    expect(task[0].status).toBe('preparing');
+
+    // Sans document : la soumission est refusee (le staff n'aurait rien a traiter).
+    await expect(rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId])).rejects.toThrow(/document/i);
+    // Un cas 'preparing' n'est pas reservable par un curateur (garde au niveau RPC/DB ;
+    // l'exclusion du pool cote liste est applicative, testee cote front).
+    await expect(rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [taskId])).rejects.toThrow(/reserve|indisponible/i);
+
+    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'d',$3,'application/pdf')", [subId, baseId, `${baseId}/${subId}/d.pdf`]);
+    // Un non-proprietaire ne peut pas soumettre.
+    await expect(rowsAs(curator1Id, 'select * from public.submit_curation_request($1)', [taskId])).rejects.toThrow(/proprietaire/i);
+    // Proprietaire + document : le cas entre dans le pool ('open').
+    const sent = await rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId]);
+    expect(sent[0].status).toBe('open');
+    expect((await db.admin.query('select status from public.raw_submission where id=$1', [subId])).rows[0].status).toBe('in_curation');
   });
 
   test('portee "rencontre" : scope=encounter ; la validation cree une rencontre', async () => {
@@ -158,6 +184,9 @@ describe('soumission de cas (medecin)', () => {
     const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3,$4)', [baseId, pid, 'ENC', 'encounter']);
     expect((await db.admin.query('select scope from public.raw_submission where id=$1', [task[0].submission_id])).rows[0].scope).toBe('encounter');
 
+    // Soumission au pool : document requis, puis envoi.
+    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'d',$3,'application/pdf')", [task[0].submission_id, baseId, `${baseId}/${task[0].submission_id}/d.pdf`]);
+    await rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [task[0].id]);
     await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [task[0].id]);
     const draft = await rowsAs(curator1Id,
       "insert into public.curation_draft(task_id, base_id, encounters, status) values($1,$2,$3::jsonb,'draft') returning id",

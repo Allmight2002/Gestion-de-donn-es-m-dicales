@@ -59,7 +59,9 @@ create table public.curation_task (
   base_id       uuid not null references public.base(id) on delete cascade,
   submission_id uuid not null references public.raw_submission(id) on delete cascade,
   assigned_to   uuid references public.profiles(id),
-  status        text not null default 'open' check (status in ('open','assigned','in_progress','submitted','validated','rejected')),
+  -- 'preparing' = le medecin a cree le cas mais ne l'a PAS encore soumis au pool (documents
+  -- manquants de son cote) : INVISIBLE du pool, non reservable. 'open' = soumis -> dans le pool.
+  status        text not null default 'preparing' check (status in ('preparing','open','assigned','in_progress','submitted','validated','rejected')),
   created_by    uuid references public.profiles(id),
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
@@ -325,8 +327,9 @@ end $$;
 grant execute on function public.validate_curation_draft(uuid, text, text) to authenticated;
 
 -- =============================================================================
--- RPC : le MEDECIN soumet un cas au pool (atomique : soumission + tache OUVERTE +
--- code opaque). Il deposera ensuite les documents DEIDENTIFIES (raw_document).
+-- RPC : le MEDECIN cree un cas (atomique : soumission + tache + code opaque). Le cas naît
+-- en 'preparing' : il n'est PAS encore dans le pool. Le medecin depose ensuite les documents
+-- DEIDENTIFIES (raw_document) puis appelle submit_curation_request pour l'envoyer au pool.
 -- =============================================================================
 create or replace function public.create_curation_submission(p_base_id uuid, p_target_patient_id uuid, p_external_ref text default null, p_scope text default 'patient')
 returns public.curation_task
@@ -343,19 +346,49 @@ begin
     raise exception 'Patient cible introuvable dans cette base';
   end if;
 
+  -- 'received' cote soumission = cas en preparation (pas encore confie au staff).
   insert into public.raw_submission (base_id, target_patient_id, template_version_id, scope, case_code, external_ref, status, submitted_by)
   values (p_base_id, p_target_patient_id,
           (select current_template_version_id from public.base where id = p_base_id),
-          p_scope, v_code, p_external_ref, 'in_curation', auth.uid())
+          p_scope, v_code, p_external_ref, 'received', auth.uid())
   returning id into v_sub;
 
+  -- Tache en 'preparing' : invisible du pool tant que le medecin n'a pas soumis.
   insert into public.curation_task (base_id, submission_id, status, created_by)
-  values (p_base_id, v_sub, 'open', auth.uid())
+  values (p_base_id, v_sub, 'preparing', auth.uid())
   returning * into v_task;
 
   return v_task;
 end $$;
 grant execute on function public.create_curation_submission(uuid, uuid, text, text) to authenticated;
+
+-- =============================================================================
+-- RPC : le MEDECIN SOUMET sa demande au pool. Condition de SON cote : au moins un document
+-- deidentifie depose. Le cas passe alors de 'preparing' a 'open' (entre dans le pool, devient
+-- reservable par un curateur). Sans document, on refuse (le staff n'aurait rien a traiter).
+-- =============================================================================
+create or replace function public.submit_curation_request(p_task_id uuid)
+returns public.curation_task
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  t      public.curation_task;
+  v_task public.curation_task;
+  v_docs int;
+begin
+  if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  select * into t from public.curation_task where id = p_task_id for update;
+  if not found then raise exception 'Cas introuvable'; end if;
+  if not public.is_base_owner(t.base_id) then raise exception 'Reserve au proprietaire de la base'; end if;
+  if t.status <> 'preparing' then raise exception 'La demande est deja envoyee (statut=%)', t.status; end if;
+
+  select count(*) into v_docs from public.raw_document where submission_id = t.submission_id and deleted_at is null;
+  if v_docs = 0 then raise exception 'Au moins un document est requis avant de soumettre au staff'; end if;
+
+  update public.curation_task  set status = 'open', updated_at = now() where id = p_task_id returning * into v_task;
+  update public.raw_submission set status = 'in_curation' where id = t.submission_id;
+  return v_task;
+end $$;
+grant execute on function public.submit_curation_request(uuid) to authenticated;
 
 -- =============================================================================
 -- RPC : un CURATEUR reserve un cas OUVERT (anti-collision). Le `where status='open'

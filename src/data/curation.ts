@@ -56,11 +56,19 @@ export interface CurationReviewItem {
   createdAt: string;
 }
 
+/** Identite MINIMALE du patient, visible UNIQUEMENT du medecin proprietaire (RLS).
+ *  null pour le staff (curateur/validateur) qui ne doit jamais voir l'identite. */
+export interface MinimalIdentity {
+  fullName: string | null;
+  dateOfBirth: string | null;
+}
+
 export interface TaskBundle {
   task: CurationTaskItem;
   documents: RawDocumentItem[];
   draft: CurationDraftItem | null;
   reviews: CurationReviewItem[];
+  patientIdentity: MinimalIdentity | null;
 }
 
 export interface AddRawDocumentInput {
@@ -79,6 +87,8 @@ export interface CurationRepository {
   /** Le medecin soumet un cas au pool (RPC atomique : soumission + tache ouverte + code).
    *  scope='patient' (donnees permanentes) ou 'encounter' (une rencontre). */
   createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
+  /** Le medecin proprietaire ENVOIE la demande au pool (exige >= 1 document). */
+  submitRequest(taskId: string): Promise<void>;
   /** Un curateur RESERVE un cas ouvert (anti-collision). */
   claimTask(taskId: string): Promise<void>;
   /** Le curateur affecte libere un cas. */
@@ -131,7 +141,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
     };
     return {
       listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, createSubmission: fail,
-      claimTask: fail, releaseTask: fail, addRawDocument: fail,
+      submitRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
       ensureDraft: fail, saveDraft: fail, submitDraft: fail, validateDraft: fail,
     };
   }
@@ -139,10 +149,12 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
   return {
     async listPool() {
       // La RLS ne renvoie que les taches visibles : pour le staff = tout le pool.
+      // On EXCLUT les cas 'preparing' (le medecin ne les a pas encore soumis au pool).
       const { data, error } = await client
         .from('curation_task')
         .select(TASK_SELECT)
         .is('deleted_at', null)
+        .neq('status', 'preparing')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return ((data ?? []) as unknown as TaskRow[]).map(mapTask);
@@ -194,6 +206,20 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         .order('created_at', { ascending: false });
       if (e4) throw e4;
 
+      // Identite minimale : tentee a chaque fois, mais la RLS ne la renvoie QU'au medecin
+      // proprietaire (le staff n'a pas de patient_code et aucun acces a patient_identity).
+      let patientIdentity: MinimalIdentity | null = null;
+      if (task.targetPatientCode) {
+        const { data: idRow } = await client
+          .from('patient_identity')
+          .select('full_name, date_of_birth')
+          .eq('base_id', task.baseId)
+          .eq('patient_code', task.targetPatientCode)
+          .is('deleted_at', null)
+          .maybeSingle();
+        if (idRow) patientIdentity = { fullName: (idRow as { full_name: string | null }).full_name, dateOfBirth: (idRow as { date_of_birth: string | null }).date_of_birth };
+      }
+
       return {
         task,
         documents,
@@ -201,6 +227,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         reviews: ((reviews ?? []) as { id: string; decision: string; comment: string | null; created_at: string }[]).map((r) => ({
           id: r.id, decision: r.decision, comment: r.comment, createdAt: r.created_at,
         })),
+        patientIdentity,
       };
     },
 
@@ -211,6 +238,11 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string; submission_id: string };
       return { taskId: row.id, submissionId: row.submission_id };
+    },
+
+    async submitRequest(taskId) {
+      const { error } = await client.rpc('submit_curation_request', { p_task_id: taskId });
+      if (error) throw error;
     },
 
     async claimTask(taskId) {
