@@ -4,7 +4,6 @@ import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useCurationRepository } from '../../data/RepositoryProvider';
 import type { CurationTaskItem } from '../../data/curation';
-import { DeleteWithReason } from './DeleteWithReason';
 
 // "Suivi des demandes" cote MEDECIN (cahier v3.0) : liste, EN LECTURE SEULE, les cas
 // confies au staff (pool) et leur avancement. La soumission se fait desormais depuis les
@@ -38,10 +37,10 @@ export function CurationBoard() {
     void load();
   }, [load]);
 
-  async function remove(taskId: string, reason: string) {
+  async function remove(taskId: string, reason: string, deletePatient: boolean) {
     setBusy(true);
     try {
-      await curation.deleteRequest(taskId, reason);
+      await curation.deleteRequest(taskId, reason, deletePatient);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.error'));
@@ -87,7 +86,7 @@ export function CurationBoard() {
                   <button onClick={() => navigate(`/curation/${task.id}`)} className="text-xs text-teal-700 hover:underline">{t('curation.open')}</button>
                   {/* Une demande validee n'est pas supprimable (provenance) : on n'offre pas l'action. */}
                   {task.status !== 'validated' && (
-                    <span className="ml-3"><DeleteWithReason label={t('curation.delete')} busy={busy} onConfirm={(reason) => remove(task.id, reason)} /></span>
+                    <span className="ml-3"><DeleteRequestMenu busy={busy} onConfirm={(reason, deletePatient) => remove(task.id, reason, deletePatient)} /></span>
                   )}
                 </td>
               </tr>
@@ -96,5 +95,54 @@ export function CurationBoard() {
         </table>
       )}
     </section>
+  );
+}
+
+// Suppression d'une demande avec MOTIF (confirmation) et CHOIX de portee : la demande seule,
+// ou le patient ET la demande (utile si le patient avait ete cree juste pour cette demande).
+function DeleteRequestMenu({
+  busy,
+  onConfirm,
+}: {
+  busy?: boolean;
+  onConfirm: (reason: string, deletePatient: boolean) => void | Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="text-xs text-red-600 hover:underline">
+        {t('curation.delete')}
+      </button>
+    );
+  }
+
+  const confirm = (deletePatient: boolean) => {
+    void onConfirm(reason.trim(), deletePatient);
+    setOpen(false);
+    setReason('');
+  };
+
+  return (
+    <span className="inline-flex flex-wrap items-center justify-end gap-1">
+      <input
+        aria-label={t('del.reason')}
+        placeholder={t('del.reason')}
+        className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <button disabled={busy || !reason.trim()} onClick={() => confirm(false)} className="rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50">
+        {t('curation.delete_request_only')}
+      </button>
+      <button disabled={busy || !reason.trim()} onClick={() => confirm(true)} className="rounded bg-red-700 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50">
+        {t('curation.delete_with_patient')}
+      </button>
+      <button onClick={() => { setOpen(false); setReason(''); }} className="text-xs text-slate-500 hover:underline">
+        {t('common.cancel')}
+      </button>
+    </span>
   );
 }

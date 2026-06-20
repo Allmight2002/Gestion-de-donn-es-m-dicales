@@ -123,15 +123,13 @@ describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
 });
 
 describe('CurationBoard (suivi : suppression d une demande)', () => {
-  test('le medecin supprime une demande apres confirmation (motif)', async () => {
-    auth.role = 'medecin'; auth.id = 'doc';
-    const deleteRequest = vi.fn(async (_id: string, _reason: string) => {});
+  function renderBoard(deleteRequest: CurationRepository['deleteRequest']) {
     let calls = 0;
     const curation = {
       async listBaseSubmissions() { calls += 1; return calls === 1 ? [{ ...openTask, status: 'preparing', targetPatientCode: 'P-0001' }] : []; },
       deleteRequest,
     } as unknown as CurationRepository;
-    render(
+    return render(
       <I18nProvider>
         <RepositoryProvider curation={curation}>
           <MemoryRouter initialEntries={['/bases/b1/curation']}>
@@ -140,10 +138,27 @@ describe('CurationBoard (suivi : suppression d une demande)', () => {
         </RepositoryProvider>
       </I18nProvider>,
     );
+  }
+
+  test('supprime LA DEMANDE seulement (apres saisie du motif)', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const deleteRequest = vi.fn(async () => {});
+    renderBoard(deleteRequest);
     expect(await screen.findByText('CASE-AB12')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer la demande' }));
     await userEvent.type(screen.getByLabelText('Motif de la suppression'), 'doublon');
-    await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
-    await waitFor(() => expect(deleteRequest).toHaveBeenCalledWith('tk1', 'doublon'));
+    await userEvent.click(screen.getByRole('button', { name: 'La demande seulement' }));
+    await waitFor(() => expect(deleteRequest).toHaveBeenCalledWith('tk1', 'doublon', false));
+  });
+
+  test('supprime LE PATIENT + la demande', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const deleteRequest = vi.fn(async () => {});
+    renderBoard(deleteRequest);
+    await screen.findByText('CASE-AB12');
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer la demande' }));
+    await userEvent.type(screen.getByLabelText('Motif de la suppression'), 'cree par erreur');
+    await userEvent.click(screen.getByRole('button', { name: 'Le patient + la demande' }));
+    await waitFor(() => expect(deleteRequest).toHaveBeenCalledWith('tk1', 'cree par erreur', true));
   });
 });

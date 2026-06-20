@@ -222,4 +222,16 @@ describe('suppression d une demande (medecin)', () => {
     await rowsAs(validatorId, 'select * from public.validate_curation_draft($1,$2,$3)', [c.draftId, 'approved', null]);
     await expect(rowsAs(aliceId, 'select public.delete_curation_request($1,$2)', [c.taskId, 'x'])).rejects.toThrow(/validee/i);
   });
+
+  test('option "patient + demande" : le patient cible (et son identite) sont aussi supprimes', async () => {
+    const c = await openCase('NCH-008'); // cas 'open' avec 1 document, patient NCH-008
+    await rowsAs(aliceId, 'select public.delete_curation_request($1,$2,$3)', [c.taskId, 'cree par erreur', true]);
+
+    expect((await db.admin.query('select deleted_at from public.curation_task where id=$1', [c.taskId])).rows[0].deleted_at).not.toBeNull();
+    // Cascade soft_delete_patient : patient + identite marques supprimes.
+    expect((await db.admin.query('select deleted_at from public.patient where id=$1', [c.patientId])).rows[0].deleted_at).not.toBeNull();
+    expect((await db.admin.query("select deleted_at from public.patient_identity where base_id=$1 and patient_code='NCH-008'", [baseId])).rows[0].deleted_at).not.toBeNull();
+    // Trace de suppression patient (en plus de celle de la demande).
+    expect((await db.admin.query("select 1 from public.audit_log where action='patient_deleted' and entity_id=$1", [c.patientId])).rows.length).toBeGreaterThan(0);
+  });
 });

@@ -393,14 +393,17 @@ grant execute on function public.submit_curation_request(uuid) to authenticated;
 -- =============================================================================
 -- RPC : le MEDECIN SUPPRIME une de ses demandes (erreur de saisie, etc.). Suppression
 -- LOGIQUE : la tache et les documents sont marques supprimes (deleted_at) -> la demande
--- disparait du Suivi et du pool, les documents ne sont plus lisibles. Le PATIENT n'est pas
--- touche (il se supprime separement). Une demande deja VALIDEE n'est pas supprimable (ses
--- donnees sont publiees et tracees : on garde la provenance).
+-- disparait du Suivi et du pool, les documents ne sont plus lisibles. Option p_delete_patient :
+-- supprimer AUSSI le patient cible (cascade identite/rencontres/images via soft_delete_patient)
+-- — utile quand le patient avait ete cree juste pour cette demande. Une demande deja VALIDEE
+-- n'est pas supprimable (ses donnees sont publiees et tracees : on garde la provenance).
 -- =============================================================================
-create or replace function public.delete_curation_request(p_task_id uuid, p_reason text default null)
+create or replace function public.delete_curation_request(p_task_id uuid, p_reason text default null, p_delete_patient boolean default false)
 returns void
 language plpgsql security definer set search_path = public, pg_temp as $$
-declare t public.curation_task;
+declare
+  t     public.curation_task;
+  v_pat uuid;
 begin
   if auth.uid() is null then raise exception 'Authentification requise'; end if;
   select * into t from public.curation_task where id = p_task_id and deleted_at is null for update;
@@ -417,9 +420,18 @@ begin
 
   insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
   values (auth.uid(), 'curation_request_deleted', 'curation_task', p_task_id, t.base_id,
-          jsonb_build_object('submission_id', t.submission_id, 'reason', p_reason, 'previous_status', t.status));
+          jsonb_build_object('submission_id', t.submission_id, 'reason', p_reason, 'previous_status', t.status, 'patient_deleted', p_delete_patient));
+
+  -- Option : supprimer aussi le patient cible (s'il existe encore). soft_delete_patient
+  -- re-verifie les droits (can_edit_structured_data) et cascade identite/rencontres/images.
+  if p_delete_patient then
+    select target_patient_id into v_pat from public.raw_submission where id = t.submission_id;
+    if v_pat is not null and exists (select 1 from public.patient where id = v_pat and deleted_at is null) then
+      perform public.soft_delete_patient(v_pat, coalesce(nullif(btrim(p_reason), ''), 'Demande supprimee'));
+    end if;
+  end if;
 end $$;
-grant execute on function public.delete_curation_request(uuid, text) to authenticated;
+grant execute on function public.delete_curation_request(uuid, text, boolean) to authenticated;
 
 -- =============================================================================
 -- RPC : un CURATEUR reserve un cas OUVERT (anti-collision). Le `where status='open'

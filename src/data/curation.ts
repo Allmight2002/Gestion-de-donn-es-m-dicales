@@ -89,8 +89,9 @@ export interface CurationRepository {
   createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
   /** Le medecin proprietaire ENVOIE la demande au pool (exige >= 1 document). */
   submitRequest(taskId: string): Promise<void>;
-  /** Le medecin proprietaire SUPPRIME (logique) une demande. Bloquee si deja validee. */
-  deleteRequest(taskId: string, reason: string): Promise<void>;
+  /** Le medecin proprietaire SUPPRIME (logique) une demande ; deletePatient=true supprime
+   *  AUSSI le patient cible (cascade). Bloquee si la demande est deja validee. */
+  deleteRequest(taskId: string, reason: string, deletePatient: boolean): Promise<void>;
   /** Un curateur RESERVE un cas ouvert (anti-collision). */
   claimTask(taskId: string): Promise<void>;
   /** Le curateur affecte libere un cas. */
@@ -247,8 +248,8 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       if (error) throw error;
     },
 
-    async deleteRequest(taskId, reason) {
-      const { error } = await client.rpc('delete_curation_request', { p_task_id: taskId, p_reason: reason });
+    async deleteRequest(taskId, reason, deletePatient) {
+      const { error } = await client.rpc('delete_curation_request', { p_task_id: taskId, p_reason: reason, p_delete_patient: deletePatient });
       if (error) throw error;
     },
 
