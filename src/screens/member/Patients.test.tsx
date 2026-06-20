@@ -96,7 +96,7 @@ describe('BaseHome (liste patients)', () => {
     const list: PatientListItem[] = [
       {
         id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 }, validationStatus: 'verified',
-        identity: { fullName: 'Jean Avec', dateOfBirth: null, phone: null, address: null, externalIdentifier: null, authStatus: 'granted', authDate: null },
+        identity: { fullName: 'Jean Avec', dateOfBirth: null, phone: null, address: null, externalIdentifier: null },
       },
       { id: 'p2', code: 'P-0002', templateVersionId: 'v1', data: { sexe: 'F', birth_year: 1990 }, validationStatus: 'verified', identity: null },
     ];

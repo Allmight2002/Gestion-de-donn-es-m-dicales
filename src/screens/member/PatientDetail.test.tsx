@@ -43,7 +43,7 @@ const templateRepo = {
 
 const patientView: PatientListItem = {
   id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'verified',
-  identity: { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null, authStatus: 'granted', authDate: null },
+  identity: { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null },
 };
 const encounter: Encounter = { id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'complete', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 } };
 const historyRows: FieldChange[] = [{ fieldKey: 'glasgow_score', oldValue: 10, newValue: 12, reason: 'correction saisie', changedAt: '2024-06-02' }];

@@ -55,7 +55,7 @@ export type AttachmentValidation =
 
 const extOf = (name: string): string => (name.split('.').pop() ?? '').toLowerCase();
 
-/** Validateur ELARGI : images + PDF + Office (cahier §14). */
+/** Validateur ELARGI : images + PDF + Office (cahier §14). Type DECLARE seulement. */
 export function validateAttachmentFile(file: { name: string; type: string; size: number }): AttachmentValidation {
   const ext = extOf(file.name);
   const fmt = ALLOWED_ATTACHMENT_FORMATS[ext];
@@ -67,4 +67,64 @@ export function validateAttachmentFile(file: { name: string; type: string; size:
     return { ok: false, error: `Fichier trop volumineux (max ${Math.round(max / 1024 / 1024)} Mo).` };
   }
   return { ok: true, ext, type: fmt.mime, isImage: fmt.isImage };
+}
+
+// === Inspection par MAGIC BYTES (cahier §5.3) ================================
+// Le type MIME et l'extension declares par le navigateur sont falsifiables (un .exe
+// renomme .pdf passe la validation par extension). On lit donc la SIGNATURE reelle des
+// premiers octets et on verifie qu'elle correspond au conteneur attendu pour l'extension.
+// C'est de la defense en profondeur cote client : ca bloque les fichiers deguises, mais
+// ne remplace pas un antivirus serveur (un vrai PDF peut contenir une charge active).
+// Limite connue : la signature confirme le CONTENEUR (docx/xlsx = ZIP, doc/xls = OLE),
+// pas le sous-type Office exact.
+export type Container = 'pdf' | 'png' | 'jpg' | 'webp' | 'zip' | 'ole';
+
+const EXPECTED_CONTAINER: Record<string, Container> = {
+  jpg: 'jpg', jpeg: 'jpg', png: 'png', webp: 'webp', pdf: 'pdf',
+  docx: 'zip', xlsx: 'zip', doc: 'ole', xls: 'ole',
+};
+
+/** Conteneur reel deduit des premiers octets (magic bytes). PUR. null si inconnu. */
+export function detectContainer(h: Uint8Array): Container | null {
+  const at = (off: number, sig: number[]) => sig.every((b, i) => h[off + i] === b);
+  if (at(0, [0x25, 0x50, 0x44, 0x46])) return 'pdf';                 // %PDF
+  if (at(0, [0x89, 0x50, 0x4e, 0x47])) return 'png';                 // .PNG
+  if (at(0, [0xff, 0xd8, 0xff])) return 'jpg';                       // JPEG (SOI)
+  if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) return 'webp'; // RIFF....WEBP
+  if (at(0, [0x50, 0x4b])) return 'zip';                             // PK.. (docx/xlsx)
+  if (at(0, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return 'ole'; // doc/xls anciens
+  return null;
+}
+
+export type FileInspection =
+  | { ok: true; ext: string; type: string; isImage: boolean; detectedContainer: Container }
+  | { ok: false; error: string };
+
+/** Coherence extension <-> signature reelle. PUR (testable sans objet File). */
+export function inspectHeader(meta: { name: string; size: number }, header: Uint8Array): FileInspection {
+  const base = validateAttachmentFile({ name: meta.name, type: '', size: meta.size });
+  if (!base.ok) return base;
+  const expected = EXPECTED_CONTAINER[base.ext];
+  const detected = detectContainer(header);
+  if (detected !== expected) {
+    return {
+      ok: false,
+      error:
+        `Le contenu ne correspond pas a l'extension .${base.ext} ` +
+        `(signature reelle : ${detected ?? 'inconnue'}). Fichier refuse par securite.`,
+    };
+  }
+  return { ok: true, ext: base.ext, type: base.type, isImage: base.isImage, detectedContainer: detected };
+}
+
+/** Lit l'entete du fichier (16 octets) et verifie la signature. Navigateur. */
+export async function inspectFile(file: File): Promise<FileInspection> {
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  return inspectHeader({ name: file.name, size: file.size }, header);
+}
+
+/** SHA-256 (hex) d'un blob — empreinte d'integrite de l'objet stocke. */
+export async function sha256Hex(blob: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }

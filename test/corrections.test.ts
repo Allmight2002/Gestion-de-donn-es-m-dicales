@@ -12,7 +12,7 @@ let encounterId: string;
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
-const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)';
+const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 const CREATE_ENC = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
 const UPDATE_ENC = 'select * from public.update_encounter($1,$2::jsonb,$3,$4)';
 const changes = (uid: string) =>
@@ -27,7 +27,7 @@ beforeAll(async () => {
   annaId = byEmail.get('anna.analyst@demo.test')!;
   baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
 
-  const patient = await rowsAs(aliceId, CREATE_PAT, [baseId, 'CORR-001', 'Patient Corr', '1980-01-01', null, null, null, 'granted', null, JSON.stringify({ sexe: 'M' })]);
+  const patient = await rowsAs(aliceId, CREATE_PAT, [baseId, 'CORR-001', 'Patient Corr', '1980-01-01', null, null, null, JSON.stringify({ sexe: 'M' })]);
   const enc = await rowsAs(aliceId, CREATE_ENC, [patient[0].id, 'hospitalisation', '2024-03-01', 'complete', JSON.stringify({ glasgow_score: 10, diagnosis: 'TC' }), 'years']);
   encounterId = enc[0].id;
 }, 180_000);

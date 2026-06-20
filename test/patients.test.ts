@@ -14,9 +14,9 @@ let publishedVersionId: string;
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
-const CALL = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)';
+const CALL = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 const args = (code: string, data: object) => [
-  baseId, code, 'Jean Fictif', '1980-05-15', '0102030405', 'Adresse fictive', 'EXT-' + code, 'granted', '2024-01-01', JSON.stringify(data),
+  baseId, code, 'Jean Fictif', '1980-05-15', '0102030405', 'Adresse fictive', 'EXT-' + code, JSON.stringify(data),
 ];
 
 beforeAll(async () => {

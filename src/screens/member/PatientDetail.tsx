@@ -110,7 +110,6 @@ export function PatientDetail() {
           <div><span className="text-slate-500">{t('patient.dob')} :</span> {patient.identity.dateOfBirth ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.phone')} :</span> {patient.identity.phone ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.external_id')} :</span> {patient.identity.externalIdentifier ?? '—'}</div>
-          <div><span className="text-slate-500">{t('patient.auth_status')} :</span> {t(`authstatus.${patient.identity.authStatus}` as MessageKey)}</div>
         </fieldset>
       )}
 

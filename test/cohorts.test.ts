@@ -70,8 +70,8 @@ describe('cohorte figee (snapshot) + critere 8', () => {
 
     // Ajout d'un nouveau patient M apres le figement (puis marque verifie : seules
     // les donnees verifiees comptent par defaut en v3.0).
-    await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)', [
-      baseId, 'COH-NEW', 'Nouveau M', '1990-01-01', null, null, null, 'granted', null, JSON.stringify({ sexe: 'M' }),
+    await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
+      baseId, 'COH-NEW', 'Nouveau M', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M' }),
     ]);
     await db.admin.query("update public.patient set validation_status='verified' where base_id=$1 and patient_code='COH-NEW'", [baseId]);
 
@@ -85,8 +85,8 @@ describe('cohorte figee (snapshot) + critere 8', () => {
 describe('validated_only (v3.0)', () => {
   test('par defaut une cohorte ne compte que les donnees verifiees ; les brouillons sont exclus', async () => {
     // Nouveau patient M en BROUILLON (create_patient -> validation_status=draft).
-    await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)', [
-      baseId, 'COH-DRAFT', 'Draft M', '1990-01-01', null, null, null, 'granted', null, JSON.stringify({ sexe: 'M' }),
+    await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
+      baseId, 'COH-DRAFT', 'Draft M', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M' }),
     ]);
     const verified = (await rowsAs(aliceId, PREVIEW, [baseId, fM]))[0].patient_count; // validated_only par defaut
     const all = (await rowsAs(aliceId, 'select * from public.cohort_preview($1, $2::jsonb, false)', [baseId, fM]))[0].patient_count;

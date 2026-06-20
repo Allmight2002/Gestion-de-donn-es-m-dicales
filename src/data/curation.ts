@@ -6,6 +6,7 @@
 // (URL signees temporaires), JAMAIS exportes ni visibles a l'analyste.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { inspectFile, sha256Hex } from '../domain/imageUpload';
 
 export const RAW_DOCUMENTS_BUCKET = 'raw-documents';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -223,16 +224,24 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
     },
 
     async addRawDocument(input) {
-      const ext = input.file.name.split('.').pop()?.toLowerCase() || 'bin';
-      const path = `${input.baseId}/${input.submissionId}/${crypto.randomUUID()}.${ext}`;
+      // Inspection par magic bytes (§5.3) : on refuse un fichier deguise et on enregistre
+      // le type REEL detecte + l'empreinte, plutot que de faire confiance au navigateur.
+      const v = await inspectFile(input.file);
+      if (!v.ok) throw new Error(v.error);
+      const path = `${input.baseId}/${input.submissionId}/${crypto.randomUUID()}.${v.ext}`;
       const { error: upErr } = await client.storage.from(RAW_DOCUMENTS_BUCKET).upload(path, input.file, {
-        contentType: input.file.type || 'application/octet-stream',
+        contentType: v.type,
         upsert: false,
       });
       if (upErr) throw upErr;
       const { data, error } = await client
         .from('raw_document')
-        .insert({ submission_id: input.submissionId, base_id: input.baseId, label: input.label ?? null, storage_path: path, mime_type: input.file.type || 'application/octet-stream' })
+        .insert({
+          submission_id: input.submissionId, base_id: input.baseId, label: input.label ?? null,
+          storage_path: path, mime_type: v.type, detected_mime_type: v.type,
+          file_size: input.file.size, file_hash: await sha256Hex(input.file),
+          inspection_status: 'accepted_client', inspected_at: new Date().toISOString(),
+        })
         .select('id')
         .single();
       if (error) {

@@ -131,7 +131,6 @@ declare
   sexes text[] := array['M','F'];
   diag  text[] := array['TC grave','Hematome sous-dural','Hematome extra-dural','AVC hemorragique','Tumeur cerebrale'];
   ct    text[] := array['normal','hematome','oedeme','engagement'];
-  auth_status text[] := array['granted','granted','granted','unknown','refused'];
 begin
   for i in 1..10 loop
     v_code := 'NCH-' || lpad(i::text, 3, '0');
@@ -141,10 +140,9 @@ begin
     v_year := extract(year from v_dob)::int;
 
     insert into public.patient_identity
-      (base_id, patient_code, full_name, date_of_birth, phone, external_identifier, data_use_authorization_status, data_use_authorization_date, created_by)
+      (base_id, patient_code, full_name, date_of_birth, phone, external_identifier, created_by)
     values
-      (v_base, v_code, 'Patient Fictif ' || i, v_dob, '06000000' || lpad(i::text,2,'0'), 'HOSP-' || i,
-       auth_status[1 + (i % 5)], date '2024-01-01', v_owner);
+      (v_base, v_code, 'Patient Fictif ' || i, v_dob, '06000000' || lpad(i::text,2,'0'), 'HOSP-' || i, v_owner);
 
     insert into public.patient (base_id, patient_code, template_version_id, data, collection_mode, validation_status, created_by)
     values (v_base, v_code, v_tv,

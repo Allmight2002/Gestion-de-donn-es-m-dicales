@@ -135,9 +135,6 @@ create table public.patient_identity (
   phone                         text,
   address                       text,
   external_identifier           text,
-  data_use_authorization_status text not null default 'not_requested'
-    check (data_use_authorization_status in ('not_requested','granted','refused','withdrawn','unknown')),
-  data_use_authorization_date   date,
   created_by                    uuid references public.profiles(id),
   created_at                    timestamptz not null default now(),
   deleted_at                    timestamptz,
@@ -215,6 +212,15 @@ create table public.clinical_attachment (
   label                     text,
   storage_path              text not null,
   mime_type                 text,
+  -- Inspection a l'upload (§5.3) : type reel detecte (magic bytes), taille, empreinte.
+  -- 'accepted_client' = controle navigateur passe ; 'accepted'/'quarantined' = verdict
+  -- d'un scan serveur (antivirus) a venir. Defense en profondeur, attestee cote client.
+  detected_mime_type        text,
+  file_size                 bigint,
+  file_hash                 text,
+  inspection_status         text not null default 'accepted_client'
+    check (inspection_status in ('pending','accepted_client','accepted','quarantined')),
+  inspected_at              timestamptz,
   deidentification_confirmed boolean not null default false,
   created_by                uuid references public.profiles(id),
   created_at                timestamptz not null default now(),

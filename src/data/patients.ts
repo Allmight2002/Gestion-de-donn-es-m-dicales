@@ -11,8 +11,6 @@ export interface PatientIdentityInfo {
   phone: string | null;
   address: string | null;
   externalIdentifier: string | null;
-  authStatus: string;
-  authDate: string | null;
 }
 
 export interface PatientListItem {
@@ -31,8 +29,6 @@ export interface NewPatientInput {
   phone: string | null;
   address: string | null;
   externalIdentifier: string | null;
-  authStatus: string;
-  authDate: string | null;
   permanentData: Record<string, unknown>;
 }
 
@@ -83,7 +79,6 @@ type PatientRow = {
 type IdentityRow = {
   patient_code: string; full_name: string | null; date_of_birth: string | null; phone: string | null;
   address: string | null; external_identifier: string | null;
-  data_use_authorization_status: string; data_use_authorization_date: string | null;
 };
 type EncounterRow = {
   id: string; encounter_type: string; encounter_date: string; validation_status: string;
@@ -98,8 +93,6 @@ const mapIdentity = (i: IdentityRow): PatientIdentityInfo => ({
   phone: i.phone,
   address: i.address,
   externalIdentifier: i.external_identifier,
-  authStatus: i.data_use_authorization_status,
-  authDate: i.data_use_authorization_date,
 });
 const mapEncounter = (r: EncounterRow): Encounter => ({
   id: r.id,
@@ -138,7 +131,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       // Zone restreinte : ne revient que si l'utilisateur a l'acces identite (RLS).
       const { data: identities, error: e2 } = await client
         .from('patient_identity')
-        .select('patient_code, full_name, date_of_birth, phone, address, external_identifier, data_use_authorization_status, data_use_authorization_date')
+        .select('patient_code, full_name, date_of_birth, phone, address, external_identifier')
         .eq('base_id', baseId)
         .is('deleted_at', null);
       if (e2) throw e2;
@@ -166,8 +159,6 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         p_phone: input.phone,
         p_address: input.address,
         p_external_identifier: input.externalIdentifier,
-        p_auth_status: input.authStatus,
-        p_auth_date: input.authDate,
         p_permanent_data: input.permanentData,
       });
       if (error) throw error;
@@ -208,7 +199,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       const row = p as PatientRow;
       const { data: ident, error: e2 } = await client
         .from('patient_identity')
-        .select('patient_code, full_name, date_of_birth, phone, address, external_identifier, data_use_authorization_status, data_use_authorization_date')
+        .select('patient_code, full_name, date_of_birth, phone, address, external_identifier')
         .eq('base_id', baseId)
         .eq('patient_code', row.patient_code)
         .is('deleted_at', null)

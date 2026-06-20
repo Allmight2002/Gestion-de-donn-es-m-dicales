@@ -38,6 +38,13 @@ create table public.raw_document (
   label         text,
   storage_path  text not null,
   mime_type     text not null,
+  -- Inspection a l'upload (§5.3) : type reel detecte (magic bytes), taille, empreinte.
+  detected_mime_type text,
+  file_size     bigint,
+  file_hash     text,
+  inspection_status text not null default 'accepted_client'
+    check (inspection_status in ('pending','accepted_client','accepted','quarantined')),
+  inspected_at  timestamptz,
   created_by    uuid references public.profiles(id),
   created_at    timestamptz not null default now(),
   deleted_at    timestamptz,

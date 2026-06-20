@@ -13,8 +13,6 @@ create or replace function public.create_patient(
   p_phone              text,
   p_address            text,
   p_external_identifier text,
-  p_auth_status        text,
-  p_auth_date          date,
   p_permanent_data     jsonb
 ) returns public.patient
 language plpgsql security invoker set search_path = public, pg_temp as $$
@@ -33,11 +31,9 @@ begin
   perform public.assert_data_valid(v_tv, 'patient', coalesce(p_permanent_data, '{}'::jsonb));
 
   insert into public.patient_identity
-    (base_id, patient_code, full_name, date_of_birth, phone, address, external_identifier,
-     data_use_authorization_status, data_use_authorization_date, created_by)
+    (base_id, patient_code, full_name, date_of_birth, phone, address, external_identifier, created_by)
   values
-    (p_base_id, btrim(p_patient_code), p_full_name, p_date_of_birth, p_phone, p_address, p_external_identifier,
-     coalesce(p_auth_status, 'not_requested'), p_auth_date, auth.uid());
+    (p_base_id, btrim(p_patient_code), p_full_name, p_date_of_birth, p_phone, p_address, p_external_identifier, auth.uid());
 
   insert into public.patient
     (base_id, patient_code, template_version_id, data, collection_mode, validation_status, created_by)
@@ -48,4 +44,4 @@ begin
   return v_patient;
 end $$;
 
-grant execute on function public.create_patient(uuid, text, text, date, text, text, text, text, date, jsonb) to authenticated;
+grant execute on function public.create_patient(uuid, text, text, date, text, text, text, jsonb) to authenticated;

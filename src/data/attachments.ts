@@ -5,7 +5,7 @@
 // libelle du document est OBLIGATOIRE. Un fichier a la fois.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { validateAttachmentFile } from '../domain/imageUpload';
+import { inspectFile, sha256Hex } from '../domain/imageUpload';
 
 export const ATTACHMENTS_BUCKET = 'clinical-attachments';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -84,7 +84,8 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
       // DB par la contrainte CHECK et la RLS).
       if (!input.deidentificationConfirmed) throw new Error('La deidentification doit etre confirmee avant tout envoi');
       if (!input.label?.trim()) throw new Error('Le libelle du document est requis');
-      const v = validateAttachmentFile(input.file);
+      // Inspection par magic bytes (§5.3) : refuse un fichier deguise (ex. .exe en .pdf).
+      const v = await inspectFile(input.file);
       if (!v.ok) throw new Error(v.error);
 
       // Images : reencodees (EXIF supprime). Documents (PDF/Office) : envoyes tels quels.
@@ -105,6 +106,11 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
           label: input.label.trim(),
           storage_path: path,
           mime_type: v.type,
+          detected_mime_type: v.type,
+          file_size: blob.size,
+          file_hash: await sha256Hex(blob),
+          inspection_status: 'accepted_client',
+          inspected_at: new Date().toISOString(),
           deidentification_confirmed: true,
         })
         .select('id')

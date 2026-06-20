@@ -17,7 +17,7 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 
 const EXPORT_INSERT = `insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
   values($1, to_jsonb(array[$2::uuid]), auth.uid(), 'csv', '{}'::jsonb, 1, 1, 'p/x.csv', 'h1') returning id`;
-const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)';
+const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true });
@@ -54,7 +54,7 @@ describe('trace automatique des actions sensibles', () => {
   });
 
   test('une suppression logique genere une trace patient_deleted', async () => {
-    const p = await rowsAs(aliceId, CREATE_PAT, [baseId, 'AUD-001', 'A Suppr', '1980-01-01', null, null, null, 'granted', null, JSON.stringify({ sexe: 'M' })]);
+    const p = await rowsAs(aliceId, CREATE_PAT, [baseId, 'AUD-001', 'A Suppr', '1980-01-01', null, null, null, JSON.stringify({ sexe: 'M' })]);
     await rowsAs(aliceId, 'select public.soft_delete_patient($1,$2)', [p[0].id, 'doublon']);
     const audit = await db.admin.query("select action, metadata from public.audit_log where action='patient_deleted' and entity_id=$1", [p[0].id]);
     expect(audit.rows).toHaveLength(1);

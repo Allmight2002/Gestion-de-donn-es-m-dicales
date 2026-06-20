@@ -55,8 +55,8 @@ describe('suppression logique d un patient', () => {
   });
 
   test('le code redevient reutilisable apres suppression logique', async () => {
-    const r = await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)', [
-      baseId, 'NCH-001', 'Nouveau NCH-001', '1990-01-01', null, null, null, 'granted', null, JSON.stringify({ sexe: 'M' }),
+    const r = await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
+      baseId, 'NCH-001', 'Nouveau NCH-001', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M' }),
     ]);
     expect(r).toHaveLength(1);
   });

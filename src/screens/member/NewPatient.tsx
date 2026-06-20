@@ -5,8 +5,6 @@ import { useBaseRepository, useCurationRepository, usePatientRepository, useTemp
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
 
-const AUTH_STATUSES = ['not_requested', 'granted', 'refused', 'withdrawn', 'unknown'] as const;
-
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
 //  - 'submit'  : le medecin saisit SEULEMENT l'identite (nom + date de naissance requis),
@@ -32,8 +30,6 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [dob, setDob] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [authStatus, setAuthStatus] = useState<string>('not_requested');
-  const [authDate, setAuthDate] = useState('');
   const [permanent, setPermanent] = useState<Record<string, unknown>>({});
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
@@ -81,8 +77,6 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         phone: phone || null,
         address: address || null,
         externalIdentifier: externalId.trim() || null,
-        authStatus,
-        authDate: authDate || null,
         permanentData: mode === 'submit' ? {} : permanent,
       });
       if (mode === 'submit') {
@@ -147,22 +141,6 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             <span className="text-slate-700">{t('patient.address')}</span>
             <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={address} onChange={(e) => setAddress(e.target.value)} />
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">
-              <span className="text-slate-700">{t('patient.auth_status')}</span>
-              <select className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={authStatus} onChange={(e) => setAuthStatus(e.target.value)}>
-                {AUTH_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {t(`authstatus.${s}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="text-slate-700">{t('patient.auth_date')}</span>
-              <input type="date" className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={authDate} onChange={(e) => setAuthDate(e.target.value)} />
-            </label>
-          </div>
         </fieldset>
 
         {mode === 'manual' && (
