@@ -68,6 +68,8 @@ export interface FieldChange {
 
 export interface PatientRepository {
   listPatients(baseId: string): Promise<PatientListItem[]>;
+  /** Page de patients (pagination serveur) + effectif total de la base. */
+  listPatientsPage(baseId: string, limit: number, offset: number): Promise<{ rows: PatientListItem[]; total: number }>;
   /** Recherche un doublon potentiel par identite (nom + date de naissance). [] si rien. */
   findIdentityMatches(baseId: string, fullName: string, dateOfBirth: string): Promise<IdentityMatch[]>;
   createPatient(baseId: string, input: NewPatientInput): Promise<{ id: string; code: string }>;
@@ -104,6 +106,14 @@ const mapIdentity = (i: IdentityRow): PatientIdentityInfo => ({
   address: i.address,
   externalIdentifier: i.external_identifier,
 });
+const toListItem = (p: PatientRow, idByCode: Map<string, PatientIdentityInfo>): PatientListItem => ({
+  id: p.id,
+  code: p.patient_code,
+  templateVersionId: p.template_version_id,
+  data: p.data ?? {},
+  validationStatus: p.validation_status,
+  identity: idByCode.get(p.patient_code) ?? null,
+});
 const mapEncounter = (r: EncounterRow): Encounter => ({
   id: r.id,
   encounterType: r.encounter_type,
@@ -122,7 +132,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPatients: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
+      listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail,
     };
@@ -150,14 +160,34 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         ((identities ?? []) as IdentityRow[]).map((i) => [i.patient_code, mapIdentity(i)]),
       );
 
-      return ((patients ?? []) as PatientRow[]).map((p) => ({
-        id: p.id,
-        code: p.patient_code,
-        templateVersionId: p.template_version_id,
-        data: p.data ?? {},
-        validationStatus: p.validation_status,
-        identity: idByCode.get(p.patient_code) ?? null,
-      }));
+      return ((patients ?? []) as PatientRow[]).map((p) => toListItem(p, idByCode));
+    },
+
+    async listPatientsPage(baseId, limit, offset) {
+      // Page de la zone analytique + effectif TOTAL (count exact), via .range().
+      const { data: patients, error, count } = await client
+        .from('patient')
+        .select('id, patient_code, template_version_id, data, validation_status', { count: 'exact' })
+        .eq('base_id', baseId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
+        .range(offset, offset + limit - 1);
+      if (error) throw error;
+      const rows = (patients ?? []) as PatientRow[];
+
+      // Identites de CETTE page seulement (zone restreinte, RLS). Vide si pas d'acces identite.
+      let idByCode = new Map<string, PatientIdentityInfo>();
+      if (rows.length > 0) {
+        const { data: identities, error: e2 } = await client
+          .from('patient_identity')
+          .select('patient_code, full_name, date_of_birth, phone, address, external_identifier')
+          .eq('base_id', baseId)
+          .in('patient_code', rows.map((r) => r.patient_code))
+          .is('deleted_at', null);
+        if (e2) throw e2;
+        idByCode = new Map(((identities ?? []) as IdentityRow[]).map((i) => [i.patient_code, mapIdentity(i)]));
+      }
+      return { rows: rows.map((p) => toListItem(p, idByCode)), total: count ?? rows.length };
     },
 
     async findIdentityMatches(baseId, fullName, dateOfBirth) {

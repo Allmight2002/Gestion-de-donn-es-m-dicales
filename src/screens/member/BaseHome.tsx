@@ -6,7 +6,9 @@ import type { BaseListing } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
 
-// Accueil d'une base : informations + tableau des patients (cahier §8.4).
+const PAGE_SIZE = 20;
+
+// Accueil d'une base : informations + tableau des patients (cahier §8.4), pagine.
 // La fiche patient complete, les rencontres et l'export arrivent aux etapes 8+.
 export function BaseHome() {
   const { id } = useParams();
@@ -19,6 +21,8 @@ export function BaseHome() {
   const [listing, setListing] = useState<BaseListing | null>(null);
   const [rows, setRows] = useState<PatientListItem[]>([]);
   const [fields, setFields] = useState<TemplateField[]>([]);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +36,9 @@ export function BaseHome() {
         const version = await templates.getVersion(b.base.currentTemplateVersionId);
         setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b2) => a.displayOrder - b2.displayOrder));
       }
-      setRows(await patients.listPatients(id));
+      const pageRes = await patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE);
+      setRows(pageRes.rows);
+      setTotal(pageRes.total);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.error'));
@@ -40,7 +46,7 @@ export function BaseHome() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, bases, templates, patients]);
+  }, [id, page, bases, templates, patients]);
 
   useEffect(() => {
     void load();
@@ -160,6 +166,30 @@ export function BaseHome() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {total > PAGE_SIZE && (
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-slate-500">
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
+              >
+                {t('pager.prev')}
+              </button>
+              <button
+                disabled={(page + 1) * PAGE_SIZE >= total}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
+              >
+                {t('pager.next')}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </section>

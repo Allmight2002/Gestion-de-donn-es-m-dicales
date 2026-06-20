@@ -100,7 +100,7 @@ describe('BaseHome (liste patients)', () => {
       },
       { id: 'p2', code: 'P-0002', templateVersionId: 'v1', data: { sexe: 'F', birth_year: 1990 }, validationStatus: 'verified', identity: null },
     ];
-    const patientRepo = { async listPatients() { return list; }, async createPatient() { return { id: '', code: '' }; } } as unknown as PatientRepository;
+    const patientRepo = { async listPatientsPage() { return { rows: list, total: list.length }; }, async createPatient() { return { id: '', code: '' }; } } as unknown as PatientRepository;
 
     render(
       <I18nProvider>
@@ -117,5 +117,35 @@ describe('BaseHome (liste patients)', () => {
     expect(await screen.findByText('Jean Avec')).toBeInTheDocument();
     expect(screen.getByText('(identité masquée)')).toBeInTheDocument();
     expect(screen.getByText('P-0001')).toBeInTheDocument();
+  });
+
+  test('pagine : affiche "1–20 sur 25" et charge la page suivante', async () => {
+    const pageRow = (n: number): PatientListItem => ({
+      id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: {}, validationStatus: 'verified', identity: null,
+    });
+    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number) => ({
+      rows: Array.from({ length: Math.min(limit, 25 - offset) }, (_, i) => pageRow(offset + i + 1)),
+      total: 25,
+    }));
+    const patientRepo = { listPatientsPage, async createPatient() { return { id: '', code: '' }; } } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+              <Route path="/bases/:id/patients/:patientId" element={<div>FICHE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('1–20 sur 25')).toBeInTheDocument();
+    expect(screen.getByText('P-0001')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Suivant' }));
+    expect(await screen.findByText('21–25 sur 25')).toBeInTheDocument();
+    expect(listPatientsPage.mock.calls.some(([, , offset]) => offset === 20)).toBe(true);
   });
 });
