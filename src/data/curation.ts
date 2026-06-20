@@ -89,6 +89,8 @@ export interface CurationRepository {
   createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
   /** Le medecin proprietaire ENVOIE la demande au pool (exige >= 1 document). */
   submitRequest(taskId: string): Promise<void>;
+  /** Le medecin proprietaire SUPPRIME (logique) une demande. Bloquee si deja validee. */
+  deleteRequest(taskId: string, reason: string): Promise<void>;
   /** Un curateur RESERVE un cas ouvert (anti-collision). */
   claimTask(taskId: string): Promise<void>;
   /** Le curateur affecte libere un cas. */
@@ -141,7 +143,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
     };
     return {
       listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, createSubmission: fail,
-      submitRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
+      submitRequest: fail, deleteRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
       ensureDraft: fail, saveDraft: fail, submitDraft: fail, validateDraft: fail,
     };
   }
@@ -242,6 +244,11 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
 
     async submitRequest(taskId) {
       const { error } = await client.rpc('submit_curation_request', { p_task_id: taskId });
+      if (error) throw error;
+    },
+
+    async deleteRequest(taskId, reason) {
+      const { error } = await client.rpc('delete_curation_request', { p_task_id: taskId, p_reason: reason });
       if (error) throw error;
     },
 

@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useCurationRepository } from '../../data/RepositoryProvider';
 import type { CurationTaskItem } from '../../data/curation';
+import { DeleteWithReason } from './DeleteWithReason';
 
 // "Suivi des demandes" cote MEDECIN (cahier v3.0) : liste, EN LECTURE SEULE, les cas
 // confies au staff (pool) et leur avancement. La soumission se fait desormais depuis les
@@ -16,6 +17,7 @@ export function CurationBoard() {
 
   const [tasks, setTasks] = useState<CurationTaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -35,6 +37,18 @@ export function CurationBoard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function remove(taskId: string, reason: string) {
+    setBusy(true);
+    try {
+      await curation.deleteRequest(taskId, reason);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('common.error'));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
 
@@ -71,6 +85,10 @@ export function CurationBoard() {
                 <td>{task.assignedTo ? (task.assignedName ?? t('curation.in_charge')) : <span className="text-slate-400">{t('curation.unassigned')}</span>}</td>
                 <td className="text-right">
                   <button onClick={() => navigate(`/curation/${task.id}`)} className="text-xs text-teal-700 hover:underline">{t('curation.open')}</button>
+                  {/* Une demande validee n'est pas supprimable (provenance) : on n'offre pas l'action. */}
+                  {task.status !== 'validated' && (
+                    <span className="ml-3"><DeleteWithReason label={t('curation.delete')} busy={busy} onConfirm={(reason) => remove(task.id, reason)} /></span>
+                  )}
                 </td>
               </tr>
             ))}

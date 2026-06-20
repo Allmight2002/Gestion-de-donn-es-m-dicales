@@ -197,3 +197,29 @@ describe('soumission de cas (medecin)', () => {
     expect(Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [pid])).rows[0].n)).toBe(before + 1);
   });
 });
+
+describe('suppression d une demande (medecin)', () => {
+  test('le proprietaire supprime sa demande : tache + documents passent en supprime + trace', async () => {
+    const c = await openCase('NCH-005'); // cas 'open' avec 1 document
+    await rowsAs(aliceId, 'select public.delete_curation_request($1,$2)', [c.taskId, 'erreur de saisie']);
+
+    expect((await db.admin.query('select deleted_at from public.curation_task where id=$1', [c.taskId])).rows[0].deleted_at).not.toBeNull();
+    // Les documents ne sont plus lisibles (deleted_at) -> 0 actif.
+    expect(Number((await db.admin.query('select count(*)::int n from public.raw_document where submission_id=$1 and deleted_at is null', [c.subId])).rows[0].n)).toBe(0);
+    // Disparait de la vue du medecin (les listes filtrent deleted_at is null).
+    expect(await rowsAs(aliceId, 'select id from public.curation_task where id=$1 and deleted_at is null', [c.taskId])).toHaveLength(0);
+    // Journalisation.
+    expect((await db.admin.query("select 1 from public.audit_log where action='curation_request_deleted' and entity_id=$1", [c.taskId])).rows.length).toBeGreaterThan(0);
+  });
+
+  test('un curateur ne peut pas supprimer la demande d un medecin', async () => {
+    const c = await openCase('NCH-006');
+    await expect(rowsAs(curator1Id, 'select public.delete_curation_request($1,$2)', [c.taskId, 'x'])).rejects.toThrow(/proprietaire/i);
+  });
+
+  test('une demande VALIDEE ne peut pas etre supprimee (provenance preservee)', async () => {
+    const c = await claimAndDraft('NCH-004', { blood_group: 'AB-' }, []);
+    await rowsAs(validatorId, 'select * from public.validate_curation_draft($1,$2,$3)', [c.draftId, 'approved', null]);
+    await expect(rowsAs(aliceId, 'select public.delete_curation_request($1,$2)', [c.taskId, 'x'])).rejects.toThrow(/validee/i);
+  });
+});

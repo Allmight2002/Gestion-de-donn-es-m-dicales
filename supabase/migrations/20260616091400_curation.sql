@@ -391,6 +391,37 @@ end $$;
 grant execute on function public.submit_curation_request(uuid) to authenticated;
 
 -- =============================================================================
+-- RPC : le MEDECIN SUPPRIME une de ses demandes (erreur de saisie, etc.). Suppression
+-- LOGIQUE : la tache et les documents sont marques supprimes (deleted_at) -> la demande
+-- disparait du Suivi et du pool, les documents ne sont plus lisibles. Le PATIENT n'est pas
+-- touche (il se supprime separement). Une demande deja VALIDEE n'est pas supprimable (ses
+-- donnees sont publiees et tracees : on garde la provenance).
+-- =============================================================================
+create or replace function public.delete_curation_request(p_task_id uuid, p_reason text default null)
+returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare t public.curation_task;
+begin
+  if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  select * into t from public.curation_task where id = p_task_id and deleted_at is null for update;
+  if not found then raise exception 'Demande introuvable'; end if;
+  if not public.is_base_owner(t.base_id) then raise exception 'Reserve au proprietaire de la base'; end if;
+  if t.status = 'validated' then
+    raise exception 'Une demande validee ne peut pas etre supprimee (les donnees sont deja publiees)';
+  end if;
+
+  update public.curation_task set deleted_at = now(), updated_at = now() where id = p_task_id;
+  update public.raw_document
+     set deleted_at = now(), deletion_reason = coalesce(nullif(btrim(p_reason), ''), 'Demande supprimee')
+   where submission_id = t.submission_id and deleted_at is null;
+
+  insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
+  values (auth.uid(), 'curation_request_deleted', 'curation_task', p_task_id, t.base_id,
+          jsonb_build_object('submission_id', t.submission_id, 'reason', p_reason, 'previous_status', t.status));
+end $$;
+grant execute on function public.delete_curation_request(uuid, text) to authenticated;
+
+-- =============================================================================
 -- RPC : un CURATEUR reserve un cas OUVERT (anti-collision). Le `where status='open'
 -- and assigned_to is null` garantit qu'un seul curateur l'obtient.
 -- =============================================================================
