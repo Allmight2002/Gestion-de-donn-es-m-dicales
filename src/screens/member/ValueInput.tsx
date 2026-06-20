@@ -27,7 +27,7 @@ export function ValueInput({
       {field.allowMissingCodes && (
         <select
           aria-label={`${field.label} — valeur manquante`}
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs text-slate-500"
+          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30"
           value={code ?? 'value'}
           onChange={(e) => onChange(e.target.value === 'value' ? null : makeMissing(e.target.value as MissingCode))}
         >

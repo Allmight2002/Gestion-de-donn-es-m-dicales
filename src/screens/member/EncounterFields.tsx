@@ -22,7 +22,7 @@ export function EncounterFields({
         const sectionFields = fields.filter((f) => f.section === section);
         if (sectionFields.length === 0) return null;
         return (
-          <fieldset key={section} className="space-y-3 rounded border border-slate-200 p-4">
+          <fieldset key={section} className="card space-y-3 p-4">
             <legend className="px-1 text-sm font-semibold text-slate-700">{t(`section.${section}`)}</legend>
             {sectionFields.map((f) => (
               <label key={f.id} className="flex flex-col text-sm">

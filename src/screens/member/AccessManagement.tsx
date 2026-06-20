@@ -103,11 +103,11 @@ export function AccessManagement() {
 
   return (
     <section className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('access.title')}</h1>
+        <h1 className="page-title mt-2">{t('access.title')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -116,17 +116,17 @@ export function AccessManagement() {
         <p className="text-slate-500">{t('access.owner_only')}</p>
       ) : (
         <>
-          <form onSubmit={invite} className="space-y-3 rounded border border-slate-200 p-4">
+          <form onSubmit={invite} className="card space-y-3 p-4">
             <h2 className="text-sm font-semibold text-slate-700">{t('access.invite')}</h2>
             <div className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col text-xs text-slate-600">
                 {t('access.email')}
-                <input type="email" required className="rounded border border-slate-300 px-2 py-1 text-sm" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <input type="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
               </label>
               <label className="flex flex-col text-xs text-slate-600">
                 {t('access.role')}
                 <select
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                  className="input"
                   value={role}
                   onChange={(e) => changeRole(e.target.value as AccessRole)}
                 >
@@ -137,7 +137,7 @@ export function AccessManagement() {
                   ))}
                 </select>
               </label>
-              <button type="submit" disabled={busy} className="rounded bg-teal-700 px-3 py-1 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
+              <button type="submit" disabled={busy} className="btn-primary">
                 {t('access.send_invite')}
               </button>
             </div>
@@ -155,7 +155,7 @@ export function AccessManagement() {
               ))}
             </fieldset>
             {link && (
-              <div className="rounded bg-teal-50 p-2 text-xs">
+              <div className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-xs">
                 <span className="text-teal-800">{t('access.link_created')}</span>
                 <code className="ml-1 break-all">{link}</code>
               </div>
@@ -163,13 +163,13 @@ export function AccessManagement() {
           </form>
 
           <div>
-            <h2 className="mb-2 font-medium">{t('access.pending')}</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('access.pending')}</h2>
             {invitations.length === 0 ? (
               <p className="text-sm text-slate-500">{t('access.no_pending')}</p>
             ) : (
-              <ul className="space-y-1 text-sm">
+              <ul className="space-y-2 text-sm">
                 {invitations.map((inv) => (
-                  <li key={inv.id} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1">
+                  <li key={inv.id} className="card flex items-center justify-between px-3 py-2">
                     <span>
                       {inv.email} · {t(`access.role_${inv.role}` as MessageKey)}
                       <span className="ml-1 text-xs text-slate-400">{permSummary(inv.permissions, t)}</span>
@@ -184,13 +184,13 @@ export function AccessManagement() {
           </div>
 
           <div>
-            <h2 className="mb-2 font-medium">{t('access.current')}</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('access.current')}</h2>
             {accessList.length === 0 ? (
               <p className="text-sm text-slate-500">{t('access.no_access')}</p>
             ) : (
               <ul className="space-y-2 text-sm">
                 {accessList.map((a) => (
-                  <li key={a.id} className="rounded border border-slate-200 px-2 py-2">
+                  <li key={a.id} className="card px-3 py-2">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">
                         {a.fullName ?? a.userId.slice(0, 8)} · {t(`access.role_${a.role}` as MessageKey)}

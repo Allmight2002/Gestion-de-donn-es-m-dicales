@@ -108,20 +108,20 @@ export function CurationTask() {
   return (
     <section className="max-w-2xl space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => navigate(-1)} className="text-sm text-teal-700 hover:underline">← {t('admin.back')}</button>
-        <h1 className="text-2xl font-semibold">{t('curation.task_title')}</h1>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs">{task.caseCode ?? '—'}</span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{t(`curstatus.${task.status}` as MessageKey)}</span>
-        <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs text-teal-700">{t(`curation.scope_${task.scope}` as MessageKey)}</span>
+        <button onClick={() => navigate(-1)} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
+        <h1 className="page-title">{t('curation.task_title')}</h1>
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-xs text-slate-600">{task.caseCode ?? '—'}</span>
+        <span className={taskStatusBadge(task.status)}>{t(`curstatus.${task.status}` as MessageKey)}</span>
+        <span className="badge">{t(`curation.scope_${task.scope}` as MessageKey)}</span>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-teal-50 p-2 text-sm text-teal-800">{notice}</p>}
+      {notice && <p className="rounded-xl border border-teal-100 bg-teal-50 p-2.5 text-sm text-teal-800">{notice}</p>}
 
       {/* Le medecin proprietaire voit les donnees minimales (lecture seule) ; le staff ne
           voit QUE le code opaque (la RLS ne lui renvoie aucune identite). */}
       {patientIdentity ? (
-        <fieldset className="space-y-1 rounded border border-amber-200 bg-amber-50/40 p-3 text-sm">
+        <fieldset className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm shadow-sm">
           <legend className="px-1 text-xs font-semibold text-amber-800">{t('curation.min_identity')}</legend>
           <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patientIdentity.fullName ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.dob')} :</span> {patientIdentity.dateOfBirth ?? '—'}</div>
@@ -135,14 +135,14 @@ export function CurationTask() {
 
       {/* Demande pas encore envoyee au pool : on explique la condition (documents requis). */}
       {canSubmitRequest && (
-        <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">⚠️ {t('curation.preparing_banner')}</p>
+        <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">⚠️ {t('curation.preparing_banner')}</p>
       )}
 
       {canClaim && (
         <button
           onClick={() => void run(() => curation.claimTask(task.id), t('curation.claimed'))}
           disabled={busy}
-          className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+          className="btn-primary"
         >
           {t('curation.claim')}
         </button>
@@ -158,7 +158,7 @@ export function CurationTask() {
       )}
 
       {/* Documents (deidentifies) */}
-      <div className="rounded border border-amber-200 bg-amber-50/40 p-4">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-amber-800">{t('curation.raw_documents')}</h2>
         {documents.length === 0 ? (
           <p className="text-xs text-slate-500">{t('curation.no_documents')}</p>
@@ -189,7 +189,7 @@ export function CurationTask() {
             <p className="text-xs text-amber-700">{t('curation.deident_note')}</p>
             <label className="block text-xs text-slate-600">
               {t('curation.document_label')}
-              <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm" value={docLabel} onChange={(e) => setDocLabel(e.target.value)} />
+              <input className="input mt-1" value={docLabel} onChange={(e) => setDocLabel(e.target.value)} />
             </label>
 
             {/* Zone de glisser-deposer visible (ou clic pour parcourir). */}
@@ -217,7 +217,7 @@ export function CurationTask() {
                 await curation.addRawDocument({ submissionId: task.submissionId, baseId: task.baseId, file: docFile!, label: docLabel || undefined });
                 setDocFile(null); setDocLabel('');
               }, t('curation.uploaded'))}
-              className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+              className="btn-primary"
             >
               {t('curation.add_document')}
             </button>
@@ -241,7 +241,7 @@ export function CurationTask() {
                 setBusy(false);
               }
             }}
-            className="rounded bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+            className="btn-primary"
           >
             {t('curation.submit_request')}
           </button>
@@ -251,13 +251,13 @@ export function CurationTask() {
 
       {/* Brouillon (structuration par le curateur) — cote STAFF uniquement. */}
       {!isOwnerMedecin && (!draft ? (
-        <div className="rounded border border-slate-200 p-4">
+        <div className="card p-4">
           <p className="text-sm text-slate-500">{t('curation.no_draft')}</p>
           {canStartDraft && (
             <button
               onClick={() => void run(() => curation.ensureDraft(task.id, task.baseId))}
               disabled={busy}
-              className="mt-2 rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+              className="btn-primary mt-2"
             >
               {t('curation.start_draft')}
             </button>
@@ -268,7 +268,7 @@ export function CurationTask() {
           <fieldset disabled={!canEdit} className="space-y-5 disabled:opacity-70">
             {/* Portee 'patient' : donnees permanentes. Portee 'encounter' : rencontre(s) seulement. */}
             {task.scope !== 'encounter' && (
-              <div className="rounded border border-slate-200 p-4">
+              <div className="card p-4">
                 <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
                 {patientFields.map((f) => (
                   <label key={f.id} className="mb-2 flex flex-col text-sm">
@@ -292,17 +292,17 @@ export function CurationTask() {
               </div>
               {encounters.length === 0 && <p className="text-xs text-slate-400">{t('patient.no_encounters')}</p>}
               {encounters.map((enc, i) => (
-                <div key={i} className="rounded border border-slate-200 p-3">
+                <div key={i} className="card p-3">
                   <div className="mb-2 flex flex-wrap items-end gap-2">
                     <label className="flex flex-col text-xs text-slate-600">
                       {t('encounter.type')}
-                      <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={enc.encounter_type} onChange={(e) => updateEncounter(i, { encounter_type: e.target.value })}>
+                      <select className="input" value={enc.encounter_type} onChange={(e) => updateEncounter(i, { encounter_type: e.target.value })}>
                         {ENCOUNTER_TYPES.map((x) => (<option key={x} value={x}>{t(`encountertype.${x}`)}</option>))}
                       </select>
                     </label>
                     <label className="flex flex-col text-xs text-slate-600">
                       {t('encounter.date')}
-                      <input type="date" className="rounded border border-slate-300 px-2 py-1 text-sm" value={enc.encounter_date} onChange={(e) => updateEncounter(i, { encounter_date: e.target.value })} />
+                      <input type="date" className="input" value={enc.encounter_date} onChange={(e) => updateEncounter(i, { encounter_date: e.target.value })} />
                     </label>
                     {canEdit && (
                       <button type="button" onClick={() => setEncounters((l) => l.filter((_, j) => j !== i))} className="text-xs text-red-600 hover:underline">{t('cohort.remove')}</button>
@@ -319,14 +319,14 @@ export function CurationTask() {
               <button
                 onClick={() => void run(() => curation.saveDraft(draft.id, patientData, encounters), t('curation.saved'))}
                 disabled={busy}
-                className="rounded border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
+                className="btn-secondary"
               >
                 {t('curation.save_draft')}
               </button>
               <button
                 onClick={() => void run(async () => { await curation.saveDraft(draft.id, patientData, encounters); await curation.submitDraft(draft.id); }, t('curation.submitted'))}
                 disabled={busy}
-                className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                className="btn-primary"
               >
                 {t('curation.submit')}
               </button>
@@ -334,21 +334,21 @@ export function CurationTask() {
           )}
 
           {canValidate && (
-            <div className="space-y-2 rounded border border-slate-200 p-4">
+            <div className="card space-y-2 p-4">
               <h2 className="text-sm font-semibold text-slate-700">{t('curation.validation')}</h2>
-              <textarea className="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder={t('curation.comment')} value={comment} onChange={(e) => setComment(e.target.value)} />
+              <textarea className="input" placeholder={t('curation.comment')} value={comment} onChange={(e) => setComment(e.target.value)} />
               <div className="flex gap-2">
                 <button
                   onClick={() => void run(() => curation.validateDraft(draft.id, 'approved', comment.trim() || null), t('curation.approved_ok'))}
                   disabled={busy}
-                  className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                  className="btn-primary"
                 >
                   {t('curation.approve')}
                 </button>
                 <button
                   onClick={() => void run(() => curation.validateDraft(draft.id, 'rejected', comment.trim() || null), t('curation.rejected_ok'))}
                   disabled={busy}
-                  className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60"
                 >
                   {t('curation.reject')}
                 </button>
@@ -359,7 +359,7 @@ export function CurationTask() {
       ))}
 
       {reviews.length > 0 && (
-        <div className="rounded border border-slate-200 p-4">
+        <div className="card p-4">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('curation.reviews')}</h2>
           <ul className="space-y-1 text-xs">
             {reviews.map((r) => (
@@ -374,4 +374,17 @@ export function CurationTask() {
       )}
     </section>
   );
+}
+
+function taskStatusBadge(status: string): string {
+  const base = 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset';
+  const tone: Record<string, string> = {
+    preparing: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+    open: 'bg-teal-50 text-teal-700 ring-teal-600/20',
+    in_progress: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+    submitted: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
+    validated: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    rejected: 'bg-red-50 text-red-700 ring-red-600/20',
+  };
+  return `${base} ${tone[status] ?? 'bg-slate-100 text-slate-600 ring-slate-500/20'}`;
 }

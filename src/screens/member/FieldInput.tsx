@@ -1,6 +1,6 @@
 import type { TemplateField } from '../../data/types';
 
-const cls = 'rounded border border-slate-300 px-2 py-1 text-sm';
+const cls = 'input';
 
 // Rendu basique d'un champ de gabarit selon son type. Les controles complets
 // (bornes, requis, valeurs manquantes codifiees) arrivent a l'etape 7.

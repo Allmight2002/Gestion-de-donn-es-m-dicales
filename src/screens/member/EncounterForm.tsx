@@ -109,11 +109,11 @@ export function EncounterForm() {
 
   return (
     <section className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('encounter.new')}</h1>
+        <h1 className="page-title mt-2">{t('encounter.new')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -122,7 +122,7 @@ export function EncounterForm() {
         <div className="grid grid-cols-3 gap-3">
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.type')}</span>
-            <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={encounterType} onChange={(e) => setEncounterType(e.target.value)}>
+            <select className="input mt-1" value={encounterType} onChange={(e) => setEncounterType(e.target.value)}>
               {ENCOUNTER_TYPES.map((x) => (
                 <option key={x} value={x}>
                   {t(`encountertype.${x}`)}
@@ -132,11 +132,11 @@ export function EncounterForm() {
           </label>
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.date')}</span>
-            <input type="date" className="mt-1 rounded border border-slate-300 px-2 py-1" value={encounterDate} onChange={(e) => setEncounterDate(e.target.value)} required />
+            <input type="date" className="input mt-1" value={encounterDate} onChange={(e) => setEncounterDate(e.target.value)} required />
           </label>
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.status')}</span>
-            <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select className="input mt-1" value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {t(`encstatus.${s}`)}
@@ -146,7 +146,7 @@ export function EncounterForm() {
           </label>
         </div>
 
-        <div className="rounded bg-teal-50 px-3 py-2 text-sm text-teal-800">
+        <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-800">
           {t('encounter.age')} : <strong>{age ?? '—'}</strong>
           <span className="ml-2 text-xs text-teal-600">{t('encounter.age_hint')}</span>
         </div>
@@ -154,7 +154,7 @@ export function EncounterForm() {
         <EncounterFields fields={fields} values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} />
 
         {blocking.length > 0 && (
-          <div role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <p className="font-medium">{t('encounter.blocking')}</p>
             <ul className="list-disc pl-5">
               {blocking.map((b, i) => (
@@ -164,7 +164,7 @@ export function EncounterForm() {
           </div>
         )}
         {warnings.length > 0 && (
-          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <p className="font-medium">{t('encounter.warnings')}</p>
             <ul className="list-disc pl-5">
               {warnings.map((w, i) => (
@@ -175,10 +175,10 @@ export function EncounterForm() {
         )}
 
         <div className="flex gap-2">
-          <button type="submit" disabled={busy} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
+          <button type="submit" disabled={busy} className="btn-primary">
             {t('encounter.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
+          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
         </div>

@@ -99,11 +99,11 @@ export function EditEncounter() {
 
   return (
     <section className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('encounter.edit_title')}</h1>
+        <h1 className="page-title mt-2">{t('encounter.edit_title')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -111,7 +111,7 @@ export function EditEncounter() {
       <form onSubmit={submit} className="space-y-5">
         <label className="flex flex-col text-sm">
           <span className="text-slate-700">{t('encounter.status')}</span>
-          <select className="mt-1 w-48 rounded border border-slate-300 px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select className="input mt-1 w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {t(`encstatus.${s}`)}
@@ -126,11 +126,11 @@ export function EditEncounter() {
           <span className="font-medium text-slate-700">
             {t('encounter.reason')} <span className="text-red-500">*</span>
           </span>
-          <input className="mt-1 rounded border border-slate-300 px-2 py-1" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <input className="input mt-1" value={reason} onChange={(e) => setReason(e.target.value)} />
         </label>
 
         {blocking.length > 0 && (
-          <div role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <ul className="list-disc pl-5">
               {blocking.map((b, i) => (
                 <li key={i}>{b}</li>
@@ -140,16 +140,16 @@ export function EditEncounter() {
         )}
 
         <div className="flex gap-2">
-          <button type="submit" disabled={busy} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
+          <button type="submit" disabled={busy} className="btn-primary">
             {t('encounter.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
+          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
         </div>
       </form>
 
-      <div className="rounded border border-slate-200 p-4">
+      <div className="card p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('encounter.history')}</h2>
         {history.length === 0 ? (
           <p className="text-xs text-slate-400">{t('encounter.no_history')}</p>

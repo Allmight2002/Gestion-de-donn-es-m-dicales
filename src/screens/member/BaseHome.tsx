@@ -57,55 +57,38 @@ export function BaseHome() {
 
   return (
     <section className="space-y-5">
-      <button onClick={() => navigate('/')} className="text-sm text-teal-700 hover:underline">
+      <button onClick={() => navigate('/')} className="text-sm font-medium text-slate-500 hover:text-teal-700">
         ← {t('base.back_to_dashboard')}
       </button>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{listing.base.name}</h1>
-          <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
-            {t(`baserole.${listing.role}`)}
-          </span>
+          <h1 className="page-title">{listing.base.name}</h1>
+          <span className="badge">{t(`baserole.${listing.role}`)}</span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {listing.role === 'owner' && (
-            <button
-              onClick={() => navigate(`/bases/${id}/template`)}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
+            <button onClick={() => navigate(`/bases/${id}/template`)} className="btn-secondary">
               {t('basetemplate.edit')}
             </button>
           )}
           {listing.role === 'owner' && (
-            <button
-              onClick={() => navigate(`/bases/${id}/access`)}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
+            <button onClick={() => navigate(`/bases/${id}/access`)} className="btn-secondary">
               {t('access.manage')}
             </button>
           )}
           {listing.role === 'owner' && (
-            <button
-              onClick={() => navigate(`/bases/${id}/curation`)}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
+            <button onClick={() => navigate(`/bases/${id}/curation`)} className="btn-secondary">
               {t('curation.board')}
             </button>
           )}
           {(listing.role === 'owner' || listing.permissions.canExportData || listing.permissions.canEditStructuredData) && (
-            <button
-              onClick={() => navigate(`/bases/${id}/cohorts`)}
-              className="rounded border border-teal-600 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-50"
-            >
+            <button onClick={() => navigate(`/bases/${id}/cohorts`)} className="btn-secondary">
               {t('cohort.build')}
             </button>
           )}
           {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
-            <button
-              onClick={() => navigate(`/bases/${id}/patients/new`)}
-              className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
-            >
+            <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
               + {t('patient.new')}
             </button>
           )}
@@ -119,53 +102,51 @@ export function BaseHome() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <div>
-        <h2 className="mb-2 font-medium">{t('patient.list_title')}</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.list_title')}</h2>
         {rows.length === 0 ? (
-          <p className="text-slate-500">{t('patient.no_patients')}</p>
+          <div className="card border-dashed p-10 text-center text-slate-500">{t('patient.no_patients')}</div>
         ) : (
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-slate-500">
-                <th className="py-1">{t('patient.code')}</th>
-                <th>{t('patient.full_name')}</th>
-                {fields.map((f) => (
-                  <th key={f.id}>{f.label}</th>
-                ))}
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.id} className="border-b">
-                  <td className="py-1 font-mono text-xs">
-                    <button onClick={() => navigate(`/bases/${id}/patients/${p.id}`)} className="text-teal-700 hover:underline">
-                      {p.code}
-                    </button>
-                  </td>
-                  <td>
-                    {p.identity ? (
-                      p.identity.fullName
-                    ) : (
-                      <span className="text-slate-400">{t('patient.name_hidden')}</span>
-                    )}
-                  </td>
+          <div className="card overflow-hidden">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-2.5">{t('patient.code')}</th>
+                  <th className="px-4 py-2.5">{t('patient.full_name')}</th>
                   {fields.map((f) => (
-                    <td key={f.id}>{formatCell(p.data[f.fieldKey])}</td>
+                    <th key={f.id} className="px-4 py-2.5">{f.label}</th>
                   ))}
-                  <td className="text-right">
-                    {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
-                      <button
-                        onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}
-                        className="text-xs text-teal-700 hover:underline"
-                      >
-                        + {t('encounter.add')}
-                      </button>
-                    )}
-                  </td>
+                  <th className="px-4 py-2.5" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((p) => (
+                  <tr key={p.id} className="border-b border-slate-100 last:border-0 transition hover:bg-slate-50/60">
+                    <td className="px-4 py-2.5 font-mono text-xs">
+                      <button onClick={() => navigate(`/bases/${id}/patients/${p.id}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">
+                        {p.code}
+                      </button>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {p.identity ? p.identity.fullName : <span className="text-slate-400">{t('patient.name_hidden')}</span>}
+                    </td>
+                    {fields.map((f) => (
+                      <td key={f.id} className="px-4 py-2.5">{formatCell(p.data[f.fieldKey])}</td>
+                    ))}
+                    <td className="px-4 py-2.5 text-right">
+                      {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
+                        <button
+                          onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}
+                          className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+                        >
+                          + {t('encounter.add')}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {total > PAGE_SIZE && (

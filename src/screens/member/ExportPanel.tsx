@@ -116,20 +116,20 @@ export function ExportPanel() {
 
   return (
     <section className="max-w-2xl space-y-5">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}/cohorts`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}/cohorts`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('export.title')}</h1>
+        <h1 className="page-title mt-2">{t('export.title')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {done && <p className="rounded bg-teal-50 p-2 text-sm text-teal-800">{t('export.done')}</p>}
+      {done && <p className="rounded-xl border border-teal-100 bg-teal-50 p-2.5 text-sm text-teal-800">{t('export.done')}</p>}
 
-      <div className="grid grid-cols-2 gap-4 rounded border border-slate-200 p-4 text-sm">
+      <div className="card grid grid-cols-2 gap-4 p-4 text-sm">
         <label className="flex flex-col">
           <span className="text-slate-700">{t('export.mode')}</span>
-          <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={mode} onChange={(e) => setMode(e.target.value as 'encounter' | 'patient')}>
+          <select className="input mt-1" value={mode} onChange={(e) => setMode(e.target.value as 'encounter' | 'patient')}>
             <option value="encounter">{t('export.mode_encounter')}</option>
             <option value="patient">{t('export.mode_patient')}</option>
           </select>
@@ -137,7 +137,7 @@ export function ExportPanel() {
         {mode === 'patient' && (
           <label className="flex flex-col">
             <span className="text-slate-700">{t('export.rule')}</span>
-            <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={rule} onChange={(e) => setRule(e.target.value as AggregationRule)}>
+            <select className="input mt-1" value={rule} onChange={(e) => setRule(e.target.value as AggregationRule)}>
               <option value="first">{t('export.rule_first')}</option>
               <option value="last">{t('export.rule_last')}</option>
             </select>
@@ -145,7 +145,7 @@ export function ExportPanel() {
         )}
         <label className="flex flex-col">
           <span className="text-slate-700">{t('export.scope')}</span>
-          <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={scope} onChange={(e) => setScope(e.target.value as EncounterScopeOption)}>
+          <select className="input mt-1" value={scope} onChange={(e) => setScope(e.target.value as EncounterScopeOption)}>
             <option value="matching">{t('export.scope_matching')}</option>
             <option value="all">{t('export.scope_all')}</option>
             <option value="both">{t('export.scope_both')}</option>
@@ -153,25 +153,25 @@ export function ExportPanel() {
         </label>
         <label className="flex flex-col">
           <span className="text-slate-700">{t('export.format')}</span>
-          <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={format} onChange={(e) => setFormat(e.target.value as 'csv' | 'xlsx')}>
+          <select className="input mt-1" value={format} onChange={(e) => setFormat(e.target.value as 'csv' | 'xlsx')}>
             <option value="csv">CSV</option>
             <option value="xlsx">XLSX</option>
           </select>
         </label>
       </div>
 
-      <button onClick={() => void run()} disabled={busy} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
+      <button onClick={() => void run()} disabled={busy} className="btn-primary">
         {t('export.run')}
       </button>
 
       <div>
-        <h2 className="mb-2 font-medium">{t('export.history')}</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('export.history')}</h2>
         {history.length === 0 ? (
           <p className="text-slate-500 text-sm">{t('export.no_exports')}</p>
         ) : (
-          <ul className="space-y-1 text-xs">
+          <ul className="space-y-2 text-xs">
             {history.map((h) => (
-              <li key={h.id} className="rounded border border-slate-200 px-2 py-1">
+              <li key={h.id} className="card px-3 py-2">
                 {h.exportedAt} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
                 <span className="font-mono text-slate-400">{h.fileHash?.slice(0, 12)}…</span>
               </li>

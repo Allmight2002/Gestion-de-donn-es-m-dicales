@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { Logo } from '../components/Logo';
 
 const MIN_LENGTH = 8;
 
@@ -34,10 +35,15 @@ export function ResetPassword() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-teal-700">{t('reset.title')}</h1>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-teal-50 via-white to-slate-100" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-teal-200/40 blur-3xl" />
+      <div className="card relative w-full max-w-sm p-7 shadow-xl shadow-slate-300/40">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Logo className="h-10 w-10" />
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900">{t('reset.title')}</h1>
+          </div>
           <LanguageSwitcher />
         </div>
 
@@ -46,7 +52,7 @@ export function ResetPassword() {
             <p className="text-sm text-teal-700">{t('reset.success')}</p>
             <button
               onClick={() => navigate('/')}
-              className="w-full rounded bg-teal-700 px-3 py-2 font-medium text-white hover:bg-teal-800"
+              className="btn-primary w-full"
             >
               {t('reset.continue')}
             </button>
@@ -62,7 +68,7 @@ export function ResetPassword() {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded border border-slate-300 px-3 py-2"
+                className="input"
               />
             </label>
             <label className="block text-sm">
@@ -73,7 +79,7 @@ export function ResetPassword() {
                 autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                className="w-full rounded border border-slate-300 px-3 py-2"
+                className="input"
               />
             </label>
 
@@ -82,11 +88,11 @@ export function ResetPassword() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded bg-teal-700 px-3 py-2 font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+              className="btn-primary w-full"
             >
               {busy ? t('reset.saving') : t('reset.submit')}
             </button>
-            <button type="button" onClick={() => navigate('/login')} className="block w-full text-center text-sm text-teal-700 hover:underline">
+            <button type="button" onClick={() => navigate('/login')} className="block w-full text-center text-sm font-medium text-teal-700 hover:text-teal-800">
               {t('reset.back_to_login')}
             </button>
           </form>

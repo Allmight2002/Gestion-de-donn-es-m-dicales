@@ -80,13 +80,13 @@ export function PatientDetail() {
 
   return (
     <section className="max-w-3xl space-y-6">
-      <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
+      <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
         ← {t('admin.back')}
       </button>
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">
-          {t('patient.detail')} <span className="font-mono text-base text-slate-500">{patient.code}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="page-title">
+          {t('patient.detail')} <span className="font-mono text-base font-normal text-slate-400">{patient.code}</span>
         </h1>
         <div className="flex items-center gap-3">
           <DeleteWithReason
@@ -99,7 +99,7 @@ export function PatientDetail() {
           />
           <button
             onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
-            className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+            className="btn-primary"
           >
             + {t('encounter.add')}
           </button>
@@ -107,7 +107,7 @@ export function PatientDetail() {
       </div>
 
       {patient.identity && (
-        <fieldset className="space-y-1 rounded border border-amber-200 bg-amber-50/40 p-4 text-sm">
+        <fieldset className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm shadow-sm">
           <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
           <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patient.identity.fullName ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.dob')} :</span> {patient.identity.dateOfBirth ?? '—'}</div>
@@ -116,7 +116,7 @@ export function PatientDetail() {
         </fieldset>
       )}
 
-      <div className="rounded border border-slate-200 p-4">
+      <div className="card p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
           {patientFields.map((f) => (
@@ -129,17 +129,17 @@ export function PatientDetail() {
       </div>
 
       <div>
-        <h2 className="mb-2 font-medium">{t('patient.encounters')}</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>
         {encounters.length === 0 ? (
-          <p className="text-slate-500">{t('patient.no_encounters')}</p>
+          <div className="card border-dashed p-8 text-center text-slate-500">{t('patient.no_encounters')}</div>
         ) : (
           <ul className="space-y-3">
             {encounters.map((e) => (
-              <li key={e.id} className="rounded border border-slate-200 p-3 text-sm">
+              <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">
                     {t(`encountertype.${e.encounterType}` as MessageKey)} · {e.encounterDate}
-                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{t(`encstatus.${e.validationStatus}` as MessageKey)}</span>
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t(`encstatus.${e.validationStatus}` as MessageKey)}</span>
                     {e.ageValue != null && (
                       <span className="ml-2 text-xs text-slate-500">
                         {t('encounter.age')} : {e.ageValue} {e.ageUnit ? t(`ageunit.${e.ageUnit}` as MessageKey) : ''}
@@ -174,8 +174,8 @@ export function PatientDetail() {
 
       {patient.identity && (
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-medium">{t('image.section')}</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700">{t('image.section')}</h2>
             <button
               onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/images/new`)}
               className="text-sm text-teal-700 hover:underline"

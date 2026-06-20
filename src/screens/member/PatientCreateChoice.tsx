@@ -11,13 +11,13 @@ export function PatientCreateChoice() {
 
   return (
     <section className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('patient.new')}</h1>
+        <h1 className="page-title mt-2">{t('patient.new')}</h1>
+        <p className="mt-1 text-sm text-slate-500">{t('create.choose')}</p>
       </div>
-      <p className="text-sm text-slate-500">{t('create.choose')}</p>
 
       <div className="flex flex-col gap-4 sm:flex-row">
         <ChoiceCard

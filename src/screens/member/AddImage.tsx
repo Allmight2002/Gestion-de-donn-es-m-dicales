@@ -70,14 +70,14 @@ export function AddImage() {
 
   return (
     <section className="max-w-lg space-y-5">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('image.new_title')}</h1>
+        <h1 className="page-title mt-2">{t('image.new_title')}</h1>
       </div>
 
-      <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">{t('image.note')}</p>
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{t('image.note')}</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <form onSubmit={submit} className="space-y-4">
@@ -95,7 +95,7 @@ export function AddImage() {
         {preview ? (
           <div>
             <span className="text-xs text-slate-500">{t('image.preview')}</span>
-            <img src={preview} alt={t('image.preview')} className="mt-1 max-h-48 rounded border border-slate-200" />
+            <img src={preview} alt={t('image.preview')} className="mt-1 max-h-48 rounded-xl border border-slate-200" />
           </div>
         ) : (
           file && <p className="text-xs text-slate-500">📄 {file.name}</p>
@@ -106,27 +106,23 @@ export function AddImage() {
             {t('image.label')} <span className="text-red-500">*</span>
           </span>
           <input
-            className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
+            className="input mt-1"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             required
           />
         </label>
 
-        <label className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+        <label className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
           <input type="checkbox" checked={masking} onChange={(e) => setMasking(e.target.checked)} className="mt-0.5" />
           <span className="font-medium text-amber-900">{t('image.masking_confirm')}</span>
         </label>
 
         <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={busy || !canSend}
-            className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-          >
+          <button type="submit" disabled={busy || !canSend} className="btn-primary">
             {t('image.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
+          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
         </div>

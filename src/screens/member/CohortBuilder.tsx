@@ -107,16 +107,16 @@ export function CohortBuilder() {
 
   return (
     <section className="max-w-3xl space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm text-teal-700 hover:underline">
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="text-2xl font-semibold">{t('cohort.build')}</h1>
+        <h1 className="page-title mt-2">{t('cohort.build')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      <div className="space-y-3 rounded border border-slate-200 p-4">
+      <div className="card space-y-3 p-4">
         <h2 className="text-sm font-semibold text-slate-700">{t('cohort.conditions')}</h2>
         {conditions.length > 0 && (
           <ul className="space-y-1 text-sm">
@@ -137,7 +137,7 @@ export function CohortBuilder() {
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col text-xs text-slate-600">
             {t('cohort.field')}
-            <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={draftField} onChange={(e) => setDraftField(e.target.value)}>
+            <select className="input" value={draftField} onChange={(e) => setDraftField(e.target.value)}>
               {fields.map((f) => (
                 <option key={f.id} value={f.fieldKey}>
                   {f.label} ({t(`scope.${f.scope}`)})
@@ -147,7 +147,7 @@ export function CohortBuilder() {
           </label>
           <label className="flex flex-col text-xs text-slate-600">
             {t('cohort.op')}
-            <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={draftOp} onChange={(e) => setDraftOp(e.target.value as FilterOp)}>
+            <select className="input" value={draftOp} onChange={(e) => setDraftOp(e.target.value as FilterOp)}>
               {OPS.map((o) => (
                 <option key={o} value={o}>
                   {t(`op.${o}` as MessageKey)}
@@ -157,15 +157,15 @@ export function CohortBuilder() {
           </label>
           <label className="flex flex-col text-xs text-slate-600">
             {t('cohort.value')}
-            <input className="rounded border border-slate-300 px-2 py-1 text-sm" value={draftValue} onChange={(e) => setDraftValue(e.target.value)} />
+            <input className="input" value={draftValue} onChange={(e) => setDraftValue(e.target.value)} />
           </label>
           {draftOp === 'between' && (
             <label className="flex flex-col text-xs text-slate-600">
               {t('cohort.value2')}
-              <input className="rounded border border-slate-300 px-2 py-1 text-sm" value={draftValue2} onChange={(e) => setDraftValue2(e.target.value)} />
+              <input className="input" value={draftValue2} onChange={(e) => setDraftValue2(e.target.value)} />
             </label>
           )}
-          <button onClick={addCondition} className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100">
+          <button onClick={addCondition} className="btn-secondary">
             + {t('cohort.add_condition')}
           </button>
         </div>
@@ -173,7 +173,7 @@ export function CohortBuilder() {
       </div>
 
       <div className="flex items-center gap-3">
-        <button onClick={() => void onPreview()} disabled={busy} className="rounded border border-teal-600 px-3 py-1.5 text-sm text-teal-700 hover:bg-teal-50">
+        <button onClick={() => void onPreview()} disabled={busy} className="btn-secondary">
           {t('cohort.preview')}
         </button>
         <label className="flex items-center gap-1 text-xs text-slate-600">
@@ -187,31 +187,31 @@ export function CohortBuilder() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded border border-slate-200 p-4">
+      <div className="card flex flex-wrap items-end gap-3 p-4">
         <label className="flex flex-col text-sm">
           <span className="text-slate-700">{t('cohort.name')}</span>
-          <input className="mt-1 rounded border border-slate-300 px-2 py-1" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="flex flex-col text-sm">
           <span className="text-slate-700">{t('cohort.type')}</span>
-          <select className="mt-1 rounded border border-slate-300 px-2 py-1" value={cohortType} onChange={(e) => setCohortType(e.target.value as 'dynamic' | 'snapshot')}>
+          <select className="input mt-1" value={cohortType} onChange={(e) => setCohortType(e.target.value as 'dynamic' | 'snapshot')}>
             <option value="snapshot">{t('cohort.snapshot')}</option>
             <option value="dynamic">{t('cohort.dynamic')}</option>
           </select>
         </label>
-        <button onClick={() => void onSave()} disabled={busy || !name.trim()} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60">
+        <button onClick={() => void onSave()} disabled={busy || !name.trim()} className="btn-primary">
           {t('cohort.save')}
         </button>
       </div>
 
       <div>
-        <h2 className="mb-2 font-medium">{t('cohort.list_title')}</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('cohort.list_title')}</h2>
         {list.length === 0 ? (
-          <p className="text-slate-500">{t('cohort.no_cohorts')}</p>
+          <div className="card border-dashed p-8 text-center text-slate-500">{t('cohort.no_cohorts')}</div>
         ) : (
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-2 text-sm">
             {list.map((c) => (
-              <li key={c.id} className="flex items-center justify-between rounded border border-slate-200 px-3 py-1">
+              <li key={c.id} className="card flex items-center justify-between px-3 py-2">
                 <span>{c.name}</span>
                 <span className="flex items-center gap-3 text-xs text-slate-500">
                   {c.cohortType === 'snapshot' ? `${t('cohort.snapshot')} · ${c.memberCount} ${t('cohort.patients')}` : t('cohort.dynamic')}

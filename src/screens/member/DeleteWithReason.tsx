@@ -29,7 +29,7 @@ export function DeleteWithReason({
       <input
         aria-label={t('del.reason')}
         placeholder={t('del.reason')}
-        className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
       />
