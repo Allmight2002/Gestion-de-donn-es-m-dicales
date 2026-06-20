@@ -4,41 +4,53 @@ import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import type { MessageKey } from '../i18n/messages';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { Logo } from './Logo';
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/[\s.@]+/).filter(Boolean);
+  return (parts[0]?.[0] ?? '?').concat(parts[1]?.[0] ?? '').toUpperCase();
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut } = useAuth();
   const { t } = useI18n();
   const roleLabel = profile ? t(`role.${profile.globalRole}` as MessageKey) : '';
   const isCurationStaff = profile?.globalRole === 'curateur' || profile?.globalRole === 'validateur';
+  const displayName = profile?.fullName || user?.email || '';
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-lg font-semibold text-teal-700">{t('app.title')}</span>
-        </div>
-        <div className="flex items-center gap-4 text-sm">
-          {isCurationStaff && (
-            <Link to="/curation" className="font-medium text-teal-700 hover:underline">
-              {t('curation.pool_title')}
-            </Link>
-          )}
-          <span className="text-slate-600">
-            {profile?.fullName || user?.email}
-            <span className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
-              {roleLabel}
-            </span>
-          </span>
-          <LanguageSwitcher />
-          <button
-            onClick={() => void signOut()}
-            className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100"
-          >
-            {t('shell.signout')}
-          </button>
+    <div className="min-h-screen text-slate-900">
+      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
+          <Link to="/" className="flex items-center gap-2.5">
+            <Logo className="h-9 w-9" />
+            <span className="text-base font-semibold tracking-tight text-slate-900">{t('app.title')}</span>
+          </Link>
+
+          <div className="flex items-center gap-3 text-sm">
+            {isCurationStaff && (
+              <Link to="/curation" className="hidden font-medium text-teal-700 hover:text-teal-800 sm:inline">
+                {t('curation.pool_title')}
+              </Link>
+            )}
+            <div className="hidden items-center gap-2 sm:flex">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-teal-100 text-xs font-semibold text-teal-800">
+                {initialsOf(displayName)}
+              </span>
+              <div className="leading-tight">
+                <div className="font-medium text-slate-800">{displayName}</div>
+                <div className="text-xs text-slate-500">{roleLabel}</div>
+              </div>
+            </div>
+            <LanguageSwitcher />
+            <button onClick={() => void signOut()} className="btn-secondary">
+              {t('shell.signout')}
+            </button>
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl p-6">{children}</main>
+
+      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
     </div>
   );
 }

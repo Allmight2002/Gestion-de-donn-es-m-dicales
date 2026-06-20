@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { Logo } from '../components/Logo';
 
 export function LoginScreen() {
   const { signIn, sendPasswordReset, busy, error } = useAuth();
@@ -23,57 +24,60 @@ export function LoginScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-teal-700">{t('app.title')}</h1>
-          <LanguageSwitcher />
-        </div>
-        <p className="mb-6 text-sm text-slate-500">{t('app.tagline')}</p>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+      {/* Fond decoratif (degrade + halos) */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-teal-50 via-white to-slate-100" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-teal-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-teal-100/40 blur-3xl" />
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">{t('login.email')}</span>
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">{t('login.password')}</span>
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded border border-slate-300 px-3 py-2"
-            />
-          </label>
+      <div className="relative w-full max-w-sm">
+        <div className="card p-7 shadow-xl shadow-slate-300/40">
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Logo className="h-10 w-10" />
+              <h1 className="text-lg font-semibold tracking-tight text-slate-900">{t('app.title')}</h1>
+            </div>
+            <LanguageSwitcher />
+          </div>
+          <p className="mb-6 text-sm text-slate-500">{t('app.tagline')}</p>
 
-          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-          {resetSent && <p className="text-sm text-teal-700">{t('login.reset_sent')}</p>}
+          <form onSubmit={onSubmit} className="space-y-4">
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">{t('login.email')}</span>
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">{t('login.password')}</span>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input"
+              />
+            </label>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded bg-teal-700 px-3 py-2 font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-          >
-            {busy ? t('login.signing_in') : t('login.submit')}
+            {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+            {resetSent && <p className="text-sm text-teal-700">{t('login.reset_sent')}</p>}
+
+            <button type="submit" disabled={busy} className="btn-primary w-full">
+              {busy ? t('login.signing_in') : t('login.submit')}
+            </button>
+          </form>
+
+          <button type="button" onClick={() => void onReset()} className="mt-4 text-sm font-medium text-teal-700 hover:text-teal-800">
+            {t('login.forgot')}
           </button>
-        </form>
-
-        <button
-          type="button"
-          onClick={() => void onReset()}
-          className="mt-4 text-sm text-teal-700 hover:underline"
-        >
-          {t('login.forgot')}
-        </button>
+        </div>
+        <p className="mt-4 text-center text-xs text-slate-400">{t('app.title')}</p>
       </div>
     </div>
   );
