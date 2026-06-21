@@ -147,3 +147,30 @@ begin
   return result;
 end $$;
 grant execute on function public.promote_template_to_global(uuid) to authenticated;
+
+-- =============================================================================
+-- Suppression d'un gabarit (proprietaire OU admin via owns_template). RPC pour porter une
+-- GARDE claire : refus si une version du gabarit est utilisee (base courante, patient,
+-- rencontre ou soumission) — sinon la suppression echouerait sur une FK cryptique. La
+-- suppression cascade sur versions / champs / regles. (Renommer = simple UPDATE via RLS.)
+-- =============================================================================
+create or replace function public.delete_template(p_template_id uuid)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  if not public.owns_template(p_template_id) then raise exception 'Reserve au proprietaire du gabarit'; end if;
+
+  if exists (
+    select 1 from public.template_version tv where tv.template_id = p_template_id and (
+         exists (select 1 from public.base b           where b.current_template_version_id = tv.id)
+      or exists (select 1 from public.patient p         where p.template_version_id = tv.id)
+      or exists (select 1 from public.encounter e       where e.template_version_id = tv.id)
+      or exists (select 1 from public.raw_submission rs where rs.template_version_id = tv.id)
+    )
+  ) then
+    raise exception 'Gabarit utilise (base ou donnees) : suppression impossible';
+  end if;
+
+  delete from public.template where id = p_template_id; -- cascade versions/champs/regles
+end $$;
+grant execute on function public.delete_template(uuid) to authenticated;

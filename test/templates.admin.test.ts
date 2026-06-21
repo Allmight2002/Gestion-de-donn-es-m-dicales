@@ -142,3 +142,36 @@ describe('duplication d une version (§8.2)', () => {
     expect(after[0].n).toBe(sourceFieldCount + 1);
   });
 });
+
+describe('renommer et supprimer un gabarit (v3.0)', () => {
+  test('le proprietaire renomme son gabarit ; un tiers ne peut pas (RLS)', async () => {
+    const tplId = (await db.admin.query('select template_id from public.template_version where id=$1', [aliceVersionId])).rows[0].template_id;
+    await rowsAs(memberId, 'update public.template set name=$1, specialty=$2 where id=$3', ['Neuro renomme', 'neurochirurgie', tplId]);
+    expect((await db.admin.query('select name from public.template where id=$1', [tplId])).rows[0].name).toBe('Neuro renomme');
+    // bob (non proprietaire) : l'UPDATE RLS n'affecte aucune ligne -> nom inchange.
+    await rowsAs(bobId, 'update public.template set name=$1 where id=$2', ['Pirate', tplId]);
+    expect((await db.admin.query('select name from public.template where id=$1', [tplId])).rows[0].name).toBe('Neuro renomme');
+  });
+
+  test('suppression REFUSEE si le gabarit est utilise par une base', async () => {
+    const tplId = (await db.admin.query('select template_id from public.template_version where id=$1', [aliceVersionId])).rows[0].template_id;
+    await expect(rowsAs(memberId, 'select public.delete_template($1)', [tplId])).rejects.toThrow(/utilise/i);
+  });
+
+  test('un tiers ne peut pas supprimer le gabarit d un autre', async () => {
+    const tplId = (await db.asUser(staffId, (c) => c.query("insert into public.template(name) values('A supprimer') returning id"))).rows[0].id;
+    await expect(rowsAs(bobId, 'select public.delete_template($1)', [tplId])).rejects.toThrow(/proprietaire/i);
+  });
+
+  test('le proprietaire supprime un gabarit NON utilise (cascade versions/champs)', async () => {
+    const made = await db.asUser(staffId, async (c) => {
+      const tpl = await c.query("insert into public.template(name) values('Jetable') returning id");
+      const ver = await c.query("insert into public.template_version(template_id, version_number, status, created_by) values($1,1,'draft',$2) returning id", [tpl.rows[0].id, staffId]);
+      await c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'f','F','patient','clinique','text')", [ver.rows[0].id]);
+      return { tplId: tpl.rows[0].id, verId: ver.rows[0].id };
+    });
+    await rowsAs(staffId, 'select public.delete_template($1)', [made.tplId]);
+    expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(0);
+    expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(0); // cascade
+  });
+});

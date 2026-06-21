@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'admin gabarits (cahier §8.2) avec un repository INJECTE.
-import { describe, expect, test } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -49,6 +49,8 @@ function statefulMock(status: VersionStatus): TemplateRepository {
     async duplicateVersion() {
       return { id: 'vdup', templateId: 't1', versionNumber: 2, status: 'draft' };
     },
+    async renameTemplate() {},
+    async deleteTemplate() {},
   };
 }
 
@@ -88,6 +90,30 @@ describe('TemplatesAdmin', () => {
     await user.click(screen.getByRole('button', { name: 'Nouveau gabarit' }));
     // L'editeur affiche la section "Champs".
     expect(await screen.findByText('Champs')).toBeInTheDocument();
+  });
+
+  test('renommer un gabarit appelle renameTemplate', async () => {
+    const user = userEvent.setup();
+    const renameTemplate = vi.fn(async () => {});
+    renderAdmin({ ...statefulMock('draft'), renameTemplate });
+    await screen.findByText('Neurochirurgie');
+    await user.click(screen.getByRole('button', { name: 'Renommer' }));
+    const nameInput = screen.getByDisplayValue('Neurochirurgie');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Neuro v2');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(renameTemplate).toHaveBeenCalledWith('t1', 'Neuro v2', 'neuro'));
+  });
+
+  test('supprimer un gabarit demande confirmation puis appelle deleteTemplate', async () => {
+    const user = userEvent.setup();
+    const deleteTemplate = vi.fn(async () => {});
+    renderAdmin({ ...statefulMock('draft'), deleteTemplate });
+    await screen.findByText('Neurochirurgie');
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }));
+    expect(screen.getByText('Confirmer la suppression ?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Oui' }));
+    await waitFor(() => expect(deleteTemplate).toHaveBeenCalledWith('t1'));
   });
 });
 

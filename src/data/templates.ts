@@ -24,6 +24,10 @@ export interface TemplateRepository {
   duplicateVersion(versionId: string): Promise<TemplateVersion>;
   /** Admin : promeut un gabarit (copie) en modele global propose a tous les medecins. */
   promoteToGlobal(templateId: string): Promise<void>;
+  /** Renomme un gabarit (nom + specialite). Reserve au proprietaire / admin (RLS). */
+  renameTemplate(templateId: string, name: string, specialty: string | null): Promise<void>;
+  /** Supprime un gabarit (cascade versions). Refuse s'il est utilise par une base / des donnees. */
+  deleteTemplate(templateId: string): Promise<void>;
 }
 
 type VersionRow = { id: string; template_id: string; version_number: number; status: TemplateVersion['status'] };
@@ -54,7 +58,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     return {
       listTemplates: fail, createTemplate: fail, getVersion: fail, addField: fail, deleteField: fail,
       addRule: fail, deleteRule: fail, publishVersion: fail, archiveVersion: fail, duplicateVersion: fail,
-      promoteToGlobal: fail,
+      promoteToGlobal: fail, renameTemplate: fail, deleteTemplate: fail,
     };
   }
 
@@ -179,6 +183,16 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
 
     async promoteToGlobal(templateId) {
       const { error } = await client.rpc('promote_template_to_global', { p_template_id: templateId });
+      if (error) throw error;
+    },
+
+    async renameTemplate(templateId, name, specialty) {
+      const { error } = await client.from('template').update({ name, specialty }).eq('id', templateId);
+      if (error) throw error;
+    },
+
+    async deleteTemplate(templateId) {
+      const { error } = await client.rpc('delete_template', { p_template_id: templateId });
       if (error) throw error;
     },
   };
