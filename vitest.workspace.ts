@@ -24,6 +24,11 @@ export default defineWorkspace([
       environment: 'jsdom',
       setupFiles: ['./src/test-setup.ts'],
       globals: true,
+      // Les tests UI (userEvent) tournent en parallele du projet 'db' (PostgreSQL embarque,
+      // lourd) : sous contention, les interactions les plus lentes peuvent depasser le
+      // timeout par defaut (5 s). On l'augmente pour eviter des echecs de timing non
+      // deterministes (les assertions doivent quand meme finir par passer).
+      testTimeout: 20_000,
     },
   },
 ]);

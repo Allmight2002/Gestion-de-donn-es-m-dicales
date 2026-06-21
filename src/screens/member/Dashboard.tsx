@@ -65,9 +65,16 @@ export function Dashboard() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="page-title">{t('member.dashboard.title')}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t('app.tagline')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="page-title">{t('member.dashboard.title')}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t('app.tagline')}</p>
+        </div>
+        {mayCreate && (
+          <button onClick={() => navigate('/templates')} className="btn-secondary">
+            {t('mytemplates.title')}
+          </button>
+        )}
       </div>
 
       {mayCreate && (

@@ -5,6 +5,7 @@ import { ResetPassword } from '../screens/ResetPassword';
 import { Dashboard } from '../screens/member/Dashboard';
 import { BaseHome } from '../screens/member/BaseHome';
 import { BaseTemplateEditor } from '../screens/member/BaseTemplateEditor';
+import { MyTemplates } from '../screens/member/MyTemplates';
 import { NewPatient } from '../screens/member/NewPatient';
 import { PatientCreateChoice } from '../screens/member/PatientCreateChoice';
 import { EncounterCreateChoice } from '../screens/member/EncounterCreateChoice';
@@ -50,6 +51,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/templates"
+        element={
+          <ProtectedRoute area="member">
+            <MyTemplates />
           </ProtectedRoute>
         }
       />
