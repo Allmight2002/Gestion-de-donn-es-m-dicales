@@ -148,7 +148,7 @@ begin
     insert into public.patient (base_id, patient_code, template_version_id, data, collection_mode, validation_status, created_by)
     values (v_base, v_code, v_tv,
             jsonb_build_object('sexe', v_sex, 'birth_year', v_year, 'blood_group', v_bg),
-            'direct', 'verified', v_owner)
+            'direct', 'curated', v_owner)
     returning id into v_pid;
 
     v_adm := date '2024-01-05' + ((i * 17) % 300);
@@ -170,7 +170,7 @@ begin
          'outcome', v_out,
          'death_date', case when v_out = 'deces' then to_char(v_adm + (2 + (i % 5)), 'YYYY-MM-DD') else null end,
          'hemoglobin', v_hb
-       ), 'direct', 'verified', v_owner);
+       ), 'direct', 'curated', v_owner);
 
     if i % 3 = 0 or i % 4 = 0 then
       insert into public.encounter
@@ -178,7 +178,7 @@ begin
       values
         (v_pid, v_tv, 'suivi', v_adm + 90, public.compute_age(v_dob, v_adm + 90, 'years'), 'years',
          jsonb_build_object('diagnosis', 'controle post-operatoire', 'glasgow_score', least(15, v_gcs + 3), 'outcome', 'gueri', 'hemoglobin', 'non_fait'),
-         'direct', 'verified', v_owner);
+         'direct', 'curated', v_owner);
     end if;
   end loop;
 end $$;

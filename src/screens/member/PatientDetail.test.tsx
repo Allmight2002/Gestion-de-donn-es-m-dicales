@@ -43,7 +43,7 @@ const templateRepo = {
 } as unknown as TemplateRepository;
 
 const patientView: PatientListItem = {
-  id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'verified',
+  id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'curated',
   identity: { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null },
 };
 const encounter: Encounter = { id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'complete', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 } };

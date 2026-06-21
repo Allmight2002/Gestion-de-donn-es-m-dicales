@@ -115,9 +115,9 @@ describe('structuration -> validation (pool)', () => {
 
     const pat = (await db.admin.query('select data, validation_status from public.patient where id=$1', [c.patientId])).rows[0];
     expect(pat.data.blood_group).toBe('AB-');
-    expect(pat.validation_status).toBe('verified');
+    expect(pat.validation_status).toBe('curated');
     const enc = (await db.admin.query("select age_value, validation_status, data from public.encounter where patient_id=$1 and encounter_date='2024-05-10'", [c.patientId])).rows[0];
-    expect(enc.validation_status).toBe('verified');
+    expect(enc.validation_status).toBe('curated');
     expect(enc.age_value).not.toBeNull();
     expect('age_at_encounter' in enc.data).toBe(false);
     expect(Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [c.patientId])).rows[0].n)).toBe(encBefore + 1);

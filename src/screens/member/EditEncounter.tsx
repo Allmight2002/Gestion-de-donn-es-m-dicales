@@ -7,7 +7,7 @@ import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, isMissing, missingCodeOf } from '../../domain/validation';
 import { EncounterFields } from './EncounterFields';
 
-const STATUSES = ['draft', 'complete', 'verified'] as const;
+const STATUSES = ['draft', 'complete', 'curated'] as const;
 
 // Edition / correction d'une rencontre (cahier §10, critere 12). Le motif est requis ;
 // chaque champ modifie est journalise (field_change_log) cote serveur.

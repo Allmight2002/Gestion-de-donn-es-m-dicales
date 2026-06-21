@@ -73,7 +73,7 @@ describe('cohorte figee (snapshot) + critere 8', () => {
     await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
       baseId, 'COH-NEW', 'Nouveau M', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M' }),
     ]);
-    await db.admin.query("update public.patient set validation_status='verified' where base_id=$1 and patient_code='COH-NEW'", [baseId]);
+    await db.admin.query("update public.patient set validation_status='curated' where base_id=$1 and patient_code='COH-NEW'", [baseId]);
 
     // La cohorte FIGEE ne bouge pas (critere 8)...
     expect(await members()).toBe(expM);

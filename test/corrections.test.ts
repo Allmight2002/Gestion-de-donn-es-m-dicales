@@ -38,8 +38,8 @@ afterAll(async () => {
 
 describe('historique des corrections (field_change_log)', () => {
   test('une correction journalise ancienne/nouvelle valeur, auteur, motif ; champ inchange non journalise', async () => {
-    const updated = await rowsAs(aliceId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 12, diagnosis: 'TC' }), 'verified', 'correction Glasgow']);
-    expect(updated[0].validation_status).toBe('verified');
+    const updated = await rowsAs(aliceId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 12, diagnosis: 'TC' }), 'curated', 'correction Glasgow']);
+    expect(updated[0].validation_status).toBe('curated');
     expect(updated[0].data.glasgow_score).toBe(12);
     expect('date_of_birth' in updated[0].data).toBe(false);
 
@@ -53,13 +53,13 @@ describe('historique des corrections (field_change_log)', () => {
   });
 
   test('une maj sans changement reel n ajoute aucune entree', async () => {
-    await rowsAs(aliceId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 12, diagnosis: 'TC' }), 'verified', 'aucune modif']);
+    await rowsAs(aliceId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 12, diagnosis: 'TC' }), 'curated', 'aucune modif']);
     expect(await changes(aliceId)).toHaveLength(1); // toujours 1
   });
 
   test('un analyste (lecture seule) ne peut pas corriger', async () => {
     await expect(
-      rowsAs(annaId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 3 }), 'verified', 'tentative']),
+      rowsAs(annaId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 3 }), 'curated', 'tentative']),
     ).rejects.toThrow();
   });
 });

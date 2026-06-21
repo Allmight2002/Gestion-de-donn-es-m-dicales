@@ -7,7 +7,7 @@ import { validateValues, evaluateRules } from '../../domain/validation';
 import { EncounterFields } from './EncounterFields';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
-const STATUSES = ['draft', 'complete', 'verified'] as const;
+const STATUSES = ['draft', 'complete', 'curated'] as const;
 
 // Saisie dynamique d'une rencontre (cahier §8.5, §10) : champs par section, controles,
 // valeurs manquantes codifiees, statut, age calcule (apercu), regles de coherence.

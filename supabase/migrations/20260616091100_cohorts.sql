@@ -58,18 +58,18 @@ language sql stable security invoker set search_path = public, pg_temp as $$
   mp as (
     select p.id from public.patient p, parts
     where p.base_id = p_base_id and p.deleted_at is null
-      and (not p_validated_only or p.validation_status = 'verified')
+      and (not p_validated_only or p.validation_status = 'curated')
       and public.jsonb_matches(p.data, parts.pv)
       and ( parts.ev = '[]'::jsonb
             or exists (select 1 from public.encounter e
                        where e.patient_id = p.id and e.deleted_at is null
-                         and (not p_validated_only or e.validation_status = 'verified')
+                         and (not p_validated_only or e.validation_status = 'curated')
                          and public.jsonb_matches(e.data, parts.ev)) )
   ),
   me as (
     select e.id from public.encounter e join public.patient p on p.id = e.patient_id, parts
     where p.base_id = p_base_id and p.deleted_at is null and e.deleted_at is null
-      and (not p_validated_only or e.validation_status = 'verified')
+      and (not p_validated_only or e.validation_status = 'curated')
       and p.id in (select id from mp)
       and public.jsonb_matches(e.data, parts.ev)
   )
@@ -97,18 +97,18 @@ begin
   insert into public.cohort_member (cohort_id, patient_id)
   select v_cohort.id, p.id from public.patient p
   where p.base_id = p_base_id and p.deleted_at is null
-    and (not p_validated_only or p.validation_status = 'verified')
+    and (not p_validated_only or p.validation_status = 'curated')
     and public.jsonb_matches(p.data, pv)
     and ( ev = '[]'::jsonb
           or exists (select 1 from public.encounter e
                      where e.patient_id = p.id and e.deleted_at is null
-                       and (not p_validated_only or e.validation_status = 'verified')
+                       and (not p_validated_only or e.validation_status = 'curated')
                        and public.jsonb_matches(e.data, ev)) );
 
   insert into public.cohort_encounter_member (cohort_id, encounter_id)
   select v_cohort.id, e.id from public.encounter e join public.patient p on p.id = e.patient_id
   where p.base_id = p_base_id and p.deleted_at is null and e.deleted_at is null
-    and (not p_validated_only or e.validation_status = 'verified')
+    and (not p_validated_only or e.validation_status = 'curated')
     and exists (select 1 from public.cohort_member cm where cm.cohort_id = v_cohort.id and cm.patient_id = p.id)
     and public.jsonb_matches(e.data, ev);
 

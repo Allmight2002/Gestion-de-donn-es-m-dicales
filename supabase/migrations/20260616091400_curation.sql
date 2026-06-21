@@ -290,7 +290,7 @@ begin
       end if;
     end loop;
     update public.patient
-       set data = data || d.patient_data, validation_status = 'verified', collection_mode = 'assisted', updated_at = now()
+       set data = data || d.patient_data, validation_status = 'curated', collection_mode = 'assisted', updated_at = now()
      where id = v_pat.id;
   else
     -- Portee 'rencontre' (aucune donnee permanente) : on ne re-verifie PAS le patient.
@@ -312,7 +312,7 @@ begin
             coalesce(enc ->> 'encounter_type', 'autre'),
             (enc ->> 'encounter_date')::date, v_age, v_unit,
             coalesce(enc -> 'data', '{}'::jsonb) - 'age_at_encounter',
-            'assisted', 'verified', auth.uid());
+            'assisted', 'curated', auth.uid());
   end loop;
 
   update public.curation_draft  set status = 'validated', updated_at = now() where id = p_draft_id;

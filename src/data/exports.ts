@@ -68,9 +68,9 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
       if (e0) throw e0;
       const patientIds = (members ?? []).map((m) => m.patient_id as string);
 
-      // Securite v3.0 : un export ne contient QUE des donnees verifiees.
+      // Securite v3.0 : un export ne contient QUE des donnees CUREES (finalisees).
       const { data: pats, error: e1 } = patientIds.length
-        ? await client.from('patient').select('id, patient_code, data').in('id', patientIds).eq('validation_status', 'verified')
+        ? await client.from('patient').select('id, patient_code, data').in('id', patientIds).eq('validation_status', 'curated')
         : { data: [], error: null };
       if (e1) throw e1;
       const prows = (pats ?? []) as PatientRow[];
@@ -83,7 +83,7 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
         if (error) throw error;
         const encIds = (cem ?? []).map((r) => r.encounter_id as string);
         if (encIds.length) {
-          const { data: encs, error: e2 } = await client.from('encounter').select('id, patient_id, encounter_date, encounter_type, data').in('id', encIds).eq('validation_status', 'verified');
+          const { data: encs, error: e2 } = await client.from('encounter').select('id, patient_id, encounter_date, encounter_type, data').in('id', encIds).eq('validation_status', 'curated');
           if (e2) throw e2;
           for (const e of (encs ?? []) as EncRow[]) encMap.set(e.id, e);
         }
@@ -91,7 +91,7 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
       if ((scope === 'all' || scope === 'both') && patientIds.length) {
         const { data: encs, error: e3 } = await client
           .from('encounter').select('id, patient_id, encounter_date, encounter_type, data')
-          .in('patient_id', patientIds).is('deleted_at', null).eq('validation_status', 'verified');
+          .in('patient_id', patientIds).is('deleted_at', null).eq('validation_status', 'curated');
         if (e3) throw e3;
         for (const e of (encs ?? []) as EncRow[]) encMap.set(e.id, e);
       }

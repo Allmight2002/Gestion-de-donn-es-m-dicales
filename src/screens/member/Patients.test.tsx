@@ -95,10 +95,10 @@ describe('BaseHome (liste patients)', () => {
   test('affiche le nom si acces identite, sinon "identite masquee"', async () => {
     const list: PatientListItem[] = [
       {
-        id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 }, validationStatus: 'verified',
+        id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 }, validationStatus: 'curated',
         identity: { fullName: 'Jean Avec', dateOfBirth: null, phone: null, address: null, externalIdentifier: null },
       },
-      { id: 'p2', code: 'P-0002', templateVersionId: 'v1', data: { sexe: 'F', birth_year: 1990 }, validationStatus: 'verified', identity: null },
+      { id: 'p2', code: 'P-0002', templateVersionId: 'v1', data: { sexe: 'F', birth_year: 1990 }, validationStatus: 'curated', identity: null },
     ];
     const patientRepo = { async listPatientsPage() { return { rows: list, total: list.length }; }, async createPatient() { return { id: '', code: '' }; } } as unknown as PatientRepository;
 
@@ -121,7 +121,7 @@ describe('BaseHome (liste patients)', () => {
 
   test('pagine : affiche "1–20 sur 25" et charge la page suivante', async () => {
     const pageRow = (n: number): PatientListItem => ({
-      id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: {}, validationStatus: 'verified', identity: null,
+      id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: {}, validationStatus: 'curated', identity: null,
     });
     const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number) => ({
       rows: Array.from({ length: Math.min(limit, 25 - offset) }, (_, i) => pageRow(offset + i + 1)),
