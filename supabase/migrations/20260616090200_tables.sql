@@ -17,7 +17,7 @@
 create table public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   full_name   text not null default '',
-  global_role text not null default 'medecin' check (global_role in ('system_admin','medecin','curateur','validateur','analyste')),
+  global_role text not null default 'medecin' check (global_role in ('system_admin','medecin','curateur','validateur')),
   language    text not null default 'fr',
   created_at  timestamptz not null default now()
 );

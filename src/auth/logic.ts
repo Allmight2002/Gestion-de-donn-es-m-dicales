@@ -10,12 +10,12 @@ export interface ProfileRow {
   language: string | null;
 }
 
-const GLOBAL_ROLES: GlobalRole[] = ['system_admin', 'medecin', 'curateur', 'validateur', 'analyste'];
+const GLOBAL_ROLES: GlobalRole[] = ['system_admin', 'medecin', 'curateur', 'validateur'];
 
 function asGlobalRole(value: string | null | undefined): GlobalRole {
-  // Repli sur 'analyste' (le moins privilegie : ni creation de base, ni curation) :
-  // on ne presume JAMAIS un role privilegie pour une valeur inconnue.
-  return GLOBAL_ROLES.includes(value as GlobalRole) ? (value as GlobalRole) : 'analyste';
+  // Repli defensif sur 'medecin' (le role par defaut a l'inscription ; jamais admin ni staff
+  // de curation) : on ne presume JAMAIS un role privilegie pour une valeur inconnue.
+  return GLOBAL_ROLES.includes(value as GlobalRole) ? (value as GlobalRole) : 'medecin';
 }
 
 /** Le medecin est le seul a creer/posseder des bases (cahier v3.0). */
@@ -37,7 +37,7 @@ export function mapProfileRow(row: ProfileRow | null | undefined): Profile | nul
 export type AppArea = 'admin' | 'member';
 
 /** Atterrissage selon le role : admin -> gabarits ; curateur/validateur -> pool de
- * curation ; medecin/analyste -> tableau de bord (§11). */
+ * curation ; medecin -> tableau de bord (§11). */
 export function landingPathFor(profile: Profile): string {
   if (profile.globalRole === 'system_admin') return '/admin';
   if (profile.globalRole === 'curateur' || profile.globalRole === 'validateur') return '/curation';

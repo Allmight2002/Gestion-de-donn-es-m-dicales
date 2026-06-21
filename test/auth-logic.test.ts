@@ -11,11 +11,11 @@ describe('mapProfileRow', () => {
     expect(mapProfileRow(adminRow)).toEqual({ id: 's1', fullName: 'Admin', globalRole: 'system_admin', language: 'fr' });
   });
 
-  test('role inconnu -> repli sur analyste (jamais d escalade de privilege)', () => {
+  test('role inconnu -> repli defensif sur medecin (jamais admin ni staff)', () => {
     expect(mapProfileRow({ id: 'x', full_name: null, global_role: 'member', language: null })).toEqual({
       id: 'x',
       fullName: '',
-      globalRole: 'analyste',
+      globalRole: 'medecin',
       language: 'fr',
     });
   });

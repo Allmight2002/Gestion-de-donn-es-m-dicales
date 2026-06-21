@@ -18,10 +18,10 @@ returns boolean language sql stable security definer set search_path = public, p
   select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'medecin')
 $$;
 
--- Role STAFF (curateur / validateur / analyste) : attribue par l'admin systeme.
+-- Role STAFF (curateur / validateur) : attribue par l'admin systeme.
 create or replace function public.is_staff()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role in ('curateur','validateur','analyste'))
+  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role in ('curateur','validateur'))
 $$;
 
 -- Roles de curation (pool GLOBAL v3.0) : le curateur structure, le validateur valide.

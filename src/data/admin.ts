@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 import type { GlobalRole } from '../auth/types';
 
 /** Roles attribuables par l'admin via l'UI (le system_admin n'est pas accorde ici). */
-export const ASSIGNABLE_ROLES: GlobalRole[] = ['medecin', 'curateur', 'validateur', 'analyste'];
+export const ASSIGNABLE_ROLES: GlobalRole[] = ['medecin', 'curateur', 'validateur'];
 
 export interface AdminProfile {
   id: string;
