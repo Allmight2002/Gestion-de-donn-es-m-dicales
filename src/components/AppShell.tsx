@@ -15,7 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut } = useAuth();
   const { t } = useI18n();
   const roleLabel = profile ? t(`role.${profile.globalRole}` as MessageKey) : '';
-  const isCurationStaff = profile?.globalRole === 'curateur' || profile?.globalRole === 'validateur';
+  const isCurationStaff = profile?.globalRole === 'curateur';
   const displayName = profile?.fullName || user?.email || '';
 
   return (

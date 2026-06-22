@@ -22,7 +22,7 @@ create table public.raw_submission (
   case_code         text not null unique, -- code OPAQUE montre au staff (jamais le patient_code)
   external_ref      text,
   collection_mode   text not null default 'assisted' check (collection_mode in ('direct','assisted','mixed')),
-  status            text not null default 'received' check (status in ('received','in_curation','validated','rejected')),
+  status            text not null default 'received' check (status in ('received','in_curation','completed','cancelled')),
   notes             text,
   submitted_by      uuid references public.profiles(id),
   created_at        timestamptz not null default now()
@@ -59,9 +59,11 @@ create table public.curation_task (
   base_id       uuid not null references public.base(id) on delete cascade,
   submission_id uuid not null references public.raw_submission(id) on delete cascade,
   assigned_to   uuid references public.profiles(id),
-  -- 'preparing' = le medecin a cree le cas mais ne l'a PAS encore soumis au pool (documents
-  -- manquants de son cote) : INVISIBLE du pool, non reservable. 'open' = soumis -> dans le pool.
-  status        text not null default 'preparing' check (status in ('preparing','open','assigned','in_progress','submitted','validated','rejected')),
+  -- Cycle de vie (synthese produit §4.1) : 'preparing' (medecin prepare, hors pool) ->
+  -- 'open' (dans le pool) -> 'in_progress' (curateur a reserve) -> 'clarification_requested'
+  -- (en attente d'une reponse du medecin) -> 'completed' (curation finalisee) | 'cancelled'.
+  status        text not null default 'preparing'
+    check (status in ('preparing','open','in_progress','clarification_requested','completed','cancelled')),
   created_by    uuid references public.profiles(id),
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
@@ -80,7 +82,7 @@ create table public.curation_draft (
   base_id      uuid not null references public.base(id) on delete cascade,
   patient_data jsonb not null default '{}'::jsonb,
   encounters   jsonb not null default '[]'::jsonb,
-  status       text not null default 'draft' check (status in ('draft','submitted','validated','rejected')),
+  status       text not null default 'draft' check (status in ('draft','finalized')),
   created_by   uuid references public.profiles(id),
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
@@ -114,11 +116,16 @@ returns boolean language sql stable security definer set search_path = public, p
   select exists (select 1 from public.curation_task t where t.id = p_task_id and t.assigned_to = auth.uid())
 $$;
 
--- Le curateur courant a-t-il RESERVE la tache portant cette soumission ? Sert a ne donner
--- acces aux DOCUMENTS qu'apres reservation (et seulement de SA tache), pas a tout le pool.
+-- Le curateur courant a-t-il une tache ACTIVE sur cette soumission ? Sert a ne donner acces
+-- aux DOCUMENTS qu'apres reservation, et UNIQUEMENT tant que la tache est en cours (synthese
+-- §7.3 : l'acces est ferme apres 'completed'/'cancelled' ; l'identite reste dans les journaux).
 create or replace function public.is_assigned_to_submission(p_submission_id uuid)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select exists (select 1 from public.curation_task t where t.submission_id = p_submission_id and t.assigned_to = auth.uid())
+  select exists (
+    select 1 from public.curation_task t
+    where t.submission_id = p_submission_id and t.assigned_to = auth.uid()
+      and t.status in ('in_progress','clarification_requested')
+  )
 $$;
 
 -- =============================================================================
@@ -190,85 +197,49 @@ create policy cr_insert on public.curation_review for insert to authenticated
   with check (public.is_base_owner(base_id) or public.is_validateur());
 
 -- =============================================================================
--- RPC : soumettre un brouillon pour validation (curateur affecte).
+-- RPC : FINALISER une curation (synthese produit §4.4). Le CURATEUR affecte (ou le medecin
+-- proprietaire) finalise directement, en une transaction ATOMIQUE : re-validation SERVEUR
+-- (bornes/listes/type via assert_data_valid), ecriture des donnees CUREES dans le patient
+-- cible (permanentes fusionnees + rencontres creees, age calcule depuis la DOB lue en
+-- interne, jamais exposee), journalisation (field_change_log source='curation_finalization'
+-- + audit_log 'curation_finalized'), et avancement tache/soumission -> 'completed'. Le role
+-- `validateur` est supprime : plus de soumission/validation en deux temps.
 -- =============================================================================
-create or replace function public.submit_curation_draft(p_draft_id uuid)
-returns public.curation_draft
+create or replace function public.finalize_curation_task(p_task_id uuid)
+returns public.curation_task
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
+  t      public.curation_task;
   d      public.curation_draft;
-  result public.curation_draft;
+  s      public.raw_submission;
+  v_pat  public.patient;
+  v_base uuid;
+  v_dob  date;
+  k      text;
+  v_old  jsonb;
+  v_new  jsonb;
+  enc    jsonb;
+  v_age  numeric;
+  v_unit text;
 begin
   if auth.uid() is null then raise exception 'Authentification requise'; end if;
-  select * into d from public.curation_draft where id = p_draft_id for update;
-  if not found then raise exception 'Brouillon introuvable'; end if;
 
-  if not (public.is_base_owner(d.base_id) or public.is_assigned_curator(d.task_id)) then
-    raise exception 'Reserve au curateur ayant reserve le cas';
+  select * into t from public.curation_task where id = p_task_id and deleted_at is null for update;
+  if not found then raise exception 'Cas introuvable'; end if;
+  v_base := t.base_id;
+
+  -- Autorisation : le curateur AFFECTE ou le medecin proprietaire (§6).
+  if not (public.is_assigned_curator(t.id) or public.is_base_owner(v_base)) then
+    raise exception 'Reserve au curateur affecte (ou au proprietaire)';
   end if;
-  if d.status <> 'draft' then raise exception 'Le brouillon n''est pas modifiable (statut=%)', d.status; end if;
-
-  update public.curation_draft set status = 'submitted', updated_at = now() where id = p_draft_id returning * into result;
-  update public.curation_task set status = 'submitted', updated_at = now() where id = d.task_id;
-  return result;
-end $$;
-
-grant execute on function public.submit_curation_draft(uuid) to authenticated;
-
--- =============================================================================
--- RPC : VALIDER (ou rejeter) un brouillon — operation ATOMIQUE et privilegiee.
--- Reserve a can_validate_data. En cas d'approbation : ecrit les donnees VERIFIEES
--- dans le patient cible (donnees permanentes fusionnees + rencontres creees), calcule
--- l'age depuis la DOB lue en interne (jamais exposee), journalise (field_change_log
--- source='curation_validation' + audit_log), et fait avancer tache/soumission.
--- =============================================================================
-create or replace function public.validate_curation_draft(p_draft_id uuid, p_decision text, p_comment text default null)
-returns public.curation_review
-language plpgsql security definer set search_path = public, pg_temp as $$
-declare
-  d        public.curation_draft;
-  t        public.curation_task;
-  s        public.raw_submission;
-  v_pat    public.patient;
-  v_base   uuid;
-  v_dob    date;
-  v_review public.curation_review;
-  k        text;
-  v_old    jsonb;
-  v_new    jsonb;
-  enc      jsonb;
-  v_age    numeric;
-  v_unit   text;
-begin
-  if auth.uid() is null then raise exception 'Authentification requise'; end if;
-  if p_decision not in ('approved','rejected') then raise exception 'Decision invalide: %', p_decision; end if;
-
-  select * into d from public.curation_draft where id = p_draft_id for update;
-  if not found then raise exception 'Brouillon introuvable'; end if;
-  v_base := d.base_id;
-
-  if not (public.is_base_owner(v_base) or public.is_validateur()) then
-    raise exception 'Reserve aux validateurs';
-  end if;
-  if d.status <> 'submitted' then raise exception 'Le brouillon doit etre soumis (statut=%)', d.status; end if;
-
-  select * into t from public.curation_task where id = d.task_id for update;
-  select * into s from public.raw_submission where id = t.submission_id for update;
-
-  insert into public.curation_review (draft_id, base_id, decision, comment, reviewed_by)
-  values (p_draft_id, v_base, p_decision, p_comment, auth.uid())
-  returning * into v_review;
-
-  if p_decision = 'rejected' then
-    update public.curation_draft set status = 'rejected', updated_at = now() where id = p_draft_id;
-    update public.curation_task  set status = 'rejected', updated_at = now() where id = t.id;
-    insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
-    values (auth.uid(), 'curation_rejected', 'curation_draft', p_draft_id, v_base,
-            jsonb_build_object('task_id', t.id, 'submission_id', s.id));
-    return v_review;
+  if t.status <> 'in_progress' then
+    raise exception 'Le cas doit etre en cours (statut=%)', t.status;
   end if;
 
-  -- APPROUVE : ecriture VERIFIEE dans le patient cible (analytique).
+  select * into d from public.curation_draft where task_id = t.id order by updated_at desc limit 1 for update;
+  if not found then raise exception 'Aucun brouillon a finaliser'; end if;
+
+  select * into s     from public.raw_submission where id = t.submission_id for update;
   select * into v_pat from public.patient where id = s.target_patient_id for update;
   if not found then raise exception 'Patient cible introuvable'; end if;
 
@@ -276,7 +247,7 @@ begin
   select date_of_birth into v_dob from public.patient_identity
    where base_id = v_base and patient_code = v_pat.patient_code and deleted_at is null;
 
-  -- 0) Re-validation SERVEUR (§5.4) : bornes / listes / type, comme la saisie directe.
+  -- Re-validation SERVEUR (bornes / listes / type). [Champs requis + regles : etape suivante.]
   perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'patient', d.patient_data);
 
   -- 1) Donnees permanentes : fusion + journal des champs reellement modifies.
@@ -286,7 +257,7 @@ begin
       v_new := d.patient_data -> k;
       if v_old is distinct from v_new then
         insert into public.field_change_log (entity, entity_id, base_id, field_key, old_value, new_value, reason, changed_by, source)
-        values ('patient', v_pat.id, v_base, k, v_old, v_new, 'Validation curation', auth.uid(), 'curation_validation');
+        values ('patient', v_pat.id, v_base, k, v_old, v_new, 'Finalisation curation', auth.uid(), 'curation_finalization');
       end if;
     end loop;
     update public.patient
@@ -297,7 +268,7 @@ begin
     update public.patient set updated_at = now() where id = v_pat.id;
   end if;
 
-  -- 2) Rencontres proposees -> creees VERIFIEES (age calcule, hors data).
+  -- 2) Rencontres proposees -> creees CUREES (age calcule, hors data).
   for enc in select * from jsonb_array_elements(d.encounters) loop
     perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
     v_unit := coalesce(enc ->> 'age_unit', 'years');
@@ -315,16 +286,15 @@ begin
             'assisted', 'curated', auth.uid());
   end loop;
 
-  update public.curation_draft  set status = 'validated', updated_at = now() where id = p_draft_id;
-  update public.curation_task   set status = 'validated', updated_at = now() where id = t.id;
-  update public.raw_submission  set status = 'validated' where id = s.id;
+  update public.curation_draft  set status = 'finalized', updated_at = now() where id = d.id;
+  update public.curation_task   set status = 'completed', updated_at = now() where id = t.id returning * into t;
+  update public.raw_submission  set status = 'completed' where id = s.id;
   insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
-  values (auth.uid(), 'curation_validated', 'curation_draft', p_draft_id, v_base,
-          jsonb_build_object('task_id', t.id, 'submission_id', s.id, 'patient_id', v_pat.id));
-  return v_review;
+  values (auth.uid(), 'curation_finalized', 'curation_task', t.id, v_base,
+          jsonb_build_object('submission_id', s.id, 'patient_id', v_pat.id, 'draft_id', d.id));
+  return t;
 end $$;
-
-grant execute on function public.validate_curation_draft(uuid, text, text) to authenticated;
+grant execute on function public.finalize_curation_task(uuid) to authenticated;
 
 -- =============================================================================
 -- RPC : le MEDECIN cree un cas (atomique : soumission + tache + code opaque). Le cas naît
@@ -409,8 +379,8 @@ begin
   select * into t from public.curation_task where id = p_task_id and deleted_at is null for update;
   if not found then raise exception 'Demande introuvable'; end if;
   if not public.is_base_owner(t.base_id) then raise exception 'Reserve au proprietaire de la base'; end if;
-  if t.status = 'validated' then
-    raise exception 'Une demande validee ne peut pas etre supprimee (les donnees sont deja publiees)';
+  if t.status = 'completed' then
+    raise exception 'Une demande finalisee ne peut pas etre supprimee (les donnees sont deja publiees)';
   end if;
 
   update public.curation_task set deleted_at = now(), updated_at = now() where id = p_task_id;
@@ -464,7 +434,7 @@ begin
   if not public.is_assigned_curator(p_task_id) then raise exception 'Vous n''avez pas reserve ce cas'; end if;
   update public.curation_task
      set assigned_to = null, status = 'open', updated_at = now()
-   where id = p_task_id and status in ('in_progress','assigned')
+   where id = p_task_id and status = 'in_progress'
   returning * into v_task;
   if not found then raise exception 'Cas non liberable (statut)'; end if;
   return v_task;

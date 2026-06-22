@@ -1,6 +1,6 @@
 // Types du domaine d'authentification (cahier §6 profiles, §7 roles).
 
-export type GlobalRole = 'system_admin' | 'medecin' | 'curateur' | 'validateur';
+export type GlobalRole = 'system_admin' | 'medecin' | 'curateur';
 
 export interface Profile {
   id: string;

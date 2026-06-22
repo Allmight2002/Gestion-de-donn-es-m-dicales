@@ -18,28 +18,29 @@ returns boolean language sql stable security definer set search_path = public, p
   select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'medecin')
 $$;
 
--- Role STAFF (curateur / validateur) : attribue par l'admin systeme.
+-- Role STAFF de curation = curateur (le role `validateur` est SUPPRIME : le curateur
+-- structure ET finalise — synthese produit §2.2). Attribue par l'admin systeme.
 create or replace function public.is_staff()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role in ('curateur','validateur'))
+  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'curateur')
 $$;
 
--- Roles de curation (pool GLOBAL v3.0) : le curateur structure, le validateur valide.
 create or replace function public.is_curateur()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'curateur')
 $$;
 
+-- Role `validateur` SUPPRIME : la fonction est conservee (renvoie toujours faux) pour ne pas
+-- casser d'eventuelles references de policies historiques ; plus aucun compte ne l'obtient.
 create or replace function public.is_validateur()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'validateur')
+  select false
 $$;
 
--- Acteurs du pool de curation = curateur OU validateur (l'ANALYSTE en est EXCLU : il ne
--- doit jamais voir les documents bruts ni le pool).
+-- Acteurs du pool de curation = curateur uniquement.
 create or replace function public.is_curation_staff()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select public.is_curateur() or public.is_validateur()
+  select public.is_curateur()
 $$;
 
 -- Gabarits (v3.0) : un gabarit est gere par l'admin (global) ou par son proprietaire medecin.

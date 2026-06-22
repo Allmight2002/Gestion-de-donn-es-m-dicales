@@ -17,7 +17,7 @@
 create table public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   full_name   text not null default '',
-  global_role text not null default 'medecin' check (global_role in ('system_admin','medecin','curateur','validateur')),
+  global_role text not null default 'medecin' check (global_role in ('system_admin','medecin','curateur')),
   language    text not null default 'fr',
   created_at  timestamptz not null default now()
 );
@@ -198,7 +198,7 @@ create table public.field_change_log (
   new_value  jsonb,
   changed_by uuid references public.profiles(id),
   reason     text,
-  source     text not null default 'direct_entry' check (source in ('direct_entry','curation_validation','manual_correction')),
+  source     text not null default 'direct_entry' check (source in ('direct_entry','curation_validation','curation_finalization','manual_correction')),
   changed_at timestamptz not null default now()
 );
 

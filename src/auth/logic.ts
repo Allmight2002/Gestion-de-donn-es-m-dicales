@@ -10,7 +10,7 @@ export interface ProfileRow {
   language: string | null;
 }
 
-const GLOBAL_ROLES: GlobalRole[] = ['system_admin', 'medecin', 'curateur', 'validateur'];
+const GLOBAL_ROLES: GlobalRole[] = ['system_admin', 'medecin', 'curateur'];
 
 function asGlobalRole(value: string | null | undefined): GlobalRole {
   // Repli defensif sur 'medecin' (le role par defaut a l'inscription ; jamais admin ni staff
@@ -40,7 +40,7 @@ export type AppArea = 'admin' | 'member';
  * curation ; medecin -> tableau de bord (§11). */
 export function landingPathFor(profile: Profile): string {
   if (profile.globalRole === 'system_admin') return '/admin';
-  if (profile.globalRole === 'curateur' || profile.globalRole === 'validateur') return '/curation';
+  if (profile.globalRole === 'curateur') return '/curation';
   return '/';
 }
 

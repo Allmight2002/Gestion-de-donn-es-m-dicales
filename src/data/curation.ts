@@ -49,15 +49,8 @@ export interface CurationDraftItem {
   status: string;
 }
 
-export interface CurationReviewItem {
-  id: string;
-  decision: string;
-  comment: string | null;
-  createdAt: string;
-}
-
 /** Identite MINIMALE du patient, visible UNIQUEMENT du medecin proprietaire (RLS).
- *  null pour le staff (curateur/validateur) qui ne doit jamais voir l'identite. */
+ *  null pour le staff (curateur) qui ne doit jamais voir l'identite. */
 export interface MinimalIdentity {
   fullName: string | null;
   dateOfBirth: string | null;
@@ -67,7 +60,6 @@ export interface TaskBundle {
   task: CurationTaskItem;
   documents: RawDocumentItem[];
   draft: CurationDraftItem | null;
-  reviews: CurationReviewItem[];
   patientIdentity: MinimalIdentity | null;
 }
 
@@ -100,8 +92,8 @@ export interface CurationRepository {
   /** Renvoie le brouillon de la tache, en le creant s'il n'existe pas encore. */
   ensureDraft(taskId: string, baseId: string): Promise<CurationDraftItem>;
   saveDraft(draftId: string, patientData: Record<string, unknown>, encounters: DraftEncounter[]): Promise<void>;
-  submitDraft(draftId: string): Promise<void>;
-  validateDraft(draftId: string, decision: 'approved' | 'rejected', comment: string | null): Promise<void>;
+  /** Le curateur affecte (ou le proprietaire) FINALISE la curation -> donnees curees. */
+  finalizeTask(taskId: string): Promise<void>;
 }
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -145,7 +137,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
     return {
       listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, createSubmission: fail,
       submitRequest: fail, deleteRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
-      ensureDraft: fail, saveDraft: fail, submitDraft: fail, validateDraft: fail,
+      ensureDraft: fail, saveDraft: fail, finalizeTask: fail,
     };
   }
 
@@ -203,12 +195,6 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         .maybeSingle();
       if (e3) throw e3;
 
-      const { data: reviews, error: e4 } = await client
-        .from('curation_review')
-        .select('id, decision, comment, created_at')
-        .order('created_at', { ascending: false });
-      if (e4) throw e4;
-
       // Identite minimale : tentee a chaque fois, mais la RLS ne la renvoie QU'au medecin
       // proprietaire (le staff n'a pas de patient_code et aucun acces a patient_identity).
       let patientIdentity: MinimalIdentity | null = null;
@@ -227,9 +213,6 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         task,
         documents,
         draft: draftRow ? mapDraft(draftRow as DraftRow) : null,
-        reviews: ((reviews ?? []) as { id: string; decision: string; comment: string | null; created_at: string }[]).map((r) => ({
-          id: r.id, decision: r.decision, comment: r.comment, createdAt: r.created_at,
-        })),
         patientIdentity,
       };
     },
@@ -318,13 +301,8 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       if (error) throw error;
     },
 
-    async submitDraft(draftId) {
-      const { error } = await client.rpc('submit_curation_draft', { p_draft_id: draftId });
-      if (error) throw error;
-    },
-
-    async validateDraft(draftId, decision, comment) {
-      const { error } = await client.rpc('validate_curation_draft', { p_draft_id: draftId, p_decision: decision, p_comment: comment });
+    async finalizeTask(taskId) {
+      const { error } = await client.rpc('finalize_curation_task', { p_task_id: taskId });
       if (error) throw error;
     },
   };

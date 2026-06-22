@@ -6,9 +6,9 @@ import { useAuth } from '../../auth/useAuth';
 import { useCurationRepository } from '../../data/RepositoryProvider';
 import type { CurationTaskItem } from '../../data/curation';
 
-// Pool de curation GLOBAL (cahier v3.0) : reserve au staff (curateur/validateur). Les cas
-// sont designes par un CODE OPAQUE (jamais le patient). Le curateur reserve un cas ouvert ;
-// le validateur ouvre les cas soumis pour les valider.
+// Pool de curation GLOBAL (cahier v3.0) : reserve aux CURATEURS. Les cas sont designes par
+// un CODE OPAQUE (jamais le patient). Le curateur reserve un cas ouvert puis le finalise
+// (le role validateur est supprime).
 export function CurationPool() {
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -21,7 +21,7 @@ export function CurationPool() {
   const [error, setError] = useState<string | null>(null);
 
   const role = profile?.globalRole;
-  const isStaff = role === 'curateur' || role === 'validateur';
+  const isStaff = role === 'curateur';
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
   const load = useCallback(async () => {
@@ -92,7 +92,7 @@ export function CurationPool() {
                           {t('curation.claim')}
                         </button>
                       ) : (
-                        (mine || role === 'validateur') && (
+                        mine && (
                           <button onClick={() => navigate(`/curation/${task.id}`)} className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline">
                             {t('curation.open')}
                           </button>
@@ -115,9 +115,9 @@ function poolStatusBadge(status: string): string {
   const tone: Record<string, string> = {
     open: 'bg-teal-50 text-teal-700 ring-teal-600/20',
     in_progress: 'bg-sky-50 text-sky-700 ring-sky-600/20',
-    submitted: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
-    validated: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-    rejected: 'bg-red-50 text-red-700 ring-red-600/20',
+    clarification_requested: 'bg-orange-50 text-orange-700 ring-orange-600/20',
+    completed: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    cancelled: 'bg-slate-100 text-slate-500 ring-slate-500/20',
   };
   return `${base} ${tone[status] ?? 'bg-slate-100 text-slate-600 ring-slate-500/20'}`;
 }

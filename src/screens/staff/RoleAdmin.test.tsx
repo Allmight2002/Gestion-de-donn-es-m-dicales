@@ -44,7 +44,7 @@ describe('RoleAdmin', () => {
     renderRoleAdmin(setGlobalRole);
     await screen.findByText('Carl Curateur');
     const curateurSelect = screen.getAllByRole('combobox').find((s) => (s as HTMLSelectElement).value === 'curateur')!;
-    fireEvent.change(curateurSelect, { target: { value: 'validateur' } });
-    await waitFor(() => expect(setGlobalRole).toHaveBeenCalledWith('u2', 'validateur'));
+    fireEvent.change(curateurSelect, { target: { value: 'medecin' } });
+    await waitFor(() => expect(setGlobalRole).toHaveBeenCalledWith('u2', 'medecin'));
   });
 });

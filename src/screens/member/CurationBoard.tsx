@@ -107,9 +107,9 @@ function curStatusBadge(status: string): string {
     preparing: 'bg-amber-50 text-amber-700 ring-amber-600/20',
     open: 'bg-teal-50 text-teal-700 ring-teal-600/20',
     in_progress: 'bg-sky-50 text-sky-700 ring-sky-600/20',
-    submitted: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
-    validated: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-    rejected: 'bg-red-50 text-red-700 ring-red-600/20',
+    clarification_requested: 'bg-orange-50 text-orange-700 ring-orange-600/20',
+    completed: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    cancelled: 'bg-slate-100 text-slate-500 ring-slate-500/20',
   };
   return `${base} ${tone[status] ?? 'bg-slate-100 text-slate-600 ring-slate-500/20'}`;
 }

@@ -28,14 +28,14 @@ drop policy if exists "raw_documents_read"   on storage.objects;
 drop policy if exists "raw_documents_insert" on storage.objects;
 drop policy if exists "raw_documents_delete" on storage.objects;
 
--- Chemin : <base_id>/<submission_id>/<uuid>.<ext>. Lecture = proprietaire OU validateur OU
--- curateur AYANT RESERVE ce cas (submission_id = 2e dossier) — pas tout le pool (§5.1).
+-- Chemin : <base_id>/<submission_id>/<uuid>.<ext>. Lecture = proprietaire OU curateur AYANT
+-- RESERVE ce cas et TANT QUE la tache est active (submission_id = 2e dossier) — pas tout le
+-- pool (§5.1), et l'acces se FERME apres finalisation/annulation (§7.3, via is_assigned_to_submission).
 create policy "raw_documents_read" on storage.objects for select to authenticated
 using (
   bucket_id = 'raw-documents'
   and (
     public.is_base_owner(((storage.foldername(name))[1])::uuid)
-    or public.is_validateur()
     or public.is_assigned_to_submission(((storage.foldername(name))[2])::uuid)
   )
 );

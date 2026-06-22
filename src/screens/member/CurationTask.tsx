@@ -29,7 +29,6 @@ export function CurationTask() {
   const [encounterFields, setEncounterFields] = useState<TemplateField[]>([]);
   const [patientData, setPatientData] = useState<Record<string, unknown>>({});
   const [encounters, setEncounters] = useState<DraftEncounter[]>([]);
-  const [comment, setComment] = useState('');
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docLabel, setDocLabel] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -72,18 +71,17 @@ export function CurationTask() {
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
   if (!bundle) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
-  const { task, documents, draft, reviews, patientIdentity } = bundle;
+  const { task, documents, draft, patientIdentity } = bundle;
   const role = profile?.globalRole;
   const assignedToMe = task.assignedTo === user?.id;
   const isCurator = role === 'curateur';
-  const isValidator = role === 'validateur';
   const isOwnerMedecin = role === 'medecin'; // un medecin qui charge le cas en est proprietaire (RLS)
 
   const isPreparing = task.status === 'preparing'; // pas encore envoye au pool
   const canClaim = isCurator && task.status === 'open';
   const canStartDraft = isCurator && assignedToMe && !draft && task.status === 'in_progress';
-  const canEdit = isCurator && assignedToMe && !!draft && draft.status === 'draft';
-  const canValidate = isValidator && !!draft && draft.status === 'submitted';
+  // Le curateur affecte structure (canEdit) PUIS finalise directement (plus de validateur).
+  const canEdit = isCurator && assignedToMe && !!draft && draft.status === 'draft' && task.status === 'in_progress';
   const canAddDocs = isOwnerMedecin && isPreparing; // depot tant que le cas est en preparation
   const canSubmitRequest = isOwnerMedecin && isPreparing; // envoyer au pool
 
@@ -315,7 +313,7 @@ export function CurationTask() {
           </fieldset>
 
           {canEdit && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => void run(() => curation.saveDraft(draft.id, patientData, encounters), t('curation.saved'))}
                 disabled={busy}
@@ -323,55 +321,18 @@ export function CurationTask() {
               >
                 {t('curation.save_draft')}
               </button>
+              {/* Le curateur finalise directement (plus de validateur) : enregistre puis finalise. */}
               <button
-                onClick={() => void run(async () => { await curation.saveDraft(draft.id, patientData, encounters); await curation.submitDraft(draft.id); }, t('curation.submitted'))}
+                onClick={() => void run(async () => { await curation.saveDraft(draft.id, patientData, encounters); await curation.finalizeTask(task.id); }, t('curation.finalized'))}
                 disabled={busy}
                 className="btn-primary"
               >
-                {t('curation.submit')}
+                {t('curation.finalize')}
               </button>
-            </div>
-          )}
-
-          {canValidate && (
-            <div className="card space-y-2 p-4">
-              <h2 className="text-sm font-semibold text-slate-700">{t('curation.validation')}</h2>
-              <textarea className="input" placeholder={t('curation.comment')} value={comment} onChange={(e) => setComment(e.target.value)} />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => void run(() => curation.validateDraft(draft.id, 'approved', comment.trim() || null), t('curation.approved_ok'))}
-                  disabled={busy}
-                  className="btn-primary"
-                >
-                  {t('curation.approve')}
-                </button>
-                <button
-                  onClick={() => void run(() => curation.validateDraft(draft.id, 'rejected', comment.trim() || null), t('curation.rejected_ok'))}
-                  disabled={busy}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60"
-                >
-                  {t('curation.reject')}
-                </button>
-              </div>
             </div>
           )}
         </div>
       ))}
-
-      {reviews.length > 0 && (
-        <div className="card p-4">
-          <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('curation.reviews')}</h2>
-          <ul className="space-y-1 text-xs">
-            {reviews.map((r) => (
-              <li key={r.id}>
-                <span className={r.decision === 'approved' ? 'text-teal-700' : 'text-red-600'}>{t(`curdecision.${r.decision}` as MessageKey)}</span>
-                {r.comment && <span className="ml-2 italic text-slate-500">« {r.comment} »</span>}
-                <span className="ml-2 text-slate-400">{r.createdAt}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </section>
   );
 }
@@ -382,9 +343,9 @@ function taskStatusBadge(status: string): string {
     preparing: 'bg-amber-50 text-amber-700 ring-amber-600/20',
     open: 'bg-teal-50 text-teal-700 ring-teal-600/20',
     in_progress: 'bg-sky-50 text-sky-700 ring-sky-600/20',
-    submitted: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
-    validated: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-    rejected: 'bg-red-50 text-red-700 ring-red-600/20',
+    clarification_requested: 'bg-orange-50 text-orange-700 ring-orange-600/20',
+    completed: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    cancelled: 'bg-slate-100 text-slate-500 ring-slate-500/20',
   };
   return `${base} ${tone[status] ?? 'bg-slate-100 text-slate-600 ring-slate-500/20'}`;
 }

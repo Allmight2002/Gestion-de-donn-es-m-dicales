@@ -33,7 +33,6 @@ const bundle = (status: string, taskStatus: string): TaskBundle => ({
   task: { ...openTask, status: taskStatus, assignedTo: 'cur', assignedName: 'Carl' },
   documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', signedUrl: 'http://x/cr.pdf' }],
   draft: { id: 'dr1', taskId: 'tk1', patientData: {}, encounters: [], status },
-  reviews: [],
   patientIdentity: null,
 });
 
@@ -72,25 +71,14 @@ describe('CurationPool (staff)', () => {
 });
 
 describe('CurationTask (pool)', () => {
-  test('un validateur valide un brouillon soumis -> validateDraft(approved)', async () => {
-    auth.role = 'validateur'; auth.id = 'val';
-    const validateDraft = vi.fn(async (_id: string, _decision: 'approved' | 'rejected', _comment: string | null) => {});
-    const curation = { async getTaskBundle() { return bundle('submitted', 'submitted'); }, validateDraft } as unknown as CurationRepository;
-    renderAt('/curation/tk1', curation);
-    expect(await screen.findByText('CASE-AB12')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Valider' }));
-    await waitFor(() => expect(validateDraft).toHaveBeenCalledTimes(1));
-    expect(validateDraft.mock.calls[0][1]).toBe('approved');
-  });
-
-  test('le curateur affecte soumet le brouillon (enregistre puis soumet)', async () => {
+  test('le curateur affecte FINALISE (enregistre puis finalise -> finalizeTask)', async () => {
     auth.role = 'curateur'; auth.id = 'cur';
     const saveDraft = vi.fn(async () => {});
-    const submitDraft = vi.fn(async () => {});
-    const curation = { async getTaskBundle() { return bundle('draft', 'in_progress'); }, saveDraft, submitDraft } as unknown as CurationRepository;
+    const finalizeTask = vi.fn(async () => {});
+    const curation = { async getTaskBundle() { return bundle('draft', 'in_progress'); }, saveDraft, finalizeTask } as unknown as CurationRepository;
     renderAt('/curation/tk1', curation);
-    await userEvent.click(await screen.findByRole('button', { name: 'Soumettre pour validation' }));
-    await waitFor(() => expect(submitDraft).toHaveBeenCalledTimes(1));
+    await userEvent.click(await screen.findByRole('button', { name: 'Finaliser la curation' }));
+    await waitFor(() => expect(finalizeTask).toHaveBeenCalledWith('tk1'));
     expect(saveDraft).toHaveBeenCalledTimes(1);
   });
 });
@@ -98,7 +86,7 @@ describe('CurationTask (pool)', () => {
 describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
   const ownerBundle = (documents: TaskBundle['documents']): TaskBundle => ({
     task: { ...openTask, status: 'preparing', targetPatientCode: 'P-0001' },
-    documents, draft: null, reviews: [],
+    documents, draft: null,
     patientIdentity: { fullName: 'Marie Test', dateOfBirth: '1990-01-01' },
   });
 

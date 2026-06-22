@@ -10,7 +10,8 @@
 --   editor@demo.test       member — collaborateur editeur (identite + documents)
 --   curator1@demo.test     member — curateur
 --   curator2@demo.test     member — curateur
---   validator@demo.test    member — validateur
+--   validator@demo.test    member — curateur (le role `validateur` est supprime ; ce compte
+--                          devient un 2e curateur)
 --   anna.analyst@demo.test medecin — collaboratrice avec partage EXPORT seul (analytique +
 --                          export, jamais l'identite) — le role GLOBAL 'analyste' est supprime.
 --
@@ -37,7 +38,7 @@ update public.profiles set global_role = 'system_admin' where id in
 -- Roles globaux (auto = medecin ; le staff est attribue par l'admin systeme).
 -- alice / bob / editor = medecin (editor partage la base d'Alice, medecin-a-medecin).
 update public.profiles set global_role = 'curateur'   where id in ('66666666-6666-6666-6666-666666666666','77777777-7777-7777-7777-777777777777');
-update public.profiles set global_role = 'validateur' where id = '88888888-8888-8888-8888-888888888888';
+update public.profiles set global_role = 'curateur'   where id = '88888888-8888-8888-8888-888888888888';
 update public.profiles set global_role = 'medecin'    where id = '44444444-4444-4444-4444-444444444444';
 
 -- Identites email (requises par l'Auth Supabase/GoTrue pour la connexion mot de passe).
