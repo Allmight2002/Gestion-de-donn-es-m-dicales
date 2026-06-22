@@ -104,7 +104,7 @@ describe('reservation (anti-collision)', () => {
 describe('structuration -> finalisation (pool, sans validateur)', () => {
   test('le curateur affecte FINALISE -> donnees CUREES (age calcule, journalisees)', async () => {
     const c = await claimAndDraft('NCH-004', { blood_group: 'AB-' }, [
-      { encounter_type: 'consultation', encounter_date: '2024-05-10', age_unit: 'years', data: { diagnosis: 'AVC', glasgow_score: 13 } },
+      { encounter_type: 'consultation', encounter_date: '2024-05-10', age_unit: 'years', data: { admission_date: '2024-05-01', diagnosis: 'AVC', glasgow_score: 13 } },
     ]);
     const encBefore = Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [c.patientId])).rows[0].n);
 
@@ -132,6 +132,14 @@ describe('structuration -> finalisation (pool, sans validateur)', () => {
       { encounter_type: 'consultation', encounter_date: '2024-05-10', age_unit: 'years', data: { glasgow_score: 78 } },
     ]);
     await expect(rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [c.taskId])).rejects.toThrow(/maximum|glasgow/i);
+  });
+
+  test('completude SERVEUR (§6) : finalisation REFUSEE si un champ requis est absent', async () => {
+    // Le gabarit du seed exige `diagnosis` (encounter) ; ici on l'omet (glasgow valide).
+    const c = await claimAndDraft('NCH-003', {}, [
+      { encounter_type: 'consultation', encounter_date: '2024-05-10', age_unit: 'years', data: { glasgow_score: 12 } },
+    ]);
+    await expect(rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [c.taskId])).rejects.toThrow(/requis|manquant/i);
   });
 
   test('un curateur NON affecte ne peut pas finaliser le cas d un autre', async () => {
@@ -188,7 +196,7 @@ describe('soumission de cas (medecin)', () => {
     await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [task[0].id]);
     await rowsAs(curator1Id,
       "insert into public.curation_draft(task_id, base_id, encounters, status) values($1,$2,$3::jsonb,'draft')",
-      [task[0].id, baseId, JSON.stringify([{ encounter_type: 'suivi', encounter_date: '2024-09-01', age_unit: 'years', data: { glasgow_score: 11 } }])]);
+      [task[0].id, baseId, JSON.stringify([{ encounter_type: 'suivi', encounter_date: '2024-09-01', age_unit: 'years', data: { admission_date: '2024-09-01', diagnosis: 'suivi', glasgow_score: 11 } }])]);
     const before = Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [pid])).rows[0].n);
     await rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [task[0].id]);
     expect(Number((await db.admin.query('select count(*)::int n from public.encounter where patient_id=$1', [pid])).rows[0].n)).toBe(before + 1);

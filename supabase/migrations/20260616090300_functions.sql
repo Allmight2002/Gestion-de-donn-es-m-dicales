@@ -238,3 +238,25 @@ begin
     end if;
   end loop;
 end $$;
+
+-- =============================================================================
+-- assert_required_complete : COMPLETUDE des champs requis (synthese produit §6). Pour chaque
+-- champ `required` du scope donne, la valeur doit etre PRESENTE (valeur reelle OU code de
+-- donnee manquante {"__missing__":...}). Absente / null / vide => exception. Utilise A LA
+-- FINALISATION (pas a la saisie directe, qui autorise un brouillon partiel).
+-- =============================================================================
+create or replace function public.assert_required_complete(p_version uuid, p_scope text, p_data jsonb)
+returns void language plpgsql stable set search_path = public, pg_temp as $$
+declare f record; v jsonb;
+begin
+  for f in
+    select field_key, label from public.template_field
+    where template_version_id = p_version and scope = p_scope and required = true
+  loop
+    v := p_data -> f.field_key;
+    if (p_data is null) or (not (p_data ? f.field_key)) or (v is null) or (jsonb_typeof(v) = 'null')
+       or (jsonb_typeof(v) = 'string' and (v #>> '{}') = '') then
+      raise exception 'Champ requis manquant : %', coalesce(f.label, f.field_key);
+    end if;
+  end loop;
+end $$;

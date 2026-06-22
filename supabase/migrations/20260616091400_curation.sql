@@ -247,11 +247,14 @@ begin
   select date_of_birth into v_dob from public.patient_identity
    where base_id = v_base and patient_code = v_pat.patient_code and deleted_at is null;
 
-  -- Re-validation SERVEUR (bornes / listes / type). [Champs requis + regles : etape suivante.]
+  -- Re-validation SERVEUR (bornes / listes / type). A la finalisation, on impose AUSSI la
+  -- COMPLETUDE des champs requis (synthese §6) — contrairement a un brouillon partiel.
   perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'patient', d.patient_data);
 
   -- 1) Donnees permanentes : fusion + journal des champs reellement modifies.
   if d.patient_data <> '{}'::jsonb then
+    -- Completude sur l'etat FINAL du patient (donnees existantes + proposees), pas le seul delta.
+    perform public.assert_required_complete(coalesce(s.template_version_id, v_pat.template_version_id), 'patient', v_pat.data || d.patient_data);
     for k in select jsonb_object_keys(d.patient_data) loop
       v_old := v_pat.data -> k;
       v_new := d.patient_data -> k;
@@ -271,6 +274,7 @@ begin
   -- 2) Rencontres proposees -> creees CUREES (age calcule, hors data).
   for enc in select * from jsonb_array_elements(d.encounters) loop
     perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
+    perform public.assert_required_complete(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
     v_unit := coalesce(enc ->> 'age_unit', 'years');
     v_age  := case
                 when v_dob is not null and (enc ->> 'encounter_date') is not null

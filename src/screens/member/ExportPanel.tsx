@@ -124,7 +124,18 @@ export function ExportPanel() {
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {done && <p className="rounded-xl border border-teal-100 bg-teal-50 p-2.5 text-sm text-teal-800">{t('export.done')}</p>}
+      {done && (
+        <div className="space-y-3">
+          <p className="rounded-xl border border-teal-100 bg-teal-50 p-2.5 text-sm text-teal-800">{t('export.done')}</p>
+          {/* Proposition FACULTATIVE et explicite vers DocAssist (aucun transfert automatique
+              de donnees : le medecin depose volontairement son fichier — synthese produit §12). */}
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm">
+            <p className="font-medium text-indigo-900">✨ {t('docassist.cta_title')}</p>
+            <p className="mt-1 text-indigo-800/90">{t('docassist.cta_body')}</p>
+            <p className="mt-2 text-xs text-indigo-700/70">{t('docassist.cta_note')}</p>
+          </div>
+        </div>
+      )}
 
       <div className="card grid grid-cols-2 gap-4 p-4 text-sm">
         <label className="flex flex-col">
