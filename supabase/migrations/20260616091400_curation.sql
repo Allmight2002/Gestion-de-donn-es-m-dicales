@@ -103,6 +103,25 @@ create table public.curation_review (
 create index on public.curation_review (draft_id);
 create index on public.curation_review (base_id);
 
+-- 6) Clarification (synthese §4.3) : echange Q/R entre le curateur AFFECTE et le medecin
+--    PROPRIETAIRE. Le curateur pose une question (doc illisible, date absente, valeur
+--    improbable...) -> la tache passe en 'clarification_requested' ; le medecin repond ->
+--    la tache repasse en 'in_progress'. Une seule clarification ouverte a la fois.
+create table public.curation_clarification (
+  id          uuid primary key default gen_random_uuid(),
+  task_id     uuid not null references public.curation_task(id) on delete cascade,
+  base_id     uuid not null references public.base(id) on delete cascade,
+  question    text not null,
+  asked_by    uuid references public.profiles(id),
+  asked_at    timestamptz not null default now(),
+  answer      text,
+  answered_by uuid references public.profiles(id),
+  answered_at timestamptz,
+  status      text not null default 'open' check (status in ('open','answered'))
+);
+create index on public.curation_clarification (task_id);
+create index on public.curation_clarification (base_id);
+
 -- updated_at automatique (meme fonction que patient/encounter).
 create trigger trg_curation_task_updated  before update on public.curation_task  for each row execute function public.set_updated_at();
 create trigger trg_curation_draft_updated before update on public.curation_draft for each row execute function public.set_updated_at();
@@ -133,7 +152,7 @@ $$;
 -- =============================================================================
 grant select, insert, update, delete on
   public.raw_submission, public.raw_document, public.curation_task,
-  public.curation_draft, public.curation_review to authenticated;
+  public.curation_draft, public.curation_review, public.curation_clarification to authenticated;
 grant execute on function public.is_assigned_curator(uuid) to authenticated;
 grant execute on function public.is_assigned_to_submission(uuid) to authenticated;
 
@@ -195,6 +214,12 @@ create policy cr_select on public.curation_review for select to authenticated
   using (public.is_base_owner(base_id) or public.is_curation_staff());
 create policy cr_insert on public.curation_review for insert to authenticated
   with check (public.is_base_owner(base_id) or public.is_validateur());
+
+-- curation_clarification : lue par le proprietaire, le curateur affecte et le staff. Les
+-- ECRITURES passent par des RPC (request/answer) ; pas de policy d'ecriture directe.
+alter table public.curation_clarification enable row level security;
+create policy ccl_select on public.curation_clarification for select to authenticated
+  using (public.is_base_owner(base_id) or public.is_assigned_curator(task_id) or public.is_curation_staff());
 
 -- =============================================================================
 -- RPC : FINALISER une curation (synthese produit §4.4). Le CURATEUR affecte (ou le medecin
@@ -299,6 +324,59 @@ begin
   return t;
 end $$;
 grant execute on function public.finalize_curation_task(uuid) to authenticated;
+
+-- =============================================================================
+-- RPC : le CURATEUR affecte DEMANDE une clarification (synthese §4.3). La tache passe en
+-- 'clarification_requested' (le curateur ne peut plus finaliser tant que le medecin n'a pas
+-- repondu). Reserve au curateur affecte ; le cas doit etre 'in_progress'.
+-- =============================================================================
+create or replace function public.request_clarification(p_task_id uuid, p_question text)
+returns public.curation_clarification
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare t public.curation_task; c public.curation_clarification;
+begin
+  if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  if coalesce(btrim(p_question), '') = '' then raise exception 'La question est requise'; end if;
+  select * into t from public.curation_task where id = p_task_id and deleted_at is null for update;
+  if not found then raise exception 'Cas introuvable'; end if;
+  if not public.is_assigned_curator(t.id) then raise exception 'Reserve au curateur affecte'; end if;
+  if t.status <> 'in_progress' then raise exception 'Le cas doit etre en cours (statut=%)', t.status; end if;
+
+  insert into public.curation_clarification (task_id, base_id, question, asked_by)
+  values (t.id, t.base_id, btrim(p_question), auth.uid())
+  returning * into c;
+  update public.curation_task set status = 'clarification_requested', updated_at = now() where id = t.id;
+  insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
+  values (auth.uid(), 'curation_clarification_requested', 'curation_task', t.id, t.base_id, jsonb_build_object('clarification_id', c.id));
+  return c;
+end $$;
+grant execute on function public.request_clarification(uuid, text) to authenticated;
+
+-- =============================================================================
+-- RPC : le MEDECIN proprietaire REPOND a une clarification. La tache repasse en 'in_progress'
+-- pour que le curateur poursuive. Reserve au proprietaire ; la clarification doit etre ouverte.
+-- =============================================================================
+create or replace function public.answer_clarification(p_clarification_id uuid, p_answer text)
+returns public.curation_clarification
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c public.curation_clarification; result public.curation_clarification;
+begin
+  if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  if coalesce(btrim(p_answer), '') = '' then raise exception 'La reponse est requise'; end if;
+  select * into c from public.curation_clarification where id = p_clarification_id for update;
+  if not found then raise exception 'Clarification introuvable'; end if;
+  if not public.is_base_owner(c.base_id) then raise exception 'Reserve au medecin proprietaire'; end if;
+  if c.status <> 'open' then raise exception 'Cette clarification est deja resolue'; end if;
+
+  update public.curation_clarification
+     set answer = btrim(p_answer), answered_by = auth.uid(), answered_at = now(), status = 'answered'
+   where id = p_clarification_id returning * into result;
+  update public.curation_task set status = 'in_progress', updated_at = now() where id = c.task_id;
+  insert into public.audit_log (user_id, action, entity, entity_id, base_id, metadata)
+  values (auth.uid(), 'curation_clarification_answered', 'curation_clarification', result.id, c.base_id, jsonb_build_object('task_id', c.task_id));
+  return result;
+end $$;
+grant execute on function public.answer_clarification(uuid, text) to authenticated;
 
 -- =============================================================================
 -- RPC : le MEDECIN cree un cas (atomique : soumission + tache + code opaque). Le cas naît

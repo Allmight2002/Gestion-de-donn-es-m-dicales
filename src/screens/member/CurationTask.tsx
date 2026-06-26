@@ -32,6 +32,8 @@ export function CurationTask() {
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docLabel, setDocLabel] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [question, setQuestion] = useState(''); // clarification : question du curateur
+  const [answer, setAnswer] = useState('');      // clarification : reponse du medecin
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +73,7 @@ export function CurationTask() {
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
   if (!bundle) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
-  const { task, documents, draft, patientIdentity } = bundle;
+  const { task, documents, draft, patientIdentity, clarifications } = bundle;
   const role = profile?.globalRole;
   const assignedToMe = task.assignedTo === user?.id;
   const isCurator = role === 'curateur';
@@ -84,6 +86,11 @@ export function CurationTask() {
   const canEdit = isCurator && assignedToMe && !!draft && draft.status === 'draft' && task.status === 'in_progress';
   const canAddDocs = isOwnerMedecin && isPreparing; // depot tant que le cas est en preparation
   const canSubmitRequest = isOwnerMedecin && isPreparing; // envoyer au pool
+  // Clarification (§4.3) : le curateur affecte pose une question quand le cas est en cours ;
+  // le medecin proprietaire repond a la clarification ouverte.
+  const canAskClarification = isCurator && assignedToMe && task.status === 'in_progress';
+  const hasOpenClarification = clarifications.some((c) => c.status === 'open');
+  const canAnswerClarification = isOwnerMedecin && hasOpenClarification;
 
   async function run(fn: () => Promise<unknown>, ok?: string) {
     setBusy(true);
@@ -244,6 +251,51 @@ export function CurationTask() {
             {t('curation.submit_request')}
           </button>
           {documents.length === 0 && <p className="text-xs text-slate-500">{t('curation.submit_needs_doc')}</p>}
+        </div>
+      )}
+
+      {/* Clarification (§4.3) : fil de questions/reponses entre le curateur et le medecin. */}
+      {(clarifications.length > 0 || canAskClarification) && (
+        <div className="card space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-slate-700">{t('curation.clarifications')}</h2>
+          <ul className="space-y-2">
+            {clarifications.map((c) => (
+              <li key={c.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                <p><span className="font-medium text-slate-700">❓ {c.question}</span></p>
+                {c.answer ? (
+                  <p className="mt-1 text-teal-800">↳ {c.answer}</p>
+                ) : (
+                  <p className="mt-1 text-xs italic text-amber-600">{t('curation.clar_pending')}</p>
+                )}
+                {/* Le medecin proprietaire repond a la clarification ouverte. */}
+                {canAnswerClarification && c.status === 'open' && (
+                  <div className="mt-2 space-y-2">
+                    <textarea className="input" placeholder={t('curation.clar_answer_ph')} value={answer} onChange={(e) => setAnswer(e.target.value)} />
+                    <button
+                      disabled={busy || !answer.trim()}
+                      onClick={() => void run(async () => { await curation.answerClarification(c.id, answer.trim()); setAnswer(''); }, t('curation.clar_answered'))}
+                      className="btn-primary"
+                    >
+                      {t('curation.clar_send_answer')}
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          {/* Le curateur affecte pose une nouvelle question (cas en cours). */}
+          {canAskClarification && (
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              <textarea className="input" placeholder={t('curation.clar_question_ph')} value={question} onChange={(e) => setQuestion(e.target.value)} />
+              <button
+                disabled={busy || !question.trim()}
+                onClick={() => void run(async () => { await curation.requestClarification(task.id, question.trim()); setQuestion(''); }, t('curation.clar_requested'))}
+                className="btn-secondary"
+              >
+                {t('curation.clar_ask')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

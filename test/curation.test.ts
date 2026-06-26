@@ -203,6 +203,32 @@ describe('soumission de cas (medecin)', () => {
   });
 });
 
+describe('clarification (curateur <-> medecin, §4.3)', () => {
+  test('le curateur affecte demande ; le medecin repond -> retour en cours', async () => {
+    const c = await openCase('NCH-005');
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [c.taskId]);
+
+    const clar = await rowsAs(curator1Id, 'select * from public.request_clarification($1,$2)', [c.taskId, "Date d'admission absente ?"]);
+    expect(clar[0].status).toBe('open');
+    expect((await db.admin.query('select status from public.curation_task where id=$1', [c.taskId])).rows[0].status).toBe('clarification_requested');
+
+    // Un curateur NON affecte ne peut pas demander.
+    await expect(rowsAs(curator2Id, 'select * from public.request_clarification($1,$2)', [c.taskId, 'x'])).rejects.toThrow();
+
+    // Le medecin proprietaire repond -> la tache repasse 'in_progress'.
+    const ans = await rowsAs(aliceId, 'select * from public.answer_clarification($1,$2)', [clar[0].id, 'Admission le 3 mai']);
+    expect(ans[0].status).toBe('answered');
+    expect((await db.admin.query('select status from public.curation_task where id=$1', [c.taskId])).rows[0].status).toBe('in_progress');
+  });
+
+  test('un tiers (non proprietaire) ne peut pas repondre', async () => {
+    const c = await openCase('NCH-006');
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [c.taskId]);
+    const clar = await rowsAs(curator1Id, 'select * from public.request_clarification($1,$2)', [c.taskId, 'q']);
+    await expect(rowsAs(curator1Id, 'select * from public.answer_clarification($1,$2)', [clar[0].id, 'r'])).rejects.toThrow(/proprietaire/i);
+  });
+});
+
 describe('suppression d une demande (medecin)', () => {
   test('le proprietaire supprime sa demande : tache + documents passent en supprime + trace', async () => {
     const c = await openCase('NCH-005'); // cas 'open' avec 1 document

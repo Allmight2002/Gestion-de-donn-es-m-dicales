@@ -34,6 +34,7 @@ const bundle = (status: string, taskStatus: string): TaskBundle => ({
   documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', signedUrl: 'http://x/cr.pdf' }],
   draft: { id: 'dr1', taskId: 'tk1', patientData: {}, encounters: [], status },
   patientIdentity: null,
+  clarifications: [],
 });
 
 function renderAt(path: string, curation: CurationRepository) {
@@ -83,11 +84,42 @@ describe('CurationTask (pool)', () => {
   });
 });
 
+describe('CurationTask (clarification §4.3)', () => {
+  test('le curateur affecte DEMANDE une clarification', async () => {
+    auth.role = 'curateur'; auth.id = 'cur';
+    const requestClarification = vi.fn(async () => {});
+    const curation = { async getTaskBundle() { return bundle('draft', 'in_progress'); }, requestClarification } as unknown as CurationRepository;
+    renderAt('/curation/tk1', curation);
+    await screen.findByText('CASE-AB12');
+    await userEvent.type(screen.getByPlaceholderText(/votre question au médecin/i), 'Date d’admission absente ?');
+    await userEvent.click(screen.getByRole('button', { name: 'Demander une clarification' }));
+    await waitFor(() => expect(requestClarification).toHaveBeenCalledWith('tk1', 'Date d’admission absente ?'));
+  });
+
+  test('le medecin proprietaire REPOND a la clarification ouverte', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const answerClarification = vi.fn(async () => {});
+    const ownerBundle: TaskBundle = {
+      task: { ...openTask, status: 'clarification_requested', targetPatientCode: 'P-0001' },
+      documents: [], draft: null,
+      patientIdentity: { fullName: 'Marie Test', dateOfBirth: '1990-01-01' },
+      clarifications: [{ id: 'cl1', question: 'Date d’admission ?', askedAt: '2024-06-01', answer: null, answeredAt: null, status: 'open' }],
+    };
+    const curation = { async getTaskBundle() { return ownerBundle; }, answerClarification } as unknown as CurationRepository;
+    renderAt('/curation/tk1', curation);
+    expect(await screen.findByText(/date d’admission \?/i)).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText(/votre réponse/i), 'Admission le 3 mai');
+    await userEvent.click(screen.getByRole('button', { name: 'Répondre' }));
+    await waitFor(() => expect(answerClarification).toHaveBeenCalledWith('cl1', 'Admission le 3 mai'));
+  });
+});
+
 describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
   const ownerBundle = (documents: TaskBundle['documents']): TaskBundle => ({
     task: { ...openTask, status: 'preparing', targetPatientCode: 'P-0001' },
     documents, draft: null,
     patientIdentity: { fullName: 'Marie Test', dateOfBirth: '1990-01-01' },
+    clarifications: [],
   });
 
   test('voit l identite minimale (lecture seule) et soumet la demande au pool', async () => {

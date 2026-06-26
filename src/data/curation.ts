@@ -56,11 +56,22 @@ export interface MinimalIdentity {
   dateOfBirth: string | null;
 }
 
+/** Echange de clarification (curateur pose une question, medecin repond). */
+export interface ClarificationItem {
+  id: string;
+  question: string;
+  askedAt: string;
+  answer: string | null;
+  answeredAt: string | null;
+  status: string; // 'open' | 'answered'
+}
+
 export interface TaskBundle {
   task: CurationTaskItem;
   documents: RawDocumentItem[];
   draft: CurationDraftItem | null;
   patientIdentity: MinimalIdentity | null;
+  clarifications: ClarificationItem[];
 }
 
 export interface AddRawDocumentInput {
@@ -94,6 +105,10 @@ export interface CurationRepository {
   saveDraft(draftId: string, patientData: Record<string, unknown>, encounters: DraftEncounter[]): Promise<void>;
   /** Le curateur affecte (ou le proprietaire) FINALISE la curation -> donnees curees. */
   finalizeTask(taskId: string): Promise<void>;
+  /** Le curateur affecte DEMANDE une clarification au medecin (tache -> clarification_requested). */
+  requestClarification(taskId: string, question: string): Promise<void>;
+  /** Le medecin proprietaire REPOND a une clarification (tache -> in_progress). */
+  answerClarification(clarificationId: string, answer: string): Promise<void>;
 }
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -137,7 +152,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
     return {
       listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, createSubmission: fail,
       submitRequest: fail, deleteRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
-      ensureDraft: fail, saveDraft: fail, finalizeTask: fail,
+      ensureDraft: fail, saveDraft: fail, finalizeTask: fail, requestClarification: fail, answerClarification: fail,
     };
   }
 
@@ -209,11 +224,22 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         if (idRow) patientIdentity = { fullName: (idRow as { full_name: string | null }).full_name, dateOfBirth: (idRow as { date_of_birth: string | null }).date_of_birth };
       }
 
+      const { data: clarRows, error: e5 } = await client
+        .from('curation_clarification')
+        .select('id, question, asked_at, answer, answered_at, status')
+        .eq('task_id', taskId)
+        .order('asked_at', { ascending: true });
+      if (e5) throw e5;
+      const clarifications = ((clarRows ?? []) as { id: string; question: string; asked_at: string; answer: string | null; answered_at: string | null; status: string }[]).map((r) => ({
+        id: r.id, question: r.question, askedAt: r.asked_at, answer: r.answer, answeredAt: r.answered_at, status: r.status,
+      }));
+
       return {
         task,
         documents,
         draft: draftRow ? mapDraft(draftRow as DraftRow) : null,
         patientIdentity,
+        clarifications,
       };
     },
 
@@ -303,6 +329,16 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
 
     async finalizeTask(taskId) {
       const { error } = await client.rpc('finalize_curation_task', { p_task_id: taskId });
+      if (error) throw error;
+    },
+
+    async requestClarification(taskId, question) {
+      const { error } = await client.rpc('request_clarification', { p_task_id: taskId, p_question: question });
+      if (error) throw error;
+    },
+
+    async answerClarification(clarificationId, answer) {
+      const { error } = await client.rpc('answer_clarification', { p_clarification_id: clarificationId, p_answer: answer });
       if (error) throw error;
     },
   };
