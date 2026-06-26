@@ -81,6 +81,7 @@ export const messages = {
     'admin.delete': 'Supprimer',
     'admin.edit': 'Modifier',
     'admin.cancel': 'Annuler',
+    'admin.drag_hint': 'Glisser pour réordonner',
     'admin.field_locked_hint':
       'Variable déjà utilisée : seul le libellé est modifiable. Pour changer son nom ou son type, supprimez-la puis recréez-la.',
     'admin.published_readonly':
@@ -423,6 +424,7 @@ export const messages = {
     'admin.delete': 'Delete',
     'admin.edit': 'Edit',
     'admin.cancel': 'Cancel',
+    'admin.drag_hint': 'Drag to reorder',
     'admin.field_locked_hint':
       'Variable already in use: only the label can be changed. To change its key or type, delete it and create it again.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',

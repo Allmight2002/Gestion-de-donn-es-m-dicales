@@ -27,6 +27,7 @@ export function TemplateVersionEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<TemplateField | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
@@ -68,6 +69,22 @@ export function TemplateVersionEditor({
   const { version, fields, rules } = data;
   const editable = version.status === 'draft';
 
+  // Drag & drop : depose la variable saisie a la place de la variable cible, persiste
+  // le nouvel ordre (display_order), avec mise a jour optimiste de la liste.
+  function dropOn(targetId: string) {
+    const src = dragId;
+    setDragId(null);
+    if (!data || !src || src === targetId) return;
+    const reordered = [...data.fields];
+    const from = reordered.findIndex((f) => f.id === src);
+    const to = reordered.findIndex((f) => f.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    setData({ ...data, fields: reordered });
+    void run(() => repo.reorderFields(version.id, reordered.map((f) => f.id)));
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
@@ -103,6 +120,7 @@ export function TemplateVersionEditor({
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                {editable && <th className="w-8 px-2 py-2.5" />}
                 <th className="px-4 py-2.5">{t('admin.field_key')}</th>
                 <th className="px-4 py-2.5">{t('admin.label')}</th>
                 <th className="px-4 py-2.5">{t('admin.scope')}</th>
@@ -113,8 +131,28 @@ export function TemplateVersionEditor({
               </tr>
             </thead>
             <tbody>
-              {fields.map((f) => (
-                <tr key={f.id} className="border-b border-slate-100 last:border-0">
+              {fields.map((f) => {
+                const canDrag = editable && !editing;
+                return (
+                <tr
+                  key={f.id}
+                  draggable={canDrag}
+                  onDragStart={canDrag ? () => setDragId(f.id) : undefined}
+                  onDragOver={canDrag ? (e) => e.preventDefault() : undefined}
+                  onDrop={canDrag ? () => dropOn(f.id) : undefined}
+                  className={
+                    'border-b border-slate-100 last:border-0' +
+                    (dragId === f.id ? ' opacity-50' : '')
+                  }
+                >
+                  {editable && (
+                    <td
+                      className={'px-2 py-2.5 text-center text-slate-400' + (canDrag ? ' cursor-grab select-none' : '')}
+                      title={t('admin.drag_hint')}
+                    >
+                      ⠿
+                    </td>
+                  )}
                   <td className="px-4 py-2.5 font-mono text-xs">{f.fieldKey}</td>
                   <td className="px-4 py-2.5">{f.label}</td>
                   <td className="px-4 py-2.5">{t(`scope.${f.scope}`)}</td>
@@ -134,7 +172,8 @@ export function TemplateVersionEditor({
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

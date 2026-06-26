@@ -19,6 +19,8 @@ export interface TemplateRepository {
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
   updateField(fieldId: string, field: NewField): Promise<TemplateField>;
   deleteField(fieldId: string): Promise<void>;
+  /** Reordonne les variables d'une version (drag & drop) : `orderedIds` dans le nouvel ordre. */
+  reorderFields(versionId: string, orderedIds: string[]): Promise<void>;
   addRule(versionId: string, rule: unknown, message: string, severity: RuleSeverity): Promise<ValidationRule>;
   deleteRule(ruleId: string): Promise<void>;
   publishVersion(versionId: string): Promise<void>;
@@ -59,8 +61,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     };
     return {
       listTemplates: fail, createTemplate: fail, getVersion: fail, addField: fail, updateField: fail,
-      deleteField: fail, addRule: fail, deleteRule: fail, publishVersion: fail, archiveVersion: fail,
-      duplicateVersion: fail, promoteToGlobal: fail, renameTemplate: fail, deleteTemplate: fail,
+      deleteField: fail, reorderFields: fail, addRule: fail, deleteRule: fail, publishVersion: fail,
+      archiveVersion: fail, duplicateVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
+      deleteTemplate: fail,
     };
   }
 
@@ -137,6 +140,15 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async addField(versionId, field) {
+      // Nouvelle variable EN FIN de liste : display_order = max existant + 1 (ordre stable).
+      const { data: last } = await client
+        .from('template_field')
+        .select('display_order')
+        .eq('template_version_id', versionId)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextOrder = ((last?.display_order as number | undefined) ?? -1) + 1;
       const { data, error } = await client
         .from('template_field')
         .insert({
@@ -147,6 +159,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           section: field.section,
           type: field.type,
           required: field.required,
+          display_order: nextOrder,
         })
         .select('*')
         .single();
@@ -171,6 +184,14 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
 
     async deleteField(fieldId) {
       const { error } = await client.from('template_field').delete().eq('id', fieldId);
+      if (error) throw error;
+    },
+
+    async reorderFields(versionId, orderedIds) {
+      const { error } = await client.rpc('reorder_template_fields', {
+        p_version_id: versionId,
+        p_field_ids: orderedIds,
+      });
       if (error) throw error;
     },
 

@@ -42,6 +42,9 @@ function statefulMock(status: VersionStatus): TemplateRepository {
     async deleteField(id) {
       fields = fields.filter((x) => x.id !== id);
     },
+    async reorderFields(_v, orderedIds) {
+      fields = orderedIds.map((id) => fields.find((x) => x.id === id)!).filter(Boolean);
+    },
     async promoteToGlobal() {},
     async addRule(_v, rule, message, severity) {
       return { id: 'r1', rule, message, severity };

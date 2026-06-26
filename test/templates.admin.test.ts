@@ -220,3 +220,42 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     await expect(rowsAs(bobId, UPDATE, [fid, 'pirate', 'P', 'patient', 'clinique', 'text', false])).rejects.toThrow(/autoris/i);
   });
 });
+
+describe('reordonner les variables (drag & drop)', () => {
+  // Version globale fraiche (admin) : isolee, owns_template(admin)=true.
+  async function freshVersionWithFields() {
+    return db.asUser(staffId, async (c) => {
+      const tpl = await c.query("insert into public.template(name) values('Ordre') returning id");
+      const ver = await c.query(
+        "insert into public.template_version(template_id, version_number, status, created_by) values($1,1,'draft',$2) returning id",
+        [tpl.rows[0].id, staffId],
+      );
+      const v = ver.rows[0].id;
+      const ids: string[] = [];
+      for (const [k, ord] of [['a', 0], ['b', 1], ['c', 2]] as const) {
+        const r = await c.query(
+          "insert into public.template_field(template_version_id, field_key, label, scope, section, type, display_order) values($1,$2,$2,'patient','clinique','text',$3) returning id",
+          [v, k, ord],
+        );
+        ids.push(r.rows[0].id);
+      }
+      return { v, ids }; // ids dans l'ordre a,b,c
+    });
+  }
+
+  test('le proprietaire reordonne -> display_order reaffecte', async () => {
+    const { v, ids } = await freshVersionWithFields();
+    const [a, b, c] = ids;
+    await rowsAs(staffId, 'select public.reorder_template_fields($1,$2::uuid[])', [v, [c, a, b]]);
+    const rows = await db.admin.query('select field_key, display_order from public.template_field where template_version_id=$1 order by display_order', [v]);
+    expect(rows.rows.map((r) => r.field_key)).toEqual(['c', 'a', 'b']);
+    expect(rows.rows.map((r) => Number(r.display_order))).toEqual([0, 1, 2]);
+  });
+
+  test('un tiers ne peut pas reordonner', async () => {
+    const { v, ids } = await freshVersionWithFields();
+    await expect(
+      rowsAs(bobId, 'select public.reorder_template_fields($1,$2::uuid[])', [v, [...ids].reverse()]),
+    ).rejects.toThrow(/autoris/i);
+  });
+});
