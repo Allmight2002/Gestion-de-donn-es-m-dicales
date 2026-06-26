@@ -34,7 +34,7 @@ function mockBases(): BaseRepository {
     {
       base: { id: 'b1', name: 'Registre Neuro', specialty: 'neuro', ownerUserId: 'u', currentTemplateVersionId: 'v1' },
       role: 'owner',
-      permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canValidateData: true, canExportData: true, canManageAccess: true },
+      permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canExportData: true, canManageAccess: true },
       templateName: 'Neurochirurgie',
       versionNumber: 1,
     },
@@ -51,7 +51,7 @@ function mockBases(): BaseRepository {
       bases.push({
         base: { id, name, specialty, ownerUserId: 'u', currentTemplateVersionId: versionId },
         role: 'owner',
-        permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canValidateData: true, canExportData: true, canManageAccess: true },
+        permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canExportData: true, canManageAccess: true },
         templateName: 'Neurochirurgie',
         versionNumber: 1,
       });

@@ -101,13 +101,6 @@ returns boolean language sql stable security definer set search_path = public, p
                  where a.base_id = p_base and a.user_id = auth.uid() and a.revoked_at is null and a.can_edit_structured_data)
 $$;
 
-create or replace function public.can_validate_data(p_base uuid)
-returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select public.is_base_owner(p_base)
-      or exists (select 1 from public.base_access a
-                 where a.base_id = p_base and a.user_id = auth.uid() and a.revoked_at is null and a.can_validate_data)
-$$;
-
 create or replace function public.can_export_data(p_base uuid)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select public.is_base_owner(p_base)

@@ -219,6 +219,25 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     )).rows[0].id;
     await expect(rowsAs(bobId, UPDATE, [fid, 'pirate', 'P', 'patient', 'clinique', 'text', false])).rejects.toThrow(/autoris/i);
   });
+
+  test('suppression d un champ : OK si vierge, REFUSEE si utilise (garde serveur)', async () => {
+    // Variable vierge -> suppression autorisee.
+    const fOk = (await rowsAs(memberId, ADD_FIELD + ' returning id', [aliceVersionId, 'suppr_ok']))[0].id;
+    await rowsAs(memberId, 'select public.delete_template_field($1)', [fOk]);
+    expect((await db.admin.query('select id from public.template_field where id=$1', [fOk])).rows).toHaveLength(0);
+
+    // Variable utilisee par une donnee patient -> suppression refusee, champ conserve.
+    const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
+    const fUsed = (await db.asUser(memberId, (c) =>
+      c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'suppr_used','U','patient','clinique','text') returning id", [aliceVersionId]),
+    )).rows[0].id;
+    await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,$2,$3,$4)",
+      [baseId, 'P-DEL-' + Date.now(), aliceVersionId, JSON.stringify({ suppr_used: 'x' })],
+    );
+    await expect(rowsAs(memberId, 'select public.delete_template_field($1)', [fUsed])).rejects.toThrow(/utilis/i);
+    expect((await db.admin.query('select id from public.template_field where id=$1', [fUsed])).rows).toHaveLength(1);
+  });
 });
 
 describe('reordonner les variables (drag & drop)', () => {

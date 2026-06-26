@@ -85,6 +85,26 @@ begin
   return res;
 end $$;
 
+-- Suppression d'un champ. owns_template requis. REFUSEE si la variable est utilisee (au
+-- moins une donnee patient/rencontre porte sa cle) : supprimer le champ orphelinerait ces
+-- valeurs et ferait perdre son libelle / type au dictionnaire. Garde cote base (l'UI grise
+-- aussi le bouton). Pour retirer un champ utilise : creer une nouvelle version du gabarit.
+create or replace function public.delete_template_field(p_field_id uuid)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare cur public.template_field;
+begin
+  select * into cur from public.template_field where id = p_field_id;
+  if not found then return; end if;
+  if not public.owns_template(public.template_of_version(cur.template_version_id)) then
+    raise exception 'Modification du gabarit non autorisee';
+  end if;
+  if public.template_field_in_use(p_field_id) then
+    raise exception 'Variable deja utilisee : suppression impossible. Creez une nouvelle version du gabarit pour la retirer.';
+  end if;
+  delete from public.template_field where id = p_field_id;
+end $$;
+
 grant execute on function public.template_field_in_use(uuid) to authenticated;
 grant execute on function public.template_version_fields_in_use(uuid) to authenticated;
 grant execute on function public.update_template_field(uuid, text, text, text, text, text, boolean) to authenticated;
+grant execute on function public.delete_template_field(uuid) to authenticated;

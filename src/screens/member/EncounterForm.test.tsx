@@ -14,7 +14,7 @@ import type { TemplateField } from '../../data/types';
 
 const baseListing: BaseListing = {
   base: { id: 'b1', name: 'Base', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'v1' },
-  role: 'owner', permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canValidateData: true, canExportData: true, canManageAccess: true }, templateName: 'Neuro', versionNumber: 1,
+  role: 'owner', permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canExportData: true, canManageAccess: true }, templateName: 'Neuro', versionNumber: 1,
 };
 
 function field(p: Partial<TemplateField> & Pick<TemplateField, 'fieldKey' | 'label' | 'type'>): TemplateField {

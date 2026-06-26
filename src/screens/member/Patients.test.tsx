@@ -15,7 +15,7 @@ import type { TemplateField } from '../../data/types';
 
 const ALL_PERMS = {
   canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
-  canValidateData: true, canExportData: true, canManageAccess: true,
+  canExportData: true, canManageAccess: true,
 };
 
 const baseListing: BaseListing = {

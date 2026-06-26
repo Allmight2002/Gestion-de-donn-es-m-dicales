@@ -85,8 +85,8 @@ export function CurationBoard() {
                   <td className="px-4 py-2.5">{task.assignedTo ? (task.assignedName ?? t('curation.in_charge')) : <span className="text-slate-400">{t('curation.unassigned')}</span>}</td>
                   <td className="px-4 py-2.5 text-right">
                     <button onClick={() => navigate(`/curation/${task.id}`)} className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('curation.open')}</button>
-                    {/* Une demande validee n'est pas supprimable (provenance) : on n'offre pas l'action. */}
-                    {task.status !== 'validated' && (
+                    {/* Une demande finalisee n'est pas supprimable (provenance) : on n'offre pas l'action. */}
+                    {task.status !== 'completed' && (
                       <span className="ml-3"><DeleteRequestMenu busy={busy} onConfirm={(reason, deletePatient) => remove(task.id, reason, deletePatient)} /></span>
                     )}
                   </td>

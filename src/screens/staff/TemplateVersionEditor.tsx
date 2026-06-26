@@ -165,9 +165,13 @@ export function TemplateVersionEditor({
                         <button onClick={() => setEditing(f)} className="text-xs font-medium text-teal-700 hover:underline">
                           {t('admin.edit')}
                         </button>
-                        <button onClick={() => void run(() => repo.deleteField(f.id))} className="text-xs font-medium text-red-600 hover:underline">
-                          {t('admin.delete')}
-                        </button>
+                        {f.inUse ? (
+                          <span className="text-xs text-slate-300" title={t('admin.field_locked_hint')}>{t('admin.delete')}</span>
+                        ) : (
+                          <button onClick={() => void run(() => repo.deleteField(f.id))} className="text-xs font-medium text-red-600 hover:underline">
+                            {t('admin.delete')}
+                          </button>
+                        )}
                       </span>
                     )}
                   </td>

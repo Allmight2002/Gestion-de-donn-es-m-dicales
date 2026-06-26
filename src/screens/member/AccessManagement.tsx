@@ -11,7 +11,7 @@ import {
 // des roles GLOBAUX (admin) qui travaillent le pool de curation, jamais invites ici.
 const ROLES: AccessRole[] = ['viewer', 'editor'];
 const PERMISSION_KEYS: (keyof BasePermissions)[] = [
-  'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canValidateData', 'canExportData', 'canManageAccess',
+  'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canExportData', 'canManageAccess',
 ];
 
 const permSummary = (p: BasePermissions, t: (k: MessageKey) => string): string =>

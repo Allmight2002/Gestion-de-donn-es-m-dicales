@@ -11,7 +11,7 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 > cycle de curation. Le présent README est le guide de mise en route.
 
 État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
-partage** (`viewer` / `editor`) + **6 permissions granulaires** par base. Chaîne de curation
+partage** (`viewer` / `editor`) + **5 permissions granulaires** par base. Chaîne de curation
 complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
 **Tests : 34 fichiers / 199 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
 
@@ -31,10 +31,10 @@ complète (pool → finalisation **par le curateur**, sans étape de validation 
 | `curateur` | Structure **et finalise** les cas du pool | Documents réservés ; **jamais l'identité** |
 
 **Accès par base** : le propriétaire (owner) crée la base ; il invite des collaborateurs
-médecins avec un **rôle d'accès** (`viewer`/`editor`) et **6 permissions granulaires**
+médecins avec un **rôle d'accès** (`viewer`/`editor`) et **5 permissions granulaires**
 booléennes. La base applique les invariants par contrainte CHECK.
 
-Défauts proposés par rôle (chacune des 6 permissions reste **indépendamment** activable
+Défauts proposés par rôle (chacune des 5 permissions reste **indépendamment** activable
 par le propriétaire — `✓` = coché par défaut, `option` = décoché mais activable) :
 
 | Permission \ Rôle | owner | viewer | editor |
@@ -42,7 +42,6 @@ par le propriétaire — `✓` = coché par défaut, `option` = décoché mais a
 | `can_view_identity` | ✓ | – | ✓ |
 | `can_view_raw_documents` | ✓ | – | ✓ |
 | `can_edit_structured_data` | ✓ | – | ✓ |
-| `can_validate_data` | ✓ | – | option |
 | `can_export_data` | ✓ | – | option |
 | `can_manage_access` | ✓ | – | option |
 

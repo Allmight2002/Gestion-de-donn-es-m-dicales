@@ -183,22 +183,23 @@ create policy ct_update on public.curation_task for update to authenticated
   using (public.is_base_owner(base_id) or public.is_assigned_curator(id))
   with check (public.is_base_owner(base_id) or public.is_assigned_curator(id));
 
--- curation_draft : ecrit par le curateur AFFECTE (qui a reserve le cas) ; lu par le
--- proprietaire, le staff et le curateur affecte.
+-- curation_draft : ecrit ET lu par le SEUL curateur AFFECTE (qui a reserve le cas) et par
+-- le proprietaire. Un autre curateur du pool ne voit PAS le brouillon (isolation des donnees
+-- deja extraites entre curateurs), meme s'il voit la liste des taches.
 alter table public.curation_draft enable row level security;
 create policy cd_select on public.curation_draft for select to authenticated
-  using (public.is_base_owner(base_id) or public.is_curation_staff() or public.is_assigned_curator(task_id));
+  using (public.is_base_owner(base_id) or public.is_assigned_curator(task_id));
 create policy cd_insert on public.curation_draft for insert to authenticated
   with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)));
 create policy cd_update on public.curation_draft for update to authenticated
   using (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)))
   with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)));
 
--- curation_clarification : lue par le proprietaire, le curateur affecte et le staff. Les
--- ECRITURES passent par des RPC (request/answer) ; pas de policy d'ecriture directe.
+-- curation_clarification : lue par le proprietaire et le SEUL curateur affecte (meme isolation
+-- que le brouillon). Les ECRITURES passent par des RPC (request/answer) ; pas de policy directe.
 alter table public.curation_clarification enable row level security;
 create policy ccl_select on public.curation_clarification for select to authenticated
-  using (public.is_base_owner(base_id) or public.is_assigned_curator(task_id) or public.is_curation_staff());
+  using (public.is_base_owner(base_id) or public.is_assigned_curator(task_id));
 
 -- =============================================================================
 -- RPC : FINALISER une curation (synthese produit §4.4). Le CURATEUR affecte (ou le medecin

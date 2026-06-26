@@ -183,7 +183,8 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async deleteField(fieldId) {
-      const { error } = await client.from('template_field').delete().eq('id', fieldId);
+      // Passe par la RPC : refuse la suppression d'une variable deja utilisee (garde serveur).
+      const { error } = await client.rpc('delete_template_field', { p_field_id: fieldId });
       if (error) throw error;
     },
 

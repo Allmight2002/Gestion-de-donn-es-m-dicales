@@ -34,19 +34,18 @@ begin
   insert into public.base_access (
     base_id, user_id, access_role,
     can_view_identity, can_view_raw_documents, can_edit_structured_data,
-    can_validate_data, can_export_data, can_manage_access, granted_by
+    can_export_data, can_manage_access, granted_by
   )
   values (
     inv.base_id, auth.uid(), inv.access_role,
     inv.can_view_identity, inv.can_view_raw_documents, inv.can_edit_structured_data,
-    inv.can_validate_data, inv.can_export_data, inv.can_manage_access, inv.invited_by
+    inv.can_export_data, inv.can_manage_access, inv.invited_by
   )
   on conflict (base_id, user_id) do update set
     access_role              = excluded.access_role,
     can_view_identity        = excluded.can_view_identity,
     can_view_raw_documents   = excluded.can_view_raw_documents,
     can_edit_structured_data = excluded.can_edit_structured_data,
-    can_validate_data        = excluded.can_validate_data,
     can_export_data          = excluded.can_export_data,
     can_manage_access        = excluded.can_manage_access,
     revoked_at               = null

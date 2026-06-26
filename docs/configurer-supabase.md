@@ -36,10 +36,11 @@ une clé publique) à coller dans un fichier `.env`, et l'application se connect
    (Laisser `SUPABASE_SERVICE_ROLE_KEY` de côté tant qu'on n'a pas de script serveur.)
 6. **Créer un utilisateur de test.** Menu *Authentication* → *Users* → *Add user* →
    e-mail + mot de passe + cocher la confirmation. Le profil applicatif est créé
-   automatiquement (déclencheur). Pour en faire un compte **staff**, exécuter ensuite
-   dans le SQL Editor :
+   automatiquement (déclencheur ; rôle `medecin` par défaut). Pour en faire un
+   **administrateur** (gestion des gabarits) ou un **curateur**, exécuter ensuite
+   dans le SQL Editor (`global_role` ∈ `system_admin` | `medecin` | `curateur`) :
    ```sql
-   update public.profiles set global_role = 'staff' where id = (
+   update public.profiles set global_role = 'system_admin' where id = (
      select id from auth.users where email = 'votre@email'
    );
    ```
@@ -47,7 +48,7 @@ une clé publique) à coller dans un fichier `.env`, et l'application se connect
 
 ## Données de démonstration (optionnel)
 
-Le fichier [`supabase/seed.sql`](../supabase/seed.sql) crée 4 comptes + un jeu de
+Le fichier [`supabase/seed.sql`](../supabase/seed.sql) crée 9 comptes + un jeu de
 données fictif. Il est surtout prévu pour le **local/CLI** et les tests. En cloud, le
 plus simple est de créer les comptes via *Authentication → Add user* (étape 6) ; les
 patients de démo restent facultatifs à ce stade.
@@ -56,4 +57,4 @@ patients de démo restent facultatifs à ce stade.
 
 Donnez-moi simplement l'**URL** et la clé **anon** (ce ne sont pas des secrets
 sensibles — la clé anon est conçue pour le navigateur et protégée par la RLS), et je
-branche l'application + vous montre la connexion réelle (staff vs médecin).
+branche l'application + vous montre la connexion réelle (admin vs médecin vs curateur).

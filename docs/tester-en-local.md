@@ -64,18 +64,19 @@ Mot de passe commun : **`Password123!`**
 | `admin@demo.test` | system_admin | Administration des **gabarits** (aucun accès patient) |
 | `alice@demo.test` | propriétaire de la base | Tout : patients, rencontres, cohortes, export, accès, **curation** |
 | `editor@demo.test` | éditeur (identité) | Saisie patients/rencontres + images |
-| `curator1@demo.test` | curateur | **Structurer** un brouillon de curation (tâche affectée, NCH-002) |
-| `validator@demo.test` | validateur | **Valider** un brouillon → données vérifiées |
-| `anna.analyst@demo.test` | analyste | Cohortes + **export** ; ne voit **jamais** identité/documents bruts |
+| `curator1@demo.test` | curateur | **Structurer puis finaliser** une tâche de curation (affectée, NCH-002) |
+| `validator@demo.test` | curateur | Compte hérité (le rôle `validateur` est supprimé) |
+| `anna.analyst@demo.test` | médecin (partage `viewer` + export) | Cohortes + **export** ; ne voit **jamais** identité/documents bruts |
 
 ### Parcours suggéré pour voir la curation (cœur v3.0)
 1. `alice@demo.test` → base → **Curation** : une tâche existe (patient NCH-002, curateur Carl).
 2. `curator1@demo.test` → base → **Curation** → ouvrir la tâche → remplir le brouillon
-   (données permanentes + une rencontre) → **Soumettre pour validation**.
-3. `validator@demo.test` → même tâche → **Valider** : la rencontre apparaît alors,
-   **vérifiée**, sur la fiche patient (et entre dans les cohortes/exports).
-4. `anna.analyst@demo.test` → la donnée validée est visible en analytique, mais les
-   **documents bruts** restent invisibles.
+   (données permanentes + une rencontre), demander éventuellement une **clarification**,
+   puis **Finaliser la curation**.
+3. La rencontre apparaît alors au statut **`curated`** sur la fiche patient (et entre
+   dans les cohortes/exports). L'accès aux documents bruts de la tâche se referme.
+4. `anna.analyst@demo.test` → la donnée finalisée est visible en analytique, mais les
+   **documents bruts** et l'**identité** restent invisibles.
 
 ## Réinitialiser / arrêter
 ```bash

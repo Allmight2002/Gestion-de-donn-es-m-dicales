@@ -18,7 +18,7 @@ import type { CurationRepository } from '../../data/curation';
 const listing: BaseListing = {
   base: { id: 'b1', name: 'B', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'v1' },
   role: 'owner',
-  permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canValidateData: true, canExportData: true, canManageAccess: true },
+  permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canExportData: true, canManageAccess: true },
   templateName: 'Neuro', versionNumber: 1,
 };
 const baseRepo = { async getBase() { return listing; } } as unknown as BaseRepository;

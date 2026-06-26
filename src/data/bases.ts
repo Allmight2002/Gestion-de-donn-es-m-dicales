@@ -11,7 +11,6 @@ const ALL_PERMISSIONS: BasePermissions = {
   canViewIdentity: true,
   canViewRawDocuments: true,
   canEditStructuredData: true,
-  canValidateData: true,
   canExportData: true,
   canManageAccess: true,
 };
@@ -61,13 +60,12 @@ const mapBase = (r: BaseRow): Base => ({
 
 type AccessPermRow = {
   access_role: AccessRole; can_view_identity: boolean; can_view_raw_documents: boolean;
-  can_edit_structured_data: boolean; can_validate_data: boolean; can_export_data: boolean; can_manage_access: boolean;
+  can_edit_structured_data: boolean; can_export_data: boolean; can_manage_access: boolean;
 };
 const permsFromRow = (a: AccessPermRow | undefined): BasePermissions => ({
   canViewIdentity: a?.can_view_identity ?? false,
   canViewRawDocuments: a?.can_view_raw_documents ?? false,
   canEditStructuredData: a?.can_edit_structured_data ?? false,
-  canValidateData: a?.can_validate_data ?? false,
   canExportData: a?.can_export_data ?? false,
   canManageAccess: a?.can_manage_access ?? false,
 });
@@ -123,7 +121,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       const { data: access, error: eAcc } = await client
         .from('base_access')
         .select(
-          'base_id, access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_validate_data, can_export_data, can_manage_access',
+          'base_id, access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access',
         )
         .eq('user_id', uid)
         .is('revoked_at', null);

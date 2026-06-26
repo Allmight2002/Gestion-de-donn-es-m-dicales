@@ -57,10 +57,10 @@ Le partage de base se fait entre médecins :
 | `viewer` | Lecture seule (aucune permission cochée par défaut) |
 | `editor` | `can_view_identity` + `can_view_raw_documents` + `can_edit_structured_data` |
 
-### 2.3 Les 6 permissions granulaires (`base_access` / `base_invitation`)
+### 2.3 Les 5 permissions granulaires (`base_access` / `base_invitation`)
 
 `can_view_identity`, `can_view_raw_documents`, `can_edit_structured_data`,
-`can_validate_data`, `can_export_data`, `can_manage_access`.
+`can_export_data`, `can_manage_access`.
 
 Le **propriétaire** d'une base les possède toutes. Pour un collaborateur, chaque
 permission est un booléen indépendant, vérifié côté base par une fonction d'aide

@@ -12,7 +12,6 @@ export interface BasePermissions {
   canViewIdentity: boolean;
   canViewRawDocuments: boolean;
   canEditStructuredData: boolean;
-  canValidateData: boolean;
   canExportData: boolean;
   canManageAccess: boolean;
 }
@@ -21,7 +20,6 @@ export const NO_PERMISSIONS: BasePermissions = {
   canViewIdentity: false,
   canViewRawDocuments: false,
   canEditStructuredData: false,
-  canValidateData: false,
   canExportData: false,
   canManageAccess: false,
 };
@@ -73,7 +71,7 @@ const INVITATION_TTL_DAYS = 7;
 
 type PermRow = {
   can_view_identity: boolean; can_view_raw_documents: boolean; can_edit_structured_data: boolean;
-  can_validate_data: boolean; can_export_data: boolean; can_manage_access: boolean;
+  can_export_data: boolean; can_manage_access: boolean;
 };
 type InvRow = PermRow & { id: string; invited_email: string; access_role: AccessRole; status: string; expires_at: string };
 type AccRow = PermRow & { id: string; user_id: string; access_role: AccessRole; profiles: { full_name: string | null } | null };
@@ -82,7 +80,6 @@ const mapPerms = (r: PermRow): BasePermissions => ({
   canViewIdentity: r.can_view_identity,
   canViewRawDocuments: r.can_view_raw_documents,
   canEditStructuredData: r.can_edit_structured_data,
-  canValidateData: r.can_validate_data,
   canExportData: r.can_export_data,
   canManageAccess: r.can_manage_access,
 });
@@ -90,12 +87,11 @@ const permColumns = (p: BasePermissions) => ({
   can_view_identity: p.canViewIdentity,
   can_view_raw_documents: p.canViewRawDocuments,
   can_edit_structured_data: p.canEditStructuredData,
-  can_validate_data: p.canValidateData,
   can_export_data: p.canExportData,
   can_manage_access: p.canManageAccess,
 });
 const PERM_SELECT =
-  'can_view_identity, can_view_raw_documents, can_edit_structured_data, can_validate_data, can_export_data, can_manage_access';
+  'can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access';
 
 /** SHA-256 hex via Web Crypto — meme algorithme que digest('sha256') cote base. */
 async function sha256Hex(input: string): Promise<string> {

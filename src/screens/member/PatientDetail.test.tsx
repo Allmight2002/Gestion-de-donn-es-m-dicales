@@ -19,7 +19,7 @@ const stubAttachments = { async listAttachments() { return []; }, async addImage
 
 const ALL_PERMS = {
   canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
-  canValidateData: true, canExportData: true, canManageAccess: true,
+  canExportData: true, canManageAccess: true,
 };
 const baseListing: BaseListing = {
   base: { id: 'b1', name: 'Base', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'v1' },

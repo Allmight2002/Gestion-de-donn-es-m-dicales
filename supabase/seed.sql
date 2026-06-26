@@ -118,9 +118,9 @@ insert into public.base (id, name, specialty, owner_user_id, current_template_ve
 -- anna = collaboratrice 'viewer' avec EXPORT seul, jamais l'identite (le role de partage
 -- 'analyst' est supprime ; la capacite reste portee par les PERMISSIONS). Les curateurs
 -- travaillent le POOL GLOBAL via leur role global, ils ne sont pas invites ici.
-insert into public.base_access (base_id, user_id, access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_validate_data, can_export_data, can_manage_access, granted_by) values
-  ('20000000-0000-0000-0000-000000000001','44444444-4444-4444-4444-444444444444','viewer',  false,false,false,false,true, false,'22222222-2222-2222-2222-222222222222'),
-  ('20000000-0000-0000-0000-000000000001','55555555-5555-5555-5555-555555555555','editor',  true, false,true, false,false,false,'22222222-2222-2222-2222-222222222222');
+insert into public.base_access (base_id, user_id, access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access, granted_by) values
+  ('20000000-0000-0000-0000-000000000001','44444444-4444-4444-4444-444444444444','viewer',  false,false,false,true, false,'22222222-2222-2222-2222-222222222222'),
+  ('20000000-0000-0000-0000-000000000001','55555555-5555-5555-5555-555555555555','editor',  true, false,true, false,false,'22222222-2222-2222-2222-222222222222');
 
 -- 10 patients fictifs (saisie directe, verifies) ---------------------------------
 do $$

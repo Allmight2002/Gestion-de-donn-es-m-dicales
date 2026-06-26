@@ -62,11 +62,11 @@ beforeAll(async () => {
   await db.admin.query(
     `insert into public.base_invitation
        (base_id, invited_email, access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data,
-        can_validate_data, can_export_data, can_manage_access, token_hash, status, expires_at, invited_by)
+        can_export_data, can_manage_access, token_hash, status, expires_at, invited_by)
      values
-       ($1,'outsider@demo.test','viewer',false,false,false,false,false,false, encode(digest('tok-valid','sha256'),'hex'),  'pending', now() + interval '1 day', $2),
-       ($1,'outsider@demo.test','viewer',false,false,false,false,false,false, encode(digest('tok-expired','sha256'),'hex'),'pending', now() - interval '1 day', $2),
-       ($1,'outsider@demo.test','viewer',false,false,false,false,false,false, encode(digest('tok-revoked','sha256'),'hex'),'revoked', now() + interval '1 day', $2)`,
+       ($1,'outsider@demo.test','viewer',false,false,false,false,false, encode(digest('tok-valid','sha256'),'hex'),  'pending', now() + interval '1 day', $2),
+       ($1,'outsider@demo.test','viewer',false,false,false,false,false, encode(digest('tok-expired','sha256'),'hex'),'pending', now() - interval '1 day', $2),
+       ($1,'outsider@demo.test','viewer',false,false,false,false,false, encode(digest('tok-revoked','sha256'),'hex'),'revoked', now() + interval '1 day', $2)`,
     [baseId, aliceId],
   );
 }, 180_000);

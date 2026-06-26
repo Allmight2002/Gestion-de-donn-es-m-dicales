@@ -85,6 +85,17 @@ describe('pool global : visibilite + confidentialite', () => {
   test('le medecin proprietaire voit ses propres cas', async () => {
     expect((await rowsAs(aliceId, 'select id from public.curation_task where base_id=$1', [baseId])).length).toBeGreaterThan(0);
   });
+
+  test('un curateur ne lit PAS le brouillon ni les clarifications d un AUTRE curateur', async () => {
+    const c = await claimAndDraft('NCH-005', { blood_group: 'O+' }, []);
+    // Le curateur AFFECTE lit son brouillon (controle positif) ; un autre curateur ne le lit pas.
+    expect((await rowsAs(curator1Id, 'select id from public.curation_draft where task_id=$1', [c.taskId])).length).toBe(1);
+    expect(await rowsAs(curator2Id, 'select id from public.curation_draft where task_id=$1', [c.taskId])).toHaveLength(0);
+    // Idem pour les clarifications (meme isolation que le brouillon).
+    await rowsAs(curator1Id, 'select * from public.request_clarification($1,$2)', [c.taskId, 'question ?']);
+    expect((await rowsAs(curator1Id, 'select id from public.curation_clarification where task_id=$1', [c.taskId])).length).toBe(1);
+    expect(await rowsAs(curator2Id, 'select id from public.curation_clarification where task_id=$1', [c.taskId])).toHaveLength(0);
+  });
 });
 
 describe('reservation (anti-collision)', () => {
