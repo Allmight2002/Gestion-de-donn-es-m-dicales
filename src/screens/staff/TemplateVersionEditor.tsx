@@ -26,6 +26,7 @@ export function TemplateVersionEditor({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<TemplateField | null>(null);
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
@@ -52,8 +53,10 @@ export function TemplateVersionEditor({
       await fn();
       await reload();
       setError(null);
+      return true;
     } catch (e) {
       setError(msg(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -120,9 +123,14 @@ export function TemplateVersionEditor({
                   <td className="px-4 py-2.5">{f.required ? '✓' : ''}</td>
                   <td className="px-4 py-2.5 text-right">
                     {editable && (
-                      <button onClick={() => void run(() => repo.deleteField(f.id))} className="text-xs font-medium text-red-600 hover:underline">
-                        {t('admin.delete')}
-                      </button>
+                      <span className="flex items-center justify-end gap-3">
+                        <button onClick={() => setEditing(f)} className="text-xs font-medium text-teal-700 hover:underline">
+                          {t('admin.edit')}
+                        </button>
+                        <button onClick={() => void run(() => repo.deleteField(f.id))} className="text-xs font-medium text-red-600 hover:underline">
+                          {t('admin.delete')}
+                        </button>
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -130,7 +138,31 @@ export function TemplateVersionEditor({
             </tbody>
           </table>
         </div>
-        {editable && (
+        {editable && editing && (
+          <div className="mt-3">
+            <FieldForm
+              key={editing.id}
+              busy={busy}
+              initial={{
+                fieldKey: editing.fieldKey,
+                label: editing.label,
+                scope: editing.scope,
+                section: editing.section,
+                type: editing.type,
+                required: editing.required,
+              }}
+              lockStructural={editing.inUse ?? false}
+              submitLabel={t('admin.save')}
+              onCancel={() => setEditing(null)}
+              onSubmit={(f) =>
+                void run(() => repo.updateField(editing.id, f)).then((ok) => {
+                  if (ok) setEditing(null);
+                })
+              }
+            />
+          </div>
+        )}
+        {editable && !editing && (
           <div className="mt-3">
             <FieldForm busy={busy} onSubmit={(f) => void run(() => repo.addField(version.id, f))} />
           </div>

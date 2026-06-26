@@ -79,6 +79,10 @@ export const messages = {
     'basetemplate.edit': 'Modifier le gabarit',
     'basetemplate.hint': "Ajoutez, modifiez ou retirez librement des variables propres à cette base. Le tronc commun du modèle reste comparable entre bases.",
     'admin.delete': 'Supprimer',
+    'admin.edit': 'Modifier',
+    'admin.cancel': 'Annuler',
+    'admin.field_locked_hint':
+      'Variable déjà utilisée : seul le libellé est modifiable. Pour changer son nom ou son type, supprimez-la puis recréez-la.',
     'admin.published_readonly':
       'Version publiée : lecture seule. Dupliquez-la pour créer une nouvelle version.',
     'admin.field_key': 'Clé technique',
@@ -417,6 +421,10 @@ export const messages = {
     'basetemplate.edit': 'Edit template',
     'basetemplate.hint': 'Freely add, change or remove variables specific to this base. The shared core of the model stays comparable across bases.',
     'admin.delete': 'Delete',
+    'admin.edit': 'Edit',
+    'admin.cancel': 'Cancel',
+    'admin.field_locked_hint':
+      'Variable already in use: only the label can be changed. To change its key or type, delete it and create it again.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',
     'admin.field_key': 'Field key',
     'admin.label': 'Label',

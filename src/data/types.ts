@@ -35,6 +35,8 @@ export interface TemplateField {
   maxValue: number | null;
   allowMissingCodes: boolean;
   displayOrder: number;
+  /** Au moins une donnee patient/rencontre porte deja cette cle -> nom/type verrouilles. */
+  inUse?: boolean;
 }
 
 export interface ValidationRule {

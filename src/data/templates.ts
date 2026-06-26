@@ -16,6 +16,8 @@ export interface TemplateRepository {
   createTemplate(name: string, specialty: string | null): Promise<{ template: Template; version: TemplateVersion }>;
   getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>;
   addField(versionId: string, field: NewField): Promise<TemplateField>;
+  /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
+  updateField(fieldId: string, field: NewField): Promise<TemplateField>;
   deleteField(fieldId: string): Promise<void>;
   addRule(versionId: string, rule: unknown, message: string, severity: RuleSeverity): Promise<ValidationRule>;
   deleteRule(ruleId: string): Promise<void>;
@@ -56,9 +58,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listTemplates: fail, createTemplate: fail, getVersion: fail, addField: fail, deleteField: fail,
-      addRule: fail, deleteRule: fail, publishVersion: fail, archiveVersion: fail, duplicateVersion: fail,
-      promoteToGlobal: fail, renameTemplate: fail, deleteTemplate: fail,
+      listTemplates: fail, createTemplate: fail, getVersion: fail, addField: fail, updateField: fail,
+      deleteField: fail, addRule: fail, deleteRule: fail, publishVersion: fail, archiveVersion: fail,
+      duplicateVersion: fail, promoteToGlobal: fail, renameTemplate: fail, deleteTemplate: fail,
     };
   }
 
@@ -119,9 +121,17 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .select('id, rule, message, severity')
         .eq('template_version_id', versionId);
       if (e3) throw e3;
+      // Champs deja porteurs de donnees -> nom interne / type verrouilles cote UI.
+      const { data: usedData, error: e4 } = await client.rpc('template_version_fields_in_use', {
+        p_version_id: versionId,
+      });
+      if (e4) throw e4;
+      const used = new Set(
+        ((usedData ?? []) as (string | { id?: string })[]).map((x) => (typeof x === 'string' ? x : x.id ?? '')),
+      );
       return {
         version: mapVersion(v as VersionRow),
-        fields: ((fields as FieldRow[]) ?? []).map(mapField),
+        fields: ((fields as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
         rules: ((rules as RuleRow[]) ?? []).map(mapRule),
       };
     },
@@ -142,6 +152,21 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .single();
       if (error) throw error;
       return mapField(data as FieldRow);
+    },
+
+    async updateField(fieldId, field) {
+      const { data, error } = await client.rpc('update_template_field', {
+        p_field_id: fieldId,
+        p_field_key: field.fieldKey,
+        p_label: field.label,
+        p_scope: field.scope,
+        p_section: field.section,
+        p_type: field.type,
+        p_required: field.required,
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as FieldRow;
+      return mapField(row);
     },
 
     async deleteField(fieldId) {

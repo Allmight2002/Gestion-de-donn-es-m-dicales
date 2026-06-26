@@ -175,3 +175,48 @@ describe('renommer et supprimer un gabarit (v3.0)', () => {
     expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(0); // cascade
   });
 });
+
+describe('edition d un champ : libelle libre, nom/type verrouilles si la variable est utilisee', () => {
+  const UPDATE =
+    'select * from public.update_template_field($1,$2,$3,$4,$5,$6,$7)';
+
+  test('variable VIERGE : le proprietaire change librement nom interne, type et libelle', async () => {
+    const fid = (await rowsAs(memberId, ADD_FIELD + ' returning id', [aliceVersionId, 'vierge']))[0].id;
+    // aucune donnee -> changement structurel autorise
+    const out = await rowsAs(memberId, UPDATE, [fid, 'vierge_renomme', 'Libelle modifie', 'patient', 'biologie', 'integer', true]);
+    expect(out[0].field_key).toBe('vierge_renomme');
+    expect(out[0].type).toBe('integer');
+    expect(out[0].label).toBe('Libelle modifie');
+  });
+
+  test('variable UTILISEE : libelle OK mais nom interne / type REFUSES', async () => {
+    const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
+    const fid = (await db.asUser(memberId, (c) =>
+      c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'usee','Usee','patient','clinique','text') returning id", [aliceVersionId]),
+    )).rows[0].id;
+    // une donnee patient porte desormais la cle 'usee'
+    await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,$2,$3,$4)",
+      [baseId, 'P-EDIT-' + Date.now(), aliceVersionId, JSON.stringify({ usee: '42' })],
+    );
+
+    expect((await db.asUser(memberId, (c) => c.query('select public.template_field_in_use($1) as u', [fid]))).rows[0].u).toBe(true);
+
+    // libelle seul -> OK
+    const ok = await rowsAs(memberId, UPDATE, [fid, 'usee', 'Nouveau libelle', 'patient', 'clinique', 'text', false]);
+    expect(ok[0].label).toBe('Nouveau libelle');
+    // renommer la cle -> REFUSE
+    await expect(rowsAs(memberId, UPDATE, [fid, 'usee_renomme', 'Nouveau libelle', 'patient', 'clinique', 'text', false])).rejects.toThrow(/utilis/i);
+    // changer le type -> REFUSE
+    await expect(rowsAs(memberId, UPDATE, [fid, 'usee', 'Nouveau libelle', 'patient', 'clinique', 'integer', false])).rejects.toThrow(/utilis/i);
+    // la cle est restee 'usee' (rien casse cote donnees)
+    expect((await db.admin.query('select field_key from public.template_field where id=$1', [fid])).rows[0].field_key).toBe('usee');
+  });
+
+  test('un tiers ne peut pas editer le champ d un autre gabarit', async () => {
+    const fid = (await db.asUser(memberId, (c) =>
+      c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'tiers','T','patient','clinique','text') returning id", [aliceVersionId]),
+    )).rows[0].id;
+    await expect(rowsAs(bobId, UPDATE, [fid, 'pirate', 'P', 'patient', 'clinique', 'text', false])).rejects.toThrow(/autoris/i);
+  });
+});

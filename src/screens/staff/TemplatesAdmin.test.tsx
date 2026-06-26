@@ -34,6 +34,11 @@ function statefulMock(status: VersionStatus): TemplateRepository {
       fields.push(nf);
       return nf;
     },
+    async updateField(id, f) {
+      const i = fields.findIndex((x) => x.id === id);
+      fields[i] = { ...fields[i], fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type, required: f.required };
+      return fields[i];
+    },
     async deleteField(id) {
       fields = fields.filter((x) => x.id !== id);
     },
@@ -126,6 +131,23 @@ describe('TemplateVersionEditor (brouillon)', () => {
     await user.type(screen.getByLabelText('Libellé'), 'Score de Glasgow');
     await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
     expect(await screen.findByText('Score de Glasgow')).toBeInTheDocument();
+  });
+
+  test('modifier un champ pre-remplit le formulaire et enregistre le nouveau libelle', async () => {
+    const user = userEvent.setup();
+    renderEditor(statefulMock('draft'));
+    await screen.findByText('Champs');
+    await user.type(screen.getByLabelText('Clé technique'), 'glasgow');
+    await user.type(screen.getByLabelText('Libellé'), 'Glasgow');
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await screen.findByText('Glasgow');
+
+    await user.click(screen.getByRole('button', { name: 'Modifier' }));
+    const label = screen.getByDisplayValue('Glasgow');
+    await user.clear(label);
+    await user.type(label, 'Glasgow modifié');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(await screen.findByText('Glasgow modifié')).toBeInTheDocument();
   });
 
   test('une regle JSON invalide affiche une erreur', async () => {
