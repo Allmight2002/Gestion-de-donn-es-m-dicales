@@ -277,3 +277,31 @@ describe('suppression d une demande (medecin)', () => {
     expect((await db.admin.query("select 1 from public.audit_log where action='patient_deleted' and entity_id=$1", [c.patientId])).rows.length).toBeGreaterThan(0);
   });
 });
+
+describe('durcissement (audit P0/P1)', () => {
+  test('un brouillon FINALISE n est plus modifiable (RLS curateur inactif + trigger)', async () => {
+    const c = await claimAndDraft('NCH-004', { blood_group: 'AB-' }, [
+      { encounter_type: 'consultation', encounter_date: '2024-05-10', age_unit: 'years', data: { admission_date: '2024-05-01', diagnosis: 'AVC', glasgow_score: 13 } },
+    ]);
+    await rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [c.taskId]);
+
+    // Curateur affecte : tache 'completed' -> plus actif -> l'UPDATE ne touche AUCUNE ligne (RLS).
+    const before = (await db.admin.query('select patient_data from public.curation_draft where id=$1', [c.draftId])).rows[0].patient_data;
+    await rowsAs(curator1Id, "update public.curation_draft set patient_data='{\"hack\":1}'::jsonb where id=$1", [c.draftId]);
+    const after = (await db.admin.query('select patient_data from public.curation_draft where id=$1', [c.draftId])).rows[0].patient_data;
+    expect(after).toEqual(before);
+
+    // Proprietaire (passe la RLS) : le TRIGGER refuse de modifier un brouillon finalise.
+    await expect(
+      rowsAs(aliceId, "update public.curation_draft set patient_data='{\"hack\":1}'::jsonb where id=$1", [c.draftId]),
+    ).rejects.toThrow(/finalise/i);
+  });
+
+  test('un curateur ne modifie pas directement une soumission (transitions par RPC seulement)', async () => {
+    const c = await openCase('NCH-006'); // submission 'in_curation' apres soumission
+    const before = (await db.admin.query('select status from public.raw_submission where id=$1', [c.subId])).rows[0].status;
+    await rowsAs(curator1Id, "update public.raw_submission set status='completed' where id=$1", [c.subId]);
+    const after = (await db.admin.query('select status from public.raw_submission where id=$1', [c.subId])).rows[0].status;
+    expect(after).toBe(before); // rs_update reserve au proprietaire -> inchange
+  });
+});

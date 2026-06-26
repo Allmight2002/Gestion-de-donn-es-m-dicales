@@ -134,6 +134,18 @@ returns boolean language sql stable security definer set search_path = public, p
   )
 $$;
 
+-- Curateur AFFECTE *et* tache encore ACTIVE (in_progress / clarification_requested). Sert a
+-- n'autoriser l'ecriture du brouillon QUE pendant la curation : apres finalisation
+-- ('completed') ou annulation, le brouillon devient non modifiable (preuve preservee).
+create or replace function public.is_active_assigned_curator(p_task_id uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (
+    select 1 from public.curation_task t
+    where t.id = p_task_id and t.assigned_to = auth.uid()
+      and t.status in ('in_progress','clarification_requested')
+  )
+$$;
+
 -- =============================================================================
 -- Privileges + RLS (chaque table : RLS activee ; sans policy = tout refuse).
 -- =============================================================================
@@ -142,6 +154,7 @@ grant select, insert, update, delete on
   public.curation_draft, public.curation_clarification to authenticated;
 grant execute on function public.is_assigned_curator(uuid) to authenticated;
 grant execute on function public.is_assigned_to_submission(uuid) to authenticated;
+grant execute on function public.is_active_assigned_curator(uuid) to authenticated;
 
 -- POOL GLOBAL : lecture par le medecin PROPRIETAIRE du cas (suivi) OU par le staff de
 -- curation (curateur/validateur — l'ANALYSTE est exclu) ; role GLOBAL, sans acces base,
@@ -153,9 +166,12 @@ create policy rs_select on public.raw_submission for select to authenticated
   using (public.is_base_owner(base_id) or public.is_curation_staff());
 create policy rs_insert on public.raw_submission for insert to authenticated
   with check (public.is_base_owner(base_id));
+-- Mise a jour reservee au PROPRIETAIRE (preparation avant soumission). Toutes les
+-- transitions de statut du cycle passent par des RPC SECURITY DEFINER (submit / claim /
+-- finalize / delete) ; un curateur ne modifie donc JAMAIS une soumission directement.
 create policy rs_update on public.raw_submission for update to authenticated
-  using (public.is_base_owner(base_id) or public.is_curation_staff())
-  with check (public.is_base_owner(base_id) or public.is_curation_staff());
+  using (public.is_base_owner(base_id))
+  with check (public.is_base_owner(base_id));
 
 -- raw_document : documents (deidentifies) du cas. Lus par le PROPRIETAIRE ou le curateur
 -- AYANT RESERVE ce cas (et tant que sa tache est active). Un curateur NON affecte ne voit PAS
@@ -189,11 +205,29 @@ create policy ct_update on public.curation_task for update to authenticated
 alter table public.curation_draft enable row level security;
 create policy cd_select on public.curation_draft for select to authenticated
   using (public.is_base_owner(base_id) or public.is_assigned_curator(task_id));
+-- Ecriture du brouillon : curateur affecte ET tache ENCORE ACTIVE (is_active_assigned_curator).
+-- Une fois la tache 'completed'/'cancelled', plus aucune ecriture (la preuve est figee).
 create policy cd_insert on public.curation_draft for insert to authenticated
-  with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)));
+  with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_active_assigned_curator(task_id)));
 create policy cd_update on public.curation_draft for update to authenticated
-  using (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)))
-  with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)));
+  using (public.is_base_owner(base_id) or (public.is_curateur() and public.is_active_assigned_curator(task_id)))
+  with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_active_assigned_curator(task_id)));
+
+-- Defense en profondeur : un brouillon FINALISE est immuable (meme pour le proprietaire,
+-- meme par appel direct). La transition draft -> finalized (par finalize_curation_task)
+-- reste permise car OLD.status vaut alors 'draft'.
+create or replace function public.guard_finalized_draft()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if old.status = 'finalized' then
+    raise exception 'Brouillon de curation finalise : modification interdite (provenance preservee)';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_guard_finalized_draft on public.curation_draft;
+create trigger trg_guard_finalized_draft
+  before update on public.curation_draft
+  for each row execute function public.guard_finalized_draft();
 
 -- curation_clarification : lue par le proprietaire et le SEUL curateur affecte (meme isolation
 -- que le brouillon). Les ECRITURES passent par des RPC (request/answer) ; pas de policy directe.

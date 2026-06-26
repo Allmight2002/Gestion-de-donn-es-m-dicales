@@ -104,3 +104,15 @@ describe('RLS sur la saisie', () => {
     await expect(rowsAs(staffId, 'select public.patient_age_at($1,$2::date) as age', [patientId, TEST_DATE])).rejects.toThrow();
   });
 });
+
+describe('promotion directe en curated : completude imposee (4.3)', () => {
+  test('curated avec un champ requis manquant -> refus ; complet -> accepte', async () => {
+    // 'complete' reste libre (brouillon avance) : OK meme partiel.
+    expect((await rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'complete')))[0].validation_status).toBe('complete');
+    // 'curated' incomplet (manque admission_date, diagnosis requis) -> refuse.
+    await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'curated'))).rejects.toThrow(/requis|manquant/i);
+    // 'curated' complet -> accepte.
+    const ok = await rowsAs(aliceId, CALL, encArgs({ admission_date: '2024-01-05', diagnosis: 'TC grave', glasgow_score: 12 }, 'curated'));
+    expect(ok[0].validation_status).toBe('curated');
+  });
+});
