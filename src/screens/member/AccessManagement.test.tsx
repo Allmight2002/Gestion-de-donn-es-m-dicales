@@ -27,7 +27,7 @@ function makeAccess(over: Partial<AccessRepository> = {}): AccessRepository {
     async createInvitation() { return { token: 'tok-123' }; },
     async revokeInvitation() {},
     async listAccess() {
-      return [{ id: 'a1', userId: 'u2', fullName: 'Anna Analyste', role: 'analyst', permissions: { ...NO_PERMISSIONS, canExportData: true } }];
+      return [{ id: 'a1', userId: 'u2', fullName: 'Anna Analyste', role: 'viewer', permissions: { ...NO_PERMISSIONS, canExportData: true } }];
     },
     async revokeAccess() {},
     async setPermissions() {},

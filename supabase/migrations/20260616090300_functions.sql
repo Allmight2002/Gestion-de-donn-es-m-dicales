@@ -150,7 +150,7 @@ returns boolean language sql stable security definer set search_path = public, p
   select public.is_base_owner(p_base)
       or exists (select 1 from public.base_access a
                  where a.base_id = p_base and a.user_id = auth.uid() and a.revoked_at is null
-                   and (a.can_edit_structured_data or a.can_export_data or a.access_role = 'analyst'))
+                   and (a.can_edit_structured_data or a.can_export_data))
 $$;
 
 -- Resolution base_id depuis patient / cohorte (scoper encounter, attachments, etc.).

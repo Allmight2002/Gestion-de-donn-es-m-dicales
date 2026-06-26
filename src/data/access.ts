@@ -5,7 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
-export type AccessRole = 'viewer' | 'editor' | 'curator' | 'validator' | 'analyst';
+export type AccessRole = 'viewer' | 'editor' | 'curator' | 'validator';
 
 /** Les 6 permissions granulaires (cahier v3.0 §4.3). */
 export interface BasePermissions {
@@ -27,22 +27,21 @@ export const NO_PERMISSIONS: BasePermissions = {
 };
 
 /**
- * Permissions par defaut proposees pour un role (l'analyste n'a JAMAIS l'identite
- * ni les documents bruts ; le curateur ne peut ni exporter ni gerer les acces).
- * La base applique aussi ces invariants via des CHECK.
+ * Permissions par defaut proposees pour un role de partage. Le partage de base se fait
+ * desormais entre medecins (viewer/editor) ; curator/validator restent dans l'enum (legacy,
+ * non proposes a l'invitation). La base applique aussi ces invariants via des CHECK.
  */
 export function defaultPermissionsFor(role: AccessRole): BasePermissions {
   switch (role) {
-    case 'viewer':
-      return { ...NO_PERMISSIONS };
     case 'editor':
       return { ...NO_PERMISSIONS, canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true };
     case 'curator':
       return { ...NO_PERMISSIONS, canViewRawDocuments: true, canEditStructuredData: true };
     case 'validator':
       return { ...NO_PERMISSIONS, canViewRawDocuments: true, canEditStructuredData: true, canValidateData: true };
-    case 'analyst':
-      return { ...NO_PERMISSIONS, canExportData: true };
+    case 'viewer':
+    default:
+      return { ...NO_PERMISSIONS };
   }
 }
 

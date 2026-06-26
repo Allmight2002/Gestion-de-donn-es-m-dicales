@@ -88,7 +88,7 @@ create table public.base_invitation (
   id                       uuid primary key default gen_random_uuid(),
   base_id                  uuid not null references public.base(id) on delete cascade,
   invited_email            text not null,
-  access_role              text not null check (access_role in ('viewer','editor','curator','validator','analyst')),
+  access_role              text not null check (access_role in ('viewer','editor','curator','validator')),
   can_view_identity        boolean not null default false,
   can_view_raw_documents   boolean not null default false,
   can_edit_structured_data boolean not null default false,
@@ -100,7 +100,6 @@ create table public.base_invitation (
   expires_at               timestamptz not null,
   invited_by               uuid references public.profiles(id),
   created_at               timestamptz not null default now(),
-  constraint invitation_analyst_restrictions check (not (access_role = 'analyst' and (can_view_identity or can_view_raw_documents))),
   constraint invitation_curator_restrictions check (not (access_role = 'curator' and (can_export_data or can_manage_access)))
 );
 
@@ -108,7 +107,7 @@ create table public.base_access (
   id                       uuid primary key default gen_random_uuid(),
   base_id                  uuid not null references public.base(id) on delete cascade,
   user_id                  uuid not null references public.profiles(id) on delete cascade,
-  access_role              text not null check (access_role in ('viewer','editor','curator','validator','analyst')),
+  access_role              text not null check (access_role in ('viewer','editor','curator','validator')),
   can_view_identity        boolean not null default false,
   can_view_raw_documents   boolean not null default false,
   can_edit_structured_data boolean not null default false,
@@ -119,9 +118,7 @@ create table public.base_access (
   created_at               timestamptz not null default now(),
   revoked_at               timestamptz,
   unique (base_id, user_id),
-  -- Defense en profondeur (§4.3) : un analyste ne voit jamais identite/documents ;
-  -- un curateur ne peut ni exporter ni gerer les acces.
-  constraint access_analyst_restrictions check (not (access_role = 'analyst' and (can_view_identity or can_view_raw_documents))),
+  -- Defense en profondeur : un curateur ne peut ni exporter ni gerer les acces.
   constraint access_curator_restrictions check (not (access_role = 'curator' and (can_export_data or can_manage_access)))
 );
 

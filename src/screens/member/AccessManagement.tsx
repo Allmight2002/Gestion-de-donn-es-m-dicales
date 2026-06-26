@@ -9,7 +9,7 @@ import {
 
 // Partage de base ENTRE MEDECINS uniquement (v3.0). Les roles curateur/validateur sont
 // des roles GLOBAUX (admin) qui travaillent le pool de curation, jamais invites ici.
-const ROLES: AccessRole[] = ['viewer', 'editor', 'analyst'];
+const ROLES: AccessRole[] = ['viewer', 'editor'];
 const PERMISSION_KEYS: (keyof BasePermissions)[] = [
   'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canValidateData', 'canExportData', 'canManageAccess',
 ];
