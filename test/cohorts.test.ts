@@ -71,7 +71,7 @@ describe('cohorte figee (snapshot) + critere 8', () => {
     // Ajout d'un nouveau patient M apres le figement (puis marque verifie : seules
     // les donnees verifiees comptent par defaut en v3.0).
     await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
-      baseId, 'COH-NEW', 'Nouveau M', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M' }),
+      baseId, 'COH-NEW', 'Nouveau M', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M', birth_year: 1990 }),
     ]);
     await db.admin.query("update public.patient set validation_status='curated' where base_id=$1 and patient_code='COH-NEW'", [baseId]);
 

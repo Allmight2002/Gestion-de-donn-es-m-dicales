@@ -28,7 +28,8 @@ beforeAll(async () => {
   baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
 
   const patient = await rowsAs(aliceId, CREATE_PAT, [baseId, 'CORR-001', 'Patient Corr', '1980-01-01', null, null, null, JSON.stringify({ sexe: 'M' })]);
-  const enc = await rowsAs(aliceId, CREATE_ENC, [patient[0].id, 'hospitalisation', '2024-03-01', 'complete', JSON.stringify({ glasgow_score: 10, diagnosis: 'TC' }), 'years']);
+  // consultation : pas d'admission_date requis -> on peut la finaliser ('curated') avec glasgow+diagnosis.
+  const enc = await rowsAs(aliceId, CREATE_ENC, [patient[0].id, 'consultation', '2024-03-01', 'complete', JSON.stringify({ glasgow_score: 10, diagnosis: 'TC' }), 'years']);
   encounterId = enc[0].id;
 }, 180_000);
 

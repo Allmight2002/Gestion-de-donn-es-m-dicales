@@ -117,6 +117,21 @@ describe('promotion directe en curated : completude imposee (4.3)', () => {
   });
 });
 
+describe('integrite curated par TRIGGER (ferme aussi la voie directe, hors RPC)', () => {
+  test('un UPDATE direct vers curated est bloque si un champ requis manque', async () => {
+    // rencontre hospitalisation en brouillon, incomplete.
+    const enc = await rowsAs(aliceId, CALL, [patientId, 'hospitalisation', TEST_DATE, 'draft', JSON.stringify({ glasgow_score: 9 }), 'years']);
+    const encId = enc[0].id;
+    // UPDATE direct (sans passer par une RPC) -> curated : le trigger exige admission_date + diagnosis.
+    await expect(
+      rowsAs(aliceId, "update public.encounter set validation_status='curated' where id=$1", [encId]),
+    ).rejects.toThrow(/requis|manquant/i);
+    // Une fois complete, la promotion directe passe (controle positif).
+    await rowsAs(aliceId, "update public.encounter set data = data || '{\"admission_date\":\"2024-01-05\",\"diagnosis\":\"TC\"}'::jsonb, validation_status='curated' where id=$1", [encId]);
+    expect((await db.admin.query('select validation_status from public.encounter where id=$1', [encId])).rows[0].validation_status).toBe('curated');
+  });
+});
+
 describe('champs selon le type de rencontre (admission_date = hospitalisation)', () => {
   // encounter_type variable (encArgs fige 'consultation').
   const ENC = (type: string, data: object) => [patientId, type, TEST_DATE, 'curated', JSON.stringify(data), 'years'];

@@ -77,3 +77,28 @@ end $$;
 create trigger trg_base_owner_immutable
   before update on public.base
   for each row execute function public.guard_base_owner_immutable();
+
+-- 6) Integrite 'curated' (audit 4.3) : toute ligne PROMUE/maintenue en 'curated' doit avoir
+-- ses champs requis complets, pour TOUTES les voies d'ecriture (RPC, correction, appel API
+-- direct). Type-aware pour les rencontres (un champ requis ne l'est que pour les types ou il
+-- s'applique). Les bornes/listes/type restent verifies par les RPC (assert_data_valid) ; on
+-- ne les rejoue pas ici pour ne pas bloquer des donnees de demo deja en base.
+create or replace function public.assert_curated_complete()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if new.validation_status = 'curated' then
+    if tg_table_name = 'patient' then
+      perform public.assert_required_complete(new.template_version_id, 'patient', new.data);
+    else
+      perform public.assert_required_complete(new.template_version_id, 'encounter', new.data, new.encounter_type);
+    end if;
+  end if;
+  return new;
+end $$;
+
+create trigger trg_patient_curated_complete
+  before insert or update on public.patient
+  for each row execute function public.assert_curated_complete();
+create trigger trg_encounter_curated_complete
+  before insert or update on public.encounter
+  for each row execute function public.assert_curated_complete();
