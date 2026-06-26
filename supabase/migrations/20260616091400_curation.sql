@@ -90,19 +90,6 @@ create table public.curation_draft (
 create index on public.curation_draft (task_id);
 create index on public.curation_draft (base_id);
 
--- 5) Revue de validation : la decision du validateur (trace). --------------------------
-create table public.curation_review (
-  id          uuid primary key default gen_random_uuid(),
-  draft_id    uuid not null references public.curation_draft(id) on delete cascade,
-  base_id     uuid not null references public.base(id) on delete cascade,
-  decision    text not null check (decision in ('approved','rejected')),
-  comment     text,
-  reviewed_by uuid references public.profiles(id),
-  created_at  timestamptz not null default now()
-);
-create index on public.curation_review (draft_id);
-create index on public.curation_review (base_id);
-
 -- 6) Clarification (synthese §4.3) : echange Q/R entre le curateur AFFECTE et le medecin
 --    PROPRIETAIRE. Le curateur pose une question (doc illisible, date absente, valeur
 --    improbable...) -> la tache passe en 'clarification_requested' ; le medecin repond ->
@@ -152,7 +139,7 @@ $$;
 -- =============================================================================
 grant select, insert, update, delete on
   public.raw_submission, public.raw_document, public.curation_task,
-  public.curation_draft, public.curation_review, public.curation_clarification to authenticated;
+  public.curation_draft, public.curation_clarification to authenticated;
 grant execute on function public.is_assigned_curator(uuid) to authenticated;
 grant execute on function public.is_assigned_to_submission(uuid) to authenticated;
 
@@ -170,14 +157,14 @@ create policy rs_update on public.raw_submission for update to authenticated
   using (public.is_base_owner(base_id) or public.is_curation_staff())
   with check (public.is_base_owner(base_id) or public.is_curation_staff());
 
--- raw_document : documents (deidentifies) du cas. Lus par le PROPRIETAIRE, le curateur
--- AYANT RESERVE ce cas, ou un VALIDATEUR (pour la revue). Un curateur NON affecte ne voit
--- PAS les documents (il voit seulement la liste du pool) -> acces apres reservation (§5.1).
--- Deposes par le proprietaire. Jamais l'analyste, jamais l'admin systeme.
+-- raw_document : documents (deidentifies) du cas. Lus par le PROPRIETAIRE ou le curateur
+-- AYANT RESERVE ce cas (et tant que sa tache est active). Un curateur NON affecte ne voit PAS
+-- les documents (il voit seulement la liste du pool) -> acces apres reservation (§5.1).
+-- Deposes par le proprietaire. Jamais l'admin systeme.
 alter table public.raw_document enable row level security;
 create policy rd_select on public.raw_document for select to authenticated
   using (
-    (public.is_base_owner(base_id) or public.is_assigned_to_submission(submission_id) or public.is_validateur())
+    (public.is_base_owner(base_id) or public.is_assigned_to_submission(submission_id))
     and deleted_at is null
   );
 create policy rd_insert on public.raw_document for insert to authenticated
@@ -186,15 +173,15 @@ create policy rd_update on public.raw_document for update to authenticated
   using (public.is_base_owner(base_id)) with check (public.is_base_owner(base_id));
 
 -- curation_task : le pool. Visible proprietaire + staff. Creee par le proprietaire ;
--- mise a jour par le proprietaire, le curateur AFFECTE, ou un validateur (transitions).
+-- mise a jour par le proprietaire ou le curateur AFFECTE (transitions du cycle).
 alter table public.curation_task enable row level security;
 create policy ct_select on public.curation_task for select to authenticated
   using (public.is_base_owner(base_id) or public.is_curation_staff());
 create policy ct_insert on public.curation_task for insert to authenticated
   with check (public.is_base_owner(base_id));
 create policy ct_update on public.curation_task for update to authenticated
-  using (public.is_base_owner(base_id) or public.is_assigned_curator(id) or public.is_validateur())
-  with check (public.is_base_owner(base_id) or public.is_assigned_curator(id) or public.is_validateur());
+  using (public.is_base_owner(base_id) or public.is_assigned_curator(id))
+  with check (public.is_base_owner(base_id) or public.is_assigned_curator(id));
 
 -- curation_draft : ecrit par le curateur AFFECTE (qui a reserve le cas) ; lu par le
 -- proprietaire, le staff et le curateur affecte.
@@ -206,14 +193,6 @@ create policy cd_insert on public.curation_draft for insert to authenticated
 create policy cd_update on public.curation_draft for update to authenticated
   using (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)))
   with check (public.is_base_owner(base_id) or (public.is_curateur() and public.is_assigned_curator(task_id)));
-
--- curation_review : ecrite par un validateur (via la RPC) ou le proprietaire ; lue par
--- le proprietaire + le staff.
-alter table public.curation_review enable row level security;
-create policy cr_select on public.curation_review for select to authenticated
-  using (public.is_base_owner(base_id) or public.is_curation_staff());
-create policy cr_insert on public.curation_review for insert to authenticated
-  with check (public.is_base_owner(base_id) or public.is_validateur());
 
 -- curation_clarification : lue par le proprietaire, le curateur affecte et le staff. Les
 -- ECRITURES passent par des RPC (request/answer) ; pas de policy d'ecriture directe.

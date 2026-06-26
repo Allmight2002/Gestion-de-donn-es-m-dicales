@@ -18,26 +18,14 @@ returns boolean language sql stable security definer set search_path = public, p
   select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'medecin')
 $$;
 
--- Role STAFF de curation = curateur (le role `validateur` est SUPPRIME : le curateur
--- structure ET finalise — synthese produit §2.2). Attribue par l'admin systeme.
-create or replace function public.is_staff()
-returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'curateur')
-$$;
-
+-- Acteur de curation = curateur (le role `validateur` est supprime : le curateur structure
+-- ET finalise). Attribue par l'admin systeme.
 create or replace function public.is_curateur()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists (select 1 from public.profiles p where p.id = auth.uid() and p.global_role = 'curateur')
 $$;
 
--- Role `validateur` SUPPRIME : la fonction est conservee (renvoie toujours faux) pour ne pas
--- casser d'eventuelles references de policies historiques ; plus aucun compte ne l'obtient.
-create or replace function public.is_validateur()
-returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select false
-$$;
-
--- Acteurs du pool de curation = curateur uniquement.
+-- Acteurs du pool de curation = curateur uniquement (alias conserve pour la lisibilite RLS).
 create or replace function public.is_curation_staff()
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select public.is_curateur()
