@@ -313,7 +313,7 @@ begin
   -- 2) Rencontres proposees -> creees CUREES (age calcule, hors data).
   for enc in select * from jsonb_array_elements(d.encounters) loop
     perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
-    perform public.assert_required_complete(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
+    perform public.assert_required_complete(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb), coalesce(enc ->> 'encounter_type', 'autre'));
     v_unit := coalesce(enc ->> 'age_unit', 'years');
     v_age  := case
                 when v_dob is not null and (enc ->> 'encounter_date') is not null

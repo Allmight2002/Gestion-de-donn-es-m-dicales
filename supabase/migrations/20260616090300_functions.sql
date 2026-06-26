@@ -226,13 +226,24 @@ end $$;
 -- donnee manquante {"__missing__":...}). Absente / null / vide => exception. Utilise A LA
 -- FINALISATION (pas a la saisie directe, qui autorise un brouillon partiel).
 -- =============================================================================
-create or replace function public.assert_required_complete(p_version uuid, p_scope text, p_data jsonb)
+create or replace function public.assert_required_complete(
+  p_version uuid, p_scope text, p_data jsonb, p_encounter_type text default null
+)
 returns void language plpgsql stable set search_path = public, pg_temp as $$
 declare f record; v jsonb;
 begin
   for f in
     select field_key, label from public.template_field
     where template_version_id = p_version and scope = p_scope and required = true
+      -- Champ de rencontre restreint a certains types : requis SEULEMENT pour ces types.
+      -- Type inconnu (null) -> on n'allege pas (conservateur).
+      and (
+        p_scope <> 'encounter'
+        or p_encounter_type is null
+        or encounter_types is null
+        or cardinality(encounter_types) = 0
+        or p_encounter_type = any(encounter_types)
+      )
   loop
     v := p_data -> f.field_key;
     if (p_data is null) or (not (p_data ? f.field_key)) or (v is null) or (jsonb_typeof(v) = 'null')

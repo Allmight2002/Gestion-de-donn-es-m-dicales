@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
-import { EncounterFields } from './EncounterFields';
+import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -81,10 +81,16 @@ export function EncounterForm() {
     e.preventDefault();
     if (!baseId || !patientId) return;
 
-    const fieldErrors = validateValues(fields, values).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
+    // Seuls les champs APPLICABLES au type choisi sont valides / envoyes (ex: pas d'admission
+    // pour une consultation). Les valeurs des champs masques ne sont pas soumises.
+    const applicable = fields.filter((f) => fieldAppliesToType(f, encounterType));
+    const applicableData = Object.fromEntries(
+      Object.entries(values).filter(([k]) => applicable.some((f) => f.fieldKey === k)),
+    );
+    const fieldErrors = validateValues(applicable, applicableData).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
     const ruleEval = evaluateRules(
       rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
-      values,
+      applicableData,
     );
     const block = [...fieldErrors, ...ruleEval.blocking];
     if (!encounterDate) block.unshift(t('encounter.date'));
@@ -95,7 +101,7 @@ export function EncounterForm() {
     setBusy(true);
     try {
       await patients.createEncounter(patientId, {
-        encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: values,
+        encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
       });
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
@@ -151,7 +157,11 @@ export function EncounterForm() {
           <span className="ml-2 text-xs text-teal-600">{t('encounter.age_hint')}</span>
         </div>
 
-        <EncounterFields fields={fields} values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} />
+        <EncounterFields
+          fields={fields.filter((f) => fieldAppliesToType(f, encounterType))}
+          values={values}
+          onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
+        />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

@@ -4,6 +4,10 @@ import { ValueInput } from './ValueInput';
 
 const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
 
+/** Un champ de rencontre s'applique-t-il a ce type ? (encounterTypes null/vide = tous). */
+export const fieldAppliesToType = (f: TemplateField, type: string) =>
+  !f.encounterTypes || f.encounterTypes.length === 0 || f.encounterTypes.includes(type);
+
 // Rendu des champs de rencontre par section (clinique / biologie / paraclinique),
 // reutilise par la creation et l'edition.
 export function EncounterFields({

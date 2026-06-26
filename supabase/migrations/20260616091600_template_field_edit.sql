@@ -49,7 +49,8 @@ create or replace function public.update_template_field(
   p_scope     text,
   p_section   text,
   p_type      text,
-  p_required  boolean
+  p_required  boolean,
+  p_encounter_types text[] default null
 ) returns public.template_field
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -73,13 +74,16 @@ begin
     raise exception 'Variable deja utilisee : seul le libelle est modifiable. Supprimez puis recreez la variable pour changer son nom ou son type.';
   end if;
 
+  -- encounter_types : modifiable a tout moment (n'altere pas les valeurs stockees), et
+  -- seulement pertinent pour un champ de rencontre (force a null sinon).
   update public.template_field
      set field_key = p_field_key,
          label     = p_label,
          scope     = p_scope,
          section   = p_section,
          type      = p_type,
-         required  = p_required
+         required  = p_required,
+         encounter_types = case when p_scope = 'encounter' then p_encounter_types else null end
    where id = p_field_id
    returning * into res;
   return res;
@@ -106,5 +110,5 @@ end $$;
 
 grant execute on function public.template_field_in_use(uuid) to authenticated;
 grant execute on function public.template_version_fields_in_use(uuid) to authenticated;
-grant execute on function public.update_template_field(uuid, text, text, text, text, text, boolean) to authenticated;
+grant execute on function public.update_template_field(uuid, text, text, text, text, text, boolean, text[]) to authenticated;
 grant execute on function public.delete_template_field(uuid) to authenticated;

@@ -61,6 +61,11 @@ create table public.template_field (
   max_value           numeric,
   allow_missing_codes boolean not null default true,
   display_order       int not null default 0,
+  -- Champ de RENCONTRE applicable a certains types seulement (null/vide = TOUS les types).
+  -- Ex: admission_date/discharge_date ne concernent que 'hospitalisation' ; une consultation
+  -- ou un suivi n'ont qu'une date simple (la colonne encounter_date). Pilote l'affichage ET
+  -- le caractere requis (un champ requis ne l'est que pour les types ou il s'applique).
+  encounter_types     text[],
   unique (template_version_id, field_key)
 );
 

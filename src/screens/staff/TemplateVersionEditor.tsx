@@ -193,6 +193,7 @@ export function TemplateVersionEditor({
                 section: editing.section,
                 type: editing.type,
                 required: editing.required,
+                encounterTypes: editing.encounterTypes,
               }}
               lockStructural={editing.inUse ?? false}
               submitLabel={t('admin.save')}

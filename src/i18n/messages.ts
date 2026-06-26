@@ -82,6 +82,7 @@ export const messages = {
     'admin.edit': 'Modifier',
     'admin.cancel': 'Annuler',
     'admin.drag_hint': 'Glisser pour réordonner',
+    'admin.encounter_types': 'Types de rencontre concernés (aucun coché = tous)',
     'admin.field_locked_hint':
       'Variable déjà utilisée : seul le libellé est modifiable. Pour changer son nom ou son type, supprimez-la puis recréez-la.',
     'admin.published_readonly':
@@ -424,6 +425,7 @@ export const messages = {
     'admin.edit': 'Edit',
     'admin.cancel': 'Cancel',
     'admin.drag_hint': 'Drag to reorder',
+    'admin.encounter_types': 'Applicable encounter types (none checked = all)',
     'admin.field_locked_hint':
       'Variable already in use: only the label can be changed. To change its key or type, delete it and create it again.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',

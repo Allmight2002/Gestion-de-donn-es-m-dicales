@@ -95,6 +95,13 @@ insert into public.validation_rule (template_version_id, rule, message, severity
 ('10000000-0000-0000-0000-0000000000a1','{"operator":"greater_or_equal","left_field":"discharge_date","right_field":"admission_date"}'::jsonb,'La date de sortie doit etre >= la date d''admission','block'),
 ('10000000-0000-0000-0000-0000000000a1','{"if":{"field":"outcome","operator":"equals","value":"deces"},"then":{"field":"death_date","operator":"required"}}'::jsonb,'Si evolution = deces, la date de deces est requise','block');
 
+-- Dates d'admission / sortie : pertinentes UNIQUEMENT pour une hospitalisation (une
+-- consultation ou un suivi n'a qu'une date simple = encounter_date). admission_date cesse
+-- donc d'etre requis pour un suivi/consultation.
+update public.template_field set encounter_types = '{hospitalisation}'
+ where template_version_id = '10000000-0000-0000-0000-0000000000a1'
+   and field_key in ('admission_date','discharge_date');
+
 -- a1 reste 'draft' : le gabarit de la base d'Alice est editable librement (v3.0).
 
 -- Modele GLOBAL "officiel" (catalogue) propose aux autres medecins : copie de a1.
@@ -103,8 +110,8 @@ insert into public.template (id, name, specialty, owner_user_id, is_global) valu
 insert into public.template_version (id, template_id, version_number, status, created_by, published_at) values
   ('10000000-0000-0000-0000-0000000000a2', '10000000-0000-0000-0000-000000000002', 1, 'published', '1f111111-1111-1111-1111-111111111111', now());
 insert into public.template_field
-  (template_version_id, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order)
-select '10000000-0000-0000-0000-0000000000a2', field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order
+  (template_version_id, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types)
+select '10000000-0000-0000-0000-0000000000a2', field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types
 from public.template_field where template_version_id = '10000000-0000-0000-0000-0000000000a1';
 insert into public.validation_rule (template_version_id, rule, message, severity)
 select '10000000-0000-0000-0000-0000000000a2', rule, message, severity

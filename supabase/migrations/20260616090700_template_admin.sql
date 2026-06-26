@@ -36,9 +36,9 @@ begin
   -- Recopie des champs (la nouvelle version est draft -> inserts autorises).
   insert into public.template_field
     (template_version_id, field_key, label, scope, section, type, unit, allowed_values,
-     required, min_value, max_value, allow_missing_codes, display_order)
+     required, min_value, max_value, allow_missing_codes, display_order, encounter_types)
   select v_new_id, field_key, label, scope, section, type, unit, allowed_values,
-         required, min_value, max_value, allow_missing_codes, display_order
+         required, min_value, max_value, allow_missing_codes, display_order, encounter_types
   from public.template_field
   where template_version_id = p_source_version_id;
 
@@ -89,9 +89,9 @@ begin
 
   insert into public.template_field
     (template_version_id, field_key, label, scope, section, type, unit, allowed_values,
-     required, min_value, max_value, allow_missing_codes, display_order)
+     required, min_value, max_value, allow_missing_codes, display_order, encounter_types)
   select v_ver, field_key, label, scope, section, type, unit, allowed_values,
-         required, min_value, max_value, allow_missing_codes, display_order
+         required, min_value, max_value, allow_missing_codes, display_order, encounter_types
   from public.template_field where template_version_id = p_source_version_id;
 
   insert into public.validation_rule (template_version_id, rule, message, severity)

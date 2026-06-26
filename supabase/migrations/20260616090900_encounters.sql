@@ -48,7 +48,7 @@ begin
   -- Promotion directe en 'curated' : on impose AUSSI la completude des champs requis (le
   -- client ne peut pas marquer une rencontre 'curated' incomplete). 'draft'/'complete' : libre.
   if coalesce(p_validation_status, 'draft') = 'curated' then
-    perform public.assert_required_complete(v_tv, 'encounter', coalesce(p_data, '{}'::jsonb) - 'age_at_encounter');
+    perform public.assert_required_complete(v_tv, 'encounter', coalesce(p_data, '{}'::jsonb) - 'age_at_encounter', p_encounter_type);
   end if;
 
   v_unit := coalesce(p_age_unit, 'years');

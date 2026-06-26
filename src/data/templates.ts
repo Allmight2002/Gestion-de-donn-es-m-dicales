@@ -39,6 +39,7 @@ type FieldRow = {
   id: string; field_key: string; label: string; scope: TemplateField['scope']; section: TemplateField['section'];
   type: TemplateField['type']; unit: string | null; allowed_values: unknown[] | null; required: boolean;
   min_value: number | null; max_value: number | null; allow_missing_codes: boolean; display_order: number;
+  encounter_types: string[] | null;
 };
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
 
@@ -49,6 +50,7 @@ const mapField = (r: FieldRow): TemplateField => ({
   id: r.id, fieldKey: r.field_key, label: r.label, scope: r.scope, section: r.section, type: r.type,
   unit: r.unit, allowedValues: r.allowed_values, required: r.required, minValue: r.min_value,
   maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, displayOrder: r.display_order,
+  encounterTypes: r.encounter_types,
 });
 const mapRule = (r: RuleRow): ValidationRule => ({ id: r.id, rule: r.rule, message: r.message, severity: r.severity });
 
@@ -160,6 +162,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           type: field.type,
           required: field.required,
           display_order: nextOrder,
+          encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
         })
         .select('*')
         .single();
@@ -176,6 +179,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_section: field.section,
         p_type: field.type,
         p_required: field.required,
+        p_encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as FieldRow;

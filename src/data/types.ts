@@ -35,6 +35,8 @@ export interface TemplateField {
   maxValue: number | null;
   allowMissingCodes: boolean;
   displayOrder: number;
+  /** Champ de rencontre limite a certains types (null/vide/absent = tous). Pilote affichage + requis. */
+  encounterTypes?: string[] | null;
   /** Au moins une donnee patient/rencontre porte deja cette cle -> nom/type verrouilles. */
   inUse?: boolean;
 }
@@ -53,4 +55,6 @@ export interface NewField {
   section: FieldSection;
   type: FieldType;
   required: boolean;
+  /** Types de rencontre concernes (vide/absent = tous). Ignore pour un champ 'patient'. */
+  encounterTypes?: string[] | null;
 }

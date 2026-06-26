@@ -109,10 +109,23 @@ describe('promotion directe en curated : completude imposee (4.3)', () => {
   test('curated avec un champ requis manquant -> refus ; complet -> accepte', async () => {
     // 'complete' reste libre (brouillon avance) : OK meme partiel.
     expect((await rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'complete')))[0].validation_status).toBe('complete');
-    // 'curated' incomplet (manque admission_date, diagnosis requis) -> refuse.
+    // 'curated' incomplet (manque diagnosis requis) -> refuse.
     await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'curated'))).rejects.toThrow(/requis|manquant/i);
     // 'curated' complet -> accepte.
     const ok = await rowsAs(aliceId, CALL, encArgs({ admission_date: '2024-01-05', diagnosis: 'TC grave', glasgow_score: 12 }, 'curated'));
     expect(ok[0].validation_status).toBe('curated');
+  });
+});
+
+describe('champs selon le type de rencontre (admission_date = hospitalisation)', () => {
+  // encounter_type variable (encArgs fige 'consultation').
+  const ENC = (type: string, data: object) => [patientId, type, TEST_DATE, 'curated', JSON.stringify(data), 'years'];
+  test('suivi curated SANS admission_date -> OK ; hospitalisation SANS admission_date -> refus', async () => {
+    // 'suivi' : admission_date ne s'applique pas -> non requis (diagnosis + glasgow le restent).
+    expect((await rowsAs(aliceId, CALL, ENC('suivi', { diagnosis: 'controle', glasgow_score: 14 })))[0].validation_status).toBe('curated');
+    // 'hospitalisation' : admission_date requis -> manquant -> refus.
+    await expect(rowsAs(aliceId, CALL, ENC('hospitalisation', { diagnosis: 'TC', glasgow_score: 10 }))).rejects.toThrow(/requis|manquant/i);
+    // 'hospitalisation' complete -> OK.
+    expect((await rowsAs(aliceId, CALL, ENC('hospitalisation', { admission_date: '2024-01-05', diagnosis: 'TC', glasgow_score: 10 })))[0].validation_status).toBe('curated');
   });
 });

@@ -7,7 +7,7 @@ import { useAuditRepository, useCurationRepository, useTemplateRepository } from
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
-import { EncounterFields } from './EncounterFields';
+import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 const newEncounter = (): DraftEncounter => ({ encounter_type: 'consultation', encounter_date: '', age_unit: 'years', data: {} });
@@ -358,7 +358,7 @@ export function CurationTask() {
                       <button type="button" onClick={() => setEncounters((l) => l.filter((_, j) => j !== i))} className="text-xs text-red-600 hover:underline">{t('cohort.remove')}</button>
                     )}
                   </div>
-                  <EncounterFields fields={encounterFields} values={enc.data} onChange={(k, v) => updateEncounter(i, { data: { ...enc.data, [k]: v } })} />
+                  <EncounterFields fields={encounterFields.filter((f) => fieldAppliesToType(f, enc.encounter_type))} values={enc.data} onChange={(k, v) => updateEncounter(i, { data: { ...enc.data, [k]: v } })} />
                 </div>
               ))}
             </div>
