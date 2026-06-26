@@ -1,83 +1,75 @@
-# Registre clinique oriente recherche — MVP
+# Registre clinique orienté recherche
 
-Plateforme de bases de donnees cliniques structurees pour la recherche, en contexte
-a ressources limitees. Modele **registre-centre** : le patient est l'objet central
-(pas l'etude). En **v3.0**, le produit couvre la chaine **collecte → curation →
-structuration**. Coeur du produit : **separation des zones** (identite / analytique /
-documents bruts) et **cloisonnement applique cote base (Row-Level Security), teste
-automatiquement**.
+Plateforme de bases de données cliniques structurées pour la recherche, en contexte à
+ressources limitées. Modèle **registre-centré** : le patient est l'objet central (pas
+l'étude). Le produit couvre la chaîne **collecte → curation → structuration**. Cœur du
+produit : **séparation des zones** (identité / analytique / documents bruts) et
+**cloisonnement appliqué côté base (Row-Level Security), testé automatiquement**.
 
-> Etat d'avancement : **migration v3.0 livree** (cahier technique v3.0), en 3 temps :
-> - **Temps 1 — Fondation** : role global `system_admin`/`member`, **6 permissions
->   granulaires** par base, roles d'acces viewer/editor/curator/validator/analyst,
->   age en colonnes (`age_value`/`age_unit`), `validation_status` (draft/complete/
->   verified), `clinical_attachment` (deidentification), invitations par `token_hash`,
->   cohortes `validated_only`, 3 buckets de stockage.
-> - **Temps 2 — Curation** : collecte de **documents bruts** (zone restreinte), taches
->   de curation affectees a un curateur, **brouillon** structure, **validation atomique**
->   par un validateur -> donnees **verifiees** en zone analytique (age calcule sans
->   exposer la DOB ; journalisation `field_change_log` + `audit_log`).
-> - **Temps 3 — Finitions** : **audit renforce** (§14, trace automatique des actions
->   sensibles), export verrouille aux **donnees verifiees uniquement**, upload de
->   document brut depuis l'UI, documentation.
->
-> Fonctionnalites de base (v2.2, conservees) : admin gabarits (versions immuables,
-> regles JSON), bases (possedees/partagees), patient (identite/analytique liees par le
-> seul code), saisie dynamique (valeurs manquantes codifiees, regles block/warn),
-> corrections journalisees, images en zone restreinte, filtres + cohortes, export
-> CSV/XLSX immuable, invitations/acces, suppression logique.
->
-> **Tests : 138 verts** (Vitest ; RLS + securite cote base + rendu UI). Build PWA OK.
->
-> Besoin d'un backend Supabase pour le login reel ? Voir
+> 🧭 **Nouvelle arrivée ?** Lisez d'abord **[docs/architecture.md](docs/architecture.md)** :
+> vue d'ensemble du modèle de données (23 tables), des rôles, du cloisonnement RLS et du
+> cycle de curation. Le présent README est le guide de mise en route.
+
+État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
+partage** (`viewer` / `editor`) + **6 permissions granulaires** par base. Chaîne de curation
+complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
+**Tests : 34 fichiers / 199 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
+
+> Besoin d'un backend Supabase pour le login réel ? Voir
 > [docs/configurer-supabase.md](docs/configurer-supabase.md) (voie cloud, sans Docker).
 
 ---
 
-## 0. Roles, permissions et zones (v3.0)
+## 0. Rôles, permissions et zones
 
-**Role global** (`profiles.global_role`) : `system_admin` (gere les gabarits, **aucun
-acces aux donnees patient**) ou `member` (medecin/collaborateur).
+**Rôle global** (`profiles.global_role`) :
 
-**Acces par base** : le proprietaire (owner) cree la base ; il invite des collaborateurs
-avec un **role d'acces** et **6 permissions granulaires** booleennes. La base applique
-les invariants par contrainte CHECK (l'analyste n'a jamais identite/documents ; le
-curateur n'exporte pas et ne gere pas les acces).
+| Rôle | Rôle | Accès aux données patient |
+|---|---|---|
+| `system_admin` | Gère les gabarits globaux et les comptes | **Aucun** |
+| `medecin` | Crée/possède des bases, saisit, exporte | Ses bases + bases partagées |
+| `curateur` | Structure **et finalise** les cas du pool | Documents réservés ; **jamais l'identité** |
 
-| Permission \ Role | owner | viewer | editor | curator | validator | analyst |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `can_view_identity` | ✓ | – | option | – | option | **jamais** |
-| `can_view_raw_documents` | ✓ | – | option | ✓ | ✓ | **jamais** |
-| `can_edit_structured_data` | ✓ | – | ✓ | ✓ | ✓ | – |
-| `can_validate_data` | ✓ | – | – | – | ✓ | – |
-| `can_export_data` | ✓ | – | – | **jamais** | – | ✓ |
-| `can_manage_access` | ✓ | – | – | **jamais** | – | – |
+**Accès par base** : le propriétaire (owner) crée la base ; il invite des collaborateurs
+médecins avec un **rôle d'accès** (`viewer`/`editor`) et **6 permissions granulaires**
+booléennes. La base applique les invariants par contrainte CHECK.
 
-**Trois zones cloisonnees cote base (RLS) :**
-- **Identite** (`patient_identity`, `clinical_attachment`) — `can_view_identity` ; jamais exportee.
-- **Analytique** (`patient`, `encounter`) — donnees structurees ; l'age remplace la DOB.
-- **Documents bruts** (`raw_document`) — `can_view_raw_documents` ; jamais exportee, jamais visible a l'analyste.
+Défauts proposés par rôle (chacune des 6 permissions reste **indépendamment** activable
+par le propriétaire — `✓` = coché par défaut, `option` = décoché mais activable) :
 
-## 0.1 Workflow de curation (v3.0)
+| Permission \ Rôle | owner | viewer | editor |
+|---|:--:|:--:|:--:|
+| `can_view_identity` | ✓ | – | ✓ |
+| `can_view_raw_documents` | ✓ | – | ✓ |
+| `can_edit_structured_data` | ✓ | – | ✓ |
+| `can_validate_data` | ✓ | – | option |
+| `can_export_data` | ✓ | – | option |
+| `can_manage_access` | ✓ | – | option |
+
+**Trois zones cloisonnées côté base (RLS) :**
+- **Identité** (`patient_identity`, `clinical_attachment`) — `can_view_identity` ; jamais exportée.
+- **Analytique** (`patient`, `encounter`) — données structurées ; l'âge remplace la DOB.
+- **Documents bruts** (`raw_submission`, `raw_document`) — `can_view_raw_documents` ou curateur affecté ; jamais exportée.
+
+## 0.1 Workflow de curation
+
+Le curateur ne voit **jamais** l'identité du patient. Il structure des documents bruts
+dé-identifiés, puis **finalise seul** (le rôle `validateur` a été supprimé).
 
 ```
- Collecte                Structuration              Validation
- (can_view_raw_documents) (curateur affecte)        (can_validate_data)
- ┌───────────────┐  doc   ┌───────────────┐  submit ┌───────────────┐
- │ raw_submission│──────► │ curation_task │───────► │ curation_draft│
- │ + raw_document│        │ (assigned_to) │        │  (submitted)  │
- └───────────────┘        └───────────────┘         └──────┬────────┘
-        zone documents bruts (restreinte)                  │ validate_curation_draft()
-                                                           ▼  (ATOMIQUE, privilegie)
-                                          ┌──────────────────────────────────┐
-                                          │ patient/encounter VERIFIES        │
-                                          │ age calcule (DOB jamais exposee)  │
-                                          │ field_change_log + audit_log      │
-                                          └──────────────────────────────────┘
+ preparing ──submit(≥1 doc)──► open ──réservation──► in_progress ──finalize_curation_task()──►
+                                          │   ▲                          │
+                        clarification_requested ─┘ (question/réponse)      ▼
+                                                            patient/encounter en `curated`
+                                                            (âge calculé, DOB jamais exposée,
+                                                             field_change_log + audit_log)
 ```
 
-Un rejet (`validate_curation_draft(..., 'rejected')`) trace la decision sans rien ecrire
-en zone analytique. Seules les **donnees verifiees** entrent dans les cohortes et exports.
+Un cas **n'entre dans le pool** que lorsqu'il est soumis avec **au moins un document**.
+La finalisation vérifie la **validité** (`assert_data_valid`) et la **complétude des champs
+requis** (`assert_required_complete`) avant d'écrire en zone analytique. Seules les données
+en `curated` entrent dans les cohortes et exports. Le médecin peut supprimer une demande
+(confirmation), au choix : la demande seule, ou le patient **et** la demande.
 
 ---
 
@@ -85,24 +77,22 @@ en zone analytique. Seules les **donnees verifiees** entrent dans les cohortes e
 
 | Domaine | Choix | Note |
 |---|---|---|
-| Base de donnees | **PostgreSQL + RLS** | Schema portable vers Supabase tel quel |
-| Backend cible | **Supabase** (Postgres + Auth + RLS) | `auth.users` + table `profiles` (pas de table utilisateur recreee) |
-| Frontend | **React + TypeScript + Vite (PWA)** + Tailwind v4 | auth + role gating (etape 3) |
-| Routage / i18n | react-router + i18n maison (fr/en) | structure prete pour les ecrans 4+ |
-| Tests de securite | **Vitest + PostgreSQL embarque** (`embedded-postgres`) | **sans Docker**, voir ci-dessous |
-| Tests frontend | **Vitest + jsdom + Testing Library** | rendu + gating par role |
+| Base de données | **PostgreSQL + RLS** | Schéma portable vers Supabase tel quel |
+| Backend cible | **Supabase** (Postgres + Auth + RLS + Storage) | `auth.users` + table `profiles` |
+| Frontend | **React + TypeScript + Vite (PWA)** + Tailwind v4 | auth + gating par rôle |
+| Routage / i18n | react-router + i18n maison (fr/en) | |
+| Tests de sécurité | **Vitest + PostgreSQL embarqué** (`embedded-postgres`) | **sans Docker**, voir ci-dessous |
+| Tests frontend | **Vitest + jsdom + Testing Library** | rendu + gating par rôle |
 
-### Pourquoi un PostgreSQL embarque pour les tests (ecart justifie)
+### Pourquoi un PostgreSQL embarqué pour les tests
 
-Le cahier exige des **tests RLS automatises** (§16) executables et reproductibles.
-La voie Supabase classique (CLI) requiert **Docker**, absent de ce poste. Pour ne
-rien vous imposer et garder une preuve rejouable, les tests demarrent un **vrai
-PostgreSQL 18 embarque** (binaire telecharge par npm, aucun service externe) et
-appliquent **exactement les memes migrations** que celles destinees a Supabase.
-
-Un mince *shim* de test ([test/harness/000_supabase_shim.sql](test/harness/000_supabase_shim.sql))
-recree ce que Supabase fournit deja (roles `anon`/`authenticated`/`service_role`,
-schema `auth`, `auth.uid()`). Il **n'est jamais applique** sur un vrai projet Supabase.
+Les **tests RLS automatisés** doivent être exécutables et reproductibles. La voie Supabase
+classique (CLI) requiert **Docker**, absent de ce poste. Les tests démarrent donc un **vrai
+PostgreSQL 18 embarqué** (binaire téléchargé par npm, aucun service externe) et appliquent
+**exactement les mêmes migrations** que celles destinées à Supabase. Un mince *shim*
+([test/harness/000_supabase_shim.sql](test/harness/000_supabase_shim.sql)) recrée ce que
+Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_role`) ; il
+**n'est jamais appliqué** sur un vrai projet Supabase.
 
 ---
 
@@ -111,47 +101,41 @@ schema `auth`, `auth.uid()`). Il **n'est jamais applique** sur un vrai projet Su
 ```
 .
 ├── supabase/
-│   ├── migrations/                      # Migrations reelles (a appliquer sur Supabase)
+│   ├── migrations/                       # Source de vérité du schéma (à appliquer sur Supabase)
 │   │   ├── 20260616090100_extensions.sql
-│   │   ├── 20260616090200_tables.sql        # Modele de donnees (§6)
-│   │   ├── 20260616090300_functions.sql     # Fonctions d'aide RLS (SECURITY DEFINER)
-│   │   ├── 20260616090400_rls.sql           # Activation RLS + politiques (§7, §12)
-│   │   ├── 20260616090500_integrity.sql     # Triggers : profils, immuabilite gabarit, anti-escalade
-│   │   ├── 20260616090600_rpc.sql           # accept_invitation(), assert_export_columns_safe()
-│   │   └── 20260616090700_template_admin.sql # duplicate_template_version() (staff-only)
-│   ├── seed.sql                          # Donnees de demo FICTIVES (§15)
-│   ├── storage.sql                       # Bucket images prive + RLS (a appliquer sur Supabase)
-│   └── config.toml                       # Config Supabase CLI (chemin du seed)
-├── src/                                  # Frontend (etapes 3-5)
-│   ├── auth/                             # AuthProvider, backend, logique de role (pure)
-│   ├── data/                             # repositories gabarits + bases (injectables)
-│   ├── domain/                           # regles JSON + validation saisie + validation images (purs)
+│   │   ├── 20260616090200_tables.sql         # Modèle de données (23 tables)
+│   │   ├── 20260616090300_functions.sql      # Fonctions d'aide RLS (SECURITY DEFINER)
+│   │   ├── 20260616090400_rls.sql            # Activation RLS + politiques
+│   │   ├── 20260616090500_integrity.sql      # Triggers : profils, immuabilité gabarit, anti-escalade
+│   │   ├── 20260616090600_rpc.sql            # accept_invitation(), assert_export_columns_safe()
+│   │   ├── 20260616090700_template_admin.sql # duplicate_template_version()
+│   │   ├── 20260616090800_patients.sql       # création patient + RLS
+│   │   ├── 20260616090900_encounters.sql     # rencontres : âge calculé sans exposer la DOB
+│   │   ├── 20260616091000_corrections.sql    # field_change_log (corrections tracées)
+│   │   ├── 20260616091100_cohorts.sql        # cohortes dynamiques / figées
+│   │   ├── 20260616091200_access.sql         # invitations / accès (token_hash)
+│   │   ├── 20260616091300_soft_delete.sql    # suppression logique
+│   │   ├── 20260616091400_curation.sql       # pool, brouillon, finalize_curation_task(), clarifications
+│   │   └── 20260616091500_audit.sql          # audit_log (actions sensibles)
+│   ├── seed.sql                          # Données de démo FICTIVES
+│   ├── storage.sql                       # Buckets privés + RLS
+│   └── config.toml
+├── src/
+│   ├── auth/                             # AuthProvider, backend, logique de rôle (pure)
+│   ├── data/                             # repositories injectables (RepositoryProvider)
+│   ├── domain/                           # règles JSON, validation saisie, inspection de fichier (purs)
 │   ├── i18n/                             # messages fr/en + provider
-│   ├── lib/                              # client Supabase (cle ANON) + env
-│   ├── routes/                           # routage + ProtectedRoute (gating par role)
-│   ├── screens/                          # Login, dashboard+base (membre), admin gabarits (staff)
-│   ├── components/                       # AppShell, LanguageSwitcher
+│   ├── lib/                              # client Supabase (clé ANON) + env
+│   ├── routes/                           # routage + ProtectedRoute (gating par rôle)
+│   ├── screens/                          # member/ (médecin, curateur) + staff/ (admin gabarits)
+│   ├── components/                       # AppShell, Logo, LanguageSwitcher
 │   └── main.tsx · App.tsx
-├── test/
-│   ├── harness/                          # shim Supabase (test-only) + boot Postgres embarque
-│   ├── rls.security.test.ts             # Les 7 scenarios du §16 (+ controles positifs)
-│   ├── auth-logic.test.ts               # Logique de gating par role (pure)
-│   ├── template-rules.test.ts           # Regles JSON controlees (§10)
-│   ├── templates.admin.test.ts          # Admin gabarits : immuabilite, staff-only, duplication
-│   ├── bases.test.ts                    # Bases : creation, propriete, visibilite/partage
-│   ├── patients.test.ts                 # Patient : separation, code unique, version, RLS
-│   ├── validation.test.ts               # Controles + valeurs manquantes + regles (§10)
-│   ├── encounters.test.ts               # Age calcule sans exposer la DOB (§4.1) + RLS saisie
-│   ├── corrections.test.ts              # field_change_log : corrections tracees (critere 12)
-│   ├── attachments.test.ts              # Images = zone restreinte (RLS) + masquage obligatoire
-│   ├── image-upload.test.ts             # Validation format/taille des images (§14)
-│   ├── cohorts.test.ts                  # Filtres + cohorte figee (critere 8) + RLS
-│   ├── export.test.ts                   # Construction export (agregation, dictionnaire, zero identite)
-│   ├── exports.test.ts                  # export_log : trace immuable + RLS (critere 9)
-│   ├── access.test.ts                   # Invitations/acces : owner-only, revocation, profils collab.
-│   └── soft-delete.test.ts             # Suppression logique : cascade, reste en base (critere 12)
-├── docs/configurer-supabase.md           # Guide : creer un projet Supabase (cloud)
-├── .env.example                          # Variables (service_role = cote serveur uniquement)
+├── test/                                 # tests db (RLS + domaine) — projet "db"
+├── docs/
+│   ├── architecture.md                   # ⭐ Vue d'ensemble (à lire en premier)
+│   ├── configurer-supabase.md            # Créer un projet Supabase (cloud)
+│   └── tester-en-local.md                # Lancer le projet en local
+├── .env.example                          # Variables (service_role = côté serveur uniquement)
 ├── vite.config.ts · vitest.workspace.ts  # build PWA + projets de test (db / web)
 ├── package.json · tsconfig.json
 └── README.md
@@ -159,122 +143,81 @@ schema `auth`, `auth.uid()`). Il **n'est jamais applique** sur un vrai projet Su
 
 ---
 
-## 3. Prerequis
+## 3. Prérequis
 
-**Pour lancer tous les tests (etapes 2 et 3) : uniquement Node.js >= 20.**
-Aucun Docker, aucun projet Supabase, aucune variable d'environnement. Le frontend
-se construit et se teste aussi sans backend (`npm run build`, `npm test`).
+**Pour lancer tous les tests : uniquement Node.js >= 20.** Aucun Docker, aucun projet
+Supabase, aucune variable d'environnement. Le frontend se construit et se teste aussi sans
+backend (`npm run build`, `npm test`).
 
-**Pour une connexion REELLE (login bout-en-bout) et la suite (etape 4+) :**
+**Pour une connexion RÉELLE (login bout-en-bout) :**
 - un **projet Supabase** (cloud) **ou** la **CLI Supabase + Docker** en local ;
-- les variables : `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (exposables au
-  navigateur) et `SUPABASE_SERVICE_ROLE_KEY` (**cote serveur uniquement**) ;
-- une decision d'hebergement (cloud centralise vs identites hors serveur central,
-  cf. cahier metier §10/§15) — n'impacte pas le code livre.
+- les variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (exposables au navigateur) et
+  `SUPABASE_SERVICE_ROLE_KEY` (**côté serveur uniquement**).
 
-> **Regle de securite respectee :** seules les variables prefixees `VITE_` sont
-> injectees dans le bundle frontend. `SUPABASE_SERVICE_ROLE_KEY` n'a pas ce prefixe
-> et n'est lue que par des scripts serveur — **jamais** dans le frontend (§12).
+> **Règle de sécurité respectée :** seules les variables préfixées `VITE_` sont injectées
+> dans le bundle frontend. `SUPABASE_SERVICE_ROLE_KEY` n'a pas ce préfixe et n'est lue que
+> par des scripts serveur — **jamais** dans le frontend.
 
 ---
 
-## 4. Lancer les tests (etapes 2 et 3)
+## 4. Lancer les tests
 
 ```bash
 npm install
-npm test            # tout : RLS (db) + frontend (web)
-npm run test:rls    # uniquement la securite RLS (§16)
-npm run test:web    # uniquement le frontend (rendu + gating par role)
+npm test            # tout : RLS (projet db) + frontend (projet web)
+npm run test:rls    # uniquement la sécurité RLS
+npm run test:web    # uniquement le frontend (rendu + gating par rôle)
 ```
 
-Resultat attendu : **123 tests passants** :
-- **db** (PostgreSQL embarque, 97) : 19 RLS (§16 + controles positifs), 8 logique de
-  role, 9 regles JSON (§10), 10 validation de saisie, 3 validation images, 8 admin
-  gabarits, 3 bases, 5 patients, 5 rencontres (age sans exposer la DOB, §4.1),
-  3 corrections, 4 images, 4 cohortes (critere 8), 5 export + 4 export_log (critere 9),
-  3 acces, **4 suppression logique** (cascade, reste en base, critere 12) ;
-- **web** (jsdom, 26) : 4 gating par role, 5 admin gabarits, 3 tableau de bord/base,
-  2 patient, 3 saisie de rencontre, **3 fiche patient (correction + suppression)**,
-  2 ajout d'image, 1 constructeur de cohorte, 1 export, 2 gestion des acces.
+Résultat attendu : **34 fichiers / 199 tests passants** — sécurité RLS (les scénarios
+d'attaque + leurs contrôles positifs), logique de rôle, règles JSON, validation de saisie,
+âge calculé sans exposer la DOB, corrections, images, cohortes, export immuable, accès,
+suppression logique, curation, audit, et rendu des écrans. Le premier lancement télécharge
+le binaire PostgreSQL (une fois).
 
-Le premier lancement telecharge le binaire PostgreSQL (une fois).
-
-Sur une requete `SELECT`, la RLS ne renvoie pas d'erreur : elle **masque les lignes**.
-Un acces refuse se traduit donc par **0 ligne** ; chaque refus est double d'un
-**controle positif** prouvant qu'un utilisateur legitime voit bien la donnee (pas
-de faux positif par table vide).
-
-### Correspondance §16 → tests
-
-| §16 | Scenario | Verifie |
-|---|---|---|
-| 1 | `staff` lit `patient_identity` / donnees analytiques | refuse (0 ligne) |
-| 2 | `analyst` lit une `attachment` (image) | refuse (0 ligne) |
-| 3 | collaborateur **sans** `includes_identity` lit un nom | refuse (0 ligne) |
-| 4 | utilisateur **sans** `base_access` lit une base | refuse (0 ligne) |
-| 5 | export incluant un champ identifiant (`full_name`, `date_of_birth`) | bloque (exception) |
-| 6 | le proprietaire revoque un acces | perte d'acces **immediate** |
-| 7 | invitation expiree / revoquee / deja utilisee | acceptation refusee |
+Sur une requête `SELECT`, la RLS ne renvoie pas d'erreur : elle **masque les lignes**. Un
+accès refusé se traduit donc par **0 ligne** ; chaque refus est doublé d'un **contrôle
+positif** prouvant qu'un utilisateur légitime voit bien la donnée (pas de faux positif par
+table vide).
 
 ---
 
-## 5. Lancer le frontend (etape 3)
+## 5. Lancer le frontend
 
 ```bash
 npm run dev      # http://localhost:5173
 npm run build    # build de production + service worker PWA
 ```
 
-Sans `.env`, l'app demarre quand meme et affiche un ecran **« Backend non configure »**
-(elle ne plante pas). Des que `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` sont
-renseignes (voir §6), la connexion est active.
+Sans `.env`, l'app démarre quand même et affiche un écran **« Backend non configuré »**
+(elle ne plante pas). Dès que `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` sont renseignés,
+la connexion est active.
 
-Ce qui est implemente : connexion e-mail/mot de passe + reinitialisation, selecteur de
-langue (fr/en), chargement du `profile`, **routage par role global** (etape 3), et
-l'**admin gabarits** cote `staff` (etape 4) : creer un gabarit, ajouter des champs
-(scope/section/type), ecrire des regles JSON **validees** (operateurs autorises
-uniquement), **publier** (la version devient en lecture seule) et **dupliquer**. Cote
-`member` (etapes 5-6) : **tableau de bord** des bases, **creation d'une base** liee a
-une version publiee de gabarit, **tableau des patients** d'une base, **creation d'un
-patient** (identite en zone restreinte + donnees permanentes), et **saisie d'une
-rencontre** (etape 7) : champs par section, controles bornes/requis/listes, **valeurs
-manquantes codifiees**, statut, **apercu de l'age calcule** et **regles de coherence**
-(bloquantes/avertissements). La date de naissance exacte ne quitte jamais la zone
-restreinte ; dans la liste, le nom n'apparait que si l'utilisateur a l'acces identite.
-Enfin, la **fiche patient** (etape 8) presente les sections (identite si autorisee /
-permanent / rencontres) et permet de **corriger** une valeur de rencontre avec **motif
-obligatoire** ; chaque correction est **journalisee** (ancienne/nouvelle valeur, auteur,
-motif) et l'historique est affiche. Les **images** (etape 9) s'ajoutent depuis la fiche
-avec **case de masquage obligatoire** et controle de format (jpg/png/webp) ; elles
-s'affichent via **URL signees** et seulement pour un acces identite. Enfin (etape 10),
-**« Constituer une cohorte »** : ajouter des filtres combines en ET (egalite, plage,
-liste) sur des variables permanentes ou de rencontre, **calculer les effectifs**, puis
-enregistrer une cohorte **dynamique** ou **figee**. Une cohorte figee s'**exporte**
-(etape 11) en CSV/XLSX : choix explicites (1 ligne/patient ou /rencontre, agregation
-1re/derniere, portee des rencontres), dictionnaire joint, et **fichier conserve
-immuable** (`file_hash` + `export_log`) — sans jamais d'identite ni d'image. Le
-proprietaire **gere les acces** (etape 12) : inviter par email (role + acces identite),
-partager un **lien a usage unique**, et **revoquer** invitations et acces ; l'invite
-accepte via `/accept-invitation?token=...`. Depuis la fiche (etape 13), on **supprime
-logiquement** un patient (cascade identite/rencontres/images), une rencontre ou une
-image, avec **motif obligatoire** : la donnee disparait de l'usage normal mais reste
-en base.
+**Ce qui est implémenté :** connexion e-mail/mot de passe + réinitialisation, sélecteur de
+langue (fr/en), routage par rôle global. Côté `system_admin` : admin des gabarits (versions
+immuables, règles JSON validées, publication, duplication). Côté `medecin` : tableau de bord
+des bases, création de base, gabarits personnels, table et fiche patient (identité si
+autorisée / permanent / rencontres), saisie de rencontre (bornes/requis/listes, valeurs
+manquantes codifiées, aperçu de l'âge calculé, règles de cohérence), correction journalisée
+(motif obligatoire), images en zone restreinte (masquage obligatoire, URL signées),
+constitution de cohortes (filtres en ET, effectifs, dynamique/figée), export CSV/XLSX
+immuable (sans identité ni image), gestion des accès (invitation par lien à usage unique,
+révocation), suppression logique. Côté `curateur` : pool de curation, structuration d'un cas
+réservé, clarifications, **finalisation**.
 
-> **`service_role` jamais dans le frontend** (§12) : le client navigateur
-> ([src/lib/supabase.ts](src/lib/supabase.ts)) n'utilise que la cle **ANON**. La cle
-> service_role n'est pas prefixee `VITE_` et est donc absente du bundle (verifiable
-> par `npm run build` : aucune occurrence dans `dist/`).
+> **`service_role` jamais dans le frontend** : le client navigateur
+> ([src/lib/supabase.ts](src/lib/supabase.ts)) n'utilise que la clé **ANON** (vérifiable par
+> `npm run build` : aucune occurrence dans `dist/`).
 
 ---
 
-## 6. Appliquer le schema sur un vrai Supabase (execution reelle / etape 4)
+## 6. Appliquer le schéma sur un vrai Supabase
 
 ### Option A — Supabase local (CLI + Docker)
 ```bash
-supabase init       # si pas deja fait (genere/maj config.toml)
 supabase start
 supabase db reset   # applique migrations/ puis seed.sql
-supabase status     # recupere URL + cles (anon, service_role)
+supabase status     # récupère URL + clés (anon, service_role)
 ```
 
 ### Option B — Supabase cloud
@@ -284,58 +227,65 @@ supabase db push                          # applique les migrations
 # Seed : exécuter supabase/seed.sql via le SQL editor ou psql.
 ```
 
-> **Comptes de demo et cloud :** `seed.sql` cree les utilisateurs par `INSERT auth.users`
-> (pratique en local/CLI et dans les tests). En **cloud**, il est preferable de creer
-> les 4 comptes via l'**Admin API** (`auth.admin.createUser`) ou le Dashboard, puis de
-> rejouer la partie « donnees » du seed. La cle `service_role` reste **cote serveur**.
+> **Note :** sur ce poste, `supabase db reset` peut échouer si docker.io est injoignable
+> (pull d'images). En développement, les deltas de schéma sont alors appliqués par **psql
+> direct** sur le conteneur, sans reset.
 
-### Comptes de demonstration (mot de passe commun : `Password123!`)
+### Comptes de démonstration (mot de passe commun : `Password123!`)
 
-| Email | Role | Acces |
+| Email | Rôle global | Accès |
 |---|---|---|
-| `staff@demo.test` | staff | gabarits/comptes ; **aucune** donnee patient |
-| `alice@demo.test` | member (proprietaire) | acces complet a sa base (identite incluse) |
-| `bob@demo.test` | member | medecin (collaborateur dans les tests) |
-| `anna.analyst@demo.test` | member | **analyste** sur la base d'Alice (analytique, **sans** identite ni image) |
+| `admin@demo.test` | `system_admin` | Administration ; **aucune** donnée patient |
+| `templates@demo.test` | `system_admin` | Gestion des gabarits globaux |
+| `alice@demo.test` | `medecin` (propriétaire) | Accès complet à sa base (identité incluse) |
+| `bob@demo.test` | `medecin` | 2ᵉ médecin, sans accès à la base d'Alice |
+| `editor@demo.test` | `medecin` | Collaborateur `editor` sur la base d'Alice |
+| `curator1@demo.test` | `curateur` | Pool de curation |
+| `curator2@demo.test` | `curateur` | Pool de curation |
+| `validator@demo.test` | `curateur` | Compte hérité (le rôle `validateur` est supprimé) |
+| `anna.analyst@demo.test` | `medecin` | `viewer` + `can_export_data` (export **sans** identité) |
 
-Le seed cree aussi : 1 gabarit « Neurochirurgie » publie v1, 10 patients fictifs
-(identite + analytique, age **calcule**, valeurs manquantes codifiees), 1 image
-masquee, 1 cohorte **figee** d'exemple (patients **et** rencontres).
-
----
-
-## 7. Securite — decisions et limites honnetes
-
-- **Cloisonnement cote base.** RLS active sur **toutes** les tables ; une table sans
-  politique = tout refuse. Le staff et l'analyste n'ont structurellement aucun acces
-  aux zones interdites (identite, images), y compris par contrainte `CHECK`
-  (un analyste ne peut jamais porter `includes_identity`).
-- **Separation identite / analytique.** `patient_identity` et `patient` sont deux
-  tables **sans cle etrangere** entre elles ; seul lien : `(base_id, patient_code)`.
-- **Age calcule, jamais saisi.** La date de naissance exacte reste en zone restreinte ;
-  l'age est calcule **cote serveur** (`create_encounter`/`patient_age_at`, SECURITY
-  DEFINER) et seul `age_at_encounter` entre dans la zone analytique. Un collaborateur
-  `editor` SANS acces identite peut saisir des rencontres avec age calcule **sans jamais
-  voir la date de naissance** (§4.1, teste).
-- **Anti-fuite a l'export.** `assert_export_columns_safe()` refuse tout champ
-  identifiant (liste blanche analytique). Le fichier d'export conserve immuable +
-  `file_hash` arrive a l'etape 11.
-- **`service_role` jamais dans le frontend** (§12) — voir §3.
-- **Limite a ne pas survendre** (cahier §10/§12) : la RLS empeche l'acces *applicatif*
-  aux identites ; l'administrateur du serveur peut techniquement lire la base. Une
-  garantie forte suppose un chiffrement cote client ou des identites hors serveur
-  central (hors perimetre MVP). **Aucune donnee reelle** tant que le cadre
-  juridique/ethique (§12 « a documenter ») n'est pas en place.
+Le seed crée aussi : 1 gabarit « Neurochirurgie » publié v1, 10 patients fictifs (identité +
+analytique, âge **calculé**, valeurs manquantes codifiées), 1 image masquée, 1 cohorte figée
+d'exemple, et des cas de curation de démonstration.
 
 ---
 
-## 8. Prochaine etape
+## 7. Sécurité — décisions et limites honnêtes
 
-**Etape 14 du §17** (audit renforce : tracer consultation d'identite, vue/telechargement
-d'image, changement d'acces, invitation, figement de cohorte, export, suppression,
-publication de gabarit — `audit_log`) — **en attente de votre validation** avant de
-demarrer, conformement a la methode « une etape a la fois ».
+- **Cloisonnement côté base.** RLS active sur **toutes** les tables ; une table sans
+  politique = tout refusé. Le `system_admin` et le `curateur` n'ont structurellement aucun
+  accès à l'identité.
+- **Séparation identité / analytique.** `patient_identity` et `patient` sont deux tables
+  **sans clé étrangère** entre elles ; seul lien : `(base_id, patient_code)`.
+- **Âge calculé, jamais saisi.** La date de naissance exacte reste en zone restreinte ;
+  l'âge est calculé **côté serveur** (SECURITY DEFINER). Un `editor` SANS accès identité
+  peut saisir des rencontres avec âge calculé **sans jamais voir la date de naissance**.
+- **Anti-fuite à l'export.** `assert_export_columns_safe()` refuse tout champ identifiant
+  (liste blanche analytique). Fichier d'export conservé immuable + `file_hash`.
+- **Audit des actions sensibles** (`audit_log`) : consultation d'identité, vue/téléchargement
+  d'image, changement d'accès, invitation, figement de cohorte, export, suppression,
+  publication de gabarit.
+- **`service_role` jamais dans le frontend** — voir §3.
+- **Limite à ne pas survendre** : la RLS empêche l'accès *applicatif* aux identités ;
+  l'administrateur du serveur peut techniquement lire la base. Une garantie forte suppose un
+  chiffrement côté client ou des identités hors serveur central (hors périmètre MVP).
+  **Aucune donnée réelle** tant que le cadre juridique/éthique n'est pas en place.
 
-> Storage : pour activer reellement l'upload d'images, appliquer
-> [supabase/storage.sql](supabase/storage.sql) sur le projet Supabase (bucket prive
-> `attachments` + RLS). La table `attachment` (cloisonnement) est deja dans les migrations.
+---
+
+## 8. Documentation & suite
+
+- **[docs/architecture.md](docs/architecture.md)** — vue d'ensemble (modèle, rôles, RLS, curation, carte du code).
+- **[docs/configurer-supabase.md](docs/configurer-supabase.md)** — créer un projet Supabase (cloud).
+- **[docs/tester-en-local.md](docs/tester-en-local.md)** — lancer le projet en local.
+
+**Fonctionnalités restant à intégrer** (au-delà du code livré) : intégration réelle de
+**DocAssist** (aujourd'hui un simple encart facultatif après export), **scan antivirus /
+quarantaine serveur** des documents bruts (seule l'inspection magic-bytes côté client existe),
+**évaluation des règles conditionnelles inter-champs côté serveur** (aujourd'hui en React),
+**simplification du schéma** (fusion du sous-système de curation), et **cadre juridique/éthique**
+(condition préalable à toute donnée réelle).
+
+> Storage : pour activer réellement l'upload d'images/documents, appliquer
+> [supabase/storage.sql](supabase/storage.sql) sur le projet Supabase (buckets privés + RLS).
