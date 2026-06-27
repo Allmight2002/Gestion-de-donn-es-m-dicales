@@ -54,9 +54,9 @@ create or replace function public.update_template_field(
 ) returns public.template_field
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  cur        public.template_field;
-  structural boolean;
-  res        public.template_field;
+  cur      public.template_field;
+  semantic boolean;
+  res      public.template_field;
 begin
   select * into cur from public.template_field where id = p_field_id;
   if not found then
@@ -66,16 +66,20 @@ begin
     raise exception 'Modification du gabarit non autorisee';
   end if;
 
-  structural := (p_field_key is distinct from cur.field_key)
-             or (p_type      is distinct from cur.type)
-             or (p_scope     is distinct from cur.scope);
+  -- Changement SEMANTIQUE = qui altere le SENS / les regles du champ (audit §8.2) : nom interne,
+  -- type, portee, caractere requis, types de rencontre concernes. Interdit si la variable est
+  -- deja utilisee (la signification historique des donnees changerait). Le libelle et la section
+  -- (cosmetiques) restent modifiables. Pour un vrai changement semantique apres usage : creer une
+  -- nouvelle version du gabarit.
+  semantic := (p_field_key       is distinct from cur.field_key)
+           or (p_type            is distinct from cur.type)
+           or (p_scope           is distinct from cur.scope)
+           or (p_required        is distinct from cur.required)
+           or ((case when p_scope = 'encounter' then p_encounter_types else null end) is distinct from cur.encounter_types);
 
-  if structural and public.template_field_in_use(p_field_id) then
-    raise exception 'Variable deja utilisee : seul le libelle est modifiable. Supprimez puis recreez la variable pour changer son nom ou son type.';
+  if semantic and public.template_field_in_use(p_field_id) then
+    raise exception 'Variable deja utilisee : seuls le libelle et la section sont modifiables. Pour changer son comportement (nom, type, requis, types de rencontre), creez une nouvelle version du gabarit.';
   end if;
-
-  -- encounter_types : modifiable a tout moment (n'altere pas les valeurs stockees), et
-  -- seulement pertinent pour un champ de rencontre (force a null sinon).
   update public.template_field
      set field_key = p_field_key,
          label     = p_label,

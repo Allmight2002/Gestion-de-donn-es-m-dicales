@@ -111,7 +111,7 @@ export function FieldForm({
         </select>
       </label>
       <label className="flex items-center gap-1 text-xs text-slate-600">
-        <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
+        <input type="checkbox" checked={required} disabled={lockStructural} onChange={(e) => setRequired(e.target.checked)} />
         {t('admin.required')}
       </label>
       {scope === 'encounter' && (
@@ -120,7 +120,7 @@ export function FieldForm({
           <div className="flex flex-wrap gap-3">
             {ENCOUNTER_TYPES.map((x) => (
               <label key={x} className="flex items-center gap-1">
-                <input type="checkbox" checked={encounterTypes.includes(x)} onChange={() => toggleEncType(x)} />
+                <input type="checkbox" checked={encounterTypes.includes(x)} disabled={lockStructural} onChange={() => toggleEncType(x)} />
                 {t(`encountertype.${x}`)}
               </label>
             ))}

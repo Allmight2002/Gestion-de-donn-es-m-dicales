@@ -209,6 +209,11 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     await expect(rowsAs(memberId, UPDATE, [fid, 'usee_renomme', 'Nouveau libelle', 'patient', 'clinique', 'text', false])).rejects.toThrow(/utilis/i);
     // changer le type -> REFUSE
     await expect(rowsAs(memberId, UPDATE, [fid, 'usee', 'Nouveau libelle', 'patient', 'clinique', 'integer', false])).rejects.toThrow(/utilis/i);
+    // §8.2 : changer le caractere REQUIS d'une variable utilisee -> REFUSE (changement semantique).
+    await expect(rowsAs(memberId, UPDATE, [fid, 'usee', 'Nouveau libelle', 'patient', 'clinique', 'text', true])).rejects.toThrow(/utilis/i);
+    // mais la SECTION (cosmetique) reste modifiable.
+    const okSection = await rowsAs(memberId, UPDATE, [fid, 'usee', 'Nouveau libelle', 'patient', 'biologie', 'text', false]);
+    expect(okSection[0].section).toBe('biologie');
     // la cle est restee 'usee' (rien casse cote donnees)
     expect((await db.admin.query('select field_key from public.template_field where id=$1', [fid])).rows[0].field_key).toBe('usee');
   });

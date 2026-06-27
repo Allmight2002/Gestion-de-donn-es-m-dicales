@@ -116,7 +116,7 @@ export const messages = {
     'import.dup_target': 'Deux colonnes pointent vers la même cible : corrigez avant d’importer.',
     'import.too_many': 'Fichier trop volumineux ({n} lignes) : maximum {max}. Découpez-le en plusieurs imports.',
     'admin.field_locked_hint':
-      'Variable déjà utilisée : seul le libellé est modifiable. Pour changer son nom ou son type, supprimez-la puis recréez-la.',
+      'Variable déjà utilisée : seuls le libellé et la section sont modifiables. Pour changer son comportement (nom, type, requis, types de rencontre), créez une nouvelle version du gabarit.',
     'admin.published_readonly':
       'Version publiée : lecture seule. Dupliquez-la pour créer une nouvelle version.',
     'admin.field_key': 'Clé technique',
@@ -492,7 +492,7 @@ export const messages = {
     'import.dup_target': 'Two columns map to the same target: fix before importing.',
     'import.too_many': 'File too large ({n} rows): maximum {max}. Split it into several imports.',
     'admin.field_locked_hint':
-      'Variable already in use: only the label can be changed. To change its key or type, delete it and create it again.',
+      'Variable already in use: only the label and section can be changed. To change its behaviour (key, type, required, encounter types), create a new template version.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',
     'admin.field_key': 'Field key',
     'admin.label': 'Label',
