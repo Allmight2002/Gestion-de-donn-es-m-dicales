@@ -1,0 +1,7 @@
+﻿Code patient,Nom,Date de naissance,Type de rencontre,Date,Sexe,Année de naissance,Groupe sanguin,Date d'admission,Diagnostic,Score de Glasgow,Résultat TDM,Date de sortie,Évolution,Date de décès,Hémoglobine
+NCH-101,Patient Test Un,1975-03-12,hospitalisation,2024-02-01,M,1975,O+,2024-02-01,TC grave,8,hematome,2024-02-15,sequelles,,11
+NCH-101,Patient Test Un,1975-03-12,suivi,2024-05-10,M,1975,O+,,controle post-op,14,,,,,13
+NCH-102,Patient Test Deux,1990-07-22,consultation,2024-03-05,F,1990,A+,,cephalees,15,normal,,,,
+NCH-103,Patient Test Trois,1962-11-30,hospitalisation,2024-01-20,M,1962,B+,2024-01-20,AVC hemorragique,6,engagement,2024-01-28,deces,2024-01-28,9
+NCH-104,Patient Test Quatre,2001-05-09,consultation,2024-04-02,F,2001,AB+,,suivi tumoral,15,,,,,
+NCH-104,Patient Test Quatre,2001-05-09,suivi,2024-06-18,F,2001,AB+,,controle IRM,15,,,,,
