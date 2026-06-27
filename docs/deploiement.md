@@ -101,8 +101,9 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
   des données** (région d'hébergement Supabase), accord de traitement (DPA).
 - **Durcissement serveur** (déplacer côté serveur, via Edge Functions, les opérations encore
   pilotées par le client) : audit des lectures + URL signées, inspection/antivirus des fichiers
-  à l'upload, génération/figement des exports ; évaluation des **règles de cohérence** côté
-  serveur.
+  à l'upload, génération/figement des exports. Voir **[docs/edge-functions.md](edge-functions.md)**
+  (la fonction `signed-read` §10.1 est livrée prête à déployer). *(Les règles de cohérence sont
+  désormais évaluées côté serveur.)*
 - **Limite d'anonymat** : la RLS protège l'accès *applicatif*, mais l'administrateur du serveur
   peut techniquement lire la base. Une garantie forte suppose un chiffrement côté client ou des
   identités hors serveur central.
