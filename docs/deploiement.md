@@ -18,6 +18,11 @@ donnée réelle (cadre juridique + durcissement serveur).
 ---
 
 ## 2. Backend Supabase (projet cloud)
+
+> **Pré-vol (recommandé)** : `npm run db:verify` applique le shim + **toutes les migrations
+> (dans l'ordre) + le seed** sur un PostgreSQL jetable et affiche un résumé — confirme que le
+> schéma **se déploie proprement depuis zéro** avant de pousser vers le cloud.
+
 1. **Créer le projet** sur le tableau de bord Supabase (notez la *référence* du projet et le
    mot de passe de la base).
 2. **Lier + pousser le schéma** (toutes les migrations) :

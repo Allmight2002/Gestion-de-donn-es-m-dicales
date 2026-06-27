@@ -17,7 +17,8 @@
     "supabase:reset": "npx --yes supabase db reset",
     "supabase:stop": "npx --yes supabase stop",
     "supabase:storage": "node scripts/apply-storage.mjs",
-    "create-account": "node scripts/create-account.mjs"
+    "create-account": "node scripts/create-account.mjs",
+    "db:verify": "node scripts/verify-migrations.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
