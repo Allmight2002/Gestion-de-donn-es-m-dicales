@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Registre clinique">
+  <rect width="512" height="512" rx="96" fill="#0f766e"/>
+  <!-- Croix medicale blanche, centree dans la zone de securite maskable (~inner 80%). -->
+  <g fill="#ffffff">
+    <rect x="216" y="136" width="80" height="240" rx="20"/>
+    <rect x="136" y="216" width="240" height="80" rx="20"/>
+  </g>
+</svg>

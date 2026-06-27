@@ -165,6 +165,26 @@ describe('structuration -> finalisation (pool, sans validateur)', () => {
       rowsAs(curator2Id, "insert into public.curation_draft(task_id, base_id, status) values($1,$2,'draft')", [taskId, baseId]),
     ).rejects.toThrow();
   });
+
+  test('§8.1 : la rencontre finalisee porte la version de VALIDATION (soumission), pas celle du patient', async () => {
+    // Cree une 2e version (copie de la courante) et repointe la base dessus -> le patient reste
+    // sur v1, mais la soumission enregistrera v2. Reset garanti par finally.
+    const v1 = (await db.admin.query('select current_template_version_id v from public.base where id=$1', [baseId])).rows[0].v;
+    const tpl = (await db.admin.query('select template_id from public.template_version where id=$1', [v1])).rows[0].template_id;
+    const v2 = (await db.admin.query("insert into public.template_version(template_id, version_number, status, published_at) values($1, 999, 'published', now()) returning id", [tpl])).rows[0].id;
+    await db.admin.query('insert into public.template_field(template_version_id, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types) select $1, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types from public.template_field where template_version_id=$2', [v2, v1]);
+    await db.admin.query('insert into public.validation_rule(template_version_id, rule, message, severity) select $1, rule, message, severity from public.validation_rule where template_version_id=$2', [v2, v1]);
+    try {
+      await db.admin.query('update public.base set current_template_version_id=$1 where id=$2', [v2, baseId]);
+      const c = await claimAndDraft('NCH-007', {}, [{ encounter_type: 'suivi', encounter_date: '2024-09-09', age_unit: 'years', data: { diagnosis: 'ctrl', glasgow_score: 11 } }]);
+      await rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [c.taskId]);
+      const encTv = (await db.admin.query("select template_version_id from public.encounter where patient_id=$1 and encounter_date='2024-09-09'", [c.patientId])).rows[0].template_version_id;
+      expect(encTv).toBe(v2);       // version de la soumission (qui a valide)
+      expect(encTv).not.toBe(v1);   // PAS la version (ancienne) du patient
+    } finally {
+      await db.admin.query('update public.base set current_template_version_id=$1 where id=$2', [v1, baseId]);
+    }
+  });
 });
 
 describe('soumission de cas (medecin)', () => {

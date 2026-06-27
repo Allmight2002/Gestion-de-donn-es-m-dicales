@@ -260,6 +260,7 @@ declare
   enc    jsonb;
   v_age  numeric;
   v_unit text;
+  v_tv   uuid;
 begin
   if auth.uid() is null then raise exception 'Authentification requise'; end if;
 
@@ -282,18 +283,22 @@ begin
   select * into v_pat from public.patient where id = s.target_patient_id for update;
   if not found then raise exception 'Patient cible introuvable'; end if;
 
+  -- §8.1 : UNE seule version pour TOUTE la finalisation -> la version qui VALIDE est aussi
+  -- celle ENREGISTREE avec la rencontre creee (pas de validation version B / stockage version A).
+  v_tv := coalesce(s.template_version_id, v_pat.template_version_id);
+
   -- DOB lue en interne pour le calcul d'age (jamais renvoyee).
   select date_of_birth into v_dob from public.patient_identity
    where base_id = v_base and patient_code = v_pat.patient_code and deleted_at is null;
 
   -- Re-validation SERVEUR (bornes / listes / type). A la finalisation, on impose AUSSI la
   -- COMPLETUDE des champs requis (synthese §6) — contrairement a un brouillon partiel.
-  perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'patient', d.patient_data);
+  perform public.assert_data_valid(v_tv, 'patient', d.patient_data);
 
   -- 1) Donnees permanentes : fusion + journal des champs reellement modifies.
   if d.patient_data <> '{}'::jsonb then
     -- Completude sur l'etat FINAL du patient (donnees existantes + proposees), pas le seul delta.
-    perform public.assert_required_complete(coalesce(s.template_version_id, v_pat.template_version_id), 'patient', v_pat.data || d.patient_data);
+    perform public.assert_required_complete(v_tv, 'patient', v_pat.data || d.patient_data);
     for k in select jsonb_object_keys(d.patient_data) loop
       v_old := v_pat.data -> k;
       v_new := d.patient_data -> k;
@@ -312,8 +317,8 @@ begin
 
   -- 2) Rencontres proposees -> creees CUREES (age calcule, hors data).
   for enc in select * from jsonb_array_elements(d.encounters) loop
-    perform public.assert_data_valid(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
-    perform public.assert_required_complete(coalesce(s.template_version_id, v_pat.template_version_id), 'encounter', coalesce(enc -> 'data', '{}'::jsonb), coalesce(enc ->> 'encounter_type', 'autre'));
+    perform public.assert_data_valid(v_tv, 'encounter', coalesce(enc -> 'data', '{}'::jsonb));
+    perform public.assert_required_complete(v_tv, 'encounter', coalesce(enc -> 'data', '{}'::jsonb), coalesce(enc ->> 'encounter_type', 'autre'));
     v_unit := coalesce(enc ->> 'age_unit', 'years');
     v_age  := case
                 when v_dob is not null and (enc ->> 'encounter_date') is not null
@@ -322,7 +327,7 @@ begin
               end;
     insert into public.encounter (patient_id, template_version_id, encounter_type, encounter_date,
                                   age_value, age_unit, data, collection_mode, validation_status, created_by)
-    values (v_pat.id, v_pat.template_version_id,
+    values (v_pat.id, v_tv,
             coalesce(enc ->> 'encounter_type', 'autre'),
             (enc ->> 'encounter_date')::date, v_age, v_unit,
             coalesce(enc -> 'data', '{}'::jsonb) - 'age_at_encounter',
