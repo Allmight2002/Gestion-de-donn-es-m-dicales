@@ -4,6 +4,7 @@
 // (zone analytique) est visible.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import type { ImportRow, ImportReport } from '../domain/import';
 
 export interface PatientIdentityInfo {
   fullName: string | null;
@@ -83,6 +84,8 @@ export interface PatientRepository {
   listFieldChanges(entity: 'patient' | 'encounter', entityId: string): Promise<FieldChange[]>;
   softDeletePatient(patientId: string, reason: string): Promise<void>;
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
+  /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
+  importRecords(baseId: string, rows: ImportRow[], dryRun: boolean, status: string): Promise<ImportReport>;
 }
 
 type PatientRow = {
@@ -134,7 +137,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     return {
       listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
-      softDeletePatient: fail, softDeleteEncounter: fail,
+      softDeletePatient: fail, softDeleteEncounter: fail, importRecords: fail,
     };
   }
 
@@ -345,6 +348,14 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async softDeleteEncounter(encounterId, reason) {
       const { error } = await client.rpc('soft_delete_encounter', { p_encounter_id: encounterId, p_reason: reason });
       if (error) throw error;
+    },
+
+    async importRecords(baseId, rows, dryRun, status) {
+      const { data, error } = await client.rpc('import_records', {
+        p_base_id: baseId, p_rows: rows, p_dry_run: dryRun, p_status: status,
+      });
+      if (error) throw error;
+      return data as ImportReport;
     },
   };
 }

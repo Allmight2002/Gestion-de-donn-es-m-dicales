@@ -8,6 +8,7 @@ import { BaseTemplateEditor } from '../screens/member/BaseTemplateEditor';
 import { MyTemplates } from '../screens/member/MyTemplates';
 import { NewPatient } from '../screens/member/NewPatient';
 import { PatientCreateChoice } from '../screens/member/PatientCreateChoice';
+import { ImportData } from '../screens/member/ImportData';
 import { EncounterCreateChoice } from '../screens/member/EncounterCreateChoice';
 import { PatientDetail } from '../screens/member/PatientDetail';
 import { EncounterForm } from '../screens/member/EncounterForm';
@@ -123,6 +124,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <ExportPanel />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/import"
+        element={
+          <ProtectedRoute area="member">
+            <ImportData />
           </ProtectedRoute>
         }
       />

@@ -88,6 +88,11 @@ export function BaseHome() {
             </button>
           )}
           {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
+            <button onClick={() => navigate(`/bases/${id}/import`)} className="btn-secondary">
+              {t('import.title')}
+            </button>
+          )}
+          {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
             <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
               + {t('patient.new')}
             </button>
