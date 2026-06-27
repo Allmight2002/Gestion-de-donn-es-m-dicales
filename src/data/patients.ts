@@ -6,6 +6,15 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ImportRow, ImportReport } from '../domain/import';
 
+/** Options d'un import (statut cible, mode de conflit, empreinte fichier, version vue a l'apercu). */
+export interface ImportOptions {
+  dryRun: boolean;
+  status: string;
+  conflict: 'fill' | 'overwrite' | 'skip';
+  fileHash?: string | null;
+  templateVersionId?: string | null;
+}
+
 export interface PatientIdentityInfo {
   fullName: string | null;
   dateOfBirth: string | null;
@@ -85,7 +94,7 @@ export interface PatientRepository {
   softDeletePatient(patientId: string, reason: string): Promise<void>;
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
-  importRecords(baseId: string, rows: ImportRow[], dryRun: boolean, status: string): Promise<ImportReport>;
+  importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
 }
 
 type PatientRow = {
@@ -350,9 +359,11 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
     },
 
-    async importRecords(baseId, rows, dryRun, status) {
+    async importRecords(baseId, rows, opts) {
       const { data, error } = await client.rpc('import_records', {
-        p_base_id: baseId, p_rows: rows, p_dry_run: dryRun, p_status: status,
+        p_base_id: baseId, p_rows: rows, p_dry_run: opts.dryRun, p_status: opts.status,
+        p_conflict: opts.conflict, p_file_hash: opts.fileHash ?? null,
+        p_template_version_id: opts.templateVersionId ?? null,
       });
       if (error) throw error;
       return data as ImportReport;

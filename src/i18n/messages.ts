@@ -109,6 +109,12 @@ export const messages = {
     'import.errors': 'Erreurs',
     'import.line': 'Ligne',
     'import.ready': 'Aucune erreur : vous pouvez lancer l’import.',
+    'import.conflict': 'Patient déjà existant',
+    'import.conflict_fill': 'Compléter les champs vides (sans écraser)',
+    'import.conflict_overwrite': 'Remplacer (les écrasements sont journalisés)',
+    'import.conflict_skip': 'Ne pas toucher au patient (ajouter seulement les rencontres)',
+    'import.dup_target': 'Deux colonnes pointent vers la même cible : corrigez avant d’importer.',
+    'import.too_many': 'Fichier trop volumineux ({n} lignes) : maximum {max}. Découpez-le en plusieurs imports.',
     'admin.field_locked_hint':
       'Variable déjà utilisée : seul le libellé est modifiable. Pour changer son nom ou son type, supprimez-la puis recréez-la.',
     'admin.published_readonly':
@@ -478,6 +484,12 @@ export const messages = {
     'import.errors': 'Errors',
     'import.line': 'Row',
     'import.ready': 'No errors: you can run the import.',
+    'import.conflict': 'Existing patient',
+    'import.conflict_fill': 'Fill empty fields only (no overwrite)',
+    'import.conflict_overwrite': 'Overwrite (changes are logged)',
+    'import.conflict_skip': 'Leave the patient untouched (only add encounters)',
+    'import.dup_target': 'Two columns map to the same target: fix before importing.',
+    'import.too_many': 'File too large ({n} rows): maximum {max}. Split it into several imports.',
     'admin.field_locked_hint':
       'Variable already in use: only the label can be changed. To change its key or type, delete it and create it again.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',

@@ -15,6 +15,8 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
 const CALL = 'select public.import_records($1,$2::jsonb,$3,$4) as report';
+// signature complete : base, rows, dry_run, status, conflict, file_hash, template_version_id
+const CALL7 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7) as report';
 const enc = (type: string, date: string, data: object) => ({ encounter_type: type, encounter_date: date, data });
 const row = (code: string | null, encounter: object | null, patient_data: object = {}, identity: object | null = null) =>
   ({ patient_code: code, identity, patient_data, encounter });
@@ -119,5 +121,33 @@ describe('import_records', () => {
     await expect(rowsAs(annaId, CALL, [baseId, J([
       row('IMP-010', enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 9 })),
     ]), false, 'draft'])).rejects.toThrow(/refuse/i);
+  });
+
+  test('§6.1 idempotence : un meme fichier (hash) n est pas importe deux fois', async () => {
+    const h = 'hash-' + Date.now();
+    const data = J([row('IMP-IDEM', enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 10 }))]);
+    const rep = (await rowsAs(aliceId, CALL7, [baseId, data, false, 'draft', 'fill', h, null]))[0].report;
+    expect(rep.error_count).toBe(0);
+    // meme hash -> refus global (doublon evite).
+    await expect(rowsAs(aliceId, CALL7, [baseId, data, false, 'draft', 'fill', h, null])).rejects.toThrow(/deja ete importe|doublon/i);
+  });
+
+  test('§6.2 import draft ne retrograde pas un patient curated ; fill garde l existant, overwrite journalise', async () => {
+    await rowsAs(aliceId, CALL7, [baseId, J([row('IMP-CONF', null, { sexe: 'M', birth_year: 1980 })]), false, 'curated', 'fill', null, null]);
+    // fill + statut draft : ni retrogradation ni ecrasement.
+    await rowsAs(aliceId, CALL7, [baseId, J([row('IMP-CONF', null, { sexe: 'F' })]), false, 'draft', 'fill', null, null]);
+    let p = (await db.admin.query("select data, validation_status from public.patient where base_id=$1 and patient_code='IMP-CONF'", [baseId])).rows[0];
+    expect(p.validation_status).toBe('curated');
+    expect(p.data.sexe).toBe('M');
+    // overwrite : remplace + journalise (source='import').
+    await rowsAs(aliceId, CALL7, [baseId, J([row('IMP-CONF', null, { sexe: 'F' })]), false, 'draft', 'overwrite', null, null]);
+    p = (await db.admin.query("select data from public.patient where base_id=$1 and patient_code='IMP-CONF'", [baseId])).rows[0];
+    expect(p.data.sexe).toBe('F');
+    expect((await db.admin.query("select 1 from public.field_change_log where entity='patient' and field_key='sexe' and source='import'")).rows.length).toBeGreaterThan(0);
+  });
+
+  test('§6.4 verrou de version : un template_version_id perime est refuse', async () => {
+    await expect(rowsAs(aliceId, CALL7, [baseId, J([row('IMP-VER', enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 9 }))]),
+      false, 'draft', 'fill', null, '00000000-0000-0000-0000-000000000000'])).rejects.toThrow(/gabarit a change|apercu/i);
   });
 });

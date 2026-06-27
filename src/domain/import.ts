@@ -1,6 +1,8 @@
 // Logique PURE d'importation (testable en node) : correspondance colonnes -> cibles, et
-// construction des lignes structurees envoyees a la RPC import_records. Le decoupage
-// identite / analytique est decide ICI (cote client) ; la base le RE-VALIDE et l'ECRIT.
+// construction des lignes structurees envoyees a la RPC import_records. Les colonnes sont
+// identifiees par leur INDEX (pas par le libelle d'en-tete) : un en-tete vide ou DUPLIQUE
+// ne provoque donc ni decalage ni collision (audit §6.6). Le decoupage identite / analytique
+// est decide ICI (cote client) ; la base le RE-VALIDE et l'ECRIT.
 import type { TemplateField } from '../data/types';
 
 export type ImportTarget =
@@ -13,7 +15,8 @@ export type ImportTarget =
   | `patient:${string}`
   | `encounter:${string}`;
 
-export type ColumnMapping = Record<string, ImportTarget>;
+/** index de colonne -> cible. */
+export type ColumnMapping = Record<number, ImportTarget>;
 
 export interface ImportRow {
   patient_code: string | null;
@@ -25,6 +28,7 @@ export interface ImportRow {
 export interface ImportReport {
   dry_run: boolean;
   status: string;
+  conflict?: string;
   patients_new: number;
   patients_updated: number;
   encounters: number;
@@ -43,26 +47,38 @@ const META_ALIASES: Record<string, ImportTarget> = {
   dateofbirth: 'identity.date_of_birth', datedenaissance: 'identity.date_of_birth', naissance: 'identity.date_of_birth', dob: 'identity.date_of_birth',
 };
 
-/** Pre-remplit la correspondance : meta connue, puis champ de gabarit par libelle/cle. */
+/** Pre-remplit la correspondance (par INDEX) : meta connue, puis champ de gabarit par libelle/cle. */
 export function autoMapColumns(headers: string[], fields: TemplateField[]): ColumnMapping {
   const patient = fields.filter((f) => f.scope === 'patient');
   const encounter = fields.filter((f) => f.scope === 'encounter');
   const map: ColumnMapping = {};
-  for (const h of headers) {
-    const n = norm(h);
-    if (META_ALIASES[n]) { map[h] = META_ALIASES[n]; continue; }
+  headers.forEach((h, i) => {
+    const n = norm(h ?? '');
+    if (!n) { map[i] = 'ignore'; return; }
+    if (META_ALIASES[n]) { map[i] = META_ALIASES[n]; return; }
     const pf = patient.find((f) => norm(f.label) === n || norm(f.fieldKey) === n);
-    if (pf) { map[h] = `patient:${pf.fieldKey}`; continue; }
+    if (pf) { map[i] = `patient:${pf.fieldKey}`; return; }
     const ef = encounter.find((f) => norm(f.label) === n || norm(f.fieldKey) === n);
-    if (ef) { map[h] = `encounter:${ef.fieldKey}`; continue; }
-    map[h] = 'ignore';
-  }
+    if (ef) { map[i] = `encounter:${ef.fieldKey}`; return; }
+    map[i] = 'ignore';
+  });
   return map;
 }
 
-/** Construit les lignes structurees a partir des lignes brutes (objets par en-tete) + mapping. */
-export function buildImportRows(rows: Record<string, unknown>[], mapping: ColumnMapping): ImportRow[] {
-  return rows.map((raw) => {
+/** Cibles (hors "ignore") assignees a PLUSIEURS colonnes -> conflit a resoudre avant import. */
+export function duplicateTargets(mapping: ColumnMapping): ImportTarget[] {
+  const counts = new Map<ImportTarget, number>();
+  for (const t of Object.values(mapping)) {
+    if (t === 'ignore') continue;
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  return [...counts.entries()].filter(([, n]) => n > 1).map(([t]) => t);
+}
+
+/** Construit les lignes structurees a partir des lignes brutes (cellules par INDEX) + mapping. */
+export function buildImportRows(rows: unknown[][], mapping: ColumnMapping): ImportRow[] {
+  const entries = Object.entries(mapping).map(([i, t]) => [Number(i), t] as const);
+  return rows.map((cells) => {
     let patient_code: string | null = null;
     const identity: { full_name?: string; date_of_birth?: string } = {};
     const patient_data: Record<string, unknown> = {};
@@ -70,9 +86,9 @@ export function buildImportRows(rows: Record<string, unknown>[], mapping: Column
     let encType = '';
     let encDate = '';
 
-    for (const [col, target] of Object.entries(mapping)) {
+    for (const [i, target] of entries) {
       if (target === 'ignore') continue;
-      const v = raw[col];
+      const v = cells[i];
       const s = v == null ? '' : String(v).trim();
       if (s === '') continue;
       if (target === 'patient_code') patient_code = s;

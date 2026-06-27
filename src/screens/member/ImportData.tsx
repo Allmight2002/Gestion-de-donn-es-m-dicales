@@ -4,13 +4,20 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField } from '../../data/types';
 import {
-  autoMapColumns, buildImportRows, type ColumnMapping, type ImportReport, type ImportTarget,
+  autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping, type ImportReport, type ImportTarget,
 } from '../../domain/import';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
+const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
+const MAX_ROWS = 5000;
+
+async function sha256Hex(buf: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 // Importation par lots (CSV / XLSX) : 1 ligne = 1 rencontre, colonnes patient repetees.
-// Correspondance colonnes -> champs, APERCU (dry-run, aucune ecriture), puis import.
+// Correspondance par INDEX de colonne, APERCU (dry-run), puis import (idempotent + mode de conflit).
 export function ImportData() {
   const { id: baseId } = useParams();
   const navigate = useNavigate();
@@ -20,11 +27,14 @@ export function ImportData() {
   const patients = usePatientRepository();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
+  const [versionId, setVersionId] = useState<string | null>(null);
   const [fileName, setFileName] = useState('');
+  const [fileHash, setFileHash] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
+  const [rawRows, setRawRows] = useState<unknown[][]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [status, setStatus] = useState<string>('draft');
+  const [conflict, setConflict] = useState<'fill' | 'overwrite' | 'skip'>('fill');
   const [report, setReport] = useState<ImportReport | null>(null);
   const [committed, setCommitted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,6 +47,7 @@ export function ImportData() {
     try {
       const base = await bases.getBase(baseId);
       if (base?.base.currentTemplateVersionId) {
+        setVersionId(base.base.currentTemplateVersionId);
         const v = await templates.getVersion(base.base.currentTemplateVersionId);
         setFields(v.fields);
       }
@@ -53,16 +64,21 @@ export function ImportData() {
     if (!file) return;
     setError(null); setReport(null); setCommitted(false);
     try {
-      const XLSX = await import('xlsx'); // charge a la demande (hors bundle initial)
       const buf = await file.arrayBuffer();
+      const hash = await sha256Hex(buf);
+      const XLSX = await import('xlsx'); // charge a la demande (hors bundle initial)
       const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][];
-      const head = (aoa[0] ?? []).map((h) => String(h).trim()).filter((h) => h !== '');
-      const rows = aoa.slice(1)
-        .filter((r) => r.some((c) => String(c ?? '').trim() !== ''))
-        .map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ''])));
+      // raw:false + dateNF -> les dates Excel sortent au format ISO (pas le format local).
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false, dateNF: 'yyyy-mm-dd' }) as unknown[][];
+      const head = (aoa[0] ?? []).map((h) => String(h ?? '').trim()); // garde TOUTES les colonnes (meme vides)
+      const rows = aoa.slice(1).filter((r) => r.some((c) => String(c ?? '').trim() !== ''));
+      if (rows.length > MAX_ROWS) {
+        setError(t('import.too_many').replace('{max}', String(MAX_ROWS)).replace('{n}', String(rows.length)));
+        return;
+      }
       setFileName(file.name);
+      setFileHash(hash);
       setHeaders(head);
       setRawRows(rows);
       setMapping(autoMapColumns(head, fields));
@@ -73,12 +89,16 @@ export function ImportData() {
 
   const rows = useMemo(() => buildImportRows(rawRows, mapping), [rawRows, mapping]);
   const hasPatientCode = Object.values(mapping).includes('patient_code');
+  const dups = useMemo(() => duplicateTargets(mapping), [mapping]);
+  const canRun = hasPatientCode && dups.length === 0;
 
   async function run(dryRun: boolean) {
     if (!baseId) return;
     setBusy(true); setError(null);
     try {
-      const rep = await patients.importRecords(baseId, rows, dryRun, status);
+      const rep = await patients.importRecords(baseId, rows, {
+        dryRun, status, conflict, fileHash, templateVersionId: versionId,
+      });
       setReport(rep);
       if (!dryRun) setCommitted(true);
     } catch (e) {
@@ -88,7 +108,7 @@ export function ImportData() {
     }
   }
 
-  const setCol = (col: string, target: ImportTarget) => setMapping((m) => ({ ...m, [col]: target }));
+  const setCol = (i: number, target: ImportTarget) => setMapping((m) => ({ ...m, [i]: target }));
 
   return (
     <section className="max-w-3xl space-y-6">
@@ -114,10 +134,12 @@ export function ImportData() {
           <div className="card p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('import.mapping')}</h2>
             <div className="space-y-2">
-              {headers.map((h) => (
-                <div key={h} className="flex items-center gap-3 text-sm">
-                  <span className="w-1/3 truncate font-mono text-xs text-slate-600" title={h}>{h}</span>
-                  <select className="input flex-1" value={mapping[h] ?? 'ignore'} onChange={(e) => setCol(h, e.target.value as ImportTarget)}>
+              {headers.map((h, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <span className="w-1/3 truncate font-mono text-xs text-slate-600" title={h || `(colonne ${i + 1})`}>
+                    {h || <span className="italic text-slate-400">(colonne {i + 1})</span>}
+                  </span>
+                  <select className="input flex-1" value={mapping[i] ?? 'ignore'} onChange={(e) => setCol(i, e.target.value as ImportTarget)}>
                     <option value="ignore">— {t('import.ignore')} —</option>
                     <optgroup label={t('import.grp_meta')}>
                       <option value="patient_code">{t('import.patient_code')}</option>
@@ -143,6 +165,7 @@ export function ImportData() {
               ))}
             </div>
             {!hasPatientCode && <p className="mt-3 text-xs text-red-600">{t('import.need_code')}</p>}
+            {dups.length > 0 && <p className="mt-2 text-xs text-red-600">{t('import.dup_target')}</p>}
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -152,17 +175,21 @@ export function ImportData() {
                 {STATUSES.map((s) => <option key={s} value={s}>{t(`encstatus.${s}`)}</option>)}
               </select>
             </label>
-            <button onClick={() => void run(true)} disabled={busy || !hasPatientCode} className="btn-secondary">{t('import.preview')}</button>
-            <button onClick={() => void run(false)} disabled={busy || !hasPatientCode || !report || committed} className="btn-primary">{t('import.commit')}</button>
+            <label className="flex flex-col text-sm">
+              <span className="text-slate-700">{t('import.conflict')}</span>
+              <select className="input mt-1" value={conflict} onChange={(e) => setConflict(e.target.value as typeof conflict)}>
+                {CONFLICTS.map((c) => <option key={c} value={c}>{t(`import.conflict_${c}`)}</option>)}
+              </select>
+            </label>
+            <button onClick={() => void run(true)} disabled={busy || !canRun} className="btn-secondary">{t('import.preview')}</button>
+            <button onClick={() => void run(false)} disabled={busy || !canRun || !report || committed} className="btn-primary">{t('import.commit')}</button>
           </div>
         </>
       )}
 
       {report && (
         <div className="card space-y-2 p-4 text-sm">
-          <p className="font-medium text-slate-700">
-            {committed ? t('import.done') : t('import.preview_result')}
-          </p>
+          <p className="font-medium text-slate-700">{committed ? t('import.done') : t('import.preview_result')}</p>
           <ul className="text-slate-600">
             <li>{t('import.patients_new')} : <strong>{report.patients_new}</strong></li>
             <li>{t('import.patients_updated')} : <strong>{report.patients_updated}</strong></li>
