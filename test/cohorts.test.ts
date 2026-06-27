@@ -94,6 +94,40 @@ describe('validated_only (v3.0)', () => {
   });
 });
 
+describe('§7 : rencontre curated sur patient draft (eligibilite decouplee)', () => {
+  test('la rencontre curated compte dans la cohorte de rencontres meme si le patient est draft', async () => {
+    // Patient DRAFT (create_patient impose draft) avec donnees permanentes COMPLETES.
+    await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
+      baseId, 'COH-MIX', 'Mix M', '1985-01-01', null, null, null, JSON.stringify({ sexe: 'M', birth_year: 1985 }),
+    ]);
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='COH-MIX'", [baseId])).rows[0].id;
+    // Rencontre CURATED complete (consultation, glasgow>=12).
+    await rowsAs(aliceId, 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)', [
+      pid, 'consultation', '2024-03-03', 'curated', JSON.stringify({ diagnosis: 'x', glasgow_score: 14 }), 'years',
+    ]);
+    expect((await db.admin.query('select validation_status from public.patient where id=$1', [pid])).rows[0].validation_status).toBe('draft');
+
+    // L'apercu de RENCONTRES (validated_only) inclut TOUTES les rencontres curated glasgow>=12
+    // sur patients actifs — y compris celle du patient draft.
+    const expEnc = Number((await db.admin.query(
+      "select count(*)::int n from public.encounter e join public.patient p on p.id=e.patient_id where p.base_id=$1 and e.validation_status='curated' and (e.data->>'glasgow_score')::int>=12 and e.deleted_at is null and p.deleted_at is null",
+      [baseId])).rows[0].n);
+    expect((await rowsAs(aliceId, PREVIEW, [baseId, fGcs]))[0].encounter_count).toBe(expEnc);
+
+    // finalize_patient : les donnees permanentes deviennent curated (entre alors dans la cohorte de patients).
+    await rowsAs(aliceId, 'select * from public.finalize_patient($1)', [pid]);
+    expect((await db.admin.query('select validation_status from public.patient where id=$1', [pid])).rows[0].validation_status).toBe('curated');
+  });
+
+  test('finalize_patient refuse des donnees permanentes incompletes (birth_year requis manquant)', async () => {
+    await rowsAs(aliceId, 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)', [
+      baseId, 'COH-INC', 'Inc', '1985-01-01', null, null, null, JSON.stringify({ sexe: 'M' }), // pas de birth_year
+    ]);
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='COH-INC'", [baseId])).rows[0].id;
+    await expect(rowsAs(aliceId, 'select * from public.finalize_patient($1)', [pid])).rejects.toThrow(/requis|manquant/i);
+  });
+});
+
 describe('RLS sur la creation de cohorte', () => {
   test('un analyste peut figer une cohorte ; un viewer ne peut pas', async () => {
     await db.asUser(annaId, (c) => c.query(SNAPSHOT, [baseId, 'Par analyste', fM]));

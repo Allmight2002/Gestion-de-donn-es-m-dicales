@@ -27,7 +27,9 @@ export function PatientDetail() {
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [patientFields, setPatientFields] = useState<TemplateField[]>([]);
   const [encounterFields, setEncounterFields] = useState<TemplateField[]>([]);
+  const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fmt = useCallback(
@@ -54,6 +56,7 @@ export function PatientDetail() {
       setPatient(p);
       setEncounters(encs);
       setAttachments(atts);
+      setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       // §7.1 : consultation de l'identite -> trace (best-effort) si l'identite a ete revelee.
       if (p?.identity) void audit.logSensitiveRead('identity_read', 'patient', patientId, baseId);
       if (base?.base.currentTemplateVersionId) {
@@ -117,7 +120,26 @@ export function PatientDetail() {
       )}
 
       <div className="card p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
+          <span className="flex items-center gap-2">
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t(`encstatus.${patient.validationStatus}` as MessageKey)}</span>
+            {canEdit && patient.validationStatus !== 'curated' && (
+              <button
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try { await patients.finalizePatient(patientId!); await load(); setError(null); }
+                  catch (e) { setError(e instanceof Error ? e.message : t('common.error')); }
+                  finally { setBusy(false); }
+                }}
+                className="text-xs font-medium text-teal-700 hover:underline"
+              >
+                {t('patient.finalize')}
+              </button>
+            )}
+          </span>
+        </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
           {patientFields.map((f) => (
             <div key={f.id} className="contents">

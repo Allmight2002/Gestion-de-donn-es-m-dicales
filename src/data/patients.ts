@@ -93,6 +93,8 @@ export interface PatientRepository {
   listFieldChanges(entity: 'patient' | 'encounter', entityId: string): Promise<FieldChange[]>;
   softDeletePatient(patientId: string, reason: string): Promise<void>;
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
+  /** Finalise les donnees permanentes d'un patient (draft -> curated). Echoue si incompletes. */
+  finalizePatient(patientId: string): Promise<void>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
   importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
 }
@@ -146,7 +148,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     return {
       listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
-      softDeletePatient: fail, softDeleteEncounter: fail, importRecords: fail,
+      softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, importRecords: fail,
     };
   }
 
@@ -356,6 +358,11 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
 
     async softDeleteEncounter(encounterId, reason) {
       const { error } = await client.rpc('soft_delete_encounter', { p_encounter_id: encounterId, p_reason: reason });
+      if (error) throw error;
+    },
+
+    async finalizePatient(patientId) {
+      const { error } = await client.rpc('finalize_patient', { p_patient_id: patientId });
       if (error) throw error;
     },
 
