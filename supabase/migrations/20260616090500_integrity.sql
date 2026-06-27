@@ -78,18 +78,21 @@ create trigger trg_base_owner_immutable
   before update on public.base
   for each row execute function public.guard_base_owner_immutable();
 
--- 6) Integrite 'curated' (audit 4.3) : toute ligne PROMUE/maintenue en 'curated' doit avoir
--- ses champs requis complets, pour TOUTES les voies d'ecriture (RPC, correction, appel API
--- direct). Type-aware pour les rencontres (un champ requis ne l'est que pour les types ou il
--- s'applique). Les bornes/listes/type restent verifies par les RPC (assert_data_valid) ; on
--- ne les rejoue pas ici pour ne pas bloquer des donnees de demo deja en base.
+-- 6) Integrite 'curated' (audit §5.1) : toute ligne PROMUE/maintenue en 'curated' doit etre
+-- VALIDE (bornes/types/listes via assert_data_valid), sans champ inconnu (assert_no_unknown_fields)
+-- et COMPLETE (champs requis, type-aware). Pour TOUTES les voies d'ecriture (RPC, correction,
+-- appel API direct -> ferme le contournement `update encounter set data = data || '{...99}'`).
 create or replace function public.assert_curated_complete()
 returns trigger language plpgsql set search_path = public, pg_temp as $$
 begin
   if new.validation_status = 'curated' then
     if tg_table_name = 'patient' then
+      perform public.assert_data_valid(new.template_version_id, 'patient', new.data);
+      perform public.assert_no_unknown_fields(new.template_version_id, 'patient', new.data);
       perform public.assert_required_complete(new.template_version_id, 'patient', new.data);
     else
+      perform public.assert_data_valid(new.template_version_id, 'encounter', new.data);
+      perform public.assert_no_unknown_fields(new.template_version_id, 'encounter', new.data);
       perform public.assert_required_complete(new.template_version_id, 'encounter', new.data, new.encounter_type);
     end if;
   end if;
@@ -102,3 +105,45 @@ create trigger trg_patient_curated_complete
 create trigger trg_encounter_curated_complete
   before insert or update on public.encounter
   for each row execute function public.assert_curated_complete();
+
+-- 7) Immuabilite des colonnes STRUCTURELLES (audit §5.3) : un UPDATE direct (hors RPC) ne doit
+-- pas pouvoir reparenter une rencontre, desynchroniser le code patient identite/analytique, ni
+-- falsifier l'origine. Les RPC ne modifient JAMAIS ces colonnes -> aucun flux legitime casse.
+create or replace function public.guard_structural_immutable()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if tg_table_name = 'patient' then
+    if new.base_id is distinct from old.base_id
+       or new.patient_code is distinct from old.patient_code
+       or new.template_version_id is distinct from old.template_version_id
+       or new.created_by is distinct from old.created_by
+       or new.created_at is distinct from old.created_at then
+      raise exception 'Colonne structurelle immuable (patient : base_id / patient_code / template_version_id / created_by / created_at)';
+    end if;
+  elsif tg_table_name = 'encounter' then
+    if new.patient_id is distinct from old.patient_id
+       or new.template_version_id is distinct from old.template_version_id
+       or new.created_by is distinct from old.created_by
+       or new.created_at is distinct from old.created_at then
+      raise exception 'Colonne structurelle immuable (encounter : patient_id / template_version_id / created_by / created_at)';
+    end if;
+  elsif tg_table_name = 'patient_identity' then
+    if new.base_id is distinct from old.base_id
+       or new.patient_code is distinct from old.patient_code
+       or new.created_by is distinct from old.created_by
+       or new.created_at is distinct from old.created_at then
+      raise exception 'Colonne structurelle immuable (patient_identity : base_id / patient_code / created_by / created_at)';
+    end if;
+  end if;
+  return new;
+end $$;
+
+create trigger trg_patient_structural_immutable
+  before update on public.patient
+  for each row execute function public.guard_structural_immutable();
+create trigger trg_encounter_structural_immutable
+  before update on public.encounter
+  for each row execute function public.guard_structural_immutable();
+create trigger trg_identity_structural_immutable
+  before update on public.patient_identity
+  for each row execute function public.guard_structural_immutable();

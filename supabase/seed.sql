@@ -163,7 +163,7 @@ begin
     v_adm := date '2024-01-05' + ((i * 17) % 300);
     v_gcs := 3 + ((i * 3) % 13);
     v_out := (array['gueri','sequelles','deces','gueri'])[1 + (i % 4)];
-    v_hb  := case when i % 4 = 0 then 'inconnu' else (9 + (i % 6))::text end;
+    v_hb  := (9 + (i % 6))::text; -- hemoglobine numerique ; le cas "inconnu" devient un code manquant ci-dessous
     v_age := public.compute_age(v_dob, v_adm, 'years');
 
     insert into public.encounter
@@ -178,7 +178,7 @@ begin
          'discharge_date', to_char(v_adm + (5 + (i % 20)), 'YYYY-MM-DD'),
          'outcome', v_out,
          'death_date', case when v_out = 'deces' then to_char(v_adm + (2 + (i % 5)), 'YYYY-MM-DD') else null end,
-         'hemoglobin', v_hb
+         'hemoglobin', case when i % 4 = 0 then jsonb_build_object('__missing__', 'inconnu') else to_jsonb(v_hb) end
        ), 'direct', 'curated', v_owner);
 
     if i % 3 = 0 or i % 4 = 0 then
@@ -186,7 +186,7 @@ begin
         (patient_id, template_version_id, encounter_type, encounter_date, age_value, age_unit, data, collection_mode, validation_status, created_by)
       values
         (v_pid, v_tv, 'suivi', v_adm + 90, public.compute_age(v_dob, v_adm + 90, 'years'), 'years',
-         jsonb_build_object('diagnosis', 'controle post-operatoire', 'glasgow_score', least(15, v_gcs + 3), 'outcome', 'gueri', 'hemoglobin', 'non_fait'),
+         jsonb_build_object('diagnosis', 'controle post-operatoire', 'glasgow_score', least(15, v_gcs + 3), 'outcome', 'gueri', 'hemoglobin', jsonb_build_object('__missing__', 'non_fait')),
          'direct', 'curated', v_owner);
     end if;
   end loop;

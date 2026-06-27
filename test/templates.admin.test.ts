@@ -277,4 +277,15 @@ describe('reordonner les variables (drag & drop)', () => {
       rowsAs(bobId, 'select public.reorder_template_fields($1,$2::uuid[])', [v, [...ids].reverse()]),
     ).rejects.toThrow(/autoris/i);
   });
+
+  test('§8.3 : une liste partielle ou avec doublon est refusee', async () => {
+    const { v, ids } = await freshVersionWithFields(); // a, b, c
+    // partielle (1 sur 3) -> refus
+    await expect(rowsAs(staffId, 'select public.reorder_template_fields($1,$2::uuid[])', [v, [ids[0]]])).rejects.toThrow(/invalide|exactement/i);
+    // doublon (4 ids dont un repete) -> refus
+    await expect(rowsAs(staffId, 'select public.reorder_template_fields($1,$2::uuid[])', [v, [ids[0], ids[1], ids[2], ids[0]]])).rejects.toThrow(/invalide|exactement/i);
+    // liste exacte -> OK
+    await rowsAs(staffId, 'select public.reorder_template_fields($1,$2::uuid[])', [v, [ids[2], ids[1], ids[0]]]);
+    expect(true).toBe(true);
+  });
 });

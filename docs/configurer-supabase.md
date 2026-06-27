@@ -24,10 +24,14 @@ une clé publique) à coller dans un fichier `.env`, et l'application se connect
    - **anon public** (clé publique, pour le navigateur)
    - **service_role** (clé secrète — **ne JAMAIS** la mettre dans le frontend ni la
      committer ; utile seulement pour des scripts serveur)
-4. **Appliquer le schéma.** Menu *SQL Editor* → *New query*. Coller le contenu des
-   fichiers de [`supabase/migrations/`](../supabase/migrations) **dans l'ordre des
-   numéros** (090100, 090200, … 090700), exécuter (*Run*) à chaque fois.
-   *(Variante experte : la CLI Supabase + `supabase db push`.)*
+4. **Appliquer le schéma.** Le plus simple et le plus sûr : la CLI Supabase →
+   `supabase link --project-ref <ref>` puis `supabase db push` (applique **toutes** les
+   migrations dans l'ordre). Variante SQL Editor : coller le contenu de **TOUS** les fichiers
+   de [`supabase/migrations/`](../supabase/migrations) **dans l'ordre des numéros**
+   (`090100` → `091800`, soit la totalité), exécuter (*Run*) à chaque fois — n'en omettez
+   aucun, sous peine de base incomplète. Puis appliquer le Storage (voir
+   [deploiement.md](deploiement.md) §2). Astuce : `npm run db:verify` vérifie d'abord, en
+   local, que l'ensemble s'applique proprement.
 5. **Configurer l'app.** Copier `.env.example` en `.env`, puis renseigner :
    ```
    VITE_SUPABASE_URL=https://xxxx.supabase.co

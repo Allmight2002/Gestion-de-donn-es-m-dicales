@@ -13,7 +13,7 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
 partage** (`viewer` / `editor`) + **5 permissions granulaires** par base. Chaîne de curation
 complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
-**Tests : 34 fichiers / 199 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
+**Tests : 36 fichiers / 226 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
 
 > Besoin d'un backend Supabase pour le login réel ? Voir
 > [docs/configurer-supabase.md](docs/configurer-supabase.md) (voie cloud, sans Docker).
@@ -168,7 +168,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le frontend (rendu + gating par rôle)
 ```
 
-Résultat attendu : **34 fichiers / 199 tests passants** — sécurité RLS (les scénarios
+Résultat attendu : **36 fichiers / 226 tests passants** — sécurité RLS (les scénarios
 d'attaque + leurs contrôles positifs), logique de rôle, règles JSON, validation de saisie,
 âge calculé sans exposer la DOB, corrections, images, cohortes, export immuable, accès,
 suppression logique, curation, audit, et rendu des écrans. Le premier lancement télécharge

@@ -144,3 +144,30 @@ describe('champs selon le type de rencontre (admission_date = hospitalisation)',
     expect((await rowsAs(aliceId, CALL, ENC('hospitalisation', { admission_date: '2024-01-05', diagnosis: 'TC', glasgow_score: 10 })))[0].validation_status).toBe('curated');
   });
 });
+
+describe('durcissement des ecritures (audit 2)', () => {
+  test('§5.1 : un UPDATE direct hors bornes / a cle inconnue sur une ligne curated est refuse', async () => {
+    const enc = await rowsAs(aliceId, CALL, [patientId, 'consultation', TEST_DATE, 'curated', JSON.stringify({ diagnosis: 'x', glasgow_score: 12 }), 'years']);
+    const id = enc[0].id;
+    // Glasgow > 15 par voie directe -> refus (bornes rejouees sur curated).
+    await expect(rowsAs(aliceId, "update public.encounter set data = data || '{\"glasgow_score\":99}'::jsonb where id=$1", [id])).rejects.toThrow(/maximum|glasgow/i);
+    // Cle absente du gabarit -> refus.
+    await expect(rowsAs(aliceId, "update public.encounter set data = data || '{\"zzz\":1}'::jsonb where id=$1", [id])).rejects.toThrow(/inconnu/i);
+  });
+
+  test('§5.4 : entier decimal, date invalide et code manquant invente sont refuses', async () => {
+    const C = (data: object) => [patientId, 'consultation', TEST_DATE, 'curated', JSON.stringify(data), 'years'];
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12.5 }))).rejects.toThrow(/entier/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: 'pas-une-date' }))).rejects.toThrow(/date/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, hemoglobin: { __missing__: 'code_invente' } }))).rejects.toThrow(/manquante|code/i);
+  });
+
+  test('§5.3 : colonnes structurelles immuables par UPDATE direct', async () => {
+    // patient_code (lien identite/analytique) immuable.
+    await expect(rowsAs(aliceId, "update public.patient set patient_code='HACK' where id=$1", [patientId])).rejects.toThrow(/immuable/i);
+    // reparentage d'une rencontre interdit.
+    const other = (await db.admin.query('select id from public.patient where base_id=$1 and id<>$2 and deleted_at is null limit 1', [baseId, patientId])).rows[0].id;
+    const enc = await rowsAs(aliceId, CALL, [patientId, 'consultation', TEST_DATE, 'draft', JSON.stringify({ glasgow_score: 10 }), 'years']);
+    await expect(rowsAs(aliceId, 'update public.encounter set patient_id=$2 where id=$1', [enc[0].id, other])).rejects.toThrow(/immuable/i);
+  });
+});

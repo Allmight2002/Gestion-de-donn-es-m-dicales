@@ -184,10 +184,25 @@ begin
     v := p_data -> f.field_key;
     if v is null or jsonb_typeof(v) = 'null' then continue; end if;
 
-    -- valeur manquante codifiee : {"__missing__":"code"}
+    -- valeur manquante codifiee : {"__missing__":"code"} ; code limite a la liste blanche.
     if jsonb_typeof(v) = 'object' and (v ? '__missing__') then
       if not f.allow_missing_codes then
         raise exception 'Valeur manquante non autorisee pour "%"', f.label;
+      end if;
+      if (v ->> '__missing__') is null or (v ->> '__missing__') not in ('non_fait','inconnu','non_applicable') then
+        raise exception 'Code de donnee manquante invalide pour "%"', f.label;
+      end if;
+      continue;
+    end if;
+
+    -- multiselect : doit etre un TABLEAU JSON (et chaque modalite autorisee).
+    if f.type = 'multiselect' then
+      if jsonb_typeof(v) <> 'array' then
+        raise exception 'Liste (tableau) attendue pour "%"', f.label;
+      end if;
+      if f.allowed_values is not null
+         and exists (select 1 from jsonb_array_elements_text(v) el where not (f.allowed_values @> jsonb_build_array(el))) then
+        raise exception 'Valeur non autorisee pour "%"', f.label;
       end if;
       continue;
     end if;
@@ -201,6 +216,9 @@ begin
       exception when others then
         raise exception 'Valeur non numerique pour "%"', f.label;
       end;
+      if f.type = 'integer' and n <> trunc(n) then
+        raise exception 'Entier attendu pour "%"', f.label;
+      end if;
       if f.min_value is not null and n < f.min_value then
         raise exception '"%" en dessous du minimum autorise (%)', f.label, f.min_value;
       end if;
@@ -211,11 +229,38 @@ begin
       if f.allowed_values is not null and not (f.allowed_values @> jsonb_build_array(txt)) then
         raise exception 'Valeur non autorisee pour "%"', f.label;
       end if;
-    elsif f.type = 'multiselect' then
-      if f.allowed_values is not null and jsonb_typeof(v) = 'array'
-         and exists (select 1 from jsonb_array_elements_text(v) el where not (f.allowed_values @> jsonb_build_array(el))) then
-        raise exception 'Valeur non autorisee pour "%"', f.label;
+    elsif f.type = 'boolean' then
+      if txt not in ('true','false') then
+        raise exception 'Booleen attendu pour "%"', f.label;
       end if;
+    elsif f.type = 'date' then
+      begin perform txt::date; exception when others then
+        raise exception 'Date invalide pour "%" (format AAAA-MM-JJ attendu)', f.label;
+      end;
+    elsif f.type = 'datetime' then
+      begin perform txt::timestamptz; exception when others then
+        raise exception 'Date/heure invalide pour "%"', f.label;
+      end;
+    end if;
+  end loop;
+end $$;
+
+-- =============================================================================
+-- assert_no_unknown_fields : refuse toute cle de donnees qui ne correspond PAS a une
+-- variable du gabarit (scope donne). Empeche de polluer un enregistrement avec des champs
+-- inconnus / supprimes (audit §5.5). Applique sur la promotion en 'curated'.
+-- =============================================================================
+create or replace function public.assert_no_unknown_fields(p_version uuid, p_scope text, p_data jsonb)
+returns void language plpgsql stable set search_path = public, pg_temp as $$
+declare k text;
+begin
+  if p_data is null then return; end if;
+  for k in select jsonb_object_keys(p_data) loop
+    if not exists (
+      select 1 from public.template_field
+      where template_version_id = p_version and scope = p_scope and field_key = k
+    ) then
+      raise exception 'Champ inconnu du gabarit : %', k;
     end if;
   end loop;
 end $$;
