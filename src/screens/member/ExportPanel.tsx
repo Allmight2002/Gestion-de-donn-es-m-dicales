@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';
@@ -22,8 +21,10 @@ function download(content: Blob, filename: string) {
   }
 }
 
-function xlsxBlob(main: ExportTable, dict: ExportTable): Blob {
+// xlsx est charge a la DEMANDE (import dynamique) : ~400 Ko hors du bundle initial.
+async function xlsxBlob(main: ExportTable, dict: ExportTable): Promise<Blob> {
   assertNoIdentity(main.columns);
+  const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(main.rows, { header: main.columns }), 'Export');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dict.rows, { header: dict.columns }), 'Dictionnaire');
@@ -93,7 +94,7 @@ export function ExportPanel() {
       assertNoIdentity(main.columns); // verification automatique : aucune identite
 
       const ext = format;
-      const content = format === 'csv' ? new Blob([toCsv(main)], { type: 'text/csv;charset=utf-8' }) : xlsxBlob(main, dict);
+      const content = format === 'csv' ? new Blob([toCsv(main)], { type: 'text/csv;charset=utf-8' }) : await xlsxBlob(main, dict);
       download(content, `cohorte.${ext}`);
       if (format === 'csv') download(new Blob([toCsv(dict)], { type: 'text/csv;charset=utf-8' }), 'dictionnaire.csv');
 

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField } from '../../data/types';
@@ -54,6 +53,7 @@ export function ImportData() {
     if (!file) return;
     setError(null); setReport(null); setCommitted(false);
     try {
+      const XLSX = await import('xlsx'); // charge a la demande (hors bundle initial)
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];

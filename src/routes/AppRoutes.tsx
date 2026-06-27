@@ -1,32 +1,37 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ProtectedRoute, PublicOnly } from './ProtectedRoute';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ResetPassword } from '../screens/ResetPassword';
-import { Dashboard } from '../screens/member/Dashboard';
-import { BaseHome } from '../screens/member/BaseHome';
-import { BaseTemplateEditor } from '../screens/member/BaseTemplateEditor';
-import { MyTemplates } from '../screens/member/MyTemplates';
-import { NewPatient } from '../screens/member/NewPatient';
-import { PatientCreateChoice } from '../screens/member/PatientCreateChoice';
-import { ImportData } from '../screens/member/ImportData';
-import { EncounterCreateChoice } from '../screens/member/EncounterCreateChoice';
-import { PatientDetail } from '../screens/member/PatientDetail';
-import { EncounterForm } from '../screens/member/EncounterForm';
-import { EditEncounter } from '../screens/member/EditEncounter';
-import { AddImage } from '../screens/member/AddImage';
-import { CohortBuilder } from '../screens/member/CohortBuilder';
-import { ExportPanel } from '../screens/member/ExportPanel';
-import { AccessManagement } from '../screens/member/AccessManagement';
-import { CurationBoard } from '../screens/member/CurationBoard';
-import { CurationPool } from '../screens/member/CurationPool';
-import { CurationTask } from '../screens/member/CurationTask';
-import { AcceptInvitation } from '../screens/member/AcceptInvitation';
-import { TemplatesAdmin } from '../screens/staff/TemplatesAdmin';
-import { RoleAdmin } from '../screens/staff/RoleAdmin';
 import { NotFound } from '../screens/NotFound';
+
+// Ecrans charges A LA DEMANDE (code splitting par route) : ils sortent du bundle initial,
+// reduisant fortement le temps de premier chargement. Exports nommes -> on remappe en default.
+const Dashboard = lazy(() => import('../screens/member/Dashboard').then((m) => ({ default: m.Dashboard })));
+const BaseHome = lazy(() => import('../screens/member/BaseHome').then((m) => ({ default: m.BaseHome })));
+const BaseTemplateEditor = lazy(() => import('../screens/member/BaseTemplateEditor').then((m) => ({ default: m.BaseTemplateEditor })));
+const MyTemplates = lazy(() => import('../screens/member/MyTemplates').then((m) => ({ default: m.MyTemplates })));
+const NewPatient = lazy(() => import('../screens/member/NewPatient').then((m) => ({ default: m.NewPatient })));
+const PatientCreateChoice = lazy(() => import('../screens/member/PatientCreateChoice').then((m) => ({ default: m.PatientCreateChoice })));
+const ImportData = lazy(() => import('../screens/member/ImportData').then((m) => ({ default: m.ImportData })));
+const EncounterCreateChoice = lazy(() => import('../screens/member/EncounterCreateChoice').then((m) => ({ default: m.EncounterCreateChoice })));
+const PatientDetail = lazy(() => import('../screens/member/PatientDetail').then((m) => ({ default: m.PatientDetail })));
+const EncounterForm = lazy(() => import('../screens/member/EncounterForm').then((m) => ({ default: m.EncounterForm })));
+const EditEncounter = lazy(() => import('../screens/member/EditEncounter').then((m) => ({ default: m.EditEncounter })));
+const AddImage = lazy(() => import('../screens/member/AddImage').then((m) => ({ default: m.AddImage })));
+const CohortBuilder = lazy(() => import('../screens/member/CohortBuilder').then((m) => ({ default: m.CohortBuilder })));
+const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) => ({ default: m.ExportPanel })));
+const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
+const CurationBoard = lazy(() => import('../screens/member/CurationBoard').then((m) => ({ default: m.CurationBoard })));
+const CurationPool = lazy(() => import('../screens/member/CurationPool').then((m) => ({ default: m.CurationPool })));
+const CurationTask = lazy(() => import('../screens/member/CurationTask').then((m) => ({ default: m.CurationTask })));
+const AcceptInvitation = lazy(() => import('../screens/member/AcceptInvitation').then((m) => ({ default: m.AcceptInvitation })));
+const TemplatesAdmin = lazy(() => import('../screens/staff/TemplatesAdmin').then((m) => ({ default: m.TemplatesAdmin })));
+const RoleAdmin = lazy(() => import('../screens/staff/RoleAdmin').then((m) => ({ default: m.RoleAdmin })));
 
 export function AppRoutes() {
   return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-slate-400">…</div>}>
     <Routes>
       <Route
         path="/login"
@@ -217,5 +222,6 @@ export function AppRoutes() {
       />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   );
 }
