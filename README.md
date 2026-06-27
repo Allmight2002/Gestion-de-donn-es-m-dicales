@@ -276,6 +276,7 @@ d'exemple, et des cas de curation de démonstration.
 ## 8. Documentation & suite
 
 - **[docs/architecture.md](docs/architecture.md)** — vue d'ensemble (modèle, rôles, RLS, curation, carte du code).
+- **[docs/deploiement.md](docs/deploiement.md)** — mettre le service en ligne (pilote à données fictives) + prérequis avant données réelles.
 - **[docs/configurer-supabase.md](docs/configurer-supabase.md)** — créer un projet Supabase (cloud).
 - **[docs/tester-en-local.md](docs/tester-en-local.md)** — lancer le projet en local.
 
