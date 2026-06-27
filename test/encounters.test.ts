@@ -170,4 +170,16 @@ describe('durcissement des ecritures (audit 2)', () => {
     const enc = await rowsAs(aliceId, CALL, [patientId, 'consultation', TEST_DATE, 'draft', JSON.stringify({ glasgow_score: 10 }), 'years']);
     await expect(rowsAs(aliceId, 'update public.encounter set patient_id=$2 where id=$1', [enc[0].id, other])).rejects.toThrow(/immuable/i);
   });
+
+  test('§5.2 : regles de coherence (block) imposees cote serveur sur curated', async () => {
+    const H = (data: object) => [patientId, 'hospitalisation', TEST_DATE, 'curated', JSON.stringify(data), 'years'];
+    // sortie < admission -> regle block violee.
+    await expect(rowsAs(aliceId, CALL, H({ admission_date: '2024-02-10', discharge_date: '2024-02-01', diagnosis: 'TC', glasgow_score: 10 })))
+      .rejects.toThrow(/sortie|admission/i);
+    // outcome=deces sans date de deces -> regle block violee.
+    await expect(rowsAs(aliceId, CALL, H({ admission_date: '2024-02-01', discharge_date: '2024-02-10', diagnosis: 'TC', glasgow_score: 10, outcome: 'deces' })))
+      .rejects.toThrow(/deces/i);
+    // coherent -> accepte en curated.
+    expect((await rowsAs(aliceId, CALL, H({ admission_date: '2024-02-01', discharge_date: '2024-02-10', diagnosis: 'TC', glasgow_score: 10, outcome: 'gueri' })))[0].validation_status).toBe('curated');
+  });
 });
