@@ -1,0 +1,33 @@
+name: CI
+
+# Filet de securite : a chaque push sur main et a chaque pull request, on verifie le
+# typage, on lance toute la suite (RLS sur PostgreSQL EMBARQUE + rendu UI) et on construit
+# le bundle PWA. Aucun secret requis : les tests n'utilisent ni Docker ni Supabase.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests (RLS embarque + UI)
+        run: npm test
+
+      - name: Build (PWA)
+        run: npm run build
