@@ -13,6 +13,16 @@ export interface ImportOptions {
   conflict: 'fill' | 'overwrite' | 'skip';
   fileHash?: string | null;
   templateVersionId?: string | null;
+  /** Lot d'import en cours (import par chunks) ; null = appel autonome. */
+  batchId?: string | null;
+}
+
+/** Parametres d'ouverture d'un lot d'import (import par chunks). */
+export interface BeginImportOptions {
+  status: string;
+  conflict: 'fill' | 'overwrite' | 'skip';
+  fileHash?: string | null;
+  templateVersionId?: string | null;
 }
 
 export interface PatientIdentityInfo {
@@ -97,6 +107,8 @@ export interface PatientRepository {
   finalizePatient(patientId: string): Promise<void>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
   importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
+  /** Ouvre un lot d'import (controles globaux + idempotence) ; renvoie l'id du lot pour les chunks. */
+  beginImportBatch(baseId: string, opts: BeginImportOptions): Promise<string>;
 }
 
 type PatientRow = {
@@ -148,7 +160,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     return {
       listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
-      softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, importRecords: fail,
+      softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, importRecords: fail, beginImportBatch: fail,
     };
   }
 
@@ -370,10 +382,19 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       const { data, error } = await client.rpc('import_records', {
         p_base_id: baseId, p_rows: rows, p_dry_run: opts.dryRun, p_status: opts.status,
         p_conflict: opts.conflict, p_file_hash: opts.fileHash ?? null,
-        p_template_version_id: opts.templateVersionId ?? null,
+        p_template_version_id: opts.templateVersionId ?? null, p_batch_id: opts.batchId ?? null,
       });
       if (error) throw error;
       return data as ImportReport;
+    },
+
+    async beginImportBatch(baseId, opts) {
+      const { data, error } = await client.rpc('begin_import_batch', {
+        p_base_id: baseId, p_file_hash: opts.fileHash ?? null,
+        p_template_version_id: opts.templateVersionId ?? null, p_conflict: opts.conflict, p_status: opts.status,
+      });
+      if (error) throw error;
+      return data as string;
     },
   };
 }

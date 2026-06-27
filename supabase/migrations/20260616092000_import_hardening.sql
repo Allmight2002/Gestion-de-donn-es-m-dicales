@@ -41,8 +41,9 @@ drop policy if exists ib_select on public.import_batch;
 create policy ib_select on public.import_batch for select to authenticated
   using (public.has_base_access(base_id));
 
--- L'ancienne signature (4 args) est remplacee : on la supprime pour eviter toute ambiguite.
+-- Anciennes signatures remplacees : on les supprime pour eviter toute ambiguite.
 drop function if exists public.import_records(uuid, jsonb, boolean, text);
+drop function if exists public.import_records(uuid, jsonb, boolean, text, text, text, uuid);
 
 create or replace function public.import_records(
   p_base_id  uuid,
@@ -51,7 +52,8 @@ create or replace function public.import_records(
   p_status   text default 'draft',
   p_conflict text default 'fill',          -- fill (defaut) | overwrite | skip
   p_file_hash text default null,           -- empreinte du fichier (idempotence)
-  p_template_version_id uuid default null  -- version vue a l'apercu (verrou anti-changement)
+  p_template_version_id uuid default null, -- version vue a l'apercu (verrou anti-changement)
+  p_batch_id uuid default null             -- lot d'import en cours (import par chunks) ; null = appel autonome
 ) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -89,8 +91,9 @@ begin
     raise exception 'Le gabarit de la base a change depuis l''apercu ; relancez l''apercu.';
   end if;
 
-  -- Idempotence : meme fichier deja importe sur cette base -> refus (hors apercu).
-  if not p_dry_run and p_file_hash is not null
+  -- Idempotence : meme fichier deja importe sur cette base -> refus (hors apercu, et UNIQUEMENT
+  -- pour un appel autonome : en import par lots, ce controle est fait une fois par begin_import_batch).
+  if not p_dry_run and p_batch_id is null and p_file_hash is not null
      and exists (select 1 from public.import_batch where base_id = p_base_id and file_hash = p_file_hash) then
     raise exception 'Ce fichier a deja ete importe sur cette base (doublon evite).';
   end if;
@@ -205,11 +208,20 @@ begin
   end loop;
 
   if not p_dry_run then
-    insert into public.import_batch (base_id, file_hash, template_version_id, row_count, patients_new, patients_updated, encounters, conflict_mode, imported_by)
-    values (p_base_id, p_file_hash, v_tv, idx, n_pat_new, n_pat_upd, n_enc, p_conflict, auth.uid());
-    perform public.log_audit('data_imported', 'base', p_base_id, p_base_id,
-      jsonb_build_object('patients_new', n_pat_new, 'patients_updated', n_pat_upd, 'encounters', n_enc,
-                         'status', p_status, 'conflict', p_conflict, 'errors', jsonb_array_length(errors)));
+    if p_batch_id is not null then
+      -- Import par LOTS : on ACCUMULE les totaux du chunk dans le lot existant (cree par begin_import_batch).
+      update public.import_batch
+         set row_count = row_count + idx, patients_new = patients_new + n_pat_new,
+             patients_updated = patients_updated + n_pat_upd, encounters = encounters + n_enc
+       where id = p_batch_id;
+    else
+      -- Appel autonome : on cree le lot + on journalise.
+      insert into public.import_batch (base_id, file_hash, template_version_id, row_count, patients_new, patients_updated, encounters, conflict_mode, imported_by)
+      values (p_base_id, p_file_hash, v_tv, idx, n_pat_new, n_pat_upd, n_enc, p_conflict, auth.uid());
+      perform public.log_audit('data_imported', 'base', p_base_id, p_base_id,
+        jsonb_build_object('patients_new', n_pat_new, 'patients_updated', n_pat_upd, 'encounters', n_enc,
+                           'status', p_status, 'conflict', p_conflict, 'errors', jsonb_array_length(errors)));
+    end if;
   end if;
 
   return jsonb_build_object(
@@ -219,5 +231,40 @@ begin
   );
 end $$;
 
-grant execute on function public.import_records(uuid, jsonb, boolean, text, text, text, uuid) to authenticated;
+grant execute on function public.import_records(uuid, jsonb, boolean, text, text, text, uuid, uuid) to authenticated;
 grant execute on function public.validation_rank(text) to authenticated;
+
+-- §6.5 : OUVRIR un lot d'import (pour un import par CHUNKS cote client). Fait UNE fois les
+-- controles globaux (permission, statut/conflit, verrou de version, idempotence par file_hash)
+-- puis cree la ligne import_batch (totaux a 0). Les chunks suivants appellent import_records avec
+-- ce p_batch_id (qui accumule les totaux). Renvoie l'id du lot.
+create or replace function public.begin_import_batch(
+  p_base_id uuid, p_file_hash text, p_template_version_id uuid default null,
+  p_conflict text default 'fill', p_status text default 'draft'
+) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_tv uuid; v_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Authentification requise'; end if;
+  if not public.can_edit_structured_data(p_base_id) then raise exception 'Acces refuse'; end if;
+  if p_status not in ('draft','complete','curated') then raise exception 'Statut invalide'; end if;
+  if p_conflict not in ('fill','overwrite','skip') then raise exception 'Mode de conflit invalide'; end if;
+  select current_template_version_id into v_tv from public.base where id = p_base_id;
+  if v_tv is null then raise exception 'Base introuvable'; end if;
+  if p_template_version_id is not null and p_template_version_id <> v_tv then
+    raise exception 'Le gabarit de la base a change depuis l''apercu ; relancez l''apercu.';
+  end if;
+  if p_file_hash is not null
+     and exists (select 1 from public.import_batch where base_id = p_base_id and file_hash = p_file_hash) then
+    raise exception 'Ce fichier a deja ete importe sur cette base (doublon evite).';
+  end if;
+
+  insert into public.import_batch (base_id, file_hash, template_version_id, conflict_mode, imported_by)
+  values (p_base_id, p_file_hash, v_tv, p_conflict, auth.uid())
+  returning id into v_id;
+  perform public.log_audit('data_imported', 'base', p_base_id, p_base_id,
+    jsonb_build_object('batch_id', v_id, 'status', p_status, 'conflict', p_conflict, 'chunked', true));
+  return v_id;
+end $$;
+
+grant execute on function public.begin_import_batch(uuid, text, uuid, text, text) to authenticated;

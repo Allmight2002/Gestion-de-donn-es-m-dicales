@@ -115,6 +115,7 @@ export const messages = {
     'import.conflict_skip': 'Ne pas toucher au patient (ajouter seulement les rencontres)',
     'import.dup_target': 'Deux colonnes pointent vers la même cible : corrigez avant d’importer.',
     'import.too_many': 'Fichier trop volumineux ({n} lignes) : maximum {max}. Découpez-le en plusieurs imports.',
+    'import.progress': 'Traitement par lots : {done} / {total} lignes…',
     'admin.field_locked_hint':
       'Variable déjà utilisée : seuls le libellé et la section sont modifiables. Pour changer son comportement (nom, type, requis, types de rencontre), créez une nouvelle version du gabarit.',
     'admin.published_readonly':
@@ -491,6 +492,7 @@ export const messages = {
     'import.conflict_skip': 'Leave the patient untouched (only add encounters)',
     'import.dup_target': 'Two columns map to the same target: fix before importing.',
     'import.too_many': 'File too large ({n} rows): maximum {max}. Split it into several imports.',
+    'import.progress': 'Batch processing: {done} / {total} rows…',
     'admin.field_locked_hint':
       'Variable already in use: only the label and section can be changed. To change its behaviour (key, type, required, encounter types), create a new template version.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',

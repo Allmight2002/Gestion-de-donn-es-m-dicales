@@ -10,6 +10,7 @@ import {
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
 const MAX_ROWS = 5000;
+const CHUNK = 300; // taille des lots (au-dela, import par lots avec progression)
 
 async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf);
@@ -38,6 +39,7 @@ export function ImportData() {
   const [report, setReport] = useState<ImportReport | null>(null);
   const [committed, setCommitted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
@@ -106,17 +108,31 @@ export function ImportData() {
 
   async function run(dryRun: boolean) {
     if (!baseId) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setProgress(null);
     try {
-      const rep = await patients.importRecords(baseId, rows, {
-        dryRun, status, conflict, fileHash, templateVersionId: versionId,
-      });
-      setReport(rep);
+      if (rows.length <= CHUNK) {
+        // Petit volume : un seul appel.
+        setReport(await patients.importRecords(baseId, rows, { dryRun, status, conflict, fileHash, templateVersionId: versionId }));
+      } else {
+        // §6.5 import par LOTS : ouverture du lot (idempotence + verrous) puis chunks + progression.
+        const batchId = dryRun ? null : await patients.beginImportBatch(baseId, { status, conflict, fileHash, templateVersionId: versionId });
+        const agg: ImportReport = { dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0, error_count: 0, errors: [] };
+        for (let i = 0; i < rows.length; i += CHUNK) {
+          const rep = await patients.importRecords(baseId, rows.slice(i, i + CHUNK), {
+            dryRun, status, conflict, fileHash: null, templateVersionId: versionId, batchId,
+          });
+          agg.patients_new += rep.patients_new; agg.patients_updated += rep.patients_updated;
+          agg.encounters += rep.encounters; agg.error_count += rep.error_count;
+          agg.errors.push(...rep.errors.map((er) => ({ ...er, row: er.row + i }))); // n° de ligne global
+          setProgress({ done: Math.min(i + CHUNK, rows.length), total: rows.length });
+        }
+        setReport(agg);
+      }
       if (!dryRun) setCommitted(true);
     } catch (e) {
       setError(msg(e));
     } finally {
-      setBusy(false);
+      setBusy(false); setProgress(null);
     }
   }
 
@@ -196,6 +212,9 @@ export function ImportData() {
             <button onClick={() => void run(true)} disabled={busy || !canRun} className="btn-secondary">{t('import.preview')}</button>
             <button onClick={() => void run(false)} disabled={busy || !canRun || !report || committed} className="btn-primary">{t('import.commit')}</button>
           </div>
+          {progress && (
+            <p className="text-xs text-slate-500">{t('import.progress').replace('{done}', String(progress.done)).replace('{total}', String(progress.total))}</p>
+          )}
         </>
       )}
 

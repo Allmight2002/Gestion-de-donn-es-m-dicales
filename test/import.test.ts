@@ -17,6 +17,9 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 const CALL = 'select public.import_records($1,$2::jsonb,$3,$4) as report';
 // signature complete : base, rows, dry_run, status, conflict, file_hash, template_version_id
 const CALL7 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7) as report';
+// + batch_id (import par lots)
+const CALL8 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7,$8) as report';
+const BEGIN = 'select public.begin_import_batch($1,$2,$3,$4,$5) as id';
 const enc = (type: string, date: string, data: object) => ({ encounter_type: type, encounter_date: date, data });
 const row = (code: string | null, encounter: object | null, patient_data: object = {}, identity: object | null = null) =>
   ({ patient_code: code, identity, patient_data, encounter });
@@ -149,5 +152,24 @@ describe('import_records', () => {
   test('§6.4 verrou de version : un template_version_id perime est refuse', async () => {
     await expect(rowsAs(aliceId, CALL7, [baseId, J([row('IMP-VER', enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 9 }))]),
       false, 'draft', 'fill', null, '00000000-0000-0000-0000-000000000000'])).rejects.toThrow(/gabarit a change|apercu/i);
+  });
+
+  test('§6.5 import par lots : begin_import_batch (idempotence) + chunks accumulent dans UN seul lot', async () => {
+    const h = 'batch-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id;
+    expect(batchId).toBeTruthy();
+    // re-ouvrir le meme fichier -> refus (idempotence au niveau du lot).
+    await expect(rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft'])).rejects.toThrow(/deja ete importe|doublon/i);
+    // 2 chunks rattaches au meme lot.
+    await rowsAs(aliceId, CALL8, [baseId, J([row('IMP-B1', enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 10 }))]), false, 'draft', 'fill', null, null, batchId]);
+    await rowsAs(aliceId, CALL8, [baseId, J([row('IMP-B2', enc('consultation', '2024-01-06', { diagnosis: 'y', glasgow_score: 11 }))]), false, 'draft', 'fill', null, null, batchId]);
+    // Les totaux du lot sont ACCUMULES, et il n'y a qu'UNE ligne de lot (pas une par chunk).
+    const b = (await db.admin.query('select row_count, patients_new, encounters from public.import_batch where id=$1', [batchId])).rows[0];
+    expect(Number(b.row_count)).toBe(2);
+    expect(Number(b.patients_new)).toBe(2);
+    expect(Number(b.encounters)).toBe(2);
+    expect(Number((await db.admin.query('select count(*)::int n from public.import_batch where base_id=$1 and file_hash=$2', [baseId, h])).rows[0].n)).toBe(1);
+    // Les patients ont bien ete crees.
+    expect((await db.admin.query("select 1 from public.patient where base_id=$1 and patient_code in ('IMP-B1','IMP-B2')", [baseId])).rows).toHaveLength(2);
   });
 });
