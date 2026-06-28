@@ -59,6 +59,11 @@ const mapBase = (r: BaseRow): Base => ({
   id: r.id, name: r.name, specialty: r.specialty, ownerUserId: r.owner_user_id,
   currentTemplateVersionId: r.current_template_version_id,
 });
+// Base + libelle de gabarit JOINT en une requete (PostgREST embedding) -> evite 2 aller-retours.
+type BaseEmbedRow = BaseRow & { tv: { version_number: number; tpl: { name: string } | null } | null };
+const TV_EMBED = 'tv:template_version!current_template_version_id(version_number, tpl:template_id(name))';
+const BASE_SELECT = `id, name, specialty, owner_user_id, current_template_version_id, ${TV_EMBED}`;
+const ACCESS_COLS = 'access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access';
 
 type AccessPermRow = {
   access_role: AccessRole; can_view_identity: boolean; can_view_raw_documents: boolean;
@@ -72,7 +77,6 @@ const permsFromRow = (a: AccessPermRow | undefined): BasePermissions => ({
   canManageAccess: a?.can_manage_access ?? false,
 });
 
-const uniq = (xs: (string | null)[]): string[] => [...new Set(xs.filter((x): x is string => !!x))];
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
 
@@ -94,58 +98,30 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     return id;
   }
 
-  async function templateLabels(versionIds: string[]) {
-    if (versionIds.length === 0) return { versions: [], templates: [] as { id: string; name: string }[] };
-    const { data: versions, error: e1 } = await client!
-      .from('template_version')
-      .select('id, version_number, template_id')
-      .in('id', versionIds);
-    if (e1) throw e1;
-    const templateIds = uniq((versions ?? []).map((v) => v.template_id as string));
-    const { data: templates, error: e2 } = templateIds.length
-      ? await client!.from('template').select('id, name').in('id', templateIds)
-      : { data: [], error: null };
-    if (e2) throw e2;
-    return {
-      versions: (versions ?? []) as { id: string; version_number: number; template_id: string }[],
-      templates: (templates ?? []) as { id: string; name: string }[],
-    };
-  }
-
   return {
     async listMyBases() {
       const uid = await currentUserId();
-      const { data: bases, error } = await client
-        .from('base')
-        .select('id, name, specialty, owner_user_id, current_template_version_id')
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      const rows = (bases ?? []) as BaseRow[];
-
-      const { data: access, error: eAcc } = await client
-        .from('base_access')
-        .select(
-          'base_id, access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access',
-        )
-        .eq('user_id', uid)
-        .is('revoked_at', null);
-      if (eAcc) throw eAcc;
-      const accessByBase = new Map((access ?? []).map((a) => [a.base_id as string, a as AccessPermRow]));
-
-      const { versions, templates } = await templateLabels(uniq(rows.map((b) => b.current_template_version_id)));
-      const versionById = new Map(versions.map((v) => [v.id, v]));
-      const templateById = new Map(templates.map((t) => [t.id, t]));
+      // Bases (+ libelle gabarit JOINT) et acces EN PARALLELE -> 2 aller-retours au lieu de 4.
+      const [basesRes, accRes] = await Promise.all([
+        client.from('base').select(BASE_SELECT).order('created_at', { ascending: true }),
+        client.from('base_access').select(`base_id, ${ACCESS_COLS}`).eq('user_id', uid).is('revoked_at', null),
+      ]);
+      if (basesRes.error) throw basesRes.error;
+      if (accRes.error) throw accRes.error;
+      const rows = (basesRes.data ?? []) as unknown as BaseEmbedRow[];
+      const accessByBase = new Map(
+        (accRes.data ?? []).map((a) => [(a as { base_id: string }).base_id, a as unknown as AccessPermRow]),
+      );
 
       return rows.map((r): BaseListing => {
         const isOwner = r.owner_user_id === uid;
         const acc = accessByBase.get(r.id);
-        const v = r.current_template_version_id ? versionById.get(r.current_template_version_id) : undefined;
         return {
           base: mapBase(r),
           role: isOwner ? 'owner' : (acc?.access_role ?? 'viewer'),
           permissions: isOwner ? { ...ALL_PERMISSIONS } : permsFromRow(acc),
-          templateName: v ? (templateById.get(v.template_id)?.name ?? null) : null,
-          versionNumber: v?.version_number ?? null,
+          templateName: r.tv?.tpl?.name ?? null,
+          versionNumber: r.tv?.version_number ?? null,
         };
       });
     },
@@ -184,30 +160,24 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     },
 
     async getBase(id) {
-      // Cible UNE base (au lieu de tout recharger via listMyBases). base + acces EN PARALLELE.
+      // Cible UNE base (+ libelle gabarit JOINT) et son acces EN PARALLELE -> 1 aller-retour.
       const uid = await currentUserId();
       const [baseRes, accRes] = await Promise.all([
-        client.from('base').select('id, name, specialty, owner_user_id, current_template_version_id')
-          .eq('id', id).is('deleted_at', null).maybeSingle(),
-        client.from('base_access')
-          .select('access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access')
-          .eq('base_id', id).eq('user_id', uid).is('revoked_at', null).maybeSingle(),
+        client.from('base').select(BASE_SELECT).eq('id', id).maybeSingle(),
+        client.from('base_access').select(ACCESS_COLS).eq('base_id', id).eq('user_id', uid).is('revoked_at', null).maybeSingle(),
       ]);
       if (baseRes.error) throw baseRes.error;
-      const b = baseRes.data as BaseRow | null;
+      const b = baseRes.data as unknown as BaseEmbedRow | null;
       if (!b) return null;
       if (accRes.error) throw accRes.error;
       const acc = (accRes.data ?? undefined) as AccessPermRow | undefined;
-
       const isOwner = b.owner_user_id === uid;
-      const { versions, templates } = await templateLabels(b.current_template_version_id ? [b.current_template_version_id] : []);
-      const v = versions[0];
       return {
         base: mapBase(b),
         role: isOwner ? 'owner' : (acc?.access_role ?? 'viewer'),
         permissions: isOwner ? { ...ALL_PERMISSIONS } : permsFromRow(acc),
-        templateName: v ? (templates.find((t) => t.id === v.template_id)?.name ?? null) : null,
-        versionNumber: v?.version_number ?? null,
+        templateName: b.tv?.tpl?.name ?? null,
+        versionNumber: b.tv?.version_number ?? null,
       };
     },
 
