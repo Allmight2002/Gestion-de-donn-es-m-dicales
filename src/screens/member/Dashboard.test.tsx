@@ -26,7 +26,10 @@ const stubTemplates = {
     return { version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const }, fields: [], rules: [] };
   },
 } as unknown as TemplateRepository;
-const stubPatients = { async listPatients() { return []; } } as unknown as PatientRepository;
+const stubPatients = {
+  async listPatients() { return []; },
+  async listPatientsPage() { return { rows: [], total: 0 }; },
+} as unknown as PatientRepository;
 
 function mockBases(): BaseRepository {
   let n = 0;

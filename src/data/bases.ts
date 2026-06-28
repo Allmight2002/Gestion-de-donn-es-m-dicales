@@ -85,9 +85,11 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
   }
 
   async function currentUserId(): Promise<string> {
-    const { data, error } = await client!.auth.getUser();
+    // getSession() lit la session LOCALE (pas d'appel reseau) -> bien plus rapide que getUser()
+    // qui valide le token cote serveur a CHAQUE appel. La securite reste portee par la RLS.
+    const { data, error } = await client!.auth.getSession();
     if (error) throw error;
-    const id = data.user?.id;
+    const id = data.session?.user?.id;
     if (!id) throw new Error('Non authentifie');
     return id;
   }
@@ -182,8 +184,31 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     },
 
     async getBase(id) {
-      const all = await this.listMyBases();
-      return all.find((b) => b.base.id === id) ?? null;
+      // Cible UNE base (au lieu de tout recharger via listMyBases). base + acces EN PARALLELE.
+      const uid = await currentUserId();
+      const [baseRes, accRes] = await Promise.all([
+        client.from('base').select('id, name, specialty, owner_user_id, current_template_version_id')
+          .eq('id', id).is('deleted_at', null).maybeSingle(),
+        client.from('base_access')
+          .select('access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access')
+          .eq('base_id', id).eq('user_id', uid).is('revoked_at', null).maybeSingle(),
+      ]);
+      if (baseRes.error) throw baseRes.error;
+      const b = baseRes.data as BaseRow | null;
+      if (!b) return null;
+      if (accRes.error) throw accRes.error;
+      const acc = (accRes.data ?? undefined) as AccessPermRow | undefined;
+
+      const isOwner = b.owner_user_id === uid;
+      const { versions, templates } = await templateLabels(b.current_template_version_id ? [b.current_template_version_id] : []);
+      const v = versions[0];
+      return {
+        base: mapBase(b),
+        role: isOwner ? 'owner' : (acc?.access_role ?? 'viewer'),
+        permissions: isOwner ? { ...ALL_PERMISSIONS } : permsFromRow(acc),
+        templateName: v ? (templates.find((t) => t.id === v.template_id)?.name ?? null) : null,
+        versionNumber: v?.version_number ?? null,
+      };
     },
 
     async setTemplateVersion(baseId, versionId) {

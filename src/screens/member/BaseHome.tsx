@@ -68,18 +68,20 @@ export function BaseHome() {
         return;
       }
 
-      // EN LIGNE : comme avant + statut de la copie hors-ligne.
+      // EN LIGNE : base + page de patients EN PARALLELE (independants), puis champs du gabarit.
       setOfflineView(false);
-      const b = await bases.getBase(id);
+      const [b, pageRes] = await Promise.all([
+        bases.getBase(id),
+        patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE),
+      ]);
       setListing(b);
       if (b) setBaseName(b.base.name);
+      setRows(pageRes.rows);
+      setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {
         const version = await templates.getVersion(b.base.currentTemplateVersionId);
         setFields(version.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
       }
-      const pageRes = await patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE);
-      setRows(pageRes.rows);
-      setTotal(pageRes.total);
       void offlineCache.get(id).then((s) => setCachedMeta(s ? snapshotMeta(s) : null)).catch(() => {});
       setError(null);
     } catch (e) {

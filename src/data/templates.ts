@@ -75,6 +75,11 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     };
   }
 
+  // Cache de SESSION des versions (gabarits quasi-immuables) : evite de recharger fields+rules a
+  // chaque ecran. Vide des qu'une ecriture de gabarit a lieu (clearVersionCache dans les writes).
+  const versionCache = new Map<string, { version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>();
+  const clearVersionCache = () => versionCache.clear();
+
   return {
     async listTemplates() {
       const { data, error } = await client
@@ -116,8 +121,8 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
 
     async createPersonalTemplate(name, specialty) {
       // Gabarit PERSONNEL du medecin (jamais global). owner_user_id = soi -> autorise par la RLS.
-      const { data: who } = await client.auth.getUser();
-      const ownerId = who.user?.id;
+      const { data: who } = await client.auth.getSession();
+      const ownerId = who.session?.user?.id;
       if (!ownerId) throw new Error('Session invalide');
       const { data: t, error: e1 } = await client
         .from('template')
@@ -135,36 +140,29 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async getVersion(versionId) {
-      const { data: v, error: e1 } = await client
-        .from('template_version')
-        .select('id, template_id, version_number, status')
-        .eq('id', versionId)
-        .single();
-      if (e1) throw e1;
-      const { data: fields, error: e2 } = await client
-        .from('template_field')
-        .select('*')
-        .eq('template_version_id', versionId)
-        .order('display_order', { ascending: true });
-      if (e2) throw e2;
-      const { data: rules, error: e3 } = await client
-        .from('validation_rule')
-        .select('id, rule, message, severity')
-        .eq('template_version_id', versionId);
-      if (e3) throw e3;
-      // Champs deja porteurs de donnees -> nom interne / type verrouilles cote UI.
-      const { data: usedData, error: e4 } = await client.rpc('template_version_fields_in_use', {
-        p_version_id: versionId,
-      });
-      if (e4) throw e4;
+      const cached = versionCache.get(versionId);
+      if (cached) return cached;
+      // Les 4 lectures sont INDEPENDANTES -> en parallele (1 aller-retour au lieu de 4).
+      const [vRes, fRes, rRes, uRes] = await Promise.all([
+        client.from('template_version').select('id, template_id, version_number, status').eq('id', versionId).single(),
+        client.from('template_field').select('*').eq('template_version_id', versionId).order('display_order', { ascending: true }),
+        client.from('validation_rule').select('id, rule, message, severity').eq('template_version_id', versionId),
+        client.rpc('template_version_fields_in_use', { p_version_id: versionId }),
+      ]);
+      if (vRes.error) throw vRes.error;
+      if (fRes.error) throw fRes.error;
+      if (rRes.error) throw rRes.error;
+      if (uRes.error) throw uRes.error;
       const used = new Set(
-        ((usedData ?? []) as (string | { id?: string })[]).map((x) => (typeof x === 'string' ? x : x.id ?? '')),
+        ((uRes.data ?? []) as (string | { id?: string })[]).map((x) => (typeof x === 'string' ? x : x.id ?? '')),
       );
-      return {
-        version: mapVersion(v as VersionRow),
-        fields: ((fields as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
-        rules: ((rules as RuleRow[]) ?? []).map(mapRule),
+      const result = {
+        version: mapVersion(vRes.data as VersionRow),
+        fields: ((fRes.data as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
+        rules: ((rRes.data as RuleRow[]) ?? []).map(mapRule),
       };
+      versionCache.set(versionId, result);
+      return result;
     },
 
     async addField(versionId, field) {
@@ -198,6 +196,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .select('*')
         .single();
       if (error) throw error;
+      clearVersionCache();
       return mapField(data as FieldRow);
     },
 
@@ -218,6 +217,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_allow_missing_codes: field.allowMissingCodes ?? false,
       });
       if (error) throw error;
+      clearVersionCache();
       const row = (Array.isArray(data) ? data[0] : data) as FieldRow;
       return mapField(row);
     },
@@ -226,6 +226,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       // Passe par la RPC : refuse la suppression d'une variable deja utilisee (garde serveur).
       const { error } = await client.rpc('delete_template_field', { p_field_id: fieldId });
       if (error) throw error;
+      clearVersionCache();
     },
 
     async reorderFields(versionId, orderedIds) {
@@ -234,6 +235,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_field_ids: orderedIds,
       });
       if (error) throw error;
+      clearVersionCache();
     },
 
     async addRule(versionId, rule, message, severity) {
@@ -243,22 +245,26 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .select('id, rule, message, severity')
         .single();
       if (error) throw error;
+      clearVersionCache();
       return mapRule(data as RuleRow);
     },
 
     async deleteRule(ruleId) {
       const { error } = await client.from('validation_rule').delete().eq('id', ruleId);
       if (error) throw error;
+      clearVersionCache();
     },
 
     async publishVersion(versionId) {
       const { error } = await client.from('template_version').update({ status: 'published' }).eq('id', versionId);
       if (error) throw error;
+      clearVersionCache();
     },
 
     async archiveVersion(versionId) {
       const { error } = await client.from('template_version').update({ status: 'archived' }).eq('id', versionId);
       if (error) throw error;
+      clearVersionCache();
     },
 
     async duplicateVersion(versionId) {
