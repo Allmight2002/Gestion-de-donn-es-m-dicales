@@ -96,6 +96,18 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
         for (const e of (encs ?? []) as EncRow[]) encMap.set(e.id, e);
       }
 
+      // §7.2 : une rencontre CUREE peut appartenir a un patient dont les donnees PERMANENTES
+      // sont encore `draft` (donc absent de idToCode, curated only). On resout malgre tout son
+      // CODE pseudonymise (analytique, jamais l'identite) pour ne pas exporter patient_code vide
+      // ni omettre la rencontre. Les donnees permanentes du patient draft, elles, ne sont PAS exportees.
+      const missingPids = [...new Set([...encMap.values()].map((e) => e.patient_id).filter((pid) => !idToCode.has(pid)))];
+      if (missingPids.length) {
+        const { data: extra, error: e4 } = await client
+          .from('patient').select('id, patient_code').in('id', missingPids).is('deleted_at', null);
+        if (e4) throw e4;
+        for (const p of (extra ?? []) as { id: string; patient_code: string }[]) idToCode.set(p.id, p.patient_code);
+      }
+
       const encounters: ExportEncounter[] = [...encMap.values()].map((e) => ({
         id: e.id,
         patientCode: idToCode.get(e.patient_id) ?? '',

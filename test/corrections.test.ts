@@ -87,18 +87,28 @@ describe('§13 verrou optimiste (synchronisation hors-ligne)', () => {
   });
 });
 
-describe('§5.2 ecritures directes : pas de retrogradation ni d age falsifie', () => {
-  test('une rencontre curated ne peut etre RETROGRADEE par UPDATE direct', async () => {
+describe('§5.2 triggers (defense en profondeur) : pas de retrogradation ni d age falsifie', () => {
+  // Ecritures PRIVILEGIEES (admin) : la RLS est contournee mais les TRIGGERS s'appliquent.
+  test('une rencontre curated ne peut etre RETROGRADEE (trigger)', async () => {
     await expect(
-      rowsAs(aliceId, "update public.encounter set validation_status='draft' where id=$1", [encounterId]),
+      db.admin.query("update public.encounter set validation_status='draft' where id=$1", [encounterId]),
     ).rejects.toThrow(/[Rr]etrogradation/);
   });
 
-  test('age_value est RECALCULE par le serveur (valeur fournie ignoree)', async () => {
-    // Tentative de falsification : age_value=999 (statut inchange -> curated).
-    await rowsAs(aliceId, 'update public.encounter set age_value=999 where id=$1', [encounterId]);
+  test('age_value est RECALCULE par le serveur (trigger)', async () => {
+    await db.admin.query('update public.encounter set age_value=999 where id=$1', [encounterId]);
     const a = (await db.admin.query('select age_value from public.encounter where id=$1', [encounterId])).rows[0].age_value;
     expect(Number(a)).toBe(44); // DOB 1980-01-01 @ 2024-03-01 -> 44, pas 999
+  });
+});
+
+describe('§5.3 ecritures cliniques par RPC seulement', () => {
+  test('un editeur ne peut PAS modifier une rencontre par UPDATE direct (RLS : sans effet)', async () => {
+    const before = (await db.admin.query('select data from public.encounter where id=$1', [encounterId])).rows[0].data;
+    // Alice (proprietaire, mais utilisateur authenticated) : l'UPDATE direct ne touche aucune ligne.
+    await rowsAs(aliceId, "update public.encounter set data='{\"glasgow_score\":3}'::jsonb, encounter_date='2000-01-01' where id=$1", [encounterId]);
+    const after = (await db.admin.query('select data from public.encounter where id=$1', [encounterId])).rows[0].data;
+    expect(after).toEqual(before); // inchange -> seules les RPC journalisees peuvent modifier
   });
 });
 

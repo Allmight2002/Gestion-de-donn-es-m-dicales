@@ -353,4 +353,19 @@ describe('durcissement (audit P0/P1)', () => {
       [taskId, baseId, JSON.stringify([{ encounter_type: 'suivi', encounter_date: '2024-06-01', age_unit: 'years', data: { glasgow_score: 10 } }])]);
     expect(ok[0].id).toBeTruthy();
   });
+
+  test('§5.6 coherence inter-bases : une soumission ne peut cibler un patient d une AUTRE base', async () => {
+    // Base B (admin) : meme proprietaire + version de gabarit que A.
+    const baseB = (await db.admin.query(
+      "insert into public.base(name, owner_user_id, current_template_version_id) select 'Base B', owner_user_id, current_template_version_id from public.base where id=$1 returning id",
+      [baseId])).rows[0].id;
+    const tv = (await db.admin.query('select current_template_version_id tv from public.base where id=$1', [baseB])).rows[0].tv;
+    const pidB = (await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data, collection_mode, validation_status, created_by) values($1,'XB-001',$2,'{}'::jsonb,'direct','draft',$3) returning id",
+      [baseB, tv, aliceId])).rows[0].id;
+    // Soumission de la base A ciblant le patient de la base B -> bloquee par le trigger.
+    await expect(db.admin.query(
+      "insert into public.raw_submission(base_id, target_patient_id, template_version_id, scope, case_code, status, submitted_by) values($1,$2,$3,'patient','XB','received',$4)",
+      [baseId, pidB, tv, aliceId])).rejects.toThrow(/inter-bases/i);
+  });
 });

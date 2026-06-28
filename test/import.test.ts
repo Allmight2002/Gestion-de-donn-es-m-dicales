@@ -20,6 +20,8 @@ const CALL7 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7) as repo
 // + batch_id (import par lots)
 const CALL8 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7,$8) as report';
 const BEGIN = 'select public.begin_import_batch($1,$2,$3,$4,$5) as id';
+const COMPLETE = 'select public.complete_import_batch($1)';
+const CANCEL = 'select public.cancel_import_batch($1)';
 const enc = (type: string, date: string, data: object) => ({ encounter_type: type, encounter_date: date, data });
 const row = (code: string | null, encounter: object | null, patient_data: object = {}, identity: object | null = null) =>
   ({ patient_code: code, identity, patient_data, encounter });
@@ -158,8 +160,8 @@ describe('import_records', () => {
     const h = 'batch-' + Date.now();
     const batchId = (await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id;
     expect(batchId).toBeTruthy();
-    // re-ouvrir le meme fichier -> refus (idempotence au niveau du lot).
-    await expect(rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft'])).rejects.toThrow(/deja ete importe|doublon/i);
+    // §6.2 re-ouvrir le meme fichier alors que le lot est EN COURS -> REPRISE du meme lot.
+    expect((await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id).toBe(batchId);
     // 2 chunks rattaches au meme lot.
     await rowsAs(aliceId, CALL8, [baseId, J([row('IMP-B1', enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 10 }))]), false, 'draft', 'fill', null, null, batchId]);
     await rowsAs(aliceId, CALL8, [baseId, J([row('IMP-B2', enc('consultation', '2024-01-06', { diagnosis: 'y', glasgow_score: 11 }))]), false, 'draft', 'fill', null, null, batchId]);
@@ -171,5 +173,43 @@ describe('import_records', () => {
     expect(Number((await db.admin.query('select count(*)::int n from public.import_batch where base_id=$1 and file_hash=$2', [baseId, h])).rows[0].n)).toBe(1);
     // Les patients ont bien ete crees.
     expect((await db.admin.query("select 1 from public.patient where base_id=$1 and patient_code in ('IMP-B1','IMP-B2')", [baseId])).rows).toHaveLength(2);
+  });
+
+  test('§6.1 un chunk incoherent avec son lot est refuse (conflit different, lot cloture)', async () => {
+    const h = 'b61-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id;
+    // Mode de conflit different de celui du lot -> refus global.
+    await expect(
+      rowsAs(aliceId, CALL8, [baseId, J([row('B61-1', null, { sexe: 'M' })]), false, 'draft', 'overwrite', null, null, batchId]),
+    ).rejects.toThrow(/conflit incoherent/i);
+    // Apres cloture, plus aucun chunk n'est accepte sur ce lot.
+    await rowsAs(aliceId, COMPLETE, [batchId]);
+    await expect(
+      rowsAs(aliceId, CALL8, [baseId, J([row('B61-2', null, { sexe: 'M' })]), false, 'draft', 'fill', null, null, batchId]),
+    ).rejects.toThrow(/deja cloture/i);
+  });
+
+  test('§6.2 idempotence completed-only : un lot annule ne bloque pas ; un lot complete bloque', async () => {
+    const h = 'b62-' + Date.now();
+    const b1 = (await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id;
+    await rowsAs(aliceId, CANCEL, [b1]);
+    // Lot annule -> on peut RECOMMENCER le meme fichier (nouveau lot).
+    const b2 = (await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id;
+    expect(b2).not.toBe(b1);
+    await rowsAs(aliceId, CALL8, [baseId, J([row('B62', null, { sexe: 'M' })]), false, 'draft', 'fill', null, null, b2]);
+    await rowsAs(aliceId, COMPLETE, [b2]);
+    // Lot complete -> rouvrir le meme fichier est refuse.
+    await expect(rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft'])).rejects.toThrow(/deja ete importe|doublon/i);
+  });
+
+  test('§6.3 doublon de rencontre DANS le fichier : la 2e ligne identique est rejetee', async () => {
+    const dup = enc('consultation', '2024-01-05', { diagnosis: 'x', glasgow_score: 10 });
+    const rep = (await rowsAs(aliceId, CALL, [baseId, J([row('B63', dup), row('B63', dup)]), false, 'draft']))[0].report;
+    expect(rep.error_count).toBe(1);
+    expect(rep.errors[0].message).toMatch(/double/i);
+    // Une seule rencontre creee pour B63.
+    const n = Number((await db.admin.query(
+      "select count(*)::int c from public.encounter e join public.patient p on p.id=e.patient_id where p.base_id=$1 and p.patient_code='B63'", [baseId])).rows[0].c);
+    expect(n).toBe(1);
   });
 });

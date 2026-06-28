@@ -126,6 +126,9 @@ export function ImportData() {
           agg.errors.push(...rep.errors.map((er) => ({ ...er, row: er.row + i }))); // n° de ligne global
           setProgress({ done: Math.min(i + CHUNK, rows.length), total: rows.length });
         }
+        // §6.2 : cloture du lot -> active l'idempotence du fichier. En cas d'erreur, le lot
+        // reste 'processing' et peut etre REPRIS (re-lancer l'import reprend le meme lot).
+        if (batchId) await patients.completeImportBatch(batchId);
         setReport(agg);
       }
       if (!dryRun) setCommitted(true);

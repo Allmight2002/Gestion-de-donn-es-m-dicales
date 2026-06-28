@@ -122,12 +122,13 @@ describe('integrite curated par TRIGGER (ferme aussi la voie directe, hors RPC)'
     // rencontre hospitalisation en brouillon, incomplete.
     const enc = await rowsAs(aliceId, CALL, [patientId, 'hospitalisation', TEST_DATE, 'draft', JSON.stringify({ glasgow_score: 9 }), 'years']);
     const encId = enc[0].id;
-    // UPDATE direct (sans passer par une RPC) -> curated : le trigger exige admission_date + diagnosis.
+    // Ecriture PRIVILEGIEE (admin, hors RLS) -> curated : le trigger exige admission_date + diagnosis.
+    // (Un editeur authentifie, lui, ne peut plus ecrire en direct du tout — voir §5.3.)
     await expect(
-      rowsAs(aliceId, "update public.encounter set validation_status='curated' where id=$1", [encId]),
+      db.admin.query("update public.encounter set validation_status='curated' where id=$1", [encId]),
     ).rejects.toThrow(/requis|manquant/i);
-    // Une fois complete, la promotion directe passe (controle positif).
-    await rowsAs(aliceId, "update public.encounter set data = data || '{\"admission_date\":\"2024-01-05\",\"diagnosis\":\"TC\"}'::jsonb, validation_status='curated' where id=$1", [encId]);
+    // Une fois complete, la promotion passe (controle positif du trigger).
+    await db.admin.query("update public.encounter set data = data || '{\"admission_date\":\"2024-01-05\",\"diagnosis\":\"TC\"}'::jsonb, validation_status='curated' where id=$1", [encId]);
     expect((await db.admin.query('select validation_status from public.encounter where id=$1', [encId])).rows[0].validation_status).toBe('curated');
   });
 });
@@ -149,10 +150,10 @@ describe('durcissement des ecritures (audit 2)', () => {
   test('§5.1 : un UPDATE direct hors bornes / a cle inconnue sur une ligne curated est refuse', async () => {
     const enc = await rowsAs(aliceId, CALL, [patientId, 'consultation', TEST_DATE, 'curated', JSON.stringify({ diagnosis: 'x', glasgow_score: 12 }), 'years']);
     const id = enc[0].id;
-    // Glasgow > 15 par voie directe -> refus (bornes rejouees sur curated).
-    await expect(rowsAs(aliceId, "update public.encounter set data = data || '{\"glasgow_score\":99}'::jsonb where id=$1", [id])).rejects.toThrow(/maximum|glasgow/i);
+    // Glasgow > 15 par ecriture privilegiee (admin) -> refus (bornes rejouees sur curated par le trigger).
+    await expect(db.admin.query("update public.encounter set data = data || '{\"glasgow_score\":99}'::jsonb where id=$1", [id])).rejects.toThrow(/maximum|glasgow/i);
     // Cle absente du gabarit -> refus.
-    await expect(rowsAs(aliceId, "update public.encounter set data = data || '{\"zzz\":1}'::jsonb where id=$1", [id])).rejects.toThrow(/inconnu/i);
+    await expect(db.admin.query("update public.encounter set data = data || '{\"zzz\":1}'::jsonb where id=$1", [id])).rejects.toThrow(/inconnu/i);
   });
 
   test('§5.4 : entier decimal, date invalide et code manquant invente sont refuses', async () => {
@@ -163,12 +164,12 @@ describe('durcissement des ecritures (audit 2)', () => {
   });
 
   test('§5.3 : colonnes structurelles immuables par UPDATE direct', async () => {
-    // patient_code (lien identite/analytique) immuable.
-    await expect(rowsAs(aliceId, "update public.patient set patient_code='HACK' where id=$1", [patientId])).rejects.toThrow(/immuable/i);
+    // patient_code (lien identite/analytique) immuable -> verifie via ecriture privilegiee (trigger).
+    await expect(db.admin.query("update public.patient set patient_code='HACK' where id=$1", [patientId])).rejects.toThrow(/immuable/i);
     // reparentage d'une rencontre interdit.
     const other = (await db.admin.query('select id from public.patient where base_id=$1 and id<>$2 and deleted_at is null limit 1', [baseId, patientId])).rows[0].id;
     const enc = await rowsAs(aliceId, CALL, [patientId, 'consultation', TEST_DATE, 'draft', JSON.stringify({ glasgow_score: 10 }), 'years']);
-    await expect(rowsAs(aliceId, 'update public.encounter set patient_id=$2 where id=$1', [enc[0].id, other])).rejects.toThrow(/immuable/i);
+    await expect(db.admin.query('update public.encounter set patient_id=$2 where id=$1', [enc[0].id, other])).rejects.toThrow(/immuable/i);
   });
 
   test('§5.2 : regles de coherence (block) imposees cote serveur sur curated', async () => {

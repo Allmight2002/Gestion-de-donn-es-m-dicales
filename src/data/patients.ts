@@ -111,6 +111,10 @@ export interface PatientRepository {
   importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
   /** Ouvre un lot d'import (controles globaux + idempotence) ; renvoie l'id du lot pour les chunks. */
   beginImportBatch(baseId: string, opts: BeginImportOptions): Promise<string>;
+  /** Cloture un lot d'import (apres tous les chunks) -> active l'idempotence du fichier. */
+  completeImportBatch(batchId: string): Promise<void>;
+  /** Annule un lot d'import en cours (libere le fichier). */
+  cancelImportBatch(batchId: string): Promise<void>;
 }
 
 type PatientRow = {
@@ -164,6 +168,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, importRecords: fail, beginImportBatch: fail,
+      completeImportBatch: fail, cancelImportBatch: fail,
     };
   }
 
@@ -399,6 +404,16 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       });
       if (error) throw error;
       return data as string;
+    },
+
+    async completeImportBatch(batchId) {
+      const { error } = await client.rpc('complete_import_batch', { p_batch_id: batchId });
+      if (error) throw error;
+    },
+
+    async cancelImportBatch(batchId) {
+      const { error } = await client.rpc('cancel_import_batch', { p_batch_id: batchId });
+      if (error) throw error;
     },
   };
 }
