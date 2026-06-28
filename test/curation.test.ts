@@ -332,4 +332,25 @@ describe('durcissement (audit P0/P1)', () => {
     // ct_update retiree : l'UPDATE direct ne touche aucune ligne -> cycle preserve.
     expect((await db.admin.query('select status from public.curation_task where id=$1', [c.taskId])).rows[0].status).toBe('in_progress');
   });
+
+  test('§5.4 portee rencontre : le brouillon ne peut pas porter de donnees permanentes', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 and patient_code=$2', [baseId, 'NCH-001'])).rows[0].id;
+    const task = await rowsAs(aliceId, "select * from public.create_curation_submission($1,$2,$3,'encounter')", [baseId, pid, 'REF-ENCSCOPE']);
+    const taskId = task[0].id as string, subId = task[0].submission_id as string;
+    await db.admin.query("insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type) values($1,$2,'doc',$3,'application/pdf')", [subId, baseId, `${baseId}/${subId}/d.pdf`]);
+    await rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId]);
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [taskId]);
+
+    // Brouillon AVEC donnees permanentes sur une portee 'encounter' -> refuse.
+    await expect(
+      rowsAs(curator1Id, "insert into public.curation_draft(task_id, base_id, patient_data, encounters, status) values($1,$2,$3::jsonb,'[]'::jsonb,'draft')",
+        [taskId, baseId, JSON.stringify({ sexe: 'M' })]),
+    ).rejects.toThrow(/[Pp]ortee rencontre/);
+
+    // Brouillon de rencontre seule (sans donnees permanentes) -> accepte.
+    const ok = await rowsAs(curator1Id,
+      "insert into public.curation_draft(task_id, base_id, patient_data, encounters, status) values($1,$2,'{}'::jsonb,$3::jsonb,'draft') returning id",
+      [taskId, baseId, JSON.stringify([{ encounter_type: 'suivi', encounter_date: '2024-06-01', age_unit: 'years', data: { glasgow_score: 10 } }])]);
+    expect(ok[0].id).toBeTruthy();
+  });
 });
