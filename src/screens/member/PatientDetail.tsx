@@ -190,6 +190,9 @@ export function PatientDetail() {
                   <span className="font-medium">
                     {t(`encountertype.${e.encounterType}` as MessageKey)} · {e.encounterDate}
                     <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t(`encstatus.${e.validationStatus}` as MessageKey)}</span>
+                    {(e as { pending?: boolean }).pending && (
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t('offline.pending_badge')}</span>
+                    )}
                     {e.ageValue != null && (
                       <span className="ml-2 text-xs text-slate-500">
                         {t('encounter.age')} : {e.ageValue} {e.ageUnit ? t(`ageunit.${e.ageUnit}` as MessageKey) : ''}

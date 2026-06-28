@@ -76,6 +76,8 @@ export interface Encounter {
   ageValue: number | null;
   ageUnit: string | null;
   data: Record<string, unknown>;
+  /** Version optimiste (cote serveur) : sert au verrou de synchronisation hors-ligne. */
+  updatedAt?: string | null;
 }
 
 export interface FieldChange {
@@ -99,7 +101,7 @@ export interface PatientRepository {
   createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
   getEncounter(encounterId: string): Promise<Encounter | null>;
-  updateEncounter(encounterId: string, data: Record<string, unknown>, status: string, reason: string): Promise<{ id: string }>;
+  updateEncounter(encounterId: string, data: Record<string, unknown>, status: string, reason: string, expectedUpdatedAt?: string | null): Promise<{ id: string }>;
   listFieldChanges(entity: 'patient' | 'encounter', entityId: string): Promise<FieldChange[]>;
   softDeletePatient(patientId: string, reason: string): Promise<void>;
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
@@ -120,7 +122,7 @@ type IdentityRow = {
 };
 type EncounterRow = {
   id: string; encounter_type: string; encounter_date: string; validation_status: string;
-  age_value: number | null; age_unit: string | null; data: Record<string, unknown>;
+  age_value: number | null; age_unit: string | null; data: Record<string, unknown>; updated_at?: string | null;
 };
 type FieldChangeRow = {
   field_key: string; old_value: unknown; new_value: unknown; reason: string | null; changed_at: string;
@@ -148,6 +150,7 @@ const mapEncounter = (r: EncounterRow): Encounter => ({
   ageValue: r.age_value,
   ageUnit: r.age_unit,
   data: r.data ?? {},
+  updatedAt: r.updated_at ?? null,
 });
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -315,7 +318,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async listEncounters(patientId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at')
         .eq('patient_id', patientId)
         .is('deleted_at', null)
         .order('encounter_date', { ascending: true });
@@ -326,7 +329,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async getEncounter(encounterId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at')
         .eq('id', encounterId)
         .is('deleted_at', null)
         .maybeSingle();
@@ -334,12 +337,13 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return data ? mapEncounter(data as EncounterRow) : null;
     },
 
-    async updateEncounter(encounterId, data, status, reason) {
+    async updateEncounter(encounterId, data, status, reason, expectedUpdatedAt) {
       const { data: row, error } = await client.rpc('update_encounter', {
         p_encounter_id: encounterId,
         p_data: data,
         p_validation_status: status,
         p_reason: reason,
+        p_expected_updated_at: expectedUpdatedAt ?? null,
       });
       if (error) throw error;
       const r = (Array.isArray(row) ? row[0] : row) as { id: string };

@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
 import type { TemplateField, ValidationRule } from '../../data/types';
+import { enqueueEncounterUpdate, offlineCache, useOnline } from '../../data/offline';
 import { validateValues, evaluateRules, isMissing, missingCodeOf } from '../../domain/validation';
 import { EncounterFields } from './EncounterFields';
 
@@ -15,6 +16,7 @@ export function EditEncounter() {
   const { id: baseId, patientId, encounterId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const online = useOnline();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
@@ -25,6 +27,7 @@ export function EditEncounter() {
   const [status, setStatus] = useState<string>('draft');
   const [reason, setReason] = useState('');
   const [history, setHistory] = useState<FieldChange[]>([]);
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +45,25 @@ export function EditEncounter() {
     if (!baseId || !encounterId) return;
     setLoading(true);
     try {
+      if (!online) {
+        // HORS-LIGNE : la rencontre et les champs viennent de l'instantane local.
+        const snap = await offlineCache.get(baseId);
+        const enc = snap?.patients.flatMap((p) => p.encounters).find((e) => e.id === encounterId) ?? null;
+        if (enc) {
+          const { age_at_encounter: _drop, ...rest } = enc.data;
+          void _drop;
+          setValues(rest);
+          setStatus(enc.validationStatus);
+          setBaseUpdatedAt(enc.updatedAt ?? null); // jeton optimiste pour la synchro
+        }
+        setHistory([]);
+        const encFields = (snap?.fields ?? []).filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder);
+        setFields(encFields as unknown as TemplateField[]);
+        setRules([]); // les regles inter-champs sont rejouees au serveur a la synchro
+        setError(null);
+        return;
+      }
+
       const [enc, base, hist] = await Promise.all([
         patients.getEncounter(encounterId),
         bases.getBase(baseId),
@@ -52,6 +74,7 @@ export function EditEncounter() {
         void _drop;
         setValues(rest);
         setStatus(enc.validationStatus);
+        setBaseUpdatedAt(enc.updatedAt ?? null);
       }
       setHistory(hist);
       if (base?.base.currentTemplateVersionId) {
@@ -66,7 +89,7 @@ export function EditEncounter() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, encounterId, bases, templates, patients]);
+  }, [baseId, encounterId, online, bases, templates, patients]);
 
   useEffect(() => {
     void load();
@@ -86,7 +109,16 @@ export function EditEncounter() {
 
     setBusy(true);
     try {
-      await patients.updateEncounter(encounterId, values, status, reason.trim());
+      if (!online) {
+        // HORS-LIGNE : on met la correction en file d'attente (synchro au retour du reseau).
+        await enqueueEncounterUpdate({
+          baseId, patientId, encounterId,
+          data: values, reason: reason.trim(), validationStatus: status, baseUpdatedAt,
+        });
+      } else {
+        // EN LIGNE : RPC validee, avec verrou optimiste (refuse si la rencontre a change).
+        await patients.updateEncounter(encounterId, values, status, reason.trim(), baseUpdatedAt);
+      }
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
       setError(msg(e));
@@ -105,6 +137,12 @@ export function EditEncounter() {
         </button>
         <h1 className="page-title mt-2">{t('encounter.edit_title')}</h1>
       </div>
+
+      {!online && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          {t('offline.edit_queued_hint')}
+        </p>
+      )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 

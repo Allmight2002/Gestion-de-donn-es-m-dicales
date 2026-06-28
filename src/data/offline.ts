@@ -15,6 +15,10 @@ export interface OfflineEncounter {
   ageValue: number | null;
   ageUnit: string | null;
   data: Record<string, unknown>;
+  /** Version optimiste serveur (jeton de conflit pour la synchro). */
+  updatedAt?: string | null;
+  /** true si une modification locale n'est pas encore synchronisee (affichage). */
+  pending?: boolean;
 }
 
 export interface OfflinePatient {
@@ -89,6 +93,7 @@ export function buildSnapshot(
       encounters: (encountersByPatient[p.id] ?? []).map((e) => ({
         id: e.id, encounterType: e.encounterType, encounterDate: e.encounterDate,
         validationStatus: e.validationStatus, ageValue: e.ageValue, ageUnit: e.ageUnit, data: e.data,
+        updatedAt: e.updatedAt ?? null,
       })),
     })),
     cachedAt: now,
@@ -100,10 +105,11 @@ export const snapshotMeta = (s: OfflineSnapshot): OfflineMeta => ({
   baseId: s.baseId, baseName: s.baseName, cachedAt: s.cachedAt, expiresAt: s.expiresAt, patientCount: s.patients.length,
 });
 
-// --- IndexedDB (un seul object store, cle = baseId) -------------------------------------
+// --- IndexedDB : 2 object stores -> `snapshots` (cle baseId), `outbox` (cle id) -----------
 const DB_NAME = 'meddata-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = 'snapshots';
+const OUTBOX = 'outbox';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -111,6 +117,7 @@ function openDb(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'baseId' });
+      if (!db.objectStoreNames.contains(OUTBOX)) db.createObjectStore(OUTBOX, { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -118,13 +125,13 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 // Execute une transaction et resout APRES le commit (durabilite), avec le resultat de la requete.
-function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T> {
+function tx<T>(store: string, mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T> {
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const t = db.transaction(STORE, mode);
+        const t = db.transaction(store, mode);
         let result: T;
-        const req = fn(t.objectStore(STORE));
+        const req = fn(t.objectStore(store));
         req.onsuccess = () => { result = req.result as T; };
         t.oncomplete = () => { db.close(); resolve(result); };
         t.onerror = () => { db.close(); reject(t.error); };
@@ -141,11 +148,148 @@ export interface OfflineCache {
 }
 
 export const offlineCache: OfflineCache = {
-  async save(snap) { await tx('readwrite', (s) => s.put(snap)); },
-  async get(baseId) { return (await tx<OfflineSnapshot | undefined>('readonly', (s) => s.get(baseId))) ?? null; },
-  async list() { return (await tx<OfflineSnapshot[]>('readonly', (s) => s.getAll())).map(snapshotMeta); },
-  async remove(baseId) { await tx('readwrite', (s) => s.delete(baseId)); },
+  async save(snap) { await tx(STORE, 'readwrite', (s) => s.put(snap)); },
+  async get(baseId) { return (await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(baseId))) ?? null; },
+  async list() { return (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).map(snapshotMeta); },
+  async remove(baseId) { await tx(STORE, 'readwrite', (s) => s.delete(baseId)); },
 };
+
+// =====================================================================================
+// OUTBOX — file d'attente des ECRITURES preparees hors-ligne (Phases 2/3).
+// Seul l'ANALYTIQUE est concerne (corrections de rencontres) ; jamais l'identite/images.
+// La synchronisation rejoue chaque entree via la MEME RPC validee (update_encounter), avec
+// un verrou optimiste (baseUpdatedAt) -> aucune voie d'ecriture parallele, integrite preservee.
+// =====================================================================================
+export interface OutboxEntry {
+  id: string;
+  baseId: string;
+  patientId: string;
+  encounterId: string;
+  data: Record<string, unknown>;     // nouvelle valeur analytique
+  reason: string;                    // motif de correction (requis)
+  validationStatus: string;          // statut cible de la rencontre
+  baseUpdatedAt: string | null;      // jeton optimiste = version vue hors-ligne
+  createdAt: number;
+  state: 'pending' | 'conflict';
+  serverData?: Record<string, unknown>; // valeur serveur (renseignee en cas de conflit, pour l'UI)
+}
+
+const newId = (): string =>
+  (globalThis.crypto && 'randomUUID' in globalThis.crypto)
+    ? globalThis.crypto.randomUUID()
+    : `ob-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const outboxEvents: EventTarget | null = typeof EventTarget !== 'undefined' ? new EventTarget() : null;
+const emitOutboxChange = () => outboxEvents?.dispatchEvent(new Event('change'));
+
+export const outbox = {
+  async put(entry: OutboxEntry) { await tx(OUTBOX, 'readwrite', (s) => s.put(entry)); emitOutboxChange(); },
+  async list(baseId?: string): Promise<OutboxEntry[]> {
+    const all = await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll());
+    return (baseId ? all.filter((e) => e.baseId === baseId) : all).sort((a, b) => a.createdAt - b.createdAt);
+  },
+  async get(id: string): Promise<OutboxEntry | null> { return (await tx<OutboxEntry | undefined>(OUTBOX, 'readonly', (s) => s.get(id))) ?? null; },
+  async remove(id: string) { await tx(OUTBOX, 'readwrite', (s) => s.delete(id)); emitOutboxChange(); },
+  async count(baseId?: string) { return (await this.list(baseId)).length; },
+};
+
+// Applique une transformation a une rencontre DANS le cache (maj optimiste / retour serveur).
+async function patchCachedEncounter(
+  baseId: string,
+  encounterId: string,
+  fn: (e: OfflineEncounter) => OfflineEncounter,
+): Promise<void> {
+  const snap = await offlineCache.get(baseId);
+  if (!snap) return;
+  let changed = false;
+  for (const p of snap.patients) {
+    p.encounters = p.encounters.map((e) => {
+      if (e.id !== encounterId) return e;
+      changed = true;
+      return fn(e);
+    });
+  }
+  if (changed) await offlineCache.save(snap);
+}
+
+// Met en file une correction de rencontre + reflete la modif dans le cache (marquee "pending").
+export async function enqueueEncounterUpdate(input: {
+  baseId: string; patientId: string; encounterId: string;
+  data: Record<string, unknown>; reason: string; validationStatus: string; baseUpdatedAt: string | null;
+}): Promise<OutboxEntry> {
+  const entry: OutboxEntry = { id: newId(), createdAt: Date.now(), state: 'pending', ...input };
+  await outbox.put(entry);
+  await patchCachedEncounter(input.baseId, input.encounterId, (e) => ({
+    ...e, data: input.data, validationStatus: input.validationStatus, pending: true,
+  }));
+  return entry;
+}
+
+export interface FlushDeps {
+  updateEncounter(encounterId: string, data: Record<string, unknown>, status: string, reason: string, expectedUpdatedAt: string | null): Promise<unknown>;
+  getEncounter(encounterId: string): Promise<{ data: Record<string, unknown>; updatedAt?: string | null } | null>;
+}
+export interface FlushReport { synced: number; conflicts: number; failed: number; errors: string[]; }
+
+const isConflict = (m: string) => /CONFLIT_VERSION/i.test(m);
+
+// Rejoue les entrees "pending" via la RPC validee. Conflit -> entree marquee + valeur serveur
+// memorisee (a resoudre) ; autre erreur -> conservee et rapportee.
+export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<FlushReport> {
+  const rep: FlushReport = { synced: 0, conflicts: 0, failed: 0, errors: [] };
+  for (const e of (await outbox.list(baseId)).filter((x) => x.state === 'pending')) {
+    try {
+      await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, e.baseUpdatedAt);
+      await outbox.remove(e.id);
+      const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
+      await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
+      rep.synced++;
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      if (isConflict(m)) {
+        const server = await deps.getEncounter(e.encounterId).catch(() => null);
+        await outbox.put({ ...e, state: 'conflict', serverData: server?.data });
+        rep.conflicts++;
+      } else {
+        rep.failed++;
+        rep.errors.push(m);
+      }
+    }
+  }
+  return rep;
+}
+
+// Resolution « garder ma version » : reapplique en FORCANT (expected=null) puis nettoie.
+export async function resolveKeepMine(entryId: string, deps: FlushDeps): Promise<void> {
+  const e = await outbox.get(entryId);
+  if (!e) return;
+  await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, null);
+  await outbox.remove(entryId);
+  const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
+  await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, data: e.data, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
+}
+
+// Resolution « garder la version serveur » : abandonne ma modif, restaure la valeur serveur.
+export async function resolveKeepServer(entryId: string): Promise<void> {
+  const e = await outbox.get(entryId);
+  if (!e) return;
+  await outbox.remove(entryId);
+  const sd = e.serverData;
+  await patchCachedEncounter(e.baseId, e.encounterId, (c) => (sd ? { ...c, data: sd, pending: false } : { ...c, pending: false }));
+}
+
+// Hook React : liste reactive des entrees de l'outbox (se met a jour sur put/remove/flush).
+export function useOutbox(baseId?: string): OutboxEntry[] {
+  const [entries, setEntries] = useState<OutboxEntry[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => { void outbox.list(baseId).then((e) => { if (alive) setEntries(e); }); };
+    refresh();
+    outboxEvents?.addEventListener('change', refresh);
+    return () => { alive = false; outboxEvents?.removeEventListener('change', refresh); };
+  }, [baseId]);
+  return entries;
+}
 
 // --- Telechargement d'une base pour le hors-ligne -------------------------------------
 // Recupere TOUT (patients + rencontres + champs du gabarit) via les repos en LIGNE de

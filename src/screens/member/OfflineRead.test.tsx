@@ -4,13 +4,15 @@
 // actions d'ecriture sont absentes, (3) aucun appel repo (reseau) n'est fait hors-ligne.
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { BaseHome } from './BaseHome';
 import { PatientDetail } from './PatientDetail';
-import { buildSnapshot, offlineCache } from '../../data/offline';
+import { EditEncounter } from './EditEncounter';
+import { buildSnapshot, offlineCache, outbox } from '../../data/offline';
 import type { BaseRepository } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository } from '../../data/patients';
@@ -42,7 +44,7 @@ beforeAll(async () => {
     buildSnapshot(
       { id: 'b1', name: 'Base hors-ligne', templateVersionId: 'v1' },
       [{ id: 'p-off', code: 'P-OFF', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'curated' }],
-      { 'p-off': [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'curated', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 } }] },
+      { 'p-off': [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'curated', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 }, updatedAt: '2024-06-01T08:00:00.000Z' }] },
       [
         { id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 },
         { id: 'f2', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 1 },
@@ -80,5 +82,22 @@ describe('PatientDetail hors-ligne', () => {
     // Aucune action d'ecriture hors-ligne.
     expect(screen.queryByRole('button', { name: 'Supprimer ce patient' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Section identité|Identité/)).not.toBeInTheDocument();
+  });
+});
+
+describe('EditEncounter hors-ligne (Phase 2)', () => {
+  test('la correction est MISE EN FILE (outbox), sans appel reseau', async () => {
+    renderAt('/bases/b1/patients/p-off/encounters/e1/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
+    // Bandeau hors-ligne + champ pre-rempli depuis le cache.
+    expect(await screen.findByText(/mise en file d’attente/)).toBeInTheDocument();
+    // Motif requis puis enregistrement -> enqueue (aucun repo appele, sinon "reseau interdit").
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'corr hors-ligne' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(async () => expect(await outbox.count('b1')).toBe(1));
+    const entry = (await outbox.list('b1'))[0];
+    expect(entry.encounterId).toBe('e1');
+    expect(entry.reason).toBe('corr hors-ligne');
+    expect(entry.baseUpdatedAt).toBe('2024-06-01T08:00:00.000Z'); // jeton optimiste du cache
+    await outbox.remove(entry.id);
   });
 });

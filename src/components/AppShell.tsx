@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import type { MessageKey } from '../i18n/messages';
-import { useOnline } from '../data/offline';
+import { flushOutbox, useOnline, useOutbox, type FlushDeps } from '../data/offline';
+import { usePatientRepository } from '../data/RepositoryProvider';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { Logo } from './Logo';
 
@@ -16,6 +17,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut } = useAuth();
   const { t } = useI18n();
   const online = useOnline();
+  const patients = usePatientRepository();
+  const outboxEntries = useOutbox();
+  const pendingCount = outboxEntries.filter((e) => e.state === 'pending').length;
+  const conflictCount = outboxEntries.filter((e) => e.state === 'conflict').length;
+  const syncing = useRef(false);
+
+  // Synchronisation automatique : des qu'on est en ligne avec des modifs en attente, on rejoue
+  // la file via la RPC validee (verrou optimiste). S'execute au retour du reseau ou a l'ouverture.
+  useEffect(() => {
+    if (!online || pendingCount === 0 || syncing.current) return;
+    const deps: FlushDeps = {
+      updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
+      getEncounter: (id) => patients.getEncounter(id),
+    };
+    syncing.current = true;
+    void flushOutbox(deps).finally(() => { syncing.current = false; });
+  }, [online, pendingCount, patients]);
+
   const roleLabel = profile ? t(`role.${profile.globalRole}` as MessageKey) : '';
   const isCurationStaff = profile?.globalRole === 'curateur';
   const displayName = profile?.fullName || user?.email || '';
@@ -33,6 +52,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             {isCurationStaff && (
               <Link to="/curation" className="hidden font-medium text-teal-700 hover:text-teal-800 sm:inline">
                 {t('curation.pool_title')}
+              </Link>
+            )}
+            {(pendingCount > 0 || conflictCount > 0) && (
+              <Link
+                to="/sync"
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${conflictCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}
+                title={t('sync.title')}
+              >
+                {conflictCount > 0 ? `⚠ ${t('sync.conflicts')} (${conflictCount})` : `⤴ ${t('sync.pending')} (${pendingCount})`}
               </Link>
             )}
             <div className="hidden items-center gap-2 sm:flex">

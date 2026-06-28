@@ -15,6 +15,9 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 const CREATE_ENC = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
 const UPDATE_ENC = 'select * from public.update_encounter($1,$2::jsonb,$3,$4)';
+const UPDATE_ENC5 = 'select * from public.update_encounter($1,$2::jsonb,$3,$4,$5::timestamptz)';
+const encUpdatedAt = async (): Promise<Date> =>
+  (await db.admin.query('select updated_at from public.encounter where id=$1', [encounterId])).rows[0].updated_at;
 const changes = (uid: string) =>
   rowsAs(uid, 'select field_key, old_value, new_value, reason, changed_by from public.field_change_log where entity=$1 and entity_id=$2 order by changed_at', ['encounter', encounterId]);
 
@@ -62,5 +65,24 @@ describe('historique des corrections (field_change_log)', () => {
     await expect(
       rowsAs(annaId, UPDATE_ENC, [encounterId, JSON.stringify({ glasgow_score: 3 }), 'curated', 'tentative']),
     ).rejects.toThrow();
+  });
+});
+
+describe('§13 verrou optimiste (synchronisation hors-ligne)', () => {
+  test('updated_at a jour -> applique (et bump) ; perime -> CONFLIT_VERSION ; null -> force', async () => {
+    const before = await encUpdatedAt();
+    // Version a jour : applique la correction et avance updated_at.
+    await rowsAs(aliceId, UPDATE_ENC5, [encounterId, JSON.stringify({ glasgow_score: 13, diagnosis: 'TC' }), 'curated', 'sync a jour', before.toISOString()]);
+    const after = await encUpdatedAt();
+    expect(after.getTime()).toBeGreaterThan(before.getTime());
+
+    // Rejouer avec l'ANCIEN updated_at (la rencontre a change entre-temps) -> conflit.
+    await expect(
+      rowsAs(aliceId, UPDATE_ENC5, [encounterId, JSON.stringify({ glasgow_score: 14, diagnosis: 'TC' }), 'curated', 'sync perimee', before.toISOString()]),
+    ).rejects.toThrow(/CONFLIT_VERSION/);
+
+    // Forcage (expected = null) : applique malgre le decalage (resolution « garder ma version »).
+    const forced = await rowsAs(aliceId, UPDATE_ENC5, [encounterId, JSON.stringify({ glasgow_score: 15, diagnosis: 'TC' }), 'curated', 'forcage', null]);
+    expect(forced[0].data.glasgow_score).toBe(15);
   });
 });

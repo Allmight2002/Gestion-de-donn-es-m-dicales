@@ -22,6 +22,7 @@ const AddImage = lazy(() => import('../screens/member/AddImage').then((m) => ({ 
 const CohortBuilder = lazy(() => import('../screens/member/CohortBuilder').then((m) => ({ default: m.CohortBuilder })));
 const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) => ({ default: m.ExportPanel })));
 const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
+const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
 const CurationBoard = lazy(() => import('../screens/member/CurationBoard').then((m) => ({ default: m.CurationBoard })));
 const CurationPool = lazy(() => import('../screens/member/CurationPool').then((m) => ({ default: m.CurationPool })));
 const CurationTask = lazy(() => import('../screens/member/CurationTask').then((m) => ({ default: m.CurationTask })));
@@ -65,6 +66,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <MyTemplates />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sync"
+        element={
+          <ProtectedRoute area="member">
+            <SyncCenter />
           </ProtectedRoute>
         }
       />
