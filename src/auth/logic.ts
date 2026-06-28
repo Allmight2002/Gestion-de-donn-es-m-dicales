@@ -36,8 +36,8 @@ export function mapProfileRow(row: ProfileRow | null | undefined): Profile | nul
 
 export type AppArea = 'admin' | 'member';
 
-/** Atterrissage selon le role : admin -> gabarits ; curateur/validateur -> pool de
- * curation ; medecin -> tableau de bord (§11). */
+/** Atterrissage selon le role : admin -> gabarits ; curateur -> pool de curation ;
+ * medecin -> tableau de bord (§11). */
 export function landingPathFor(profile: Profile): string {
   if (profile.globalRole === 'system_admin') return '/admin';
   if (profile.globalRole === 'curateur') return '/curation';

@@ -8,8 +8,8 @@ import {
   defaultPermissionsFor, type AccessItem, type AccessRole, type BasePermissions, type InvitationItem,
 } from '../../data/access';
 
-// Partage de base ENTRE MEDECINS uniquement (v3.0). Les roles curateur/validateur sont
-// des roles GLOBAUX (admin) qui travaillent le pool de curation, jamais invites ici.
+// Partage de base ENTRE MEDECINS uniquement (v3.0). Le role curateur est un role GLOBAL
+// (admin) qui travaille le pool de curation, jamais invite ici.
 const ROLES: AccessRole[] = ['viewer', 'editor'];
 const PERMISSION_KEYS: (keyof BasePermissions)[] = [
   'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canExportData', 'canManageAccess',

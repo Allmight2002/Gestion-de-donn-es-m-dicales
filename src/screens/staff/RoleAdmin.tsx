@@ -7,9 +7,9 @@ import { useAdminRepository } from '../../data/RepositoryProvider';
 import { ASSIGNABLE_ROLES, type AdminProfile } from '../../data/admin';
 import type { GlobalRole } from '../../auth/types';
 
-// Administration des roles globaux (cahier v3.0) : l'admin systeme attribue medecin /
-// curateur / validateur / analyste. Les roles staff (curation) sont definis ICI, jamais
-// par un medecin. Le system_admin est affiche en lecture seule (seede, non modifiable ici).
+// Administration des roles globaux (cahier v3.0) : l'admin systeme attribue medecin ou
+// curateur. Les roles staff (curation) sont definis ICI, jamais par un medecin. Le
+// system_admin est affiche en lecture seule (seede, non modifiable ici).
 export function RoleAdmin() {
   const navigate = useNavigate();
   const { t } = useI18n();

@@ -14,8 +14,8 @@ const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as
 const newEncounter = (): DraftEncounter => ({ encounter_type: 'consultation', encounter_date: '', age_unit: 'years', data: {} });
 
 // Poste de travail d'un cas de curation (POOL GLOBAL, cahier v3.0). Base-less : le cas est
-// designe par un CODE OPAQUE, jamais par le patient. Le curateur RESERVE puis structure ;
-// le validateur valide ; le medecin proprietaire depose les documents (deidentifies).
+// designe par un CODE OPAQUE, jamais par le patient. Le curateur RESERVE, structure puis
+// FINALISE directement ; le medecin proprietaire depose les documents (deidentifies).
 export function CurationTask() {
   const { taskId } = useParams();
   const navigate = useNavigate();

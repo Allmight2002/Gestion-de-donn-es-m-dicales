@@ -3,7 +3,7 @@
 // (curation_draft par le curateur affecte) -> validation (RPC transactionnelle) ->
 // donnees VERIFIEES en zone analytique. Les RPC portent les regles sensibles ; la RLS
 // cloisonne les lignes. Les octets des documents bruts vivent dans un bucket prive
-// (URL signees temporaires), JAMAIS exportes ni visibles a l'analyste.
+// (URL signees temporaires), JAMAIS exportes ni visibles a un compte sans acces identite.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
@@ -87,7 +87,7 @@ export interface AddRawDocumentInput {
 }
 
 export interface CurationRepository {
-  /** Pool GLOBAL : toutes les taches visibles par le staff (curateur/validateur). */
+  /** Pool GLOBAL : toutes les taches visibles par le staff de curation (curateur). */
   listPool(): Promise<CurationTaskItem[]>;
   /** Cas d'une base (suivi cote medecin proprietaire). */
   listBaseSubmissions(baseId: string): Promise<CurationTaskItem[]>;
