@@ -112,6 +112,8 @@ const STORE = 'snapshots';
 const OUTBOX = 'outbox';
 
 function openDb(): Promise<IDBDatabase> {
+  // IndexedDB peut etre absent (SSR, vieux navigateur, environnement de test sans polyfill).
+  if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB indisponible'));
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
@@ -283,7 +285,7 @@ export function useOutbox(baseId?: string): OutboxEntry[] {
   const [entries, setEntries] = useState<OutboxEntry[]>([]);
   useEffect(() => {
     let alive = true;
-    const refresh = () => { void outbox.list(baseId).then((e) => { if (alive) setEntries(e); }); };
+    const refresh = () => { void outbox.list(baseId).then((e) => { if (alive) setEntries(e); }).catch(() => { if (alive) setEntries([]); }); };
     refresh();
     outboxEvents?.addEventListener('change', refresh);
     return () => { alive = false; outboxEvents?.removeEventListener('change', refresh); };

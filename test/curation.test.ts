@@ -322,6 +322,14 @@ describe('durcissement (audit P0/P1)', () => {
     const before = (await db.admin.query('select status from public.raw_submission where id=$1', [c.subId])).rows[0].status;
     await rowsAs(curator1Id, "update public.raw_submission set status='completed' where id=$1", [c.subId]);
     const after = (await db.admin.query('select status from public.raw_submission where id=$1', [c.subId])).rows[0].status;
-    expect(after).toBe(before); // rs_update reserve au proprietaire -> inchange
+    expect(after).toBe(before); // rs_update retiree -> aucune ligne touchee, inchange
+  });
+
+  test('§5.1 le curateur affecte ne CLOT pas une tache par UPDATE direct (RPC seulement)', async () => {
+    const c = await openCase('NCH-002');
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [c.taskId]); // -> in_progress
+    await rowsAs(curator1Id, "update public.curation_task set status='completed' where id=$1", [c.taskId]);
+    // ct_update retiree : l'UPDATE direct ne touche aucune ligne -> cycle preserve.
+    expect((await db.admin.query('select status from public.curation_task where id=$1', [c.taskId])).rows[0].status).toBe('in_progress');
   });
 });

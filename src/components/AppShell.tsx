@@ -32,7 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       getEncounter: (id) => patients.getEncounter(id),
     };
     syncing.current = true;
-    void flushOutbox(deps).finally(() => { syncing.current = false; });
+    void flushOutbox(deps).catch(() => {}).finally(() => { syncing.current = false; });
   }, [online, pendingCount, patients]);
 
   const roleLabel = profile ? t(`role.${profile.globalRole}` as MessageKey) : '';

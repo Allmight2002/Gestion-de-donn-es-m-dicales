@@ -86,3 +86,32 @@ describe('§13 verrou optimiste (synchronisation hors-ligne)', () => {
     expect(forced[0].data.glasgow_score).toBe(15);
   });
 });
+
+describe('§5.2 ecritures directes : pas de retrogradation ni d age falsifie', () => {
+  test('une rencontre curated ne peut etre RETROGRADEE par UPDATE direct', async () => {
+    await expect(
+      rowsAs(aliceId, "update public.encounter set validation_status='draft' where id=$1", [encounterId]),
+    ).rejects.toThrow(/[Rr]etrogradation/);
+  });
+
+  test('age_value est RECALCULE par le serveur (valeur fournie ignoree)', async () => {
+    // Tentative de falsification : age_value=999 (statut inchange -> curated).
+    await rowsAs(aliceId, 'update public.encounter set age_value=999 where id=$1', [encounterId]);
+    const a = (await db.admin.query('select age_value from public.encounter where id=$1', [encounterId])).rows[0].age_value;
+    expect(Number(a)).toBe(44); // DOB 1980-01-01 @ 2024-03-01 -> 44, pas 999
+  });
+});
+
+describe('§5.5 journaux infalsifiables (aucun insert direct)', () => {
+  test('un evenement d audit ne peut PAS etre fabrique par insert direct', async () => {
+    await expect(
+      rowsAs(aliceId, "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata) values($1,'FAKE_ADMIN_EVENT','x',null,$2,'{}'::jsonb)", [aliceId, baseId]),
+    ).rejects.toThrow();
+  });
+
+  test('une ligne d historique ne peut PAS etre inseree directement (hors RPC)', async () => {
+    await expect(
+      rowsAs(aliceId, "insert into public.field_change_log(base_id, entity, entity_id, field_key, old_value, new_value, changed_by, reason, source) values($1,'encounter',$2,'glasgow_score','1'::jsonb,'2'::jsonb,$3,'faux','manual_correction')", [baseId, encounterId, aliceId]),
+    ).rejects.toThrow();
+  });
+});
