@@ -7,13 +7,13 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 **cloisonnement appliqué côté base (Row-Level Security), testé automatiquement**.
 
 > 🧭 **Nouvelle arrivée ?** Lisez d'abord **[docs/architecture.md](docs/architecture.md)** :
-> vue d'ensemble du modèle de données (23 tables), des rôles, du cloisonnement RLS et du
+> vue d'ensemble du modèle de données (25 tables), des rôles, du cloisonnement RLS et du
 > cycle de curation. Le présent README est le guide de mise en route.
 
 État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
 partage** (`viewer` / `editor`) + **5 permissions granulaires** par base. Chaîne de curation
 complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
-**Tests : 36 fichiers / 226 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
+**Tests : 39 fichiers / 274 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
 
 > Besoin d'un backend Supabase pour le login réel ? Voir
 > [docs/configurer-supabase.md](docs/configurer-supabase.md) (voie cloud, sans Docker).
@@ -102,7 +102,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 ├── supabase/
 │   ├── migrations/                       # Source de vérité du schéma (à appliquer sur Supabase)
 │   │   ├── 20260616090100_extensions.sql
-│   │   ├── 20260616090200_tables.sql         # Modèle de données (23 tables)
+│   │   ├── 20260616090200_tables.sql         # Modèle de données (25 tables)
 │   │   ├── 20260616090300_functions.sql      # Fonctions d'aide RLS (SECURITY DEFINER)
 │   │   ├── 20260616090400_rls.sql            # Activation RLS + politiques
 │   │   ├── 20260616090500_integrity.sql      # Triggers : profils, immuabilité gabarit, anti-escalade
@@ -168,7 +168,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le frontend (rendu + gating par rôle)
 ```
 
-Résultat attendu : **36 fichiers / 226 tests passants** — sécurité RLS (les scénarios
+Résultat attendu : **39 fichiers / 274 tests passants** — sécurité RLS (les scénarios
 d'attaque + leurs contrôles positifs), logique de rôle, règles JSON, validation de saisie,
 âge calculé sans exposer la DOB, corrections, images, cohortes, export immuable, accès,
 suppression logique, curation, audit, et rendu des écrans. Le premier lancement télécharge

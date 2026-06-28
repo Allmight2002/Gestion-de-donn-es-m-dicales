@@ -69,7 +69,7 @@ permission est un booléen indépendant, vérifié côté base par une fonction 
 
 ---
 
-## 3. Modèle de données (23 tables)
+## 3. Modèle de données (25 tables)
 
 ```mermaid
 erDiagram
@@ -231,7 +231,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
 ```
 
-État actuel : **34 fichiers / 199 tests verts**. Chaque refus RLS est doublé d'un
+État actuel : **39 fichiers / 274 tests verts**. Chaque refus RLS est doublé d'un
 **contrôle positif** prouvant qu'un utilisateur légitime voit bien la donnée (pas de faux
 positif par table vide).
 
