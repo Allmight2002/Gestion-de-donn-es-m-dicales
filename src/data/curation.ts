@@ -7,6 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
+import { signedRead } from './signedRead';
 
 export const RAW_DOCUMENTS_BUCKET = 'raw-documents';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -217,8 +218,8 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       if (e2) throw e2;
       const documents = await Promise.all(
         ((docs ?? []) as { id: string; label: string | null; storage_path: string; mime_type: string }[]).map(async (d) => {
-          const { data: signed } = await client.storage.from(RAW_DOCUMENTS_BUCKET).createSignedUrl(d.storage_path, SIGNED_URL_TTL);
-          return { id: d.id, label: d.label, storagePath: d.storage_path, mimeType: d.mime_type, signedUrl: signed?.signedUrl ?? null };
+          const signedUrl = await signedRead(client, 'raw_document', d.id, RAW_DOCUMENTS_BUCKET, d.storage_path, SIGNED_URL_TTL);
+          return { id: d.id, label: d.label, storagePath: d.storage_path, mimeType: d.mime_type, signedUrl };
         }),
       );
 

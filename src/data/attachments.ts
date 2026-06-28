@@ -6,6 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
+import { signedRead } from './signedRead';
 
 export const ATTACHMENTS_BUCKET = 'clinical-attachments';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -72,8 +73,8 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
       const rows = (data ?? []) as AttachmentRow[];
       const items = await Promise.all(
         rows.map(async (r) => {
-          const { data: signed } = await client.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(r.storage_path, SIGNED_URL_TTL);
-          return { id: r.id, kind: r.kind, label: r.label, mimeType: r.mime_type, filePath: r.storage_path, signedUrl: signed?.signedUrl ?? null };
+          const signedUrl = await signedRead(client, 'attachment', r.id, ATTACHMENTS_BUCKET, r.storage_path, SIGNED_URL_TTL);
+          return { id: r.id, kind: r.kind, label: r.label, mimeType: r.mime_type, filePath: r.storage_path, signedUrl };
         }),
       );
       return items;

@@ -29,21 +29,23 @@ supabase functions deploy signed-read
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...   # si non injectée automatiquement
 ```
 
-### Basculer le frontend (à faire au déploiement)
-Remplacer les appels directs `storage.from(bucket).createSignedUrl(...)` (dans
-`src/data/attachments.ts` et la lecture des `raw_document`) par :
-```ts
-const { data, error } = await supabase.functions.invoke('signed-read', {
-  body: { entity: 'attachment' /* | 'raw_document' */, id },
-});
-// data.url = URL signée (l'audit a déjà été écrit côté serveur)
-```
-…et **retirer** le `createSignedUrl` client + l'appel séparé `log_sensitive_read` (devenus
-inutiles). Ainsi la consultation **ne peut plus** se faire sans trace.
+### Durcissements appliqués (revue §9.3 / §9.4)
+- **§9.3** : la fonction écrit `audit_log` **avant** de signer et **vérifie l'erreur d'insertion**
+  → si la journalisation échoue, l'URL n'est **pas** délivrée (un document ne peut donc pas être
+  lu sans trace).
+- **§9.4** : si le secret `REQUIRE_SERVER_INSPECTION=true`, la fonction **refuse** de signer un
+  fichier dont `inspection_status <> 'accepted'` (à activer quand l'inspection serveur, §10.2,
+  promeut les fichiers). Laissé inactif pour le pilote fictif.
 
-> Tant que le frontend n'est pas basculé, le flux local actuel (signature client + audit best
-> effort) reste en place — il fonctionne pour la **démo fictive**, mais pas pour des données
-> réelles.
+### Bascule du frontend — FAITE (derrière un drapeau)
+Le frontend appelle déjà la fonction via le helper [`src/data/signedRead.ts`](../src/data/signedRead.ts)
+(utilisé par `attachments.ts` et `curation.ts`). Comportement piloté par `VITE_USE_SIGNED_READ` :
+```ts
+// VITE_USE_SIGNED_READ=true  -> invoke('signed-read')  (autorise+journalise+signe côté serveur)
+// sinon (démo locale)        -> storage.createSignedUrl (signature client directe)
+```
+Au déploiement cloud : déployer la fonction puis poser `VITE_USE_SIGNED_READ=true` et rebuild
+→ la consultation **ne peut plus** se faire sans trace.
 
 ---
 

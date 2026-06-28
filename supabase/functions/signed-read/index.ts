@@ -42,23 +42,36 @@ Deno.serve(async (req: Request) => {
   const { data: who } = await asUser.auth.getUser();
   if (!who?.user) return json(401, { error: 'Session invalide' });
 
+  // §9.4 : exiger une inspection SERVEUR aboutie (inspection_status='accepted') avant de signer.
+  // Active uniquement si REQUIRE_SERVER_INSPECTION=true (donnees reelles, avec inspect-upload qui
+  // promeut 'accepted_client' -> 'accepted'). Inactif pour le pilote fictif (statut 'accepted_client').
+  const requireInspection = Deno.env.get('REQUIRE_SERVER_INSPECTION') === 'true';
+
   let bucket: string, action: string, path: string, baseId: string | null;
 
   if (entity === 'raw_document') {
     const { data, error } = await asUser
-      .from('raw_document').select('id, base_id, storage_path').eq('id', id).is('deleted_at', null).maybeSingle();
+      .from('raw_document').select('id, base_id, storage_path, inspection_status').eq('id', id).is('deleted_at', null).maybeSingle();
     if (error || !data) return json(403, { error: 'Acces refuse' }); // RLS a masque -> non autorise
+    if (requireInspection && data.inspection_status !== 'accepted') {
+      return json(409, { error: 'Document non encore valide par l\'inspection serveur' });
+    }
     bucket = 'raw-documents'; action = 'raw_document_read'; path = data.storage_path; baseId = data.base_id;
   } else {
     const { data, error } = await asUser
-      .from('clinical_attachment').select('id, patient_id, storage_path').eq('id', id).is('deleted_at', null).maybeSingle();
+      .from('clinical_attachment').select('id, patient_id, storage_path, inspection_status').eq('id', id).is('deleted_at', null).maybeSingle();
     if (error || !data) return json(403, { error: 'Acces refuse' });
+    if (requireInspection && data.inspection_status !== 'accepted') {
+      return json(409, { error: 'Fichier non encore valide par l\'inspection serveur' });
+    }
     const { data: pat } = await admin.from('patient').select('base_id').eq('id', data.patient_id).maybeSingle();
     bucket = 'clinical-attachments'; action = 'attachment_read'; path = data.storage_path; baseId = pat?.base_id ?? null;
   }
 
-  // Trace AVANT livraison (non contournable).
-  await admin.from('audit_log').insert({ user_id: who.user.id, action, entity, entity_id: id, base_id: baseId });
+  // §9.3 : trace AVANT livraison ET non contournable -> si la journalisation ECHOUE, on REFUSE
+  // de signer (sinon un document pourrait etre lu sans laisser de trace).
+  const { error: auditErr } = await admin.from('audit_log').insert({ user_id: who.user.id, action, entity, entity_id: id, base_id: baseId });
+  if (auditErr) return json(500, { error: 'Journalisation impossible : acces refuse' });
 
   const { data: signed, error: e2 } = await admin.storage.from(bucket).createSignedUrl(path, 120);
   if (e2 || !signed) return json(500, { error: e2?.message ?? 'Signature impossible' });

@@ -1,7 +1,7 @@
 # Déploiement — pilote à données fictives
 
 Ce guide met le service **en ligne** pour une **démo / un pilote contrôlé** avec des
-**données entièrement fictives**. La section §7 liste ce qu'il reste à faire **avant** toute
+**données entièrement fictives**. La section §8 liste ce qu'il reste à faire **avant** toute
 donnée réelle (cadre juridique + durcissement serveur).
 
 > Backend = **Supabase cloud** (Postgres + Auth + Storage). Frontend = build **Vite/PWA**
@@ -80,7 +80,32 @@ SUPABASE_SERVICE_ROLE_KEY="eyJ..." \
 
 ---
 
-## 6. Vérification de mise en ligne (smoke test)
+## 6. Lectures de fichiers auditées — Edge `signed-read` (recommandé)
+
+Par défaut le frontend signe lui‑même l'URL d'un document/image (suffisant pour la démo). Pour
+que **toute consultation d'un fichier soit tracée côté serveur** et non contournable (audit
+§9.2/§9.3), déployez la fonction Edge puis activez le drapeau :
+
+```bash
+supabase functions deploy signed-read
+# Secrets (Project Settings → Edge Functions → Secrets) :
+supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
+                     SUPABASE_ANON_KEY=LA_CLE_ANON \
+                     SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
+```
+Puis, côté frontend, `VITE_USE_SIGNED_READ=true` (rebuild) : images et documents passent par
+`signed-read`, qui **autorise** (RLS) → **journalise** (`audit_log`) → **signe**. Si la
+journalisation échoue, l'URL n'est **pas** délivrée (§9.3).
+
+> **Données réelles uniquement** : pour exiger une inspection serveur des fichiers *avant* toute
+> lecture, ajoutez l'inspection/antivirus (`inspect-upload`, voir
+> [docs/edge-functions.md](edge-functions.md)) qui promeut `inspection_status` → `accepted`, puis
+> posez le secret `REQUIRE_SERVER_INSPECTION=true` sur la fonction (§9.4). **Inutile pour le
+> pilote fictif** (les fichiers restent `accepted_client`).
+
+---
+
+## 7. Vérification de mise en ligne (smoke test)
 - [ ] Connexion d'un compte créé (e-mail/mot de passe).
 - [ ] `system_admin` : créer/publier un gabarit ; **aucun** accès aux données patient.
 - [ ] `medecin` : créer une base, un patient, une rencontre ; **importer** un fichier d'exemple
@@ -92,7 +117,7 @@ SUPABASE_SERVICE_ROLE_KEY="eyJ..." \
 
 ---
 
-## 7. Avant de passer à des DONNÉES RÉELLES (pas seulement fictives)
+## 8. Avant de passer à des DONNÉES RÉELLES (pas seulement fictives)
 
 Ce pilote est sûr **uniquement avec des données fictives**. Pour des données patients réelles
 (même pseudonymisées), il faut **en plus** :
