@@ -31,6 +31,10 @@ export interface CurationTaskItem {
   targetPatientId: string | null;
   targetPatientCode: string | null; // null pour le staff (RLS : pas d'acces patient)
   externalRef: string | null;
+  // §10 : metadonnees MINIMALES du pool (visibles avant reservation, non sensibles).
+  specialty?: string | null;
+  documentCount?: number;
+  submittedAt?: string | null;
 }
 
 export interface RawDocumentItem {
@@ -121,6 +125,12 @@ type TaskRow = {
   assignee: AssigneeRel; raw_submission: SubmissionRel;
 };
 type DraftRow = { id: string; task_id: string; patient_data: Record<string, unknown>; encounters: DraftEncounter[]; status: string };
+// Ligne du pool minimal (RPC curation_pool) : aucune metadonnee sensible.
+type PoolRow = {
+  task_id: string; status: string; case_code: string | null; scope: 'patient' | 'encounter';
+  specialty: string | null; submitted_at: string | null; document_count: number;
+  assigned_to: string | null; assigned_name: string | null;
+};
 
 const TASK_SELECT =
   'id, base_id, status, submission_id, assigned_to, assignee:assigned_to(full_name), ' +
@@ -158,16 +168,27 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
 
   return {
     async listPool() {
-      // La RLS ne renvoie que les taches visibles : pour le staff = tout le pool.
-      // On EXCLUT les cas 'preparing' (le medecin ne les a pas encore soumis au pool).
-      const { data, error } = await client
-        .from('curation_task')
-        .select(TASK_SELECT)
-        .is('deleted_at', null)
-        .neq('status', 'preparing')
-        .order('created_at', { ascending: true });
+      // §10 : le pool passe par une RPC MINIMALE (aucune metadonnee sensible avant reservation).
+      // L'acces complet a curation_task / raw_submission est reserve au curateur AFFECTE.
+      const { data, error } = await client.rpc('curation_pool');
       if (error) throw error;
-      return ((data ?? []) as unknown as TaskRow[]).map(mapTask);
+      return ((data ?? []) as PoolRow[]).map((r) => ({
+        id: r.task_id,
+        baseId: '',
+        submissionId: '',
+        status: r.status,
+        caseCode: r.case_code,
+        scope: r.scope ?? 'patient',
+        templateVersionId: null,
+        assignedTo: r.assigned_to,
+        assignedName: r.assigned_name,
+        targetPatientId: null,
+        targetPatientCode: null,
+        externalRef: null,
+        specialty: r.specialty,
+        documentCount: r.document_count,
+        submittedAt: r.submitted_at,
+      }));
     },
 
     async listBaseSubmissions(baseId) {

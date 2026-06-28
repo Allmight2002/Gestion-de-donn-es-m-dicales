@@ -7,11 +7,15 @@ import react from '@vitejs/plugin-react';
 export default defineWorkspace([
   {
     test: {
-      // Chaque fichier qui demarre un Postgres embarque utilise un port aleatoire
-      // (voir test/harness/db.ts) -> pas de collision meme en parallele.
+      // Chaque fichier demarre SON Postgres embarque. Lancer plusieurs instances en parallele
+      // sature la machine (lenteurs, processus residuels) -> on SERIALISE les fichiers du projet
+      // db (audit §11.2). Les ports restent aleatoires (test/harness/db.ts) par precaution.
       name: 'db',
       include: ['test/**/*.test.ts'],
       environment: 'node',
+      // Fichiers en SERIE (un seul fork) : une seule instance Postgres embarquee a la fois,
+      // sinon plusieurs instances simultanees saturent la machine (audit §11.2).
+      poolOptions: { forks: { singleFork: true } },
       hookTimeout: 180_000,
       testTimeout: 60_000,
     },

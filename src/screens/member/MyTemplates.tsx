@@ -72,7 +72,7 @@ export function MyTemplates() {
 
   // Edition de la structure d'une version (reutilise l'editeur, sans actions admin).
   if (selected) {
-    return <TemplateVersionEditor versionId={selected} showVersionActions={false} onBack={() => { setSelected(null); void reload(); }} />;
+    return <TemplateVersionEditor versionId={selected} showVersionActions={false} onNewVersion={(id) => setSelected(id)} onBack={() => { setSelected(null); void reload(); }} />;
   }
 
   return (

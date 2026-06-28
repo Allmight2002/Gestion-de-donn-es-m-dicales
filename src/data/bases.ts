@@ -47,6 +47,8 @@ export interface BaseRepository {
   /** Cree une base en COPIANT un modele source en gabarit personnel editable. */
   createBase(name: string, specialty: string | null, sourceVersionId: string): Promise<Base>;
   getBase(id: string): Promise<BaseListing | null>;
+  /** Rattache la base a une (nouvelle) version de son gabarit. Reserve au proprietaire (RLS). */
+  setTemplateVersion(baseId: string, versionId: string): Promise<void>;
 }
 
 type BaseRow = {
@@ -79,7 +81,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail };
+    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail };
   }
 
   async function currentUserId(): Promise<string> {
@@ -182,6 +184,11 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     async getBase(id) {
       const all = await this.listMyBases();
       return all.find((b) => b.base.id === id) ?? null;
+    },
+
+    async setTemplateVersion(baseId, versionId) {
+      const { error } = await client.from('base').update({ current_template_version_id: versionId }).eq('id', baseId);
+      if (error) throw error;
     },
   };
 }

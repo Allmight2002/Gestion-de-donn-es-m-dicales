@@ -73,6 +73,8 @@ export function CurationPool() {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-2.5">{t('curation.case_code')}</th>
+                <th className="px-4 py-2.5">{t('admin.specialty')}</th>
+                <th className="px-4 py-2.5">{t('curation.documents')}</th>
                 <th className="px-4 py-2.5">{t('curation.status')}</th>
                 <th className="px-4 py-2.5">{t('curation.assignee')}</th>
                 <th className="px-4 py-2.5" />
@@ -84,6 +86,8 @@ export function CurationPool() {
                 return (
                   <tr key={task.id} className="border-b border-slate-100 last:border-0 transition hover:bg-slate-50/60">
                     <td className="px-4 py-2.5 font-mono text-xs">{task.caseCode ?? '—'}</td>
+                    <td className="px-4 py-2.5">{task.specialty ?? <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-2.5 tabular-nums">{task.documentCount ?? 0}</td>
                     <td className="px-4 py-2.5"><span className={poolStatusBadge(task.status)}>{t(`curstatus.${task.status}` as MessageKey)}</span></td>
                     <td className="px-4 py-2.5">{task.assignedName ?? <span className="text-slate-400">{t('curation.unassigned')}</span>}</td>
                     <td className="px-4 py-2.5 text-right">

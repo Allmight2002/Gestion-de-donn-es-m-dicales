@@ -60,6 +60,7 @@ function mockBases(): BaseRepository {
     async getBase(id) {
       return bases.find((b) => b.base.id === id) ?? null;
     },
+    async setTemplateVersion() {},
   };
 }
 

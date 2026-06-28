@@ -52,7 +52,12 @@ export function BaseTemplateEditor() {
         <h1 className="page-title mt-2">{t('basetemplate.title')}</h1>
       </div>
       <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{t('basetemplate.hint')}</p>
-      <TemplateVersionEditor versionId={listing.base.currentTemplateVersionId} onBack={back} showVersionActions={false} />
+      <TemplateVersionEditor
+        versionId={listing.base.currentTemplateVersionId}
+        onBack={back}
+        showVersionActions={false}
+        onNewVersion={async (id) => { await bases.setTemplateVersion(baseId!, id); await load(); }}
+      />
     </section>
   );
 }

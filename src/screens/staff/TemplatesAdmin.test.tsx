@@ -57,6 +57,9 @@ function statefulMock(status: VersionStatus): TemplateRepository {
     async duplicateVersion() {
       return { id: 'vdup', templateId: 't1', versionNumber: 2, status: 'draft' };
     },
+    async createNextVersion() {
+      return { id: 'vnext', templateId: 't1', versionNumber: 2, status: 'draft' };
+    },
     async renameTemplate() {},
     async deleteTemplate() {},
   };

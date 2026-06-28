@@ -26,6 +26,9 @@ export interface TemplateRepository {
   publishVersion(versionId: string): Promise<void>;
   archiveVersion(versionId: string): Promise<void>;
   duplicateVersion(versionId: string): Promise<TemplateVersion>;
+  /** Medecin : cree la version SUIVANTE de SON gabarit personnel (copie editable en draft).
+   *  Permet de faire evoluer une variable/regle deja utilisee sans toucher l'historique (§8.2). */
+  createNextVersion(templateId: string): Promise<TemplateVersion>;
   /** Admin : promeut un gabarit (copie) en modele global propose a tous les medecins. */
   promoteToGlobal(templateId: string): Promise<void>;
   /** Renomme un gabarit (nom + specialite). Reserve au proprietaire / admin (RLS). */
@@ -64,7 +67,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     return {
       listTemplates: fail, createTemplate: fail, getVersion: fail, addField: fail, updateField: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, deleteRule: fail, publishVersion: fail,
-      archiveVersion: fail, duplicateVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
+      archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
     };
   }
@@ -227,6 +230,13 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
 
     async duplicateVersion(versionId) {
       const { data, error } = await client.rpc('duplicate_template_version', { p_source_version_id: versionId });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as VersionRow;
+      return mapVersion(row);
+    },
+
+    async createNextVersion(templateId) {
+      const { data, error } = await client.rpc('create_next_personal_template_version', { p_template_id: templateId });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as VersionRow;
       return mapVersion(row);

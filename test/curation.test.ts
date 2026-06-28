@@ -60,12 +60,24 @@ afterAll(async () => {
 });
 
 describe('pool global : visibilite + confidentialite', () => {
-  test('un curateur voit la LISTE du pool mais PAS les documents avant reservation, ni l identite', async () => {
-    expect((await rowsAs(curator1Id, 'select id from public.curation_task')).length).toBeGreaterThan(0); // pool visible
+  test('un curateur voit le pool MINIMAL (RPC) mais PAS les metadonnees sensibles avant reservation', async () => {
+    // §10 : le pool est visible via la RPC minimale (code, portee, specialite, date, nb documents).
+    expect((await rowsAs(curator1Id, 'select task_id from public.curation_pool()')).length).toBeGreaterThan(0);
+    // Avant reservation, aucun acces DIRECT a curation_task ni raw_submission (external_ref, notes,
+    // target_patient_id, base_id... ne fuient plus).
+    expect(await rowsAs(curator1Id, 'select id from public.curation_task')).toHaveLength(0);
+    expect(await rowsAs(curator1Id, 'select id from public.raw_submission')).toHaveLength(0);
     // §5.1 : un curateur NON affecte ne voit AUCUN document (acces apres reservation seulement).
     expect(await rowsAs(curator1Id, 'select id from public.raw_document')).toHaveLength(0);
     // Aucun acces base -> aucune identite.
     expect(await rowsAs(curator1Id, 'select id from public.patient_identity')).toHaveLength(0);
+  });
+
+  test('§10 apres reservation, le curateur affecte accede a SA tache et SA soumission', async () => {
+    const c = await openCase('NCH-003');
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [c.taskId]);
+    expect((await rowsAs(curator1Id, 'select id from public.curation_task where id=$1', [c.taskId]))).toHaveLength(1);
+    expect((await rowsAs(curator1Id, 'select id from public.raw_submission where id=$1', [c.subId]))).toHaveLength(1);
   });
 
   test('apres reservation, le curateur voit les documents de SA tache ; pas ceux d une autre', async () => {

@@ -141,6 +141,56 @@ describe('duplication d une version (§8.2)', () => {
     ]);
     expect(after[0].n).toBe(sourceFieldCount + 1);
   });
+
+  test('§8.2 le MEDECIN cree la version suivante de SON gabarit (copie editable, draft)', async () => {
+    const aliceTpl = (await db.admin.query('select template_id from public.template_version where id=$1', [aliceVersionId])).rows[0].template_id;
+    const next = await rowsAs(memberId, 'select * from public.create_next_personal_template_version($1)', [aliceTpl]);
+    expect(next[0].status).toBe('draft');
+    expect(Number((await db.admin.query('select count(*)::int n from public.template_field where template_version_id=$1', [next[0].id])).rows[0].n)).toBeGreaterThan(0);
+    // editable : Alice ajoute un champ a la nouvelle version.
+    await rowsAs(memberId, ADD_FIELD, [next[0].id, 'champ_v_suivante']);
+  });
+
+  test('§8.2 un tiers, ou un modele global, ne peut PAS via create_next_personal_template_version', async () => {
+    const aliceTpl = (await db.admin.query('select template_id from public.template_version where id=$1', [aliceVersionId])).rows[0].template_id;
+    await expect(rowsAs(bobId, 'select * from public.create_next_personal_template_version($1)', [aliceTpl])).rejects.toThrow(/proprietaire/i);
+    const globalTpl = (await db.admin.query('select template_id from public.template_version where id=$1', [globalVersionId])).rows[0].template_id;
+    await expect(rowsAs(memberId, 'select * from public.create_next_personal_template_version($1)', [globalTpl])).rejects.toThrow(/personnel|proprietaire/i);
+  });
+});
+
+describe('§8.3 regles de validation : versionnement + structure (cote serveur)', () => {
+  const ADD_RULE = 'insert into public.validation_rule(template_version_id, rule, message, severity) values($1,$2::jsonb,$3,$4)';
+  let freshVer: string;     // version d'Alice SANS donnees
+  let f0: string; let f1: string;
+
+  test('preparation : une version neuve (copie) sans donnees', async () => {
+    const aliceTpl = (await db.admin.query('select template_id from public.template_version where id=$1', [aliceVersionId])).rows[0].template_id;
+    freshVer = (await rowsAs(memberId, 'select * from public.create_next_personal_template_version($1)', [aliceTpl]))[0].id;
+    const fs = (await db.admin.query('select field_key from public.template_field where template_version_id=$1 order by display_order limit 2', [freshVer])).rows;
+    f0 = fs[0].field_key; f1 = fs[1].field_key;
+  });
+
+  test('regle bien formee sur une version SANS donnees -> acceptee', async () => {
+    await rowsAs(memberId, ADD_RULE, [freshVer, JSON.stringify({ operator: 'equals', left_field: f0, right_field: f1 }), 'm', 'block']);
+    expect(true).toBe(true);
+  });
+
+  test('operateur hors liste blanche -> refuse', async () => {
+    await expect(rowsAs(memberId, ADD_RULE, [freshVer, JSON.stringify({ operator: 'pwn', left_field: f0, right_field: f1 }), 'm', 'block'])).rejects.toThrow(/operateur/i);
+  });
+
+  test('champ reference inexistant -> refuse', async () => {
+    await expect(rowsAs(memberId, ADD_RULE, [freshVer, JSON.stringify({ operator: 'equals', left_field: 'inexistant', right_field: f1 }), 'm', 'block'])).rejects.toThrow(/inconnu/i);
+  });
+
+  test('structure non reconnue -> refuse', async () => {
+    await expect(rowsAs(memberId, ADD_RULE, [freshVer, JSON.stringify({ foo: 'bar' }), 'm', 'block'])).rejects.toThrow(/structure/i);
+  });
+
+  test('version DEJA UTILISEE -> ajout/suppression de regle refuse (creez une nouvelle version)', async () => {
+    await expect(rowsAs(memberId, ADD_RULE, [aliceVersionId, JSON.stringify({ operator: 'equals', left_field: f0, right_field: f1 }), 'm', 'block'])).rejects.toThrow(/utilisee|nouvelle version/i);
+  });
 });
 
 describe('renommer et supprimer un gabarit (v3.0)', () => {

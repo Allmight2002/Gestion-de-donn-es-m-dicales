@@ -15,10 +15,13 @@ export function TemplateVersionEditor({
   versionId,
   onBack,
   showVersionActions = true,
+  onNewVersion,
 }: {
   versionId: string;
   onBack: () => void;
   showVersionActions?: boolean;
+  // §8.2 : permet au medecin de creer la version SUIVANTE de son gabarit (copie editable).
+  onNewVersion?: (newVersionId: string) => void | Promise<void>;
 }) {
   const repo = useTemplateRepository();
   const { t } = useI18n();
@@ -97,7 +100,7 @@ export function TemplateVersionEditor({
           </h2>
           <span className="badge">{t(`status.${version.status}`)}</span>
         </div>
-        {showVersionActions && (
+        {showVersionActions ? (
           <div className="flex gap-2">
             {editable && (
               <button onClick={() => void run(() => repo.publishVersion(version.id))} disabled={busy} className="btn-primary">
@@ -108,6 +111,21 @@ export function TemplateVersionEditor({
               {t('admin.duplicate')}
             </button>
           </div>
+        ) : (
+          onNewVersion && (
+            <button
+              onClick={async () => {
+                setBusy(true);
+                try { const v = await repo.createNextVersion(version.templateId); setError(null); await onNewVersion(v.id); }
+                catch (e) { setError(msg(e)); }
+                finally { setBusy(false); }
+              }}
+              disabled={busy}
+              className="btn-secondary"
+            >
+              {t('admin.new_version')}
+            </button>
+          )
         )}
       </div>
 
