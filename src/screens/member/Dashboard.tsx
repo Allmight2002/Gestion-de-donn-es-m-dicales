@@ -6,6 +6,7 @@ import { useAuth } from '../../auth/useAuth';
 import { canCreateBase } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, PublishedTemplateOption } from '../../data/bases';
+import { offlineCache, useOnline, type OfflineMeta } from '../../data/offline';
 
 // Tableau de bord (cahier §8.3) : bases possedees + partagees. La creation de base est
 // reservee au role MEDECIN (le staff voit seulement les bases auxquelles il a acces).
@@ -13,9 +14,11 @@ export function Dashboard() {
   const repo = useBaseRepository();
   const { profile } = useAuth();
   const { t } = useI18n();
+  const online = useOnline();
   const mayCreate = canCreateBase(profile);
   const navigate = useNavigate();
   const [bases, setBases] = useState<BaseListing[]>([]);
+  const [offlineBases, setOfflineBases] = useState<OfflineMeta[]>([]);
   const [templates, setTemplates] = useState<PublishedTemplateOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,10 +32,17 @@ export function Dashboard() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
+      if (!online) {
+        // HORS-LIGNE : seules les bases enregistrees localement sont consultables.
+        setOfflineBases(await offlineCache.list());
+        setError(null);
+        return;
+      }
       const [b, tpl] = await Promise.all([repo.listMyBases(), repo.listTemplateModels()]);
       setBases(b);
       setTemplates(tpl);
       setVersionId((prev) => prev || tpl[0]?.versionId || '');
+      void offlineCache.list().then(setOfflineBases).catch(() => {});
       setError(null);
     } catch (e) {
       setError(msg(e));
@@ -40,7 +50,7 @@ export function Dashboard() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo]);
+  }, [repo, online]);
 
   useEffect(() => {
     void reload();
@@ -77,7 +87,7 @@ export function Dashboard() {
         )}
       </div>
 
-      {mayCreate && (
+      {mayCreate && online && (
         <form onSubmit={create} className="card p-4">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('dashboard.create_base')}</h2>
           <div className="flex flex-wrap items-end gap-3">
@@ -106,15 +116,16 @@ export function Dashboard() {
         </form>
       )}
 
-      {mayCreate && templates.length === 0 && !loading && (
+      {mayCreate && online && templates.length === 0 && !loading && (
         <p className="text-sm text-amber-700">{t('dashboard.no_templates_hint')}</p>
       )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading && <p className="text-slate-500">{t('common.loading')}</p>}
-      {!loading && bases.length === 0 && (
+      {online && !loading && bases.length === 0 && (
         <div className="card border-dashed p-10 text-center text-slate-500">{t('dashboard.no_bases')}</div>
       )}
 
+      {online && (
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {bases.map((b) => (
           <li key={b.base.id}>
@@ -145,6 +156,38 @@ export function Dashboard() {
           </li>
         ))}
       </ul>
+      )}
+
+      {/* Bases disponibles hors-ligne (consultables sans reseau, donnees analytiques uniquement). */}
+      {(!online || offlineBases.length > 0) && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">{t('offline.bases_title')}</h2>
+          {offlineBases.length === 0 ? (
+            <div className="card border-dashed p-8 text-center text-slate-500">{t('offline.no_bases')}</div>
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {offlineBases.map((m) => (
+                <li key={m.baseId}>
+                  <button
+                    onClick={() => navigate(`/bases/${m.baseId}`)}
+                    className="card group flex w-full flex-col gap-3 p-5 text-left transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/15" aria-hidden>⤓</span>
+                      <span className="badge bg-amber-100 text-amber-800">{t('offline.badge')}</span>
+                    </div>
+                    <div className="font-semibold text-slate-900">{m.baseName}</div>
+                    <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-400">
+                      <span>{m.patientCount} {t('offline.patients')} · {t('offline.cached_at')} {new Date(m.cachedAt).toLocaleDateString()}</span>
+                      <span className="text-amber-600 transition group-hover:translate-x-0.5">→</span>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </section>
   );
 }

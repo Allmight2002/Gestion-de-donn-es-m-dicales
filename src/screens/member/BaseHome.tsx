@@ -4,41 +4,82 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
-import type { TemplateField } from '../../data/types';
+import {
+  downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline,
+  type OfflineMeta, type OfflinePatient, type SnapshotSource,
+} from '../../data/offline';
 
 const PAGE_SIZE = 20;
 
+// Colonne affichee dans le tableau patients (sous-ensemble commun en ligne / hors-ligne).
+type Column = { id: string; fieldKey: string; label: string };
+const toColumn = (f: { id: string; fieldKey: string; label: string }): Column => ({ id: f.id, fieldKey: f.fieldKey, label: f.label });
+const sortByOrder = <T extends { displayOrder: number }>(a: T, b: T) => a.displayOrder - b.displayOrder;
+// Patient du cache -> item de liste : identite TOUJOURS nulle hors-ligne (jamais mise en cache).
+const offlineItem = (p: OfflinePatient): PatientListItem => ({
+  id: p.id, code: p.code, templateVersionId: p.templateVersionId, data: p.data, validationStatus: p.validationStatus, identity: null,
+});
+const fmtDate = (ms: number) => new Date(ms).toLocaleDateString();
+
 // Accueil d'une base : informations + tableau des patients (cahier §8.4), pagine.
-// La fiche patient complete, les rencontres et l'export arrivent aux etapes 8+.
+// Hors-ligne (§13) : lecture seule a partir de l'instantane ANALYTIQUE enregistre (sans identite).
 export function BaseHome() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const online = useOnline();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
 
   const [listing, setListing] = useState<BaseListing | null>(null);
+  const [baseName, setBaseName] = useState('');
+  const [offlineView, setOfflineView] = useState(false);
   const [rows, setRows] = useState<PatientListItem[]>([]);
-  const [fields, setFields] = useState<TemplateField[]>([]);
+  const [fields, setFields] = useState<Column[]>([]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Copie hors-ligne (controles disponibles en ligne).
+  const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
+      if (!online) {
+        // HORS-LIGNE : tout vient de l'instantane local (analytique uniquement).
+        const snap = await offlineCache.get(id);
+        setOfflineView(true);
+        setListing(null);
+        if (!snap) {
+          setRows([]); setFields([]); setCachedMeta(null); setError(t('offline.not_cached'));
+          return;
+        }
+        setBaseName(snap.baseName);
+        setFields(snap.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
+        setRows(snap.patients.map(offlineItem));
+        setTotal(snap.patients.length);
+        setCachedMeta(snapshotMeta(snap));
+        setError(null);
+        return;
+      }
+
+      // EN LIGNE : comme avant + statut de la copie hors-ligne.
+      setOfflineView(false);
       const b = await bases.getBase(id);
       setListing(b);
+      if (b) setBaseName(b.base.name);
       if (b?.base.currentTemplateVersionId) {
         const version = await templates.getVersion(b.base.currentTemplateVersionId);
-        setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b2) => a.displayOrder - b2.displayOrder));
+        setFields(version.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
       }
       const pageRes = await patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE);
       setRows(pageRes.rows);
       setTotal(pageRes.total);
+      void offlineCache.get(id).then((s) => setCachedMeta(s ? snapshotMeta(s) : null)).catch(() => {});
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.error'));
@@ -46,14 +87,45 @@ export function BaseHome() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, page, bases, templates, patients]);
+  }, [id, page, online, bases, templates, patients]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // Telecharge l'instantane analytique de la base pour consultation hors-ligne.
+  const makeAvailableOffline = useCallback(async () => {
+    if (!id) return;
+    setSaving(true);
+    try {
+      const src: SnapshotSource = {
+        getBase: (bid) =>
+          bases.getBase(bid).then((b) => (b ? { base: { id: b.base.id, name: b.base.name, currentTemplateVersionId: b.base.currentTemplateVersionId } } : null)),
+        listPatients: (bid) => patients.listPatients(bid),
+        listEncounters: (pid) => patients.listEncounters(pid),
+        getFields: (vid) =>
+          templates.getVersion(vid).then((v) =>
+            v.fields.map((f) => ({ id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder })),
+          ),
+      };
+      setCachedMeta(await downloadBaseSnapshot(id, src));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('common.error'));
+    } finally {
+      setSaving(false);
+    }
+  }, [id, bases, patients, templates, t]);
+
+  const removeOffline = useCallback(async () => {
+    if (!id) return;
+    await offlineCache.remove(id);
+    setCachedMeta(null);
+  }, [id]);
+
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
-  if (!listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
+  if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
+  const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
 
   return (
     <section className="space-y-5">
@@ -63,121 +135,145 @@ export function BaseHome() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="page-title">{listing.base.name}</h1>
-          <span className="badge">{t(`baserole.${listing.role}`)}</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {listing.role === 'owner' && (
-            <button onClick={() => navigate(`/bases/${id}/template`)} className="btn-secondary">
-              {t('basetemplate.edit')}
-            </button>
-          )}
-          {listing.role === 'owner' && (
-            <button onClick={() => navigate(`/bases/${id}/access`)} className="btn-secondary">
-              {t('access.manage')}
-            </button>
-          )}
-          {listing.role === 'owner' && (
-            <button onClick={() => navigate(`/bases/${id}/curation`)} className="btn-secondary">
-              {t('curation.board')}
-            </button>
-          )}
-          {(listing.role === 'owner' || listing.permissions.canExportData || listing.permissions.canEditStructuredData) && (
-            <button onClick={() => navigate(`/bases/${id}/cohorts`)} className="btn-secondary">
-              {t('cohort.build')}
-            </button>
-          )}
-          {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
-            <button onClick={() => navigate(`/bases/${id}/import`)} className="btn-secondary">
-              {t('import.title')}
-            </button>
-          )}
-          {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
-            <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
-              + {t('patient.new')}
-            </button>
+          <h1 className="page-title">{baseName}</h1>
+          {offlineView ? (
+            <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span>
+          ) : (
+            listing && <span className="badge">{t(`baserole.${listing.role}`)}</span>
           )}
         </div>
+        {!offlineView && listing && (
+          <div className="flex flex-wrap gap-2">
+            {listing.role === 'owner' && (
+              <button onClick={() => navigate(`/bases/${id}/template`)} className="btn-secondary">{t('basetemplate.edit')}</button>
+            )}
+            {listing.role === 'owner' && (
+              <button onClick={() => navigate(`/bases/${id}/access`)} className="btn-secondary">{t('access.manage')}</button>
+            )}
+            {listing.role === 'owner' && (
+              <button onClick={() => navigate(`/bases/${id}/curation`)} className="btn-secondary">{t('curation.board')}</button>
+            )}
+            {(listing.role === 'owner' || listing.permissions.canExportData || listing.permissions.canEditStructuredData) && (
+              <button onClick={() => navigate(`/bases/${id}/cohorts`)} className="btn-secondary">{t('cohort.build')}</button>
+            )}
+            {canEdit && (
+              <button onClick={() => navigate(`/bases/${id}/import`)} className="btn-secondary">{t('import.title')}</button>
+            )}
+            {canEdit && (
+              <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">+ {t('patient.new')}</button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="text-sm text-slate-500">
-        {t('base.gabarit')} : {listing.templateName ? `${listing.templateName} v${listing.versionNumber}` : '—'}
-      </div>
+      {!offlineView && (
+        <div className="text-sm text-slate-500">
+          {t('base.gabarit')} : {listing?.templateName ? `${listing.templateName} v${listing.versionNumber}` : '—'}
+        </div>
+      )}
+
+      {/* Copie hors-ligne : bouton d'enregistrement (en ligne) ou bandeau (hors-ligne). */}
+      {!offlineView ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 text-sm">
+          <span aria-hidden>⤓</span>
+          <button onClick={() => void makeAvailableOffline()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
+            {saving ? t('offline.saving') : cachedMeta ? t('offline.update') : t('offline.make_available')}
+          </button>
+          {cachedMeta && (
+            <>
+              <span className="text-slate-500">
+                · {t('offline.available')} ({t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)})
+              </span>
+              <button onClick={() => void removeOffline()} className="text-slate-400 hover:text-red-600 hover:underline">{t('offline.remove')}</button>
+            </>
+          )}
+        </div>
+      ) : (
+        cachedMeta && (
+          <div className="text-xs text-slate-500">
+            {t('offline.identity_unavailable')} · {t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)} · {t('offline.expires_at')} {fmtDate(cachedMeta.expiresAt)}
+          </div>
+        )
+      )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.list_title')}</h2>
-        {rows.length === 0 ? (
-          <div className="card border-dashed p-10 text-center text-slate-500">{t('patient.no_patients')}</div>
-        ) : (
-          <div className="card overflow-hidden">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-2.5">{t('patient.code')}</th>
-                  <th className="px-4 py-2.5">{t('patient.full_name')}</th>
-                  {fields.map((f) => (
-                    <th key={f.id} className="px-4 py-2.5">{f.label}</th>
-                  ))}
-                  <th className="px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100 last:border-0 transition hover:bg-slate-50/60">
-                    <td className="px-4 py-2.5 font-mono text-xs">
-                      <button onClick={() => navigate(`/bases/${id}/patients/${p.id}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">
-                        {p.code}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {p.identity ? p.identity.fullName : <span className="text-slate-400">{t('patient.name_hidden')}</span>}
-                    </td>
+      {!(offlineView && !cachedMeta) && (
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.list_title')}</h2>
+          {rows.length === 0 ? (
+            <div className="card border-dashed p-10 text-center text-slate-500">{t('patient.no_patients')}</div>
+          ) : (
+            <div className="card overflow-hidden">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2.5">{t('patient.code')}</th>
+                    {!offlineView && <th className="px-4 py-2.5">{t('patient.full_name')}</th>}
                     {fields.map((f) => (
-                      <td key={f.id} className="px-4 py-2.5">{formatCell(p.data[f.fieldKey])}</td>
+                      <th key={f.id} className="px-4 py-2.5">{f.label}</th>
                     ))}
-                    <td className="px-4 py-2.5 text-right">
-                      {(listing.role === 'owner' || listing.permissions.canEditStructuredData) && (
-                        <button
-                          onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}
-                          className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
-                        >
-                          + {t('encounter.add')}
-                        </button>
-                      )}
-                    </td>
+                    <th className="px-4 py-2.5" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {total > PAGE_SIZE && (
-          <div className="mt-3 flex items-center justify-between text-sm">
-            <span className="text-slate-500">
-              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}
-            </span>
-            <div className="flex gap-2">
-              <button
-                disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
-              >
-                {t('pager.prev')}
-              </button>
-              <button
-                disabled={(page + 1) * PAGE_SIZE >= total}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
-              >
-                {t('pager.next')}
-              </button>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id} className="border-b border-slate-100 last:border-0 transition hover:bg-slate-50/60">
+                      <td className="px-4 py-2.5 font-mono text-xs">
+                        <button onClick={() => navigate(`/bases/${id}/patients/${p.id}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">
+                          {p.code}
+                        </button>
+                      </td>
+                      {!offlineView && (
+                        <td className="px-4 py-2.5">
+                          {p.identity ? p.identity.fullName : <span className="text-slate-400">{t('patient.name_hidden')}</span>}
+                        </td>
+                      )}
+                      {fields.map((f) => (
+                        <td key={f.id} className="px-4 py-2.5">{formatCell(p.data[f.fieldKey])}</td>
+                      ))}
+                      <td className="px-4 py-2.5 text-right">
+                        {canEdit && (
+                          <button
+                            onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}
+                            className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+                          >
+                            + {t('encounter.add')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {!offlineView && total > PAGE_SIZE && (
+            <div className="mt-3 flex items-center justify-between text-sm">
+              <span className="text-slate-500">
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  {t('pager.prev')}
+                </button>
+                <button
+                  disabled={(page + 1) * PAGE_SIZE >= total}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  {t('pager.next')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

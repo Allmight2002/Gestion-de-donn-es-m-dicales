@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import type { MessageKey } from '../i18n/messages';
+import { useOnline } from '../data/offline';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { Logo } from './Logo';
 
@@ -14,6 +15,7 @@ function initialsOf(name: string): string {
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut } = useAuth();
   const { t } = useI18n();
+  const online = useOnline();
   const roleLabel = profile ? t(`role.${profile.globalRole}` as MessageKey) : '';
   const isCurationStaff = profile?.globalRole === 'curateur';
   const displayName = profile?.fullName || user?.email || '';
@@ -49,6 +51,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
+
+      {!online && (
+        <div role="status" className="border-b border-amber-200 bg-amber-50 text-amber-900">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-6 py-2 text-sm">
+            <span aria-hidden className="grid h-5 w-5 place-items-center rounded-full bg-amber-200 text-xs">⚠</span>
+            <span>{t('offline.banner')}</span>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
     </div>

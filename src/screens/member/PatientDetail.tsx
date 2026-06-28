@@ -4,10 +4,13 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, PatientListItem } from '../../data/patients';
 import type { AttachmentItem } from '../../data/attachments';
-import type { TemplateField } from '../../data/types';
 import type { MessageKey } from '../../i18n/messages';
+import { offlineCache, useOnline } from '../../data/offline';
 import { isMissing, missingCodeOf } from '../../domain/validation';
 import { DeleteWithReason } from './DeleteWithReason';
+
+// Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
+type Column = { id: string; fieldKey: string; label: string; scope: string; displayOrder: number };
 
 // Fiche patient (cahier §8.6) : Identite (si autorise) / donnees permanentes /
 // rencontres par section. La fiche identite n'est rendue que si la RLS a renvoye
@@ -16,6 +19,7 @@ export function PatientDetail() {
   const { id: baseId, patientId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const online = useOnline();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
@@ -25,8 +29,9 @@ export function PatientDetail() {
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-  const [patientFields, setPatientFields] = useState<TemplateField[]>([]);
-  const [encounterFields, setEncounterFields] = useState<TemplateField[]>([]);
+  const [patientFields, setPatientFields] = useState<Column[]>([]);
+  const [encounterFields, setEncounterFields] = useState<Column[]>([]);
+  const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -47,6 +52,24 @@ export function PatientDetail() {
     if (!baseId || !patientId) return;
     setLoading(true);
     try {
+      if (!online) {
+        // HORS-LIGNE : lecture seule depuis l'instantane (analytique, sans identite ni images).
+        const snap = await offlineCache.get(baseId);
+        const op = snap?.patients.find((pp) => pp.id === patientId) ?? null;
+        setOfflineView(true);
+        setCanEdit(false);
+        setAttachments([]);
+        if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
+        setPatient({ id: op.id, code: op.code, templateVersionId: op.templateVersionId, data: op.data, validationStatus: op.validationStatus, identity: null });
+        setEncounters(op.encounters.map((e) => ({ ...e })));
+        const sorted = [...(snap?.fields ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
+        setPatientFields(sorted.filter((f) => f.scope === 'patient'));
+        setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
+        setError(null);
+        return;
+      }
+
+      setOfflineView(false);
       const [p, encs, base, atts] = await Promise.all([
         patients.getPatient(baseId, patientId),
         patients.listEncounters(patientId),
@@ -61,7 +84,9 @@ export function PatientDetail() {
       if (p?.identity) void audit.logSensitiveRead('identity_read', 'patient', patientId, baseId);
       if (base?.base.currentTemplateVersionId) {
         const version = await templates.getVersion(base.base.currentTemplateVersionId);
-        const sorted = [...version.fields].sort((a, b) => a.displayOrder - b.displayOrder);
+        const sorted: Column[] = version.fields
+          .map((f) => ({ id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, displayOrder: f.displayOrder }))
+          .sort((a, b) => a.displayOrder - b.displayOrder);
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
       }
@@ -72,7 +97,7 @@ export function PatientDetail() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patientId, bases, templates, patients, attachmentsRepo, audit]);
+  }, [baseId, patientId, online, bases, templates, patients, attachmentsRepo, audit]);
 
   useEffect(() => {
     void load();
@@ -90,23 +115,26 @@ export function PatientDetail() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">
           {t('patient.detail')} <span className="font-mono text-base font-normal text-slate-400">{patient.code}</span>
+          {offlineView && <span className="badge ml-3 bg-amber-100 text-amber-800">{t('offline.read_only')}</span>}
         </h1>
-        <div className="flex items-center gap-3">
-          <DeleteWithReason
-            label={t('del.patient')}
-            onConfirm={async (reason) => {
-              if (!patientId) return;
-              await patients.softDeletePatient(patientId, reason);
-              navigate(`/bases/${baseId}`);
-            }}
-          />
-          <button
-            onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
-            className="btn-primary"
-          >
-            + {t('encounter.add')}
-          </button>
-        </div>
+        {!offlineView && (
+          <div className="flex items-center gap-3">
+            <DeleteWithReason
+              label={t('del.patient')}
+              onConfirm={async (reason) => {
+                if (!patientId) return;
+                await patients.softDeletePatient(patientId, reason);
+                navigate(`/bases/${baseId}`);
+              }}
+            />
+            <button
+              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
+              className="btn-primary"
+            >
+              + {t('encounter.add')}
+            </button>
+          </div>
+        )}
       </div>
 
       {patient.identity && (
@@ -168,15 +196,17 @@ export function PatientDetail() {
                       </span>
                     )}
                   </span>
-                  <span className="flex items-center gap-3">
-                    <button
-                      onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/${e.id}/edit`)}
-                      className="text-xs text-teal-700 hover:underline"
-                    >
-                      {t('encounter.edit')}
-                    </button>
-                    <DeleteWithReason onConfirm={async (reason) => { await patients.softDeleteEncounter(e.id, reason); await load(); }} />
-                  </span>
+                  {!offlineView && (
+                    <span className="flex items-center gap-3">
+                      <button
+                        onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/${e.id}/edit`)}
+                        className="text-xs text-teal-700 hover:underline"
+                      >
+                        {t('encounter.edit')}
+                      </button>
+                      <DeleteWithReason onConfirm={async (reason) => { await patients.softDeleteEncounter(e.id, reason); await load(); }} />
+                    </span>
+                  )}
                 </div>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
                   {encounterFields

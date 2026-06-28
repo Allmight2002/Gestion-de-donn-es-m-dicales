@@ -2,7 +2,7 @@
 // stockage IndexedDB (via fake-indexeddb). Tourne en node, sans PostgreSQL.
 import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
-import { buildSnapshot, isExpired, offlineCache, OFFLINE_TTL_MS } from '../src/data/offline.js';
+import { buildSnapshot, downloadBaseSnapshot, isExpired, offlineCache, OFFLINE_TTL_MS, type SnapshotSource } from '../src/data/offline.js';
 
 describe('buildSnapshot — analytique seulement (securite)', () => {
   test('ne recopie JAMAIS l identite, meme si le patient en entree en contient', () => {
@@ -15,6 +15,7 @@ describe('buildSnapshot — analytique seulement (securite)', () => {
       { id: 'b1', name: 'Base', templateVersionId: 'v1' },
       [patient],
       { p1: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-05', validationStatus: 'curated', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 } }] },
+      [],
       1000,
     );
     expect(snap.patients[0]).not.toHaveProperty('identity');
@@ -39,6 +40,7 @@ describe('offlineCache (IndexedDB)', () => {
       { id: 'bX', name: 'Ma base', templateVersionId: 'v1' },
       [{ id: 'p1', code: 'C1', templateVersionId: 'v1', data: {}, validationStatus: 'draft' }],
       {},
+      [],
       Date.now(),
     );
     await offlineCache.save(snap);
@@ -52,5 +54,29 @@ describe('offlineCache (IndexedDB)', () => {
 
     await offlineCache.remove('bX');
     expect(await offlineCache.get('bX')).toBeNull();
+  });
+});
+
+describe('downloadBaseSnapshot', () => {
+  test('agrege base + patients + rencontres + champs et persiste un instantane analytique', async () => {
+    const src: SnapshotSource = {
+      getBase: async () => ({ base: { id: 'bD', name: 'Base D', currentTemplateVersionId: 'v9' } }),
+      // le repo en ligne renvoie l'identite -> elle NE DOIT PAS finir dans le cache.
+      listPatients: async () => [
+        { id: 'p1', code: 'D-001', templateVersionId: 'v9', data: { sexe: 'F' }, validationStatus: 'curated', identity: { fullName: 'Secret' } } as never,
+      ],
+      listEncounters: async (pid) => (pid === 'p1'
+        ? [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-03-01', validationStatus: 'curated', ageValue: 30, ageUnit: 'years', data: { glasgow_score: 15 } }]
+        : []),
+      getFields: async () => [{ id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 }],
+    };
+    const meta = await downloadBaseSnapshot('bD', src, 5000);
+    expect(meta).toMatchObject({ baseId: 'bD', baseName: 'Base D', patientCount: 1 });
+
+    const snap = await offlineCache.get('bD');
+    expect(snap?.fields).toHaveLength(1);
+    expect(snap?.patients[0].encounters[0].data).toEqual({ glasgow_score: 15 });
+    expect(JSON.stringify(snap)).not.toContain('Secret'); // identite jamais persistee
+    await offlineCache.remove('bD');
   });
 });

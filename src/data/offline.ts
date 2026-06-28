@@ -5,6 +5,7 @@
 // l'IDENTITE (nom, date de naissance) ni les IMAGES. `buildSnapshot` ne recopie que les champs
 // analytiques, meme si on lui passe un patient complet -> garantie par construction. L'identite
 // reste accessible UNIQUEMENT en ligne (via la RLS).
+import { useEffect, useState } from 'react';
 
 export interface OfflineEncounter {
   id: string;
@@ -25,10 +26,21 @@ export interface OfflinePatient {
   encounters: OfflineEncounter[];
 }
 
+/** Champ de gabarit (metadonnee, pas une donnee patient) : permet d'afficher libelles/colonnes hors-ligne. */
+export interface OfflineField {
+  id: string;
+  fieldKey: string;
+  label: string;
+  scope: string; // 'patient' | 'encounter'
+  type: string;
+  displayOrder: number;
+}
+
 export interface OfflineSnapshot {
   baseId: string;
   baseName: string;
   templateVersionId: string | null;
+  fields: OfflineField[];
   patients: OfflinePatient[];
   cachedAt: number; // epoch ms
   expiresAt: number; // epoch ms
@@ -58,12 +70,16 @@ export function buildSnapshot(
   base: { id: string; name: string; templateVersionId: string | null },
   patients: { id: string; code: string; templateVersionId: string; data: Record<string, unknown>; validationStatus: string }[],
   encountersByPatient: Record<string, OfflineEncounter[]>,
+  fields: OfflineField[] = [],
   now = Date.now(),
 ): OfflineSnapshot {
   return {
     baseId: base.id,
     baseName: base.name,
     templateVersionId: base.templateVersionId,
+    fields: fields.map((f) => ({
+      id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder,
+    })),
     patients: patients.map((p) => ({
       id: p.id,
       code: p.code,
@@ -80,7 +96,7 @@ export function buildSnapshot(
   };
 }
 
-const toMeta = (s: OfflineSnapshot): OfflineMeta => ({
+export const snapshotMeta = (s: OfflineSnapshot): OfflineMeta => ({
   baseId: s.baseId, baseName: s.baseName, cachedAt: s.cachedAt, expiresAt: s.expiresAt, patientCount: s.patients.length,
 });
 
@@ -127,6 +143,53 @@ export interface OfflineCache {
 export const offlineCache: OfflineCache = {
   async save(snap) { await tx('readwrite', (s) => s.put(snap)); },
   async get(baseId) { return (await tx<OfflineSnapshot | undefined>('readonly', (s) => s.get(baseId))) ?? null; },
-  async list() { return (await tx<OfflineSnapshot[]>('readonly', (s) => s.getAll())).map(toMeta); },
+  async list() { return (await tx<OfflineSnapshot[]>('readonly', (s) => s.getAll())).map(snapshotMeta); },
   async remove(baseId) { await tx('readwrite', (s) => s.delete(baseId)); },
 };
+
+// --- Telechargement d'une base pour le hors-ligne -------------------------------------
+// Recupere TOUT (patients + rencontres + champs du gabarit) via les repos en LIGNE de
+// l'utilisateur (donc soumis a la RLS), puis enregistre un instantane ANALYTIQUE.
+// L'identite eventuellement renvoyee par le repo n'est jamais persistee (buildSnapshot la jette).
+export interface SnapshotSource {
+  getBase(baseId: string): Promise<{ base: { id: string; name: string; currentTemplateVersionId: string | null } } | null>;
+  listPatients(baseId: string): Promise<{ id: string; code: string; templateVersionId: string; data: Record<string, unknown>; validationStatus: string }[]>;
+  listEncounters(patientId: string): Promise<OfflineEncounter[]>;
+  getFields(versionId: string): Promise<OfflineField[]>;
+}
+
+export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, now = Date.now()): Promise<OfflineMeta> {
+  const b = await src.getBase(baseId);
+  if (!b) throw new Error('Base introuvable');
+  const patients = await src.listPatients(baseId);
+  const fields = b.base.currentTemplateVersionId ? await src.getFields(b.base.currentTemplateVersionId) : [];
+  const encountersByPatient: Record<string, OfflineEncounter[]> = {};
+  for (const p of patients) {
+    encountersByPatient[p.id] = await src.listEncounters(p.id);
+  }
+  const snap = buildSnapshot(
+    { id: b.base.id, name: b.base.name, templateVersionId: b.base.currentTemplateVersionId },
+    patients,
+    encountersByPatient,
+    fields,
+    now,
+  );
+  await offlineCache.save(snap);
+  return snapshotMeta(snap);
+}
+
+// --- Hook React : etat en ligne / hors-ligne (reagit aux evenements du navigateur) ------
+export function useOnline(): boolean {
+  const [online, setOnline] = useState<boolean>(isOnline());
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+  return online;
+}
