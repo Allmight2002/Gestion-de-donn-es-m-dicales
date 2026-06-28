@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -19,7 +20,7 @@ export function RoleAdmin() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const load = useCallback(async () => {
     setLoading(true);

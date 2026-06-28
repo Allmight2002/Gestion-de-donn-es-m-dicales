@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -25,7 +26,7 @@ export function BaseTemplateEditor() {
       setListing(await bases.getBase(baseId));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('common.error'));
+      setError(errorMessage(e, t('common.error')));
     } finally {
       setLoading(false);
     }

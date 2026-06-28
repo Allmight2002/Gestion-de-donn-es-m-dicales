@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -29,7 +30,7 @@ export function MyTemplates() {
   const [newName, setNewName] = useState('');
   const [newSpec, setNewSpec] = useState('');
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const reload = useCallback(async () => {
     setLoading(true);

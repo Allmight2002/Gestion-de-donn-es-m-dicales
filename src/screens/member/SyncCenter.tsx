@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -24,7 +25,7 @@ export function SyncCenter() {
     updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
     getEncounter: (id) => patients.getEncounter(id),
   };
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const sync = useCallback(async () => {
     setBusy(true);
@@ -101,7 +102,7 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try { await fn(); onError(''); }
-    catch (e) { onError(e instanceof Error ? e.message : t('common.error')); }
+    catch (e) { onError(errorMessage(e, t('common.error'))); }
     finally { setBusy(false); }
   };
 

@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -21,7 +22,7 @@ export function EncounterCreateChoice() {
       const { taskId } = await curation.createSubmission(baseId, patientId, null, 'encounter');
       navigate(`/curation/${taskId}`); // -> depot des documents deidentifies
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('common.error'));
+      setError(errorMessage(e, t('common.error')));
     } finally {
       setBusy(false);
     }

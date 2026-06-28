@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -34,7 +35,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [permanent, setPermanent] = useState<Record<string, unknown>>({});
   const [matches, setMatches] = useState<IdentityMatch[]>([]);
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   // Detection de doublon (confort) : des que nom + date de naissance sont saisis, on cherche
   // un patient existant a la meme identite. Non bloquant ; on propose d'ouvrir sa fiche ou

@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -55,7 +56,7 @@ export function ExportPanel() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const load = useCallback(async () => {
     if (!baseId || !cohortId) return;

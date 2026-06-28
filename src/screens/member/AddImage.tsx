@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -62,7 +63,7 @@ export function AddImage() {
       await attachments.addImage({ patientId, baseId, file, label: label.trim(), deidentificationConfirmed: true });
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('common.error'));
+      setError(errorMessage(e, t('common.error')));
     } finally {
       setBusy(false);
     }

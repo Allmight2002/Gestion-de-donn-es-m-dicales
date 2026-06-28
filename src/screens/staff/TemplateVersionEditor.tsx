@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
@@ -32,7 +33,7 @@ export function TemplateVersionEditor({
   const [editing, setEditing] = useState<TemplateField | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const reload = useCallback(async () => {
     setLoading(true);

@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -34,7 +35,7 @@ export function EditEncounter() {
   const [blocking, setBlocking] = useState<string[]>([]);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const fmt = (v: unknown): string => {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
     if (v === null || v === undefined || v === '') return '—';

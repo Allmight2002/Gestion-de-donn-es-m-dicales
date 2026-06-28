@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -92,7 +93,7 @@ export function PatientDetail() {
       }
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('common.error'));
+      setError(errorMessage(e, t('common.error')));
     } finally {
       setLoading(false);
     }
@@ -166,7 +167,7 @@ export function PatientDetail() {
                 onClick={async () => {
                   setBusy(true);
                   try { await patients.finalizePatient(patientId!); await load(); setError(null); }
-                  catch (e) { setError(e instanceof Error ? e.message : t('common.error')); }
+                  catch (e) { setError(errorMessage(e, t('common.error'))); }
                   finally { setBusy(false); }
                 }}
                 className="text-xs font-medium text-teal-700 hover:underline"

@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errorMessage';
 import {
   createContext,
   useCallback,
@@ -87,7 +88,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         await backend.signIn(email, password);
         return true;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Echec de la connexion');
+        setError(errorMessage(e, 'Echec de la connexion'));
         return false;
       } finally {
         if (mounted.current) setBusy(false);
@@ -112,7 +113,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         await backend.sendPasswordReset(email);
         return true;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Echec de l envoi');
+        setError(errorMessage(e, 'Echec de l envoi'));
         return false;
       } finally {
         if (mounted.current) setBusy(false);
@@ -129,7 +130,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         await backend.updatePassword(newPassword);
         return true;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Echec de la mise a jour');
+        setError(errorMessage(e, 'Echec de la mise a jour'));
         return false;
       } finally {
         if (mounted.current) setBusy(false);

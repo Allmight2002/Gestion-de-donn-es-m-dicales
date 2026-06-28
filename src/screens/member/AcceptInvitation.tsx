@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -26,7 +27,7 @@ export function AcceptInvitation() {
       .catch((e) => {
         if (!on) return;
         setStatus('error');
-        setError(e instanceof Error ? e.message : t('common.error'));
+        setError(errorMessage(e, t('common.error')));
       });
     return () => {
       on = false;

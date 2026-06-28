@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -31,7 +32,7 @@ export function EditPatient() {
   const [blocking, setBlocking] = useState<string[]>([]);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const back = () => navigate(`/bases/${baseId}/patients/${patientId}`);
 
   const load = useCallback(async () => {

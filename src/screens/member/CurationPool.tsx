@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -22,7 +23,7 @@ export function CurationPool() {
 
   const role = profile?.globalRole;
   const isStaff = role === 'curateur';
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const load = useCallback(async () => {
     setLoading(true);

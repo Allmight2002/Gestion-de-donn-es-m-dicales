@@ -1,3 +1,4 @@
+import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -27,7 +28,7 @@ export function Dashboard() {
   const [versionId, setVersionId] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const reload = useCallback(async () => {
     setLoading(true);
