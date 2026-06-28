@@ -14,6 +14,9 @@ import type {
 export interface TemplateRepository {
   listTemplates(): Promise<(Template & { versions: TemplateVersion[] })[]>;
   createTemplate(name: string, specialty: string | null): Promise<{ template: Template; version: TemplateVersion }>;
+  /** Medecin : cree un gabarit PERSONNEL vierge (brouillon v1) qu'il pourra remplir puis utiliser
+   *  pour une base. Renvoie la version a editer. (RLS : owner = soi, is_global = false.) */
+  createPersonalTemplate(name: string, specialty: string | null): Promise<TemplateVersion>;
   getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>;
   addField(versionId: string, field: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
@@ -65,7 +68,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listTemplates: fail, createTemplate: fail, getVersion: fail, addField: fail, updateField: fail,
+      listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, getVersion: fail, addField: fail, updateField: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
@@ -109,6 +112,26 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         template: { id: t.id, name: t.name, specialty: t.specialty ?? null },
         version: mapVersion(v as VersionRow),
       };
+    },
+
+    async createPersonalTemplate(name, specialty) {
+      // Gabarit PERSONNEL du medecin (jamais global). owner_user_id = soi -> autorise par la RLS.
+      const { data: who } = await client.auth.getUser();
+      const ownerId = who.user?.id;
+      if (!ownerId) throw new Error('Session invalide');
+      const { data: t, error: e1 } = await client
+        .from('template')
+        .insert({ name, specialty, is_global: false, owner_user_id: ownerId })
+        .select('id')
+        .single();
+      if (e1) throw e1;
+      const { data: v, error: e2 } = await client
+        .from('template_version')
+        .insert({ template_id: t.id, version_number: 1, status: 'draft' })
+        .select('id, template_id, version_number, status')
+        .single();
+      if (e2) throw e2;
+      return mapVersion(v as VersionRow);
     },
 
     async getVersion(versionId) {

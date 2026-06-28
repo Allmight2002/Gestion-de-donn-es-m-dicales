@@ -26,6 +26,8 @@ export function MyTemplates() {
   const [editName, setEditName] = useState('');
   const [editSpec, setEditSpec] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [newSpec, setNewSpec] = useState('');
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
@@ -69,6 +71,16 @@ export function MyTemplates() {
     await run(() => repo.renameTemplate(editId, editName.trim(), editSpec.trim() || null));
     setEditId(null);
   }
+  // Cree un gabarit personnel vierge puis ouvre directement son editeur pour ajouter les variables.
+  async function createTemplate() {
+    if (!newName.trim()) return;
+    await run(async () => {
+      const v = await repo.createPersonalTemplate(newName.trim(), newSpec.trim() || null);
+      setNewName('');
+      setNewSpec('');
+      setSelected(v.id);
+    });
+  }
 
   // Edition de la structure d'une version (reutilise l'editeur, sans actions admin).
   if (selected) {
@@ -82,6 +94,21 @@ export function MyTemplates() {
         <h1 className="page-title mt-2">{t('mytemplates.title')}</h1>
         <p className="mt-1 text-sm text-slate-500">{t('mytemplates.hint')}</p>
       </div>
+
+      <form onSubmit={(e) => { e.preventDefault(); void createTemplate(); }} className="card p-4">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('mytemplates.create')}</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+            {t('admin.name')}
+            <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+          </label>
+          <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+            {t('admin.specialty')}
+            <input className="input" value={newSpec} onChange={(e) => setNewSpec(e.target.value)} />
+          </label>
+          <button type="submit" disabled={busy || !newName.trim()} className="btn-primary">{t('mytemplates.create')}</button>
+        </div>
+      </form>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading && <p className="text-slate-500">{t('common.loading')}</p>}

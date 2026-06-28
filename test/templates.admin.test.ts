@@ -62,6 +62,15 @@ describe('ecriture reservee au staff (§7, §8.2)', () => {
   test('un membre (non staff) ne peut pas creer de gabarit', async () => {
     await expect(rowsAs(memberId, "insert into public.template(name) values('X')")).rejects.toThrow();
   });
+
+  test('un medecin cree un gabarit PERSONNEL (owner=soi, is_global=false) + version draft', async () => {
+    const tpl = await rowsAs(memberId, "insert into public.template(name, specialty, is_global, owner_user_id) values('Mon gabarit','neuro',false,$1) returning id", [memberId]);
+    expect(tpl).toHaveLength(1);
+    const ver = await rowsAs(memberId, "insert into public.template_version(template_id, version_number, status) values($1,1,'draft') returning id, status", [tpl[0].id]);
+    expect(ver[0].status).toBe('draft');
+    // ... mais pas un modele GLOBAL (reserve a l'admin).
+    await expect(rowsAs(memberId, "insert into public.template(name, is_global, owner_user_id) values('Global pirate', true, $1)", [memberId])).rejects.toThrow();
+  });
 });
 
 describe('possession du gabarit (medecin) + edition libre (v3.0)', () => {
