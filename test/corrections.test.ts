@@ -112,6 +112,18 @@ describe('§5.3 ecritures cliniques par RPC seulement', () => {
   });
 });
 
+describe('update_patient (donnees permanentes)', () => {
+  const UPDATE_PAT = 'select * from public.update_patient($1,$2::jsonb,$3,$4)';
+  test('corrige les donnees permanentes (journalise) ; valeur hors liste refusee', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
+    const out = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'correction sexe']);
+    expect(out[0].data.sexe).toBe('F');
+    expect((await db.admin.query("select 1 from public.field_change_log where entity='patient' and entity_id=$1 and field_key='sexe'", [pid])).rows.length).toBeGreaterThan(0);
+    // re-validation serveur : une valeur hors liste autorisee est refusee.
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'Z' }), 'draft', 'invalide'])).rejects.toThrow();
+  });
+});
+
 describe('§5.5 journaux infalsifiables (aucun insert direct)', () => {
   test('un evenement d audit ne peut PAS etre fabrique par insert direct', async () => {
     await expect(

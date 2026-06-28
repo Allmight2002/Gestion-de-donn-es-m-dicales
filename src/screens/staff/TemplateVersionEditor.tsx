@@ -212,6 +212,11 @@ export function TemplateVersionEditor({
                 type: editing.type,
                 required: editing.required,
                 encounterTypes: editing.encounterTypes,
+                allowedValues: editing.allowedValues ? editing.allowedValues.map(String) : null,
+                minValue: editing.minValue,
+                maxValue: editing.maxValue,
+                unit: editing.unit,
+                allowMissingCodes: editing.allowMissingCodes,
               }}
               lockStructural={editing.inUse ?? false}
               submitLabel={t('admin.save')}

@@ -189,6 +189,11 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           required: field.required,
           display_order: nextOrder,
           encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
+          allowed_values: field.allowedValues ?? null,
+          min_value: field.minValue ?? null,
+          max_value: field.maxValue ?? null,
+          unit: field.unit ?? null,
+          allow_missing_codes: field.allowMissingCodes ?? false,
         })
         .select('*')
         .single();
@@ -206,6 +211,11 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_type: field.type,
         p_required: field.required,
         p_encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
+        p_allowed_values: field.allowedValues ?? null,
+        p_min_value: field.minValue ?? null,
+        p_max_value: field.maxValue ?? null,
+        p_unit: field.unit ?? null,
+        p_allow_missing_codes: field.allowMissingCodes ?? false,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as FieldRow;

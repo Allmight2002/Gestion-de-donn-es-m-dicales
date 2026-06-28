@@ -57,4 +57,13 @@ export interface NewField {
   required: boolean;
   /** Types de rencontre concernes (vide/absent = tous). Ignore pour un champ 'patient'. */
   encounterTypes?: string[] | null;
+  /** Valeurs autorisees (select / multiselect). null/absent = libre. */
+  allowedValues?: string[] | null;
+  /** Bornes numeriques (number / integer). */
+  minValue?: number | null;
+  maxValue?: number | null;
+  /** Unite affichee (number / integer). */
+  unit?: string | null;
+  /** Autorise les codes manquants (non_fait / inconnu / non_applicable). */
+  allowMissingCodes?: boolean;
 }

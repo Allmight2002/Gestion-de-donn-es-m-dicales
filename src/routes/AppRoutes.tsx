@@ -16,6 +16,7 @@ const PatientCreateChoice = lazy(() => import('../screens/member/PatientCreateCh
 const ImportData = lazy(() => import('../screens/member/ImportData').then((m) => ({ default: m.ImportData })));
 const EncounterCreateChoice = lazy(() => import('../screens/member/EncounterCreateChoice').then((m) => ({ default: m.EncounterCreateChoice })));
 const PatientDetail = lazy(() => import('../screens/member/PatientDetail').then((m) => ({ default: m.PatientDetail })));
+const EditPatient = lazy(() => import('../screens/member/EditPatient').then((m) => ({ default: m.EditPatient })));
 const EncounterForm = lazy(() => import('../screens/member/EncounterForm').then((m) => ({ default: m.EncounterForm })));
 const EditEncounter = lazy(() => import('../screens/member/EditEncounter').then((m) => ({ default: m.EditEncounter })));
 const AddImage = lazy(() => import('../screens/member/AddImage').then((m) => ({ default: m.AddImage })));
@@ -178,6 +179,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <PatientDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/patients/:patientId/edit"
+        element={
+          <ProtectedRoute area="member">
+            <EditPatient />
           </ProtectedRoute>
         }
       />

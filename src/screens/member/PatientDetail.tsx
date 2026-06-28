@@ -150,8 +150,16 @@ export function PatientDetail() {
       <div className="card p-4">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-3">
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t(`encstatus.${patient.validationStatus}` as MessageKey)}</span>
+            {canEdit && (
+              <button
+                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
+                className="text-xs font-medium text-teal-700 hover:underline"
+              >
+                {t('patient.edit_permanent')}
+              </button>
+            )}
             {canEdit && patient.validationStatus !== 'curated' && (
               <button
                 disabled={busy}

@@ -107,6 +107,8 @@ export interface PatientRepository {
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
   /** Finalise les donnees permanentes d'un patient (draft -> curated). Echoue si incompletes. */
   finalizePatient(patientId: string): Promise<void>;
+  /** Corrige / complete les donnees PERMANENTES d'un patient (journalise, re-validees). */
+  updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string): Promise<void>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
   importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
   /** Ouvre un lot d'import (controles globaux + idempotence) ; renvoie l'id du lot pour les chunks. */
@@ -167,7 +169,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     return {
       listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
-      softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, importRecords: fail, beginImportBatch: fail,
+      softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
       completeImportBatch: fail, cancelImportBatch: fail,
     };
   }
@@ -384,6 +386,13 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
 
     async finalizePatient(patientId) {
       const { error } = await client.rpc('finalize_patient', { p_patient_id: patientId });
+      if (error) throw error;
+    },
+
+    async updatePatientData(patientId, data, status, reason) {
+      const { error } = await client.rpc('update_patient', {
+        p_patient_id: patientId, p_data: data, p_validation_status: status, p_reason: reason,
+      });
       if (error) throw error;
     },
 

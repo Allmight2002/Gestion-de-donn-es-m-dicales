@@ -35,22 +35,41 @@ export function FieldForm({
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
   const [encounterTypes, setEncounterTypes] = useState<string[]>(initial?.encounterTypes ?? []);
+  const [allowedValues, setAllowedValues] = useState((initial?.allowedValues ?? []).join(', '));
+  const [minValue, setMinValue] = useState(initial?.minValue != null ? String(initial.minValue) : '');
+  const [maxValue, setMaxValue] = useState(initial?.maxValue != null ? String(initial.maxValue) : '');
+  const [unit, setUnit] = useState(initial?.unit ?? '');
+  const [allowMissingCodes, setAllowMissingCodes] = useState(initial?.allowMissingCodes ?? false);
 
+  const isChoice = type === 'select' || type === 'multiselect';
+  const isNumber = type === 'number' || type === 'integer';
   const toggleEncType = (x: string) =>
     setEncounterTypes((prev) => (prev.includes(x) ? prev.filter((y) => y !== x) : [...prev, x]));
+  const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
+    const values = allowedValues.split(',').map((v) => v.trim()).filter(Boolean);
     onSubmit({
       fieldKey: fieldKey.trim(), label: label.trim(), scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
       encounterTypes: scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
+      allowedValues: isChoice && values.length > 0 ? values : null,
+      minValue: isNumber ? numOrNull(minValue) : null,
+      maxValue: isNumber ? numOrNull(maxValue) : null,
+      unit: isNumber && unit.trim() ? unit.trim() : null,
+      allowMissingCodes,
     });
     if (!editing) {
       setFieldKey('');
       setLabel('');
       setEncounterTypes([]);
+      setAllowedValues('');
+      setMinValue('');
+      setMaxValue('');
+      setUnit('');
+      setAllowMissingCodes(false);
     }
   }
 
@@ -114,6 +133,40 @@ export function FieldForm({
         <input type="checkbox" checked={required} disabled={lockStructural} onChange={(e) => setRequired(e.target.checked)} />
         {t('admin.required')}
       </label>
+
+      {isChoice && (
+        <label className="flex w-full flex-col text-xs text-slate-600">
+          {t('admin.allowed_values')}
+          <input
+            className={inputCls}
+            value={allowedValues}
+            onChange={(e) => setAllowedValues(e.target.value)}
+            disabled={lockStructural}
+            placeholder={t('admin.allowed_values_ph')}
+          />
+        </label>
+      )}
+      {isNumber && (
+        <>
+          <label className="flex flex-col text-xs text-slate-600">
+            {t('admin.min')}
+            <input className={inputCls + ' w-24'} type="number" value={minValue} disabled={lockStructural} onChange={(e) => setMinValue(e.target.value)} />
+          </label>
+          <label className="flex flex-col text-xs text-slate-600">
+            {t('admin.max')}
+            <input className={inputCls + ' w-24'} type="number" value={maxValue} disabled={lockStructural} onChange={(e) => setMaxValue(e.target.value)} />
+          </label>
+          <label className="flex flex-col text-xs text-slate-600">
+            {t('admin.unit')}
+            <input className={inputCls + ' w-24'} value={unit} onChange={(e) => setUnit(e.target.value)} />
+          </label>
+        </>
+      )}
+      <label className="flex items-center gap-1 text-xs text-slate-600">
+        <input type="checkbox" checked={allowMissingCodes} disabled={lockStructural} onChange={(e) => setAllowMissingCodes(e.target.checked)} />
+        {t('admin.allow_missing')}
+      </label>
+
       {scope === 'encounter' && (
         <div className="flex w-full flex-col gap-1 text-xs text-slate-600">
           <span>{t('admin.encounter_types')}</span>

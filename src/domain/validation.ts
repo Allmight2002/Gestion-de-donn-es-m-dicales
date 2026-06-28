@@ -39,13 +39,15 @@ export interface FieldError {
   message: string;
 }
 
-/** Valide un champ ; renvoie un message d'erreur (bloquant) ou null. */
-export function validateField(field: TemplateField, value: unknown): string | null {
+/** Valide un champ ; renvoie un message d'erreur (bloquant) ou null.
+ *  requireComplete=false (brouillon) : un champ requis VIDE n'est pas bloquant (completion plus tard) ;
+ *  les valeurs RENSEIGNEES restent validees (bornes / type / liste). */
+export function validateField(field: TemplateField, value: unknown, requireComplete = true): string | null {
   if (isMissing(value)) {
     return field.allowMissingCodes ? null : 'Valeur manquante non autorisée pour ce champ';
   }
   if (isEmpty(value)) {
-    return field.required ? 'Champ obligatoire' : null;
+    return field.required && requireComplete ? 'Champ obligatoire' : null;
   }
   if (field.type === 'number' || field.type === 'integer') {
     const n = typeof value === 'number' ? value : Number(value);
@@ -65,10 +67,10 @@ export function validateField(field: TemplateField, value: unknown): string | nu
   return null;
 }
 
-export function validateValues(fields: TemplateField[], values: Record<string, unknown>): FieldError[] {
+export function validateValues(fields: TemplateField[], values: Record<string, unknown>, requireComplete = true): FieldError[] {
   const errors: FieldError[] = [];
   for (const f of fields) {
-    const e = validateField(f, values[f.fieldKey]);
+    const e = validateField(f, values[f.fieldKey], requireComplete);
     if (e) errors.push({ fieldKey: f.fieldKey, message: e });
   }
   return errors;

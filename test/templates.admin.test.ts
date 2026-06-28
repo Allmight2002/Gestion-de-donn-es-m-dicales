@@ -248,6 +248,18 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     expect(out[0].label).toBe('Libelle modifie');
   });
 
+  test('definit les VALEURS AUTORISEES (select) et les BORNES (number)', async () => {
+    const UPDATE_FULL = 'select * from public.update_template_field($1,$2,$3,$4,$5,$6,$7,$8::text[],$9::jsonb,$10::numeric,$11::numeric,$12,$13)';
+    const sel = (await rowsAs(memberId, ADD_FIELD + ' returning id', [aliceVersionId, 'sexe_t']))[0].id;
+    const outSel = await rowsAs(memberId, UPDATE_FULL, [sel, 'sexe_t', 'Sexe', 'patient', 'clinique', 'select', false, null, JSON.stringify(['M', 'F']), null, null, null, false]);
+    expect(outSel[0].allowed_values).toEqual(['M', 'F']);
+    const num = (await rowsAs(memberId, ADD_FIELD + ' returning id', [aliceVersionId, 'glasgow_t']))[0].id;
+    const outNum = await rowsAs(memberId, UPDATE_FULL, [num, 'glasgow_t', 'Glasgow', 'patient', 'clinique', 'integer', false, null, null, 3, 15, 'pts', false]);
+    expect(Number(outNum[0].min_value)).toBe(3);
+    expect(Number(outNum[0].max_value)).toBe(15);
+    expect(outNum[0].unit).toBe('pts');
+  });
+
   test('variable UTILISEE : libelle OK mais nom interne / type REFUSES', async () => {
     const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
     const fid = (await db.asUser(memberId, (c) =>
