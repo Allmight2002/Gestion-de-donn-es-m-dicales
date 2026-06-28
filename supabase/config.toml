@@ -33,3 +33,9 @@ enabled = false
 enabled = true
 # URL de redirection du frontend (etape 3+).
 site_url = "http://127.0.0.1:5173"
+
+# Fonction Edge signed-read (URL signee AUDITEE). verify_jwt = false car la fonction VERIFIE
+# elle-meme l'autorisation (header Authorization + getUser + RLS) ET gere le preflight CORS
+# (requete OPTIONS sans auth) : sinon la verification JWT de la plateforme bloquerait le preflight.
+[functions.signed-read]
+verify_jwt = false
