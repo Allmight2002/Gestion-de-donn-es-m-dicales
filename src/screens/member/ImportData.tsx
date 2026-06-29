@@ -109,7 +109,7 @@ export function ImportData() {
         setReport(await patients.importRecords(baseId, rows, { dryRun, status, conflict, fileHash, templateVersionId: versionId }));
       } else {
         // §6.5 import par LOTS : ouverture du lot (idempotence + verrous) puis chunks + progression.
-        const batchId = dryRun ? null : await patients.beginImportBatch(baseId, { status, conflict, fileHash, templateVersionId: versionId });
+        const batchId = dryRun ? null : await patients.beginImportBatch(baseId, { status, conflict, fileHash, templateVersionId: versionId, expectedRows: rows.length });
         const agg: ImportReport = { dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0, error_count: 0, errors: [] };
         for (let i = 0; i < rows.length; i += CHUNK) {
           const rep = await patients.importRecords(baseId, rows.slice(i, i + CHUNK), {

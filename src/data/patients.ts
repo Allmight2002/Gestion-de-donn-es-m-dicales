@@ -23,6 +23,8 @@ export interface BeginImportOptions {
   conflict: 'fill' | 'overwrite' | 'skip';
   fileHash?: string | null;
   templateVersionId?: string | null;
+  /** Nombre total de lignes annonce (§7.4 : controle de completude a la cloture du lot). */
+  expectedRows?: number | null;
 }
 
 export interface PatientIdentityInfo {
@@ -388,6 +390,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       const { data, error } = await client.rpc('begin_import_batch', {
         p_base_id: baseId, p_file_hash: opts.fileHash ?? null,
         p_template_version_id: opts.templateVersionId ?? null, p_conflict: opts.conflict, p_status: opts.status,
+        p_expected_rows: opts.expectedRows ?? null,
       });
       if (error) throw error;
       return data as string;

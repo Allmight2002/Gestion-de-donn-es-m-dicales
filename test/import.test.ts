@@ -20,6 +20,7 @@ const CALL7 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7) as repo
 // + batch_id (import par lots)
 const CALL8 = 'select public.import_records($1,$2::jsonb,$3,$4,$5,$6,$7,$8) as report';
 const BEGIN = 'select public.begin_import_batch($1,$2,$3,$4,$5) as id';
+const BEGIN6 = 'select public.begin_import_batch($1,$2,$3,$4,$5,$6) as id'; // + expected_rows
 const COMPLETE = 'select public.complete_import_batch($1)';
 const CANCEL = 'select public.cancel_import_batch($1)';
 const enc = (type: string, date: string, data: object) => ({ encounter_type: type, encounter_date: date, data });
@@ -210,6 +211,59 @@ describe('import_records', () => {
     // Une seule rencontre creee pour B63.
     const n = Number((await db.admin.query(
       "select count(*)::int c from public.encounter e join public.patient p on p.id=e.patient_id where p.base_id=$1 and p.patient_code='B63'", [baseId])).rows[0].c);
+    expect(n).toBe(1);
+  });
+
+  test('§7.1 skip ne modifie NI l identite NI les donnees d un patient existant', async () => {
+    // Patient existant avec identite + donnees.
+    await rowsAs(aliceId, CALL, [baseId, J([
+      row('SKIP-ID', null, { sexe: 'M' }, { full_name: 'Nom Origine', date_of_birth: '1980-01-01' }),
+    ]), false, 'draft']);
+    // Re-import en `skip` avec un AUTRE nom + d autres donnees -> rien ne doit bouger.
+    await rowsAs(aliceId, CALL7, [baseId, J([
+      row('SKIP-ID', null, { sexe: 'F' }, { full_name: 'Nom Pirate', date_of_birth: '1999-09-09' }),
+    ]), false, 'draft', 'skip', null, null]);
+    const idn = (await db.admin.query("select full_name, date_of_birth::text dob from public.patient_identity where base_id=$1 and patient_code='SKIP-ID'", [baseId])).rows[0];
+    expect(idn.full_name).toBe('Nom Origine'); // §7.1 : identite inchangee
+    expect(idn.dob).toBe('1980-01-01');
+    expect((await db.admin.query("select data from public.patient where base_id=$1 and patient_code='SKIP-ID'", [baseId])).rows[0].data.sexe).toBe('M');
+  });
+
+  test('§7.2 statut cible verrouille : un chunk d un autre statut que le lot est refuse', async () => {
+    const h = 'b72-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN, [baseId, h, null, 'fill', 'draft']))[0].id; // lot cible=draft
+    await expect(
+      rowsAs(aliceId, CALL8, [baseId, J([row('B72', null, { sexe: 'M' })]), false, 'complete', 'fill', null, null, batchId]),
+    ).rejects.toThrow(/statut cible/i);
+  });
+
+  test('§7.4 un lot incomplet (chunks manquants) ne peut pas etre cloture', async () => {
+    const h = 'b74-' + Date.now();
+    // On ANNONCE 4 lignes mais on n en envoie qu une.
+    const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 4]))[0].id;
+    await rowsAs(aliceId, CALL8, [baseId, J([row('B74-1', null, { sexe: 'M' })]), false, 'draft', 'fill', null, null, batchId]);
+    await expect(rowsAs(aliceId, COMPLETE, [batchId])).rejects.toThrow(/incomplet/i);
+    // En envoyant les 3 lignes manquantes, la cloture passe.
+    await rowsAs(aliceId, CALL8, [baseId, J([
+      row('B74-2', null, { sexe: 'M' }), row('B74-3', null, { sexe: 'M' }), row('B74-4', null, { sexe: 'M' }),
+    ]), false, 'draft', 'fill', null, null, batchId]);
+    await rowsAs(aliceId, COMPLETE, [batchId]); // 4/4 recues -> OK
+    expect((await db.admin.query('select status from public.import_batch where id=$1', [batchId])).rows[0].status).toBe('completed');
+  });
+
+  test('§7.5 compteurs : une ligne qui echoue a l ECRITURE n est pas comptee (rapport = realite)', async () => {
+    // CNT-OK : valide. CNT-BADDATE : date de rencontre invalide -> passe la validation des donnees,
+    // echoue au cast ::date a l ecriture (apres le point ou l ancien code incrementait deja).
+    const rep = (await rowsAs(aliceId, CALL, [baseId, J([
+      row('CNT-OK', enc('consultation', '2024-01-05', { diagnosis: 'a', glasgow_score: 10 })),
+      row('CNT-BADDATE', enc('consultation', 'pas-une-date', { diagnosis: 'b', glasgow_score: 10 })),
+    ]), false, 'draft']))[0].report;
+    expect(rep.error_count).toBe(1);
+    expect(rep.patients_new).toBe(1); // §7.5 : CNT-BADDATE non comptee
+    expect(rep.encounters).toBe(1);
+    // Le compteur DIT la verite : un seul des deux patients persiste.
+    const n = Number((await db.admin.query(
+      "select count(*)::int c from public.patient where base_id=$1 and patient_code in ('CNT-OK','CNT-BADDATE')", [baseId])).rows[0].c);
     expect(n).toBe(1);
   });
 });
