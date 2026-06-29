@@ -92,7 +92,9 @@ describe('NewPatient', () => {
 });
 
 describe('BaseHome (liste patients)', () => {
-  test('affiche le nom si acces identite, sinon "identite masquee"', async () => {
+  test('liste PSEUDONYMISEE (§5.8) : affiche le code, JAMAIS le nom (meme si le repo en fournit un)', async () => {
+    // Le repo renvoie volontairement une identite : on verifie que la liste ne l'expose PAS
+    // (le nom n'est revele que sur la fiche patient, ou la consultation est journalisee).
     const list: PatientListItem[] = [
       {
         id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 }, validationStatus: 'curated',
@@ -114,9 +116,10 @@ describe('BaseHome (liste patients)', () => {
       </I18nProvider>,
     );
 
-    expect(await screen.findByText('Jean Avec')).toBeInTheDocument();
-    expect(screen.getByText('(identité masquée)')).toBeInTheDocument();
-    expect(screen.getByText('P-0001')).toBeInTheDocument();
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByText('P-0002')).toBeInTheDocument();
+    expect(screen.queryByText('Jean Avec')).toBeNull();          // le nom n'apparait jamais dans la liste
+    expect(screen.queryByText('(identité masquée)')).toBeNull(); // plus de colonne identite du tout
   });
 
   test('pagine : affiche "1–20 sur 25" et charge la page suivante', async () => {

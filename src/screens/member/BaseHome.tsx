@@ -212,7 +212,6 @@ export function BaseHome() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                     <th className="px-4 py-2.5">{t('patient.code')}</th>
-                    {!offlineView && <th className="px-4 py-2.5">{t('patient.full_name')}</th>}
                     {fields.map((f) => (
                       <th key={f.id} className="px-4 py-2.5">{f.label}</th>
                     ))}
@@ -227,11 +226,6 @@ export function BaseHome() {
                           {p.code}
                         </button>
                       </td>
-                      {!offlineView && (
-                        <td className="px-4 py-2.5">
-                          {p.identity ? p.identity.fullName : <span className="text-slate-400">{t('patient.name_hidden')}</span>}
-                        </td>
-                      )}
                       {fields.map((f) => (
                         <td key={f.id} className="px-4 py-2.5">{formatCell(p.data[f.fieldKey])}</td>
                       ))}

@@ -140,13 +140,16 @@ const mapIdentity = (i: IdentityRow): PatientIdentityInfo => ({
   address: i.address,
   externalIdentifier: i.external_identifier,
 });
-const toListItem = (p: PatientRow, idByCode: Map<string, PatientIdentityInfo>): PatientListItem => ({
+// §5.8 — Element de LISTE pseudonymise : jamais d'identite. Le code (zone analytique) suffit a
+// parcourir la base ; le nom n'est revele que sur la FICHE patient (getPatient), ou chaque
+// consultation est journalisee. Les listes ne chargent donc aucune identite (rien en masse).
+const toListItem = (p: PatientRow): PatientListItem => ({
   id: p.id,
   code: p.patient_code,
   templateVersionId: p.template_version_id,
   data: p.data ?? {},
   validationStatus: p.validation_status,
-  identity: idByCode.get(p.patient_code) ?? null,
+  identity: null,
 });
 const mapEncounter = (r: EncounterRow): Encounter => ({
   id: r.id,
@@ -176,6 +179,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
 
   return {
     async listPatients(baseId) {
+      // §5.8 — LISTE PSEUDONYMISEE : on ne requete QUE la zone analytique, jamais patient_identity.
       const { data: patients, error } = await client
         .from('patient')
         .select('id, patient_code, template_version_id, data, validation_status')
@@ -183,24 +187,11 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
       if (error) throw error;
-
-      // Zone restreinte : ne revient que si l'utilisateur a l'acces identite (RLS).
-      const { data: identities, error: e2 } = await client
-        .from('patient_identity')
-        .select('patient_code, full_name, date_of_birth, phone, address, external_identifier')
-        .eq('base_id', baseId)
-        .is('deleted_at', null);
-      if (e2) throw e2;
-
-      const idByCode = new Map(
-        ((identities ?? []) as IdentityRow[]).map((i) => [i.patient_code, mapIdentity(i)]),
-      );
-
-      return ((patients ?? []) as PatientRow[]).map((p) => toListItem(p, idByCode));
+      return ((patients ?? []) as PatientRow[]).map(toListItem);
     },
 
     async listPatientsPage(baseId, limit, offset) {
-      // Page de la zone analytique + effectif TOTAL (count exact), via .range().
+      // §5.8 — page PSEUDONYMISEE (zone analytique + effectif total) ; aucune identite chargee.
       const { data: patients, error, count } = await client
         .from('patient')
         .select('id, patient_code, template_version_id, data, validation_status', { count: 'exact' })
@@ -210,20 +201,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         .range(offset, offset + limit - 1);
       if (error) throw error;
       const rows = (patients ?? []) as PatientRow[];
-
-      // Identites de CETTE page seulement (zone restreinte, RLS). Vide si pas d'acces identite.
-      let idByCode = new Map<string, PatientIdentityInfo>();
-      if (rows.length > 0) {
-        const { data: identities, error: e2 } = await client
-          .from('patient_identity')
-          .select('patient_code, full_name, date_of_birth, phone, address, external_identifier')
-          .eq('base_id', baseId)
-          .in('patient_code', rows.map((r) => r.patient_code))
-          .is('deleted_at', null);
-        if (e2) throw e2;
-        idByCode = new Map(((identities ?? []) as IdentityRow[]).map((i) => [i.patient_code, mapIdentity(i)]));
-      }
-      return { rows: rows.map((p) => toListItem(p, idByCode)), total: count ?? rows.length };
+      return { rows: rows.map(toListItem), total: count ?? rows.length };
     },
 
     async findIdentityMatches(baseId, fullName, dateOfBirth) {
