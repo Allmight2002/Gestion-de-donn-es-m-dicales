@@ -3,9 +3,9 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import {
-  buildSnapshot, downloadBaseSnapshot, enqueueEncounterUpdate, flushOutbox, isExpired,
-  offlineCache, OFFLINE_TTL_MS, outbox, resolveKeepMine, resolveKeepServer,
-  type FlushDeps, type SnapshotSource,
+  buildSnapshot, clearOfflineSnapshots, downloadBaseSnapshot, enqueueEncounterUpdate, flushOutbox,
+  isExpired, offlineCache, OFFLINE_TTL_MS, outbox, purgeExpiredSnapshots, resolveKeepMine,
+  resolveKeepServer, setOfflineUser, type FlushDeps, type SnapshotSource,
 } from '../src/data/offline.js';
 
 // Petit utilitaire : amorce un cache avec 1 patient + 1 rencontre (analytique).
@@ -88,7 +88,7 @@ describe('downloadBaseSnapshot', () => {
         : []),
       getFields: async () => [{ id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 }],
     };
-    const meta = await downloadBaseSnapshot('bD', src, 5000);
+    const meta = await downloadBaseSnapshot('bD', src); // now=Date.now() -> instantane frais (TTL §5.6)
     expect(meta).toMatchObject({ baseId: 'bD', baseName: 'Base D', patientCount: 1 });
 
     const snap = await offlineCache.get('bD');
@@ -126,6 +126,78 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
     expect(e.pending).toBe(false);
     expect(e.updatedAt).toBe('2024-01-02T00:00:00.000Z'); // jeton rafraichi
     await offlineCache.remove('bOB');
+  });
+});
+
+describe('§5.5 cloisonnement par utilisateur (poste partage)', () => {
+  test('un compte ne lit ni les instantanes ni l outbox d un autre', async () => {
+    setOfflineUser('userA');
+    await seedBase('isoA', '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId: 'isoA', patientId: 'p1', encounterId: 'e1',
+      data: { glasgow_score: 11 }, reason: 'a', validationStatus: 'curated', baseUpdatedAt: '2024-01-01T00:00:00.000Z',
+    });
+    expect(await offlineCache.get('isoA')).not.toBeNull();
+    expect(await outbox.count('isoA')).toBe(1);
+
+    // Bascule de compte sur le MEME appareil : rien ne doit fuiter vers B.
+    setOfflineUser('userB');
+    expect(await offlineCache.get('isoA')).toBeNull();
+    expect((await offlineCache.list()).find((m) => m.baseId === 'isoA')).toBeUndefined();
+    expect(await outbox.count('isoA')).toBe(0);
+    expect(await outbox.list()).toHaveLength(0);
+
+    // Retour au compte A : ses donnees sont intactes.
+    setOfflineUser('userA');
+    expect(await offlineCache.get('isoA')).not.toBeNull();
+    expect(await outbox.count('isoA')).toBe(1);
+
+    const mine = (await outbox.list('isoA'))[0];
+    await outbox.remove(mine.id);
+    await offlineCache.remove('isoA');
+    setOfflineUser(null);
+  });
+});
+
+describe('§5.6 expiration des instantanes', () => {
+  test('un instantane expire n est ni lu ni liste (purge a la lecture)', async () => {
+    setOfflineUser('userExp');
+    await offlineCache.save(buildSnapshot(
+      { id: 'expB', name: 'Expire', templateVersionId: 'v1' },
+      [{ id: 'p1', code: 'C1', templateVersionId: 'v1', data: {}, validationStatus: 'draft' }],
+      {}, [], Date.now() - OFFLINE_TTL_MS - 1000, // deja expire
+    ));
+    expect(await offlineCache.get('expB')).toBeNull();
+    expect((await offlineCache.list()).find((m) => m.baseId === 'expB')).toBeUndefined();
+    setOfflineUser(null);
+  });
+
+  test('purgeExpiredSnapshots supprime les expires (tous comptes) et garde les frais', async () => {
+    setOfflineUser('u1');
+    await offlineCache.save(buildSnapshot({ id: 'pex', name: 'x', templateVersionId: null }, [], {}, [], Date.now() - OFFLINE_TTL_MS - 1000));
+    setOfflineUser('u2');
+    await offlineCache.save(buildSnapshot({ id: 'pfresh', name: 'y', templateVersionId: null }, [], {}, [], Date.now()));
+    setOfflineUser(null);
+    await purgeExpiredSnapshots();
+    setOfflineUser('u1'); expect(await offlineCache.get('pex')).toBeNull();
+    setOfflineUser('u2'); expect(await offlineCache.get('pfresh')).not.toBeNull();
+    await offlineCache.remove('pfresh');
+    setOfflineUser(null);
+  });
+
+  test('clearOfflineSnapshots (deconnexion) vide les instantanes mais CONSERVE l outbox', async () => {
+    setOfflineUser('uClr');
+    await seedBase('clrB', '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId: 'clrB', patientId: 'p1', encounterId: 'e1',
+      data: { glasgow_score: 12 }, reason: 'c', validationStatus: 'curated', baseUpdatedAt: '2024-01-01T00:00:00.000Z',
+    });
+    await clearOfflineSnapshots();
+    expect(await offlineCache.get('clrB')).toBeNull(); // donnees analytiques effacees
+    expect(await outbox.count('clrB')).toBe(1);        // travail hors-ligne preserve
+    const e = (await outbox.list('clrB'))[0];
+    await outbox.remove(e.id);
+    setOfflineUser(null);
   });
 });
 

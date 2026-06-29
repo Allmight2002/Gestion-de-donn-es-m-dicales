@@ -48,6 +48,8 @@ export interface OfflineSnapshot {
   patients: OfflinePatient[];
   cachedAt: number; // epoch ms
   expiresAt: number; // epoch ms
+  /** §5.5 : utilisateur proprietaire de cet instantane (cloisonnement sur poste partage). */
+  ownerUserId?: string | null;
 }
 
 /** Metadonnees legeres d'un instantane (sans la liste des patients). */
@@ -68,6 +70,15 @@ export function isOnline(): boolean {
 export function isExpired(snap: { expiresAt: number }, now = Date.now()): boolean {
   return now > snap.expiresAt;
 }
+
+// §5.5 — CLOISONNEMENT PAR UTILISATEUR (poste partage). Le cache hors-ligne (instantanes +
+// outbox) appartient a UN compte : un autre compte connecte sur le meme appareil ne doit jamais
+// lire les instantanes ni rejouer les ecritures en attente d'un autre. L'utilisateur courant est
+// fixe par la couche d'authentification (setOfflineUser, appele a chaque changement de session) ;
+// get/list/outbox filtrent dessus -> aucune voie de lecture inter-comptes. (Injectable -> testable.)
+let currentUser: string | null = null;
+export function setOfflineUser(userId: string | null): void { currentUser = userId; }
+const ownedByCurrent = (o: { ownerUserId?: string | null }) => (o.ownerUserId ?? null) === currentUser;
 
 // Construit un instantane ANALYTIQUE : ne retient QUE les champs analytiques (aucune identite).
 export function buildSnapshot(
@@ -150,11 +161,36 @@ export interface OfflineCache {
 }
 
 export const offlineCache: OfflineCache = {
-  async save(snap) { await tx(STORE, 'readwrite', (s) => s.put(snap)); },
-  async get(baseId) { return (await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(baseId))) ?? null; },
-  async list() { return (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).map(snapshotMeta); },
+  // L'enregistreur est le proprietaire : on estampille toujours l'utilisateur courant.
+  async save(snap) { await tx(STORE, 'readwrite', (s) => s.put({ ...snap, ownerUserId: currentUser })); },
+  async get(baseId) {
+    const snap = await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(baseId));
+    if (!snap || !ownedByCurrent(snap)) return null;            // §5.5 : pas de lecture inter-comptes
+    if (isExpired(snap)) { void offlineCache.remove(baseId); return null; } // §5.6 : TTL applique
+    return snap;
+  },
+  async list() {
+    const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent);
+    for (const s of mine) if (isExpired(s)) void offlineCache.remove(s.baseId); // purge a la lecture
+    return mine.filter((s) => !isExpired(s)).map(snapshotMeta);
+  },
   async remove(baseId) { await tx(STORE, 'readwrite', (s) => s.delete(baseId)); },
 };
+
+// §5.6 — purge des instantanes EXPIRES (tous comptes), pour le menage au demarrage.
+export async function purgeExpiredSnapshots(now = Date.now()): Promise<void> {
+  try {
+    const all = await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll());
+    for (const s of all) if (isExpired(s, now)) await offlineCache.remove(s.baseId);
+  } catch { /* IndexedDB indisponible : rien a purger */ }
+}
+
+// §5.6 — vide TOUS les instantanes (donnees analytiques au repos). Appele a la DECONNEXION.
+// L'outbox (ecritures non synchronisees) est CONSERVEE mais cloisonnee : la perdre effacerait
+// le travail hors-ligne de l'utilisateur ; son isolation (ownerUserId) suffit a la securite.
+export async function clearOfflineSnapshots(): Promise<void> {
+  try { await tx(STORE, 'readwrite', (s) => s.clear()); } catch { /* IndexedDB indisponible */ }
+}
 
 // =====================================================================================
 // OUTBOX — file d'attente des ECRITURES preparees hors-ligne (Phases 2/3).
@@ -174,6 +210,8 @@ export interface OutboxEntry {
   createdAt: number;
   state: 'pending' | 'conflict';
   serverData?: Record<string, unknown>; // valeur serveur (renseignee en cas de conflit, pour l'UI)
+  /** §5.5 : auteur de l'ecriture en attente (cloisonnement sur poste partage). */
+  ownerUserId?: string | null;
 }
 
 const newId = (): string =>
@@ -187,10 +225,13 @@ const emitOutboxChange = () => outboxEvents?.dispatchEvent(new Event('change'));
 export const outbox = {
   async put(entry: OutboxEntry) { await tx(OUTBOX, 'readwrite', (s) => s.put(entry)); emitOutboxChange(); },
   async list(baseId?: string): Promise<OutboxEntry[]> {
-    const all = await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll());
+    const all = (await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll())).filter(ownedByCurrent); // §5.5
     return (baseId ? all.filter((e) => e.baseId === baseId) : all).sort((a, b) => a.createdAt - b.createdAt);
   },
-  async get(id: string): Promise<OutboxEntry | null> { return (await tx<OutboxEntry | undefined>(OUTBOX, 'readonly', (s) => s.get(id))) ?? null; },
+  async get(id: string): Promise<OutboxEntry | null> {
+    const e = await tx<OutboxEntry | undefined>(OUTBOX, 'readonly', (s) => s.get(id));
+    return e && ownedByCurrent(e) ? e : null; // §5.5 : pas de resolution d'une entree d'un autre compte
+  },
   async remove(id: string) { await tx(OUTBOX, 'readwrite', (s) => s.delete(id)); emitOutboxChange(); },
   async count(baseId?: string) { return (await this.list(baseId)).length; },
 };
@@ -219,7 +260,7 @@ export async function enqueueEncounterUpdate(input: {
   baseId: string; patientId: string; encounterId: string;
   data: Record<string, unknown>; reason: string; validationStatus: string; baseUpdatedAt: string | null;
 }): Promise<OutboxEntry> {
-  const entry: OutboxEntry = { id: newId(), createdAt: Date.now(), state: 'pending', ...input };
+  const entry: OutboxEntry = { id: newId(), createdAt: Date.now(), state: 'pending', ownerUserId: currentUser, ...input };
   await outbox.put(entry);
   await patchCachedEncounter(input.baseId, input.encounterId, (e) => ({
     ...e, data: input.data, validationStatus: input.validationStatus, pending: true,

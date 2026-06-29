@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { AuthBackend } from './backend';
 import { supabaseBackend } from '../lib/supabaseBackend';
+import { setOfflineUser, clearOfflineSnapshots, purgeExpiredSnapshots } from '../data/offline';
 import type { AuthStatus, Profile, SessionUser } from './types';
 
 export interface AuthContextValue {
@@ -42,7 +43,11 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   const applyUser = useCallback(
     async (nextUser: SessionUser | null) => {
+      // §5.5/§5.6 : le cache hors-ligne est cloisonne par compte. On (re)cible l'utilisateur
+      // courant a CHAQUE changement de session (connexion, restauration, deconnexion).
+      setOfflineUser(nextUser?.id ?? null);
       if (!nextUser) {
+        void clearOfflineSnapshots(); // donnees analytiques au repos effacees a la deconnexion
         if (!mounted.current) return;
         setUser(null);
         setProfile(null);
@@ -68,6 +73,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   useEffect(() => {
     mounted.current = true;
+    void purgeExpiredSnapshots(); // §5.6 : menage des instantanes expires au demarrage
     if (!backend.configured) {
       setStatus('unconfigured');
       return;
