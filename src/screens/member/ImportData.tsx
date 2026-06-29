@@ -7,6 +7,7 @@ import type { TemplateField } from '../../data/types';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping, type ImportReport, type ImportTarget,
 } from '../../domain/import';
+import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
@@ -72,16 +73,8 @@ export function ImportData() {
       // vieux navigateur), on continue sans -> on perd seulement l'idempotence (anti-doublon).
       let hash: string | null = null;
       try { hash = await sha256Hex(buf); } catch { hash = null; }
-      const XLSX = await import('xlsx'); // charge a la demande (hors bundle initial)
-      // cellDates -> les dates deviennent des objets Date ; on les formate en ISO nous-memes
-      // (sinon Excel/CSV les rendrait au format LOCAL, ex. "1/5/24"). §6.6.
-      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true }) as unknown[][];
-      const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const cell = (c: unknown) => (c instanceof Date ? iso(c) : (c ?? ''));
-      const head = (aoa[0] ?? []).map((h) => String(cell(h)).trim()); // garde TOUTES les colonnes (meme vides)
-      const rows = aoa.slice(1).map((r) => r.map(cell)).filter((r) => r.some((c) => String(c).trim() !== ''));
+      // §6.1 — parsing d'un fichier NON FIABLE hors du thread principal (SheetJS 0.20.3 corrige).
+      const { headers: head, rows } = await parseSpreadsheetOffThread(buf);
       if (rows.length > MAX_ROWS) {
         setError(t('import.too_many').replace('{max}', String(MAX_ROWS)).replace('{n}', String(rows.length)));
         return;

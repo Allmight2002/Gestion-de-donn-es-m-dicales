@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
     );
   }
   return {
+  // §6.1 — les Web Workers sont des modules ES : autorise le code-splitting (import dynamique de
+  // xlsx dans le worker de parsing) ; sans cela, le format IIFE par defaut casse le build.
+  worker: { format: 'es' as const },
   plugins: [
     react(),
     tailwindcss(),
