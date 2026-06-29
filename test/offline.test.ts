@@ -97,6 +97,50 @@ describe('downloadBaseSnapshot', () => {
     expect(JSON.stringify(snap)).not.toContain('Secret'); // identite jamais persistee
     await offlineCache.remove('bD');
   });
+
+  test('§8 utilise fetchSnapshot (1 appel) si disponible et NE fait PAS le N+1', async () => {
+    let nPlusOne = 0;
+    const boom = async (): Promise<never> => { throw new Error('chemin de repli : ne doit pas etre appele'); };
+    const src: SnapshotSource = {
+      fetchSnapshot: async () => ({
+        base: { id: 'bS1', name: 'Base S1', templateVersionId: 'v9' },
+        fields: [{ id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 }],
+        patients: [
+          {
+            id: 'p1', code: 'S-001', templateVersionId: 'v9', data: { sexe: 'M' }, validationStatus: 'curated',
+            encounters: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-03-01', validationStatus: 'curated', ageValue: 30, ageUnit: 'years', data: { glasgow_score: 15 }, updatedAt: null }],
+          },
+        ],
+      }),
+      getBase: boom,
+      listPatients: boom,
+      listEncounters: async () => { nPlusOne += 1; return []; },
+      getFields: boom,
+    };
+    const meta = await downloadBaseSnapshot('bS1', src);
+    expect(meta).toMatchObject({ baseId: 'bS1', baseName: 'Base S1', patientCount: 1 });
+    expect(nPlusOne).toBe(0); // §8 : aucune requete rencontre-par-patient
+    const snap = await offlineCache.get('bS1');
+    expect(snap?.fields).toHaveLength(1);
+    expect(snap?.patients[0].encounters[0].data).toEqual({ glasgow_score: 15 });
+    await offlineCache.remove('bS1');
+  });
+
+  test('§8 si fetchSnapshot echoue (RPC absente), repli transparent sur le N+1', async () => {
+    let nPlusOne = 0;
+    const src: SnapshotSource = {
+      fetchSnapshot: async () => { throw new Error('function download_base_snapshot does not exist'); },
+      getBase: async () => ({ base: { id: 'bF', name: 'Base F', currentTemplateVersionId: 'v9' } }),
+      listPatients: async () => [{ id: 'p1', code: 'F-001', templateVersionId: 'v9', data: { sexe: 'M' }, validationStatus: 'curated' }],
+      listEncounters: async () => { nPlusOne += 1; return [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-03-01', validationStatus: 'curated', ageValue: 30, ageUnit: 'years', data: { glasgow_score: 12 } }]; },
+      getFields: async () => [{ id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 }],
+    };
+    const meta = await downloadBaseSnapshot('bF', src);
+    expect(meta).toMatchObject({ baseId: 'bF', patientCount: 1 });
+    expect(nPlusOne).toBe(1); // repli : la voie N+1 a bien ete empruntee
+    expect((await offlineCache.get('bF'))?.patients[0].encounters[0].data).toEqual({ glasgow_score: 12 });
+    await offlineCache.remove('bF');
+  });
 });
 
 describe('outbox — ecritures hors-ligne (Phase 2)', () => {

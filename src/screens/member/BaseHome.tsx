@@ -102,6 +102,8 @@ export function BaseHome() {
     setSaving(true);
     try {
       const src: SnapshotSource = {
+        // §8 : un seul aller-retour (RPC) ; les methodes ci-dessous restent le repli.
+        fetchSnapshot: (bid) => patients.fetchBaseSnapshot(bid),
         getBase: (bid) =>
           bases.getBase(bid).then((b) => (b ? { base: { id: b.base.id, name: b.base.name, currentTemplateVersionId: b.base.currentTemplateVersionId } } : null)),
         listPatients: (bid) => patients.listPatients(bid),

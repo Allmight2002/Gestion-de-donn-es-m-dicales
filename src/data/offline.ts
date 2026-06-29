@@ -338,7 +338,20 @@ export function useOutbox(baseId?: string): OutboxEntry[] {
 // Recupere TOUT (patients + rencontres + champs du gabarit) via les repos en LIGNE de
 // l'utilisateur (donc soumis a la RLS), puis enregistre un instantane ANALYTIQUE.
 // L'identite eventuellement renvoyee par le repo n'est jamais persistee (buildSnapshot la jette).
+/** Instantane ANALYTIQUE complet renvoye en UN appel (§8 : evite le N+1 cote client). */
+export interface RawSnapshotData {
+  base: { id: string; name: string; templateVersionId: string | null };
+  fields: OfflineField[];
+  patients: {
+    id: string; code: string; templateVersionId: string; data: Record<string, unknown>;
+    validationStatus: string; encounters: OfflineEncounter[];
+  }[];
+}
+
 export interface SnapshotSource {
+  /** §8 — chemin PREFERE : tout l'instantane en 1 requete (RPC serveur). null si pas d'acces. */
+  fetchSnapshot?(baseId: string): Promise<RawSnapshotData | null>;
+  // Chemin de repli (1 + N requetes), conserve pour compatibilite / tests.
   getBase(baseId: string): Promise<{ base: { id: string; name: string; currentTemplateVersionId: string | null } } | null>;
   listPatients(baseId: string): Promise<{ id: string; code: string; templateVersionId: string; data: Record<string, unknown>; validationStatus: string }[]>;
   listEncounters(patientId: string): Promise<OfflineEncounter[]>;
@@ -346,6 +359,26 @@ export interface SnapshotSource {
 }
 
 export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, now = Date.now()): Promise<OfflineMeta> {
+  // §8 — un seul aller-retour si la source le permet (RPC download_base_snapshot). En cas d'echec
+  // (ex. RPC pas encore deployee sur le cloud), on retombe silencieusement sur le repli N+1 :
+  // la migration n'est donc qu'une OPTIMISATION, jamais une dependance bloquante.
+  if (src.fetchSnapshot) {
+    try {
+      const s = await src.fetchSnapshot(baseId);
+      if (s && s.base) {
+        const byPatient: Record<string, OfflineEncounter[]> = {};
+        for (const p of s.patients) byPatient[p.id] = p.encounters ?? [];
+        const snap = buildSnapshot(s.base, s.patients, byPatient, s.fields ?? [], now);
+        await offlineCache.save(snap);
+        return snapshotMeta(snap);
+      }
+      // s null / sans base -> pas d'acces : on laisse le repli ci-dessous trancher (meme verdict).
+    } catch {
+      // RPC indisponible -> repli N+1 transparent.
+    }
+  }
+
+  // Repli : 1 requete patients + N requetes rencontres.
   const b = await src.getBase(baseId);
   if (!b) throw new Error('Base introuvable');
   const patients = await src.listPatients(baseId);

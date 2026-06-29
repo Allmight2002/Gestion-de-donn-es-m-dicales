@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ImportRow, ImportReport } from '../domain/import';
+import type { RawSnapshotData } from './offline';
 
 /** Options d'un import (statut cible, mode de conflit, empreinte fichier, version vue a l'apercu). */
 export interface ImportOptions {
@@ -94,6 +95,8 @@ export interface PatientRepository {
   listPatients(baseId: string): Promise<PatientListItem[]>;
   /** Page de patients (pagination serveur) + effectif total de la base. */
   listPatientsPage(baseId: string, limit: number, offset: number): Promise<{ rows: PatientListItem[]; total: number }>;
+  /** §8 — Instantane ANALYTIQUE complet (patients + rencontres + champs) en UN appel (hors-ligne). */
+  fetchBaseSnapshot(baseId: string): Promise<RawSnapshotData | null>;
   /** Recherche un doublon potentiel par identite (nom + date de naissance). [] si rien. */
   findIdentityMatches(baseId: string, fullName: string, dateOfBirth: string): Promise<IdentityMatch[]>;
   createPatient(baseId: string, input: NewPatientInput): Promise<{ id: string; code: string }>;
@@ -172,7 +175,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPatients: fail, listPatientsPage: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
+      listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
       completeImportBatch: fail, cancelImportBatch: fail,
@@ -204,6 +207,14 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
       const rows = (patients ?? []) as PatientRow[];
       return { rows: rows.map(toListItem), total: count ?? rows.length };
+    },
+
+    async fetchBaseSnapshot(baseId) {
+      // §8 : un seul aller-retour serveur (RPC) -> base + champs + patients AVEC leurs rencontres.
+      const { data, error } = await client.rpc('download_base_snapshot', { p_base_id: baseId });
+      if (error) throw error;
+      const d = data as RawSnapshotData | null;
+      return d && d.base ? d : null;
     },
 
     async findIdentityMatches(baseId, fullName, dateOfBirth) {
