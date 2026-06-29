@@ -9,9 +9,35 @@ import type { MessageKey } from '../../i18n/messages';
 import { offlineCache, useOnline } from '../../data/offline';
 import { isMissing, missingCodeOf } from '../../domain/validation';
 import { DeleteWithReason } from './DeleteWithReason';
+import { useSignedFile } from '../../lib/useSignedFile';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 type Column = { id: string; fieldKey: string; label: string; scope: string; displayOrder: number };
+
+// §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
+// une image s'affiche apres « Afficher l'image » ; un document s'ouvre dans un onglet.
+function AttachmentMedia({ isImage, label, load, onReveal }: {
+  isImage: boolean; label: string; load: () => Promise<string | null>; onReveal: () => void;
+}) {
+  const { t } = useI18n();
+  const { url, busy, error, reveal } = useSignedFile(load, onReveal);
+  if (isImage && url) {
+    return <img src={url} alt={label} className="h-32 w-40 rounded border border-slate-200 object-cover" />;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => { if (isImage) void reveal(); else void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); }); }}
+      disabled={busy}
+      className="flex h-32 w-40 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+    >
+      <span className="text-2xl">{isImage ? '🖼️' : '📄'}</span>
+      <span className="text-xs text-teal-700 hover:underline">
+        {busy ? t('common.loading') : error ? t('common.error') : isImage ? t('image.show') : t('image.open')}
+      </span>
+    </button>
+  );
+}
 
 // Fiche patient (cahier §8.6) : Identite (si autorise) / donnees permanentes /
 // rencontres par section. La fiche identite n'est rendue que si la RLS a renvoye
@@ -251,28 +277,19 @@ export function PatientDetail() {
             <p className="text-sm text-slate-500">{t('image.none')}</p>
           ) : (
             <div className="flex flex-wrap gap-3">
-              {attachments.map((a) => {
-                const isImage = (a.mimeType ?? '').startsWith('image/');
-                return (
-                  <figure key={a.id} className="w-40">
-                    {isImage && a.signedUrl ? (
-                      <img src={a.signedUrl} alt={a.label ?? ''} className="h-32 w-40 rounded border border-slate-200 object-cover" />
-                    ) : (
-                      <a
-                        href={a.signedUrl ?? '#'}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex h-32 w-40 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
-                      >
-                        <span className="text-2xl">📄</span>
-                        <span className="text-xs text-teal-700 hover:underline">{t('image.open')}</span>
-                      </a>
-                    )}
-                    <figcaption className="truncate text-xs text-slate-500">{a.label ?? a.kind}</figcaption>
-                    <DeleteWithReason onConfirm={async (reason) => { await attachmentsRepo.softDeleteAttachment(a.id, reason); await load(); }} />
-                  </figure>
-                );
-              })}
+              {attachments.map((a) => (
+                <figure key={a.id} className="w-40">
+                  {/* §11 : l'URL signee (et l'audit) ne sont generes qu'au CLIC, pas au rendu. */}
+                  <AttachmentMedia
+                    isImage={(a.mimeType ?? '').startsWith('image/')}
+                    label={a.label ?? ''}
+                    load={() => attachmentsRepo.attachmentUrl(a.id, a.filePath)}
+                    onReveal={() => void audit.logSensitiveRead('attachment_read', 'attachment', a.id, baseId ?? '')}
+                  />
+                  <figcaption className="truncate text-xs text-slate-500">{a.label ?? a.kind}</figcaption>
+                  <DeleteWithReason onConfirm={async (reason) => { await attachmentsRepo.softDeleteAttachment(a.id, reason); await load(); }} />
+                </figure>
+              ))}
             </div>
           )}
         </div>

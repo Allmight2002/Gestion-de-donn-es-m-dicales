@@ -245,6 +245,7 @@ export const messages = {
     'image.section': 'Documents (zone restreinte)',
     'image.none': 'Aucun document.',
     'image.open': 'Ouvrir le document',
+    'image.show': 'Afficher l’image',
     'image.note':
       "Zone restreinte : jamais exportés, invisibles à l'administrateur système et à tout compte sans accès identité. Les images sont réencodées à l'upload (suppression des métadonnées).",
     'cohort.build': 'Constituer une cohorte',
@@ -665,6 +666,7 @@ export const messages = {
     'image.section': 'Documents (restricted zone)',
     'image.none': 'No document.',
     'image.open': 'Open document',
+    'image.show': 'Show image',
     'image.note':
       'Restricted zone: never exported, invisible to the system administrator and any account without identity access. Images are re-encoded on upload (metadata removed).',
     'cohort.build': 'Build a cohort',

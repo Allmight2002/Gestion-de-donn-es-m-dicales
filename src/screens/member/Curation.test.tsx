@@ -31,7 +31,7 @@ const openTask: CurationTaskItem = {
 };
 const bundle = (status: string, taskStatus: string): TaskBundle => ({
   task: { ...openTask, status: taskStatus, assignedTo: 'cur', assignedName: 'Carl' },
-  documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', signedUrl: 'http://x/cr.pdf' }],
+  documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf' }],
   draft: { id: 'dr1', taskId: 'tk1', patientData: {}, encounters: [], status },
   patientIdentity: null,
   clarifications: [],
@@ -125,7 +125,7 @@ describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
   test('voit l identite minimale (lecture seule) et soumet la demande au pool', async () => {
     auth.role = 'medecin'; auth.id = 'doc';
     const submitRequest = vi.fn(async () => {});
-    const docs = [{ id: 'd1', label: 'CR', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', signedUrl: null }];
+    const docs = [{ id: 'd1', label: 'CR', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf' }];
     const curation = { async getTaskBundle() { return ownerBundle(docs); }, submitRequest } as unknown as CurationRepository;
     renderAt('/curation/tk1', curation);
     expect(await screen.findByText('Marie Test')).toBeInTheDocument(); // identite minimale visible
@@ -139,6 +139,22 @@ describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
     const curation = { async getTaskBundle() { return ownerBundle([]); } } as unknown as CurationRepository;
     renderAt('/curation/tk1', curation);
     expect(await screen.findByRole('button', { name: 'Soumettre la demande au staff' })).toBeDisabled();
+  });
+
+  test('§11 l URL d un document est generee au CLIC (jamais au chargement) puis ouverte', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const documentUrl = vi.fn(async () => 'http://x/cr.pdf');
+    const docs = [{ id: 'd1', label: 'CR', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf' }];
+    const curation = { async getTaskBundle() { return ownerBundle(docs); }, documentUrl } as unknown as CurationRepository;
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    renderAt('/curation/tk1', curation);
+
+    const link = await screen.findByRole('button', { name: 'CR' });
+    expect(documentUrl).not.toHaveBeenCalled(); // §11 : aucune URL signee au chargement de la liste
+    await userEvent.click(link);
+    await waitFor(() => expect(documentUrl).toHaveBeenCalledWith('d1', 'b1/s1/cr.pdf'));
+    expect(openSpy).toHaveBeenCalled(); // ouverture dans un onglet, au clic seulement
+    openSpy.mockRestore();
   });
 });
 

@@ -43,7 +43,6 @@ export interface RawDocumentItem {
   label: string | null;
   storagePath: string;
   mimeType: string;
-  signedUrl: string | null;
 }
 
 export interface CurationDraftItem {
@@ -92,6 +91,9 @@ export interface CurationRepository {
   /** Cas d'une base (suivi cote medecin proprietaire). */
   listBaseSubmissions(baseId: string): Promise<CurationTaskItem[]>;
   getTaskBundle(taskId: string): Promise<TaskBundle | null>;
+  /** §11 — URL signee d'un document A LA DEMANDE (au clic) : autorisation + audit ne se
+   *  declenchent que pour une VRAIE ouverture, pas au chargement de la liste. null si indisponible. */
+  documentUrl(id: string, storagePath: string): Promise<string | null>;
   /** Le medecin soumet un cas au pool (RPC atomique : soumission + tache ouverte + code).
    *  scope='patient' (donnees permanentes) ou 'encounter' (une rencontre). */
   createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
@@ -161,7 +163,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, createSubmission: fail,
+      listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, documentUrl: fail, createSubmission: fail,
       submitRequest: fail, deleteRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
       ensureDraft: fail, saveDraft: fail, finalizeTask: fail, requestClarification: fail, answerClarification: fail,
     };
@@ -209,6 +211,8 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       if (!t) return null;
       const task = mapTask(t as unknown as TaskRow);
 
+      // §11 : la liste des documents ne genere AUCUNE URL signee (donc aucun audit) ; l'URL est
+      // demandee a l'ouverture d'un document (documentUrl) -> l'audit correspond a une vraie consultation.
       const { data: docs, error: e2 } = await client
         .from('raw_document')
         .select('id, label, storage_path, mime_type')
@@ -216,12 +220,8 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
       if (e2) throw e2;
-      const documents = await Promise.all(
-        ((docs ?? []) as { id: string; label: string | null; storage_path: string; mime_type: string }[]).map(async (d) => {
-          const signedUrl = await signedRead(client, 'raw_document', d.id, RAW_DOCUMENTS_BUCKET, d.storage_path, SIGNED_URL_TTL);
-          return { id: d.id, label: d.label, storagePath: d.storage_path, mimeType: d.mime_type, signedUrl };
-        }),
-      );
+      const documents = ((docs ?? []) as { id: string; label: string | null; storage_path: string; mime_type: string }[])
+        .map((d) => ({ id: d.id, label: d.label, storagePath: d.storage_path, mimeType: d.mime_type }));
 
       const { data: draftRow, error: e3 } = await client
         .from('curation_draft')
@@ -263,6 +263,10 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         patientIdentity,
         clarifications,
       };
+    },
+
+    async documentUrl(id, storagePath) {
+      return signedRead(client, 'raw_document', id, RAW_DOCUMENTS_BUCKET, storagePath, SIGNED_URL_TTL);
     },
 
     async createSubmission(baseId, targetPatientId, externalRef, scope = 'patient') {

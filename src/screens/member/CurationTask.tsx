@@ -9,9 +9,26 @@ import type { TaskBundle, DraftEncounter } from '../../data/curation';
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
+import { useSignedFile } from '../../lib/useSignedFile';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 const newEncounter = (): DraftEncounter => ({ encounter_type: 'consultation', encounter_date: '', age_unit: 'years', data: {} });
+
+// §11 : lien de document qui ne genere l'URL signee (et l'audit) qu'au CLIC, puis l'ouvre.
+function RawDocumentLink({ label, load, onReveal }: { label: string; load: () => Promise<string | null>; onReveal: () => void }) {
+  const { t } = useI18n();
+  const { busy, error, reveal } = useSignedFile(load, onReveal);
+  return (
+    <button
+      type="button"
+      onClick={() => void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); })}
+      disabled={busy}
+      className="text-teal-700 hover:underline disabled:opacity-50"
+    >
+      {busy ? `${label} …` : error ? `${label} (${t('common.error')})` : label}
+    </button>
+  );
+}
 
 // Poste de travail d'un cas de curation (POOL GLOBAL, cahier v3.0). Base-less : le cas est
 // designe par un CODE OPAQUE, jamais par le patient. Le curateur RESERVE, structure puis
@@ -172,19 +189,12 @@ export function CurationTask() {
           <ul className="space-y-1 text-sm">
             {documents.map((d) => (
               <li key={d.id}>
-                {d.signedUrl ? (
-                  <a
-                    href={d.signedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => void audit.logSensitiveRead('raw_document_read', 'raw_document', d.id, task.baseId)}
-                    className="text-teal-700 hover:underline"
-                  >
-                    {d.label ?? d.storagePath}
-                  </a>
-                ) : (
-                  <span>{d.label ?? d.storagePath}</span>
-                )}
+                {/* §11 : l'URL signee (et l'audit) ne sont generes qu'au CLIC, pas au chargement. */}
+                <RawDocumentLink
+                  label={d.label ?? d.storagePath}
+                  load={() => curation.documentUrl(d.id, d.storagePath)}
+                  onReveal={() => void audit.logSensitiveRead('raw_document_read', 'raw_document', d.id, task.baseId)}
+                />
                 <span className="ml-2 text-xs text-slate-400">{d.mimeType}</span>
               </li>
             ))}

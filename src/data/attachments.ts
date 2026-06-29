@@ -17,7 +17,6 @@ export interface AttachmentItem {
   label: string | null;
   mimeType: string | null;
   filePath: string;
-  signedUrl: string | null;
 }
 
 export interface AddImageInput {
@@ -31,6 +30,9 @@ export interface AddImageInput {
 
 export interface AttachmentRepository {
   listAttachments(patientId: string): Promise<AttachmentItem[]>;
+  /** §11 — URL signee generee A LA DEMANDE (au clic), pas au chargement de la liste : autorisation
+   *  + audit ne se declenchent que pour une VRAIE tentative de consultation. null si indisponible. */
+  attachmentUrl(id: string, storagePath: string): Promise<string | null>;
   addImage(input: AddImageInput): Promise<{ id: string }>;
   softDeleteAttachment(id: string, reason: string): Promise<void>;
 }
@@ -58,11 +60,13 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listAttachments: fail, addImage: fail, softDeleteAttachment: fail };
+    return { listAttachments: fail, attachmentUrl: fail, addImage: fail, softDeleteAttachment: fail };
   }
 
   return {
     async listAttachments(patientId) {
+      // §11 : la liste ne genere AUCUNE URL signee (donc aucun audit) ; seul l'octet est cloisonne
+      // par la RLS. L'URL est demandee a l'ouverture du document (attachmentUrl).
       const { data, error } = await client
         .from('clinical_attachment')
         .select('id, kind, label, mime_type, storage_path')
@@ -70,14 +74,13 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      const rows = (data ?? []) as AttachmentRow[];
-      const items = await Promise.all(
-        rows.map(async (r) => {
-          const signedUrl = await signedRead(client, 'attachment', r.id, ATTACHMENTS_BUCKET, r.storage_path, SIGNED_URL_TTL);
-          return { id: r.id, kind: r.kind, label: r.label, mimeType: r.mime_type, filePath: r.storage_path, signedUrl };
-        }),
-      );
-      return items;
+      return ((data ?? []) as AttachmentRow[]).map((r) => ({
+        id: r.id, kind: r.kind, label: r.label, mimeType: r.mime_type, filePath: r.storage_path,
+      }));
+    },
+
+    async attachmentUrl(id, storagePath) {
+      return signedRead(client, 'attachment', id, ATTACHMENTS_BUCKET, storagePath, SIGNED_URL_TTL);
     },
 
     async addImage(input) {
