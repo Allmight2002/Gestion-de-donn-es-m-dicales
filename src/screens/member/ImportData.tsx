@@ -8,6 +8,7 @@ import {
   autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping, type ImportReport, type ImportTarget,
 } from '../../domain/import';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
+import type { ImportDuplicateWarning } from '../../data/patients';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
@@ -39,6 +40,7 @@ export function ImportData() {
   const [status, setStatus] = useState<string>('draft');
   const [conflict, setConflict] = useState<'fill' | 'overwrite' | 'skip'>('fill');
   const [report, setReport] = useState<ImportReport | null>(null);
+  const [warnings, setWarnings] = useState<ImportDuplicateWarning[]>([]); // §7.6 doublons probables
   const [committed, setCommitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -66,7 +68,7 @@ export function ImportData() {
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setError(null); setReport(null); setCommitted(false);
+    setError(null); setReport(null); setWarnings([]); setCommitted(false);
     try {
       const buf = await file.arrayBuffer();
       // Empreinte best-effort : si crypto.subtle est indisponible (contexte non securise,
@@ -104,6 +106,11 @@ export function ImportData() {
     if (!baseId) return;
     setBusy(true); setError(null); setProgress(null);
     try {
+      // §7.6 : a l'apercu, signaler les rencontres ressemblant a des existantes (sans bloquer).
+      // Resilient : si la RPC n'est pas encore deployee, on n'empeche pas l'apercu.
+      if (dryRun) {
+        try { setWarnings(await patients.detectImportDuplicates(baseId, rows)); } catch { setWarnings([]); }
+      }
       if (rows.length <= CHUNK) {
         // Petit volume : un seul appel.
         setReport(await patients.importRecords(baseId, rows, { dryRun, status, conflict, fileHash, templateVersionId: versionId }));
@@ -229,6 +236,17 @@ export function ImportData() {
               {report.errors.map((er, i) => (
                 <div key={i}>{t('import.line')} {er.row}{er.patient_code ? ` (${er.patient_code})` : ''} : {er.message}</div>
               ))}
+            </div>
+          )}
+          {!committed && warnings.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+              <p className="font-medium">{t('import.duplicates_warning').replace('{n}', String(warnings.length))}</p>
+              <p className="mt-0.5">{t('import.duplicates_hint')}</p>
+              <div className="mt-1 max-h-32 overflow-auto">
+                {warnings.map((w, i) => (
+                  <div key={i}>{t('import.line')} {w.row} ({w.patientCode}) : {w.encounterType} · {w.encounterDate}</div>
+                ))}
+              </div>
             </div>
           )}
           {!committed && report.error_count === 0 && <p className="text-xs text-slate-500">{t('import.ready')}</p>}

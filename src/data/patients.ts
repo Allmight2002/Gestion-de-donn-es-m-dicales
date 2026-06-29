@@ -55,6 +55,14 @@ export interface NewPatientInput {
   permanentData: Record<string, unknown>;
 }
 
+/** §7.6 — Rencontre du fichier ressemblant a une rencontre DEJA enregistree (avertissement). */
+export interface ImportDuplicateWarning {
+  row: number;
+  patientCode: string;
+  encounterDate: string;
+  encounterType: string;
+}
+
 /** Doublon potentiel : un patient existant au MEME nom complet + date de naissance. */
 export interface IdentityMatch {
   patientId: string;
@@ -97,6 +105,8 @@ export interface PatientRepository {
   listPatientsPage(baseId: string, limit: number, offset: number): Promise<{ rows: PatientListItem[]; total: number }>;
   /** §8 — Instantane ANALYTIQUE complet (patients + rencontres + champs) en UN appel (hors-ligne). */
   fetchBaseSnapshot(baseId: string): Promise<RawSnapshotData | null>;
+  /** §7.6 — Avertit (a l'apercu) des rencontres ressemblant a des rencontres deja enregistrees. */
+  detectImportDuplicates(baseId: string, rows: ImportRow[]): Promise<ImportDuplicateWarning[]>;
   /** Recherche un doublon potentiel par identite (nom + date de naissance). [] si rien. */
   findIdentityMatches(baseId: string, fullName: string, dateOfBirth: string): Promise<IdentityMatch[]>;
   createPatient(baseId: string, input: NewPatientInput): Promise<{ id: string; code: string }>;
@@ -175,7 +185,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
+      listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
       completeImportBatch: fail, cancelImportBatch: fail,
@@ -215,6 +225,16 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
       const d = data as RawSnapshotData | null;
       return d && d.base ? d : null;
+    },
+
+    async detectImportDuplicates(baseId, rows) {
+      // §7.6 : avertissement (lecture seule) sur les rencontres ressemblant a des existantes.
+      const { data, error } = await client.rpc('detect_import_duplicates', { p_base_id: baseId, p_rows: rows });
+      if (error) throw error;
+      const d = data as { warnings?: { row: number; patient_code: string; encounter_date: string; encounter_type: string }[] } | null;
+      return (d?.warnings ?? []).map((w) => ({
+        row: w.row, patientCode: w.patient_code, encounterDate: w.encounter_date, encounterType: w.encounter_type,
+      }));
     },
 
     async findIdentityMatches(baseId, fullName, dateOfBirth) {

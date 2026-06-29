@@ -23,6 +23,7 @@ const BEGIN = 'select public.begin_import_batch($1,$2,$3,$4,$5) as id';
 const BEGIN6 = 'select public.begin_import_batch($1,$2,$3,$4,$5,$6) as id'; // + expected_rows
 const COMPLETE = 'select public.complete_import_batch($1)';
 const CANCEL = 'select public.cancel_import_batch($1)';
+const DETECT = 'select public.detect_import_duplicates($1,$2::jsonb) as result'; // §7.6
 const enc = (type: string, date: string, data: object) => ({ encounter_type: type, encounter_date: date, data });
 const row = (code: string | null, encounter: object | null, patient_data: object = {}, identity: object | null = null) =>
   ({ patient_code: code, identity, patient_data, encounter });
@@ -265,5 +266,21 @@ describe('import_records', () => {
     const n = Number((await db.admin.query(
       "select count(*)::int c from public.patient where base_id=$1 and patient_code in ('CNT-OK','CNT-BADDATE')", [baseId])).rows[0].c);
     expect(n).toBe(1);
+  });
+
+  test('§7.6 avertit quand une rencontre RESSEMBLE a une rencontre deja enregistree (sans bloquer)', async () => {
+    // Enregistre une rencontre.
+    await rowsAs(aliceId, CALL, [baseId, J([row('DUP-1', enc('consultation', '2024-05-01', { diagnosis: 'x', glasgow_score: 10 }))]), false, 'draft']);
+    // Apercu d'un fichier : 1 ligne au MEME (patient/date/type) -> avertissement ; 1 autre date -> rien.
+    const res = (await rowsAs(aliceId, DETECT, [baseId, J([
+      row('DUP-1', enc('consultation', '2024-05-01', { diagnosis: 'autre', glasgow_score: 12 })),
+      row('DUP-1', enc('consultation', '2024-06-01', { diagnosis: 'x', glasgow_score: 11 })),
+    ])]))[0].result;
+    expect(res.count).toBe(1);
+    expect(res.warnings[0].patient_code).toBe('DUP-1');
+    expect(res.warnings[0].encounter_date).toBe('2024-05-01');
+    // C'est un AVERTISSEMENT : l'import des memes lignes reste possible (non bloque).
+    const rep = (await rowsAs(aliceId, CALL, [baseId, J([row('DUP-1', enc('consultation', '2024-05-01', { diagnosis: 'autre', glasgow_score: 12 }))]), false, 'draft']))[0].report;
+    expect(rep.error_count).toBe(0);
   });
 });
