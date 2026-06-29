@@ -381,3 +381,19 @@ describe('durcissement (audit P0/P1)', () => {
       [baseId, pidB, tv, aliceId])).rejects.toThrow(/inter-bases/i);
   });
 });
+
+describe('audit v9 §5.4 : creation du workflow de curation par RPC seulement', () => {
+  test('INSERT direct refuse : curation_task (tache fabriquee) et raw_submission', async () => {
+    const c = await openCase('NCH-002'); // soumission + tache crees via RPC (definer)
+    // Tache 'open' fabriquee directement (sans document) -> refus (ct_insert retiree).
+    await expect(rowsAs(aliceId,
+      "insert into public.curation_task(base_id, submission_id, status) values($1,$2,'open')", [baseId, c.subId]),
+    ).rejects.toThrow();
+    // Soumission inseree directement -> refus (rs_insert retiree).
+    const tv = (await db.admin.query('select current_template_version_id v from public.base where id=$1', [baseId])).rows[0].v;
+    await expect(rowsAs(aliceId,
+      "insert into public.raw_submission(base_id, target_patient_id, template_version_id, scope, case_code, status, submitted_by) values($1,$2,$3,'patient','HACK-'||floor(random()*1000000)::text,'received',$4)",
+      [baseId, c.patientId, tv, aliceId]),
+    ).rejects.toThrow();
+  });
+});

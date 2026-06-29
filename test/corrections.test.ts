@@ -137,3 +137,20 @@ describe('§5.5 journaux infalsifiables (aucun insert direct)', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('audit v9 §5.1/§5.2 : creation clinique par RPC seulement + log_audit non appelable', () => {
+  test('§5.1 INSERT direct refuse : patient / encounter / patient_identity', async () => {
+    await expect(rowsAs(aliceId,
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'HACK-P',(select current_template_version_id from public.base where id=$1),'{}'::jsonb)", [baseId])).rejects.toThrow();
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+    await expect(rowsAs(aliceId,
+      "insert into public.encounter(patient_id, template_version_id, encounter_type, encounter_date, validation_status) values($1,(select template_version_id from public.patient where id=$1),'consultation','2024-01-01','draft')", [pid])).rejects.toThrow();
+    await expect(rowsAs(aliceId,
+      "insert into public.patient_identity(base_id, patient_code, full_name) values($1,'HACK-P','Hacker')", [baseId])).rejects.toThrow();
+  });
+
+  test('§5.2 log_audit n est plus appelable par un utilisateur (audit infalsifiable)', async () => {
+    await expect(rowsAs(aliceId, "select public.log_audit('FAKE_ADMIN_EVENT','base',null,$1,'{}'::jsonb)", [baseId]))
+      .rejects.toThrow(/permission|denied|refus/i);
+  });
+});

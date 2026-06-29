@@ -365,3 +365,23 @@ describe('reordonner les variables (drag & drop)', () => {
     expect(true).toBe(true);
   });
 });
+
+describe('audit v9 §5.3 : ecriture DIRECTE sur template_field bloquee par trigger (champ utilise)', () => {
+  test('update semantique + delete directs refuses ; libelle direct OK', async () => {
+    const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
+    const fid = (await db.asUser(memberId, (c) =>
+      c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'direct_used','U','patient','clinique','text') returning id", [aliceVersionId]),
+    )).rows[0].id;
+    await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,$2,$3,$4)",
+      [baseId, 'P-DIRECT-' + Date.now(), aliceVersionId, JSON.stringify({ direct_used: 'x' })],
+    );
+    // UPDATE direct du caractere requis (semantique) sur un champ UTILISE -> trigger refuse.
+    await expect(rowsAs(memberId, 'update public.template_field set required=true where id=$1', [fid])).rejects.toThrow(/utilis/i);
+    // DELETE direct d'un champ utilise -> trigger refuse.
+    await expect(rowsAs(memberId, 'delete from public.template_field where id=$1', [fid])).rejects.toThrow(/utilis/i);
+    // Le libelle (cosmetique) reste modifiable en direct.
+    await rowsAs(memberId, "update public.template_field set label='Nouveau' where id=$1", [fid]);
+    expect((await db.admin.query('select label from public.template_field where id=$1', [fid])).rows[0].label).toBe('Nouveau');
+  });
+});
