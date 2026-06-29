@@ -23,6 +23,12 @@ export async function signedRead(
     if (error) return null;
     return (data as { url?: string } | null)?.url ?? null;
   }
+  // §5.7 — Ceinture + bretelles : en production, le repli de signature client (non audite) est
+  // INTERDIT. Le build l'impose deja (vite.config) ; si un bundle mal configure arrivait quand meme
+  // en prod, on refuse la lecture plutot que de livrer un fichier sans trace d'audit.
+  if (import.meta.env.PROD) {
+    throw new Error('Lecture de fichier indisponible : configuration signed-read manquante (audit requis).');
+  }
   const { data } = await client.storage.from(bucket).createSignedUrl(storagePath, ttl);
   return data?.signedUrl ?? null;
 }

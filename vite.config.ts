@@ -1,10 +1,23 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // PWA installable (cahier §1, §17.15) — SANS hors-ligne avance (hors perimetre §5).
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // §5.7 — En PRODUCTION, la lecture des fichiers prives (images cliniques, documents bruts) DOIT
+  // passer par la fonction Edge `signed-read` (autorisation RLS + audit_log + signature serveur).
+  // Si le drapeau n'est pas arme, on REFUSE le build de production -> impossible d'expedier par
+  // megarde le repli de signature client (non audite). En dev/test, le repli reste autorise.
+  const env = loadEnv(mode, process.cwd(), '');
+  if (mode === 'production' && env.VITE_USE_SIGNED_READ !== 'true') {
+    throw new Error(
+      "Build de production refuse : VITE_USE_SIGNED_READ doit valoir 'true' (lecture de fichiers " +
+        "auditee via la fonction Edge signed-read). Definissez cette variable d'environnement " +
+        '(Vercel : Production ET Preview) avant de deployer.',
+    );
+  }
+  return {
   plugins: [
     react(),
     tailwindcss(),
@@ -26,5 +39,6 @@ export default defineConfig({
       },
     }),
   ],
-  server: { port: 5173 },
+    server: { port: 5173 },
+  };
 });
