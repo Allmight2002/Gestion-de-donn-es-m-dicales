@@ -283,4 +283,26 @@ describe('import_records', () => {
     const rep = (await rowsAs(aliceId, CALL, [baseId, J([row('DUP-1', enc('consultation', '2024-05-01', { diagnosis: 'autre', glasgow_score: 12 }))]), false, 'draft']))[0].report;
     expect(rep.error_count).toBe(0);
   });
+
+  test('§4.6 lot avec des lignes en erreur -> completed_with_errors (et reimportable), pas completed', async () => {
+    const h = 'b46-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))[0].id; // 2 lignes attendues
+    const rep = (await rowsAs(aliceId, CALL8, [baseId, J([
+      row('B46-OK', enc('consultation', '2024-01-05', { diagnosis: 'a', glasgow_score: 10 })),
+      row('B46-KO', enc('consultation', '2024-01-05', { diagnosis: 'b', glasgow_score: 99 })), // hors bornes
+    ]), false, 'draft', 'fill', null, null, batchId]))[0].report;
+    expect(rep.error_count).toBe(1);
+    await rowsAs(aliceId, COMPLETE, [batchId]); // row_count=2=attendu -> cloture OK mais statut HONNETE
+    expect((await db.admin.query('select status, error_count from public.import_batch where id=$1', [batchId])).rows[0])
+      .toMatchObject({ status: 'completed_with_errors' });
+    // completed_with_errors ne verrouille PAS le fichier : on peut corriger + rejouer.
+    expect((await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id).toBeTruthy();
+  });
+
+  test('§4.7 cloture refusee si row_count depasse expected_rows (chunk en double)', async () => {
+    const h = 'b47-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id; // 1 ligne attendue
+    await rowsAs(aliceId, CALL8, [baseId, J([row('B47-1', null, { sexe: 'M' }), row('B47-2', null, { sexe: 'M' })]), false, 'draft', 'fill', null, null, batchId]);
+    await expect(rowsAs(aliceId, COMPLETE, [batchId])).rejects.toThrow(/incomplet|incoherent/i);
+  });
 });
