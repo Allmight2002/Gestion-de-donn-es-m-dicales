@@ -154,3 +154,23 @@ describe('audit v9 §5.1/§5.2 : creation clinique par RPC seulement + log_audit
       .rejects.toThrow(/permission|denied|refus/i);
   });
 });
+
+describe('audit v10 §4.2 : verdict d inspection reserve au serveur', () => {
+  test('un utilisateur ne peut PAS s auto-attribuer inspection_status=accepted/quarantined', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+    // Piece jointe inseree cote serveur (admin), au statut client.
+    const aid = (await db.admin.query(
+      "insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, inspection_status) values($1,'b/p/x.png',true,'accepted_client') returning id",
+      [pid],
+    )).rows[0].id;
+    // Alice (proprietaire, acces identite) NE PEUT PAS promouvoir le verdict serveur.
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='accepted' where id=$1", [aid]))
+      .rejects.toThrow(/inspection/i);
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='quarantined' where id=$1", [aid]))
+      .rejects.toThrow(/inspection/i);
+    // Mais une mise a jour qui NE touche pas au verdict reste possible.
+    await rowsAs(aliceId, "update public.clinical_attachment set label='ok' where id=$1", [aid]);
+    expect((await db.admin.query('select inspection_status, label from public.clinical_attachment where id=$1', [aid])).rows[0])
+      .toMatchObject({ inspection_status: 'accepted_client', label: 'ok' });
+  });
+});

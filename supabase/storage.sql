@@ -28,17 +28,11 @@ drop policy if exists "raw_documents_read"   on storage.objects;
 drop policy if exists "raw_documents_insert" on storage.objects;
 drop policy if exists "raw_documents_delete" on storage.objects;
 
--- Chemin : <base_id>/<submission_id>/<uuid>.<ext>. Lecture = proprietaire OU curateur AYANT
--- RESERVE ce cas et TANT QUE la tache est active (submission_id = 2e dossier) — pas tout le
--- pool (§5.1), et l'acces se FERME apres finalisation/annulation (§7.3, via is_assigned_to_submission).
-create policy "raw_documents_read" on storage.objects for select to authenticated
-using (
-  bucket_id = 'raw-documents'
-  and (
-    public.is_base_owner(((storage.foldername(name))[1])::uuid)
-    or public.is_assigned_to_submission(((storage.foldername(name))[2])::uuid)
-  )
-);
+-- §4.1 (audit v10) : AUCUNE policy SELECT pour `authenticated`. La lecture des octets passe
+-- DESORMAIS uniquement par l'Edge Function `signed-read` (service_role, qui contourne la RLS et
+-- JOURNALISE avant de signer). Un JWT utilisateur ne peut donc plus appeler `createSignedUrl()`
+-- directement pour contourner l'audit. L'autorisation metier (proprietaire / curateur affecte) est
+-- verifiee DANS l'Edge contre raw_document. [NB dev local sans Edge : lecture de fichiers indisponible.]
 
 create policy "raw_documents_insert" on storage.objects for insert to authenticated
 with check (
@@ -63,12 +57,9 @@ drop policy if exists "clinical_attachments_read"   on storage.objects;
 drop policy if exists "clinical_attachments_insert" on storage.objects;
 drop policy if exists "clinical_attachments_delete" on storage.objects;
 
--- Lecture : seulement avec acces IDENTITE a la base (jamais system_admin, jamais analyste).
-create policy "clinical_attachments_read" on storage.objects for select to authenticated
-using (
-  bucket_id = 'clinical-attachments'
-  and public.can_view_identity(((storage.foldername(name))[1])::uuid)
-);
+-- §4.1 (audit v10) : AUCUNE policy SELECT pour `authenticated` (cf. raw-documents). La lecture des
+-- images cliniques passe uniquement par l'Edge `signed-read` (service_role + audit). L'autorisation
+-- (can_view_identity) est verifiee DANS l'Edge contre clinical_attachment.
 
 -- Ecriture / suppression : acces ECRITURE identite (proprietaire ou editor+identite).
 create policy "clinical_attachments_insert" on storage.objects for insert to authenticated
