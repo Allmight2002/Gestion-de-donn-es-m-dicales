@@ -30,4 +30,8 @@ jobs:
         run: npm test
 
       - name: Build (PWA)
+        # §5.7 : le build de production EXIGE la lecture de fichiers auditee (signed-read).
+        # Ce n'est pas un secret mais un drapeau de fonctionnalite -> on l'arme pour la CI.
+        env:
+          VITE_USE_SIGNED_READ: 'true'
         run: npm run build
