@@ -13,7 +13,8 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
 partage** (`viewer` / `editor`) + **5 permissions granulaires** par base. Chaîne de curation
 complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
-**Tests : 39 fichiers / 274 verts** (Vitest ; RLS + sécurité côté base + rendu UI). Build PWA OK.
+**Tests : 40 fichiers / 292 verts** (Vitest ; RLS + sécurité côté base + rendu UI), **36 migrations**.
+Build PWA OK ; **déployé** (Vercel + Supabase cloud, **données fictives**).
 
 > Besoin d'un backend Supabase pour le login réel ? Voir
 > [docs/configurer-supabase.md](docs/configurer-supabase.md) (voie cloud, sans Docker).
@@ -115,7 +116,12 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   │   ├── 20260616091200_access.sql         # invitations / accès (token_hash)
 │   │   ├── 20260616091300_soft_delete.sql    # suppression logique
 │   │   ├── 20260616091400_curation.sql       # pool, brouillon, finalize_curation_task(), clarifications
-│   │   └── 20260616091500_audit.sql          # audit_log (actions sensibles)
+│   │   ├── 20260616091500_audit.sql          # audit_log (actions sensibles)
+│   │   └── … + 21 migrations de durcissement # 091600 → 093600 : édition de champs, règles
+│   │                                          #   versionnées, import par lots, écritures par RPC
+│   │                                          #   seulement, intégrité inter-bases, verrou optimiste,
+│   │                                          #   audit infalsifiable, hors-ligne, snapshot 1 appel…
+│   │                                          # (36 migrations au total)
 │   ├── seed.sql                          # Données de démo FICTIVES
 │   ├── storage.sql                       # Buckets privés + RLS
 │   └── config.toml
@@ -168,7 +174,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le frontend (rendu + gating par rôle)
 ```
 
-Résultat attendu : **39 fichiers / 274 tests passants** — sécurité RLS (les scénarios
+Résultat attendu : **40 fichiers / 292 tests passants** — sécurité RLS (les scénarios
 d'attaque + leurs contrôles positifs), logique de rôle, règles JSON, validation de saisie,
 âge calculé sans exposer la DOB, corrections, images, cohortes, export immuable, accès,
 suppression logique, curation, audit, et rendu des écrans. Le premier lancement télécharge
@@ -275,6 +281,8 @@ d'exemple, et des cas de curation de démonstration.
 
 ## 8. Documentation & suite
 
+- **[docs/cahier-des-charges-metier.md](docs/cahier-des-charges-metier.md)** — spécification **fonctionnelle** (EF / RG).
+- **[docs/cahier-des-charges-technique.md](docs/cahier-des-charges-technique.md)** — spécification **technique** (ET).
 - **[docs/architecture.md](docs/architecture.md)** — vue d'ensemble (modèle, rôles, RLS, curation, carte du code).
 - **[docs/deploiement.md](docs/deploiement.md)** — mettre le service en ligne (pilote à données fictives) + prérequis avant données réelles.
 - **[docs/configurer-supabase.md](docs/configurer-supabase.md)** — créer un projet Supabase (cloud).

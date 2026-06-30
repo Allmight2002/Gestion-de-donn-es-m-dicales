@@ -5,9 +5,11 @@
 > qu'ils sont réellement implémentés aujourd'hui. Pour la mise en route locale, voir
 > [tester-en-local.md](tester-en-local.md) et [configurer-supabase.md](configurer-supabase.md).
 
-Il n'existe pas de fichier « cahier technique » dans le dépôt : les références `§X.Y`
-dans les commentaires renvoient au cahier d'origine (document de spécification externe).
-Ce fichier en restitue le contenu **effectivement construit**.
+Spécifications de référence (reconstituées à partir du code réel, versionnées) :
+**[cahier-des-charges-metier.md](cahier-des-charges-metier.md)** (fonctionnel : EF / RG) et
+**[cahier-des-charges-technique.md](cahier-des-charges-technique.md)** (technique : ET). Les
+références `§X.Y` dans les commentaires du code renvoient au cahier d'origine ; ce fichier-ci
+en reste la **vue d'ensemble développeur**.
 
 ---
 
@@ -207,13 +209,25 @@ seule, ou le patient **et** la demande.
 | i18n | `src/i18n/` | Messages fr/en |
 | **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) | RLS + domaine + rendu |
 
-### Liste des migrations (ordre d'application)
+### Liste des migrations (ordre d'application, 36 au total)
 
 ```
+# Socle (schéma, RLS, RPC, intégrité)
 090100_extensions   090200_tables     090300_functions   090400_rls
 090500_integrity    090600_rpc        090700_template_admin
 090800_patients     090900_encounters 091000_corrections 091100_cohorts
 091200_access       091300_soft_delete 091400_curation   091500_audit
+
+# Durcissement (édition de champs, import, validation, audits successifs)
+091600_template_field_edit   091700_reorder_template_fields
+091800_import                091900_validation_rules        092000_import_hardening
+092100_cohort_eligibility    092200_encounter_optimistic_lock
+092300_guard_curated_downgrade  092400_logs_infalsifiable   092500_curation_rpc_only
+092600_curation_draft_scope  092700_import_batch_hardening  092800_cross_base_integrity
+092900_rpc_only_clinical_writes  093000_pool_minimal_metadata
+093100_template_rule_versioning  093200_field_attrs_and_patient_edit
+093300_rpc_only_writes_complete  093400_import_p1_hardening
+093500_offline_snapshot_rpc      093600_import_duplicate_warnings
 ```
 
 ---
@@ -231,7 +245,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
 ```
 
-État actuel : **39 fichiers / 274 tests verts**. Chaque refus RLS est doublé d'un
+État actuel : **40 fichiers / 292 tests verts** (36 migrations). Chaque refus RLS est doublé d'un
 **contrôle positif** prouvant qu'un utilisateur légitime voit bien la donnée (pas de faux
 positif par table vide).
 
