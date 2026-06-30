@@ -174,3 +174,14 @@ describe('audit v10 §4.2 : verdict d inspection reserve au serveur', () => {
       .toMatchObject({ inspection_status: 'accepted_client', label: 'ok' });
   });
 });
+
+describe('audit v10 §4.5 : cles inconnues du gabarit refusees a TOUS les statuts', () => {
+  test('create_patient draft avec une cle hors dictionnaire -> refuse', async () => {
+    await expect(rowsAs(aliceId, CREATE_PAT, [baseId, 'UNK-' + Date.now(), 'X', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M', unknown_secret: 'x' })])).rejects.toThrow(/inconnu/i);
+    // Sans la cle inconnue, le meme patient draft passe.
+    const ok = await rowsAs(aliceId, CREATE_PAT, [baseId, 'UNK-OK-' + Date.now(), 'X', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M' })]);
+    expect(ok[0].validation_status).toBe('draft');
+  });
+});
