@@ -1,0 +1,105 @@
+# Contribuer — flux de travail Git & déploiement
+
+Mémo pratique du fonctionnement du dépôt : les **branches**, le **quotidien**, comment **publier
+une version**, et les **spécificités** de ce projet à ne pas oublier.
+
+---
+
+## 1. Les deux branches
+
+| Branche | Rôle | Déploiement |
+|---|---|---|
+| **`main`** | Version **stable**. On n'y travaille **pas directement**. | **Production** (URL publique Vercel) |
+| **`develop`** | Branche de **travail** : tout le développement s'y fait. | **Prévisualisation** (URL Vercel séparée) |
+
+```
+develop  ──● ──● ──● ────────●  (travail au quotidien)
+              \                 \  Pull Request (release)
+main      ●────────────────────────●  (stable, déployé en production)
+```
+
+---
+
+## 2. Au quotidien (sur `develop`)
+
+```bash
+git status                 # vérifier qu'on est bien sur develop
+# (si besoin) git switch develop
+
+# … faire ses modifications …
+
+git add -A
+git commit -m "message clair de ce qui change"
+git push
+```
+
+À chaque `push` sur `develop` :
+- la **CI** se lance (typecheck + **292 tests** + build) → coche verte = tout va bien ;
+- **Vercel** crée une **prévisualisation** (URL dédiée) pour tester avant la production.
+
+---
+
+## 3. Publier une version (release `develop` → `main`)
+
+Quand `develop` est **stable et validé** :
+
+**Voie simple (interface GitHub) :**
+1. GitHub → onglet **Pull requests** → **New pull request**
+2. base = **`main`** ← compare = **`develop`** → **Create pull request**
+3. Attendre la **CI verte**, puis **Merge**
+
+Le merge sur `main` déclenche le **déploiement de production** Vercel.
+
+> Variante en ligne de commande :
+> ```bash
+> git switch main && git merge develop && git push && git switch develop
+> ```
+
+---
+
+## 4. Spécificités de CE projet (à ne pas oublier)
+
+- **Migrations SQL** (`supabase/migrations/`) : le frontend se déploie tout seul (Vercel), **mais
+  pas la base de données**. Après une release qui ajoute une migration, l'appliquer au cloud :
+  ```bash
+  npx supabase db push
+  ```
+- **Vercel — variable `VITE_USE_SIGNED_READ`** : doit valoir `true` sur **Production ET Preview**.
+  Sinon le build échoue (garde-fou §5.7 : lecture de fichiers auditée obligatoire). Réglage :
+  Vercel → Settings → Environment Variables.
+- **Sécurité non négociable** : **données fictives uniquement** ; la clé `service_role` **jamais**
+  dans le frontend (seules les variables `VITE_*` sont exposées).
+
+---
+
+## 5. Vérifier avant de pousser (recommandé)
+
+```bash
+npm test       # toute la suite (RLS + UI) — ~3 min
+```
+La CI revérifie de toute façon (typecheck + tests + build) à chaque push et PR. Pour reproduire le
+build de production en local : `VITE_USE_SIGNED_READ=true npm run build`.
+
+---
+
+## 6. Aide-mémoire Git
+
+| Commande | Effet |
+|---|---|
+| `git status` | Où suis-je ? quels fichiers modifiés ? |
+| `git switch develop` / `git switch main` | Changer de branche |
+| `git pull` | Récupérer les changements distants de la branche courante |
+| `git add -A && git commit -m "…" && git push` | Enregistrer puis envoyer |
+| `git log --oneline -5` | Voir les 5 derniers commits |
+
+> Si `main` reçoit une correction directe un jour, resynchroniser `develop` :
+> `git switch develop && git merge main`.
+
+---
+
+## 7. Documentation
+
+- Spécifications : [docs/cahier-des-charges-metier.md](docs/cahier-des-charges-metier.md) ·
+  [docs/cahier-des-charges-technique.md](docs/cahier-des-charges-technique.md)
+- Vue d'ensemble : [docs/architecture.md](docs/architecture.md)
+- Mise en route / déploiement : [README.md](README.md) · [docs/deploiement.md](docs/deploiement.md)

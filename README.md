@@ -281,6 +281,7 @@ d'exemple, et des cas de curation de démonstration.
 
 ## 8. Documentation & suite
 
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — flux de travail Git (branches `main`/`develop`), releases, déploiement.
 - **[docs/cahier-des-charges-metier.md](docs/cahier-des-charges-metier.md)** — spécification **fonctionnelle** (EF / RG).
 - **[docs/cahier-des-charges-technique.md](docs/cahier-des-charges-technique.md)** — spécification **technique** (ET).
 - **[docs/architecture.md](docs/architecture.md)** — vue d'ensemble (modèle, rôles, RLS, curation, carte du code).
