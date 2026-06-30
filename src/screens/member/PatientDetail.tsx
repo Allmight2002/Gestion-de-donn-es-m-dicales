@@ -108,7 +108,7 @@ export function PatientDetail() {
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       // §7.1 : consultation de l'identite -> trace (best-effort) si l'identite a ete revelee.
-      if (p?.identity) void audit.logSensitiveRead('identity_read', 'patient', patientId, baseId);
+      if (p?.identity) void audit.logIdentityRead(patientId);
       if (base?.base.currentTemplateVersionId) {
         const version = await templates.getVersion(base.base.currentTemplateVersionId);
         const sorted: Column[] = version.fields
@@ -284,7 +284,7 @@ export function PatientDetail() {
                     isImage={(a.mimeType ?? '').startsWith('image/')}
                     label={a.label ?? ''}
                     load={() => attachmentsRepo.attachmentUrl(a.id, a.filePath)}
-                    onReveal={() => void audit.logSensitiveRead('attachment_read', 'attachment', a.id, baseId ?? '')}
+                    onReveal={() => void audit.logAttachmentRead(a.id)}
                   />
                   <figcaption className="truncate text-xs text-slate-500">{a.label ?? a.kind}</figcaption>
                   <DeleteWithReason onConfirm={async (reason) => { await attachmentsRepo.softDeleteAttachment(a.id, reason); await load(); }} />

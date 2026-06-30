@@ -193,7 +193,7 @@ export function CurationTask() {
                 <RawDocumentLink
                   label={d.label ?? d.storagePath}
                   load={() => curation.documentUrl(d.id, d.storagePath)}
-                  onReveal={() => void audit.logSensitiveRead('raw_document_read', 'raw_document', d.id, task.baseId)}
+                  onReveal={() => void audit.logRawDocumentRead(d.id)}
                 />
                 <span className="ml-2 text-xs text-slate-400">{d.mimeType}</span>
               </li>

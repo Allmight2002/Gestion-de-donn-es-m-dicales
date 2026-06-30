@@ -73,21 +73,16 @@ describe('lecture ciblee de l audit (RLS)', () => {
   });
 });
 
-describe('tracage des LECTURES sensibles (§7.1)', () => {
-  test('action invalide refusee ; proprietaire trace ; compte sans lien ignore en silence', async () => {
+describe('tracage des LECTURES sensibles (§7.1, §5.5 RPC specialisees)', () => {
+  test('proprietaire trace ; compte sans acces ignore en silence ; trace lisible par le proprietaire seul', async () => {
     const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
 
-    // Action hors liste -> refus.
-    await expect(rowsAs(aliceId, 'select public.log_sensitive_read($1,$2,$3,$4)', ['bogus', 'patient', pid, baseId]))
-      .rejects.toThrow(/invalide/i);
-
-    // Proprietaire : la lecture d'identite est tracee.
-    await rowsAs(aliceId, 'select public.log_sensitive_read($1,$2,$3,$4)', ['identity_read', 'patient', pid, baseId]);
+    // Proprietaire (acces identite) : la lecture d'identite est tracee (base + autz derivees serveur).
+    await rowsAs(aliceId, 'select public.log_identity_read($1)', [pid]);
     expect((await db.admin.query("select 1 from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, aliceId])).rows.length).toBeGreaterThan(0);
 
-    // Compte sans lien avec la base (admin systeme : ni proprietaire, ni acces, ni staff) ->
-    // ignore SILENCIEUSEMENT (pas d'erreur, mais aucune trace inseree).
-    await rowsAs(adminId, 'select public.log_sensitive_read($1,$2,$3,$4)', ['identity_read', 'patient', pid, baseId]);
+    // Compte sans acces identite (admin systeme) -> ignore SILENCIEUSEMENT (aucune trace inseree).
+    await rowsAs(adminId, 'select public.log_identity_read($1)', [pid]);
     expect((await db.admin.query("select 1 from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, adminId])).rows).toHaveLength(0);
 
     // La trace est lisible par le proprietaire, pas par un tiers (analyste).

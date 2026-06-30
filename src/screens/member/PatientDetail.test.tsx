@@ -88,11 +88,11 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
   });
 
-  test('trace la consultation de l identite (§7.1)', async () => {
-    const logSensitiveRead = vi.fn(async () => {});
-    renderAt('/bases/b1/patients/p1', makePatients(), { logSensitiveRead } as unknown as AuditRepository);
+  test('trace la consultation de l identite (§7.1, §5.5 RPC specialisee)', async () => {
+    const logIdentityRead = vi.fn(async () => {});
+    renderAt('/bases/b1/patients/p1', makePatients(), { logIdentityRead } as unknown as AuditRepository);
     await screen.findByText('Jean Test');
-    await waitFor(() => expect(logSensitiveRead).toHaveBeenCalledWith('identity_read', 'patient', 'p1', 'b1'));
+    await waitFor(() => expect(logIdentityRead).toHaveBeenCalledWith('p1')); // le serveur derive base + autz
   });
 
   test('supprimer le patient exige un motif puis appelle softDeletePatient', async () => {

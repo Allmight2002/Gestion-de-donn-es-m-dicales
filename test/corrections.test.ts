@@ -185,3 +185,26 @@ describe('audit v10 §4.5 : cles inconnues du gabarit refusees a TOUS les statut
     expect(ok[0].validation_status).toBe('draft');
   });
 });
+
+describe('audit v10 §5.5 : journalisation de lecture specialisee (non falsifiable)', () => {
+  test('lecture legitime journalisee ; entite inexistante non journalisee ; generique non appelable', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+    const curatorId = (await db.admin.query("select id from auth.users where email='curator1@demo.test'")).rows[0].id;
+    const countIdentity = async () => Number((await db.admin.query("select count(*)::int n from public.audit_log where action='identity_read' and entity_id=$1", [pid])).rows[0].n);
+    const countRawDoc = async () => Number((await db.admin.query("select count(*)::int n from public.audit_log where action='raw_document_read'")).rows[0].n);
+
+    // Lecture LEGITIME (alice proprietaire, acces identite) -> 1 ligne (base derivee par le serveur).
+    const before = await countIdentity();
+    await rowsAs(aliceId, 'select public.log_identity_read($1)', [pid]);
+    expect(await countIdentity()).toBe(before + 1);
+
+    // Un curateur tente de FORGER une lecture de document sur un UUID inexistant -> AUCUNE ligne.
+    const b2 = await countRawDoc();
+    await rowsAs(curatorId, "select public.log_raw_document_read('00000000-0000-0000-0000-000000000000'::uuid)");
+    expect(await countRawDoc()).toBe(b2);
+
+    // La fonction GENERIQUE n'est plus appelable par un utilisateur.
+    await expect(rowsAs(aliceId, "select public.log_sensitive_read('identity_read','patient',$1::uuid,$2::uuid)", [pid, baseId]))
+      .rejects.toThrow(/permission|denied|refus/i);
+  });
+});
