@@ -27,31 +27,39 @@ export async function parseSpreadsheet(buf: ArrayBuffer): Promise<ParsedSheet> {
   return { headers, rows };
 }
 
-// Parse HORS du thread principal quand c'est possible (Web Worker). Repli synchrone sur le thread
-// principal si les Workers sont indisponibles (vieux navigateur) ou inutilisables (jsdom/tests) :
-// le parsing reste fonctionnel partout, l'isolation s'applique la ou les Workers existent (prod).
+// §5.3 : delai maximum de parsing -> au-dela, on termine le worker et on abandonne (anti fichier
+// hostile / zip-bomb / parsing sans fin). 30 s : largement au-dessus d'un fichier <= 5000 lignes.
+const PARSE_TIMEOUT_MS = 30_000;
+
+// Parse HORS du thread principal quand c'est possible (Web Worker).
+// §5.4 — Le repli sur le thread principal n'a lieu QUE si les Workers sont INDISPONIBLES (vieux
+// navigateur, jsdom/tests) ou si la CREATION du worker echoue. Une fois le worker cree, une erreur
+// (ou un timeout) de parsing N'EST PAS rejouee sur le thread principal : un fichier potentiellement
+// hostile ne doit pas etre execute une 2e fois cote React. On propage l'erreur a l'appelant.
 export async function parseSpreadsheetOffThread(buf: ArrayBuffer): Promise<ParsedSheet> {
-  if (typeof Worker !== 'undefined') {
-    try {
-      return await parseInWorker(buf);
-    } catch {
-      // Worker indisponible/casse -> repli sur le thread principal (buf non transfere, donc intact).
-    }
+  if (typeof Worker === 'undefined') return parseSpreadsheet(buf); // pas de Worker -> repli legitime
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('./spreadsheet.worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return parseSpreadsheet(buf); // creation impossible (env sans worker module) -> repli legitime
   }
-  return parseSpreadsheet(buf);
+  return runWorker(worker, buf);
 }
 
-function parseInWorker(buf: ArrayBuffer): Promise<ParsedSheet> {
+function runWorker(worker: Worker, buf: ArrayBuffer): Promise<ParsedSheet> {
   return new Promise<ParsedSheet>((resolve, reject) => {
-    const worker = new Worker(new URL('./spreadsheet.worker.ts', import.meta.url), { type: 'module' });
-    const finish = (fn: () => void) => { worker.terminate(); fn(); };
+    const timer = setTimeout(() => {
+      worker.terminate();
+      reject(new Error('Lecture du fichier interrompue (delai depasse).'));
+    }, PARSE_TIMEOUT_MS);
+    const finish = (fn: () => void) => { clearTimeout(timer); worker.terminate(); fn(); };
     worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: ParsedSheet; error?: string }>) => {
       const d = e.data;
       if (d.ok && d.result) finish(() => resolve(d.result as ParsedSheet));
       else finish(() => reject(new Error(d.error ?? 'Echec du parsing du fichier')));
     };
     worker.onerror = (e) => finish(() => reject(new Error(e.message || 'Echec du worker de parsing')));
-    // Copie (pas de transfert) : si le worker echoue, buf reste utilisable pour le repli.
     worker.postMessage(buf);
   });
 }

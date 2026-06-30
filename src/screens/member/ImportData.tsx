@@ -13,6 +13,7 @@ import type { ImportDuplicateWarning } from '../../data/patients';
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
 const MAX_ROWS = 5000;
+const MAX_FILE_BYTES = 15 * 1024 * 1024; // §5.3 : borne de TAILLE avant lecture (anti fichier hostile)
 const CHUNK = 300; // taille des lots (au-dela, import par lots avec progression)
 
 async function sha256Hex(buf: ArrayBuffer): Promise<string> {
@@ -69,6 +70,11 @@ export function ImportData() {
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null); setReport(null); setWarnings([]); setCommitted(false);
+    // §5.3 : on BORNE la taille AVANT de lire le fichier en memoire (arrayBuffer).
+    if (file.size > MAX_FILE_BYTES) {
+      setError(t('import.file_too_big').replace('{max}', String(Math.round(MAX_FILE_BYTES / 1024 / 1024))));
+      return;
+    }
     try {
       const buf = await file.arrayBuffer();
       // Empreinte best-effort : si crypto.subtle est indisponible (contexte non securise,
