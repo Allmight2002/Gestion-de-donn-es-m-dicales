@@ -305,4 +305,15 @@ describe('import_records', () => {
     await rowsAs(aliceId, CALL8, [baseId, J([row('B47-1', null, { sexe: 'M' }), row('B47-2', null, { sexe: 'M' })]), false, 'draft', 'fill', null, null, batchId]);
     await expect(rowsAs(aliceId, COMPLETE, [batchId])).rejects.toThrow(/incomplet|incoherent/i);
   });
+
+  test('§5.2 import curated d un patient EXISTANT : completude sur les donnees FUSIONNEES', async () => {
+    // Patient existant COMPLET en curated (sexe + birth_year = champs requis du gabarit).
+    await rowsAs(aliceId, CALL7, [baseId, J([row('MRG-1', null, { sexe: 'M', birth_year: 1980 })]), false, 'curated', 'fill', null, null]);
+    // Re-import curated SANS repeter sexe/birth_year (juste une donnee de plus) : la fusion est
+    // complete -> doit passer (avant le correctif, la completude portait sur le seul fragment -> erreur).
+    const rep = (await rowsAs(aliceId, CALL7, [baseId, J([row('MRG-1', null, { blood_group: 'A+' })]), false, 'curated', 'fill', null, null]))[0].report;
+    expect(rep.error_count).toBe(0);
+    const p = (await db.admin.query("select data from public.patient where base_id=$1 and patient_code='MRG-1'", [baseId])).rows[0].data;
+    expect(p).toMatchObject({ sexe: 'M', birth_year: 1980, blood_group: 'A+' });
+  });
 });

@@ -97,6 +97,12 @@ export function ImportData() {
     setMapping(headers.length > 0 ? autoMapColumns(headers, fields) : {});
   }, [headers, fields]);
 
+  // §5.1 : tout changement de parametre d'import INVALIDE l'apercu precedent (sinon l'import
+  // reel ne correspondrait plus a l'apercu affiche). On force a relancer un apercu.
+  useEffect(() => {
+    setReport(null); setWarnings([]); setCommitted(false);
+  }, [mapping, status, conflict, rawRows, versionId]);
+
   const rows = useMemo(() => buildImportRows(rawRows, mapping), [rawRows, mapping]);
   const hasPatientCode = Object.values(mapping).includes('patient_code');
   const dups = useMemo(() => duplicateTargets(mapping), [mapping]);
