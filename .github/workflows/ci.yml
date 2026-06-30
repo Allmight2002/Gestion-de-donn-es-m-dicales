@@ -5,7 +5,7 @@ name: CI
 # le bundle PWA. Aucun secret requis : les tests n'utilisent ni Docker ni Supabase.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 jobs:
