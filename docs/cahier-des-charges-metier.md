@@ -103,8 +103,15 @@ exporte des données **sans identité**.
 - **EF-7.** Un gabarit est **global** (géré par l'admin) ou **personnel** (créé et versionné par le
   médecin propriétaire). Le médecin peut **créer la version suivante** de son gabarit personnel.
 - **RG-8.** Une variable **déjà utilisée** par des données ne peut plus voir son **sens** changer
-  (clé, type, portée, requise, bornes, valeurs autorisées…) ; seuls le libellé, la section et
-  l'unité restent modifiables. Pour changer le reste : créer une nouvelle version.
+  (clé, type, portée, requise, bornes, valeurs autorisées…) ni être supprimée ; seuls le libellé,
+  la section et l'unité restent modifiables. Pour changer le reste : créer une nouvelle version.
+- **RG-8 bis (« édition libre » — choix produit assumé).** En revanche, **ajouter une nouvelle
+  variable** à une version `draft` reste autorisé **même si la base contient déjà des données** (les
+  anciens enregistrements n'ont simplement pas cette variable). C'est un arbitrage **délibéré**
+  (souplesse de constitution d'un registre en cours, pour le pilote) **au détriment d'une
+  reproductibilité scientifique stricte**. Un audit externe (v10 §4.4) recommande de l'interdire ;
+  la décision **du 2026-06-30 est de conserver l'édition libre**. À reconsidérer avant publication
+  scientifique (passer alors à : version utilisée = totalement figée, tout changement par nouvelle version).
 
 ### 4.3 Bases (registres)
 - **EF-8.** Un médecin **crée une base** rattachée à une version publiée de gabarit, lui donne un
