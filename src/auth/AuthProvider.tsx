@@ -46,20 +46,22 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   const applyUser = useCallback(
     async (nextUser: SessionUser | null) => {
-      // §5.5/§5.6 : le cache hors-ligne est cloisonne par compte. On (re)cible l'utilisateur
-      // courant a CHAQUE changement de session (connexion, restauration, deconnexion).
-      setOfflineUser(nextUser?.id ?? null);
+      // §5.5/§5.6/§5.9 : le cache hors-ligne est cloisonne par compte.
       if (!nextUser) {
+        // §5.9 : on efface les instantanes de l'utilisateur COURANT AVANT de le remettre a null
+        // (sinon on effacerait ceux du compte « null », pas les siens).
+        void clearOfflineSnapshots();
+        setOfflineUser(null);
         currentUserId.current = null;
         currentProfile.current = null;
         profileRequest.current = null;
-        void clearOfflineSnapshots(); // donnees analytiques au repos effacees a la deconnexion
         if (!mounted.current) return;
         setUser(null);
         setProfile(null);
         setStatus('signed_out');
         return;
       }
+      setOfflineUser(nextUser.id); // (re)cible l'utilisateur courant a la connexion / restauration
       if (currentUserId.current === nextUser.id && currentProfile.current) return;
       try {
         let req = profileRequest.current;

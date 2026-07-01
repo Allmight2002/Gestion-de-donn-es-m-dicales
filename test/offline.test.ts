@@ -245,6 +245,36 @@ describe('§5.6 expiration des instantanes', () => {
   });
 });
 
+describe('§5.9 cle IndexedDB composite (deux comptes, meme base)', () => {
+  test('deux comptes cachent la MEME base sans s ecraser', async () => {
+    setOfflineUser('userA');
+    await offlineCache.save(buildSnapshot({ id: 'shared', name: 'Version A', templateVersionId: 'v1' },
+      [{ id: 'pA', code: 'A-1', templateVersionId: 'v1', data: {}, validationStatus: 'draft' }], {}, [], Date.now()));
+    setOfflineUser('userB');
+    await offlineCache.save(buildSnapshot({ id: 'shared', name: 'Version B', templateVersionId: 'v1' },
+      [{ id: 'pB1', code: 'B-1', templateVersionId: 'v1', data: {}, validationStatus: 'draft' },
+       { id: 'pB2', code: 'B-2', templateVersionId: 'v1', data: {}, validationStatus: 'draft' }], {}, [], Date.now()));
+
+    // Chaque compte retrouve SON instantane (B n'a pas ecrase A).
+    setOfflineUser('userA');
+    const a = await offlineCache.get('shared');
+    expect(a?.baseName).toBe('Version A');
+    expect(a?.patients).toHaveLength(1);
+    setOfflineUser('userB');
+    const b = await offlineCache.get('shared');
+    expect(b?.baseName).toBe('Version B');
+    expect(b?.patients).toHaveLength(2);
+
+    // §5.9 : la deconnexion de B n'efface QUE les instantanes de B (celui de A reste).
+    await clearOfflineSnapshots(); // currentUser = userB
+    expect(await offlineCache.get('shared')).toBeNull();
+    setOfflineUser('userA');
+    expect((await offlineCache.get('shared'))?.baseName).toBe('Version A');
+    await offlineCache.remove('shared');
+    setOfflineUser(null);
+  });
+});
+
 describe('outbox — conflits (Phase 3)', () => {
   test('flush sur rencontre modifiee entre-temps -> conflit + valeur serveur memorisee', async () => {
     await seedBase('bC', '2024-01-01T00:00:00.000Z');

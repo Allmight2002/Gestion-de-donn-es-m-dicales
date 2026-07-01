@@ -50,6 +50,8 @@ export interface OfflineSnapshot {
   expiresAt: number; // epoch ms
   /** §5.5 : utilisateur proprietaire de cet instantane (cloisonnement sur poste partage). */
   ownerUserId?: string | null;
+  /** §5.9 : cle IndexedDB composite `ownerUserId::baseId` (deux comptes ne s'ecrasent plus). */
+  key?: string;
 }
 
 /** Metadonnees legeres d'un instantane (sans la liste des patients). */
@@ -79,6 +81,8 @@ export function isExpired(snap: { expiresAt: number }, now = Date.now()): boolea
 let currentUser: string | null = null;
 export function setOfflineUser(userId: string | null): void { currentUser = userId; }
 const ownedByCurrent = (o: { ownerUserId?: string | null }) => (o.ownerUserId ?? null) === currentUser;
+// §5.9 : cle composite -> deux comptes qui cachent la MEME base ne s'ecrasent plus (poste partage).
+const snapKey = (baseId: string): string => `${currentUser ?? ''}::${baseId}`;
 
 // Construit un instantane ANALYTIQUE : ne retient QUE les champs analytiques (aucune identite).
 export function buildSnapshot(
@@ -118,7 +122,7 @@ export const snapshotMeta = (s: OfflineSnapshot): OfflineMeta => ({
 
 // --- IndexedDB : 2 object stores -> `snapshots` (cle baseId), `outbox` (cle id) -----------
 const DB_NAME = 'meddata-offline';
-const DB_VERSION = 2;
+const DB_VERSION = 3; // v3 : cle snapshot composite `ownerUserId::baseId` (§5.9)
 const STORE = 'snapshots';
 const OUTBOX = 'outbox';
 
@@ -129,7 +133,11 @@ function openDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'baseId' });
+      // §5.9 : la cle du snapshot passe de `baseId` a `ownerUserId::baseId`. Changer un keyPath
+      // impose de RECREER le store -> les anciens instantanes sont perdus (re-telechargeables).
+      // L'outbox (keyPath 'id', travail non synchronise) est preservee.
+      if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
+      db.createObjectStore(STORE, { keyPath: 'key' });
       if (!db.objectStoreNames.contains(OUTBOX)) db.createObjectStore(OUTBOX, { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
@@ -161,10 +169,10 @@ export interface OfflineCache {
 }
 
 export const offlineCache: OfflineCache = {
-  // L'enregistreur est le proprietaire : on estampille toujours l'utilisateur courant.
-  async save(snap) { await tx(STORE, 'readwrite', (s) => s.put({ ...snap, ownerUserId: currentUser })); },
+  // L'enregistreur est le proprietaire : on estampille l'utilisateur + on pose la cle composite.
+  async save(snap) { await tx(STORE, 'readwrite', (s) => s.put({ ...snap, ownerUserId: currentUser, key: snapKey(snap.baseId) })); },
   async get(baseId) {
-    const snap = await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(baseId));
+    const snap = await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(snapKey(baseId)));
     if (!snap || !ownedByCurrent(snap)) return null;            // §5.5 : pas de lecture inter-comptes
     if (isExpired(snap)) { void offlineCache.remove(baseId); return null; } // §5.6 : TTL applique
     return snap;
@@ -174,22 +182,28 @@ export const offlineCache: OfflineCache = {
     for (const s of mine) if (isExpired(s)) void offlineCache.remove(s.baseId); // purge a la lecture
     return mine.filter((s) => !isExpired(s)).map(snapshotMeta);
   },
-  async remove(baseId) { await tx(STORE, 'readwrite', (s) => s.delete(baseId)); },
+  async remove(baseId) { await tx(STORE, 'readwrite', (s) => s.delete(snapKey(baseId))); },
 };
 
-// §5.6 — purge des instantanes EXPIRES (tous comptes), pour le menage au demarrage.
+// Supprime un instantane par sa cle composite propre (utilise par les purges tous-comptes).
+const deleteByKey = (key: string) => tx(STORE, 'readwrite', (s) => s.delete(key));
+
+// §5.6 — purge des instantanes EXPIRES (TOUS comptes), pour le menage au demarrage.
 export async function purgeExpiredSnapshots(now = Date.now()): Promise<void> {
   try {
     const all = await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll());
-    for (const s of all) if (isExpired(s, now)) await offlineCache.remove(s.baseId);
+    for (const s of all) if (isExpired(s, now) && s.key) await deleteByKey(s.key);
   } catch { /* IndexedDB indisponible : rien a purger */ }
 }
 
-// §5.6 — vide TOUS les instantanes (donnees analytiques au repos). Appele a la DECONNEXION.
-// L'outbox (ecritures non synchronisees) est CONSERVEE mais cloisonnee : la perdre effacerait
-// le travail hors-ligne de l'utilisateur ; son isolation (ownerUserId) suffit a la securite.
+// §5.6/§5.9 — a la DECONNEXION, vide UNIQUEMENT les instantanes de l'utilisateur COURANT (pas ceux
+// des autres comptes du meme appareil). A appeler AVANT setOfflineUser(null). L'outbox (travail non
+// synchronise) est conservee mais cloisonnee.
 export async function clearOfflineSnapshots(): Promise<void> {
-  try { await tx(STORE, 'readwrite', (s) => s.clear()); } catch { /* IndexedDB indisponible */ }
+  try {
+    const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent);
+    for (const s of mine) if (s.key) await deleteByKey(s.key);
+  } catch { /* IndexedDB indisponible */ }
 }
 
 // =====================================================================================
