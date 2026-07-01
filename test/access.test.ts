@@ -60,3 +60,49 @@ describe('lecture des profils collaborateurs (§8.10)', () => {
     expect(await rowsAs(outsider, 'select full_name from public.profiles where id=$1', [aliceId])).toHaveLength(0);
   });
 });
+
+describe('audit v12 §6.1 : anti-escalade via can_manage_access', () => {
+  // Bob = DELEGATAIRE (uniquement can_manage_access) ; Anna = cible SANS permission (octrois nouveaux).
+  beforeAll(async () => {
+    await db.admin.query(
+      `insert into public.base_access(base_id, user_id, access_role, can_manage_access, granted_by)
+         values($1,$2,'viewer',true,$3)
+       on conflict (base_id, user_id) do update set
+         can_manage_access=true, can_view_identity=false, can_view_raw_documents=false,
+         can_edit_structured_data=false, can_export_data=false, revoked_at=null`,
+      [baseId, bobId, aliceId],
+    );
+    await db.admin.query(
+      `insert into public.base_access(base_id, user_id, access_role, granted_by)
+         values($1,$2,'viewer',$3)
+       on conflict (base_id, user_id) do update set
+         can_manage_access=false, can_view_identity=false, can_view_raw_documents=false,
+         can_edit_structured_data=false, can_export_data=false, revoked_at=null`,
+      [baseId, annaId, aliceId],
+    );
+  });
+
+  test('un delegue NE PEUT PAS s auto-attribuer des droits sur SA propre ligne', async () => {
+    await expect(rowsAs(bobId, 'update public.base_access set can_view_identity=true where base_id=$1 and user_id=$2', [baseId, bobId]))
+      .rejects.toThrow(/propre ligne|anti-escalade/i);
+    await expect(rowsAs(bobId, 'update public.base_access set can_export_data=true, can_edit_structured_data=true where base_id=$1 and user_id=$2', [baseId, bobId]))
+      .rejects.toThrow(/propre ligne|anti-escalade/i);
+    // Aucune permission acquise.
+    expect((await db.admin.query('select can_view_identity, can_export_data from public.base_access where base_id=$1 and user_id=$2', [baseId, bobId])).rows[0])
+      .toMatchObject({ can_view_identity: false, can_export_data: false });
+  });
+
+  test('un delegue ne peut ni accorder gestion/identite, ni une permission qu il ne detient pas', async () => {
+    await expect(rowsAs(bobId, 'update public.base_access set can_manage_access=true where base_id=$1 and user_id=$2', [baseId, annaId]))
+      .rejects.toThrow(/gestion des acces/i);
+    await expect(rowsAs(bobId, 'update public.base_access set can_view_identity=true where base_id=$1 and user_id=$2', [baseId, annaId]))
+      .rejects.toThrow(/identite/i);
+    await expect(rowsAs(bobId, 'update public.base_access set can_edit_structured_data=true where base_id=$1 and user_id=$2', [baseId, annaId]))
+      .rejects.toThrow(/non detenue/i); // bob n'a pas l'edition -> ne peut pas l'accorder
+  });
+
+  test('le PROPRIETAIRE, lui, gouverne librement (octroi d identite a un tiers)', async () => {
+    await rowsAs(aliceId, 'update public.base_access set can_view_identity=true where base_id=$1 and user_id=$2', [baseId, annaId]);
+    expect((await db.admin.query('select can_view_identity from public.base_access where base_id=$1 and user_id=$2', [baseId, annaId])).rows[0].can_view_identity).toBe(true);
+  });
+});

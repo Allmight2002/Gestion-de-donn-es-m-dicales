@@ -92,3 +92,23 @@ describe('visibilite : privee par defaut, partage explicite', () => {
     expect(await rowsAs(aliceId, 'select id from public.base where id = $1', [baseId])).toHaveLength(1);
   });
 });
+
+describe('audit v12 §6.2 : rattachement a un gabarit etranger interdit', () => {
+  test('le proprietaire ne peut pointer sa base que vers une version de SON gabarit', async () => {
+    const baseId = await bobCreatesBase(); // pointe vers publishedVersionId (gabarit T_a)
+    const tA = (await db.admin.query('select template_id from public.template_version where id=$1', [publishedVersionId])).rows[0].template_id;
+
+    // Version d'un AUTRE gabarit (le seed en compte deux) -> rattachement REFUSE.
+    const foreign = (await db.admin.query('select id from public.template_version where template_id <> $1 limit 1', [tA])).rows[0].id;
+    await expect(rowsAs(bobId, 'update public.base set current_template_version_id=$2 where id=$1', [baseId, foreign]))
+      .rejects.toThrow(/gabarit etranger/i);
+
+    // Une nouvelle version du MEME gabarit reste acceptee (flux legitime createNextVersion).
+    const sameTplNewVer = (await db.admin.query(
+      "insert into public.template_version(template_id, version_number, status) values($1, 999, 'published') returning id",
+      [tA],
+    )).rows[0].id;
+    await rowsAs(bobId, 'update public.base set current_template_version_id=$2 where id=$1', [baseId, sameTplNewVer]);
+    expect((await db.admin.query('select current_template_version_id from public.base where id=$1', [baseId])).rows[0].current_template_version_id).toBe(sameTplNewVer);
+  });
+});
