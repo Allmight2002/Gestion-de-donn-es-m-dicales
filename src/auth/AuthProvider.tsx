@@ -40,6 +40,9 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
+  const currentUserId = useRef<string | null>(null);
+  const currentProfile = useRef<Profile | null>(null);
+  const profileRequest = useRef<{ userId: string; promise: Promise<Profile | null> } | null>(null);
 
   const applyUser = useCallback(
     async (nextUser: SessionUser | null) => {
@@ -47,6 +50,9 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
       // courant a CHAQUE changement de session (connexion, restauration, deconnexion).
       setOfflineUser(nextUser?.id ?? null);
       if (!nextUser) {
+        currentUserId.current = null;
+        currentProfile.current = null;
+        profileRequest.current = null;
         void clearOfflineSnapshots(); // donnees analytiques au repos effacees a la deconnexion
         if (!mounted.current) return;
         setUser(null);
@@ -54,15 +60,27 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         setStatus('signed_out');
         return;
       }
+      if (currentUserId.current === nextUser.id && currentProfile.current) return;
       try {
-        const nextProfile = await backend.fetchProfile(nextUser.id);
+        let req = profileRequest.current;
+        if (!req || req.userId !== nextUser.id) {
+          req = { userId: nextUser.id, promise: backend.fetchProfile(nextUser.id) };
+          profileRequest.current = req;
+        }
+        const nextProfile = await req.promise;
+        if (profileRequest.current === req) profileRequest.current = null;
         if (!mounted.current) return;
+        currentUserId.current = nextUser.id;
+        currentProfile.current = nextProfile;
         setUser(nextUser);
         setProfile(nextProfile);
         setStatus('signed_in');
       } catch {
+        profileRequest.current = null;
         // Session presente mais profil illisible : on reste connecte sans profil.
         if (!mounted.current) return;
+        currentUserId.current = nextUser.id;
+        currentProfile.current = null;
         setUser(nextUser);
         setProfile(null);
         setStatus('signed_in');
@@ -105,6 +123,9 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   const signOut = useCallback(async () => {
     await backend.signOut();
+    currentUserId.current = null;
+    currentProfile.current = null;
+    profileRequest.current = null;
     if (!mounted.current) return;
     setUser(null);
     setProfile(null);

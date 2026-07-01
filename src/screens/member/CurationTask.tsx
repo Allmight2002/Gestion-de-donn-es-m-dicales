@@ -6,6 +6,7 @@ import type { MessageKey } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
 import { useAuditRepository, useCurationRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
+import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
@@ -70,8 +71,7 @@ export function CurationTask() {
         setEncounters(b.draft.encounters ?? []);
       }
       if (b?.task.templateVersionId) {
-        const version = await templates.getVersion(b.task.templateVersionId);
-        const sorted = [...version.fields].sort((a, b2) => a.displayOrder - b2.displayOrder);
+        const sorted = [...(await getTemplateFields(templates, b.task.templateVersionId))].sort((a, b2) => a.displayOrder - b2.displayOrder);
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
       }

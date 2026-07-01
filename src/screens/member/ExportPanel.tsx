@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';
+import { getTemplateFields } from '../../data/templates';
 import {
   buildDictionary, buildEncounterExport, buildPatientExport, toCsv, assertNoIdentity,
   type AggregationRule, type ExportField, type ExportTable,
@@ -64,9 +65,8 @@ export function ExportPanel() {
       const base = await bases.getBase(baseId);
       setTvId(base?.base.currentTemplateVersionId ?? null);
       if (base?.base.currentTemplateVersionId) {
-        const version = await templates.getVersion(base.base.currentTemplateVersionId);
         setFields(
-          version.fields
+          (await getTemplateFields(templates, base.base.currentTemplateVersionId))
             .sort((a, b) => a.displayOrder - b.displayOrder)
             .map((f) => ({ fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type, unit: f.unit, allowedValues: f.allowedValues })),
         );

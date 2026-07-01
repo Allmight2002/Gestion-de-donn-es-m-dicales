@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
-import type { IdentityMatch } from '../../data/patients';
+import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { FieldInput } from './FieldInput';
 
 // Ecran patient (cahier v3.0). Deux modes :
@@ -53,15 +54,21 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     if (!baseId) return;
     setLoading(true);
     try {
-      const base = await bases.getBase(baseId);
+      const maybePatients = patients as Partial<PatientRepository>;
+      const countPatients = maybePatients.listPatientsPage
+        ? maybePatients.listPatientsPage(baseId, 1, 0).then((r) => r.total)
+        : patients.listPatients(baseId).then((rows) => rows.length);
+      const [base, existing] = await Promise.all([
+        bases.getBase(baseId),
+        countPatients,
+      ]);
       if (!base?.base.currentTemplateVersionId) {
         setError(t('common.error'));
         return;
       }
-      const version = await templates.getVersion(base.base.currentTemplateVersionId);
-      setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
-      const existing = await patients.listPatients(baseId);
-      setCode((prev) => prev || `P-${String(existing.length + 1).padStart(4, '0')}`);
+      const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
+      setFields(fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
+      setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
       setError(null);
     } catch (e) {
       setError(msg(e));

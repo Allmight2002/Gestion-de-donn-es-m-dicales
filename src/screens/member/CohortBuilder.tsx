@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useCohortRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { CohortSummary, FilterCondition, FilterDefinition, FilterOp } from '../../data/cohorts';
+import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
 import type { MessageKey } from '../../i18n/messages';
 
@@ -41,8 +42,7 @@ export function CohortBuilder() {
     try {
       const base = await bases.getBase(baseId);
       if (base?.base.currentTemplateVersionId) {
-        const version = await templates.getVersion(base.base.currentTemplateVersionId);
-        const sorted = version.fields.sort((a, b) => a.displayOrder - b.displayOrder);
+        const sorted = (await getTemplateFields(templates, base.base.currentTemplateVersionId)).sort((a, b) => a.displayOrder - b.displayOrder);
         setFields(sorted);
         setDraftField((prev) => prev || sorted[0]?.fieldKey || '');
       }

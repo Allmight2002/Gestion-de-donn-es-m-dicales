@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'rea
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping, type ImportReport, type ImportTarget,
@@ -55,8 +56,7 @@ export function ImportData() {
       const base = await bases.getBase(baseId);
       if (base?.base.currentTemplateVersionId) {
         setVersionId(base.base.currentTemplateVersionId);
-        const v = await templates.getVersion(base.base.currentTemplateVersionId);
-        setFields(v.fields);
+        setFields(await getTemplateFields(templates, base.base.currentTemplateVersionId));
       }
     } catch (e) {
       setError(msg(e));

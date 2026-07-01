@@ -7,6 +7,7 @@ import type { Encounter, PatientListItem } from '../../data/patients';
 import type { AttachmentItem } from '../../data/attachments';
 import type { MessageKey } from '../../i18n/messages';
 import { offlineCache, useOnline } from '../../data/offline';
+import { getTemplateFields } from '../../data/templates';
 import { isMissing, missingCodeOf } from '../../domain/validation';
 import { DeleteWithReason } from './DeleteWithReason';
 import { useSignedFile } from '../../lib/useSignedFile';
@@ -108,8 +109,8 @@ export function PatientDetail() {
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       if (base?.base.currentTemplateVersionId) {
-        const version = await templates.getVersion(base.base.currentTemplateVersionId);
-        const sorted: Column[] = version.fields
+        const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
+        const sorted: Column[] = fields
           .map((f) => ({ id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, displayOrder: f.displayOrder }))
           .sort((a, b) => a.displayOrder - b.displayOrder);
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));

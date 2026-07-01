@@ -18,6 +18,8 @@ export interface TemplateRepository {
    *  pour une base. Renvoie la version a editer. (RLS : owner = soi, is_global = false.) */
   createPersonalTemplate(name: string, specialty: string | null): Promise<TemplateVersion>;
   getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>;
+  /** Lecture legere pour les ecrans qui n'ont besoin que d'afficher des champs. */
+  getFields?(versionId: string): Promise<TemplateField[]>;
   addField(versionId: string, field: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
   updateField(fieldId: string, field: NewField): Promise<TemplateField>;
@@ -62,6 +64,10 @@ const mapRule = (r: RuleRow): ValidationRule => ({ id: r.id, rule: r.rule, messa
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
 
+export async function getTemplateFields(repo: TemplateRepository, versionId: string): Promise<TemplateField[]> {
+  return repo.getFields ? repo.getFields(versionId) : (await repo.getVersion(versionId)).fields;
+}
+
 export function makeTemplateRepository(client: SupabaseClient | null): TemplateRepository {
   if (!client) {
     const fail = async (): Promise<never> => {
@@ -78,7 +84,8 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
   // Cache de SESSION des versions (gabarits quasi-immuables) : evite de recharger fields+rules a
   // chaque ecran. Vide des qu'une ecriture de gabarit a lieu (clearVersionCache dans les writes).
   const versionCache = new Map<string, { version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>();
-  const clearVersionCache = () => versionCache.clear();
+  const fieldsCache = new Map<string, TemplateField[]>();
+  const clearVersionCache = () => { versionCache.clear(); fieldsCache.clear(); };
 
   return {
     async listTemplates() {
@@ -162,7 +169,24 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         rules: ((rRes.data as RuleRow[]) ?? []).map(mapRule),
       };
       versionCache.set(versionId, result);
+      fieldsCache.set(versionId, result.fields);
       return result;
+    },
+
+    async getFields(versionId) {
+      const cachedVersion = versionCache.get(versionId);
+      if (cachedVersion) return cachedVersion.fields;
+      const cachedFields = fieldsCache.get(versionId);
+      if (cachedFields) return cachedFields;
+      const { data, error } = await client
+        .from('template_field')
+        .select('id, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types')
+        .eq('template_version_id', versionId)
+        .order('display_order', { ascending: true });
+      if (error) throw error;
+      const fields = ((data as FieldRow[]) ?? []).map(mapField);
+      fieldsCache.set(versionId, fields);
+      return fields;
     },
 
     async addField(versionId, field) {

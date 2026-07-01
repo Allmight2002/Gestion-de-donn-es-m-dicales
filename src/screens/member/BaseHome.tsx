@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
+import { getTemplateFields } from '../../data/templates';
 import {
   downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
@@ -79,8 +80,8 @@ export function BaseHome() {
       setRows(pageRes.rows);
       setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {
-        const version = await templates.getVersion(b.base.currentTemplateVersionId);
-        setFields(version.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
+        const fields = await getTemplateFields(templates, b.base.currentTemplateVersionId);
+        setFields(fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
       }
       void offlineCache.get(id).then((s) => setCachedMeta(s ? snapshotMeta(s) : null)).catch(() => {});
       setError(null);
@@ -109,8 +110,8 @@ export function BaseHome() {
         listPatients: (bid) => patients.listPatients(bid),
         listEncounters: (pid) => patients.listEncounters(pid),
         getFields: (vid) =>
-          templates.getVersion(vid).then((v) =>
-            v.fields.map((f) => ({ id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder })),
+          getTemplateFields(templates, vid).then((fields) =>
+            fields.map((f) => ({ id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder })),
           ),
       };
       setCachedMeta(await downloadBaseSnapshot(id, src));
