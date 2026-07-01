@@ -96,8 +96,6 @@ export function ExportPanel() {
 
       const ext = format;
       const content = format === 'csv' ? new Blob([toCsv(main)], { type: 'text/csv;charset=utf-8' }) : await xlsxBlob(main, dict);
-      download(content, `cohorte.${ext}`);
-      if (format === 'csv') download(new Blob([toCsv(dict)], { type: 'text/csv;charset=utf-8' }), 'dictionnaire.csv');
 
       await exportsRepo.recordExport({
         cohortId, baseId, templateVersions: tvId ? [tvId] : [], format, ext,
@@ -106,6 +104,8 @@ export function ExportPanel() {
         patientCount: data.patients.length,
         encounterCount: data.encounters.length,
       });
+      download(content, `cohorte.${ext}`);
+      if (format === 'csv') download(new Blob([toCsv(dict)], { type: 'text/csv;charset=utf-8' }), 'dictionnaire.csv');
       setDone(true);
       await load();
       setError(null);

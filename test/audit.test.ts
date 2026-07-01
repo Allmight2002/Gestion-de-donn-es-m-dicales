@@ -77,6 +77,12 @@ describe('tracage des LECTURES sensibles (§7.1, §5.5 RPC specialisees)', () =>
   test('proprietaire trace ; compte sans acces ignore en silence ; trace lisible par le proprietaire seul', async () => {
     const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
 
+    const beforeRpc = Number((await db.admin.query("select count(*)::int n from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, aliceId])).rows[0].n);
+    const ident = await rowsAs(aliceId, 'select * from public.get_patient_identity($1)', [pid]);
+    expect(ident).toHaveLength(1);
+    expect(Number((await db.admin.query("select count(*)::int n from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, aliceId])).rows[0].n)).toBe(beforeRpc + 1);
+    expect(await rowsAs(aliceId, 'select * from public.patient_identity where id is not null')).toHaveLength(0);
+
     // Proprietaire (acces identite) : la lecture d'identite est tracee (base + autz derivees serveur).
     await rowsAs(aliceId, 'select public.log_identity_read($1)', [pid]);
     expect((await db.admin.query("select 1 from public.audit_log where action='identity_read' and entity_id=$1 and user_id=$2", [pid, aliceId])).rows.length).toBeGreaterThan(0);

@@ -45,7 +45,7 @@ export function makeAdminRepository(client: SupabaseClient | null): AdminReposit
     },
 
     async setGlobalRole(userId, role) {
-      const { error } = await client.from('profiles').update({ global_role: role }).eq('id', userId);
+      const { error } = await client.from('profiles').update({ global_role: role }).eq('id', userId).select('id').single();
       if (error) throw error;
     },
   };

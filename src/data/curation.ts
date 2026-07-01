@@ -232,18 +232,13 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         .maybeSingle();
       if (e3) throw e3;
 
-      // Identite minimale : tentee a chaque fois, mais la RLS ne la renvoie QU'au medecin
-      // proprietaire (le staff n'a pas de patient_code et aucun acces a patient_identity).
+      // Identite minimale : la RPC auditee ne renvoie quelque chose qu'au medecin autorise.
       let patientIdentity: MinimalIdentity | null = null;
-      if (task.targetPatientCode) {
-        const { data: idRow } = await client
-          .from('patient_identity')
-          .select('full_name, date_of_birth')
-          .eq('base_id', task.baseId)
-          .eq('patient_code', task.targetPatientCode)
-          .is('deleted_at', null)
-          .maybeSingle();
-        if (idRow) patientIdentity = { fullName: (idRow as { full_name: string | null }).full_name, dateOfBirth: (idRow as { date_of_birth: string | null }).date_of_birth };
+      if (task.targetPatientId) {
+        const { data: idRows, error: e4 } = await client.rpc('get_patient_identity', { p_patient_id: task.targetPatientId });
+        if (e4) throw e4;
+        const idRow = (((idRows ?? []) as { full_name: string | null; date_of_birth: string | null }[])[0]) ?? null;
+        if (idRow) patientIdentity = { fullName: idRow.full_name, dateOfBirth: idRow.date_of_birth };
       }
 
       const { data: clarRows, error: e5 } = await client

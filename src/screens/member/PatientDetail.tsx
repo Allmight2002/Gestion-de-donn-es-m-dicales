@@ -107,8 +107,6 @@ export function PatientDetail() {
       setEncounters(encs);
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
-      // §7.1 : consultation de l'identite -> trace (best-effort) si l'identite a ete revelee.
-      if (p?.identity) void audit.logIdentityRead(patientId);
       if (base?.base.currentTemplateVersionId) {
         const version = await templates.getVersion(base.base.currentTemplateVersionId);
         const sorted: Column[] = version.fields

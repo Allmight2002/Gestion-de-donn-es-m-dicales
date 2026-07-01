@@ -87,8 +87,13 @@ describe('§16.1 staff cloisonne (aucune donnee patient)', () => {
     expect(await rowsAs(adminId, 'select * from public.patient')).toHaveLength(0);
   });
 
-  test('controle positif : le proprietaire lit bien les identites', async () => {
-    expect((await rowsAs(aliceId, 'select * from public.patient_identity')).length).toBeGreaterThan(0);
+  test('controle positif : le proprietaire lit bien les identites via RPC auditee', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+    expect((await rowsAs(aliceId, 'select * from public.get_patient_identity($1)', [pid])).length).toBeGreaterThan(0);
+  });
+
+  test('meme le proprietaire ne lit pas patient_identity en direct', async () => {
+    expect(await rowsAs(aliceId, 'select * from public.patient_identity')).toHaveLength(0);
   });
 });
 

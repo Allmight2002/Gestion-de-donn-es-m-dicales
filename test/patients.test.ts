@@ -46,11 +46,11 @@ describe('creation d un patient (proprietaire)', () => {
     expect(created[0].data.birth_year).toBe(1980); // donnees permanentes (critere 5)
 
     // Les deux zones existent, liees par le code (critere 1).
-    const ident = await rowsAs(aliceId, 'select full_name from public.patient_identity where base_id=$1 and patient_code=$2', [baseId, 'NEW-001']);
-    expect(ident).toHaveLength(1);
-    expect(ident[0].full_name).toBe('Jean Fictif');
     const analytic = await rowsAs(aliceId, 'select id from public.patient where base_id=$1 and patient_code=$2', [baseId, 'NEW-001']);
     expect(analytic).toHaveLength(1);
+    const ident = await rowsAs(aliceId, 'select full_name from public.get_patient_identity($1)', [analytic[0].id]);
+    expect(ident).toHaveLength(1);
+    expect(ident[0].full_name).toBe('Jean Fictif');
   });
 });
 
@@ -66,7 +66,7 @@ describe('RLS sur la creation', () => {
     await expect(rowsAs(annaId, CALL, args('ANALYST-X', { sexe: 'F' }))).rejects.toThrow();
     // Rollback atomique : aucune identite ni analytique creee.
     expect(await rowsAs(aliceId, 'select id from public.patient where base_id=$1 and patient_code=$2', [baseId, 'ANALYST-X'])).toHaveLength(0);
-    expect(await rowsAs(aliceId, 'select id from public.patient_identity where base_id=$1 and patient_code=$2', [baseId, 'ANALYST-X'])).toHaveLength(0);
+    expect((await db.admin.query('select id from public.patient_identity where base_id=$1 and patient_code=$2', [baseId, 'ANALYST-X'])).rows).toHaveLength(0);
   });
 
   test('un membre sans acces a la base ne peut pas creer de patient', async () => {

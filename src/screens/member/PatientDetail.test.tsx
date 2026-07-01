@@ -88,11 +88,11 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
   });
 
-  test('trace la consultation de l identite (§7.1, §5.5 RPC specialisee)', async () => {
+  test('ne double-journalise pas l identite cote client', async () => {
     const logIdentityRead = vi.fn(async () => {});
     renderAt('/bases/b1/patients/p1', makePatients(), { logIdentityRead } as unknown as AuditRepository);
     await screen.findByText('Jean Test');
-    await waitFor(() => expect(logIdentityRead).toHaveBeenCalledWith('p1')); // le serveur derive base + autz
+    expect(logIdentityRead).not.toHaveBeenCalled();
   });
 
   test('supprimer le patient exige un motif puis appelle softDeletePatient', async () => {

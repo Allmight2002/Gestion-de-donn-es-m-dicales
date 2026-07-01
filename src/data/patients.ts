@@ -141,6 +141,9 @@ type IdentityRow = {
   patient_code: string; full_name: string | null; date_of_birth: string | null; phone: string | null;
   address: string | null; external_identifier: string | null;
 };
+type IdentityMatchRow = {
+  patient_id: string; code: string; full_name: string | null; date_of_birth: string | null;
+};
 type EncounterRow = {
   id: string; encounter_type: string; encounter_date: string; validation_status: string;
   age_value: number | null; age_unit: string | null; data: Record<string, unknown>; updated_at?: string | null;
@@ -240,31 +243,15 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async findIdentityMatches(baseId, fullName, dateOfBirth) {
       const name = fullName.trim();
       if (!name || !dateOfBirth) return [];
-      // Acces identite requis (RLS) ; meme nom (insensible a la casse) + meme date de naissance.
-      const { data: ids, error } = await client
-        .from('patient_identity')
-        .select('patient_code, full_name, date_of_birth')
-        .eq('base_id', baseId)
-        .eq('date_of_birth', dateOfBirth)
-        .ilike('full_name', name)
-        .is('deleted_at', null);
+      // Acces identite requis ; la RPC audite chaque match avant de renvoyer les champs.
+      const { data: rows, error } = await client.rpc('find_identity_matches', {
+        p_base_id: baseId,
+        p_full_name: name,
+        p_date_of_birth: dateOfBirth,
+      });
       if (error) throw error;
-      const rows = (ids ?? []) as { patient_code: string; full_name: string | null; date_of_birth: string | null }[];
-      if (rows.length === 0) return [];
-
-      // Resolution code -> id patient (modele : pas de FK identite/patient, lien par code).
-      const { data: pats, error: e2 } = await client
-        .from('patient')
-        .select('id, patient_code')
-        .eq('base_id', baseId)
-        .in('patient_code', rows.map((r) => r.patient_code))
-        .is('deleted_at', null);
-      if (e2) throw e2;
-      const idByCode = new Map(((pats ?? []) as { id: string; patient_code: string }[]).map((p) => [p.patient_code, p.id]));
-
-      return rows
-        .filter((r) => idByCode.has(r.patient_code))
-        .map((r) => ({ patientId: idByCode.get(r.patient_code) as string, code: r.patient_code, fullName: r.full_name, dateOfBirth: r.date_of_birth }));
+      return ((rows ?? []) as IdentityMatchRow[])
+        .map((r) => ({ patientId: r.patient_id, code: r.code, fullName: r.full_name, dateOfBirth: r.date_of_birth }));
     },
 
     async createPatient(baseId, input) {
@@ -314,15 +301,11 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
       if (!p) return null;
       const row = p as PatientRow;
-      const { data: ident, error: e2 } = await client
-        .from('patient_identity')
-        .select('patient_code, full_name, date_of_birth, phone, address, external_identifier')
-        .eq('base_id', baseId)
-        .eq('patient_code', row.patient_code)
-        .is('deleted_at', null)
-        .maybeSingle();
+      // La zone identite n'est jamais lue en direct : la RPC verifie l'acces et audite
+      // avant de renvoyer les champs. Sans acces identite, elle renvoie simplement [].
+      const { data: identRows, error: e2 } = await client.rpc('get_patient_identity', { p_patient_id: patientId });
       if (e2) throw e2;
-      const i = ident as IdentityRow | null;
+      const i = (((identRows ?? []) as IdentityRow[])[0]) ?? null;
       return {
         id: row.id,
         code: row.patient_code,

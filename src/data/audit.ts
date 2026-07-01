@@ -1,12 +1,12 @@
 // Tracage des LECTURES SENSIBLES (cahier §7.1). Les ecritures sensibles sont tracees par des
 // triggers ; les LECTURES (identite, document, image, export) le sont via des RPC SPECIALISEES
 // (§5.5) : le client ne fournit QUE l'identifiant, le serveur derive l'entite/la base/l'autorisation
-// (impossible de forger une fausse ligne). Best-effort : un echec de journalisation n'interrompt
-// jamais la consultation.
+// (impossible de forger une fausse ligne). Les lectures d'identite applicatives passent par
+// get_patient_identity(), qui audite avant de renvoyer les champs ; logIdentityRead reste
+// disponible pour les chemins historiques sans reveler de donnee.
 //
 // §5.6 : en PRODUCTION, la lecture d'un DOCUMENT ou d'une IMAGE passe par l'Edge signed-read, qui
 // journalise deja avant de signer -> on n'ajoute pas un 2e audit cote client pour ces deux-la.
-// La lecture d'IDENTITE ne passe pas par l'Edge -> toujours journalisee cote client.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
