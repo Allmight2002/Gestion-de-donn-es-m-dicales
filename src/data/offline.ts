@@ -208,9 +208,12 @@ export async function purgeExpiredSnapshots(now = Date.now()): Promise<void> {
 // §5.6/§5.9 — a la DECONNEXION, vide UNIQUEMENT les instantanes de l'utilisateur COURANT (pas ceux
 // des autres comptes du meme appareil). A appeler AVANT setOfflineUser(null). L'outbox (travail non
 // synchronise) est conservee mais cloisonnee.
-export async function clearOfflineSnapshots(): Promise<void> {
+export async function clearOfflineSnapshots(userId: string | null = currentUser): Promise<void> {
+  // §7.3 : on CAPTURE l'utilisateur a l'appel (parametre, evalue synchroniquement) -> le filtre ne
+  // depend plus de la variable globale mutable pendant l'execution asynchrone (la deconnexion remet
+  // currentUser a null juste apres l'appel).
   try {
-    const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent);
+    const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter((s) => (s.ownerUserId ?? null) === userId);
     for (const s of mine) if (s.key) await deleteByKey(s.key);
   } catch { /* IndexedDB indisponible */ }
 }
@@ -383,10 +386,19 @@ export interface SnapshotSource {
   getFields(versionId: string): Promise<OfflineField[]>;
 }
 
+// §7.6 : une RPC ABSENTE se reconnait au code PostgREST PGRST202 (ou au message « function ... does
+// not exist » / « could not find the function »). Tout le reste (401/403, 500, payload trop gros,
+// JSON invalide) n'est PAS une absence de RPC et ne doit pas declencher le repli silencieux.
+function isRpcMissing(e: unknown): boolean {
+  const err = e as { code?: string; message?: string } | null | undefined;
+  if (err?.code === 'PGRST202' || err?.code === '42883') return true;
+  return /could not find the function|function\b.*\bdoes not exist/i.test(err?.message ?? '');
+}
+
 export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, now = Date.now()): Promise<OfflineMeta> {
-  // §8 — un seul aller-retour si la source le permet (RPC download_base_snapshot). En cas d'echec
-  // (ex. RPC pas encore deployee sur le cloud), on retombe silencieusement sur le repli N+1 :
-  // la migration n'est donc qu'une OPTIMISATION, jamais une dependance bloquante.
+  // §8 — un seul aller-retour si la source le permet (RPC download_base_snapshot). Si la RPC n'est
+  // pas encore deployee sur le cloud, on retombe sur le repli N+1 : la migration reste une simple
+  // OPTIMISATION, jamais une dependance bloquante.
   if (src.fetchSnapshot) {
     try {
       const s = await src.fetchSnapshot(baseId);
@@ -398,8 +410,11 @@ export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, 
         return snapshotMeta(snap);
       }
       // s null / sans base -> pas d'acces : on laisse le repli ci-dessous trancher (meme verdict).
-    } catch {
-      // RPC indisponible -> repli N+1 transparent.
+    } catch (e) {
+      // §7.6 : ne retomber sur le N+1 QUE si la RPC est reellement ABSENTE (pas encore deployee).
+      // Toute autre erreur (autorisation refusee, reponse trop volumineuse, erreur serveur, format
+      // inattendu) doit REMONTER -> on ne masque pas une anomalie et on ne perd pas le multi-versions.
+      if (!isRpcMissing(e)) throw e;
     }
   }
 

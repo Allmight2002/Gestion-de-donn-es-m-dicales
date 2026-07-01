@@ -142,6 +142,20 @@ describe('downloadBaseSnapshot', () => {
     await offlineCache.remove('bF');
   });
 
+  test('§7.6 une erreur NON « RPC absente » (autorisation/serveur) REMONTE et ne declenche pas le repli', async () => {
+    let nPlusOne = 0;
+    const src: SnapshotSource = {
+      // Erreur d'autorisation cote serveur : surtout PAS un repli silencieux qui masquerait l'anomalie.
+      fetchSnapshot: async () => { throw Object.assign(new Error('permission denied for function download_base_snapshot'), { code: '42501' }); },
+      getBase: async () => ({ base: { id: 'bE', name: 'Base E', currentTemplateVersionId: 'v9' } }),
+      listPatients: async () => [],
+      listEncounters: async () => { nPlusOne += 1; return []; },
+      getFields: async () => [],
+    };
+    await expect(downloadBaseSnapshot('bE', src)).rejects.toThrow(/permission denied/i);
+    expect(nPlusOne).toBe(0); // le repli N+1 n'a PAS ete emprunte
+  });
+
   test('§5.7 fieldsByVersion + version des rencontres conserves dans le cache', async () => {
     setOfflineUser('uV');
     const src: SnapshotSource = {

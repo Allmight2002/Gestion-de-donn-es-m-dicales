@@ -299,6 +299,22 @@ describe('import_records', () => {
     expect((await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id).toBeTruthy();
   });
 
+  test('§7.7 import AUTONOME (petit fichier) avec erreurs -> completed_with_errors, pas completed', async () => {
+    const h = 'b77-' + Date.now();
+    // Appel autonome (sans batch_id) avec file_hash : une ligne OK + une ligne KO (code manquant).
+    const rep = (await rowsAs(aliceId, CALL7, [baseId, J([
+      row('B77-OK', enc('consultation', '2024-01-05', { diagnosis: 'a', glasgow_score: 10 })),
+      row(null, null), // code patient manquant -> erreur comptee
+    ]), false, 'draft', 'fill', h, null]))[0].report;
+    expect(rep.error_count).toBe(1);
+    // Le bilan ne ment plus : le lot autonome est marque completed_with_errors (pas completed).
+    expect((await db.admin.query('select status, error_count from public.import_batch where base_id=$1 and file_hash=$2', [baseId, h])).rows[0])
+      .toMatchObject({ status: 'completed_with_errors' });
+    // ...et n'est donc pas verrouille : le fichier corrige reste rejouable.
+    const rep2 = (await rowsAs(aliceId, CALL7, [baseId, J([row('B77-OK2', null, { sexe: 'M' })]), false, 'draft', 'fill', h, null]))[0].report;
+    expect(rep2.error_count).toBe(0);
+  });
+
   test('§4.7 cloture refusee si row_count depasse expected_rows (chunk en double)', async () => {
     const h = 'b47-' + Date.now();
     const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id; // 1 ligne attendue
