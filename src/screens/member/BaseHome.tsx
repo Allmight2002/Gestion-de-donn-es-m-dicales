@@ -7,7 +7,7 @@ import type { BaseListing } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
 import { getTemplateFields } from '../../data/templates';
 import {
-  downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline,
+  downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
 } from '../../data/offline';
 
@@ -100,6 +100,8 @@ export function BaseHome() {
   // Telecharge l'instantane analytique de la base pour consultation hors-ligne.
   const makeAvailableOffline = useCallback(async () => {
     if (!id) return;
+    // §5.8 : sur une grande base, l'instantane est un gros bloc -> on confirme avant de le charger.
+    if (total > MAX_OFFLINE_PATIENTS && !window.confirm(t('offline.large_confirm').replace('{n}', String(total)))) return;
     setSaving(true);
     try {
       const src: SnapshotSource = {
@@ -121,7 +123,7 @@ export function BaseHome() {
     } finally {
       setSaving(false);
     }
-  }, [id, bases, patients, templates, t]);
+  }, [id, total, bases, patients, templates, t]);
 
   const removeOffline = useCallback(async () => {
     if (!id) return;

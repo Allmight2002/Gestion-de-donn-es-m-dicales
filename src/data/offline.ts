@@ -64,6 +64,9 @@ export interface OfflineMeta {
 }
 
 export const OFFLINE_TTL_MS = 7 * 24 * 3600 * 1000; // 7 jours
+// §5.8 : au-dela de ce nombre de patients, l'instantane (un seul gros bloc JSON) devient lourd
+// (memoire, quota IndexedDB, delai) -> on demande confirmation avant de le telecharger.
+export const MAX_OFFLINE_PATIENTS = 2000;
 
 export function isOnline(): boolean {
   return typeof navigator === 'undefined' ? true : navigator.onLine;
