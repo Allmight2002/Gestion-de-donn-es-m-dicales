@@ -47,4 +47,15 @@ describe('§8 download_base_snapshot (instantane hors-ligne en 1 appel)', () => 
     expect(snap.base).toBeNull();
     expect(snap.patients).toEqual([]);
   });
+
+  test('§5.7 fieldsByVersion : dictionnaire par version presente + version de gabarit sur chaque rencontre', async () => {
+    const snap = await snapshotAs(aliceId);
+    const p = snap.patients[0];
+    // Le dictionnaire de la version du patient est present et non vide.
+    expect(Array.isArray(snap.fieldsByVersion[p.templateVersionId])).toBe(true);
+    expect(snap.fieldsByVersion[p.templateVersionId].length).toBeGreaterThan(0);
+    // Chaque rencontre porte sa propre version de gabarit (pour choisir le bon dictionnaire hors-ligne).
+    const withEnc = snap.patients.find((pp: { encounters: unknown[] }) => pp.encounters.length > 0);
+    expect(withEnc.encounters[0].templateVersionId).toBeTruthy();
+  });
 });

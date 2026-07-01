@@ -17,6 +17,8 @@ export interface OfflineEncounter {
   data: Record<string, unknown>;
   /** Version optimiste serveur (jeton de conflit pour la synchro). */
   updatedAt?: string | null;
+  /** §5.7 : version de gabarit de CETTE rencontre (choix du bon dictionnaire hors-ligne). */
+  templateVersionId?: string;
   /** true si une modification locale n'est pas encore synchronisee (affichage). */
   pending?: boolean;
 }
@@ -45,6 +47,8 @@ export interface OfflineSnapshot {
   baseName: string;
   templateVersionId: string | null;
   fields: OfflineField[];
+  /** §5.7 : dictionnaire PAR VERSION (toutes les versions presentes) ; `fields` = version courante. */
+  fieldsByVersion?: Record<string, OfflineField[]>;
   patients: OfflinePatient[];
   cachedAt: number; // epoch ms
   expiresAt: number; // epoch ms
@@ -94,6 +98,7 @@ export function buildSnapshot(
   encountersByPatient: Record<string, OfflineEncounter[]>,
   fields: OfflineField[] = [],
   now = Date.now(),
+  fieldsByVersion?: Record<string, OfflineField[]>, // §5.7
 ): OfflineSnapshot {
   return {
     baseId: base.id,
@@ -102,6 +107,7 @@ export function buildSnapshot(
     fields: fields.map((f) => ({
       id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder,
     })),
+    fieldsByVersion,
     patients: patients.map((p) => ({
       id: p.id,
       code: p.code,
@@ -111,7 +117,7 @@ export function buildSnapshot(
       encounters: (encountersByPatient[p.id] ?? []).map((e) => ({
         id: e.id, encounterType: e.encounterType, encounterDate: e.encounterDate,
         validationStatus: e.validationStatus, ageValue: e.ageValue, ageUnit: e.ageUnit, data: e.data,
-        updatedAt: e.updatedAt ?? null,
+        updatedAt: e.updatedAt ?? null, templateVersionId: e.templateVersionId,
       })),
     })),
     cachedAt: now,
@@ -359,6 +365,8 @@ export function useOutbox(baseId?: string): OutboxEntry[] {
 export interface RawSnapshotData {
   base: { id: string; name: string; templateVersionId: string | null };
   fields: OfflineField[];
+  /** §5.7 : dictionnaire par version (toutes les versions presentes dans l'instantane). */
+  fieldsByVersion?: Record<string, OfflineField[]>;
   patients: {
     id: string; code: string; templateVersionId: string; data: Record<string, unknown>;
     validationStatus: string; encounters: OfflineEncounter[];
@@ -385,7 +393,7 @@ export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, 
       if (s && s.base) {
         const byPatient: Record<string, OfflineEncounter[]> = {};
         for (const p of s.patients) byPatient[p.id] = p.encounters ?? [];
-        const snap = buildSnapshot(s.base, s.patients, byPatient, s.fields ?? [], now);
+        const snap = buildSnapshot(s.base, s.patients, byPatient, s.fields ?? [], now, s.fieldsByVersion);
         await offlineCache.save(snap);
         return snapshotMeta(snap);
       }

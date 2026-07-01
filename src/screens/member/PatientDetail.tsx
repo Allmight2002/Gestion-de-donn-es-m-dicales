@@ -90,9 +90,14 @@ export function PatientDetail() {
         if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
         setPatient({ id: op.id, code: op.code, templateVersionId: op.templateVersionId, data: op.data, validationStatus: op.validationStatus, identity: null });
         setEncounters(op.encounters.map((e) => ({ ...e })));
-        const sorted = [...(snap?.fields ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
-        setPatientFields(sorted.filter((f) => f.scope === 'patient'));
-        setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
+        // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
+        // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
+        const dictFor = (vid?: string): Column[] => (vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || [];
+        setPatientFields([...dictFor(op.templateVersionId)].sort((a, b) => a.displayOrder - b.displayOrder).filter((f) => f.scope === 'patient'));
+        const encFields = new Map<string, Column>();
+        for (const e of op.encounters) for (const f of dictFor(e.templateVersionId)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
+        if (encFields.size === 0) for (const f of (snap?.fields ?? [])) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
+        setEncounterFields([...encFields.values()].sort((a, b) => a.displayOrder - b.displayOrder));
         setError(null);
         return;
       }

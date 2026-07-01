@@ -141,6 +141,31 @@ describe('downloadBaseSnapshot', () => {
     expect((await offlineCache.get('bF'))?.patients[0].encounters[0].data).toEqual({ glasgow_score: 12 });
     await offlineCache.remove('bF');
   });
+
+  test('§5.7 fieldsByVersion + version des rencontres conserves dans le cache', async () => {
+    setOfflineUser('uV');
+    const src: SnapshotSource = {
+      fetchSnapshot: async () => ({
+        base: { id: 'bV', name: 'Base V', templateVersionId: 'v2' },
+        fields: [{ id: 'f2', fieldKey: 'x', label: 'X v2', scope: 'patient', type: 'text', displayOrder: 0 }],
+        fieldsByVersion: {
+          v1: [{ id: 'f1', fieldKey: 'x', label: 'X v1', scope: 'patient', type: 'text', displayOrder: 0 }],
+          v2: [{ id: 'f2', fieldKey: 'x', label: 'X v2', scope: 'patient', type: 'text', displayOrder: 0 }],
+        },
+        patients: [{
+          id: 'p1', code: 'V-1', templateVersionId: 'v1', data: { x: 'a' }, validationStatus: 'curated',
+          encounters: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: {}, updatedAt: null, templateVersionId: 'v1' }],
+        }],
+      }),
+      getBase: async () => null, listPatients: async () => [], listEncounters: async () => [], getFields: async () => [],
+    };
+    await downloadBaseSnapshot('bV', src);
+    const snap = await offlineCache.get('bV');
+    expect(snap?.fieldsByVersion?.v1?.[0].label).toBe('X v1'); // l'ancienne version garde son dico
+    expect(snap?.patients[0].encounters[0].templateVersionId).toBe('v1'); // version portee par la rencontre
+    await offlineCache.remove('bV');
+    setOfflineUser(null);
+  });
 });
 
 describe('outbox — ecritures hors-ligne (Phase 2)', () => {
