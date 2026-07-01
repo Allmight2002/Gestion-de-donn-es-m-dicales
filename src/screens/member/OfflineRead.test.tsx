@@ -85,6 +85,28 @@ describe('PatientDetail hors-ligne', () => {
   });
 });
 
+describe('EditEncounter hors-ligne §7.4/§7.5 (version historique)', () => {
+  test('utilise le dictionnaire DE LA rencontre (fieldsByVersion), et un dico minimal reste affichable', async () => {
+    await offlineCache.save(
+      buildSnapshot(
+        { id: 'b2', name: 'Base multi-versions', templateVersionId: 'v2' },
+        [{ id: 'p2', code: 'P-2', templateVersionId: 'v2', data: {}, validationStatus: 'curated' }],
+        { p2: [{ id: 'e2', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 9 }, updatedAt: null, templateVersionId: 'v-old' }] },
+        // Dictionnaire de la version COURANTE (v2) : ne doit PAS etre utilise pour cette rencontre.
+        [{ id: 'f2', fieldKey: 'glasgow_score', label: 'Glasgow v2', scope: 'encounter', type: 'integer', displayOrder: 0 }],
+        Date.now(),
+        // Dictionnaire de la version DE LA rencontre (v-old), volontairement SANS `section`
+        // (comme un instantane anterieur au §7.5) -> le repli section='clinique' doit l'afficher.
+        { 'v-old': [{ id: 'f1', fieldKey: 'glasgow_score', label: 'Glasgow (ancien)', scope: 'encounter', type: 'integer', displayOrder: 0 }] },
+      ),
+    );
+    renderAt('/bases/b2/patients/p2/encounters/e2/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
+    expect(await screen.findByText('Glasgow (ancien)')).toBeInTheDocument(); // dico de LA rencontre, affiche malgre l'absence de section
+    expect(screen.queryByText('Glasgow v2')).not.toBeInTheDocument(); // pas le dico de la version courante
+    await offlineCache.remove('b2');
+  });
+});
+
 describe('EditEncounter hors-ligne (Phase 2)', () => {
   test('la correction est MISE EN FILE (outbox), sans appel reseau', async () => {
     renderAt('/bases/b1/patients/p-off/encounters/e1/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');

@@ -64,10 +64,10 @@ function makePatients(over: Partial<PatientRepository> = {}): PatientRepository 
   } as unknown as PatientRepository;
 }
 
-function renderAt(path: string, patients: PatientRepository, audit?: AuditRepository) {
+function renderAt(path: string, patients: PatientRepository, audit?: AuditRepository, templates: TemplateRepository = templateRepo) {
   return render(
     <I18nProvider>
-      <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patients} attachments={stubAttachments} audit={audit}>
+      <RepositoryProvider bases={baseRepo} templates={templates} patients={patients} attachments={stubAttachments} audit={audit}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} />
@@ -107,6 +107,26 @@ describe('PatientDetail (fiche)', () => {
 });
 
 describe('EditEncounter (correction)', () => {
+  test('§7.4 une rencontre HISTORIQUE s edite avec SA version de gabarit, pas la version courante', async () => {
+    // La base est en v1 (courante) ; la rencontre a ete saisie sous v-old.
+    const getVersion = vi.fn(async (vid: string) => ({
+      version: { id: vid, templateId: 't1', versionNumber: vid === 'v-old' ? 1 : 2, status: 'published' as const },
+      fields: [field({ fieldKey: 'glasgow_score', label: vid === 'v-old' ? 'Glasgow (ancien libelle)' : 'Glasgow', scope: 'encounter', type: 'integer' })],
+      rules: [],
+    }));
+    renderAt(
+      '/bases/b1/patients/p1/encounters/e1/edit',
+      makePatients({ getEncounter: async () => ({ ...encounter, templateVersionId: 'v-old' }) }),
+      undefined,
+      { getVersion } as unknown as TemplateRepository,
+    );
+    // Le dictionnaire charge est celui DE LA RENCONTRE (v-old), pas celui de la base (v1).
+    // (Le libelle apparait dans le formulaire ET dans l'historique des corrections.)
+    expect((await screen.findAllByText('Glasgow (ancien libelle)')).length).toBeGreaterThan(0);
+    expect(getVersion).toHaveBeenCalledWith('v-old');
+    expect(getVersion).not.toHaveBeenCalledWith('v1');
+  });
+
   test('le motif est requis ; avec motif, la correction est enregistree ; historique affiche', async () => {
     const updateEncounter = vi.fn(async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }));
     renderAt('/bases/b1/patients/p1/encounters/e1/edit', makePatients({ updateEncounter }));

@@ -58,7 +58,15 @@ export function EditEncounter() {
           setBaseUpdatedAt(enc.updatedAt ?? null); // jeton optimiste pour la synchro
         }
         setHistory([]);
-        const encFields = (snap?.fields ?? []).filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder);
+        // §7.4/§7.5 : dictionnaire de LA VERSION DE LA RENCONTRE (fieldsByVersion), pas celui de la
+        // version courante de la base ; repli sur `fields` (instantane ancien, sans multi-versions).
+        const dict = (enc?.templateVersionId && snap?.fieldsByVersion?.[enc.templateVersionId]) || snap?.fields || [];
+        const encFields = dict
+          .filter((f) => f.scope === 'encounter')
+          .sort((a, b) => a.displayOrder - b.displayOrder)
+          // §7.5 : un instantane ANTERIEUR (dictionnaire minimal, sans `section`) doit rester
+          // editable -> section par defaut, sinon EncounterFields (groupe par section) n'affiche rien.
+          .map((f) => ({ ...f, section: f.section ?? 'clinique' }));
         setFields(encFields as unknown as TemplateField[]);
         setRules([]); // les regles inter-champs sont rejouees au serveur a la synchro
         setError(null);
@@ -78,8 +86,12 @@ export function EditEncounter() {
         setBaseUpdatedAt(enc.updatedAt ?? null);
       }
       setHistory(hist);
-      if (base?.base.currentTemplateVersionId) {
-        const version = await templates.getVersion(base.base.currentTemplateVersionId);
+      // §7.4 : une rencontre HISTORIQUE s'edite avec SA version de gabarit (libelles, champs et
+      // regles de l'epoque = memes controles que le serveur). La version courante de la base ne
+      // sert que de repli (et a la CREATION d'une nouvelle rencontre).
+      const versionId = enc?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
+      if (versionId) {
+        const version = await templates.getVersion(versionId);
         setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
       }

@@ -89,6 +89,8 @@ export interface Encounter {
   data: Record<string, unknown>;
   /** Version optimiste (cote serveur) : sert au verrou de synchronisation hors-ligne. */
   updatedAt?: string | null;
+  /** §7.4 — version de gabarit DE LA RENCONTRE : l'edition historique charge CE dictionnaire. */
+  templateVersionId?: string | null;
 }
 
 export interface FieldChange {
@@ -147,6 +149,7 @@ type IdentityMatchRow = {
 type EncounterRow = {
   id: string; encounter_type: string; encounter_date: string; validation_status: string;
   age_value: number | null; age_unit: string | null; data: Record<string, unknown>; updated_at?: string | null;
+  template_version_id?: string | null;
 };
 type FieldChangeRow = {
   field_key: string; old_value: unknown; new_value: unknown; reason: string | null; changed_at: string;
@@ -178,6 +181,7 @@ const mapEncounter = (r: EncounterRow): Encounter => ({
   ageUnit: r.age_unit,
   data: r.data ?? {},
   updatedAt: r.updated_at ?? null,
+  templateVersionId: r.template_version_id ?? null,
 });
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -319,7 +323,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async listEncounters(patientId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id')
         .eq('patient_id', patientId)
         .is('deleted_at', null)
         .order('encounter_date', { ascending: true });
@@ -330,7 +334,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async getEncounter(encounterId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id')
         .eq('id', encounterId)
         .is('deleted_at', null)
         .maybeSingle();

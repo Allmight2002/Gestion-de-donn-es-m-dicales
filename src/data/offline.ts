@@ -18,7 +18,7 @@ export interface OfflineEncounter {
   /** Version optimiste serveur (jeton de conflit pour la synchro). */
   updatedAt?: string | null;
   /** §5.7 : version de gabarit de CETTE rencontre (choix du bon dictionnaire hors-ligne). */
-  templateVersionId?: string;
+  templateVersionId?: string | null;
   /** true si une modification locale n'est pas encore synchronisee (affichage). */
   pending?: boolean;
 }
@@ -40,6 +40,17 @@ export interface OfflineField {
   scope: string; // 'patient' | 'encounter'
   type: string;
   displayOrder: number;
+  // §7.5 : metadonnees COMPLETES pour editer hors-ligne comme en ligne (groupage par section,
+  // unite, liste de valeurs, caractere requis, bornes, codes manquants, types de rencontre).
+  // Optionnelles : un instantane ANTERIEUR a cette version n'en dispose pas (replis a l'affichage).
+  section?: string | null;
+  unit?: string | null;
+  allowedValues?: string[] | null;
+  required?: boolean;
+  minValue?: number | null;
+  maxValue?: number | null;
+  allowMissingCodes?: boolean;
+  encounterTypes?: string[] | null;
 }
 
 export interface OfflineSnapshot {
@@ -106,6 +117,10 @@ export function buildSnapshot(
     templateVersionId: base.templateVersionId,
     fields: fields.map((f) => ({
       id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder,
+      // §7.5 : metadonnees completes conservees (edition hors-ligne fidele a l'edition en ligne).
+      section: f.section ?? null, unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
+      required: f.required ?? false, minValue: f.minValue ?? null, maxValue: f.maxValue ?? null,
+      allowMissingCodes: f.allowMissingCodes ?? true, encounterTypes: f.encounterTypes ?? null,
     })),
     fieldsByVersion,
     patients: patients.map((p) => ({

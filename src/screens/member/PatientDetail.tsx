@@ -92,7 +92,7 @@ export function PatientDetail() {
         setEncounters(op.encounters.map((e) => ({ ...e })));
         // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
         // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
-        const dictFor = (vid?: string): Column[] => (vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || [];
+        const dictFor = (vid?: string | null): Column[] => (vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || [];
         setPatientFields([...dictFor(op.templateVersionId)].sort((a, b) => a.displayOrder - b.displayOrder).filter((f) => f.scope === 'patient'));
         const encFields = new Map<string, Column>();
         for (const e of op.encounters) for (const f of dictFor(e.templateVersionId)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);

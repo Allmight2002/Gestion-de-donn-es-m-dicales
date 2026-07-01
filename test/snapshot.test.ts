@@ -58,4 +58,13 @@ describe('§8 download_base_snapshot (instantane hors-ligne en 1 appel)', () => 
     const withEnc = snap.patients.find((pp: { encounters: unknown[] }) => pp.encounters.length > 0);
     expect(withEnc.encounters[0].templateVersionId).toBeTruthy();
   });
+
+  test('§7.5 le dictionnaire est COMPLET (section/required/bornes) pour editer hors-ligne comme en ligne', async () => {
+    const snap = await snapshotAs(aliceId);
+    for (const f of [snap.fields[0], snap.fieldsByVersion[snap.patients[0].templateVersionId][0]]) {
+      expect(f.section).toBeTruthy(); // EncounterFields groupe par section : indispensable a l'affichage
+      expect(typeof f.required).toBe('boolean');
+      expect('allowedValues' in f && 'minValue' in f && 'maxValue' in f && 'allowMissingCodes' in f && 'encounterTypes' in f).toBe(true);
+    }
+  });
 });

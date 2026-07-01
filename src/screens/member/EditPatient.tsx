@@ -41,8 +41,11 @@ export function EditPatient() {
     try {
       const [p, base] = await Promise.all([patients.getPatient(baseId, patientId), bases.getBase(baseId)]);
       if (p) { setValues(p.data); setStatus(p.validationStatus); }
-      if (base?.base.currentTemplateVersionId) {
-        const version = await templates.getVersion(base.base.currentTemplateVersionId);
+      // §7.4 (audit v12, etendu) : un patient HISTORIQUE s'edite avec SA version de gabarit — memes
+      // libelles/champs/regles que le serveur. La version courante de la base n'est qu'un repli.
+      const versionId = p?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
+      if (versionId) {
+        const version = await templates.getVersion(versionId);
         setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
       }
