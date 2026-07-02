@@ -129,13 +129,14 @@ export function ImportData() {
       } else {
         // §6.5 import par LOTS : ouverture du lot (idempotence + verrous) puis chunks + progression.
         const batchId = dryRun ? null : await patients.beginImportBatch(baseId, { status, conflict, fileHash, templateVersionId: versionId, expectedRows: rows.length });
-        const agg: ImportReport = { dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0, error_count: 0, errors: [] };
+        const agg: ImportReport = { dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0, error_count: 0, already_imported: 0, errors: [] };
         for (let i = 0; i < rows.length; i += CHUNK) {
           const rep = await patients.importRecords(baseId, rows.slice(i, i + CHUNK), {
             dryRun, status, conflict, fileHash: null, templateVersionId: versionId, batchId,
           });
           agg.patients_new += rep.patients_new; agg.patients_updated += rep.patients_updated;
           agg.encounters += rep.encounters; agg.error_count += rep.error_count;
+          agg.already_imported = (agg.already_imported ?? 0) + (rep.already_imported ?? 0); // §7.8
           agg.errors.push(...rep.errors.map((er) => ({ ...er, row: er.row + i }))); // n° de ligne global
           setProgress({ done: Math.min(i + CHUNK, rows.length), total: rows.length });
         }
@@ -241,6 +242,9 @@ export function ImportData() {
             <li>{t('import.patients_new')} : <strong>{report.patients_new}</strong></li>
             <li>{t('import.patients_updated')} : <strong>{report.patients_updated}</strong></li>
             <li>{t('import.encounters')} : <strong>{report.encounters}</strong></li>
+            {(report.already_imported ?? 0) > 0 && (
+              <li className="text-slate-500">{t('import.already_imported')} : <strong>{report.already_imported}</strong></li>
+            )}
             <li className={report.error_count > 0 ? 'text-red-600' : ''}>{t('import.errors')} : <strong>{report.error_count}</strong></li>
           </ul>
           {report.errors.length > 0 && (

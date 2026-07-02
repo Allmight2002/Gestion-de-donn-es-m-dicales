@@ -33,6 +33,8 @@ export interface ImportReport {
   patients_updated: number;
   encounters: number;
   error_count: number;
+  /** §7.8 : lignes IGNOREES car deja importees avec succes par un lot anterieur (idempotence). */
+  already_imported?: number;
   errors: { row: number; patient_code: string; message: string }[];
 }
 

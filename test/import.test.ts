@@ -315,6 +315,50 @@ describe('import_records', () => {
     expect(rep2.error_count).toBe(0);
   });
 
+  test('§7.8 rejouer un fichier corrige (NOUVEAU lot) ignore les lignes deja reussies, sans doublon', async () => {
+    const h1 = 'b78-' + Date.now();
+    // Lot 1 : 1 ligne OK + 1 ligne KO (hors bornes) -> completed_with_errors.
+    const b1 = (await rowsAs(aliceId, BEGIN6, [baseId, h1, null, 'fill', 'draft', 2]))[0].id;
+    await rowsAs(aliceId, CALL8, [baseId, J([
+      row('B78-OK', enc('consultation', '2024-01-05', { diagnosis: 'ok', glasgow_score: 10 })),
+      row('B78-KO', enc('consultation', '2024-01-06', { diagnosis: 'ko', glasgow_score: 99 })),
+    ]), false, 'draft', 'fill', null, null, b1]);
+    await rowsAs(aliceId, COMPLETE, [b1]);
+
+    // Fichier CORRIGE (nouveau hash -> nouveau lot) : ligne OK identique + ligne KO corrigee.
+    const b2 = (await rowsAs(aliceId, BEGIN6, [baseId, h1 + '-corr', null, 'fill', 'draft', 2]))[0].id;
+    const rep = (await rowsAs(aliceId, CALL8, [baseId, J([
+      row('B78-OK', enc('consultation', '2024-01-05', { diagnosis: 'ok', glasgow_score: 10 })), // deja importee -> ignoree
+      row('B78-KO', enc('consultation', '2024-01-06', { diagnosis: 'ko', glasgow_score: 12 })), // corrigee -> importee
+    ]), false, 'draft', 'fill', null, null, b2]))[0].report;
+    expect(rep).toMatchObject({ already_imported: 1, encounters: 1, error_count: 0 });
+    await rowsAs(aliceId, COMPLETE, [b2]); // les lignes ignorees comptent dans row_count -> cloture OK
+    expect((await db.admin.query('select status from public.import_batch where id=$1', [b2])).rows[0].status).toBe('completed');
+
+    // AUCUN doublon : exactement 1 rencontre par patient (pas 3 au total).
+    const n = await db.admin.query(
+      `select count(*)::int n from public.encounter e join public.patient p on p.id = e.patient_id
+       where p.base_id = $1 and p.patient_code in ('B78-OK','B78-KO')`, [baseId]);
+    expect(n.rows[0].n).toBe(2);
+  });
+
+  test('§7.8 rejouer un import AUTONOME ne duplique pas non plus (empreintes conservees) ; l apercu l annonce', async () => {
+    const h = 'b78s-' + Date.now();
+    const line = () => row('B78S-1', enc('consultation', '2024-02-01', { diagnosis: 'x', glasgow_score: 11 }));
+    const r1 = (await rowsAs(aliceId, CALL7, [baseId, J([line()]), false, 'draft', 'fill', h, null]))[0].report;
+    expect(r1.error_count).toBe(0);
+    // APERCU d'un « autre » fichier au meme contenu : annonce la ligne deja importee AVANT commit.
+    const prev = (await rowsAs(aliceId, CALL7, [baseId, J([line()]), true, 'draft', 'fill', h + '-b', null]))[0].report;
+    expect(prev).toMatchObject({ already_imported: 1, encounters: 0 });
+    // COMMIT : rien n'est re-cree.
+    const r2 = (await rowsAs(aliceId, CALL7, [baseId, J([line()]), false, 'draft', 'fill', h + '-b', null]))[0].report;
+    expect(r2).toMatchObject({ already_imported: 1, encounters: 0, error_count: 0 });
+    const n = await db.admin.query(
+      `select count(*)::int n from public.encounter e join public.patient p on p.id = e.patient_id
+       where p.base_id = $1 and p.patient_code = 'B78S-1'`, [baseId]);
+    expect(n.rows[0].n).toBe(1);
+  });
+
   test('§4.7 cloture refusee si row_count depasse expected_rows (chunk en double)', async () => {
     const h = 'b47-' + Date.now();
     const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id; // 1 ligne attendue
