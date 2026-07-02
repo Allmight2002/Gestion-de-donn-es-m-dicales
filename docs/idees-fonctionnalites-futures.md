@@ -67,9 +67,9 @@ La détection existe déjà (`find_identity_matches`) ; l'afficher plus tôt et 
 
 ## C. Collaboration & équipe
 
-### C1. Profils de rôle nommés — **S**
+### C1. Profils de rôle nommés — **S** — ✅ LIVRÉ (2026-07-02, commit 48469df)
 « Investigateur principal / Co-investigateur / Saisie / Moniteur » comme presets qui cochent les permissions techniques.
-**Pourquoi** : un chercheur pense en rôles d'étude, pas en booléens ; réduit aussi les erreurs d'attribution de droits (défense en profondeur côté humain). ⛔ après audit (§6.1/§7.1 touchent `base_access`).
+**Pourquoi** : un chercheur pense en rôles d'étude, pas en booléens ; réduit aussi les erreurs d'attribution de droits (défense en profondeur côté humain).
 
 ### C2. Groupes de recherche — **L**
 Inviter dans un *groupe* (équipe nommée), rattacher des bases au groupe, le rôle s'applique partout.
