@@ -39,6 +39,46 @@ export function defaultPermissionsFor(role: AccessRole): BasePermissions {
   }
 }
 
+// --- Profils de role NOMMES (C1) --------------------------------------------------------------
+// Pure ergonomie AU-DESSUS des 5 permissions : un chercheur pense en roles d'etude, pas en
+// booleens. Choisir un profil coche les bonnes cases ; le reglage fin reste possible (-> 'custom').
+// Le SERVEUR reste seul juge (RLS + triggers §6.1) : ces presets ne relachent aucun controle.
+export type RolePreset = 'principal_investigator' | 'co_investigator' | 'data_entry' | 'monitor';
+
+export const ROLE_PRESETS: RolePreset[] = ['principal_investigator', 'co_investigator', 'data_entry', 'monitor'];
+
+const ALL_PERMISSIONS: BasePermissions = {
+  canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
+  canExportData: true, canManageAccess: true,
+};
+
+/** Les 5 permissions correspondant a un profil nomme. */
+export function permissionsForPreset(preset: RolePreset): BasePermissions {
+  switch (preset) {
+    case 'principal_investigator': // pilote l'etude : tout, y compris gerer l'equipe
+      return { ...ALL_PERMISSIONS };
+    case 'co_investigator': // acces complet aux donnees + export, mais ne gere pas l'equipe
+      return { ...ALL_PERMISSIONS, canManageAccess: false };
+    case 'data_entry': // saisit l'analytique pseudonymise ; ni identite, ni export, ni gestion
+      return { ...NO_PERMISSIONS, canEditStructuredData: true };
+    case 'monitor': // relit en lecture seule (qualite) ; pseudonymise, aucune ecriture
+      return { ...NO_PERMISSIONS };
+  }
+}
+
+/** Le role de partage decoule des permissions : « editor » des qu'il y a de la saisie, sinon « viewer ». */
+export function roleForPermissions(p: BasePermissions): AccessRole {
+  return p.canEditStructuredData ? 'editor' : 'viewer';
+}
+
+const PERM_ORDER = Object.keys(NO_PERMISSIONS) as (keyof BasePermissions)[];
+const samePerms = (a: BasePermissions, b: BasePermissions): boolean => PERM_ORDER.every((k) => a[k] === b[k]);
+
+/** Reconnait le profil correspondant a un jeu de permissions, ou `null` (= « Personnalise »). */
+export function presetOf(p: BasePermissions): RolePreset | null {
+  return ROLE_PRESETS.find((preset) => samePerms(permissionsForPreset(preset), p)) ?? null;
+}
+
 export interface InvitationItem {
   id: string;
   email: string;

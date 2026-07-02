@@ -5,18 +5,19 @@ import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useAccessRepository, useBaseRepository } from '../../data/RepositoryProvider';
 import {
-  defaultPermissionsFor, type AccessItem, type AccessRole, type BasePermissions, type InvitationItem,
+  permissionsForPreset, presetOf, roleForPermissions, ROLE_PRESETS,
+  type AccessItem, type BasePermissions, type InvitationItem, type RolePreset,
 } from '../../data/access';
 
 // Partage de base ENTRE MEDECINS uniquement (v3.0). Le role curateur est un role GLOBAL
 // (admin) qui travaille le pool de curation, jamais invite ici.
-const ROLES: AccessRole[] = ['viewer', 'editor'];
 const PERMISSION_KEYS: (keyof BasePermissions)[] = [
   'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canExportData', 'canManageAccess',
 ];
 
-const permSummary = (p: BasePermissions, t: (k: MessageKey) => string): string =>
-  PERMISSION_KEYS.filter((k) => p[k]).map((k) => t(`access.perm.${k}` as MessageKey)).join(' · ') || '—';
+// C1 : le profil affiche = celui qui correspond aux cases cochees, sinon « Personnalise ».
+const presetLabel = (p: BasePermissions, t: (k: MessageKey) => string): string =>
+  t(`access.preset.${presetOf(p) ?? 'custom'}` as MessageKey);
 
 // Gestion des acces (cahier v3.0 §10) : inviter par email avec un role et 6
 // permissions granulaires ; voir / revoquer les invitations en attente ; voir,
@@ -33,8 +34,9 @@ export function AccessManagement() {
   const [invitations, setInvitations] = useState<InvitationItem[]>([]);
   const [accessList, setAccessList] = useState<AccessItem[]>([]);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<AccessRole>('viewer');
-  const [perms, setPerms] = useState<BasePermissions>(defaultPermissionsFor('viewer'));
+  // C1 : on part du profil le moins privilegie (Moniteur = lecture seule) ; l'invitant elargit
+  // volontairement. Le role de partage (viewer/editor) est deduit des permissions a l'envoi.
+  const [perms, setPerms] = useState<BasePermissions>(permissionsForPreset('monitor'));
   const [link, setLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -66,9 +68,8 @@ export function AccessManagement() {
     void load();
   }, [load]);
 
-  function changeRole(r: AccessRole) {
-    setRole(r);
-    setPerms(defaultPermissionsFor(r));
+  function applyPreset(value: string) {
+    if (value !== 'custom') setPerms(permissionsForPreset(value as RolePreset));
   }
 
   async function invite(e: FormEvent) {
@@ -76,7 +77,8 @@ export function AccessManagement() {
     if (!baseId || !email.trim()) return;
     setBusy(true);
     try {
-      const { token } = await accessRepo.createInvitation(baseId, email.trim(), role, perms);
+      // Le role de partage decoule des permissions (editor des qu'il y a de la saisie).
+      const { token } = await accessRepo.createInvitation(baseId, email.trim(), roleForPermissions(perms), perms);
       setLink(`${window.location.origin}/accept-invitation?token=${token}`);
       setEmail('');
       await load();
@@ -125,25 +127,23 @@ export function AccessManagement() {
                 <input type="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
               </label>
               <label className="flex flex-col text-xs text-slate-600">
-                {t('access.role')}
-                <select
-                  className="input"
-                  value={role}
-                  onChange={(e) => changeRole(e.target.value as AccessRole)}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {t(`access.role_${r}` as MessageKey)}
+                {t('access.profile')}
+                <select className="input" value={presetOf(perms) ?? 'custom'} onChange={(e) => applyPreset(e.target.value)}>
+                  {ROLE_PRESETS.map((p) => (
+                    <option key={p} value={p}>
+                      {t(`access.preset.${p}` as MessageKey)}
                     </option>
                   ))}
+                  <option value="custom">{t('access.preset.custom')}</option>
                 </select>
               </label>
               <button type="submit" disabled={busy} className="btn-primary">
                 {t('access.send_invite')}
               </button>
             </div>
+            <p className="text-xs text-slate-500">{t(`access.preset_desc.${presetOf(perms) ?? 'custom'}` as MessageKey)}</p>
             <fieldset className="grid grid-cols-2 gap-1 text-xs text-slate-600 sm:grid-cols-3">
-              <legend className="mb-1 text-xs font-medium text-slate-500">{t('access.permissions')}</legend>
+              <legend className="mb-1 text-xs font-medium text-slate-500">{t('access.fine_tune')}</legend>
               {PERMISSION_KEYS.map((k) => (
                 <label key={k} className="flex items-center gap-1">
                   <input
@@ -172,8 +172,7 @@ export function AccessManagement() {
                 {invitations.map((inv) => (
                   <li key={inv.id} className="card flex items-center justify-between px-3 py-2">
                     <span>
-                      {inv.email} · {t(`access.role_${inv.role}` as MessageKey)}
-                      <span className="ml-1 text-xs text-slate-400">{permSummary(inv.permissions, t)}</span>
+                      {inv.email} · <span className="font-medium">{presetLabel(inv.permissions, t)}</span>
                     </span>
                     <button onClick={() => void run(() => accessRepo.revokeInvitation(inv.id))} className="text-xs text-red-600 hover:underline">
                       {t('access.revoke')}
@@ -194,7 +193,7 @@ export function AccessManagement() {
                   <li key={a.id} className="card px-3 py-2">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">
-                        {a.fullName ?? a.userId.slice(0, 8)} · {t(`access.role_${a.role}` as MessageKey)}
+                        {a.fullName ?? a.userId.slice(0, 8)} · {presetLabel(a.permissions, t)}
                       </span>
                       <button onClick={() => void run(() => accessRepo.revokeAccess(a.id))} className="text-xs text-red-600 hover:underline">
                         {t('access.revoke')}

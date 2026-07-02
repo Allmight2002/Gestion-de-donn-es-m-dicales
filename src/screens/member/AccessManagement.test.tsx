@@ -65,6 +65,24 @@ describe('AccessManagement', () => {
     expect(await screen.findByText(/tok-123/)).toBeInTheDocument(); // lien a partager
   });
 
+  test('C1 choisir un profil nomme coche les permissions et deduit le role a l invitation', async () => {
+    const createInvitation = vi.fn(async (_b: string, _e: string, _r: AccessRole, _p: BasePermissions) => ({ token: 'tok-123' }));
+    renderAccess(baseRepoWithRole('owner'), makeAccess({ createInvitation }));
+    await screen.findByText(/Anna Analyste/);
+
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'pi@demo.test' } });
+    // Choisir « Investigateur principal » coche toutes les permissions (dont la gestion des accès).
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: 'principal_investigator' } });
+    // La case du FORMULAIRE d'invitation (la 1re ; la liste des accès en a aussi une) est cochée.
+    expect(screen.getAllByLabelText('Gestion des accès')[0]).toBeChecked();
+
+    await userEvent.click(screen.getByRole('button', { name: "Créer l'invitation" }));
+    await waitFor(() => expect(createInvitation).toHaveBeenCalledTimes(1));
+    const [, , role, perms] = createInvitation.mock.calls[0];
+    expect(role).toBe('editor'); // déduit des permissions (il y a de la saisie)
+    expect(perms).toMatchObject({ canManageAccess: true, canViewIdentity: true, canExportData: true, canEditStructuredData: true });
+  });
+
   test('un non-proprietaire ne voit pas la gestion des acces', async () => {
     renderAccess(baseRepoWithRole('editor'), makeAccess());
     expect(await screen.findByText(/propri/i)).toBeInTheDocument();
