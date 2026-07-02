@@ -34,6 +34,43 @@ function present(v: unknown): boolean {
   return !isEmpty(v) && !isMissing(v);
 }
 
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:Z|([+-])(\d{2}):(\d{2}))?$/;
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return leap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function validDateParts(year: number, month: number, day: number): boolean {
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+}
+
+function isStrictDateString(value: string): boolean {
+  const m = DATE_RE.exec(value);
+  if (!m) return false;
+  return validDateParts(Number(m[1]), Number(m[2]), Number(m[3]));
+}
+
+function isStrictDateTimeString(value: string): boolean {
+  const m = DATETIME_RE.exec(value);
+  if (!m) return false;
+  if (!validDateParts(Number(m[1]), Number(m[2]), Number(m[3]))) return false;
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = m[6] === undefined ? 0 : Number(m[6]);
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (m[8] !== undefined && m[9] !== undefined) {
+    const offsetHour = Number(m[8]);
+    const offsetMinute = Number(m[9]);
+    if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) return false;
+  }
+  return true;
+}
+
 export interface FieldError {
   fieldKey: string;
   message: string;
@@ -48,6 +85,12 @@ export function validateField(field: TemplateField, value: unknown, requireCompl
   }
   if (isEmpty(value)) {
     return field.required && requireComplete ? 'Champ obligatoire' : null;
+  }
+  if (field.type === 'date') {
+    return isStrictDateString(String(value)) ? null : 'Date invalide (format AAAA-MM-JJ attendu)';
+  }
+  if (field.type === 'datetime') {
+    return isStrictDateTimeString(String(value)) ? null : 'Date/heure invalide (format ISO attendu)';
   }
   if (field.type === 'number' || field.type === 'integer') {
     const n = typeof value === 'number' ? value : Number(value);
@@ -78,12 +121,15 @@ export function validateValues(fields: TemplateField[], values: Record<string, u
 
 // --- Évaluation des règles de cohérence (§10) -------------------------------
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}/;
-
 function order(a: unknown, b: unknown): number | null {
   // dates ISO comparables en chaîne ; sinon numérique ; sinon null (incomparable)
-  if (typeof a === 'string' && typeof b === 'string' && DATE_RE.test(a) && DATE_RE.test(b)) {
+  if (typeof a === 'string' && typeof b === 'string' && isStrictDateString(a) && isStrictDateString(b)) {
     return a < b ? -1 : a > b ? 1 : 0;
+  }
+  if (typeof a === 'string' && typeof b === 'string' && isStrictDateTimeString(a) && isStrictDateTimeString(b)) {
+    const ta = Date.parse(a);
+    const tb = Date.parse(b);
+    if (!Number.isNaN(ta) && !Number.isNaN(tb)) return ta < tb ? -1 : ta > tb ? 1 : 0;
   }
   const na = Number(a);
   const nb = Number(b);

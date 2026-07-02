@@ -60,6 +60,21 @@ describe('controles par champ (bornes, listes)', () => {
     expect(validateField(sel, 'autre')).toMatch(/liste/i);
     expect(validateField(sel, 'deces')).toBeNull();
   });
+  test('dates et date-heures strictes -> format ISO reel obligatoire', () => {
+    const date = field({ fieldKey: 'admission_date', type: 'date' });
+    expect(validateField(date, '2024-02-29')).toBeNull();
+    expect(validateField(date, '2024-2-29')).toMatch(/date/i);
+    expect(validateField(date, '2024-02-30')).toMatch(/date/i);
+    expect(validateField(date, '2024-02-29T10:15')).toMatch(/date/i);
+
+    const datetime = field({ fieldKey: 'triage_time', type: 'datetime' });
+    expect(validateField(datetime, '2024-02-29T10:15')).toBeNull();
+    expect(validateField(datetime, '2024-02-29T10:15:30Z')).toBeNull();
+    expect(validateField(datetime, '2024-02-29T10:15+01:00')).toBeNull();
+    expect(validateField(datetime, '2024-02-30T10:15')).toMatch(/date/i);
+    expect(validateField(datetime, '2024-02-29 10:15')).toMatch(/date/i);
+    expect(validateField(datetime, '2024-02-29T24:00')).toMatch(/date/i);
+  });
   test('validateValues agrege les erreurs', () => {
     const errs = validateValues([gcs], { glasgow_score: 99 });
     expect(errs).toHaveLength(1);

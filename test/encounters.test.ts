@@ -36,6 +36,12 @@ beforeAll(async () => {
   publishedVersionId = (
     await db.admin.query('select current_template_version_id as tv from public.base where id=$1', [baseId])
   ).rows[0].tv;
+  await db.admin.query(
+    `insert into public.template_field
+       (template_version_id, field_key, label, scope, section, type, required, allow_missing_codes, display_order)
+     values ($1, 'triage_time', 'Heure de triage', 'encounter', 'clinique', 'datetime', false, true, 99)`,
+    [publishedVersionId],
+  );
 
   const p = (await db.admin.query('select id, patient_code from public.patient where base_id=$1 limit 1', [baseId])).rows[0];
   patientId = p.id;
@@ -160,6 +166,11 @@ describe('durcissement des ecritures (audit 2)', () => {
     const C = (data: object) => [patientId, 'consultation', TEST_DATE, 'curated', JSON.stringify(data), 'years'];
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12.5 }))).rejects.toThrow(/entier/i);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: 'pas-une-date' }))).rejects.toThrow(/date/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: '2024-02-30' }))).rejects.toThrow(/date/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: '2024-2-29' }))).rejects.toThrow(/date/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, triage_time: '2024-02-29T10:15' }))).resolves.toHaveLength(1);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, triage_time: '2024-02-29 10:15' }))).rejects.toThrow(/date/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, triage_time: '2024-02-29T24:00' }))).rejects.toThrow(/date/i);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, hemoglobin: { __missing__: 'code_invente' } }))).rejects.toThrow(/manquante|code/i);
   });
 

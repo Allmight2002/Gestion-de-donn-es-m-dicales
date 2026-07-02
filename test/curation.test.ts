@@ -291,6 +291,22 @@ describe('suppression d une demande (medecin)', () => {
     await expect(rowsAs(curator1Id, 'select public.delete_curation_request($1,$2)', [c.taskId, 'x'])).rejects.toThrow(/proprietaire/i);
   });
 
+  test('une demande supprimee ne peut plus etre reservee ni liberee', async () => {
+    const open = await openCase('NCH-002');
+    await rowsAs(aliceId, 'select public.delete_curation_request($1,$2)', [open.taskId, 'annulation']);
+    await expect(rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [open.taskId])).rejects.toThrow(/reserve|indisponible/i);
+
+    const claimed = await openCase('NCH-003');
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [claimed.taskId]);
+    await rowsAs(aliceId, 'select public.delete_curation_request($1,$2)', [claimed.taskId, 'annulation']);
+    await expect(rowsAs(curator1Id, 'select * from public.release_curation_task($1)', [claimed.taskId])).rejects.toThrow(/reserve|liberable/i);
+
+    const kept = (await db.admin.query('select deleted_at, assigned_to, status from public.curation_task where id=$1', [claimed.taskId])).rows[0];
+    expect(kept.deleted_at).not.toBeNull();
+    expect(kept.assigned_to).toBe(curator1Id);
+    expect(kept.status).toBe('in_progress');
+  });
+
   test('une demande FINALISEE ne peut pas etre supprimee (provenance preservee)', async () => {
     const c = await claimAndDraft('NCH-004', { blood_group: 'AB-' }, []);
     await rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [c.taskId]);
