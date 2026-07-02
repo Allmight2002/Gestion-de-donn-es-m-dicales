@@ -55,14 +55,26 @@ describe('P1 base_access reserve aux medecins', () => {
 });
 
 describe('P1 administration des roles', () => {
-  test('system_admin modifie un autre profil, puis le remet medecin', async () => {
+  test('system_admin modifie un autre profil sans reactiver ses anciens acces', async () => {
+    await db.admin.query(
+      `insert into public.base_access(base_id,user_id,access_role,can_export_data,granted_by)
+         values($1,$2,'viewer',true,$3)
+       on conflict (base_id,user_id) do update set
+         access_role='viewer', can_export_data=true, revoked_at=null`,
+      [baseId, bobId, aliceId],
+    );
+    expect(await rowsAs(bobId, 'select id from public.base where id=$1', [baseId])).toHaveLength(1);
+
     const changed = await rowsAs(adminId, "update public.profiles set global_role='curateur' where id=$1 returning global_role", [bobId]);
     expect(changed).toHaveLength(1);
     expect(changed[0].global_role).toBe('curateur');
+    expect((await db.admin.query('select revoked_at from public.base_access where base_id=$1 and user_id=$2', [baseId, bobId])).rows[0].revoked_at)
+      .not.toBeNull();
 
     const restored = await rowsAs(adminId, "update public.profiles set global_role='medecin' where id=$1 returning global_role", [bobId]);
     expect(restored).toHaveLength(1);
     expect(restored[0].global_role).toBe('medecin');
+    expect(await rowsAs(bobId, 'select id from public.base where id=$1', [baseId])).toHaveLength(0);
   });
 
   test('system_admin ne peut pas modifier son propre role', async () => {

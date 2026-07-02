@@ -76,8 +76,8 @@ using (
 
 -- ---------------------------------------------------------------------------
 -- 3) Exports scientifiques conserves IMMUABLES (cahier §9.3). Chemin <base_id>/<cohort_id>/...
--- Insertion par can_export_data ; lecture par les personnes ayant acces a la base ;
--- AUCUNE politique update/delete => fichiers non modifiables (immuables).
+-- Insertion par can_export_data ; lecture uniquement via Edge `signed-read`
+-- (audit avant signature). AUCUNE politique update/delete => fichiers immuables.
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('scientific-exports', 'scientific-exports', false)
@@ -85,12 +85,6 @@ on conflict (id) do nothing;
 
 drop policy if exists "scientific_exports_read"   on storage.objects;
 drop policy if exists "scientific_exports_insert" on storage.objects;
-
-create policy "scientific_exports_read" on storage.objects for select to authenticated
-using (
-  bucket_id = 'scientific-exports'
-  and public.has_base_access(((storage.foldername(name))[1])::uuid)
-);
 
 create policy "scientific_exports_insert" on storage.objects for insert to authenticated
 with check (

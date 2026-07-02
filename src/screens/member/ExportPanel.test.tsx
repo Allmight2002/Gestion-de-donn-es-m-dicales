@@ -76,4 +76,41 @@ describe('ExportPanel', () => {
     expect(arg.patientCount).toBe(1);
     expect(arg.encounterCount).toBe(1);
   });
+
+  test('telecharge un export conserve via URL signee', async () => {
+    const getExportDownloadUrl = vi.fn(async () => 'https://signed.test/export.csv');
+    const exportsRepo = {
+      async getSnapshotData() {
+        return { patients: [], encounters: [] };
+      },
+      async recordExport() {
+        return {
+          id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 0, encounterCount: 0, fileHash: 'deadbeef', storedFilePath: 'p',
+        };
+      },
+      async listExports() {
+        return [{
+          id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 2, fileHash: 'deadbeef', storedFilePath: 'b/c/export.csv',
+        }];
+      },
+      getExportDownloadUrl,
+    } as unknown as ExportRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} exports={exportsRepo}>
+          <MemoryRouter initialEntries={['/bases/b1/cohorts/c1/export']}>
+            <Routes>
+              <Route path="/bases/:id/cohorts/:cohortId/export" element={<ExportPanel />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByText(/deadbeef/);
+    const buttons = screen.getAllByRole('button');
+    await userEvent.click(buttons[buttons.length - 1]);
+    await waitFor(() => expect(getExportDownloadUrl).toHaveBeenCalledWith('x', 'b/c/export.csv'));
+  });
 });

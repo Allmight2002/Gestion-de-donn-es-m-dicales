@@ -43,9 +43,12 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
   const currentUserId = useRef<string | null>(null);
   const currentProfile = useRef<Profile | null>(null);
   const profileRequest = useRef<{ userId: string; promise: Promise<Profile | null> } | null>(null);
+  const authGeneration = useRef(0);
 
   const applyUser = useCallback(
     async (nextUser: SessionUser | null) => {
+      const generation = ++authGeneration.current;
+      const isCurrentGeneration = () => mounted.current && authGeneration.current === generation;
       // §5.5/§5.6/§5.9 : le cache hors-ligne est cloisonne par compte.
       if (!nextUser) {
         // §5.9 : on efface les instantanes de l'utilisateur COURANT AVANT de le remettre a null
@@ -55,7 +58,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         currentUserId.current = null;
         currentProfile.current = null;
         profileRequest.current = null;
-        if (!mounted.current) return;
+        if (!isCurrentGeneration()) return;
         setUser(null);
         setProfile(null);
         setStatus('signed_out');
@@ -71,7 +74,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         }
         const nextProfile = await req.promise;
         if (profileRequest.current === req) profileRequest.current = null;
-        if (!mounted.current) return;
+        if (!isCurrentGeneration()) return;
         currentUserId.current = nextUser.id;
         currentProfile.current = nextProfile;
         setUser(nextUser);
@@ -80,7 +83,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
       } catch {
         profileRequest.current = null;
         // Session presente mais profil illisible : on reste connecte sans profil.
-        if (!mounted.current) return;
+        if (!isCurrentGeneration()) return;
         currentUserId.current = nextUser.id;
         currentProfile.current = null;
         setUser(nextUser);
@@ -124,7 +127,9 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
   );
 
   const signOut = useCallback(async () => {
+    authGeneration.current += 1;
     await backend.signOut();
+    authGeneration.current += 1;
     currentUserId.current = null;
     currentProfile.current = null;
     profileRequest.current = null;

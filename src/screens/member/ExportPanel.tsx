@@ -23,6 +23,18 @@ function download(content: Blob, filename: string) {
   }
 }
 
+function downloadUrl(url: string, filename: string) {
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    a.click();
+  } catch {
+    /* environnement de test sans navigation */
+  }
+}
+
 // xlsx est charge a la DEMANDE (import dynamique) : ~400 Ko hors du bundle initial.
 async function xlsxBlob(main: ExportTable, dict: ExportTable): Promise<Blob> {
   assertNoIdentity(main.columns);
@@ -54,6 +66,7 @@ export function ExportPanel() {
   const [scope, setScope] = useState<EncounterScopeOption>('matching');
   const [format, setFormat] = useState<'csv' | 'xlsx'>('csv');
   const [busy, setBusy] = useState(false);
+  const [downloadId, setDownloadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -113,6 +126,21 @@ export function ExportPanel() {
       setError(msg(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function downloadStoredExport(item: ExportLogItem) {
+    if (!item.storedFilePath) return;
+    setDownloadId(item.id);
+    try {
+      const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
+      if (!url) throw new Error(t('export.download_unavailable'));
+      downloadUrl(url, item.storedFilePath.split('/').pop() ?? `export.${item.format}`);
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setDownloadId(null);
     }
   }
 
@@ -184,9 +212,21 @@ export function ExportPanel() {
         ) : (
           <ul className="space-y-2 text-xs">
             {history.map((h) => (
-              <li key={h.id} className="card px-3 py-2">
-                {h.exportedAt} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
-                <span className="font-mono text-slate-400">{h.fileHash?.slice(0, 12)}…</span>
+              <li key={h.id} className="card flex items-center justify-between gap-3 px-3 py-2">
+                <span>
+                  {h.exportedAt} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
+                  <span className="font-mono text-slate-400">{h.fileHash?.slice(0, 12)}…</span>
+                </span>
+                {h.storedFilePath && (
+                  <button
+                    type="button"
+                    onClick={() => void downloadStoredExport(h)}
+                    disabled={downloadId === h.id}
+                    className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline disabled:opacity-50"
+                  >
+                    {t('export.download')}
+                  </button>
+                )}
               </li>
             ))}
           </ul>

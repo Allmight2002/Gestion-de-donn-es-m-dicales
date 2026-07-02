@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ExportEncounter, ExportPatient } from '../domain/export';
+import { signedRead } from './signedRead';
 
 export const EXPORTS_BUCKET = 'scientific-exports';
 export type EncounterScopeOption = 'matching' | 'all' | 'both';
@@ -41,6 +42,7 @@ export interface ExportRepository {
   getSnapshotData(cohortId: string, scope: EncounterScopeOption): Promise<SnapshotData>;
   recordExport(input: RecordExportInput): Promise<ExportLogItem>;
   listExports(cohortId: string): Promise<ExportLogItem[]>;
+  getExportDownloadUrl(exportId: string, storagePath: string): Promise<string | null>;
 }
 
 type PatientRow = { id: string; patient_code: string; data: Record<string, unknown> };
@@ -59,7 +61,7 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { getSnapshotData: fail, recordExport: fail, listExports: fail };
+    return { getSnapshotData: fail, recordExport: fail, listExports: fail, getExportDownloadUrl: fail };
   }
 
   return {
@@ -153,6 +155,10 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
         .order('exported_at', { ascending: false });
       if (error) throw error;
       return ((data ?? []) as LogRow[]).map(mapLog);
+    },
+
+    async getExportDownloadUrl(exportId, storagePath) {
+      return signedRead(client, 'export', exportId, EXPORTS_BUCKET, storagePath, 120);
     },
   };
 }

@@ -1,4 +1,4 @@
-// URL signee pour lire un fichier prive (image clinique ou document du pool).
+// URL signee pour lire un fichier prive (image clinique, document du pool ou export conserve).
 //
 // PRODUCTION (VITE_USE_SIGNED_READ=true) : passe par la fonction Edge `signed-read` qui
 // AUTORISE (RLS), JOURNALISE (audit_log) puis SIGNE cote serveur -> la consultation ne peut
@@ -12,7 +12,7 @@ const USE_SIGNED_READ = import.meta.env.VITE_USE_SIGNED_READ === 'true';
 
 export async function signedRead(
   client: SupabaseClient,
-  entity: 'attachment' | 'raw_document',
+  entity: 'attachment' | 'raw_document' | 'export',
   id: string,
   bucket: string,
   storagePath: string,

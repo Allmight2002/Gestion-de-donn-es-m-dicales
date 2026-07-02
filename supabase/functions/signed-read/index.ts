@@ -10,7 +10,7 @@
 //   3) SIGNATURE via la cle service_role (que seul ce serveur detient ; buckets prives).
 //
 // Appel cote client : supabase.functions.invoke('signed-read', { body: { entity, id } })
-//   entity = 'attachment' (image clinique) | 'raw_document' (document du pool)
+//   entity = 'attachment' (image clinique) | 'raw_document' (document du pool) | 'export'
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' };
@@ -26,8 +26,8 @@ Deno.serve(async (req: Request) => {
   let payload: { entity?: string; id?: string };
   try { payload = await req.json(); } catch { return json(400, { error: 'Corps JSON requis' }); }
   const { entity, id } = payload;
-  if ((entity !== 'attachment' && entity !== 'raw_document') || !id) {
-    return json(400, { error: 'entity (attachment|raw_document) et id sont requis' });
+  if ((entity !== 'attachment' && entity !== 'raw_document' && entity !== 'export') || !id) {
+    return json(400, { error: 'entity (attachment|raw_document|export) et id sont requis' });
   }
 
   const URL = Deno.env.get('SUPABASE_URL')!;
@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
       return json(409, { error: 'Document non encore valide par l\'inspection serveur' });
     }
     bucket = 'raw-documents'; action = 'raw_document_read'; path = data.storage_path; baseId = data.base_id;
-  } else {
+  } else if (entity === 'attachment') {
     const { data, error } = await asUser
       .from('clinical_attachment').select('id, patient_id, storage_path, inspection_status').eq('id', id).is('deleted_at', null).maybeSingle();
     if (error || !data) return json(403, { error: 'Acces refuse' });
@@ -66,6 +66,15 @@ Deno.serve(async (req: Request) => {
     }
     const { data: pat } = await admin.from('patient').select('base_id').eq('id', data.patient_id).maybeSingle();
     bucket = 'clinical-attachments'; action = 'attachment_read'; path = data.storage_path; baseId = pat?.base_id ?? null;
+  } else {
+    const { data, error } = await asUser
+      .from('export_log').select('id, cohort_id, stored_file_path').eq('id', id).maybeSingle();
+    if (error || !data || !data.stored_file_path) return json(403, { error: 'Acces refuse' });
+    const { data: cohort } = await admin.from('cohort').select('base_id').eq('id', data.cohort_id).maybeSingle();
+    bucket = 'scientific-exports'; action = 'export_read'; path = data.stored_file_path; baseId = cohort?.base_id ?? null;
+    if (baseId && !path.startsWith(`${baseId}/`)) {
+      return json(409, { error: 'Chemin export incoherent' });
+    }
   }
 
   // §9.3 : trace AVANT livraison ET non contournable -> si la journalisation ECHOUE, on REFUSE
