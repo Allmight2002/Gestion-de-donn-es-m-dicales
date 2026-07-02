@@ -209,7 +209,11 @@ seule, ou le patient **et** la demande.
 | i18n | `src/i18n/` | Messages fr/en |
 | **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) | RLS + domaine + rendu |
 
-### Liste des migrations (ordre d'application, 36 au total)
+### Liste des migrations (ordre d'application, 53 au total)
+
+> L'**état résultant** (tables, colonnes, RLS, triggers, fonctions) est régénérable dans
+> [`docs/schema-etat-final.md`](schema-etat-final.md) via `npm run schema` — inutile de rejouer
+> les migrations de tête. Extrait du socle ci-dessous ; liste complète dans `supabase/migrations/`.
 
 ```
 # Socle (schéma, RLS, RPC, intégrité)
@@ -228,6 +232,9 @@ seule, ou le patient **et** la demande.
 093100_template_rule_versioning  093200_field_attrs_and_patient_edit
 093300_rpc_only_writes_complete  093400_import_p1_hardening
 093500_offline_snapshot_rpc      093600_import_duplicate_warnings
+
+# … suite : inspection serveur, gouvernance des accès, édition historique, exports audités,
+# idempotence d'import inter-lots … jusqu'à 095300 (voir le dossier et schema-etat-final.md)
 ```
 
 ---
@@ -245,7 +252,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
 ```
 
-État actuel : **40 fichiers / 292 tests verts** (36 migrations). Chaque refus RLS est doublé d'un
+État actuel : **42 fichiers / 326 tests verts** (53 migrations). Chaque refus RLS est doublé d'un
 **contrôle positif** prouvant qu'un utilisateur légitime voit bien la donnée (pas de faux
 positif par table vide).
 

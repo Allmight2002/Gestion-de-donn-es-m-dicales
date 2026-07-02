@@ -44,7 +44,7 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
 | Tableurs | **SheetJS `xlsx` 0.20.3** (CDN officiel ; corrige les CVE de 0.18.5), parsing en **Web Worker** |
 | Tests | **Vitest 2**, **`embedded-postgres` (PG 18)** pour la RLS, `@testing-library/react` + jsdom, `fake-indexeddb` |
 | Hors-ligne | **IndexedDB** (instantanés + file d'écritures) |
-| CI | GitHub Actions (typecheck, build, migrations à blanc, tests) |
+| CI | GitHub Actions (typecheck, lint ESLint, tests, build PWA) |
 | Hébergement | **Vercel** (frontend) + **Supabase cloud** (backend) |
 
 ---
@@ -66,7 +66,7 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
   de fichiers sont des fonctions pures (`src/domain/*`), testables en Node, **rejouées côté
   serveur** (la validation client n'est qu'un confort ; le serveur tranche).
 - **ET-6. Migrations additives.** Le schéma est une suite de migrations **forward-only** ;
-  chaque correctif est une nouvelle migration (jamais d'édition rétroactive). 36 migrations,
+  chaque correctif est une nouvelle migration (jamais d'édition rétroactive). 53 migrations,
   appliquées à l'identique en test (PostgreSQL embarqué) et en production (Supabase).
 
 ---
@@ -199,7 +199,7 @@ Messages **français / anglais** centralisés (`src/i18n/`), via un `I18nProvide
   (`test/harness/000_supabase_shim.sql`) recrée `auth.uid()` / rôles ; jamais appliqué en réel.
 - **Deux projets Vitest** : `db` (Node, RLS + domaine ; exécution **sérialisée** — une instance PG
   à la fois) et `web` (jsdom, rendu UI + `fake-indexeddb`).
-- **État actuel : ≈ 292 tests verts** (≈ 232 côté base de données + 60 côté frontend), **36
+- **État actuel : 326 tests verts** (262 côté base de données + 64 côté frontend), **53
   migrations** appliquées proprement depuis zéro.
 - **ET-23. Tests adversariaux** : chaque refus RLS est doublé d'un **contrôle positif** ; des
   scénarios d'attaque sont des tests permanents (insertion directe interdite, `log_audit` non
@@ -247,7 +247,7 @@ npm run db:verify # applique toutes les migrations depuis zéro
 
 | Couche | Emplacement |
 |---|---|
-| Migrations SQL (source de vérité) | `supabase/migrations/` (36) |
+| Migrations SQL (source de vérité) | `supabase/migrations/` (53) ; état résultant : `docs/schema-etat-final.md` |
 | Edge Functions | `supabase/functions/signed-read/` |
 | Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `signedRead`) |
 | Domaine pur | `src/domain/` (validation, règles, import, inspection de fichiers, tableur) |
@@ -257,7 +257,7 @@ npm run db:verify # applique toutes les migrations depuis zéro
 | Tests | `test/` (db) + `src/**/*.test.tsx` (web) |
 
 Liste ordonnée des migrations : voir le dossier `supabase/migrations/` (de `090100_extensions` à
-`093600_import_duplicate_warnings`). Les commentaires `§X.Y` dans le SQL renvoient aux exigences du
+`095300_strict_date_validation`). Les commentaires `§X.Y` dans le SQL renvoient aux exigences du
 présent cahier et des audits successifs.
 
 ---

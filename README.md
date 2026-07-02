@@ -13,7 +13,7 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
 partage** (`viewer` / `editor`) + **5 permissions granulaires** par base. Chaîne de curation
 complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
-**Tests : 40 fichiers / 292 verts** (Vitest ; RLS + sécurité côté base + rendu UI), **36 migrations**.
+**Tests : 42 fichiers / 326 verts** (Vitest ; RLS + sécurité côté base + rendu UI), **53 migrations**.
 Build PWA OK ; **déployé** (Vercel + Supabase cloud, **données fictives**).
 
 > Besoin d'un backend Supabase pour le login réel ? Voir
@@ -117,11 +117,12 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   │   ├── 20260616091300_soft_delete.sql    # suppression logique
 │   │   ├── 20260616091400_curation.sql       # pool, brouillon, finalize_curation_task(), clarifications
 │   │   ├── 20260616091500_audit.sql          # audit_log (actions sensibles)
-│   │   └── … + 21 migrations de durcissement # 091600 → 093600 : édition de champs, règles
-│   │                                          #   versionnées, import par lots, écritures par RPC
-│   │                                          #   seulement, intégrité inter-bases, verrou optimiste,
-│   │                                          #   audit infalsifiable, hors-ligne, snapshot 1 appel…
-│   │                                          # (36 migrations au total)
+│   │   └── … + 38 migrations de durcissement # 091600 → 095300 : édition de champs, règles
+│   │                                          #   versionnées, import par lots + idempotence,
+│   │                                          #   écritures par RPC seulement, intégrité inter-bases,
+│   │                                          #   audit infalsifiable, hors-ligne, gouvernance des
+│   │                                          #   accès, exports audités… (53 au total ; voir
+│   │                                          #   docs/schema-etat-final.md pour l'état résultant)
 │   ├── seed.sql                          # Données de démo FICTIVES
 │   ├── storage.sql                       # Buckets privés + RLS
 │   └── config.toml
@@ -174,7 +175,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le frontend (rendu + gating par rôle)
 ```
 
-Résultat attendu : **40 fichiers / 292 tests passants** — sécurité RLS (les scénarios
+Résultat attendu : **42 fichiers / 326 tests passants** — sécurité RLS (les scénarios
 d'attaque + leurs contrôles positifs), logique de rôle, règles JSON, validation de saisie,
 âge calculé sans exposer la DOB, corrections, images, cohortes, export immuable, accès,
 suppression logique, curation, audit, et rendu des écrans. Le premier lancement télécharge

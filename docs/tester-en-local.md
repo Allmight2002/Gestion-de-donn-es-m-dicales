@@ -4,7 +4,7 @@ Guide pour lancer le registre **bout-en-bout** sur votre poste : un vrai Supabas
 (Postgres + Auth + RLS + Storage) tourne dans Docker, le frontend se connecte dessus,
 et vous vous connectez avec les comptes de démonstration (données **fictives**).
 
-> Pas besoin de Docker pour les **tests automatisés** : `npm test` (292 tests) démarre
+> Pas besoin de Docker pour les **tests automatisés** : `npm test` (326 tests) démarre
 > un PostgreSQL embarqué. Docker ne sert qu'au test **manuel** ci-dessous.
 
 ## Prérequis
