@@ -35,6 +35,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [address, setAddress] = useState('');
   const [permanent, setPermanent] = useState<Record<string, unknown>>({});
   const [matches, setMatches] = useState<IdentityMatch[]>([]);
+  const [ackDuplicate, setAckDuplicate] = useState(false); // B5 : confirmation « patient different »
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -43,6 +44,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   // d'ajouter une rencontre plutot que de recreer un dossier.
   useEffect(() => {
     const name = fullName.trim();
+    setAckDuplicate(false); // toute nouvelle identite doit etre re-confirmee
     if (!baseId || !name || !dob) { setMatches([]); return; }
     const handle = setTimeout(() => {
       patients.findIdentityMatches(baseId, name, dob).then(setMatches).catch(() => setMatches([]));
@@ -88,6 +90,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     // Mode "confier au staff" : nom complet + date de naissance OBLIGATOIRES.
     if (mode === 'submit' && (!fullName.trim() || !dob)) {
       setError(t('patient.identity_required'));
+      return;
+    }
+    // B5 : un doublon potentiel exige une confirmation explicite avant de creer un nouveau dossier.
+    if (matches.length > 0 && !ackDuplicate) {
+      setError(t('patient.duplicate_confirm_required'));
       return;
     }
     setBusy(true);
@@ -179,6 +186,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                 </li>
               ))}
             </ul>
+            <label className="mt-3 flex items-center gap-2 border-t border-amber-200 pt-2 font-medium">
+              <input type="checkbox" checked={ackDuplicate} onChange={(e) => setAckDuplicate(e.target.checked)} />
+              {t('patient.duplicate_ack')}
+            </label>
           </div>
         )}
 

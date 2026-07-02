@@ -93,6 +93,28 @@ describe('NewPatient : detection de doublon', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Ouvrir sa fiche' }));
     expect(await screen.findByText('FICHE')).toBeInTheDocument();
   });
+
+  test('B5 : un doublon exige une confirmation explicite avant de creer le dossier', async () => {
+    const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
+    const createPatient = vi.fn(async () => ({ id: 'p1', code: 'P-0001' }));
+    const patients = { async listPatients() { return []; }, findIdentityMatches, createPatient } as unknown as PatientRepository;
+    const curation = { async createSubmission() { return { taskId: 't1' }; } } as unknown as CurationRepository;
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await screen.findByText(/existe déjà dans cette base/i);
+
+    // Soumettre SANS confirmer : rien n'est cree, un message demande la confirmation.
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    expect(createPatient).not.toHaveBeenCalled();
+    expect(screen.getByText(/cochez la confirmation pour créer quand même/i)).toBeInTheDocument();
+
+    // Cocher « patient différent » puis soumettre : le dossier est cree.
+    await userEvent.click(screen.getByLabelText(/patient différent/i));
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
+  });
 });
 
 describe('EncounterCreateChoice', () => {

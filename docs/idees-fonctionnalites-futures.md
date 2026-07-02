@@ -59,8 +59,8 @@ Signal visuel à la saisie ET vue de revue (valeurs hors bornes « molles », z-
 « Rencontre de suivi attendue à J+90 non saisie » → badge sur le patient + liste des suivis en retard.
 **Pourquoi** : les perdus de vue sont le talon d'Achille des cohortes prospectives ; un simple rappel améliore mécaniquement l'exhaustivité.
 
-### B5. Doublons mieux exposés — **S**
-La détection existe déjà (`find_identity_matches`) ; l'afficher plus tôt et plus clairement dans le parcours de création.
+### B5. Doublons mieux exposés — **S** — ✅ LIVRÉ (2026-07-02)
+La détection existe déjà (`find_identity_matches`) ; l'afficher plus tôt et plus clairement dans le parcours de création. Livré : confirmation explicite (case « patient différent ») exigée avant de créer un dossier quand un doublon d'identité est détecté.
 **Pourquoi** : un doublon découvert après 6 mois de saisie est un cauchemar de fusion ; découvert à la création, c'est un clic.
 
 ---
@@ -127,8 +127,8 @@ Diagramme inclus/exclus/analysés généré depuis les cohortes.
 
 ## E. Confiance & sécurité perçue
 
-### E1. Page « Qui accède à mes bases » — **S**
-Pour le propriétaire : liste des accès, dernier usage, lectures d'identité récentes (vue sur `audit_log`).
+### E1. Page « Qui accède à mes bases » — **S** — ✅ LIVRÉ (2026-07-02)
+Pour le propriétaire : liste des accès, dernier usage, lectures d'identité récentes (vue sur `audit_log`). Livré : section « Consultations d'identité (30 j) » dans la gestion des accès (compteurs par lecteur + journal), RPC `base_identity_audit`.
 **Pourquoi** : la sécurité n'existe pour l'utilisateur que si elle est **visible** ; répond aussi au F-4 de l'audit interne (détection de sur-consultation).
 
 ### E2. Verrouillage d'inactivité + step-up identité — **M**
