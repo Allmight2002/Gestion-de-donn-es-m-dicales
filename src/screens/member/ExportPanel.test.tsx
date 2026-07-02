@@ -10,6 +10,7 @@ import { ExportPanel } from './ExportPanel';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { ExportRepository, RecordExportInput, ExportLogItem } from '../../data/exports';
+import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
 
 beforeAll(() => {
@@ -77,8 +78,9 @@ describe('ExportPanel', () => {
     expect(arg.encounterCount).toBe(1);
   });
 
-  test('telecharge un export conserve via URL signee', async () => {
+  test('telecharge un export conserve via URL signee (et trace best-effort en local)', async () => {
     const getExportDownloadUrl = vi.fn(async () => 'https://signed.test/export.csv');
+    const logExportRead = vi.fn(async () => {});
     const exportsRepo = {
       async getSnapshotData() {
         return { patients: [], encounters: [] };
@@ -98,7 +100,12 @@ describe('ExportPanel', () => {
 
     render(
       <I18nProvider>
-        <RepositoryProvider bases={baseRepo} templates={templateRepo} exports={exportsRepo}>
+        <RepositoryProvider
+          bases={baseRepo}
+          templates={templateRepo}
+          exports={exportsRepo}
+          audit={{ logExportRead } as unknown as AuditRepository}
+        >
           <MemoryRouter initialEntries={['/bases/b1/cohorts/c1/export']}>
             <Routes>
               <Route path="/bases/:id/cohorts/:cohortId/export" element={<ExportPanel />} />
@@ -112,5 +119,7 @@ describe('ExportPanel', () => {
     const buttons = screen.getAllByRole('button');
     await userEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(getExportDownloadUrl).toHaveBeenCalledWith('x', 'b/c/export.csv'));
+    // En local/demo (pas d'Edge), le telechargement laisse une trace via la RPC log_export_read.
+    await waitFor(() => expect(logExportRead).toHaveBeenCalledWith('x'));
   });
 });

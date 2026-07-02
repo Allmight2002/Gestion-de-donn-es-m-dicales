@@ -37,9 +37,20 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...   # si non injectée automati
   fichier dont `inspection_status <> 'accepted'` (à activer quand l'inspection serveur, §10.2,
   promeut les fichiers). Laissé inactif pour le pilote fictif.
 
+### Entités couvertes (audit v12 §7.9 : exports inclus)
+| `entity` | Table d'autorisation (RLS) | Bucket signé | Action `audit_log` |
+|---|---|---|---|
+| `attachment` | `clinical_attachment` | `clinical-attachments` | `attachment_read` |
+| `raw_document` | `raw_document` | `raw-documents` | `raw_document_read` |
+| `export` | `export_log` (accès base via cohorte) | `scientific-exports` | `export_read` |
+
+Depuis §7.9, le bucket `scientific-exports` n'a **plus de policy SELECT directe** (storage.sql) :
+le re-téléchargement d'un export conservé passe par cette fonction (bouton « Télécharger » de
+l'historique d'exports) → journalisé avant signature, non contournable.
+
 ### Bascule du frontend — FAITE (derrière un drapeau)
 Le frontend appelle déjà la fonction via le helper [`src/data/signedRead.ts`](../src/data/signedRead.ts)
-(utilisé par `attachments.ts` et `curation.ts`). Comportement piloté par `VITE_USE_SIGNED_READ` :
+(utilisé par `attachments.ts`, `curation.ts` et `exports.ts`). Comportement piloté par `VITE_USE_SIGNED_READ` :
 ```ts
 // VITE_USE_SIGNED_READ=true  -> invoke('signed-read')  (autorise+journalise+signe côté serveur)
 // sinon (démo locale)        -> storage.createSignedUrl (signature client directe)

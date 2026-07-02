@@ -2,7 +2,7 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import { useBaseRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useAuditRepository, useBaseRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';
 import { getTemplateFields } from '../../data/templates';
 import {
@@ -57,6 +57,7 @@ export function ExportPanel() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const exportsRepo = useExportRepository();
+  const audit = useAuditRepository();
 
   const [fields, setFields] = useState<ExportField[]>([]);
   const [tvId, setTvId] = useState<string | null>(null);
@@ -136,6 +137,9 @@ export function ExportPanel() {
       const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
       if (!url) throw new Error(t('export.download_unavailable'));
       downloadUrl(url, item.storedFilePath.split('/').pop() ?? `export.${item.format}`);
+      // §7.9 : en prod l'Edge a deja journalise AVANT de signer ; en local/demo (pas d'Edge),
+      // trace best-effort via la RPC log_export_read (no-op cote client quand l'Edge est actif).
+      void audit.logExportRead(item.id);
       setError(null);
     } catch (e) {
       setError(msg(e));

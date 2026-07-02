@@ -5,8 +5,9 @@
 // get_patient_identity(), qui audite avant de renvoyer les champs ; logIdentityRead reste
 // disponible pour les chemins historiques sans reveler de donnee.
 //
-// §5.6 : en PRODUCTION, la lecture d'un DOCUMENT ou d'une IMAGE passe par l'Edge signed-read, qui
-// journalise deja avant de signer -> on n'ajoute pas un 2e audit cote client pour ces deux-la.
+// §5.6/§7.9 : en PRODUCTION, la lecture d'un DOCUMENT, d'une IMAGE ou d'un EXPORT conserve passe
+// par l'Edge signed-read, qui journalise deja avant de signer -> on n'ajoute pas un 2e audit cote
+// client pour ces trois-la (le client ne journalise qu'en LOCAL/demo, ou l'Edge n'existe pas).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -19,7 +20,7 @@ export interface AuditRepository {
   logRawDocumentRead(documentId: string): Promise<void>;
   /** Ouverture d'une image clinique. En prod, l'Edge journalise -> no-op cote client (§5.6). */
   logAttachmentRead(attachmentId: string): Promise<void>;
-  /** Telechargement d'un export. */
+  /** Telechargement d'un export conserve. En prod, l'Edge journalise -> no-op cote client (§7.9). */
   logExportRead(exportId: string): Promise<void>;
 }
 
@@ -38,7 +39,8 @@ export function makeAuditRepository(client: SupabaseClient | null): AuditReposit
       USE_SIGNED_READ ? Promise.resolve() : call('log_raw_document_read', { p_document_id: documentId }),
     logAttachmentRead: (attachmentId) =>
       USE_SIGNED_READ ? Promise.resolve() : call('log_attachment_read', { p_attachment_id: attachmentId }),
-    logExportRead: (exportId) => call('log_export_read', { p_export_id: exportId }),
+    logExportRead: (exportId) =>
+      USE_SIGNED_READ ? Promise.resolve() : call('log_export_read', { p_export_id: exportId }),
   };
 }
 
