@@ -22,3 +22,6 @@ Thumbs.db
 
 # Artefact genere par repomix (bundle du depot, non versionne)
 repomix-output.xml
+
+# Manifeste de deploiement (instantane de release genere par `npm run manifest`)
+deploy-manifest.json

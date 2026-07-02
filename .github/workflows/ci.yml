@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint (tournures a risque, regles des hooks React)
+        run: npm run lint
+
       - name: Tests (RLS embarque + UI)
         run: npm test
 

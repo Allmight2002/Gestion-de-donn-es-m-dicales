@@ -13,12 +13,15 @@
     "test:rls": "vitest run --project db",
     "test:web": "vitest run --project web",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
     "supabase:start": "npx --yes supabase start",
     "supabase:reset": "npx --yes supabase db reset",
     "supabase:stop": "npx --yes supabase stop",
     "supabase:storage": "node scripts/apply-storage.mjs",
     "create-account": "node scripts/create-account.mjs",
-    "db:verify": "node scripts/verify-migrations.mjs"
+    "db:verify": "node scripts/verify-migrations.mjs",
+    "schema": "node scripts/dump-schema.mjs",
+    "manifest": "node scripts/deploy-manifest.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -28,6 +31,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",
@@ -38,11 +42,15 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
     "embedded-postgres": "^18.4.0-beta.17",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.5",
+    "globals": "^17.7.0",
     "jsdom": "^25.0.1",
     "pg": "^8.21.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.62.1",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^0.20.5",
     "vitest": "^2.1.0"
