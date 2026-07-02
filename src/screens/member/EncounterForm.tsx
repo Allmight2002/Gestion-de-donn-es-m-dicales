@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
+import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
@@ -125,7 +126,7 @@ export function EncounterForm() {
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      <form onSubmit={submit} className="space-y-5">
+      <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
         <div className="grid grid-cols-3 gap-3">
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.type')}</span>
@@ -139,7 +140,8 @@ export function EncounterForm() {
           </label>
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.date')}</span>
-            <input type="date" className="input mt-1" value={encounterDate} onChange={(e) => setEncounterDate(e.target.value)} required />
+            {/* A2 : focus d'emblee sur la date (type/statut ont un defaut) -> saisie sans la souris. */}
+            <input type="date" autoFocus className="input mt-1" value={encounterDate} onChange={(e) => setEncounterDate(e.target.value)} required />
           </label>
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.status')}</span>
@@ -185,13 +187,14 @@ export function EncounterForm() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">
             {t('encounter.save')}
           </button>
           <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
+          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
     </section>

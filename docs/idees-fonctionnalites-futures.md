@@ -19,8 +19,8 @@ C'est là que se joue l'adoption : chaque seconde gagnée est multipliée par le
 Pré-remplir la nouvelle rencontre avec les valeurs de la dernière, l'utilisateur ne corrige que ce qui a changé.
 **Pourquoi** : dans un suivi chronique, 80 % des valeurs sont identiques d'une visite à l'autre ; c'est LE gain de temps le plus demandé dans les registres.
 
-### A2. Saisie rapide au clavier — **S**
-Focus automatique sur le premier champ, navigation Tab fluide, Entrée pour enregistrer, raccourci « rencontre suivante ».
+### A2. Saisie rapide au clavier — **S** — ✅ LIVRÉ (2026-07-02)
+Focus automatique sur le premier champ, navigation Tab fluide, Entrée pour enregistrer, raccourci « rencontre suivante ». Livré : Ctrl/⌘+Entrée enregistre depuis n'importe quel champ (rencontre + patient, création + édition) via `requestSubmit`, focus auto sur la date de rencontre, indice près du bouton. (Raccourci « rencontre suivante » : non fait, à voir plus tard.)
 **Pourquoi** : un médecin qui saisit 15 dossiers d'affilée ne veut pas toucher la souris ; la fluidité perçue fait la réputation de l'outil.
 
 ### A3. Champs calculés (scores automatiques) — **M**

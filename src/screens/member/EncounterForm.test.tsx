@@ -88,6 +88,18 @@ describe('EncounterForm', () => {
     expect(createEncounter).toHaveBeenCalledTimes(1);
   });
 
+  test('A2 : Ctrl+Entrée enregistre la rencontre depuis le clavier', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    const { container } = renderForm(makePatientRepo(createEncounter));
+    await screen.findByText('Glasgow');
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
+    // Ctrl+Entrée depuis le formulaire (sans cliquer le bouton) déclenche le même enregistrement.
+    fireEvent.keyDown(container.querySelector('form')!, { key: 'Enter', ctrlKey: true });
+    expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
+    expect(createEncounter).toHaveBeenCalledTimes(1);
+  });
+
   test('une regle de coherence bloquante empeche l enregistrement', async () => {
     const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
     renderForm(makePatientRepo(createEncounter));

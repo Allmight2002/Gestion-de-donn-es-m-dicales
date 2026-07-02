@@ -6,6 +6,7 @@ import { useBaseRepository, useCurationRepository, usePatientRepository, useTemp
 import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
+import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { FieldInput } from './FieldInput';
 
 // Ecran patient (cahier v3.0). Deux modes :
@@ -136,7 +137,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       {mode === 'submit' && <p className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">{t('patient.submit_hint')}</p>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      <form onSubmit={submit} className="space-y-6">
+      <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">{t('patient.code')}</span>
           <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} required />
@@ -212,13 +213,14 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           </fieldset>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">
             {mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
           </button>
           <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
+          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
     </section>

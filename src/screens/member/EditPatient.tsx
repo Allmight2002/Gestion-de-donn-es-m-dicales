@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
+import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { EncounterFields } from './EncounterFields';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -94,7 +95,7 @@ export function EditPatient() {
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      <form onSubmit={submit} className="space-y-5">
+      <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
         <label className="flex flex-col text-sm">
           <span className="text-slate-700">{t('encounter.status')}</span>
           <select className="input mt-1 w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -123,9 +124,10 @@ export function EditPatient() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">{t('encounter.save')}</button>
           <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
+          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
     </section>
