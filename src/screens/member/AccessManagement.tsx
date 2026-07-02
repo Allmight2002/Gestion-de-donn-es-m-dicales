@@ -6,7 +6,7 @@ import type { MessageKey } from '../../i18n/messages';
 import { useAccessRepository, useBaseRepository } from '../../data/RepositoryProvider';
 import {
   permissionsForPreset, presetOf, roleForPermissions, ROLE_PRESETS,
-  type AccessItem, type BasePermissions, type InvitationItem, type RolePreset,
+  type AccessItem, type BasePermissions, type IdentityAudit, type InvitationItem, type RolePreset,
 } from '../../data/access';
 
 // Partage de base ENTRE MEDECINS uniquement (v3.0). Le role curateur est un role GLOBAL
@@ -33,6 +33,7 @@ export function AccessManagement() {
   const [canManage, setCanManage] = useState(false);
   const [invitations, setInvitations] = useState<InvitationItem[]>([]);
   const [accessList, setAccessList] = useState<AccessItem[]>([]);
+  const [idAudit, setIdAudit] = useState<IdentityAudit | null>(null); // E1
   const [email, setEmail] = useState('');
   // C1 : on part du profil le moins privilegie (Moniteur = lecture seule) ; l'invitant elargit
   // volontairement. Le role de partage (viewer/editor) est deduit des permissions a l'envoi.
@@ -54,6 +55,8 @@ export function AccessManagement() {
       if (manage) {
         setInvitations(await accessRepo.listInvitations(baseId));
         setAccessList(await accessRepo.listAccess(baseId));
+        // E1 : section resiliente — si la RPC n'est pas encore deployee, on masque sans casser.
+        try { setIdAudit(await accessRepo.getIdentityAudit(baseId)); } catch { setIdAudit(null); }
       }
       setError(null);
     } catch (e) {
@@ -217,6 +220,39 @@ export function AccessManagement() {
               </ul>
             )}
           </div>
+
+          {idAudit && (
+            <div>
+              <h2 className="mb-1 text-sm font-semibold text-slate-700">{t('access.identity_activity')}</h2>
+              <p className="mb-3 text-xs text-slate-500">{t('access.identity_activity_hint')}</p>
+              {idAudit.reads.length === 0 ? (
+                <p className="text-sm text-slate-500">{t('access.identity_none')}</p>
+              ) : (
+                <div className="space-y-3">
+                  <ul className="flex flex-wrap gap-2 text-xs">
+                    {idAudit.byReader.map((s, i) => (
+                      <li key={i} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                        <span className="font-medium text-slate-700">{s.readerName}</span>
+                        <span className="text-slate-500"> · {s.count} {t('access.reads_word')}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <ul className="space-y-1 text-xs">
+                    {idAudit.reads.map((r, i) => (
+                      <li key={i} className="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span>
+                          <span className="font-medium text-slate-700">{r.readerName}</span>
+                          <span className="text-slate-400"> → </span>
+                          <span className="font-mono">{r.patientCode ?? '—'}</span>
+                        </span>
+                        <span className="text-slate-400">{new Date(r.at).toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>

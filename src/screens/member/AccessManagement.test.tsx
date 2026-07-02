@@ -32,6 +32,7 @@ function makeAccess(over: Partial<AccessRepository> = {}): AccessRepository {
     async revokeAccess() {},
     async setPermissions() {},
     async acceptInvitation() {},
+    async getIdentityAudit() { return { byReader: [], reads: [] }; },
     ...over,
   } as unknown as AccessRepository;
 }
@@ -81,6 +82,17 @@ describe('AccessManagement', () => {
     const [, , role, perms] = createInvitation.mock.calls[0];
     expect(role).toBe('editor'); // déduit des permissions (il y a de la saisie)
     expect(perms).toMatchObject({ canManageAccess: true, canViewIdentity: true, canExportData: true, canEditStructuredData: true });
+  });
+
+  test('E1 affiche l activite de consultation d identite (qui a lu quel patient)', async () => {
+    const getIdentityAudit = vi.fn(async () => ({
+      byReader: [{ readerName: 'Dr Ngo', count: 3, lastAt: '2026-07-01T10:00:00.000Z' }],
+      reads: [{ at: '2026-07-01T10:00:00.000Z', readerName: 'Dr Ngo', patientCode: 'P-0042' }],
+    }));
+    renderAccess(baseRepoWithRole('owner'), makeAccess({ getIdentityAudit }));
+    expect(await screen.findByText(/Consultations d.identité/)).toBeInTheDocument();
+    expect(screen.getByText('P-0042')).toBeInTheDocument(); // patient pseudonymisé consulté
+    expect(screen.getByText(/3 consultations/)).toBeInTheDocument(); // compteur par lecteur (signal)
   });
 
   test('un non-proprietaire ne voit pas la gestion des acces', async () => {

@@ -96,3 +96,23 @@ describe('tracage des LECTURES sensibles (§7.1, §5.5 RPC specialisees)', () =>
     expect(await rowsAs(annaId, "select id from public.audit_log where action='identity_read' and entity_id=$1", [pid])).toHaveLength(0);
   });
 });
+
+describe('E1 base_identity_audit (« qui accede a mes bases »)', () => {
+  test('le proprietaire voit qui a consulte quel patient (30 j) ; un tiers est refuse', async () => {
+    const p = (await db.admin.query('select id, patient_code from public.patient where base_id=$1 limit 1', [baseId])).rows[0];
+    // Alice (proprietaire, acces identite) consulte une identite -> trace 'identity_read'.
+    await rowsAs(aliceId, 'select * from public.get_patient_identity($1)', [p.id]);
+
+    const overview = (await rowsAs(aliceId, 'select public.base_identity_audit($1) as a', [baseId]))[0].a as {
+      byReader: { readerName: string; count: number }[];
+      reads: { readerName: string; patientCode: string | null }[];
+    };
+    expect(overview.reads.length).toBeGreaterThan(0);
+    expect(overview.byReader.length).toBeGreaterThan(0);
+    // Le code patient (pseudonyme) est resolu cote serveur (SECURITY DEFINER).
+    expect(overview.reads.some((r) => r.patientCode === p.patient_code)).toBe(true);
+
+    // Un compte SANS gestion ni propriete (analyste) est refuse.
+    await expect(rowsAs(annaId, 'select public.base_identity_audit($1) as a', [baseId])).rejects.toThrow(/refus|denied|acces/i);
+  });
+});

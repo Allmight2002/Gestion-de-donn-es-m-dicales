@@ -95,6 +95,22 @@ export interface AccessItem {
   permissions: BasePermissions;
 }
 
+// --- E1 : activite de consultation d'identite (« qui accede a mes bases ») --------------------
+export interface IdentityRead {
+  at: string;
+  readerName: string;
+  patientCode: string | null;
+}
+export interface IdentityReaderSummary {
+  readerName: string;
+  count: number;
+  lastAt: string;
+}
+export interface IdentityAudit {
+  byReader: IdentityReaderSummary[];
+  reads: IdentityRead[];
+}
+
 export interface AccessRepository {
   listInvitations(baseId: string): Promise<InvitationItem[]>;
   /** Renvoie le jeton EN CLAIR (a montrer une seule fois) ; seul le hash est stocke. */
@@ -104,6 +120,8 @@ export interface AccessRepository {
   revokeAccess(id: string): Promise<void>;
   setPermissions(id: string, permissions: BasePermissions): Promise<void>;
   acceptInvitation(token: string): Promise<void>;
+  /** E1 : consultations d'identite des 30 derniers jours (proprietaire / gestionnaire seulement). */
+  getIdentityAudit(baseId: string): Promise<IdentityAudit>;
 }
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -150,6 +168,7 @@ export function makeAccessRepository(client: SupabaseClient | null): AccessRepos
     return {
       listInvitations: fail, createInvitation: fail, revokeInvitation: fail,
       listAccess: fail, revokeAccess: fail, setPermissions: fail, acceptInvitation: fail,
+      getIdentityAudit: fail,
     };
   }
 
@@ -218,6 +237,13 @@ export function makeAccessRepository(client: SupabaseClient | null): AccessRepos
     async acceptInvitation(token) {
       const { error } = await client.rpc('accept_invitation', { p_token: token });
       if (error) throw error;
+    },
+
+    async getIdentityAudit(baseId) {
+      const { data, error } = await client.rpc('base_identity_audit', { p_base_id: baseId });
+      if (error) throw error;
+      const a = (data ?? {}) as Partial<IdentityAudit>;
+      return { byReader: a.byReader ?? [], reads: a.reads ?? [] };
     },
   };
 }
