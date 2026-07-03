@@ -98,6 +98,8 @@ export function isExpired(snap: { expiresAt: number }, now = Date.now()): boolea
 // get/list/outbox filtrent dessus -> aucune voie de lecture inter-comptes. (Injectable -> testable.)
 let currentUser: string | null = null;
 export function setOfflineUser(userId: string | null): void { currentUser = userId; }
+/** Utilisateur courant du cache local (pour partitionner brouillons/instantanes par compte). */
+export function getOfflineUser(): string | null { return currentUser; }
 const ownedByCurrent = (o: { ownerUserId?: string | null }) => (o.ownerUserId ?? null) === currentUser;
 // §5.9 : cle composite -> deux comptes qui cachent la MEME base ne s'ecrasent plus (poste partage).
 const snapKey = (baseId: string): string => `${currentUser ?? ''}::${baseId}`;

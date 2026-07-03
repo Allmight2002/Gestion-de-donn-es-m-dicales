@@ -27,8 +27,8 @@ Focus automatique sur le premier champ, navigation Tab fluide, Entrée pour enre
 IMC, Glasgow total à partir des composantes, clairance de la créatinine… définis dans le gabarit comme « champ calculé ».
 **Pourquoi** : élimine les erreurs de calcul manuel (fréquentes) et standardise les scores entre les saisisseurs — argument de qualité pour la publication.
 
-### A4. Brouillon automatique local — **S**
-Sauvegarde continue de la saisie en cours (IndexedDB) ; si l'onglet se ferme ou le réseau tombe, rien n'est perdu.
+### A4. Brouillon automatique local — **S** — ✅ LIVRÉ (2026-07-02)
+Sauvegarde continue de la saisie en cours ; si l'onglet se ferme ou le réseau tombe, rien n'est perdu. Livré sur le formulaire de RENCONTRE (analytique uniquement, jamais d'identité) : autosave débouncé dans localStorage partitionné par utilisateur, restauration au retour + bandeau « brouillon récupéré / effacer », effacé à l'enregistrement. (Création patient exclue : contient l'identité — choix de sécurité.)
 **Pourquoi** : perdre une saisie de 10 minutes détruit la confiance ; la couche hors-ligne existante fournit déjà 90 % de la tuyauterie.
 
 ### A5. Recherche globale (Ctrl+K) — **M**

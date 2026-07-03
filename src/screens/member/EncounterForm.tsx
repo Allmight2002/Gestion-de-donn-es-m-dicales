@@ -1,12 +1,21 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
+import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
+
+// A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
+interface EncounterDraft {
+  encounterType: string;
+  encounterDate: string;
+  status: string;
+  values: Record<string, unknown>;
+}
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -34,6 +43,8 @@ export function EncounterForm() {
   const [age, setAge] = useState<number | null>(null);
   const [blocking, setBlocking] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [draftRestored, setDraftRestored] = useState(false); // A4
+  const draftReady = useRef(false); // A4 : autorise l'autosave seulement apres chargement + restauration
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
@@ -50,14 +61,43 @@ export function EncounterForm() {
       const version = await templates.getVersion(base.base.currentTemplateVersionId);
       setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
       setRules(version.rules);
+      // A4 : restaurer un brouillon local eventuel (saisie non enregistree recuperee).
+      const draft = patientId ? loadDraft<EncounterDraft>('encounter', patientId) : null;
+      if (draft) {
+        setEncounterType(draft.data.encounterType);
+        setEncounterDate(draft.data.encounterDate);
+        setStatus(draft.data.status);
+        setValues(draft.data.values);
+        setDraftRestored(true);
+      }
       setError(null);
     } catch (e) {
       setError(msg(e));
     } finally {
       setLoading(false);
+      draftReady.current = true; // autosave actif seulement apres ce premier chargement
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, bases, templates]);
+  }, [baseId, patientId, bases, templates]);
+
+  // A4 : sauvegarde continue (debounce) du brouillon ANALYTIQUE tant qu'il y a du contenu.
+  useEffect(() => {
+    if (!draftReady.current || !patientId) return;
+    const hasContent = !!encounterDate || Object.keys(values).length > 0;
+    const handle = setTimeout(() => {
+      if (hasContent) saveDraft<EncounterDraft>('encounter', patientId, { encounterType, encounterDate, status, values });
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [patientId, encounterType, encounterDate, status, values]);
+
+  function discardDraft() {
+    if (patientId) clearDraft('encounter', patientId);
+    setEncounterType('consultation');
+    setEncounterDate('');
+    setStatus('draft');
+    setValues({});
+    setDraftRestored(false);
+  }
 
   useEffect(() => {
     void load();
@@ -105,6 +145,7 @@ export function EncounterForm() {
       await patients.createEncounter(patientId, {
         encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
       });
+      clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
       setError(msg(e));
@@ -125,6 +166,15 @@ export function EncounterForm() {
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+
+      {draftRestored && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-900">
+          <span>{t('draft.restored')}</span>
+          <button type="button" onClick={discardDraft} className="whitespace-nowrap font-medium text-sky-700 hover:underline">
+            {t('draft.discard')}
+          </button>
+        </div>
+      )}
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
         <div className="grid grid-cols-3 gap-3">

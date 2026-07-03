@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 // Tests de rendu de la saisie de rencontre (cahier §8.5, §10) avec repos INJECTES.
-import { describe, expect, test, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { EncounterForm } from './EncounterForm';
+import { saveDraft, loadDraft } from '../../data/drafts';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, NewEncounterInput } from '../../data/patients';
@@ -67,6 +68,8 @@ function renderForm(patientRepo: PatientRepository) {
 }
 
 describe('EncounterForm', () => {
+  afterEach(() => localStorage.clear()); // A4 : pas de fuite de brouillon entre tests
+
   test('affiche les champs de rencontre, l apercu d age et le selecteur de valeur manquante', async () => {
     renderForm(makePatientRepo(vi.fn(async () => ({ id: 'e1' }))));
     expect(await screen.findByText('Glasgow')).toBeInTheDocument();
@@ -98,6 +101,23 @@ describe('EncounterForm', () => {
     fireEvent.keyDown(container.querySelector('form')!, { key: 'Enter', ctrlKey: true });
     expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
     expect(createEncounter).toHaveBeenCalledTimes(1);
+  });
+
+  test('A4 : restaure un brouillon local et l efface a l enregistrement', async () => {
+    // Brouillon pre-existant (analytique) pour ce patient (owner vide : pas d'AuthProvider ici).
+    saveDraft('encounter', 'p1', { encounterType: 'suivi', encounterDate: '2024-05-05', status: 'draft', values: { glasgow_score: 12 } });
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderForm(makePatientRepo(createEncounter));
+
+    // Bandeau de restauration + valeurs du brouillon reinjectees.
+    expect(await screen.findByText(/brouillon récupéré/i)).toBeInTheDocument();
+    expect((screen.getByLabelText('Date de la rencontre') as HTMLInputElement).value).toBe('2024-05-05');
+    expect((screen.getByLabelText('Glasgow') as HTMLInputElement).value).toBe('12');
+
+    // Enregistrement reussi -> le brouillon est efface.
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(loadDraft('encounter', 'p1')).toBeNull();
   });
 
   test('une regle de coherence bloquante empeche l enregistrement', async () => {
