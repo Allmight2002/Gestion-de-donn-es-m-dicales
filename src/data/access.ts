@@ -141,13 +141,6 @@ const mapPerms = (r: PermRow): BasePermissions => ({
   canExportData: r.can_export_data,
   canManageAccess: r.can_manage_access,
 });
-const permColumns = (p: BasePermissions) => ({
-  can_view_identity: p.canViewIdentity,
-  can_view_raw_documents: p.canViewRawDocuments,
-  can_edit_structured_data: p.canEditStructuredData,
-  can_export_data: p.canExportData,
-  can_manage_access: p.canManageAccess,
-});
 const PERM_SELECT =
   'can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access';
 
@@ -188,26 +181,27 @@ export function makeAccessRepository(client: SupabaseClient | null): AccessRepos
     },
 
     async createInvitation(baseId, email, role, permissions) {
-      const { data: u } = await client.auth.getUser();
       const token = crypto.randomUUID();
       const tokenHash = await sha256Hex(token);
       const expires = new Date(Date.now() + INVITATION_TTL_DAYS * 86400_000).toISOString();
-      const { error } = await client.from('base_invitation').insert({
-        base_id: baseId,
-        invited_email: email,
-        access_role: role,
-        ...permColumns(permissions),
-        token_hash: tokenHash,
-        status: 'pending',
-        expires_at: expires,
-        invited_by: u.user?.id ?? null,
+      const { error } = await client.rpc('create_base_invitation', {
+        p_base_id: baseId,
+        p_invited_email: email,
+        p_access_role: role,
+        p_token_hash: tokenHash,
+        p_expires_at: expires,
+        p_can_view_identity: permissions.canViewIdentity,
+        p_can_view_raw_documents: permissions.canViewRawDocuments,
+        p_can_edit_structured_data: permissions.canEditStructuredData,
+        p_can_export_data: permissions.canExportData,
+        p_can_manage_access: permissions.canManageAccess,
       });
       if (error) throw error;
       return { token };
     },
 
     async revokeInvitation(id) {
-      const { error } = await client.from('base_invitation').update({ status: 'revoked' }).eq('id', id);
+      const { error } = await client.rpc('revoke_base_invitation', { p_invitation_id: id });
       if (error) throw error;
     },
 
@@ -225,12 +219,19 @@ export function makeAccessRepository(client: SupabaseClient | null): AccessRepos
     },
 
     async revokeAccess(id) {
-      const { error } = await client.from('base_access').update({ revoked_at: new Date().toISOString() }).eq('id', id);
+      const { error } = await client.rpc('revoke_base_access', { p_access_id: id });
       if (error) throw error;
     },
 
     async setPermissions(id, permissions) {
-      const { error } = await client.from('base_access').update(permColumns(permissions)).eq('id', id);
+      const { error } = await client.rpc('update_base_access_permissions', {
+        p_access_id: id,
+        p_can_view_identity: permissions.canViewIdentity,
+        p_can_view_raw_documents: permissions.canViewRawDocuments,
+        p_can_edit_structured_data: permissions.canEditStructuredData,
+        p_can_export_data: permissions.canExportData,
+        p_can_manage_access: permissions.canManageAccess,
+      });
       if (error) throw error;
     },
 

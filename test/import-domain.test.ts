@@ -3,14 +3,14 @@ import { describe, expect, test } from 'vitest';
 import { autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping } from '../src/domain/import';
 import type { TemplateField } from '../src/data/types';
 
-const f = (fieldKey: string, label: string, scope: TemplateField['scope']): TemplateField => ({
-  id: fieldKey, fieldKey, label, scope, section: 'clinique', type: 'text', unit: null, allowedValues: null,
+const f = (fieldKey: string, label: string, scope: TemplateField['scope'], type: TemplateField['type'] = 'text'): TemplateField => ({
+  id: fieldKey, fieldKey, label, scope, section: 'clinique', type, unit: null, allowedValues: null,
   required: false, minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 0,
 });
 
 const fields: TemplateField[] = [
   f('sexe', 'Sexe', 'patient'),
-  f('glasgow_score', 'Score de Glasgow', 'encounter'),
+  f('glasgow_score', 'Score de Glasgow', 'encounter', 'integer'),
 ];
 
 describe('autoMapColumns (par index)', () => {
@@ -40,16 +40,16 @@ describe('buildImportRows (cellules par index)', () => {
       0: 'patient_code', 1: 'identity.full_name', 2: 'patient:sexe',
       3: 'encounter:glasgow_score', 4: 'encounter_date', 5: 'ignore',
     };
-    const [out] = buildImportRows([['P1', 'Jean', 'M', '12', '2024-01-05', 'x']], mapping);
+    const [out] = buildImportRows([['P1', 'Jean', 'M', '12', '2024-01-05', 'x']], mapping, fields);
     expect(out.patient_code).toBe('P1');
     expect(out.identity).toEqual({ full_name: 'Jean' });
     expect(out.patient_data).toEqual({ sexe: 'M' });
-    expect(out.encounter).toEqual({ encounter_type: 'consultation', encounter_date: '2024-01-05', data: { glasgow_score: '12' } });
+    expect(out.encounter).toEqual({ encounter_type: 'consultation', encounter_date: '2024-01-05', data: { glasgow_score: 12 } });
   });
 
   test('ni identite ni rencontre quand les colonnes correspondantes sont vides', () => {
     const mapping: ColumnMapping = { 0: 'patient_code', 1: 'patient:sexe', 2: 'identity.full_name', 3: 'encounter:glasgow_score' };
-    const [out] = buildImportRows([['P2', 'F', '', '']], mapping);
+    const [out] = buildImportRows([['P2', 'F', '', '']], mapping, fields);
     expect(out.identity).toBeNull();
     expect(out.encounter).toBeNull();
     expect(out.patient_data).toEqual({ sexe: 'F' });

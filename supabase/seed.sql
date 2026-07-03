@@ -136,7 +136,7 @@ declare
   v_tv   uuid := '10000000-0000-0000-0000-0000000000a1';
   v_owner uuid := '22222222-2222-2222-2222-222222222222';
   i int; v_pid uuid; v_code text; v_dob date; v_sex text; v_bg text; v_year int;
-  v_adm date; v_gcs int; v_out text; v_hb text; v_age numeric;
+  v_adm date; v_gcs int; v_out text; v_hb numeric; v_age numeric;
   blood text[] := array['A+','O+','B+','AB+','O-'];
   sexes text[] := array['M','F'];
   diag  text[] := array['TC grave','Hematome sous-dural','Hematome extra-dural','AVC hemorragique','Tumeur cerebrale'];
@@ -163,7 +163,7 @@ begin
     v_adm := date '2024-01-05' + ((i * 17) % 300);
     v_gcs := 3 + ((i * 3) % 13);
     v_out := (array['gueri','sequelles','deces','gueri'])[1 + (i % 4)];
-    v_hb  := (9 + (i % 6))::text; -- hemoglobine numerique ; le cas "inconnu" devient un code manquant ci-dessous
+    v_hb  := (9 + (i % 6))::numeric; -- hemoglobine numerique ; le cas "inconnu" devient un code manquant ci-dessous
     v_age := public.compute_age(v_dob, v_adm, 'years');
 
     insert into public.encounter

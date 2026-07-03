@@ -52,6 +52,7 @@ describe('export_log : ecriture reservee a can_curate', () => {
       [baseId, bobId, aliceId],
     );
     await expect(rowsAs(bobId, INSERT, [cohortId, tvId])).rejects.toThrow();
+    expect(await rowsAs(bobId, 'select id from public.export_log where cohort_id=$1', [cohortId])).toHaveLength(0);
   });
 
   test('le staff ne voit pas les traces d export', async () => {

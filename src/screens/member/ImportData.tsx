@@ -109,7 +109,7 @@ export function ImportData() {
     setReport(null); setWarnings([]); setCommitted(false);
   }, [mapping, status, conflict, rawRows, versionId]);
 
-  const rows = useMemo(() => buildImportRows(rawRows, mapping), [rawRows, mapping]);
+  const rows = useMemo(() => buildImportRows(rawRows, mapping, fields), [rawRows, mapping, fields]);
   const hasPatientCode = Object.values(mapping).includes('patient_code');
   const dups = useMemo(() => duplicateTargets(mapping), [mapping]);
   const canRun = hasPatientCode && dups.length === 0;

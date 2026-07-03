@@ -182,7 +182,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     },
 
     async setTemplateVersion(baseId, versionId) {
-      const { error } = await client.from('base').update({ current_template_version_id: versionId }).eq('id', baseId);
+      const { error } = await client.rpc('set_base_template_version', { p_base_id: baseId, p_version_id: versionId });
       if (error) throw error;
     },
   };

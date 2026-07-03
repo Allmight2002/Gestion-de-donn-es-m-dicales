@@ -42,6 +42,12 @@ beforeAll(async () => {
      values ($1, 'triage_time', 'Heure de triage', 'encounter', 'clinique', 'datetime', false, true, 99)`,
     [publishedVersionId],
   );
+  await db.admin.query(
+    `insert into public.template_field
+       (template_version_id, field_key, label, scope, section, type, required, allow_missing_codes, display_order)
+     values ($1, 'is_sedated', 'Sedation', 'encounter', 'clinique', 'boolean', false, true, 100)`,
+    [publishedVersionId],
+  );
 
   const p = (await db.admin.query('select id, patient_code from public.patient where base_id=$1 limit 1', [baseId])).rows[0];
   patientId = p.id;
@@ -165,9 +171,12 @@ describe('durcissement des ecritures (audit 2)', () => {
   test('§5.4 : entier decimal, date invalide et code manquant invente sont refuses', async () => {
     const C = (data: object) => [patientId, 'consultation', TEST_DATE, 'curated', JSON.stringify(data), 'years'];
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12.5 }))).rejects.toThrow(/entier/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: '12' }))).rejects.toThrow(/numerique JSON/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, is_sedated: 'false' }))).rejects.toThrow(/Booleen JSON/i);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: 'pas-une-date' }))).rejects.toThrow(/date/i);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: '2024-02-30' }))).rejects.toThrow(/date/i);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, admission_date: '2024-2-29' }))).rejects.toThrow(/date/i);
+    await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, is_sedated: false }))).resolves.toHaveLength(1);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, triage_time: '2024-02-29T10:15' }))).resolves.toHaveLength(1);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, triage_time: '2024-02-29 10:15' }))).rejects.toThrow(/date/i);
     await expect(rowsAs(aliceId, CALL, C({ diagnosis: 'x', glasgow_score: 12, triage_time: '2024-02-29T24:00' }))).rejects.toThrow(/date/i);

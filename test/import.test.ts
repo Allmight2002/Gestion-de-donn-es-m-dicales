@@ -359,6 +359,26 @@ describe('import_records', () => {
     expect(n.rows[0].n).toBe(1);
   });
 
+  test('P1 idempotence : une rencontre deja importee n empeche pas la mise a jour patient', async () => {
+    const h = 'idem-patient-' + Date.now();
+    const sameEncounter = enc('consultation', '2024-03-01', { diagnosis: 'stable', glasgow_score: 11 });
+    await rowsAs(aliceId, CALL7, [baseId, J([
+      row('IDEM-PAT', sameEncounter, { sexe: 'M', birth_year: 1980 }),
+    ]), false, 'draft', 'fill', h, null]);
+
+    const rep = (await rowsAs(aliceId, CALL7, [baseId, J([
+      row('IDEM-PAT', sameEncounter, { blood_group: 'A+' }),
+    ]), false, 'draft', 'fill', h + '-corr', null]))[0].report;
+    expect(rep).toMatchObject({ already_imported: 1, encounters: 0, patients_updated: 1, error_count: 0 });
+
+    const p = (await db.admin.query("select data from public.patient where base_id=$1 and patient_code='IDEM-PAT'", [baseId])).rows[0].data;
+    expect(p).toMatchObject({ sexe: 'M', birth_year: 1980, blood_group: 'A+' });
+    const n = await db.admin.query(
+      `select count(*)::int n from public.encounter e join public.patient p on p.id = e.patient_id
+       where p.base_id = $1 and p.patient_code = 'IDEM-PAT'`, [baseId]);
+    expect(n.rows[0].n).toBe(1);
+  });
+
   test('§4.7 cloture refusee si row_count depasse expected_rows (chunk en double)', async () => {
     const h = 'b47-' + Date.now();
     const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id; // 1 ligne attendue

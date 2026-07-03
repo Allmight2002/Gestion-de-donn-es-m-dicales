@@ -49,10 +49,13 @@ describe('trace automatique des actions sensibles', () => {
   });
 
   test('accorder un acces genere une trace access_granted', async () => {
-    await rowsAs(aliceId, "insert into public.base_access(base_id,user_id,access_role,granted_by) values($1,$2,'viewer',$3)", [baseId, bobId, aliceId]);
+    await rowsAs(aliceId, `select * from public.create_base_invitation(
+      $1,'bob@demo.test','viewer',false,false,false,false,false, encode(digest('tok-audit-access','sha256'),'hex'), now() + interval '1 day'
+    )`, [baseId]);
+    await rowsAs(bobId, 'select * from public.accept_invitation($1)', ['tok-audit-access']);
     const audit = await db.admin.query("select user_id from public.audit_log where action='access_granted' and base_id=$1 and (metadata->>'user_id')=$2", [baseId, bobId]);
     expect(audit.rows.length).toBeGreaterThan(0);
-    expect(audit.rows[0].user_id).toBe(aliceId);
+    expect(audit.rows[0].user_id).toBe(bobId);
   });
 
   test('une suppression logique genere une trace patient_deleted', async () => {
@@ -66,7 +69,7 @@ describe('trace automatique des actions sensibles', () => {
 
 describe('lecture ciblee de l audit (RLS)', () => {
   test('le proprietaire lit l audit de sa base ; un analyste ne voit pas la trace d un tiers', async () => {
-    // Trace d'octroi d'acces (action du proprietaire) : visible par le proprietaire...
+    // Trace d'octroi d'acces : visible par le proprietaire...
     expect((await rowsAs(aliceId, "select id from public.audit_log where action='access_granted' and base_id=$1", [baseId])).length).toBeGreaterThan(0);
     // ...mais PAS par l'analyste (ni auteur, ni proprietaire).
     expect(await rowsAs(annaId, "select id from public.audit_log where action='access_granted' and base_id=$1", [baseId])).toHaveLength(0);

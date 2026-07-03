@@ -15,15 +15,15 @@ import type { PatientRepository, ImportOptions } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
 import type { ImportRow, ImportReport } from '../../domain/import';
 
-const field = (fieldKey: string, label: string, scope: TemplateField['scope']): TemplateField => ({
-  id: fieldKey, fieldKey, label, scope, section: 'clinique', type: 'text', unit: null, allowedValues: null,
+const field = (fieldKey: string, label: string, scope: TemplateField['scope'], type: TemplateField['type'] = 'text'): TemplateField => ({
+  id: fieldKey, fieldKey, label, scope, section: 'clinique', type, unit: null, allowedValues: null,
   required: false, minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 0,
 });
 
 const FIELDS: TemplateField[] = [
   field('sexe', 'Sexe', 'patient'),
   field('diagnosis', 'Diagnostic', 'encounter'),
-  field('glasgow_score', 'Score de Glasgow', 'encounter'),
+  field('glasgow_score', 'Score de Glasgow', 'encounter', 'integer'),
 ];
 
 function renderImport(importRecords: PatientRepository['importRecords']) {
@@ -84,7 +84,7 @@ describe('ImportData (ecran d import)', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual({
       patient_code: 'P1', identity: null, patient_data: { sexe: 'M' },
-      encounter: { encounter_type: 'consultation', encounter_date: '2024-01-05', data: { diagnosis: 'TC', glasgow_score: '12' } },
+      encounter: { encounter_type: 'consultation', encounter_date: '2024-01-05', data: { diagnosis: 'TC', glasgow_score: 12 } },
     });
     expect(await screen.findByText(/encore été écrit/i)).toBeInTheDocument(); // rapport d'apercu
     expect(screen.getByText(/nouveaux patients/i)).toBeInTheDocument();

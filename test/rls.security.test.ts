@@ -197,10 +197,8 @@ describe('§16.6 revocation immediate', () => {
     );
     expect((await rowsAs(bobId, 'select * from public.patient')).length).toBeGreaterThan(0);
 
-    // Le proprietaire revoque (supprime la ligne d'acces).
-    await db.asUser(aliceId, (c) =>
-      c.query('delete from public.base_access where base_id = $1 and user_id = $2', [baseId, bobId]),
-    );
+    const accessId = (await db.admin.query('select id from public.base_access where base_id=$1 and user_id=$2', [baseId, bobId])).rows[0].id;
+    await rowsAs(aliceId, 'select public.revoke_base_access($1)', [accessId]);
 
     expect(await rowsAs(bobId, 'select * from public.patient')).toHaveLength(0);
   });

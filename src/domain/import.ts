@@ -78,8 +78,29 @@ export function duplicateTargets(mapping: ColumnMapping): ImportTarget[] {
 }
 
 /** Construit les lignes structurees a partir des lignes brutes (cellules par INDEX) + mapping. */
-export function buildImportRows(rows: unknown[][], mapping: ColumnMapping): ImportRow[] {
+export function buildImportRows(rows: unknown[][], mapping: ColumnMapping, fields: TemplateField[] = []): ImportRow[] {
   const entries = Object.entries(mapping).map(([i, t]) => [Number(i), t] as const);
+  const fieldByTarget = new Map<string, TemplateField>();
+  for (const f of fields) fieldByTarget.set(`${f.scope}:${f.fieldKey}`, f);
+  const coerce = (value: unknown, field: TemplateField | undefined): unknown => {
+    const s = value == null ? '' : String(value).trim();
+    if (s === '') return undefined;
+    if (!field) return s;
+    if (field.type === 'number' || field.type === 'integer') {
+      const n = typeof value === 'number' ? value : Number(s.replace(',', '.'));
+      return Number.isFinite(n) ? n : s;
+    }
+    if (field.type === 'boolean') {
+      const v = s.toLowerCase();
+      if (['true', 'vrai', 'oui', 'yes', '1'].includes(v)) return true;
+      if (['false', 'faux', 'non', 'no', '0'].includes(v)) return false;
+      return s;
+    }
+    if (field.type === 'multiselect') {
+      return s.split(/[;,]/).map((part) => part.trim()).filter(Boolean);
+    }
+    return s;
+  };
   return rows.map((cells) => {
     let patient_code: string | null = null;
     const identity: { full_name?: string; date_of_birth?: string } = {};
@@ -98,8 +119,16 @@ export function buildImportRows(rows: unknown[][], mapping: ColumnMapping): Impo
       else if (target === 'encounter_date') encDate = s;
       else if (target === 'identity.full_name') identity.full_name = s;
       else if (target === 'identity.date_of_birth') identity.date_of_birth = s;
-      else if (target.startsWith('patient:')) patient_data[target.slice('patient:'.length)] = s;
-      else if (target.startsWith('encounter:')) encData[target.slice('encounter:'.length)] = s;
+      else if (target.startsWith('patient:')) {
+        const key = target.slice('patient:'.length);
+        const value = coerce(v, fieldByTarget.get(`patient:${key}`));
+        if (value !== undefined) patient_data[key] = value;
+      }
+      else if (target.startsWith('encounter:')) {
+        const key = target.slice('encounter:'.length);
+        const value = coerce(v, fieldByTarget.get(`encounter:${key}`));
+        if (value !== undefined) encData[key] = value;
+      }
     }
 
     const hasEnc = encDate !== '' || encType !== '' || Object.keys(encData).length > 0;

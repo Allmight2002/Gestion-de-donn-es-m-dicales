@@ -31,14 +31,14 @@ afterAll(async () => {
 });
 
 describe('P1 base_access reserve aux medecins', () => {
-  test('un proprietaire ne peut pas accorder un acces actif a un curateur', async () => {
+  test('un proprietaire ne peut plus inserer un acces actif en direct', async () => {
     await expect(
       rowsAs(
         aliceId,
         "insert into public.base_access(base_id,user_id,access_role,granted_by) values($1,$2,'viewer',$3)",
         [baseId, curatorId, aliceId],
       ),
-    ).rejects.toThrow(/medecin/i);
+    ).rejects.toThrow();
   });
 
   test('un compte system_admin invite ne peut pas accepter un acces patient', async () => {

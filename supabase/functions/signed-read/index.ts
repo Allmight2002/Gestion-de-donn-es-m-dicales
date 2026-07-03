@@ -72,6 +72,9 @@ Deno.serve(async (req: Request) => {
     if (error || !data || !data.stored_file_path) return json(403, { error: 'Acces refuse' });
     const { data: cohort } = await admin.from('cohort').select('base_id').eq('id', data.cohort_id).maybeSingle();
     bucket = 'scientific-exports'; action = 'export_read'; path = data.stored_file_path; baseId = cohort?.base_id ?? null;
+    if (!baseId) return json(403, { error: 'Acces refuse' });
+    const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', { p_base: baseId });
+    if (canExportErr || canExport !== true) return json(403, { error: 'Acces refuse' });
     if (baseId && !path.startsWith(`${baseId}/`)) {
       return json(409, { error: 'Chemin export incoherent' });
     }
