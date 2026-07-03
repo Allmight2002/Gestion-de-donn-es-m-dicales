@@ -22,6 +22,9 @@ export default defineWorkspace([
   },
   {
     plugins: [react()],
+    // __APP_VERSION__ est injecte au build (vite.config) ; on le definit aussi en test pour que
+    // l'ecran « etat du systeme » se rende sans ReferenceError.
+    define: { __APP_VERSION__: JSON.stringify('test') },
     test: {
       name: 'web',
       include: ['src/**/*.test.tsx'],

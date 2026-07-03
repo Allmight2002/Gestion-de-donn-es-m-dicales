@@ -135,8 +135,8 @@ Pour le propriétaire : liste des accès, dernier usage, lectures d'identité r�
 Session verrouillée après N minutes ; re-saisie du mot de passe pour révéler une identité.
 **Pourquoi** : postes partagés à l'hôpital = risque n°1 en pratique ; le step-up rend le « qui a vu quoi » individuellement opposable.
 
-### E3. Écran « état du système » — **S**
-Synchro hors-ligne en attente, dernier instantané, version de l'app, état du serveur.
+### E3. Écran « état du système » — **S** — ✅ LIVRÉ (2026-07-02)
+Synchro hors-ligne en attente, dernier instantané, version de l'app, état du serveur. Livré : panneau en haut du centre de synchronisation (`/sync`) — connexion en ligne/hors-ligne, écritures en attente + conflits, bases disponibles hors-ligne (avec fraîcheur), version applicative (injectée depuis package.json), dernières anomalies techniques (via `reportError`).
 **Pourquoi** : sur le terrain (réseau instable), l'utilisateur doit savoir en un regard si « c'est parti » ou pas — réduit l'anxiété et les double-saisies.
 
 ---

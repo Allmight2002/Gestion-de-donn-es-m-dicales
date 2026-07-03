@@ -2,6 +2,10 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'node:fs';
+
+// Version applicative = celle de package.json (source unique) -> injectee comme __APP_VERSION__.
+const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version as string;
 
 // PWA installable (cahier §1, §17.15) — SANS hors-ligne avance (hors perimetre §5).
 export default defineConfig(({ mode }) => {
@@ -18,6 +22,7 @@ export default defineConfig(({ mode }) => {
     );
   }
   return {
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   // §6.1 — les Web Workers sont des modules ES : autorise le code-splitting (import dynamique de
   // xlsx dans le worker de parsing) ; sans cela, le format IIFE par defaut casse le build.
   worker: { format: 'es' as const },

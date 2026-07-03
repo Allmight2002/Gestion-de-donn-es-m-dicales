@@ -1,12 +1,13 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { usePatientRepository } from '../../data/RepositoryProvider';
 import {
-  flushOutbox, resolveKeepMine, resolveKeepServer, useOnline, useOutbox,
-  type FlushDeps, type FlushReport, type OutboxEntry,
+  flushOutbox, offlineCache, resolveKeepMine, resolveKeepServer, useOnline, useOutbox,
+  type FlushDeps, type FlushReport, type OfflineMeta, type OutboxEntry,
 } from '../../data/offline';
+import { recentClientErrors } from '../../lib/reportError';
 
 // Centre de synchronisation (§13, Phases 2/3) : modifications hors-ligne en attente +
 // resolution des conflits. La synchro rejoue chaque correction via la RPC validee
@@ -20,6 +21,10 @@ export function SyncCenter() {
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<FlushReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // E3 : etat du systeme (instantanes hors-ligne disponibles + dernieres anomalies techniques).
+  const [snapshots, setSnapshots] = useState<OfflineMeta[]>([]);
+  const [errors] = useState(() => recentClientErrors());
+  useEffect(() => { offlineCache.list().then(setSnapshots).catch(() => setSnapshots([])); }, []);
 
   const deps: FlushDeps = {
     updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
@@ -45,8 +50,60 @@ export function SyncCenter() {
 
   return (
     <section className="max-w-3xl space-y-6">
+      {/* E3 : etat du systeme en un coup d'oeil. */}
+      <div className="space-y-3">
+        <h1 className="page-title">{t('status.title')}</h1>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="card p-3">
+            <p className="text-xs text-slate-500">{t('status.connection')}</p>
+            <p className={`text-sm font-medium ${online ? 'text-teal-700' : 'text-amber-700'}`}>
+              {online ? t('status.online') : t('status.offline')}
+            </p>
+          </div>
+          <div className="card p-3">
+            <p className="text-xs text-slate-500">{t('status.pending_writes')}</p>
+            <p className="text-sm font-medium text-slate-700">{pending.length}{conflicts.length > 0 ? ` · ${conflicts.length} ${t('sync.conflicts').toLowerCase()}` : ''}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-xs text-slate-500">{t('status.offline_bases')}</p>
+            <p className="text-sm font-medium text-slate-700">{snapshots.length}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-xs text-slate-500">{t('status.version')}</p>
+            <p className="text-sm font-medium text-slate-700">{__APP_VERSION__} · {import.meta.env.MODE}</p>
+          </div>
+        </div>
+
+        {snapshots.length > 0 && (
+          <ul className="space-y-1 text-xs text-slate-500">
+            {snapshots.map((s) => (
+              <li key={s.baseId} className="flex items-center justify-between border-b border-slate-100 pb-1">
+                <span className="font-medium text-slate-600">{s.baseName}</span>
+                <span>{s.patientCount} {t('status.patients')} · {new Date(s.cachedAt).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <details className="text-xs text-slate-500">
+          <summary className="cursor-pointer">{t('status.errors')} ({errors.length})</summary>
+          {errors.length === 0 ? (
+            <p className="mt-1 text-slate-400">{t('status.no_errors')}</p>
+          ) : (
+            <ul className="mt-1 space-y-1">
+              {errors.slice().reverse().map((e, i) => (
+                <li key={i} className="border-b border-slate-100 pb-1">
+                  <span className="font-mono">{e.name}: {e.message}</span>
+                  <span className="ml-2 text-slate-400">{new Date(e.at).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
-        <h1 className="page-title">{t('sync.title')}</h1>
+        <h2 className="page-title">{t('sync.title')}</h2>
         <button onClick={() => void sync()} disabled={busy || !online || pending.length === 0} className="btn-primary">
           {busy ? t('offline.saving') : `${t('sync.now')}${pending.length ? ` (${pending.length})` : ''}`}
         </button>
