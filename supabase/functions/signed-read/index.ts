@@ -82,6 +82,11 @@ Deno.serve(async (req: Request) => {
 
   // §9.3 : trace AVANT livraison ET non contournable -> si la journalisation ECHOUE, on REFUSE
   // de signer (sinon un document pourrait etre lu sans laisser de trace).
+  if (!baseId) return json(403, { error: 'Acces refuse' });
+  if (!path.startsWith(`${baseId}/`)) {
+    return json(409, { error: 'Chemin fichier incoherent' });
+  }
+
   const { error: auditErr } = await admin.from('audit_log').insert({ user_id: who.user.id, action, entity, entity_id: id, base_id: baseId });
   if (auditErr) return json(500, { error: 'Journalisation impossible : acces refuse' });
 

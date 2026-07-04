@@ -19,7 +19,7 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 
 const INSERT_ATT = (deid = true) =>
   `insert into public.clinical_attachment(patient_id, kind, label, storage_path, mime_type, deidentification_confirmed, created_by)
-   values($1,'imagerie','TDM','p/x.jpg','image/jpeg',${deid},auth.uid())`;
+   values($1,'imagerie','TDM',(select base_id::text || '/p/x.jpg' from public.patient where id=$1),'image/jpeg',${deid},auth.uid())`;
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true });
@@ -73,5 +73,46 @@ describe('can_view_identity gouverne l acces aux images', () => {
 describe('deidentification confirmee obligatoire (§13)', () => {
   test('inserer une image avec deidentification_confirmed=false -> refuse', async () => {
     await expect(rowsAs(aliceId, INSERT_ATT(false), [patientId])).rejects.toThrow();
+  });
+});
+
+describe('coherence Storage des pieces jointes', () => {
+  test('une piece jointe ne peut pas pointer hors du prefixe Storage de sa base', async () => {
+    await expect(
+      db.admin.query(
+        'insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed) values($1,$2,true)',
+        [patientId, '00000000-0000-0000-0000-000000000000/evil.jpg'],
+      ),
+    ).rejects.toThrow(/Chemin Storage/i);
+  });
+
+  test('une piece jointe ne peut pas lier une rencontre d un autre patient', async () => {
+    const otherEncounterId = (
+      await db.admin.query(
+        `select e.id
+           from public.encounter e
+           join public.patient p on p.id = e.patient_id
+          where p.base_id = $1 and p.id <> $2
+          limit 1`,
+        [baseId, patientId],
+      )
+    ).rows[0].id;
+
+    await expect(
+      db.admin.query(
+        'insert into public.clinical_attachment(patient_id, encounter_id, storage_path, deidentification_confirmed) values($1,$2,$3,true)',
+        [patientId, otherEncounterId, `${baseId}/bad-link.jpg`],
+      ),
+    ).rejects.toThrow(/rencontre.*patient/i);
+  });
+
+  test('un document brut ne peut pas pointer hors du prefixe Storage de sa base', async () => {
+    const raw = (await db.admin.query('select id, base_id from public.raw_submission limit 1')).rows[0];
+    await expect(
+      db.admin.query(
+        "insert into public.raw_document(submission_id, base_id, storage_path, mime_type) values($1,$2,$3,'application/pdf')",
+        [raw.id, raw.base_id, '00000000-0000-0000-0000-000000000000/raw.pdf'],
+      ),
+    ).rejects.toThrow(/Chemin Storage/i);
   });
 });

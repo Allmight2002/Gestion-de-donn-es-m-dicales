@@ -160,8 +160,8 @@ describe('audit v10 §4.2 : verdict d inspection reserve au serveur', () => {
     const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
     // Piece jointe inseree cote serveur (admin), au statut client.
     const aid = (await db.admin.query(
-      "insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, inspection_status) values($1,'b/p/x.png',true,'accepted_client') returning id",
-      [pid],
+      "insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, inspection_status) values($1,$2,true,'accepted_client') returning id",
+      [pid, `${baseId}/p/x.png`],
     )).rows[0].id;
     // Alice (proprietaire, acces identite) NE PEUT PAS promouvoir le verdict serveur.
     await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='accepted' where id=$1", [aid]))
@@ -180,18 +180,18 @@ describe('audit v12 §6.3 : metadonnees d un fichier accepted immuables', () => 
     const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
     // Fichier DEJA INSPECTE (accepted) pose par le contexte serveur (admin, auth.uid() null).
     const aid = (await db.admin.query(
-      "insert into public.clinical_attachment(patient_id, storage_path, file_hash, file_size, deidentification_confirmed, inspection_status) values($1,'b/p/ok.png','h-ok',100,true,'accepted') returning id",
-      [pid],
+      "insert into public.clinical_attachment(patient_id, storage_path, file_hash, file_size, deidentification_confirmed, inspection_status) values($1,$2,'h-ok',100,true,'accepted') returning id",
+      [pid, `${baseId}/p/ok.png`],
     )).rows[0].id;
     // Alice (proprietaire, acces identite) NE PEUT PLUS echanger le fichier inspecte...
-    await expect(rowsAs(aliceId, "update public.clinical_attachment set storage_path='b/p/evil.png' where id=$1", [aid])).rejects.toThrow(/immuable/i);
+    await expect(rowsAs(aliceId, 'update public.clinical_attachment set storage_path=$2 where id=$1', [aid, `${baseId}/p/evil.png`])).rejects.toThrow(/immuable/i);
     await expect(rowsAs(aliceId, "update public.clinical_attachment set file_hash='h-evil' where id=$1", [aid])).rejects.toThrow(/immuable/i);
     await expect(rowsAs(aliceId, "update public.clinical_attachment set file_size=999 where id=$1", [aid])).rejects.toThrow(/immuable/i);
     // ...ni sortir du statut 'accepted' (terminal cote utilisateur).
     await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='pending' where id=$1", [aid])).rejects.toThrow(/immuable/i);
     // Le fichier reste CELUI qui a ete inspecte.
     expect((await db.admin.query('select storage_path, file_hash from public.clinical_attachment where id=$1', [aid])).rows[0])
-      .toMatchObject({ storage_path: 'b/p/ok.png', file_hash: 'h-ok' });
+      .toMatchObject({ storage_path: `${baseId}/p/ok.png`, file_hash: 'h-ok' });
     // Le contexte SERVEUR (admin), lui, peut corriger (re-inspection).
     await db.admin.query("update public.clinical_attachment set file_hash='h-reinspected' where id=$1", [aid]);
     expect((await db.admin.query('select file_hash from public.clinical_attachment where id=$1', [aid])).rows[0].file_hash).toBe('h-reinspected');

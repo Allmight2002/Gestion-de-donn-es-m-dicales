@@ -12,6 +12,7 @@ describe('configuration de deploiement', () => {
     expect(edge).toContain("entity !== 'export'");
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");
+    expect(edge).toContain("path.startsWith(`${baseId}/`)");
   });
 
   test('vercel.json declare les principaux headers de securite', () => {
