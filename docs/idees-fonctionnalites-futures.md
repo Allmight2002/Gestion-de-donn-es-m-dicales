@@ -144,8 +144,8 @@ Synchro hors-ligne en attente, dernier instantané, version de l'app, état du s
 
 ## F. Démarrage & import — la barrière d'adoption
 
-### F1. Assistant « créer un gabarit depuis mon Excel » — **L**
-Lire le fichier existant du médecin, proposer les variables détectées (types, valeurs), il ajuste et valide.
+### F1. Assistant « créer un gabarit depuis mon Excel » — **L** — ✅ LIVRÉ (2026-07-04)
+Lire le fichier existant du médecin, proposer les variables détectées (types, valeurs), il ajuste et valide. Livré : écran `/templates/from-file` (lien depuis Mes gabarits) — upload .xlsx/.csv → colonnes détectées avec type inféré (entier/nombre/date/booléen/liste à choix/texte) + valeurs distinctes pour les listes → tableau éditable (inclure, libellé, type, portée, section) → crée un gabarit personnel (réutilise createPersonalTemplate + addField, aucune migration). Détection = fonction pure testée.
 **Pourquoi** : TOUT médecin a déjà son Excel ; transformer « recréer mon dictionnaire à la main » (1 h, décourageant) en « vérifier une proposition » (10 min) est probablement le levier d'adoption n°1.
 
 ### F2. Rapport d'erreurs d'import téléchargeable + reprise sélective — **M**
