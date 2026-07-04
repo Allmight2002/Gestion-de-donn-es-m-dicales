@@ -7,6 +7,7 @@ import { flushOutbox, useOnline, useOutbox, type FlushDeps } from '../data/offli
 import { usePatientRepository } from '../data/RepositoryProvider';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { Logo } from './Logo';
+import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/[\s.@]+/).filter(Boolean);
@@ -49,6 +50,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-3 text-sm">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
+              className="hidden items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50 sm:flex"
+              title={t('search.title')}
+            >
+              <span aria-hidden>🔍</span> {t('search.button')} <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px]">Ctrl K</kbd>
+            </button>
             {isCurationStaff && (
               <Link to="/curation" className="hidden font-medium text-teal-700 hover:text-teal-800 sm:inline">
                 {t('curation.pool_title')}
@@ -90,6 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <CommandPalette />
     </div>
   );
 }

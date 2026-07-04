@@ -31,9 +31,9 @@ IMC, Glasgow total à partir des composantes, clairance de la créatinine… dé
 Sauvegarde continue de la saisie en cours ; si l'onglet se ferme ou le réseau tombe, rien n'est perdu. Livré sur le formulaire de RENCONTRE (analytique uniquement, jamais d'identité) : autosave débouncé dans localStorage partitionné par utilisateur, restauration au retour + bandeau « brouillon récupéré / effacer », effacé à l'enregistrement. (Création patient exclue : contient l'identité — choix de sécurité.)
 **Pourquoi** : perdre une saisie de 10 minutes détruit la confiance ; la couche hors-ligne existante fournit déjà 90 % de la tuyauterie.
 
-### A5. Recherche globale (Ctrl+K) — **M**
+### A5. Recherche globale (Ctrl+K) — **M** — ✅ LIVRÉ (2026-07-04, 1re version)
 Palette de recherche omniprésente : code patient, base, écran (« importer », « nouvelle rencontre »).
-**Pourquoi** : au-delà de ~50 patients, la navigation par listes devient le principal irritant.
+**Pourquoi** : au-delà de ~50 patients, la navigation par listes devient le principal irritant. Livré : palette Ctrl/⌘+K (+ bouton d'en-tête) qui liste/filtre les BASES et les ÉCRANS (tableau de bord, gabarits, synchro, pool) avec navigation clavier. (Recherche de PATIENTS par code : non encore incluse — nécessiterait une requête dédiée ; à ajouter ensuite.)
 
 ### A6. Mode « tournée » mobile — **L**
 Vue compacte pour téléphone : mes patients du jour, saisie une main au lit du malade (la PWA est déjà installable).
