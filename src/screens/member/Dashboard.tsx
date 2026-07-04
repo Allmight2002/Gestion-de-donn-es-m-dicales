@@ -82,9 +82,14 @@ export function Dashboard() {
           <p className="mt-1 text-sm text-slate-500">{t('app.tagline')}</p>
         </div>
         {mayCreate && (
-          <button onClick={() => navigate('/templates')} className="btn-secondary">
-            {t('mytemplates.title')}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => navigate('/groups')} className="btn-secondary">
+              {t('group.title')}
+            </button>
+            <button onClick={() => navigate('/templates')} className="btn-secondary">
+              {t('mytemplates.title')}
+            </button>
+          </div>
         )}
       </div>
 

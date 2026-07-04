@@ -71,9 +71,10 @@ La détection existe déjà (`find_identity_matches`) ; l'afficher plus tôt et 
 « Investigateur principal / Co-investigateur / Saisie / Moniteur » comme presets qui cochent les permissions techniques.
 **Pourquoi** : un chercheur pense en rôles d'étude, pas en booléens ; réduit aussi les erreurs d'attribution de droits (défense en profondeur côté humain).
 
-### C2. Groupes de recherche — **L**
+### C2. Groupes de recherche — **L** — 🟡 v1 LIVRÉE (2026-07-04, « étiquette d'organisation »)
 Inviter dans un *groupe* (équipe nommée), rattacher des bases au groupe, le rôle s'applique partout.
 **Pourquoi** : évite de ré-inviter chaque personne base par base ; reflète la réalité (une unité de recherche gère plusieurs registres). Couche d'ergonomie au-dessus de `base_access` — le modèle de sécurité ne change pas.
+**v1 livrée** : table `research_group` + rattachement de bases (privé au propriétaire, RLS), écran `/groups` (créer, lister) + détail (renommer, supprimer, rattacher/détacher ses bases). **PAS ENCORE** : l'octroi d'accès au niveau groupe (ajouter un membre → accès à toutes les bases), ni la vue « membres » agrégée — prochaine itération (choix : commencer par l'organisation, sans toucher à l'accès).
 
 ### C3. Journal d'activité lisible par base — **M** — ✅ LIVRÉ (2026-07-04)
 Timeline humaine (« Dr A a importé 250 lignes — 2 erreurs », « 12 rencontres validées ») construite sur `audit_log` + `field_change_log`. Livré : écran `/bases/:id/activity` (lien depuis la base) avec libellés lisibles par action (import, accès, suppressions, exports, publications) + nom de l'auteur, via RPC `base_activity_log` (les lectures sensibles d'identité restent dans leur vue E1).

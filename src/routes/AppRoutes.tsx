@@ -24,6 +24,8 @@ const CohortBuilder = lazy(() => import('../screens/member/CohortBuilder').then(
 const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) => ({ default: m.ExportPanel })));
 const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
+const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
+const GroupDetail = lazy(() => import('../screens/member/GroupDetail').then((m) => ({ default: m.GroupDetail })));
 const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
 const CurationBoard = lazy(() => import('../screens/member/CurationBoard').then((m) => ({ default: m.CurationBoard })));
 const CurationPool = lazy(() => import('../screens/member/CurationPool').then((m) => ({ default: m.CurationPool })));
@@ -68,6 +70,22 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <MyTemplates />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/groups"
+        element={
+          <ProtectedRoute area="member">
+            <GroupList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupId"
+        element={
+          <ProtectedRoute area="member">
+            <GroupDetail />
           </ProtectedRoute>
         }
       />

@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616096100_base_activity_log.sql`
-- Tables : 25 · Policies RLS : 49 · Triggers : 35 · Fonctions : 159
+- Dernière migration incluse : `20260616096200_research_groups.sql`
+- Tables : 27 · Policies RLS : 56 · Triggers : 35 · Fonctions : 159
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -477,6 +477,40 @@ Policies :
 
 Triggers :
 - `trg_xbase_submission` — BEFORE INSERT/UPDATE → `guard_xbase_submission()`
+
+### research_group · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| name | text | non |  |
+| owner_user_id | uuid | non |  |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `rg_delete` (DELETE) — USING (owner_user_id = auth.uid())
+- `rg_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
+- `rg_select` (SELECT) — USING (owner_user_id = auth.uid())
+- `rg_update` (UPDATE) — USING (owner_user_id = auth.uid()) · WITH CHECK (owner_user_id = auth.uid())
+
+### research_group_base · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| base_id | uuid | non |  |
+| group_id | uuid | non |  |
+| added_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `rgb_delete` (DELETE) — USING (EXISTS ( SELECT 1
+   FROM research_group g
+  WHERE ((g.id = research_group_base.group_id) AND (g.owner_user_id = auth.uid()))))
+- `rgb_insert` (INSERT) — WITH CHECK ((EXISTS ( SELECT 1
+   FROM research_group g
+  WHERE ((g.id = research_group_base.group_id) AND (g.owner_user_id = auth.uid())))) AND is_base_owner(base_id))
+- `rgb_select` (SELECT) — USING (EXISTS ( SELECT 1
+   FROM research_group g
+  WHERE ((g.id = research_group_base.group_id) AND (g.owner_user_id = auth.uid()))))
 
 ### template · RLS activée
 
