@@ -109,6 +109,7 @@ export function MyTemplates() {
           </label>
           <button type="submit" disabled={busy || !newName.trim()} className="btn-primary">{t('mytemplates.create')}</button>
           <button type="button" onClick={() => navigate('/templates/from-file')} className="btn-secondary">{t('mytemplates.from_file')}</button>
+          <button type="button" onClick={() => navigate('/templates/library')} className="btn-secondary">{t('tlib.title')}</button>
         </div>
       </form>
 

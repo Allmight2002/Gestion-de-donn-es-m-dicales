@@ -12,6 +12,7 @@ const BaseHome = lazy(() => import('../screens/member/BaseHome').then((m) => ({ 
 const BaseTemplateEditor = lazy(() => import('../screens/member/BaseTemplateEditor').then((m) => ({ default: m.BaseTemplateEditor })));
 const MyTemplates = lazy(() => import('../screens/member/MyTemplates').then((m) => ({ default: m.MyTemplates })));
 const TemplateFromFile = lazy(() => import('../screens/member/TemplateFromFile').then((m) => ({ default: m.TemplateFromFile })));
+const TemplateLibrary = lazy(() => import('../screens/member/TemplateLibrary').then((m) => ({ default: m.TemplateLibrary })));
 const NewPatient = lazy(() => import('../screens/member/NewPatient').then((m) => ({ default: m.NewPatient })));
 const PatientCreateChoice = lazy(() => import('../screens/member/PatientCreateChoice').then((m) => ({ default: m.PatientCreateChoice })));
 const ImportData = lazy(() => import('../screens/member/ImportData').then((m) => ({ default: m.ImportData })));
@@ -79,6 +80,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <TemplateFromFile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/templates/library"
+        element={
+          <ProtectedRoute area="member">
+            <TemplateLibrary />
           </ProtectedRoute>
         }
       />

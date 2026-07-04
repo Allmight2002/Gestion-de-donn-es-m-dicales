@@ -152,8 +152,8 @@ Lire le fichier existant du médecin, proposer les variables détectées (types,
 CSV des lignes rejetées avec motif ; bouton « réimporter uniquement les lignes corrigées ».
 **Pourquoi** : aujourd'hui les erreurs se lisent à l'écran et la reprise réimporte tout. ⛔ après audit (c'est exactement §7.8 — idempotence inter-lots — à régler d'abord).
 
-### F3. Bibliothèque de gabarits par spécialité — **M**
-Gabarits de départ (neuro, cardio, onco…) à dupliquer puis adapter.
+### F3. Bibliothèque de gabarits par spécialité — **M** — ✅ LIVRÉ (2026-07-04)
+Gabarits de départ (neuro, cardio, onco…) à dupliquer puis adapter. Livré : écran `/templates/library` (lien depuis Mes gabarits) — 4 modèles (Neurologie, Cardiologie, Oncologie, Générique) livrés en frontend (contenu pur testé) ; « Utiliser ce modèle » clone les champs dans un gabarit personnel (createPersonalTemplate + addField, aucune migration/seed). Modèles = points de départ à adapter.
 **Pourquoi** : démarrer d'une page blanche est intimidant ; un modèle crédible à 80 % lance l'utilisateur en minutes et diffuse de bonnes pratiques de dictionnaire.
 
 ---
