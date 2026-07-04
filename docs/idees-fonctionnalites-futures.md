@@ -75,8 +75,8 @@ La détection existe déjà (`find_identity_matches`) ; l'afficher plus tôt et 
 Inviter dans un *groupe* (équipe nommée), rattacher des bases au groupe, le rôle s'applique partout.
 **Pourquoi** : évite de ré-inviter chaque personne base par base ; reflète la réalité (une unité de recherche gère plusieurs registres). Couche d'ergonomie au-dessus de `base_access` — le modèle de sécurité ne change pas.
 
-### C3. Journal d'activité lisible par base — **M**
-Timeline humaine (« Dr A a importé 250 lignes — 2 erreurs », « 12 rencontres validées ») construite sur `audit_log` + `field_change_log`.
+### C3. Journal d'activité lisible par base — **M** — ✅ LIVRÉ (2026-07-04)
+Timeline humaine (« Dr A a importé 250 lignes — 2 erreurs », « 12 rencontres validées ») construite sur `audit_log` + `field_change_log`. Livré : écran `/bases/:id/activity` (lien depuis la base) avec libellés lisibles par action (import, accès, suppressions, exports, publications) + nom de l'auteur, via RPC `base_activity_log` (les lectures sensibles d'identité restent dans leur vue E1).
 **Pourquoi** : les données existent déjà ; la vue donne au propriétaire le sentiment (fondé) de contrôle, et rend visible le travail de chacun.
 
 ### C4. Rapport hebdomadaire par e-mail — **M** (+ déploiement)

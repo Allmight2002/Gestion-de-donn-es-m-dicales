@@ -23,6 +23,7 @@ const AddImage = lazy(() => import('../screens/member/AddImage').then((m) => ({ 
 const CohortBuilder = lazy(() => import('../screens/member/CohortBuilder').then((m) => ({ default: m.CohortBuilder })));
 const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) => ({ default: m.ExportPanel })));
 const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
+const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
 const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
 const CurationBoard = lazy(() => import('../screens/member/CurationBoard').then((m) => ({ default: m.CurationBoard })));
 const CurationPool = lazy(() => import('../screens/member/CurationPool').then((m) => ({ default: m.CurationPool })));
@@ -91,6 +92,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <AccessManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/activity"
+        element={
+          <ProtectedRoute area="member">
+            <ActivityLog />
           </ProtectedRoute>
         }
       />

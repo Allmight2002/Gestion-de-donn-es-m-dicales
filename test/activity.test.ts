@@ -1,0 +1,49 @@
+// Test DB de la RPC base_activity_log (feature C3) : journal d'activite LISIBLE d'une base pour
+// ses collaborateurs, avec le nom de l'auteur, en EXCLUANT les lectures sensibles (E1).
+// On seme les evenements DIRECTEMENT dans audit_log (contexte admin) : le test reste ainsi
+// independant du modele d'ecriture d'acces/import (qui evolue par ailleurs).
+import { beforeAll, afterAll, describe, expect, test } from 'vitest';
+import type { Client } from 'pg';
+import { startTestDb, type TestDb } from './harness/db.js';
+
+let db: TestDb;
+let aliceId: string; // proprietaire (a acces a la base)
+let adminId: string; // system_admin : aucun acces a la base
+let baseId: string;
+
+const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
+  db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
+
+const seedEvent = (action: string) =>
+  db.admin.query(
+    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata) values($1,$2,'base',$3,$3,'{}'::jsonb)",
+    [aliceId, action, baseId],
+  );
+
+beforeAll(async () => {
+  db = await startTestDb({ seed: true });
+  const byEmail = new Map<string, string>(
+    (await db.admin.query('select email, id from auth.users')).rows.map((r) => [r.email, r.id]),
+  );
+  aliceId = byEmail.get('alice@demo.test')!;
+  adminId = byEmail.get('admin@demo.test')!;
+  baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
+}, 180_000);
+
+afterAll(async () => { await db?.stop(); });
+
+describe('C3 base_activity_log (journal d activite lisible)', () => {
+  test('un collaborateur voit l activite (nom auteur) ; lectures d identite EXCLUES ; sans acces refuse', async () => {
+    await seedEvent('access_granted'); // activite generale -> visible
+    await seedEvent('identity_read');  // lecture sensible -> EXCLUE (a sa vue dediee E1)
+
+    const log = (await rowsAs(aliceId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
+      { action: string; actorName: string }[];
+    expect(log.some((e) => e.action === 'access_granted')).toBe(true);
+    expect(log.some((e) => e.action === 'identity_read')).toBe(false);
+    expect(log.every((e) => typeof e.actorName === 'string' && e.actorName.length > 0)).toBe(true);
+
+    // Un compte SANS acces a la base (admin systeme) est refuse.
+    await expect(rowsAs(adminId, 'select public.base_activity_log($1) as a', [baseId])).rejects.toThrow(/refus|denied|acces/i);
+  });
+});

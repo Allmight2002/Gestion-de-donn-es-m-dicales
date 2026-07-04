@@ -22,6 +22,16 @@ export interface AuditRepository {
   logAttachmentRead(attachmentId: string): Promise<void>;
   /** Telechargement d'un export conserve. En prod, l'Edge journalise -> no-op cote client (§7.9). */
   logExportRead(exportId: string): Promise<void>;
+  /** C3 : journal d'activite LISIBLE d'une base (collaborateurs medecins). Lectures sensibles exclues. */
+  getBaseActivity(baseId: string): Promise<ActivityEvent[]>;
+}
+
+/** Un evenement du journal d'activite d'une base (C3). */
+export interface ActivityEvent {
+  at: string;
+  action: string;
+  actorName: string;
+  metadata: Record<string, unknown> | null;
 }
 
 export function makeAuditRepository(client: SupabaseClient | null): AuditRepository {
@@ -41,6 +51,12 @@ export function makeAuditRepository(client: SupabaseClient | null): AuditReposit
       USE_SIGNED_READ ? Promise.resolve() : call('log_attachment_read', { p_attachment_id: attachmentId }),
     logExportRead: (exportId) =>
       USE_SIGNED_READ ? Promise.resolve() : call('log_export_read', { p_export_id: exportId }),
+    async getBaseActivity(baseId) {
+      if (!client) return [];
+      const { data, error } = await client.rpc('base_activity_log', { p_base_id: baseId });
+      if (error) throw error;
+      return (data ?? []) as ActivityEvent[];
+    },
   };
 }
 

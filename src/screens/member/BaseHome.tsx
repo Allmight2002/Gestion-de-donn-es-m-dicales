@@ -158,6 +158,7 @@ export function BaseHome() {
             {listing.role === 'owner' && (
               <button onClick={() => navigate(`/bases/${id}/access`)} className="btn-secondary">{t('access.manage')}</button>
             )}
+            <button onClick={() => navigate(`/bases/${id}/activity`)} className="btn-secondary">{t('activity.title')}</button>
             {listing.role === 'owner' && (
               <button onClick={() => navigate(`/bases/${id}/curation`)} className="btn-secondary">{t('curation.board')}</button>
             )}
