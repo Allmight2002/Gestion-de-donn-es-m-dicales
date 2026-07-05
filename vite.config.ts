@@ -21,6 +21,12 @@ export default defineConfig(({ mode }) => {
         '(Vercel : Production ET Preview) avant de deployer.',
     );
   }
+  if (env.VITE_REQUIRE_SERVER_INSPECTION === 'true' && env.VITE_USE_SIGNED_READ !== 'true') {
+    throw new Error(
+      "Configuration refusee : VITE_REQUIRE_SERVER_INSPECTION='true' exige aussi " +
+        "VITE_USE_SIGNED_READ='true' pour bloquer la lecture des fichiers non acceptes par le serveur.",
+    );
+  }
   return {
   define: { __APP_VERSION__: JSON.stringify(appVersion) },
   // §6.1 — les Web Workers sont des modules ES : autorise le code-splitting (import dynamique de

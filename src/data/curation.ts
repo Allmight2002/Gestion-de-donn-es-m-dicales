@@ -8,6 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
+import { REQUIRE_SERVER_INSPECTION, inspectUploadedFile } from './inspection';
 
 export const RAW_DOCUMENTS_BUCKET = 'raw-documents';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -310,7 +311,8 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
           submission_id: input.submissionId, base_id: input.baseId, label: input.label ?? null,
           storage_path: path, mime_type: v.type, detected_mime_type: v.type,
           file_size: input.file.size, file_hash: await sha256Hex(input.file),
-          inspection_status: 'accepted_client', inspected_at: new Date().toISOString(),
+          inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
+          inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
         })
         .select('id')
         .single();
@@ -318,7 +320,9 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         await client.storage.from(RAW_DOCUMENTS_BUCKET).remove([path]);
         throw error;
       }
-      return { id: (data as { id: string }).id };
+      const id = (data as { id: string }).id;
+      await inspectUploadedFile(client, 'raw_document', id);
+      return { id };
     },
 
     async ensureDraft(taskId, baseId) {

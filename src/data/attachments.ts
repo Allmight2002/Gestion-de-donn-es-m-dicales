@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
+import { REQUIRE_SERVER_INSPECTION, inspectUploadedFile } from './inspection';
 
 export const ATTACHMENTS_BUCKET = 'clinical-attachments';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -113,8 +114,8 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
           detected_mime_type: v.type,
           file_size: blob.size,
           file_hash: await sha256Hex(blob),
-          inspection_status: 'accepted_client',
-          inspected_at: new Date().toISOString(),
+          inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
+          inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
           deidentification_confirmed: true,
         })
         .select('id')
@@ -124,7 +125,9 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
         await client.storage.from(ATTACHMENTS_BUCKET).remove([path]);
         throw error;
       }
-      return { id: (data as { id: string }).id };
+      const id = (data as { id: string }).id;
+      await inspectUploadedFile(client, 'attachment', id);
+      return { id };
     },
 
     async softDeleteAttachment(id, reason) {

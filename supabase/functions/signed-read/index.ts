@@ -13,7 +13,7 @@
 //   entity = 'attachment' (image clinique) | 'raw_document' (document du pool) | 'export'
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
 

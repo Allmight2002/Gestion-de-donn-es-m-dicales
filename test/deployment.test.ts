@@ -17,6 +17,48 @@ describe('configuration de deploiement', () => {
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
   });
 
+  test('inspect-upload impose un verdict serveur avant la lecture de donnees reelles', () => {
+    const inspect = read('supabase/functions/inspect-upload/index.ts');
+    const signedRead = read('supabase/functions/signed-read/index.ts');
+    const attachments = read('src/data/attachments.ts');
+    const curation = read('src/data/curation.ts');
+    const inspection = read('src/data/inspection.ts');
+    const config = read('supabase/config.toml');
+
+    expect(config).toContain('[functions.inspect-upload]');
+    expect(inspect).toContain("CLAMAV_SCAN_URL");
+    expect(inspect).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(inspect).toContain("inspection_status: status");
+    expect(inspect).toContain("'accepted'");
+    expect(inspect).toContain("'quarantined'");
+    expect(inspect).toContain("path.startsWith(`${baseId}/`)");
+    expect(signedRead).toContain("REQUIRE_SERVER_INSPECTION");
+    expect(signedRead).toContain("data.inspection_status !== 'accepted'");
+    expect(inspection).toContain("VITE_REQUIRE_SERVER_INSPECTION");
+    expect(inspection).toContain("inspect-upload");
+    expect(attachments).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
+    expect(attachments).toContain("inspectUploadedFile(client, 'attachment'");
+    expect(curation).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
+    expect(curation).toContain("inspectUploadedFile(client, 'raw_document'");
+  });
+
+  test('le service ClamAV local et les variables de deploiement sont declares', () => {
+    const compose = read('docker-compose.clamav.yml');
+    const scanner = read('services/clamav-scanner/server.mjs');
+    const prodEnv = read('.env.production.example');
+    const viteConfig = read('vite.config.ts');
+
+    expect(compose).toContain('clamav/clamav:stable');
+    expect(compose).toContain('clamav-scanner');
+    expect(scanner).toContain('zINSTREAM');
+    expect(scanner).toContain('POST /scan expected');
+    expect(prodEnv).toContain('CLAMAV_SCAN_URL=');
+    expect(prodEnv).toContain('CLAMAV_SCAN_TOKEN=');
+    expect(prodEnv).toContain('VITE_REQUIRE_SERVER_INSPECTION=');
+    expect(viteConfig).toContain("VITE_REQUIRE_SERVER_INSPECTION === 'true'");
+    expect(viteConfig).toContain("VITE_USE_SIGNED_READ !== 'true'");
+  });
+
   test('vercel.json declare les principaux headers de securite', () => {
     const config = JSON.parse(read('vercel.json')) as {
       headers: Array<{ headers: Array<{ key: string; value: string }> }>;

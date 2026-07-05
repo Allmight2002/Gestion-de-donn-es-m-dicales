@@ -1,81 +1,118 @@
-# Fonctions Edge — durcissement « données réelles » (audit §10)
+# Fonctions Edge - durcissement donnees reelles
 
-> ⚠️ **Prérequis DONNÉES RÉELLES, pas la démo fictive.** Ces éléments tournent côté serveur
-> (runtime **Deno** de Supabase) et/ou exigent un **antivirus** : ils ne s'activent qu'**au
-> déploiement cloud** et **ne sont pas testables** avec le PostgreSQL embarqué local. Le code
-> de `supabase/functions/` est livré **prêt à déployer** (validé par revue), à **tester sur le
-> projet cloud** avant tout usage avec des données sensibles.
+Ces fonctions tournent cote serveur dans le runtime Deno de Supabase. Elles servent aux chemins
+qui ne doivent pas etre pilotables uniquement par le navigateur : lecture de fichiers prives,
+journalisation non contournable et inspection antivirus.
+
+Le mode demo reste possible sans antivirus, mais tout deploiement avec donnees reelles doit
+activer `signed-read` et, pour les uploads, `inspect-upload`.
 
 ---
 
-## §10.1 — URL signée AUDITÉE et non contournable (`signed-read`)
+## 10.1 - URL signee auditee (`signed-read`)
 
-**Problème.** Aujourd'hui le frontend signe lui‑même l'URL d'un document/image
-(`storage.createSignedUrl`) puis appelle la journalisation « best effort ». Un client peut donc
-**ouvrir un fichier sans laisser de trace**.
+Probleme traite : le frontend ne doit pas pouvoir signer directement un document prive puis
+journaliser la lecture en "best effort". La fonction
+[`supabase/functions/signed-read/index.ts`](../supabase/functions/signed-read/index.ts) fournit
+l'URL uniquement apres :
 
-**Solution** ([`supabase/functions/signed-read/index.ts`](../supabase/functions/signed-read/index.ts)) :
-l'URL n'est obtenable **que** par cette fonction, qui en une transaction :
-1. **autorise** en réutilisant la **RLS** (lecture de la ligne avec le JWT de l'utilisateur :
-   si la RLS la masque → 403, mêmes règles que l'app, zéro duplication) ;
-2. **journalise** (`audit_log`) **avant** de livrer l'URL → trace garantie ;
-3. **signe** avec la clé `service_role` (que seul le serveur détient ; buckets privés).
+1. autorisation via RLS avec le JWT utilisateur ;
+2. insertion de la trace `audit_log` avant livraison de l'URL ;
+3. signature Storage avec la cle `service_role`.
 
-### Déployer
+### Deploy
+
 ```bash
 supabase functions deploy signed-read
-# Variables (Project Settings → Edge Functions → Secrets) :
-#   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...   # si non injectée automatiquement
+supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
+                     SUPABASE_ANON_KEY=LA_CLE_ANON \
+                     SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
 ```
 
-### Durcissements appliqués (revue §9.3 / §9.4)
-- **§9.3** : la fonction écrit `audit_log` **avant** de signer et **vérifie l'erreur d'insertion**
-  → si la journalisation échoue, l'URL n'est **pas** délivrée (un document ne peut donc pas être
-  lu sans trace).
-- **§9.4** : si le secret `REQUIRE_SERVER_INSPECTION=true`, la fonction **refuse** de signer un
-  fichier dont `inspection_status <> 'accepted'` (à activer quand l'inspection serveur, §10.2,
-  promeut les fichiers). Laissé inactif pour le pilote fictif.
+Le frontend passe par cette fonction quand `VITE_USE_SIGNED_READ=true`. En production, le build
+refuse le repli de signature client.
 
-### Entités couvertes (audit v12 §7.9 : exports inclus)
-| `entity` | Table d'autorisation (RLS) | Bucket signé | Action `audit_log` |
+### Entites couvertes
+
+| `entity` | Table d'autorisation | Bucket | Action `audit_log` |
 |---|---|---|---|
 | `attachment` | `clinical_attachment` | `clinical-attachments` | `attachment_read` |
 | `raw_document` | `raw_document` | `raw-documents` | `raw_document_read` |
-| `export` | `export_log` (accès base via cohorte) | `scientific-exports` | `export_read` |
+| `export` | `export_log` | `scientific-exports` | `export_read` |
 
-Depuis §7.9, le bucket `scientific-exports` n'a **plus de policy SELECT directe** (storage.sql) :
-le re-téléchargement d'un export conservé passe par cette fonction (bouton « Télécharger » de
-l'historique d'exports) → journalisé avant signature, non contournable.
-
-### Bascule du frontend — FAITE (derrière un drapeau)
-Le frontend appelle déjà la fonction via le helper [`src/data/signedRead.ts`](../src/data/signedRead.ts)
-(utilisé par `attachments.ts`, `curation.ts` et `exports.ts`). Comportement piloté par `VITE_USE_SIGNED_READ` :
-```ts
-// VITE_USE_SIGNED_READ=true  -> invoke('signed-read')  (autorise+journalise+signe côté serveur)
-// sinon (démo locale)        -> storage.createSignedUrl (signature client directe)
-```
-Au déploiement cloud : déployer la fonction puis poser `VITE_USE_SIGNED_READ=true` et rebuild
-→ la consultation **ne peut plus** se faire sans trace.
+Quand le secret Edge `REQUIRE_SERVER_INSPECTION=true` est pose, `signed-read` refuse tout fichier
+dont `inspection_status <> 'accepted'`.
 
 ---
 
-## §10.2 — Inspection / antivirus / quarantaine des fichiers (à intégrer au déploiement)
+## 10.2 - Inspection antivirus (`inspect-upload`)
 
-Aujourd'hui l'inspection (magic‑bytes, hash) est **côté navigateur** : statut `accepted_client`
-honnête mais insuffisant pour des données réelles (un vrai PDF peut porter une charge active).
+Le flux serveur est implemente par
+[`supabase/functions/inspect-upload/index.ts`](../supabase/functions/inspect-upload/index.ts).
 
-**Approche cible** (deploy‑time, nécessite un moteur d'analyse) :
-1. **Bucket de quarantaine** : l'upload arrive d'abord dans un bucket `quarantine` (jamais lisible).
-2. **Fonction Edge `inspect-upload`** déclenchée par un *webhook Storage* (ou appelée après
-   l'upload) qui, avec la clé `service_role` : retélécharge l'objet, **recalcule le hash**,
-   re‑vérifie le **vrai type MIME** (magic‑bytes côté serveur), puis lance un **antivirus**
-   (ex. ClamAV/`clamd`, ou un service externe de scan).
-3. **Verdict** : si propre → déplacer vers le bucket définitif + marquer la ligne
-   (`raw_document` / `clinical_attachment`) `status='clean'` ; sinon → laisser en quarantaine,
-   `status='quarantined'`, alerter.
-4. **Lecture bloquée** tant que `status <> 'clean'` (à ajouter à la RLS / à `signed-read`).
+1. Le frontend insere la ligne en `inspection_status='pending'` quand
+   `VITE_REQUIRE_SERVER_INSPECTION=true`.
+2. Le frontend appelle `supabase.functions.invoke('inspect-upload', { body: { entity, id } })`.
+3. La fonction Edge autorise via RLS avec le JWT utilisateur, puis utilise `service_role` pour
+   telecharger l'objet prive.
+4. Elle recalcule `file_hash`, `file_size`, verifie la coherence extension / magic-bytes cote
+   serveur, puis appelle le scanner ClamAV HTTP (`CLAMAV_SCAN_URL`).
+5. Verdict propre : la ligne passe en `inspection_status='accepted'`.
+6. Verdict infecte ou fichier incoherent : la ligne passe en `inspection_status='quarantined'`.
+7. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
 
-> L'**antivirus réel** (ClamAV ou service tiers) doit être provisionné au déploiement — il
-> n'est ni embarquable ni testable dans cet environnement. Cette section décrit l'intégration
-> à réaliser le moment venu ; elle n'est volontairement **pas** livrée en code non testé.
+Le statut `accepted` / `quarantined` reste reserve au serveur par les triggers SQL existants :
+un utilisateur authentifie ne peut pas se l'attribuer depuis le frontend.
+
+### Deploy ClamAV
+
+Le depot fournit un pont HTTP minimal vers `clamd` :
+
+```bash
+docker compose -f docker-compose.clamav.yml up -d --build
+curl http://127.0.0.1:8088/health
+```
+
+Le compose utilise l'image officielle `clamav/clamav:stable` et le service
+`services/clamav-scanner`, qui expose :
+
+```text
+POST /scan
+Authorization: Bearer <CLAMAV_SCAN_TOKEN>
+Content-Type: application/octet-stream
+```
+
+Reponses attendues :
+
+```json
+{ "status": "clean", "engine": "clamav" }
+```
+
+ou :
+
+```json
+{ "status": "infected", "signature": "Eicar-Test-Signature", "engine": "clamav" }
+```
+
+### Deploy Edge + frontend
+
+```bash
+supabase functions deploy signed-read
+supabase functions deploy inspect-upload
+supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
+                     SUPABASE_ANON_KEY=LA_CLE_ANON \
+                     SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
+                     CLAMAV_SCAN_URL=https://scanner.example.org/scan \
+                     CLAMAV_SCAN_TOKEN=UN_SECRET_LONG \
+                     REQUIRE_SERVER_INSPECTION=true
+```
+
+Cote frontend, posez :
+
+```bash
+VITE_USE_SIGNED_READ=true
+VITE_REQUIRE_SERVER_INSPECTION=true
+```
+
+Puis rebuild. Le build refuse explicitement `VITE_REQUIRE_SERVER_INSPECTION=true` si
+`VITE_USE_SIGNED_READ=true` n'est pas aussi pose.

@@ -39,3 +39,8 @@ site_url = "http://127.0.0.1:5173"
 # (requete OPTIONS sans auth) : sinon la verification JWT de la plateforme bloquerait le preflight.
 [functions.signed-read]
 verify_jwt = false
+
+# Fonction Edge inspect-upload (inspection antivirus). verify_jwt = false pour laisser passer le
+# preflight CORS ; la fonction verifie elle-meme le header Authorization + RLS.
+[functions.inspect-upload]
+verify_jwt = false

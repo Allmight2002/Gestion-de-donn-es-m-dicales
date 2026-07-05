@@ -1,0 +1,31 @@
+services:
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    volumes:
+      - clamav-db:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 2m
+
+  clamav-scanner:
+    build:
+      context: ./services/clamav-scanner
+    restart: unless-stopped
+    environment:
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
+      CLAMD_TIMEOUT_MS: "30000"
+      MAX_SCAN_BYTES: "26214400"
+      SCAN_TOKEN: ${CLAMAV_SCAN_TOKEN:-change-me}
+    depends_on:
+      clamav:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8088:8080"
+
+volumes:
+  clamav-db:

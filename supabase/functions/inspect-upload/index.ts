@@ -1,0 +1,228 @@
+// @ts-nocheck - Fonction Edge Supabase (runtime Deno), hors build Vite.
+//
+// Inspection serveur des fichiers uploades :
+//   1) autorise l'appel via la RLS avec le JWT utilisateur ;
+//   2) retelecharge l'objet avec la cle service_role ;
+//   3) recalcule hash/taille/type reel par magic bytes ;
+//   4) appelle un scanner HTTP ClamAV ;
+//   5) promeut la ligne en `accepted` ou `quarantined` cote serveur uniquement.
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
+
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+const EXPECTED_CONTAINER: Record<string, string> = {
+  jpg: 'jpg',
+  jpeg: 'jpg',
+  png: 'png',
+  webp: 'webp',
+  pdf: 'pdf',
+  doc: 'ole',
+  xls: 'ole',
+  docx: 'zip',
+  xlsx: 'zip',
+};
+const MIME_BY_CONTAINER: Record<string, string> = {
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  zip: 'application/zip',
+  ole: 'application/x-ole-storage',
+};
+
+function detectContainer(h: Uint8Array): string | null {
+  const at = (off: number, sig: number[]) => sig.every((b, i) => h[off + i] === b);
+  if (at(0, [0x25, 0x50, 0x44, 0x46])) return 'pdf';
+  if (at(0, [0x89, 0x50, 0x4e, 0x47])) return 'png';
+  if (at(0, [0xff, 0xd8, 0xff])) return 'jpg';
+  if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) return 'webp';
+  if (at(0, [0x50, 0x4b])) return 'zip';
+  if (at(0, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return 'ole';
+  return null;
+}
+
+const extOf = (path: string): string => (path.split('/').pop()?.split('.').pop() ?? '').toLowerCase();
+const hex = (bytes: Uint8Array): string => Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes.buffer)));
+}
+
+function parseScannerVerdict(body: unknown): { status: 'clean' | 'infected'; signature?: string } | null {
+  if (!body || typeof body !== 'object') return null;
+  const status = (body as { status?: unknown }).status;
+  if (status === 'clean' || status === 'infected') {
+    const signature = (body as { signature?: unknown }).signature;
+    return { status, signature: typeof signature === 'string' ? signature : undefined };
+  }
+  const clean = (body as { clean?: unknown }).clean;
+  if (clean === true) return { status: 'clean' };
+  if (clean === false) {
+    const signature = (body as { signature?: unknown }).signature;
+    return { status: 'infected', signature: typeof signature === 'string' ? signature : undefined };
+  }
+  return null;
+}
+
+async function scanWithClamAV(bytes: Uint8Array, filename: string): Promise<
+  | { ok: true; infected: boolean; signature?: string }
+  | { ok: false; error: string }
+> {
+  const scanUrl = Deno.env.get('CLAMAV_SCAN_URL');
+  if (!scanUrl) return { ok: false, error: 'CLAMAV_SCAN_URL non configure' };
+
+  const headers = new Headers({ 'content-type': 'application/octet-stream', 'x-filename': filename });
+  const token = Deno.env.get('CLAMAV_SCAN_TOKEN');
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const timeoutMs = Number(Deno.env.get('CLAMAV_SCAN_TIMEOUT_MS') ?? '30000');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) ? timeoutMs : 30000);
+  try {
+    const response = await fetch(scanUrl, { method: 'POST', headers, body: bytes, signal: controller.signal });
+    if (!response.ok) return { ok: false, error: `Scanner indisponible (${response.status})` };
+    const verdict = parseScannerVerdict(await response.json().catch(() => null));
+    if (!verdict) return { ok: false, error: 'Verdict scanner illisible' };
+    return { ok: true, infected: verdict.status === 'infected', signature: verdict.signature };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Scanner indisponible';
+    return { ok: false, error: message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (req.method !== 'POST') return json(405, { error: 'POST requis' });
+
+  const auth = req.headers.get('Authorization');
+  if (!auth) return json(401, { error: 'Authentification requise' });
+
+  let payload: { entity?: string; id?: string };
+  try {
+    payload = await req.json();
+  } catch {
+    return json(400, { error: 'Corps JSON requis' });
+  }
+  const { entity, id } = payload;
+  if ((entity !== 'attachment' && entity !== 'raw_document') || !id) {
+    return json(400, { error: 'entity (attachment|raw_document) et id sont requis' });
+  }
+
+  const URL = Deno.env.get('SUPABASE_URL')!;
+  const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+  const asUser = createClient(URL, ANON, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+
+  const { data: who } = await asUser.auth.getUser();
+  if (!who?.user) return json(401, { error: 'Session invalide' });
+
+  let table: 'clinical_attachment' | 'raw_document';
+  let bucket: 'clinical-attachments' | 'raw-documents';
+  let path: string;
+  let baseId: string | null;
+  let currentStatus: string;
+
+  if (entity === 'raw_document') {
+    const { data, error } = await asUser
+      .from('raw_document')
+      .select('id, base_id, storage_path, inspection_status')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !data) return json(403, { error: 'Acces refuse' });
+    table = 'raw_document';
+    bucket = 'raw-documents';
+    path = data.storage_path;
+    baseId = data.base_id;
+    currentStatus = data.inspection_status;
+  } else {
+    const { data, error } = await asUser
+      .from('clinical_attachment')
+      .select('id, patient_id, storage_path, inspection_status')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !data) return json(403, { error: 'Acces refuse' });
+    const { data: pat } = await admin.from('patient').select('base_id').eq('id', data.patient_id).maybeSingle();
+    table = 'clinical_attachment';
+    bucket = 'clinical-attachments';
+    path = data.storage_path;
+    baseId = pat?.base_id ?? null;
+    currentStatus = data.inspection_status;
+  }
+
+  if (!baseId) return json(403, { error: 'Acces refuse' });
+  if (!path.startsWith(`${baseId}/`)) return json(409, { error: 'Chemin fichier incoherent' });
+  if (currentStatus === 'accepted') return json(200, { status: 'accepted', id });
+  if (currentStatus === 'quarantined') return json(409, { status: 'quarantined', error: 'Fichier deja en quarantaine' });
+
+  const { data: fileBlob, error: downloadErr } = await admin.storage.from(bucket).download(path);
+  if (downloadErr || !fileBlob) {
+    return json(500, { error: downloadErr?.message ?? 'Telechargement du fichier impossible' });
+  }
+
+  const bytes = new Uint8Array(await fileBlob.arrayBuffer());
+  const fileHash = await sha256Hex(bytes);
+  const fileSize = bytes.byteLength;
+  const ext = extOf(path);
+  const detectedContainer = detectContainer(bytes.slice(0, 16));
+  const expectedContainer = EXPECTED_CONTAINER[ext];
+  const detectedMimeType = detectedContainer && expectedContainer === detectedContainer
+    ? MIME_BY_EXT[ext]
+    : detectedContainer ? (MIME_BY_CONTAINER[detectedContainer] ?? null) : null;
+  const inspectedAt = new Date().toISOString();
+
+  const mark = async (status: 'accepted' | 'quarantined', extra: Record<string, unknown> = {}) =>
+    await admin.from(table).update({
+      inspection_status: status,
+      inspected_at: inspectedAt,
+      file_hash: fileHash,
+      file_size: fileSize,
+      detected_mime_type: detectedMimeType,
+      ...extra,
+    }).eq('id', id);
+
+  if (!expectedContainer || detectedContainer !== expectedContainer) {
+    const { error } = await mark('quarantined');
+    if (error) return json(500, { error: 'Mise en quarantaine impossible' });
+    return json(409, {
+      status: 'quarantined',
+      error: 'Type de fichier incoherent',
+      detectedContainer,
+      expectedContainer: expectedContainer ?? null,
+    });
+  }
+
+  const verdict = await scanWithClamAV(bytes, path.split('/').pop() ?? path);
+  if (!verdict.ok) return json(503, { error: verdict.error });
+
+  if (verdict.infected) {
+    const { error } = await mark('quarantined');
+    if (error) return json(500, { error: 'Mise en quarantaine impossible' });
+    return json(409, { status: 'quarantined', error: 'Fichier infecte', signature: verdict.signature });
+  }
+
+  const { error } = await mark('accepted', { mime_type: MIME_BY_EXT[ext] });
+  if (error) return json(500, { error: 'Validation serveur impossible' });
+  return json(200, { status: 'accepted', id, fileHash, fileSize, detectedMimeType: MIME_BY_EXT[ext] });
+});

@@ -88,10 +88,14 @@ que **toute consultation d'un fichier soit tracée côté serveur** et non conto
 
 ```bash
 supabase functions deploy signed-read
+supabase functions deploy inspect-upload
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
-                     SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
+                     SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
+                     CLAMAV_SCAN_URL=https://scanner.example.org/scan \
+                     CLAMAV_SCAN_TOKEN=UN_SECRET_LONG \
+                     REQUIRE_SERVER_INSPECTION=true
 ```
 Puis, côté frontend, `VITE_USE_SIGNED_READ=true` (rebuild) : images et documents passent par
 `signed-read`, qui **autorise** (RLS) → **journalise** (`audit_log`) → **signe**. Si la
@@ -102,6 +106,15 @@ journalisation échoue, l'URL n'est **pas** délivrée (§9.3).
 > [docs/edge-functions.md](edge-functions.md)) qui promeut `inspection_status` → `accepted`, puis
 > posez le secret `REQUIRE_SERVER_INSPECTION=true` sur la fonction (§9.4). **Inutile pour le
 > pilote fictif** (les fichiers restent `accepted_client`).
+
+Le scanner ClamAV fourni dans ce depot se lance avec :
+
+```bash
+docker compose -f docker-compose.clamav.yml up -d --build
+```
+
+Quand ce mode est actif, posez aussi `VITE_REQUIRE_SERVER_INSPECTION=true` cote frontend. Le build
+refuse cette option si `VITE_USE_SIGNED_READ=true` n'est pas pose.
 
 ---
 

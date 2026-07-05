@@ -50,10 +50,23 @@ const manifest = {
   edgeFunctions: {
     expected: edgeFunctions,
     deployCommand: edgeFunctions.map((f) => `npx supabase functions deploy ${f}`).join(' && '),
+    requiredSecrets: [
+      'SUPABASE_URL',
+      'SUPABASE_ANON_KEY',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'CLAMAV_SCAN_URL (si REQUIRE_SERVER_INSPECTION=true)',
+      'CLAMAV_SCAN_TOKEN (si REQUIRE_SERVER_INSPECTION=true)',
+      'REQUIRE_SERVER_INSPECTION=true (donnees reelles)',
+    ],
   },
   frontend: {
     host: 'Vercel (production = branche main)',
-    requiredEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', "VITE_USE_SIGNED_READ='true' (Production ET Preview)"],
+    requiredEnv: [
+      'VITE_SUPABASE_URL',
+      'VITE_SUPABASE_ANON_KEY',
+      "VITE_USE_SIGNED_READ='true' (Production ET Preview)",
+      "VITE_REQUIRE_SERVER_INSPECTION='true' (donnees reelles + ClamAV)",
+    ],
     securityHeaders: existsSync(join(ROOT, 'vercel.json')) ? 'vercel.json present' : 'vercel.json MANQUANT',
   },
   schemaSnapshot: schemaState,
