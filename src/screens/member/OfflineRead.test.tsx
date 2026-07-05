@@ -105,6 +105,53 @@ describe('EditEncounter hors-ligne §7.4/§7.5 (version historique)', () => {
     expect(screen.queryByText('Glasgow v2')).not.toBeInTheDocument(); // pas le dico de la version courante
     await offlineCache.remove('b2');
   });
+
+  test('applique les regles de validation DE LA version hors-ligne avant mise en file', async () => {
+    await offlineCache.save(
+      buildSnapshot(
+        { id: 'b-rules', name: 'Base regles', templateVersionId: 'v-current' },
+        [{ id: 'p-rules', code: 'P-R', templateVersionId: 'v-rule', data: {}, validationStatus: 'curated' }],
+        {
+          'p-rules': [{
+            id: 'e-rules',
+            encounterType: 'hospitalisation',
+            encounterDate: '2024-01-01',
+            validationStatus: 'curated',
+            ageValue: null,
+            ageUnit: null,
+            data: { admission_date: '2024-01-05', discharge_date: '2024-01-01' },
+            updatedAt: '2024-01-01T00:00:00.000Z',
+            templateVersionId: 'v-rule',
+          }],
+        },
+        [{ id: 'f-current', fieldKey: 'admission_date', label: 'Admission courante', scope: 'encounter', type: 'date', displayOrder: 0 }],
+        Date.now(),
+        {
+          'v-rule': [
+            { id: 'f-adm', fieldKey: 'admission_date', label: 'Admission', scope: 'encounter', type: 'date', displayOrder: 0, section: 'clinique' },
+            { id: 'f-dis', fieldKey: 'discharge_date', label: 'Sortie', scope: 'encounter', type: 'date', displayOrder: 1, section: 'clinique' },
+          ],
+        },
+        {
+          'v-rule': [{
+            id: 'r-discharge',
+            rule: { operator: 'greater_or_equal', left_field: 'discharge_date', right_field: 'admission_date' },
+            message: 'Sortie >= admission',
+            severity: 'block',
+          }],
+        },
+      ),
+    );
+
+    renderAt('/bases/b-rules/patients/p-rules/encounters/e-rules/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
+    expect(await screen.findByText('Admission')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'controle regle' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+
+    expect(await screen.findByText('Sortie >= admission')).toBeInTheDocument();
+    expect(await outbox.count('b-rules')).toBe(0);
+    await offlineCache.remove('b-rules');
+  });
 });
 
 describe('EditEncounter hors-ligne (Phase 2)', () => {

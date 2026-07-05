@@ -69,7 +69,8 @@ export function EditEncounter() {
           // editable -> section par defaut, sinon EncounterFields (groupe par section) n'affiche rien.
           .map((f) => ({ ...f, section: f.section ?? 'clinique' }));
         setFields(encFields as unknown as TemplateField[]);
-        setRules([]); // les regles inter-champs sont rejouees au serveur a la synchro
+        const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
+        setRules(offlineRules as unknown as ValidationRule[]);
         setError(null);
         return;
       }
