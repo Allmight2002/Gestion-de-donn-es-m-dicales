@@ -77,6 +77,26 @@ describe('deidentification confirmee obligatoire (§13)', () => {
 });
 
 describe('coherence Storage des pieces jointes', () => {
+  test('created_by documentaire est impose par le serveur', async () => {
+    const att = await rowsAs(
+      aliceId,
+      `insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, created_by)
+       values($1,$2,true,$3) returning id`,
+      [patientId, `${baseId}/author-${Date.now()}.jpg`, bobId],
+    );
+    expect((await db.admin.query('select created_by from public.clinical_attachment where id=$1', [att[0].id])).rows[0].created_by)
+      .toBe(aliceId);
+
+    const raw = (await db.admin.query('select id, base_id from public.raw_submission where base_id=$1 limit 1', [baseId])).rows[0];
+    const doc = await rowsAs(
+      aliceId,
+      "insert into public.raw_document(submission_id, base_id, storage_path, mime_type, created_by) values($1,$2,$3,'application/pdf',$4) returning id",
+      [raw.id, raw.base_id, `${baseId}/${raw.id}/author-${Date.now()}.pdf`, bobId],
+    );
+    expect((await db.admin.query('select created_by from public.raw_document where id=$1', [doc[0].id])).rows[0].created_by)
+      .toBe(aliceId);
+  });
+
   test('une piece jointe ne peut pas pointer hors du prefixe Storage de sa base', async () => {
     await expect(
       db.admin.query(

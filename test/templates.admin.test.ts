@@ -73,8 +73,8 @@ describe('ecriture reservee au staff (§7, §8.2)', () => {
   });
 });
 
-describe('possession du gabarit (medecin) + edition libre (v3.0)', () => {
-  test('un medecin edite librement SON gabarit (ajout de champ, plus d immuabilite)', async () => {
+describe('possession du gabarit (medecin) + edition des drafts (v3.0)', () => {
+  test('un medecin edite librement SON gabarit draft (ajout de champ)', async () => {
     const before = (await rowsAs(memberId, 'select id from public.template_field where template_version_id=$1', [aliceVersionId])).length;
     await rowsAs(memberId, ADD_FIELD, [aliceVersionId, 'free_field']);
     expect((await rowsAs(memberId, 'select id from public.template_field where template_version_id=$1', [aliceVersionId])).length).toBe(before + 1);
@@ -97,6 +97,50 @@ describe('possession du gabarit (medecin) + edition libre (v3.0)', () => {
   test('un curateur ne peut pas creer de base via create_base_from_model', async () => {
     const curatorId = (await db.admin.query("select id from auth.users where email='curator1@demo.test'")).rows[0].id;
     await expect(rowsAs(curatorId, 'select * from public.create_base_from_model($1,$2,$3)', ['X', 'y', globalVersionId])).rejects.toThrow(/medecin/i);
+  });
+});
+
+describe('immutabilite des versions publiees/archivees', () => {
+  test('publication/archive passent par RPC ; une version publiee ne se modifie plus', async () => {
+    const tpl = await rowsAs(
+      memberId,
+      "insert into public.template(name, specialty, is_global, owner_user_id) values('Lockable','neuro',false,$1) returning id",
+      [memberId],
+    );
+    const ver = await rowsAs(
+      memberId,
+      "insert into public.template_version(template_id, version_number, status) values($1,1,'draft') returning id",
+      [tpl[0].id],
+    );
+    const versionId = ver[0].id;
+    await rowsAs(memberId, ADD_FIELD, [versionId, 'locked_field']);
+
+    await rowsAs(memberId, 'select * from public.publish_template_version($1)', [versionId]);
+    expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('published');
+
+    await expect(rowsAs(memberId, ADD_FIELD, [versionId, 'late_field'])).rejects.toThrow(/immuable|publiee|archivee/i);
+    const fid = (await db.admin.query('select id from public.template_field where template_version_id=$1 limit 1', [versionId])).rows[0].id;
+    await expect(rowsAs(memberId, "update public.template_field set label='Late' where id=$1", [fid])).rejects.toThrow(/immuable|publiee|archivee/i);
+    await expect(
+      rowsAs(memberId, 'insert into public.validation_rule(template_version_id, rule, message, severity) values($1,$2::jsonb,$3,$4)', [
+        versionId,
+        JSON.stringify({ operator: 'equals', left_field: 'locked_field', right_field: 'locked_field' }),
+        'm',
+        'block',
+      ]),
+    ).rejects.toThrow(/immuable|publiee|archivee/i);
+    await expect(rowsAs(memberId, 'update public.template_version set version_number=2 where id=$1', [versionId])).rejects.toThrow(/structurelles|immuable/i);
+    await expect(
+      rowsAs(memberId, "update public.template_version set status='archived' where id=$1 returning status", [versionId]),
+    ).rejects.toThrow(/RPC|reservee/i);
+    expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('published');
+
+    await rowsAs(memberId, 'select * from public.archive_template_version($1)', [versionId]);
+    expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('archived');
+    await expect(
+      rowsAs(memberId, "update public.template_version set status='draft' where id=$1 returning status", [versionId]),
+    ).rejects.toThrow(/RPC|reservee/i);
+    expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('archived');
   });
 });
 

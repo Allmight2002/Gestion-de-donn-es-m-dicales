@@ -40,11 +40,8 @@ with check (
   and public.is_base_owner(((storage.foldername(name))[1])::uuid)
 );
 
-create policy "raw_documents_delete" on storage.objects for delete to authenticated
-using (
-  bucket_id = 'raw-documents'
-  and public.is_base_owner(((storage.foldername(name))[1])::uuid)
-);
+-- Pas de policy DELETE : les octets acceptes restent immuables. Toute suppression
+-- documentaire passe par les RPC de soft delete des lignes metier.
 
 -- ---------------------------------------------------------------------------
 -- 2) Pieces jointes cliniques (identite) — gouvernees par can_view/can_write_identity.
@@ -61,18 +58,15 @@ drop policy if exists "clinical_attachments_delete" on storage.objects;
 -- images cliniques passe uniquement par l'Edge `signed-read` (service_role + audit). L'autorisation
 -- (can_view_identity) est verifiee DANS l'Edge contre clinical_attachment.
 
--- Ecriture / suppression : acces ECRITURE identite (proprietaire ou editor+identite).
+-- Ecriture : acces ECRITURE identite (proprietaire ou editor+identite).
 create policy "clinical_attachments_insert" on storage.objects for insert to authenticated
 with check (
   bucket_id = 'clinical-attachments'
   and public.can_write_identity(((storage.foldername(name))[1])::uuid)
 );
 
-create policy "clinical_attachments_delete" on storage.objects for delete to authenticated
-using (
-  bucket_id = 'clinical-attachments'
-  and public.can_write_identity(((storage.foldername(name))[1])::uuid)
-);
+-- Pas de policy DELETE : les octets acceptes restent immuables. Toute suppression
+-- documentaire passe par les RPC de soft delete des lignes metier.
 
 -- ---------------------------------------------------------------------------
 -- 3) Exports scientifiques conserves IMMUABLES (cahier §9.3). Chemin <base_id>/<cohort_id>/...

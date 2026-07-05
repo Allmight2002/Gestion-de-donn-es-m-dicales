@@ -9,6 +9,8 @@ describe('configuration de deploiement', () => {
     const edge = read('supabase/functions/signed-read/index.ts');
 
     expect(storage).not.toMatch(/create policy "scientific_exports_read"/i);
+    expect(storage).not.toMatch(/create policy "raw_documents_delete"/i);
+    expect(storage).not.toMatch(/create policy "clinical_attachments_delete"/i);
     expect(edge).toContain("entity !== 'export'");
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");

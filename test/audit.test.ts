@@ -117,5 +117,14 @@ describe('E1 base_identity_audit (« qui accede a mes bases »)', () => {
 
     // Un compte SANS gestion ni propriete (analyste) est refuse.
     await expect(rowsAs(annaId, 'select public.base_identity_audit($1) as a', [baseId])).rejects.toThrow(/refus|denied|acces/i);
+
+    // Meme un gestionnaire d'acces non proprietaire ne voit pas ce journal sensible.
+    await db.admin.query(
+      `insert into public.base_access(base_id,user_id,access_role,can_manage_access,granted_by)
+       values($1,$2,'viewer',true,$3)
+       on conflict (base_id,user_id) do update set can_manage_access=true, revoked_at=null`,
+      [baseId, bobId, aliceId],
+    );
+    await expect(rowsAs(bobId, 'select public.base_identity_audit($1) as a', [baseId])).rejects.toThrow(/refus|denied|acces/i);
   });
 });

@@ -280,13 +280,13 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async publishVersion(versionId) {
-      const { error } = await client.from('template_version').update({ status: 'published' }).eq('id', versionId);
+      const { error } = await client.rpc('publish_template_version', { p_version_id: versionId });
       if (error) throw error;
       clearVersionCache();
     },
 
     async archiveVersion(versionId) {
-      const { error } = await client.from('template_version').update({ status: 'archived' }).eq('id', versionId);
+      const { error } = await client.rpc('archive_template_version', { p_version_id: versionId });
       if (error) throw error;
       clearVersionCache();
     },

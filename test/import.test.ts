@@ -396,4 +396,21 @@ describe('import_records', () => {
     const p = (await db.admin.query("select data from public.patient where base_id=$1 and patient_code='MRG-1'", [baseId])).rows[0].data;
     expect(p).toMatchObject({ sexe: 'M', birth_year: 1980, blood_group: 'A+' });
   });
+
+  test('P1 idempotence atomique : une empreinte inter-lots est unique par base', async () => {
+    const tv = (await db.admin.query('select current_template_version_id from public.base where id=$1', [baseId])).rows[0].current_template_version_id;
+    const b1 = (await db.admin.query(
+      "insert into public.import_batch(base_id, file_hash, template_version_id, imported_by, status) values($1,$2,$3,$4,'processing') returning id",
+      [baseId, 'uniq-a-' + Date.now(), tv, aliceId],
+    )).rows[0].id;
+    const b2 = (await db.admin.query(
+      "insert into public.import_batch(base_id, file_hash, template_version_id, imported_by, status) values($1,$2,$3,$4,'processing') returning id",
+      [baseId, 'uniq-b-' + Date.now(), tv, aliceId],
+    )).rows[0].id;
+
+    await db.admin.query('insert into public.import_row_hash(batch_id, base_id, row_hash) values($1,$2,$3)', [b1, baseId, 'same-row']);
+    await expect(
+      db.admin.query('insert into public.import_row_hash(batch_id, base_id, row_hash) values($1,$2,$3)', [b2, baseId, 'same-row']),
+    ).rejects.toThrow(/duplicate|unique/i);
+  });
 });

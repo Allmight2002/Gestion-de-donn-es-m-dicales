@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616096200_research_groups.sql`
-- Tables : 27 · Policies RLS : 56 · Triggers : 35 · Fonctions : 159
+- Dernière migration incluse : `20260616096400_remaining_p0_p1_guards.sql`
+- Tables : 28 · Policies RLS : 56 · Triggers : 42 · Fonctions : 167
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -131,6 +131,8 @@ Policies :
 
 Triggers :
 - `trg_ca_inspection_guard` — BEFORE INSERT/UPDATE → `guard_inspection_status()`
+- `trg_clinical_attachment_created_by` — BEFORE INSERT/UPDATE → `guard_document_created_by()`
+- `trg_clinical_attachment_storage_path_scope` — BEFORE INSERT/UPDATE → `guard_storage_path_scope()`
 
 ### cohort · RLS activée
 
@@ -449,6 +451,8 @@ Policies :
 - `rd_update` (UPDATE) — USING ((deleted_at IS NULL) AND is_base_owner(base_id)) · WITH CHECK ((deleted_at IS NULL) AND is_base_owner(base_id))
 
 Triggers :
+- `trg_raw_document_created_by` — BEFORE INSERT/UPDATE → `guard_document_created_by()`
+- `trg_raw_document_storage_path_scope` — BEFORE INSERT/UPDATE → `guard_storage_path_scope()`
 - `trg_rd_inspection_guard` — BEFORE INSERT/UPDATE → `guard_inspection_status()`
 - `trg_xbase_document` — BEFORE INSERT/UPDATE → `guard_xbase_document()`
 
@@ -555,6 +559,7 @@ Policies :
 
 Triggers :
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
+- `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
 
 ### template_version · RLS activée
@@ -575,6 +580,20 @@ Policies :
 
 Triggers :
 - `trg_audit_template_publish` — AFTER UPDATE → `trg_audit_template_publish_fn()`
+- `trg_template_version_state` — BEFORE INSERT/UPDATE → `guard_template_version_state()`
+
+### template_version_status_authorization · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| txid | bigint | non |  |
+| version_id | uuid | non |  |
+| from_status | text | non |  |
+| to_status | text | non |  |
+| used_at | timestamp with time zone | oui |  |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### validation_rule · RLS activée
 
@@ -592,6 +611,7 @@ Policies :
 
 Triggers :
 - `trg_vr_inuse` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_inuse()`
+- `trg_vr_locked` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_locked()`
 - `trg_vr_structure` — BEFORE INSERT/UPDATE → `guard_validation_rule_structure()`
 
 ## Fonctions (public)
@@ -600,6 +620,7 @@ Triggers :
 |---|---|---|---|
 | accept_invitation | p_token text | DEFINER | plpgsql |
 | answer_clarification | p_clarification_id uuid, p_answer text | DEFINER | plpgsql |
+| archive_template_version | p_version_id uuid | DEFINER | plpgsql |
 | armor | bytea | INVOKER | c |
 | armor | bytea, text[], text[] | INVOKER | c |
 | assert_access_change_allowed | p_base_id uuid, p_target_user_id uuid, p_new_can_view_identity boolean, p_new_can_view_raw_documents boolean, p_new_can_edit_structured_data boolean, p_new_can_export_data boolean, p_new_can_manage_access boolean, p_old_can_view_identity boolean, p_old_can_view_raw_documents boolean, p_old_can_edit_structured_data boolean, p_old_can_export_data boolean, p_old_can_manage_access boolean | DEFINER | plpgsql |
@@ -664,14 +685,19 @@ Triggers :
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
 | guard_curation_draft_scope | — | DEFINER | plpgsql |
+| guard_document_created_by | — | DEFINER | plpgsql |
 | guard_finalized_draft | — | INVOKER | plpgsql |
 | guard_inspection_status | — | INVOKER | plpgsql |
 | guard_no_curated_downgrade | — | INVOKER | plpgsql |
 | guard_profile_role | — | DEFINER | plpgsql |
+| guard_storage_path_scope | — | DEFINER | plpgsql |
 | guard_structural_immutable | — | INVOKER | plpgsql |
-| guard_template_field_delete | — | INVOKER | plpgsql |
-| guard_template_field_update | — | INVOKER | plpgsql |
+| guard_template_field_delete | — | DEFINER | plpgsql |
+| guard_template_field_locked_insert | — | DEFINER | plpgsql |
+| guard_template_field_update | — | DEFINER | plpgsql |
+| guard_template_version_state | — | DEFINER | plpgsql |
 | guard_validation_rule_inuse | — | INVOKER | plpgsql |
+| guard_validation_rule_locked | — | DEFINER | plpgsql |
 | guard_validation_rule_structure | — | INVOKER | plpgsql |
 | guard_xbase_clarification | — | DEFINER | plpgsql |
 | guard_xbase_document | — | DEFINER | plpgsql |
@@ -726,6 +752,7 @@ Triggers :
 | pgp_sym_encrypt_bytea | bytea, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
+| publish_template_version | p_version_id uuid | DEFINER | plpgsql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
@@ -747,6 +774,7 @@ Triggers :
 | template_of_version | p_version uuid | DEFINER | sql |
 | template_version_fields_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_in_use | p_version_id uuid | DEFINER | sql |
+| template_version_locked | p_version_id uuid | DEFINER | sql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |
 | trg_audit_export_fn | — | DEFINER | plpgsql |
 | trg_audit_invitation_fn | — | DEFINER | plpgsql |

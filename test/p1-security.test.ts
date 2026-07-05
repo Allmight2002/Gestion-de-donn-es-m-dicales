@@ -109,3 +109,23 @@ describe('P1 identite audit-before-return', () => {
     expect(await rowsAs(aliceId, 'select * from public.patient_identity')).toHaveLength(0);
   });
 });
+
+describe('P1 helpers internes non exposés', () => {
+  test('un utilisateur ne peut pas appeler les helpers de permissions', async () => {
+    await expect(
+      rowsAs(
+        aliceId,
+        'select public.invitation_permissions_still_valid($1,$2,false,false,false,false,false)',
+        [baseId, aliceId],
+      ),
+    ).rejects.toThrow(/permission|denied|refus/i);
+
+    await expect(
+      rowsAs(
+        aliceId,
+        'select public.assert_access_change_allowed($1,$2,false,false,false,false,false,false,false,false,false,false)',
+        [baseId, bobId],
+      ),
+    ).rejects.toThrow(/permission|denied|refus/i);
+  });
+});
