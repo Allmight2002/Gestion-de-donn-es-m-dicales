@@ -81,16 +81,7 @@ export function Dashboard() {
           <h1 className="page-title">{t('member.dashboard.title')}</h1>
           <p className="mt-1 text-sm text-slate-500">{t('app.tagline')}</p>
         </div>
-        {mayCreate && (
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => navigate('/groups')} className="btn-secondary">
-              {t('group.title')}
-            </button>
-            <button onClick={() => navigate('/templates')} className="btn-secondary">
-              {t('mytemplates.title')}
-            </button>
-          </div>
-        )}
+        {/* UI-1 : « Groupes » et « Mes gabarits » vivent desormais dans la barre laterale. */}
       </div>
 
       {mayCreate && online && (

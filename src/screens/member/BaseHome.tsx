@@ -1,4 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
+import { recordRecentBase } from '../../lib/recentBases';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
@@ -61,6 +62,7 @@ export function BaseHome() {
           return;
         }
         setBaseName(snap.baseName);
+        recordRecentBase(id, snap.baseName); // UI-1 : navigation laterale « bases recentes »
         setFields(snap.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
         setRows(snap.patients.map(offlineItem));
         setTotal(snap.patients.length);
@@ -76,7 +78,10 @@ export function BaseHome() {
         patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE),
       ]);
       setListing(b);
-      if (b) setBaseName(b.base.name);
+      if (b) {
+        setBaseName(b.base.name);
+        recordRecentBase(id, b.base.name); // UI-1 : navigation laterale « bases recentes »
+      }
       setRows(pageRes.rows);
       setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {

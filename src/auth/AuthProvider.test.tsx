@@ -71,19 +71,20 @@ describe('gating par role', () => {
     expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument();
   });
 
+  // UI-1 : le libelle apparait aussi dans la barre laterale -> on vise le TITRE de page (heading).
   test('connecte system_admin -> administration des gabarits', async () => {
     renderApp(fakeBackend({ user: { id: 's', email: 's@demo.test' }, profile: adminProfile }));
-    expect(await screen.findByText('Administration des gabarits')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Administration des gabarits' })).toBeInTheDocument();
   });
 
   test('connecte membre -> tableau de bord', async () => {
     renderApp(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
-    expect(await screen.findByText('Tableau de bord')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Tableau de bord' })).toBeInTheDocument();
   });
 
   test('deconnexion -> retour a l ecran de connexion', async () => {
     renderApp(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
-    await screen.findByText('Tableau de bord');
+    await screen.findByRole('heading', { name: 'Tableau de bord' });
     await userEvent.click(screen.getByRole('button', { name: 'Se déconnecter' }));
     expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument();
   });
