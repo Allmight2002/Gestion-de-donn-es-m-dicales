@@ -6,6 +6,7 @@ import type { MessageKey } from '../i18n/messages';
 import { flushOutbox, useOnline, useOutbox, type FlushDeps } from '../data/offline';
 import { usePatientRepository } from '../data/RepositoryProvider';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
 
@@ -81,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="text-xs text-slate-500">{roleLabel}</div>
               </div>
             </div>
+            <ThemeToggle />
             <LanguageSwitcher />
             <button onClick={() => void signOut()} className="btn-secondary">
               {t('shell.signout')}

@@ -6,11 +6,18 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
 }
 
+/* UI-1 — mode sombre PILOTE PAR CLASSE (choix clair/sombre/systeme persiste, src/lib/theme.ts pose
+   la classe `dark` sur <html>) et non par l'OS seul. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+  html.dark {
+    color-scheme: dark; /* formulaires natifs (date, select, scrollbars) en sombre */
   }
   body {
     font-family: var(--font-sans);
@@ -21,6 +28,13 @@
       radial-gradient(55rem 28rem at 108% -8%, rgba(13, 148, 136, 0.08), transparent 60%),
       radial-gradient(42rem 24rem at -8% 2%, rgba(13, 148, 136, 0.05), transparent 55%);
     background-attachment: fixed;
+  }
+  .dark body {
+    color: #e2e8f0;
+    background-color: #0b1220;
+    background-image:
+      radial-gradient(55rem 28rem at 108% -8%, rgba(20, 184, 166, 0.10), transparent 60%),
+      radial-gradient(42rem 24rem at -8% 2%, rgba(20, 184, 166, 0.06), transparent 55%);
   }
   /* Focus visible coherent sur tous les elements interactifs. */
   :where(a, button, input, select, textarea):focus-visible {
@@ -38,29 +52,75 @@
     scrollbar-width: thin;
     scrollbar-color: rgb(148 163 184 / 0.5) transparent;
   }
+
+  /* ------------------------------------------------------------------------------------------
+     PONT SOMBRE TEMPORAIRE (UI-1) : les ecrans historiques utilisent des utilitaires CLAIRS en
+     dur (text-slate-700, bg-white, border-slate-200, bandeaux amber/teal/red...). En attendant
+     leur refonte (lots UI-2/UI-3), on remappe ICI les plus frequents pour que TOUTE l'app reste
+     lisible en sombre. Chaque ecran restyle en classes thémables rendra ce bloc inutile ->
+     A RETIRER a la fin de la refonte.
+     (Specificite : `.dark .x` (0,2,0) > utilitaire (0,1,0) -> le remap gagne en mode sombre.) */
+  .dark .text-slate-900 { color: #f1f5f9; }
+  .dark .text-slate-800 { color: #e2e8f0; }
+  .dark .text-slate-700 { color: #cbd5e1; }
+  .dark .text-slate-600 { color: #94a3b8; }
+  .dark .text-slate-500 { color: #94a3b8; }
+  .dark .text-slate-400 { color: #64748b; }
+  .dark .bg-white { background-color: #0f172a; }
+  .dark .bg-white\/80 { background-color: rgb(15 23 42 / 0.85); }
+  .dark .bg-slate-50 { background-color: #1e293b; }
+  .dark .bg-slate-100 { background-color: #1e293b; }
+  .dark .border-slate-100 { border-color: #1e293b; }
+  .dark .border-slate-200 { border-color: #263244; }
+  .dark .border-slate-200\/70 { border-color: rgb(38 50 68 / 0.8); }
+  .dark .border-slate-300 { border-color: #334155; }
+  .dark .hover\:bg-slate-50:hover { background-color: #1e293b; }
+  .dark .hover\:bg-slate-100:hover { background-color: #1e293b; }
+  .dark .text-teal-700 { color: #2dd4bf; }
+  .dark .text-teal-800 { color: #5eead4; }
+  .dark .bg-teal-50 { background-color: rgb(19 78 74 / 0.35); }
+  .dark .bg-teal-100 { background-color: rgb(19 78 74 / 0.55); }
+  .dark .border-teal-100 { border-color: rgb(15 118 110 / 0.4); }
+  .dark .text-amber-800, .dark .text-amber-900 { color: #fcd34d; }
+  .dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.3); }
+  .dark .bg-amber-100 { background-color: rgb(120 53 15 / 0.45); }
+  .dark .border-amber-200, .dark .border-amber-300 { border-color: rgb(180 83 9 / 0.45); }
+  .dark .text-red-600, .dark .text-red-700 { color: #f87171; }
+  .dark .bg-red-50 { background-color: rgb(127 29 29 / 0.3); }
+  .dark .bg-red-100 { background-color: rgb(127 29 29 / 0.45); }
+  .dark .border-red-100, .dark .border-red-200 { border-color: rgb(185 28 28 / 0.45); }
+  .dark .text-sky-900 { color: #7dd3fc; }
+  .dark .text-sky-700 { color: #38bdf8; }
+  .dark .bg-sky-50 { background-color: rgb(12 74 110 / 0.3); }
+  .dark .border-sky-200 { border-color: rgb(3 105 161 / 0.45); }
+  .dark .text-indigo-900, .dark .text-indigo-800\/90 { color: #a5b4fc; }
+  .dark .bg-indigo-50\/60 { background-color: rgb(49 46 129 / 0.3); }
+  .dark .border-indigo-100 { border-color: rgb(67 56 202 / 0.4); }
+  .dark .text-green-700 { color: #4ade80; }
+  .dark .bg-green-50 { background-color: rgb(20 83 45 / 0.3); }
 }
 
 /* Primitives reutilisables : appliquees progressivement dans les ecrans. */
 @layer components {
   .card {
-    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-800 hover:shadow active:translate-y-px disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-800 hover:shadow active:translate-y-px disabled:opacity-60 dark:bg-teal-600 dark:hover:bg-teal-500;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800;
   }
   .input {
-    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30;
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
   .badge {
-    @apply inline-flex items-center rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/20;
+    @apply inline-flex items-center rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-900/40 dark:text-teal-300 dark:ring-teal-400/25;
   }
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-slate-900;
+    @apply text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100;
   }
 }
