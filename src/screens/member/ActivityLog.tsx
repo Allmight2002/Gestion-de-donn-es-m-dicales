@@ -10,10 +10,12 @@ import { formatDateTime } from '../../lib/formatDate';
 // C3 — Journal d'activite d'une base : timeline HUMAINE construite sur audit_log (imports, acces,
 // suppressions, exports, publications). Les lectures sensibles (identite/documents) en sont exclues
 // (vue dediee E1). Lecture seule.
-const KNOWN_ACTIONS = new Set([
+const PAGE_SIZE = 50;
+const ACTION_OPTIONS = [
   'data_imported', 'access_granted', 'access_changed', 'access_revoked', 'invitation_created',
   'patient_deleted', 'encounter_deleted', 'export_created', 'template_published', 'base_deleted',
-]);
+] as const;
+const KNOWN_ACTIONS = new Set<string>(ACTION_OPTIONS);
 
 export function ActivityLog() {
   const { id: baseId } = useParams();
@@ -23,23 +25,49 @@ export function ActivityLog() {
 
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [actionFilter, setActionFilter] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!baseId) return;
     setLoading(true);
     try {
-      setEvents(await audit.getBaseActivity(baseId));
+      const rows = await audit.getBaseActivity(baseId, {
+        limit: PAGE_SIZE,
+        action: actionFilter || null,
+      });
+      setEvents(rows);
+      setHasMore(rows.length === PAGE_SIZE);
       setError(null);
     } catch (e) {
       setError(errorMessage(e, t('common.error')));
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, audit]);
+  }, [baseId, audit, actionFilter, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadMore = async () => {
+    if (!baseId || events.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const rows = await audit.getBaseActivity(baseId, {
+        before: events[events.length - 1].at,
+        limit: PAGE_SIZE,
+        action: actionFilter || null,
+      });
+      setEvents((prev) => [...prev, ...rows]);
+      setHasMore(rows.length === PAGE_SIZE);
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const labelOf = (action: string) =>
     KNOWN_ACTIONS.has(action) ? t(`activity.action.${action}` as MessageKey) : action;
@@ -69,6 +97,23 @@ export function ActivityLog() {
         <p className="mt-1 text-sm text-slate-500">{t('activity.subtitle')}</p>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="activity-action-filter" className="text-sm font-medium text-slate-600">
+          {t('activity.filter_label')}
+        </label>
+        <select
+          id="activity-action-filter"
+          className="input max-w-xs"
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+        >
+          <option value="">{t('activity.filter_all')}</option>
+          {ACTION_OPTIONS.map((action) => (
+            <option key={action} value={action}>{labelOf(action)}</option>
+          ))}
+        </select>
+      </div>
+
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       {events.length === 0 ? (
@@ -78,7 +123,7 @@ export function ActivityLog() {
           {events.map((e, i) => {
             const detail = detailOf(e);
             return (
-              <li key={i} className="card flex items-start justify-between gap-3 px-3 py-2">
+              <li key={`${e.at}-${e.action}-${i}`} className="card flex items-start justify-between gap-3 px-3 py-2">
                 <div>
                   <span className="font-medium text-slate-700">{labelOf(e.action)}</span>
                   <span className="text-slate-400"> — {e.actorName}</span>
@@ -89,6 +134,11 @@ export function ActivityLog() {
             );
           })}
         </ul>
+      )}
+      {hasMore && (
+        <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="btn-secondary">
+          {loadingMore ? t('common.loading') : t('activity.load_more')}
+        </button>
       )}
     </section>
   );

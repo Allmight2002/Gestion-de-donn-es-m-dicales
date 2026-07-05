@@ -11,6 +11,7 @@ import {
 import type { AuthBackend } from './backend';
 import { supabaseBackend } from '../lib/supabaseBackend';
 import { setOfflineUser, clearOfflineSnapshots, purgeExpiredSnapshots } from '../data/offline';
+import { clearDraftsForCurrentUser, purgeExpiredDrafts } from '../data/drafts';
 import type { AuthStatus, Profile, SessionUser } from './types';
 
 export interface AuthContextValue {
@@ -53,6 +54,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
       if (!nextUser) {
         // §5.9 : on efface les instantanes de l'utilisateur COURANT AVANT de le remettre a null
         // (sinon on effacerait ceux du compte « null », pas les siens).
+        clearDraftsForCurrentUser();
         void clearOfflineSnapshots();
         setOfflineUser(null);
         currentUserId.current = null;
@@ -97,6 +99,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
   useEffect(() => {
     mounted.current = true;
     void purgeExpiredSnapshots(); // §5.6 : menage des instantanes expires au demarrage
+    purgeExpiredDrafts(); // Brouillons locaux ephemeres : purge au demarrage
     if (!backend.configured) {
       setStatus('unconfigured');
       return;
@@ -128,7 +131,10 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   const signOut = useCallback(async () => {
     authGeneration.current += 1;
+    clearDraftsForCurrentUser();
+    void clearOfflineSnapshots();
     await backend.signOut();
+    setOfflineUser(null);
     authGeneration.current += 1;
     currentUserId.current = null;
     currentProfile.current = null;

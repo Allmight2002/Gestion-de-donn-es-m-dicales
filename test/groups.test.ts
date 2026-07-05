@@ -44,4 +44,16 @@ describe('C2 research_group (etiquette d organisation, privee)', () => {
     expect(await rowsAs(aliceId, 'select base_id from public.research_group_base where group_id=$1', [gid])).toHaveLength(0);
     expect((await db.admin.query('select count(*)::int n from public.base where id=$1', [baseId])).rows[0].n).toBe(1);
   });
+
+  test('le soft delete d une base supprime ses rattachements de groupes', async () => {
+    const gid = (await rowsAs(aliceId, "insert into public.research_group(name, owner_user_id) values('A supprimer',$1) returning id", [aliceId]))[0].id;
+    await rowsAs(aliceId, 'insert into public.research_group_base(group_id, base_id) values($1,$2)', [gid, baseId]);
+
+    expect((await db.admin.query('select count(*)::int n from public.research_group_base where base_id=$1', [baseId])).rows[0].n).toBe(1);
+
+    await rowsAs(aliceId, 'select public.soft_delete_base($1, $2)', [baseId, 'test groupe']);
+
+    expect((await db.admin.query('select count(*)::int n from public.research_group_base where base_id=$1', [baseId])).rows[0].n).toBe(0);
+    expect((await db.admin.query('select deleted_at is not null as deleted from public.base where id=$1', [baseId])).rows[0].deleted).toBe(true);
+  });
 });

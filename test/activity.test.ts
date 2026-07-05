@@ -15,10 +15,10 @@ let baseId: string;
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
-const seedEvent = (action: string, metadata: Record<string, unknown> = {}) =>
+const seedEvent = (action: string, metadata: Record<string, unknown> = {}, createdAt?: string) =>
   db.admin.query(
-    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata) values($1,$2,'base',$3,$3,$4::jsonb)",
-    [aliceId, action, baseId, JSON.stringify(metadata)],
+    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata, created_at) values($1,$2,'base',$3,$3,$4::jsonb, coalesce($5::timestamptz, now()))",
+    [aliceId, action, baseId, JSON.stringify(metadata), createdAt ?? null],
   );
 
 beforeAll(async () => {
@@ -72,5 +72,29 @@ describe('C3 base_activity_log (journal d activite lisible)', () => {
     const ownerLog = (await rowsAs(aliceId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
       { action: string; metadata: Record<string, unknown> }[];
     expect(ownerLog.find((e) => e.action === 'patient_deleted')?.metadata).toMatchObject({ reason: 'motif confidentiel' });
+  });
+
+  test('le journal est pagine et filtrable par action', async () => {
+    await seedEvent('pagination_probe', {}, '2026-07-04T12:00:00.000Z');
+    await seedEvent('export_created', { format: 'csv' }, '2026-07-04T11:30:00.000Z');
+    await seedEvent('pagination_probe', {}, '2026-07-04T11:00:00.000Z');
+
+    const firstPage = (await rowsAs(
+      aliceId,
+      'select public.base_activity_log($1, null, 1, $2) as a',
+      [baseId, 'pagination_probe'],
+    ))[0].a as { at: string; action: string }[];
+    expect(firstPage).toHaveLength(1);
+    expect(firstPage[0].action).toBe('pagination_probe');
+    expect(new Date(firstPage[0].at).toISOString()).toBe('2026-07-04T12:00:00.000Z');
+
+    const nextPage = (await rowsAs(
+      aliceId,
+      'select public.base_activity_log($1, $2::timestamptz, 10, $3) as a',
+      [baseId, firstPage[0].at, 'pagination_probe'],
+    ))[0].a as { at: string; action: string }[];
+    expect(nextPage).toHaveLength(1);
+    expect(nextPage[0].action).toBe('pagination_probe');
+    expect(new Date(nextPage[0].at).toISOString()).toBe('2026-07-04T11:00:00.000Z');
   });
 });
