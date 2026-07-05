@@ -142,10 +142,8 @@ export function BaseHome() {
 
   return (
     <section className="space-y-5">
-      <button onClick={() => navigate('/')} className="text-sm font-medium text-slate-500 hover:text-teal-700">
-        ← {t('base.back_to_dashboard')}
-      </button>
-
+      {/* UI-1 : le retour + la navigation (import/cohortes/journal/acces/gabarit/curation) vivent
+          desormais dans BaseLayout (fil d'Ariane + onglets). Ici : titre, role et actions patients. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="page-title">{baseName}</h1>
@@ -155,28 +153,8 @@ export function BaseHome() {
             listing && <span className="badge">{t(`baserole.${listing.role}`)}</span>
           )}
         </div>
-        {!offlineView && listing && (
-          <div className="flex flex-wrap gap-2">
-            {listing.role === 'owner' && (
-              <button onClick={() => navigate(`/bases/${id}/template`)} className="btn-secondary">{t('basetemplate.edit')}</button>
-            )}
-            {listing.role === 'owner' && (
-              <button onClick={() => navigate(`/bases/${id}/access`)} className="btn-secondary">{t('access.manage')}</button>
-            )}
-            <button onClick={() => navigate(`/bases/${id}/activity`)} className="btn-secondary">{t('activity.title')}</button>
-            {listing.role === 'owner' && (
-              <button onClick={() => navigate(`/bases/${id}/curation`)} className="btn-secondary">{t('curation.board')}</button>
-            )}
-            {(listing.role === 'owner' || listing.permissions.canExportData || listing.permissions.canEditStructuredData) && (
-              <button onClick={() => navigate(`/bases/${id}/cohorts`)} className="btn-secondary">{t('cohort.build')}</button>
-            )}
-            {canEdit && (
-              <button onClick={() => navigate(`/bases/${id}/import`)} className="btn-secondary">{t('import.title')}</button>
-            )}
-            {canEdit && (
-              <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">+ {t('patient.new')}</button>
-            )}
-          </div>
+        {!offlineView && listing && canEdit && (
+          <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">+ {t('patient.new')}</button>
         )}
       </div>
 

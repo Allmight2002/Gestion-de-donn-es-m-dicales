@@ -26,6 +26,7 @@ const CohortBuilder = lazy(() => import('../screens/member/CohortBuilder').then(
 const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) => ({ default: m.ExportPanel })));
 const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
+const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
 const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
 const GroupDetail = lazy(() => import('../screens/member/GroupDetail').then((m) => ({ default: m.GroupDetail })));
 const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
@@ -115,46 +116,25 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* UI-1 : la base est une page a ONGLETS (BaseLayout = fil d'Ariane + onglets + Outlet).
+          Les ecrans enfants sont reutilises tels quels. Les parcours "focus" (fiche patient,
+          export d'une cohorte) restent hors onglets, en pleine page. */}
       <Route
         path="/bases/:id"
         element={
           <ProtectedRoute area="member">
-            <BaseHome />
+            <BaseLayout />
           </ProtectedRoute>
         }
-      />
-      <Route
-        path="/bases/:id/access"
-        element={
-          <ProtectedRoute area="member">
-            <AccessManagement />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bases/:id/activity"
-        element={
-          <ProtectedRoute area="member">
-            <ActivityLog />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bases/:id/template"
-        element={
-          <ProtectedRoute area="member">
-            <BaseTemplateEditor />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bases/:id/curation"
-        element={
-          <ProtectedRoute area="member">
-            <CurationBoard />
-          </ProtectedRoute>
-        }
-      />
+      >
+        <Route index element={<BaseHome />} />
+        <Route path="import" element={<ImportData />} />
+        <Route path="cohorts" element={<CohortBuilder />} />
+        <Route path="activity" element={<ActivityLog />} />
+        <Route path="access" element={<AccessManagement />} />
+        <Route path="template" element={<BaseTemplateEditor />} />
+        <Route path="curation" element={<CurationBoard />} />
+      </Route>
       <Route
         path="/curation"
         element={
@@ -172,26 +152,10 @@ export function AppRoutes() {
         }
       />
       <Route
-        path="/bases/:id/cohorts"
-        element={
-          <ProtectedRoute area="member">
-            <CohortBuilder />
-          </ProtectedRoute>
-        }
-      />
-      <Route
         path="/bases/:id/cohorts/:cohortId/export"
         element={
           <ProtectedRoute area="member">
             <ExportPanel />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bases/:id/import"
-        element={
-          <ProtectedRoute area="member">
-            <ImportData />
           </ProtectedRoute>
         }
       />
