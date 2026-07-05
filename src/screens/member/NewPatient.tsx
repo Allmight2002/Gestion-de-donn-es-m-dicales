@@ -7,6 +7,7 @@ import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
+import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
 
 // Ecran patient (cahier v3.0). Deux modes :
@@ -22,6 +23,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const curation = useCurationRepository();
+  const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,6 +111,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         externalIdentifier: externalId.trim() || null,
         permanentData: mode === 'submit' ? {} : permanent,
       });
+      toast(t('toast.patient_saved')); // UI-2
       if (mode === 'submit') {
         // Confie le cas au pool (portee patient) -> page de depot des documents.
         const { taskId } = await curation.createSubmission(baseId, created.id, null, 'patient');

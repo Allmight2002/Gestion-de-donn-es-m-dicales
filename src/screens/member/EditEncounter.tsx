@@ -8,6 +8,7 @@ import type { TemplateField, ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, offlineCache, useOnline } from '../../data/offline';
 import { validateValues, evaluateRules, isMissing, missingCodeOf } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
+import { useToast } from '../../components/Toast';
 import { EncounterFields } from './EncounterFields';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -22,6 +23,7 @@ export function EditEncounter() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -134,6 +136,7 @@ export function EditEncounter() {
         // EN LIGNE : RPC validee, avec verrou optimiste (refuse si la rencontre a change).
         await patients.updateEncounter(encounterId, values, status, reason.trim(), baseUpdatedAt);
       }
+      toast(t(online ? 'toast.encounter_saved' : 'toast.encounter_queued')); // UI-2
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
       setError(msg(e));

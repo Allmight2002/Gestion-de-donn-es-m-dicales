@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuditRepository, useBaseRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';
 import { getTemplateFields } from '../../data/templates';
+import { formatDateTime } from '../../lib/formatDate';
 import {
   buildDictionary, buildEncounterExport, buildPatientExport, toCsv, assertNoIdentity,
   type AggregationRule, type ExportField, type ExportTable,
@@ -53,7 +54,7 @@ async function xlsxBlob(main: ExportTable, dict: ExportTable): Promise<Blob> {
 export function ExportPanel() {
   const { id: baseId, cohortId } = useParams();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const exportsRepo = useExportRepository();
@@ -218,7 +219,7 @@ export function ExportPanel() {
             {history.map((h) => (
               <li key={h.id} className="card flex items-center justify-between gap-3 px-3 py-2">
                 <span>
-                  {h.exportedAt} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
+                  {formatDateTime(h.exportedAt, lang)} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
                   <span className="font-mono text-slate-400">{h.fileHash?.slice(0, 12)}…</span>
                 </span>
                 {h.storedFilePath && (

@@ -9,6 +9,8 @@ import type { MessageKey } from '../../i18n/messages';
 import { offlineCache, useOnline } from '../../data/offline';
 import { getTemplateFields } from '../../data/templates';
 import { isMissing, missingCodeOf } from '../../domain/validation';
+import { formatDate } from '../../lib/formatDate';
+import { StatusBadge } from '../../components/StatusBadge';
 import { DeleteWithReason } from './DeleteWithReason';
 import { useSignedFile } from '../../lib/useSignedFile';
 
@@ -46,7 +48,7 @@ function AttachmentMedia({ isImage, label, load, onReveal }: {
 export function PatientDetail() {
   const { id: baseId, patientId } = useParams();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const online = useOnline();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
@@ -182,7 +184,7 @@ export function PatientDetail() {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
           <span className="flex items-center gap-3">
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t(`encstatus.${patient.validationStatus}` as MessageKey)}</span>
+            <StatusBadge status={patient.validationStatus} />
             {canEdit && (
               <button
                 onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
@@ -227,8 +229,8 @@ export function PatientDetail() {
               <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">
-                    {t(`encountertype.${e.encounterType}` as MessageKey)} · {e.encounterDate}
-                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t(`encstatus.${e.validationStatus}` as MessageKey)}</span>
+                    {t(`encountertype.${e.encounterType}` as MessageKey)} · {formatDate(e.encounterDate, lang)}
+                    <span className="ml-2"><StatusBadge status={e.validationStatus} /></span>
                     {(e as { pending?: boolean }).pending && (
                       <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t('offline.pending_badge')}</span>
                     )}

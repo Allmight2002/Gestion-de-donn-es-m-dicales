@@ -7,6 +7,7 @@ import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
+import { useToast } from '../../components/Toast';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
@@ -29,6 +30,7 @@ export function EncounterForm() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -146,6 +148,7 @@ export function EncounterForm() {
         encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
       });
       clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
+      toast(t('toast.encounter_saved')); // UI-2 : la reussite se voit
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
       setError(msg(e));

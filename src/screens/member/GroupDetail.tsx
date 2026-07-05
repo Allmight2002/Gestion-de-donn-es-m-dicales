@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useGroupRepository } from '../../data/RepositoryProvider';
 import type { GroupBase } from '../../data/groups';
 import type { BaseListing } from '../../data/bases';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 // C2 v1 — detail d'un groupe : renommer/supprimer, rattacher/detacher des bases (dont on est
 // proprietaire). Organisation seulement : ne touche pas a l'acces.
@@ -22,6 +23,7 @@ export function GroupDetail() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false); // UI-2 : modale au lieu de window.confirm
 
   const load = useCallback(async () => {
     if (!groupId) return;
@@ -63,12 +65,18 @@ export function GroupDetail() {
             onBlur={() => { if (groupId && name.trim()) void run(() => groups.renameGroup(groupId, name.trim())); }}
             aria-label={t('group.name')}
           />
-          <button
-            onClick={() => { if (groupId && window.confirm(t('group.delete_confirm'))) void run(async () => { await groups.deleteGroup(groupId); navigate('/groups'); }); }}
-            className="btn-secondary text-red-600"
-          >
+          <button onClick={() => setConfirmDelete(true)} className="btn-secondary text-red-600">
             {t('group.delete')}
           </button>
+          <ConfirmDialog
+            open={confirmDelete}
+            title={t('group.delete')}
+            body={t('group.delete_confirm')}
+            danger
+            busy={busy}
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={() => { if (groupId) void run(async () => { await groups.deleteGroup(groupId); setConfirmDelete(false); navigate('/groups'); }); }}
+          />
         </div>
       </div>
 

@@ -8,6 +8,7 @@ import { canCreateBase } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, PublishedTemplateOption } from '../../data/bases';
 import { offlineCache, useOnline, type OfflineMeta } from '../../data/offline';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Tableau de bord (cahier §8.3) : bases possedees + partagees. La creation de base est
 // reservee au role MEDECIN (le staff voit seulement les bases auxquelles il a acces).
@@ -117,7 +118,7 @@ export function Dashboard() {
         <p className="text-sm text-amber-700">{t('dashboard.no_templates_hint')}</p>
       )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {loading && <p className="text-slate-500">{t('common.loading')}</p>}
+      {loading && <SkeletonList rows={3} />}
       {online && !loading && bases.length === 0 && (
         <div className="card border-dashed p-10 text-center text-slate-500">{t('dashboard.no_bases')}</div>
       )}

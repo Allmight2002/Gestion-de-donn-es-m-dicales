@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useAuditRepository } from '../../data/RepositoryProvider';
 import type { ActivityEvent } from '../../data/audit';
+import { formatDateTime } from '../../lib/formatDate';
 
 // C3 — Journal d'activite d'une base : timeline HUMAINE construite sur audit_log (imports, acces,
 // suppressions, exports, publications). Les lectures sensibles (identite/documents) en sont exclues
@@ -17,7 +18,7 @@ const KNOWN_ACTIONS = new Set([
 export function ActivityLog() {
   const { id: baseId } = useParams();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const audit = useAuditRepository();
 
   const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -83,7 +84,7 @@ export function ActivityLog() {
                   <span className="text-slate-400"> — {e.actorName}</span>
                   {detail && <div className="text-xs text-slate-500">{detail}</div>}
                 </div>
-                <span className="whitespace-nowrap text-xs text-slate-400">{new Date(e.at).toLocaleString()}</span>
+                <span className="whitespace-nowrap text-xs text-slate-400">{formatDateTime(e.at, lang)}</span>
               </li>
             );
           })}

@@ -7,6 +7,8 @@ import { useBaseRepository, usePatientRepository, useTemplateRepository } from '
 import type { BaseListing } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
 import { getTemplateFields } from '../../data/templates';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { SkeletonList } from '../../components/Skeleton';
 import {
   downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
@@ -47,6 +49,7 @@ export function BaseHome() {
   // Copie hors-ligne (controles disponibles en ligne).
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmLarge, setConfirmLarge] = useState(false); // UI-2 : modale §5.8 (grosse base)
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -103,10 +106,8 @@ export function BaseHome() {
   }, [load]);
 
   // Telecharge l'instantane analytique de la base pour consultation hors-ligne.
-  const makeAvailableOffline = useCallback(async () => {
+  const doDownloadSnapshot = useCallback(async () => {
     if (!id) return;
-    // §5.8 : sur une grande base, l'instantane est un gros bloc -> on confirme avant de le charger.
-    if (total > MAX_OFFLINE_PATIENTS && !window.confirm(t('offline.large_confirm').replace('{n}', String(total)))) return;
     setSaving(true);
     try {
       const src: SnapshotSource = {
@@ -128,7 +129,14 @@ export function BaseHome() {
     } finally {
       setSaving(false);
     }
-  }, [id, total, bases, patients, templates, t]);
+  }, [id, bases, patients, templates, t]);
+
+  // §5.8 : sur une grande base, l'instantane est un gros bloc -> modale de confirmation (UI-2)
+  // avant de le charger ; en dessous du seuil, telechargement direct.
+  const makeAvailableOffline = useCallback(async () => {
+    if (total > MAX_OFFLINE_PATIENTS) { setConfirmLarge(true); return; }
+    await doDownloadSnapshot();
+  }, [total, doDownloadSnapshot]);
 
   const removeOffline = useCallback(async () => {
     if (!id) return;
@@ -136,12 +144,21 @@ export function BaseHome() {
     setCachedMeta(null);
   }, [id]);
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={6} />;
   if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
 
   return (
     <section className="space-y-5">
+      {/* UI-2 : confirmation §5.8 (grosse base) en modale themable, plus window.confirm. */}
+      <ConfirmDialog
+        open={confirmLarge}
+        title={t('offline.make_available')}
+        body={t('offline.large_confirm').replace('{n}', String(total))}
+        busy={saving}
+        onCancel={() => setConfirmLarge(false)}
+        onConfirm={() => { setConfirmLarge(false); void doDownloadSnapshot(); }}
+      />
       {/* UI-1 : le retour + la navigation (import/cohortes/journal/acces/gabarit/curation) vivent
           desormais dans BaseLayout (fil d'Ariane + onglets). Ici : titre, role et actions patients. */}
       <div className="flex flex-wrap items-center justify-between gap-3">

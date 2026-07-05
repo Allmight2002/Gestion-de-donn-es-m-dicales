@@ -6,6 +6,7 @@ import { useBaseRepository, usePatientRepository, useTemplateRepository } from '
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
+import { useToast } from '../../components/Toast';
 import { EncounterFields } from './EncounterFields';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -21,6 +22,7 @@ export function EditPatient() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -76,6 +78,7 @@ export function EditPatient() {
     setBusy(true);
     try {
       await patients.updatePatientData(patientId, values, status, reason.trim());
+      toast(t('toast.patient_saved')); // UI-2
       back();
     } catch (e) {
       setError(msg(e));
