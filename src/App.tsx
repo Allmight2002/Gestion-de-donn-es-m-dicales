@@ -4,18 +4,22 @@ import { AuthProvider } from './auth/AuthProvider';
 import { RepositoryProvider } from './data/RepositoryProvider';
 import { AppRoutes } from './routes/AppRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/Toast';
 
 export function App() {
   // ErrorBoundary sous I18nProvider (repli localise) mais AU-DESSUS de l'auth, des donnees et du
   // routeur : un plantage de rendu n'importe ou dans l'app montre un repli, jamais un ecran blanc.
+  // ToastProvider au-dessus du routeur : les confirmations survivent aux navigations.
   return (
     <I18nProvider>
       <ErrorBoundary>
         <AuthProvider>
           <RepositoryProvider>
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
+            <ToastProvider>
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </ToastProvider>
           </RepositoryProvider>
         </AuthProvider>
       </ErrorBoundary>
