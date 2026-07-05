@@ -52,15 +52,22 @@
     scrollbar-width: thin;
     scrollbar-color: rgb(148 163 184 / 0.5) transparent;
   }
+}
 
-  /* ------------------------------------------------------------------------------------------
-     PONT SOMBRE TEMPORAIRE (UI-1) : les ecrans historiques utilisent des utilitaires CLAIRS en
-     dur (text-slate-700, bg-white, border-slate-200, bandeaux amber/teal/red...). En attendant
-     leur refonte (lots UI-2/UI-3), on remappe ICI les plus frequents pour que TOUTE l'app reste
-     lisible en sombre. Chaque ecran restyle en classes thémables rendra ce bloc inutile ->
-     A RETIRER a la fin de la refonte.
-     (Specificite : `.dark .x` (0,2,0) > utilitaire (0,1,0) -> le remap gagne en mode sombre.) */
-  .dark .text-slate-900 { color: #f1f5f9; }
+/* --------------------------------------------------------------------------------------------
+   PONT SOMBRE TEMPORAIRE (UI-1) : les ecrans historiques utilisent des utilitaires CLAIRS en
+   dur (text-slate-700, bg-white, border-slate-200, bandeaux amber/teal/red...). En attendant
+   leur refonte, on remappe ICI les plus frequents pour que TOUTE l'app reste lisible en sombre.
+
+   IMPORTANT — ce bloc est VOLONTAIREMENT HORS de tout @layer : Tailwind emet ses utilitaires
+   dans la couche `utilities`, declaree APRES `base`, et une couche posterieure GAGNE quelle que
+   soit la specificite. Place dans @layer base, ce pont perdait contre les classes claires
+   (=> barre laterale blanche en mode sombre). Le CSS NON-COUCHE, lui, prime sur toutes les
+   couches -> le remap gagne.
+   Corollaire : ne PAS ajouter de variante `dark:` sur une propriete deja remappee ici (elle
+   perdrait contre le pont) ; pour sortir un ecran du pont, REMPLACER la classe claire par des
+   classes themables puis retirer la regle d'ici. A RETIRER a la fin de la refonte. */
+.dark .text-slate-900 { color: #f1f5f9; }
   .dark .text-slate-800 { color: #e2e8f0; }
   .dark .text-slate-700 { color: #cbd5e1; }
   .dark .text-slate-600 { color: #94a3b8; }
@@ -96,9 +103,8 @@
   .dark .text-indigo-900, .dark .text-indigo-800\/90 { color: #a5b4fc; }
   .dark .bg-indigo-50\/60 { background-color: rgb(49 46 129 / 0.3); }
   .dark .border-indigo-100 { border-color: rgb(67 56 202 / 0.4); }
-  .dark .text-green-700 { color: #4ade80; }
-  .dark .bg-green-50 { background-color: rgb(20 83 45 / 0.3); }
-}
+.dark .text-green-700 { color: #4ade80; }
+.dark .bg-green-50 { background-color: rgb(20 83 45 / 0.3); }
 
 /* Primitives reutilisables : appliquees progressivement dans les ecrans. */
 @layer components {
