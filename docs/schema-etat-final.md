@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616096500_offline_snapshot_rules_by_version.sql`
-- Tables : 28 · Policies RLS : 56 · Triggers : 42 · Fonctions : 167
+- Dernière migration incluse : `20260616096600_template_delete_and_activity_minimization.sql`
+- Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 168
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -528,7 +528,6 @@ Policies :
 | created_at | timestamp with time zone | non | `now()` |
 
 Policies :
-- `template_delete` (DELETE) — USING owns_template(id)
 - `template_insert` (INSERT) — WITH CHECK (is_system_admin() OR (is_medecin() AND (owner_user_id = auth.uid()) AND (is_global = false)))
 - `template_read` (SELECT) — USING (is_global OR (owner_user_id = auth.uid()) OR is_system_admin())
 - `template_update` (UPDATE) — USING owns_template(id) · WITH CHECK (is_system_admin() OR ((owner_user_id = auth.uid()) AND (is_global = false)))
@@ -575,8 +574,10 @@ Triggers :
 | published_at | timestamp with time zone | oui |  |
 
 Policies :
+- `tv_delete` (DELETE) — USING (owns_template(template_id) AND (status = 'draft'::text))
+- `tv_insert` (INSERT) — WITH CHECK (owns_template(template_id) AND (status = 'draft'::text))
 - `tv_read` (SELECT) — USING can_read_template(template_id)
-- `tv_write` (ALL) — USING owns_template(template_id) · WITH CHECK owns_template(template_id)
+- `tv_update` (UPDATE) — USING owns_template(template_id) · WITH CHECK owns_template(template_id)
 
 Triggers :
 - `trg_audit_template_publish` — AFTER UPDATE → `trg_audit_template_publish_fn()`
@@ -619,6 +620,7 @@ Triggers :
 | Fonction | Arguments | Sécurité | Langage |
 |---|---|---|---|
 | accept_invitation | p_token text | DEFINER | plpgsql |
+| activity_public_metadata | p_action text, p_metadata jsonb, p_is_owner boolean | DEFINER | sql |
 | answer_clarification | p_clarification_id uuid, p_answer text | DEFINER | plpgsql |
 | archive_template_version | p_version_id uuid | DEFINER | plpgsql |
 | armor | bytea | INVOKER | c |

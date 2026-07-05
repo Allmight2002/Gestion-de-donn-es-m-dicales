@@ -8,16 +8,17 @@ import { startTestDb, type TestDb } from './harness/db.js';
 
 let db: TestDb;
 let aliceId: string; // proprietaire (a acces a la base)
+let editorId: string; // collaborateur ordinaire de la base
 let adminId: string; // system_admin : aucun acces a la base
 let baseId: string;
 
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
-const seedEvent = (action: string) =>
+const seedEvent = (action: string, metadata: Record<string, unknown> = {}) =>
   db.admin.query(
-    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata) values($1,$2,'base',$3,$3,'{}'::jsonb)",
-    [aliceId, action, baseId],
+    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata) values($1,$2,'base',$3,$3,$4::jsonb)",
+    [aliceId, action, baseId, JSON.stringify(metadata)],
   );
 
 beforeAll(async () => {
@@ -26,6 +27,7 @@ beforeAll(async () => {
     (await db.admin.query('select email, id from auth.users')).rows.map((r) => [r.email, r.id]),
   );
   aliceId = byEmail.get('alice@demo.test')!;
+  editorId = byEmail.get('editor@demo.test')!;
   adminId = byEmail.get('admin@demo.test')!;
   baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
 }, 180_000);
@@ -45,5 +47,30 @@ describe('C3 base_activity_log (journal d activite lisible)', () => {
 
     // Un compte SANS acces a la base (admin systeme) est refuse.
     await expect(rowsAs(adminId, 'select public.base_activity_log($1) as a', [baseId])).rejects.toThrow(/refus|denied|acces/i);
+  });
+
+  test('les metadonnees publiques sont minimisees pour les collaborateurs', async () => {
+    await seedEvent('invitation_created', {
+      invited_email: 'secret.person@example.org',
+      access_role: 'editor',
+      user_id: '00000000-0000-0000-0000-000000000001',
+    });
+    await seedEvent('patient_deleted', { reason: 'motif confidentiel', patient_id: '00000000-0000-0000-0000-000000000002' });
+
+    const log = (await rowsAs(editorId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
+      { action: string; metadata: Record<string, unknown> }[];
+
+    const invitation = log.find((e) => e.action === 'invitation_created')!;
+    expect(invitation.metadata).toMatchObject({ access_role: 'editor' });
+    expect(JSON.stringify(invitation.metadata)).not.toContain('secret.person@example.org');
+    expect(JSON.stringify(invitation.metadata)).not.toContain('00000000-0000-0000-0000-000000000001');
+
+    const deletionForEditor = log.find((e) => e.action === 'patient_deleted')!;
+    expect(deletionForEditor.metadata).not.toHaveProperty('reason');
+    expect(JSON.stringify(deletionForEditor.metadata)).not.toContain('00000000-0000-0000-0000-000000000002');
+
+    const ownerLog = (await rowsAs(aliceId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
+      { action: string; metadata: Record<string, unknown> }[];
+    expect(ownerLog.find((e) => e.action === 'patient_deleted')?.metadata).toMatchObject({ reason: 'motif confidentiel' });
   });
 });

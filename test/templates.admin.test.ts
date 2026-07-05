@@ -142,6 +142,29 @@ describe('immutabilite des versions publiees/archivees', () => {
     ).rejects.toThrow(/RPC|reservee/i);
     expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('archived');
   });
+
+  test('suppression directe REFUSEE pour les versions publiees et archivees', async () => {
+    const tpl = await rowsAs(
+      memberId,
+      "insert into public.template(name, specialty, is_global, owner_user_id) values('No direct delete','neuro',false,$1) returning id",
+      [memberId],
+    );
+    const ver = await rowsAs(
+      memberId,
+      "insert into public.template_version(template_id, version_number, status) values($1,1,'draft') returning id",
+      [tpl[0].id],
+    );
+    const versionId = ver[0].id;
+    await rowsAs(memberId, ADD_FIELD, [versionId, 'stable_field']);
+    await rowsAs(memberId, 'select * from public.publish_template_version($1)', [versionId]);
+
+    expect(await rowsAs(memberId, 'delete from public.template_version where id=$1 returning id', [versionId])).toHaveLength(0);
+    expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('published');
+
+    await rowsAs(memberId, 'select * from public.archive_template_version($1)', [versionId]);
+    expect(await rowsAs(memberId, 'delete from public.template_version where id=$1 returning id', [versionId])).toHaveLength(0);
+    expect((await db.admin.query('select status from public.template_version where id=$1', [versionId])).rows[0].status).toBe('archived');
+  });
 });
 
 describe('visibilite des versions (RLS tv_read)', () => {
@@ -276,6 +299,23 @@ describe('renommer et supprimer un gabarit (v3.0)', () => {
     await rowsAs(staffId, 'select public.delete_template($1)', [made.tplId]);
     expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(0);
     expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(0); // cascade
+  });
+
+  test('suppression directe d un gabarit refusee : passage obligatoire par delete_template', async () => {
+    const made = await db.asUser(staffId, async (c) => {
+      const tpl = await c.query("insert into public.template(name) values('RPC only') returning id");
+      const ver = await c.query("insert into public.template_version(template_id, version_number, status, created_by) values($1,1,'draft',$2) returning id", [tpl.rows[0].id, staffId]);
+      await c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'f','F','patient','clinique','text')", [ver.rows[0].id]);
+      await c.query('select * from public.publish_template_version($1)', [ver.rows[0].id]);
+      return { tplId: tpl.rows[0].id, verId: ver.rows[0].id };
+    });
+
+    expect(await rowsAs(staffId, 'delete from public.template where id=$1 returning id', [made.tplId])).toHaveLength(0);
+    expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(1);
+
+    await rowsAs(staffId, 'select public.delete_template($1)', [made.tplId]);
+    expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(0);
+    expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(0);
   });
 });
 
