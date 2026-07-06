@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository } from '../../data/RepositoryProvider';
-import type { InclusionStats } from '../../data/bases';
+import type { CompletenessRow, InclusionStats } from '../../data/bases';
 import { useToast } from '../../components/Toast';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -18,6 +18,7 @@ export function BaseStats() {
   const { toast } = useToast();
 
   const [stats, setStats] = useState<InclusionStats | null>(null);
+  const [completeness, setCompleteness] = useState<CompletenessRow[]>([]); // B1
   const [isOwner, setIsOwner] = useState(false);
   const [target, setTarget] = useState('');
   const [targetDate, setTargetDate] = useState('');
@@ -29,8 +30,14 @@ export function BaseStats() {
     if (!baseId) return;
     setLoading(true);
     try {
-      const [s, listing] = await Promise.all([bases.getInclusionStats(baseId), bases.getBase(baseId)]);
+      const [s, listing, comp] = await Promise.all([
+        bases.getInclusionStats(baseId),
+        bases.getBase(baseId),
+        // B1 resiliente : RPC pas encore deployee -> section masquee, page intacte.
+        bases.getCompletenessStats(baseId).catch(() => [] as CompletenessRow[]),
+      ]);
       setStats(s);
+      setCompleteness(comp);
       setIsOwner(listing?.role === 'owner');
       setTarget(s.target != null ? String(s.target) : '');
       setTargetDate(s.targetDate ?? '');
@@ -147,6 +154,36 @@ export function BaseStats() {
           </>
         )}
       </div>
+
+      {/* B1 — completude par variable, les moins renseignees d'abord (liste de travail). */}
+      {completeness.length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-700">{t('stats.completeness_title')}</h2>
+          <p className="mb-3 mt-0.5 text-xs text-slate-400">{t('stats.completeness_hint')}</p>
+          <ul className="space-y-2">
+            {completeness.map((r) => {
+              const pct = r.total > 0 ? Math.round((r.filled / r.total) * 100) : null;
+              const barColor = pct == null ? 'bg-slate-300' : pct >= 80 ? 'bg-teal-600' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+              return (
+                <li key={`${r.scope}-${r.fieldKey}`} className="text-sm">
+                  <div className="mb-0.5 flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-slate-700">
+                      {r.label}
+                      <span className="ml-1.5 text-[11px] text-slate-400">{t(`scope.${r.scope}`)}</span>
+                    </span>
+                    <span className="whitespace-nowrap text-xs text-slate-500">
+                      {pct == null ? '—' : `${r.filled} / ${r.total} (${pct} %)`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100">
+                    <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${pct ?? 0}%` }} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {isOwner && (
         <form onSubmit={saveTarget} className="card flex flex-wrap items-end gap-3 p-4 text-sm">

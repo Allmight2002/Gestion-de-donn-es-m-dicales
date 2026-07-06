@@ -43,8 +43,8 @@ Vue compacte pour téléphone : mes patients du jour, saisie une main au lit du 
 
 ## B. Qualité des données — le cœur scientifique
 
-### B1. Tableau de complétude (heatmap variables × patients) — **M**
-Vue colorée : quelles variables manquent, chez quels patients ; clic = aller compléter.
+### B1. Tableau de complétude (heatmap variables × patients) — **M** — 🟡 v1 LIVRÉE (2026-07-06)
+Vue colorée : quelles variables manquent, chez quels patients ; clic = aller compléter. **v1 livrée** : section « Complétude par variable » dans l'onglet Statistiques — barre colorée par variable (vert ≥ 80 %, ambre ≥ 50 %, rouge en dessous), les moins complètes d'abord ; champs rencontre rapportés aux types concernés ; code manquant explicite = renseigné. RPC `base_completeness_stats` (INVOKER, RLS naturelle), migration `097000`. **Pas encore** : la grille par patient + le clic « aller compléter » (rejoint B2, prochaine itération).
 **Pourquoi** : avant une analyse, le chercheur passe des heures à chercher « où sont les trous » ; cette vue transforme des heures en minutes.
 
 ### B2. File de travail « à compléter » — **M**

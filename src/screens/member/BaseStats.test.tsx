@@ -38,12 +38,23 @@ describe('BaseStats (D2)', () => {
     const setInclusionTarget = vi.fn(async () => {});
     const bases = {
       async getInclusionStats() { return stats; },
+      async getCompletenessStats() {
+        // B1 : les moins completes d'abord.
+        return [
+          { fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter' as const, filled: 3, total: 10 },
+          { fieldKey: 'sexe', label: 'Sexe', scope: 'patient' as const, filled: 8, total: 10 },
+        ];
+      },
       async getBase() { return listing; },
       setInclusionTarget,
     } as unknown as BaseRepository;
 
     renderStats(bases);
     expect(await screen.findByText('Patients inclus')).toBeInTheDocument();
+    // B1 : la section completude liste les variables avec leur taux.
+    expect(screen.getByText('Complétude par variable')).toBeInTheDocument();
+    expect(screen.getByText('3 / 10 (30 %)')).toBeInTheDocument(); // Glasgow, en premier (le moins complet)
+    expect(screen.getByText('8 / 10 (80 %)')).toBeInTheDocument(); // Sexe
     expect(screen.getAllByText('12').length).toBeGreaterThan(0); // total (carte + dernier point du graphe)
     expect(screen.getByText('60 %')).toBeInTheDocument(); // 12/20
     expect(screen.getByRole('img', { name: 'Courbe d’inclusion' })).toBeInTheDocument(); // le SVG
@@ -57,6 +68,7 @@ describe('BaseStats (D2)', () => {
   test('sans donnees : message d attente, pas de graphique', async () => {
     const bases = {
       async getInclusionStats(): Promise<InclusionStats> { return { total: 0, target: null, targetDate: null, monthly: [] }; },
+      async getCompletenessStats() { return []; },
       async getBase() { return { ...listing, role: 'viewer' as const }; },
       setInclusionTarget: vi.fn(),
     } as unknown as BaseRepository;

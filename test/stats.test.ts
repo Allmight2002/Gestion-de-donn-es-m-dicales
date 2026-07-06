@@ -55,3 +55,40 @@ describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
     expect((await db.admin.query('select inclusion_target from public.base where id=$1', [baseId])).rows[0].inclusion_target).toBe(150);
   });
 });
+
+describe('B1 base_completeness_stats (completude par variable)', () => {
+  type Row = { fieldKey: string; label: string; scope: string; filled: number; total: number };
+  const compAs = async (uid: string): Promise<Row[]> =>
+    (await rowsAs(uid, 'select public.base_completeness_stats($1) as c', [baseId]))[0].c as Row[];
+
+  test('taux coherents (verifies par comptage independant) + tri des moins completes d abord', async () => {
+    const rows = await compAs(aliceId);
+    expect(rows.length).toBeGreaterThan(0);
+
+    // Champ PATIENT « sexe » : compare au comptage direct (admin).
+    const sexe = rows.find((r) => r.fieldKey === 'sexe' && r.scope === 'patient');
+    expect(sexe).toBeTruthy();
+    const expTotal = Number((await db.admin.query("select count(*)::int n from public.patient where base_id=$1 and deleted_at is null", [baseId])).rows[0].n);
+    const expFilled = Number((await db.admin.query("select count(*)::int n from public.patient where base_id=$1 and deleted_at is null and nullif(data->>'sexe','') is not null", [baseId])).rows[0].n);
+    expect(sexe!.total).toBe(expTotal);
+    expect(sexe!.filled).toBe(expFilled);
+
+    // Champ RENCONTRE limite a un type (admission_date -> hospitalisation) : le denominateur est
+    // le nombre de rencontres DE CE TYPE, pas toutes les rencontres.
+    const adm = rows.find((r) => r.fieldKey === 'admission_date');
+    if (adm) {
+      const expHosp = Number((await db.admin.query(
+        "select count(*)::int n from public.encounter e join public.patient p on p.id=e.patient_id where p.base_id=$1 and p.deleted_at is null and e.deleted_at is null and e.encounter_type='hospitalisation'",
+        [baseId])).rows[0].n);
+      expect(adm.total).toBe(expHosp);
+    }
+
+    // Tri : les moins renseignees d'abord (ratios croissants, lignes sans denominateur a la fin).
+    const ratios = rows.filter((r) => r.total > 0).map((r) => r.filled / r.total);
+    for (let i = 1; i < ratios.length; i += 1) expect(ratios[i]).toBeGreaterThanOrEqual(ratios[i - 1]);
+  });
+
+  test('sans acces a la base : liste vide (RLS)', async () => {
+    expect(await compAs(bobId)).toEqual([]);
+  });
+});

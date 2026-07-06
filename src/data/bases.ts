@@ -48,6 +48,15 @@ export interface InclusionStats {
   monthly: { month: string; count: number }[];
 }
 
+// B1 — complétude par variable (version courante du gabarit). Analytique pur (comptes).
+export interface CompletenessRow {
+  fieldKey: string;
+  label: string;
+  scope: 'patient' | 'encounter';
+  filled: number;
+  total: number;
+}
+
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
   /** Modeles proposes au medecin : officiels (global) + ses propres gabarits (personal). */
@@ -61,6 +70,8 @@ export interface BaseRepository {
   getInclusionStats(baseId: string): Promise<InclusionStats>;
   /** D2 : fixe/retire l'objectif d'inclusion (proprietaire seulement, RLS base_update). */
   setInclusionTarget(baseId: string, target: number | null, targetDate: string | null): Promise<void>;
+  /** B1 : completude par variable, les moins renseignees d'abord (RLS : sans acces -> vide). */
+  getCompletenessStats(baseId: string): Promise<CompletenessRow[]>;
 }
 
 type BaseRow = {
@@ -97,7 +108,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail, getInclusionStats: fail, setInclusionTarget: fail };
+    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail, getInclusionStats: fail, setInclusionTarget: fail, getCompletenessStats: fail };
   }
 
   async function currentUserId(): Promise<string> {
@@ -211,6 +222,12 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         .update({ inclusion_target: target, inclusion_target_date: targetDate })
         .eq('id', baseId);
       if (error) throw error;
+    },
+
+    async getCompletenessStats(baseId) {
+      const { data, error } = await client.rpc('base_completeness_stats', { p_base_id: baseId });
+      if (error) throw error;
+      return (data ?? []) as CompletenessRow[];
     },
   };
 }
