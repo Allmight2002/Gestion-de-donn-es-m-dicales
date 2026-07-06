@@ -40,6 +40,14 @@ export interface PublishedTemplateOption {
   scope: 'global' | 'personal';
 }
 
+// D2 — statistiques d'inclusion (courbe cumulée vs objectif). Analytique pur (comptes par mois).
+export interface InclusionStats {
+  total: number;
+  target: number | null;
+  targetDate: string | null;
+  monthly: { month: string; count: number }[];
+}
+
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
   /** Modeles proposes au medecin : officiels (global) + ses propres gabarits (personal). */
@@ -49,6 +57,10 @@ export interface BaseRepository {
   getBase(id: string): Promise<BaseListing | null>;
   /** Rattache la base a une (nouvelle) version de son gabarit. Reserve au proprietaire (RLS). */
   setTemplateVersion(baseId: string, versionId: string): Promise<void>;
+  /** D2 : inclusions par mois + objectif (RLS : sans acces -> serie vide). */
+  getInclusionStats(baseId: string): Promise<InclusionStats>;
+  /** D2 : fixe/retire l'objectif d'inclusion (proprietaire seulement, RLS base_update). */
+  setInclusionTarget(baseId: string, target: number | null, targetDate: string | null): Promise<void>;
 }
 
 type BaseRow = {
@@ -85,7 +97,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail };
+    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail, getInclusionStats: fail, setInclusionTarget: fail };
   }
 
   async function currentUserId(): Promise<string> {
@@ -183,6 +195,21 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
 
     async setTemplateVersion(baseId, versionId) {
       const { error } = await client.rpc('set_base_template_version', { p_base_id: baseId, p_version_id: versionId });
+      if (error) throw error;
+    },
+
+    async getInclusionStats(baseId) {
+      const { data, error } = await client.rpc('base_inclusion_stats', { p_base_id: baseId });
+      if (error) throw error;
+      const s = (data ?? {}) as Partial<InclusionStats>;
+      return { total: s.total ?? 0, target: s.target ?? null, targetDate: s.targetDate ?? null, monthly: s.monthly ?? [] };
+    },
+
+    async setInclusionTarget(baseId, target, targetDate) {
+      const { error } = await client
+        .from('base')
+        .update({ inclusion_target: target, inclusion_target_date: targetDate })
+        .eq('id', baseId);
       if (error) throw error;
     },
   };

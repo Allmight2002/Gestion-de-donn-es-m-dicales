@@ -46,6 +46,10 @@ function mockBases(): BaseRepository {
     async listMyBases() {
       return [...bases];
     },
+    async getInclusionStats() {
+      return { total: 0, target: null, targetDate: null, monthly: [] };
+    },
+    async setInclusionTarget() {},
     async listTemplateModels() {
       return [{ versionId: 'v1', versionNumber: 1, templateId: 't1', name: 'Neurochirurgie', specialty: 'neuro', scope: 'global' as const }];
     },

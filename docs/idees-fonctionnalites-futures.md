@@ -104,8 +104,8 @@ Passer la main (départ, mutation) avec trace d'audit.
 Par base : pyramide âges/sexe, distribution de chaque variable, effectifs par statut.
 **Pourquoi** : répond à « combien de patients avec X ? » sans export ni statisticien ; c'est aussi un outil de détection d'anomalies.
 
-### D2. Courbe d'inclusion + objectif — **S**
-Inclusions cumulées vs objectif daté (« 150 patients d'ici décembre »).
+### D2. Courbe d'inclusion + objectif — **S** — ✅ LIVRÉ (2026-07-06)
+Inclusions cumulées vs objectif daté (« 150 patients d'ici décembre »). Livré : onglet « Statistiques » de la base — cartes (inclus / objectif / progression), courbe cumulée SVG avec ligne d'objectif pointillée + barre de progression, formulaire d'objectif (propriétaire). Migration `096900` : colonnes `inclusion_target(_date)` sur `base` + RPC `base_inclusion_stats` (SECURITY INVOKER, RLS naturelle — sans accès : série vide). L'onglet accueillera la heatmap B1 ensuite.
 **Pourquoi** : LE graphique de toute réunion d'étude ; motive l'équipe et alerte tôt si le recrutement décroche.
 
 ### D3. Codebook exportable versionné — **M**
