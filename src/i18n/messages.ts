@@ -300,6 +300,8 @@ export const messages = {
     'patient.duplicate_add_encounter': 'Ajouter une rencontre',
     'patient.duplicate_ack': 'Je confirme qu’il s’agit bien d’un patient différent.',
     'patient.duplicate_confirm_required': 'Un dossier à la même identité existe déjà. Ouvrez sa fiche, ou cochez la confirmation pour créer quand même.',
+    'patient.code_taken': 'Ce code patient est déjà utilisé dans cette base. Choisissez un autre code.',
+    'mytemplates.deleted': 'Gabarit supprimé',
     'patient.save': 'Enregistrer le patient',
     'patient.identity_note':
       "La date de naissance exacte reste en zone restreinte ; seul l'âge calculé entrera dans l'analytique (étape 7).",
@@ -868,6 +870,8 @@ export const messages = {
     'patient.duplicate_add_encounter': 'Add an encounter',
     'patient.duplicate_ack': 'I confirm this is a different patient.',
     'patient.duplicate_confirm_required': 'A record with the same identity already exists. Open it, or tick the confirmation to create anyway.',
+    'patient.code_taken': 'This patient code is already used in this base. Choose another code.',
+    'mytemplates.deleted': 'Template deleted',
     'patient.save': 'Save patient',
     'patient.identity_note':
       'The exact date of birth stays in the restricted zone; only the computed age will enter analytics (step 7).',

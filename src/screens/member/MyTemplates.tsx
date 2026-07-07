@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
+import { useToast } from '../../components/Toast';
 import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 
 type Tpl = Template & { versions: TemplateVersion[] };
@@ -15,6 +16,7 @@ type Tpl = Template & { versions: TemplateVersion[] };
 // publier/dupliquer). Les modeles GLOBAUX (admin) ne sont pas listes ici.
 export function MyTemplates() {
   const repo = useTemplateRepository();
+  const { toast } = useToast();
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -142,7 +144,7 @@ export function MyTemplates() {
                   {confirmId === tpl.id ? (
                     <span className="inline-flex items-center gap-2 text-xs">
                       <span className="text-slate-600">{t('admin.confirm_delete')}</span>
-                      <button onClick={() => void run(async () => { await repo.deleteTemplate(tpl.id); setConfirmId(null); })} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
+                      <button onClick={() => void run(async () => { await repo.deleteTemplate(tpl.id); setConfirmId(null); toast(t('mytemplates.deleted')); })} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
                       <button onClick={() => setConfirmId(null)} className="font-medium text-slate-500 hover:text-slate-700">{t('common.no')}</button>
                     </span>
                   ) : (

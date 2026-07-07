@@ -95,13 +95,20 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       setError(t('patient.identity_required'));
       return;
     }
-    // B5 : un doublon potentiel exige une confirmation explicite avant de creer un nouveau dossier.
-    if (matches.length > 0 && !ackDuplicate) {
-      setError(t('patient.duplicate_confirm_required'));
-      return;
-    }
     setBusy(true);
     try {
+      // B5 : verification FRAICHE au moment de l'enregistrement. La detection debouncee (400 ms)
+      // peut ne pas avoir abouti si la saisie est rapide (copier-coller + Entree) -> sans cette
+      // re-verification, la garde se contourne involontairement par la vitesse. Best-effort :
+      // si la recherche echoue (reseau), on n'empeche pas la creation.
+      if (!ackDuplicate && fullName.trim() && dob) {
+        let live = matches;
+        try { live = await patients.findIdentityMatches(baseId, fullName.trim(), dob); setMatches(live); } catch { /* best-effort */ }
+        if (live.length > 0) {
+          setError(t('patient.duplicate_confirm_required'));
+          return; // (finally libere busy)
+        }
+      }
       const created = await patients.createPatient(baseId, {
         code: code.trim(),
         fullName: fullName.trim() || null,
@@ -120,7 +127,14 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         navigate(`/bases/${baseId}/patients/${created.id}`);
       }
     } catch (e) {
-      setError(msg(e));
+      // QA : le doublon de CODE patient (contrainte unique) doit parler a l'utilisateur,
+      // pas afficher un message SQL brut (« duplicate key value violates ... »).
+      const err = e as { code?: string; message?: string };
+      if (err?.code === '23505' || /duplicate key|uq_identity_base_code/i.test(err?.message ?? '')) {
+        setError(t('patient.code_taken'));
+      } else {
+        setError(msg(e));
+      }
     } finally {
       setBusy(false);
     }

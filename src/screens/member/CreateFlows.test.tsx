@@ -94,6 +94,38 @@ describe('NewPatient : detection de doublon', () => {
     expect(await screen.findByText('FICHE')).toBeInTheDocument();
   });
 
+  test('QA : soumission RAPIDE (avant le debounce) -> le doublon est quand meme detecte au submit', async () => {
+    // Scenario de l'agent QA : remplir et soumettre immediatement, sans laisser les 400 ms de
+    // debounce aboutir. La re-verification FRAICHE au moment du submit doit bloquer.
+    const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
+    const createPatient = vi.fn(async () => ({ id: 'p1', code: 'P-0001' }));
+    const patients = { async listPatients() { return []; }, findIdentityMatches, createPatient } as unknown as PatientRepository;
+    const curation = { async createSubmission() { return { taskId: 't1' }; } } as unknown as CurationRepository;
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    // Soumettre IMMEDIATEMENT (pas d'attente de l'avertissement debounce).
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    expect(createPatient).not.toHaveBeenCalled(); // bloque par la re-verification au submit
+    expect(await screen.findByText(/cochez la confirmation pour créer quand même/i)).toBeInTheDocument();
+  });
+
+  test('QA : un code patient deja utilise affiche un message humain (pas le SQL brut)', async () => {
+    const createPatient = vi.fn(async () => {
+      throw Object.assign(new Error('duplicate key value violates unique constraint "uq_identity_base_code"'), { code: '23505' });
+    });
+    const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; }, createPatient } as unknown as PatientRepository;
+    const curation = { async createSubmission() { return { taskId: 't1' }; } } as unknown as CurationRepository;
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Autre Nom' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1985-03-03' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    expect(await screen.findByText(/déjà utilisé dans cette base/i)).toBeInTheDocument();
+    expect(screen.queryByText(/duplicate key/i)).not.toBeInTheDocument(); // plus de SQL brut
+  });
+
   test('B5 : un doublon exige une confirmation explicite avant de creer le dossier', async () => {
     const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
     const createPatient = vi.fn(async () => ({ id: 'p1', code: 'P-0001' }));
