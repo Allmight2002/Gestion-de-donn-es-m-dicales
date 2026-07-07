@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase } from '../../auth/logic';
@@ -120,6 +120,12 @@ export function Dashboard() {
               {t('dashboard.create_base')}
             </button>
           </div>
+          {/* V3 : chemin « fichier -> jeu de variables -> base -> import » en un geste. */}
+          <p className="mt-3 text-xs">
+            <Link to="/templates/from-file" className="font-medium text-teal-700 hover:underline">
+              {t('dashboard.from_file')}
+            </Link>
+          </p>
         </form>
       )}
 

@@ -70,6 +70,14 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 
 ### 4.4 Jeux de variables (F1, F3)
 15. Mes jeux de variables → « **Depuis un fichier Excel** » : téléverser un petit CSV créé par toi (colonnes : `Age,Sexe,Date visite,Poids (kg),Commentaire` + 3-4 lignes) → vérifier les **types détectés** (entier/liste M-F/date/nombre/texte), modifier un libellé, décocher une colonne, créer → le jeu de variables `QA-…` apparaît dans Mes jeux de variables.
+15bis. **Créer une base depuis le fichier (V3)** : refaire « Depuis un fichier Excel » avec un CSV
+   contenant cette fois une colonne `Code patient` (valeurs `QA-F1-1/2`) + 2-3 colonnes de données ;
+   **décocher** la colonne `Code patient` dans la proposition (identifiant, pas une variable) ;
+   cocher « **Créer aussi une base avec ce jeu de variables** » (nom `QA-base-fichier`) → le bouton
+   devient « Créer le jeu de variables + la base » → après création, atterrissage **direct sur
+   l'écran Importer** de la nouvelle base (toast). Re-téléverser le même CSV → colonnes
+   **auto-mappées** (Code patient → identifiant, les autres → variables) → aperçu → importer →
+   les patients `QA-F1-*` apparaissent dans l'onglet Patients.
 16. Mes jeux de variables → « **Bibliothèque de modèles** » : les modèles s'affichent (globaux, ou les 4 par défaut avec le bandeau explicatif) ; « Utiliser ce modèle » → clone dans Mes jeux de variables.
 17. Supprimer les jeux de variables `QA-` créés.
 

@@ -2,27 +2,34 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import { useTemplateRepository } from '../../data/RepositoryProvider';
+import { useBaseRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { proposeFieldsFromSheet, type ProposedField } from '../../domain/templateFromSheet';
+import { useToast } from '../../components/Toast';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 Mo : on ne lit qu'une STRUCTURE, pas un gros jeu de donnees
 const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
 const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
 
-// F1 — Assistant « creer un gabarit depuis mon Excel » : on lit le fichier existant du medecin, on
-// propose les variables detectees (type infere), il ajuste et valide -> un gabarit personnel.
+// F1 — Assistant « creer un jeu de variables depuis mon Excel » : on lit le fichier existant du
+// medecin, on propose les variables detectees (type infere), il ajuste et valide -> un jeu personnel.
+// V3 (import fluide) : option « creer aussi la base » -> fichier -> jeu de variables -> base -> ecran
+// d'import, en un seul geste.
 export function TemplateFromFile() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const templates = useTemplateRepository();
+  const bases = useBaseRepository();
+  const { toast } = useToast();
 
   const [name, setName] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [fields, setFields] = useState<ProposedField[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [withBase, setWithBase] = useState(false);
+  const [baseName, setBaseName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +46,9 @@ export function TemplateFromFile() {
       const proposed = proposeFieldsFromSheet(parsed.headers, parsed.rows);
       setFields(proposed);
       setFileName(file.name);
-      if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, '')); // pre-remplit le nom du gabarit
+      const stem = file.name.replace(/\.[^.]+$/, '');
+      if (!name.trim()) setName(stem); // pre-remplit le nom du jeu de variables
+      if (!baseName.trim()) setBaseName(stem);
       setError(proposed.length === 0 ? t('tfile.no_columns') : null);
     } catch (err) {
       setError(msg(err));
@@ -51,6 +60,7 @@ export function TemplateFromFile() {
   async function create() {
     const chosen = fields.filter((f) => f.include);
     if (!name.trim() || chosen.length === 0) { setError(t('tfile.need_name_fields')); return; }
+    if (withBase && !baseName.trim()) { setError(t('tfile.need_base_name')); return; }
     setBusy(true);
     try {
       const version = await templates.createPersonalTemplate(name.trim(), specialty.trim() || null);
@@ -61,7 +71,15 @@ export function TemplateFromFile() {
         };
         await templates.addField(version.id, field);
       }
-      navigate('/templates');
+      if (withBase) {
+        // V3 : la base copie le jeu qu'on vient de creer (create_base_from_model, atomique),
+        // puis on atterrit DIRECTEMENT sur l'ecran d'import pour deposer le meme fichier.
+        const base = await bases.createBase(baseName.trim(), specialty.trim() || null, version.id);
+        toast(t('tfile.base_created'), 'success');
+        navigate(`/bases/${base.id}/import`);
+      } else {
+        navigate('/templates');
+      }
     } catch (err) {
       setError(msg(err));
     } finally {
@@ -138,8 +156,21 @@ export function TemplateFromFile() {
             </table>
           </div>
 
+          <div className="card space-y-3 p-4">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={withBase} onChange={(e) => setWithBase(e.target.checked)} />
+              {t('tfile.also_base')}
+            </label>
+            {withBase && (
+              <label className="flex flex-col text-sm">
+                <span className="text-slate-700">{t('tfile.base_name')}</span>
+                <input className="input mt-1" value={baseName} onChange={(e) => setBaseName(e.target.value)} />
+              </label>
+            )}
+          </div>
+
           <button onClick={() => void create()} disabled={busy} className="btn-primary">
-            {t('tfile.create')} ({fields.filter((f) => f.include).length})
+            {withBase ? t('tfile.create_with_base') : `${t('tfile.create')} (${fields.filter((f) => f.include).length})`}
           </button>
         </>
       )}

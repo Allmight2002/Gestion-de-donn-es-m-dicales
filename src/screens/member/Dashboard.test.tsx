@@ -94,6 +94,8 @@ describe('Dashboard', () => {
     renderApp(mockBases());
     expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
     expect(screen.getByText('Propriétaire')).toBeInTheDocument();
+    // V3 : le chemin « creer depuis un fichier » est propose sous le formulaire de creation.
+    expect(screen.getByRole('link', { name: /depuis un fichier Excel/ })).toBeInTheDocument();
   });
 
   test('creer une base ouvre la page de la base (medecin)', async () => {
@@ -113,6 +115,7 @@ describe('Dashboard', () => {
     await screen.findByText('Registre Neuro');
     expect(screen.queryByRole('button', { name: 'Créer la base' })).toBeNull();
     expect(screen.queryByLabelText('Nom de la base')).toBeNull();
+    expect(screen.queryByRole('link', { name: /depuis un fichier Excel/ })).toBeNull();
   });
 });
 
