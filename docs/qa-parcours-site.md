@@ -12,13 +12,19 @@
 - Ne pas tester la charge/performance (pas de boucles d'actions).
 - Ne pas tenter de contourner l'authentification autrement que par les tests négatifs listés en §7.
 
-## 1. Comptes de test (fournis par Dr Mbassi — à compléter avant l'exécution)
-| Rôle | Email | Mot de passe |
-|---|---|---|
-| Médecin **propriétaire** d'une base avec données | `________` | `________` |
-| **Curateur** | `________` | `________` |
-| (Optionnel) 2ᵉ médecin sans accès | `________` | `________` |
-| (Optionnel) Admin système | `________` | `________` |
+## 1. Comptes de test
+Les identifiants (emails + mots de passe) sont fournis **dans le prompt de l'agent, jamais dans
+ce fichier** (dépôt public). Comptes attendus : un médecin « propriétaire », un curateur, et si
+possible un 2ᵉ médecin sans accès (tests de cloisonnement §7).
+
+### 1bis. Amorçage si le compte médecin est NEUF (aucune base)
+Avant le diagnostic §3, préparer un terrain de jeu :
+1. Mes gabarits → **Bibliothèque de modèles** → « Utiliser ce modèle » (n'importe lequel).
+2. Tableau de bord → créer la base **`QA-base`** à partir de ce gabarit.
+3. Créer 3 patients `QA-001/002/003` (noms fictifs) avec 1-2 rencontres chacun, en laissant
+   volontairement des champs requis vides sur l'un d'eux (alimente « À compléter » et la
+   complétude), et **finaliser** un des patients (alimente les statuts).
+4. Continuer le plan sur cette base.
 
 ## 2. Préambule technique (avant tout test)
 1. Le site est une **PWA avec cache** : commencer par un **rechargement forcé** (Ctrl+Shift+R).
