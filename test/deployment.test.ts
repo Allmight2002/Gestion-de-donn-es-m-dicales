@@ -91,12 +91,14 @@ describe('configuration de deploiement', () => {
     expect(viteConfig).toContain('__BUILD_TIME__');
   });
 
-  test('vercel.json declare les principaux headers de securite', () => {
+  test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
     const config = JSON.parse(read('vercel.json')) as {
+      rewrites: Array<{ source: string; destination: string }>;
       headers: Array<{ headers: Array<{ key: string; value: string }> }>;
     };
     const headers = new Map(config.headers[0].headers.map((h) => [h.key.toLowerCase(), h.value]));
 
+    expect(config.rewrites).toContainEqual({ source: '/(.*)', destination: '/index.html' });
     expect(headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(headers.get('content-security-policy')).toContain("object-src 'none'");
     expect(headers.get('x-frame-options')).toBe('DENY');
