@@ -4,15 +4,19 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { getTemplateFields } from '../../data/templates';
-import type { TemplateField } from '../../data/types';
+import type { FieldScope, FieldSection, FieldType, TemplateField } from '../../data/types';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping, type ImportReport, type ImportTarget,
 } from '../../domain/import';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
+import { normalizeKey, proposeFieldsFromSheet } from '../../domain/templateFromSheet';
 import type { ImportDuplicateWarning } from '../../data/patients';
+import { useToast } from '../../components/Toast';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
+const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
+const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
 const MAX_ROWS = 5000;
 const MAX_FILE_BYTES = 15 * 1024 * 1024; // §5.3 : borne de TAILLE avant lecture (anti fichier hostile)
 const CHUNK = 300; // taille des lots (au-dela, import par lots avec progression)
@@ -20,6 +24,16 @@ const CHUNK = 300; // taille des lots (au-dela, import par lots avec progression
 async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// V2 (import fluide) : brouillon d'une variable a creer pour une colonne non reconnue.
+interface NewVarDraft {
+  col: number;
+  label: string;
+  type: FieldType;
+  scope: FieldScope;
+  section: FieldSection;
+  allowedValues: string[] | null;
 }
 
 // Importation par lots (CSV / XLSX) : 1 ligne = 1 rencontre, colonnes patient repetees.
@@ -31,9 +45,13 @@ export function ImportData() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [versionId, setVersionId] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [draft, setDraft] = useState<NewVarDraft | null>(null); // V2 : variable en cours de creation
+  const [draftBusy, setDraftBusy] = useState(false);
   const [fileName, setFileName] = useState('');
   const [fileHash, setFileHash] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -54,6 +72,7 @@ export function ImportData() {
     if (!baseId) return;
     try {
       const base = await bases.getBase(baseId);
+      setIsOwner(base?.role === 'owner'); // seul le proprietaire peut modifier le jeu de variables
       if (base?.base.currentTemplateVersionId) {
         setVersionId(base.base.currentTemplateVersionId);
         setFields(await getTemplateFields(templates, base.base.currentTemplateVersionId));
@@ -89,6 +108,10 @@ export function ImportData() {
       }
       setFileName(file.name);
       setFileHash(hash);
+      // Nouveau fichier -> on repart d'une correspondance VIERGE (l'effet ci-dessous fusionne les
+      // choix manuels : sans ce reset, ceux de l'ancien fichier survivraient par index).
+      setDraft(null);
+      setMapping({});
       setHeaders(head);
       setRawRows(rows);
       // La correspondance est (re)calculee par un effet sur [headers, fields] -> robuste si les
@@ -99,8 +122,21 @@ export function ImportData() {
   }
 
   // Correspondance auto-recalculee quand un fichier est chargé ou que les champs arrivent.
+  // V2 : on FUSIONNE avec les choix manuels (non-ignore) — la creation d'une variable recharge
+  // les champs et re-declenche cet effet ; sans fusion, elle ecraserait les re-mappages a la main.
   useEffect(() => {
-    setMapping(headers.length > 0 ? autoMapColumns(headers, fields) : {});
+    if (headers.length === 0) {
+      setMapping({});
+      return;
+    }
+    const auto = autoMapColumns(headers, fields);
+    setMapping((prev) => {
+      const merged: ColumnMapping = { ...auto };
+      for (const [col, target] of Object.entries(prev)) {
+        if (target !== 'ignore') merged[Number(col)] = target;
+      }
+      return merged;
+    });
   }, [headers, fields]);
 
   // §5.1 : tout changement de parametre d'import INVALIDE l'apercu precedent (sinon l'import
@@ -155,6 +191,52 @@ export function ImportData() {
 
   const setCol = (i: number, target: ImportTarget) => setMapping((m) => ({ ...m, [i]: target }));
 
+  // V2 : ouvre le mini-formulaire « creer la variable », pre-rempli par INFERENCE sur les
+  // valeurs de la colonne (meme moteur que « jeu de variables depuis un fichier », F1).
+  function startCreate(col: number) {
+    const header = (headers[col] ?? '').trim();
+    if (!header) return;
+    const [proposal] = proposeFieldsFromSheet([header], rawRows.map((r) => [r[col]]));
+    setDraft({
+      col,
+      label: header,
+      type: proposal?.type ?? 'text',
+      scope: proposal?.scope ?? 'patient',
+      section: proposal?.section ?? 'clinique',
+      allowedValues: proposal?.allowedValues ?? null,
+    });
+  }
+
+  // V2 : cree la variable dans le jeu de variables de la base, puis mappe la colonne dessus.
+  async function createVariable() {
+    if (!draft || !versionId) return;
+    const label = draft.label.trim();
+    if (!label) return;
+    const fieldKey = normalizeKey(label);
+    if (fields.some((f) => f.fieldKey === fieldKey)) {
+      setError(t('import.var_exists'));
+      return;
+    }
+    setDraftBusy(true);
+    setError(null);
+    try {
+      const keepValues = draft.type === 'select' || draft.type === 'multiselect';
+      await templates.addField(versionId, {
+        fieldKey, label, scope: draft.scope, section: draft.section, type: draft.type,
+        required: false, allowedValues: keepValues ? draft.allowedValues : null,
+      });
+      setFields(await getTemplateFields(templates, versionId));
+      // Mappage EXPLICITE : le libelle a pu etre edite et ne plus correspondre a l'en-tete.
+      setCol(draft.col, `${draft.scope}:${fieldKey}`);
+      setDraft(null);
+      toast(t('import.var_created'), 'success');
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
   return (
     <section className="max-w-3xl space-y-6">
       <div>
@@ -180,32 +262,80 @@ export function ImportData() {
             <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('import.mapping')}</h2>
             <div className="space-y-2">
               {headers.map((h, i) => (
-                <div key={i} className="flex items-center gap-3 text-sm">
-                  <span className="w-1/3 truncate font-mono text-xs text-slate-600" title={h || `(colonne ${i + 1})`}>
-                    {h || <span className="italic text-slate-400">(colonne {i + 1})</span>}
-                  </span>
-                  <select className="input flex-1" value={mapping[i] ?? 'ignore'} onChange={(e) => setCol(i, e.target.value as ImportTarget)}>
-                    <option value="ignore">— {t('import.ignore')} —</option>
-                    <optgroup label={t('import.grp_meta')}>
-                      <option value="patient_code">{t('import.patient_code')}</option>
-                      <option value="encounter_type">{t('encounter.type')}</option>
-                      <option value="encounter_date">{t('encounter.date')}</option>
-                    </optgroup>
-                    <optgroup label={t('import.grp_identity')}>
-                      <option value="identity.full_name">{t('import.full_name')}</option>
-                      <option value="identity.date_of_birth">{t('import.dob')}</option>
-                    </optgroup>
-                    <optgroup label={t('import.grp_patient')}>
-                      {fields.filter((f) => f.scope === 'patient').map((f) => (
-                        <option key={f.id} value={`patient:${f.fieldKey}`}>{f.label}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label={t('import.grp_encounter')}>
-                      {fields.filter((f) => f.scope === 'encounter').map((f) => (
-                        <option key={f.id} value={`encounter:${f.fieldKey}`}>{f.label}</option>
-                      ))}
-                    </optgroup>
-                  </select>
+                <div key={i}>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="w-1/3 truncate font-mono text-xs text-slate-600" title={h || `(colonne ${i + 1})`}>
+                      {h || <span className="italic text-slate-400">(colonne {i + 1})</span>}
+                    </span>
+                    <select className="input flex-1" value={mapping[i] ?? 'ignore'} onChange={(e) => setCol(i, e.target.value as ImportTarget)}>
+                      <option value="ignore">— {t('import.ignore')} —</option>
+                      <optgroup label={t('import.grp_meta')}>
+                        <option value="patient_code">{t('import.patient_code')}</option>
+                        <option value="encounter_type">{t('encounter.type')}</option>
+                        <option value="encounter_date">{t('encounter.date')}</option>
+                      </optgroup>
+                      <optgroup label={t('import.grp_identity')}>
+                        <option value="identity.full_name">{t('import.full_name')}</option>
+                        <option value="identity.date_of_birth">{t('import.dob')}</option>
+                      </optgroup>
+                      <optgroup label={t('import.grp_patient')}>
+                        {fields.filter((f) => f.scope === 'patient').map((f) => (
+                          <option key={f.id} value={`patient:${f.fieldKey}`}>{f.label}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={t('import.grp_encounter')}>
+                        {fields.filter((f) => f.scope === 'encounter').map((f) => (
+                          <option key={f.id} value={`encounter:${f.fieldKey}`}>{f.label}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    {/* V2 : colonne non reconnue -> le proprietaire peut creer la variable sur place. */}
+                    {isOwner && (mapping[i] ?? 'ignore') === 'ignore' && h.trim() !== '' && draft?.col !== i && (
+                      <button type="button" onClick={() => startCreate(i)} className="shrink-0 text-xs font-medium text-teal-700 hover:underline">
+                        {t('import.create_var')}
+                      </button>
+                    )}
+                  </div>
+                  {draft?.col === i && (
+                    <div className="mt-2 space-y-2 rounded-lg border border-teal-200 bg-teal-50/40 p-3">
+                      <p className="text-xs font-semibold text-slate-700">{t('import.create_var_title').replace('{col}', h.trim())}</p>
+                      <p className="text-xs text-slate-500">{t('import.create_var_hint')}</p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+                          {t('admin.label')}
+                          <input className="input" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          {t('admin.type')}
+                          <select className="input" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as FieldType })}>
+                            {TYPES.map((x) => <option key={x} value={x}>{x}</option>)}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          {t('admin.scope')}
+                          <select className="input" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as FieldScope })}>
+                            <option value="patient">{t('scope.patient')}</option>
+                            <option value="encounter">{t('scope.encounter')}</option>
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          {t('admin.section')}
+                          <select className="input" value={draft.section} onChange={(e) => setDraft({ ...draft, section: e.target.value as FieldSection })}>
+                            {SECTIONS.map((s) => <option key={s} value={s}>{t(`section.${s}`)}</option>)}
+                          </select>
+                        </label>
+                        <button type="button" onClick={() => void createVariable()} disabled={draftBusy || draft.label.trim() === ''} className="btn-primary">
+                          {t('import.create_var')}
+                        </button>
+                        <button type="button" onClick={() => setDraft(null)} disabled={draftBusy} className="btn-secondary">
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                      {(draft.type === 'select' || draft.type === 'multiselect') && draft.allowedValues && draft.allowedValues.length > 0 && (
+                        <p className="text-xs text-slate-500">{t('admin.allowed_values')} : {draft.allowedValues.join(', ')}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

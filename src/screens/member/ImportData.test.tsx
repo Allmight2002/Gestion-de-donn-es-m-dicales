@@ -12,7 +12,7 @@ import { ImportData } from './ImportData';
 import type { BaseRepository } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, ImportOptions } from '../../data/patients';
-import type { TemplateField } from '../../data/types';
+import type { NewField, TemplateField } from '../../data/types';
 import type { ImportRow, ImportReport } from '../../domain/import';
 
 const field = (fieldKey: string, label: string, scope: TemplateField['scope'], type: TemplateField['type'] = 'text'): TemplateField => ({
@@ -26,14 +26,14 @@ const FIELDS: TemplateField[] = [
   field('glasgow_score', 'Score de Glasgow', 'encounter', 'integer'),
 ];
 
-function renderImport(importRecords: PatientRepository['importRecords']) {
+function renderImport(importRecords: PatientRepository['importRecords'], templatesRepo?: TemplateRepository) {
   const getVersion = vi.fn(async () => ({ version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const }, fields: FIELDS, rules: [] }));
   const bases = {
     async getBase() {
       return { base: { id: 'b1', name: 'B', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'v1' }, role: 'owner', permissions: {}, templateName: 'N', versionNumber: 1 };
     },
   } as unknown as BaseRepository;
-  const templates = { getVersion } as unknown as TemplateRepository;
+  const templates = templatesRepo ?? ({ getVersion } as unknown as TemplateRepository);
   const patients = { importRecords } as unknown as PatientRepository;
   const utils = render(
     <I18nProvider>
@@ -94,6 +94,49 @@ describe('ImportData (ecran d import)', () => {
     await waitFor(() => expect(importRecords).toHaveBeenCalledTimes(2));
     expect(importRecords.mock.calls[1][2]).toMatchObject({ dryRun: false });
     expect(await screen.findByText(/import terminé/i)).toBeInTheDocument();
+  });
+
+  test('V2 : colonne non reconnue -> creation de la variable en ligne -> colonne mappee et importee', async () => {
+    const report: ImportReport = { dry_run: true, status: 'draft', patients_new: 2, patients_updated: 0, encounters: 2, error_count: 0, errors: [] };
+    const importRecords = vi.fn(async (_b: string, _rows: ImportRow[], _o: ImportOptions) => report);
+    // Repo gabarits AVEC ETAT : addField ajoute vraiment le champ -> getVersion le restitue ensuite.
+    let fields = [...FIELDS];
+    const addField = vi.fn(async (_v: string, f: NewField) => {
+      const nf: TemplateField = {
+        id: f.fieldKey, fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type,
+        unit: null, allowedValues: f.allowedValues ?? null, required: f.required, minValue: null, maxValue: null,
+        allowMissingCodes: false, displayOrder: fields.length,
+      };
+      fields = [...fields, nf];
+      return nf;
+    });
+    const templates = {
+      getVersion: async () => ({ version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const }, fields: [...fields], rules: [] }),
+      addField,
+    } as unknown as TemplateRepository;
+    renderImport(importRecords, templates);
+
+    upload('Code patient,Sexe,Poids (kg)\nP1,M,72.5\nP2,F,81\n');
+    expect(await screen.findByText(/correspondance des colonnes/i)).toBeInTheDocument();
+
+    // « Poids (kg) » est inconnue du jeu de variables -> le proprietaire peut la creer sur place.
+    await userEvent.click(await screen.findByRole('button', { name: 'Créer la variable' }));
+    // Mini-formulaire pre-rempli : libelle = en-tete, type INFERE depuis les valeurs (72.5, 81 -> number).
+    expect(await screen.findByText(/Nouvelle variable pour la colonne/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('number')).toBeInTheDocument();
+    // Pendant l'edition, le declencheur est masque : le seul bouton restant est celui du formulaire.
+    await userEvent.click(screen.getByRole('button', { name: 'Créer la variable' }));
+    await waitFor(() => expect(addField).toHaveBeenCalledTimes(1));
+    expect(addField.mock.calls[0][1]).toMatchObject({ fieldKey: 'poids_kg', label: 'Poids (kg)', type: 'number', scope: 'patient', required: false });
+
+    // La colonne n'est plus une impasse : elle est mappee sur la nouvelle variable.
+    await waitFor(() => expect((screen.getAllByRole('combobox')[2] as HTMLSelectElement).value).toBe('patient:poids_kg'));
+
+    // Et l'import transporte bien la valeur (coercition number).
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+    await waitFor(() => expect(importRecords).toHaveBeenCalledTimes(1));
+    const sent = importRecords.mock.calls[0][1];
+    expect(sent[0].patient_data).toEqual({ sexe: 'M', poids_kg: 72.5 });
   });
 
   test('en-tete sans code patient : l apercu est impossible', async () => {
