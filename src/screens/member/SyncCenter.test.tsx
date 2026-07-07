@@ -31,6 +31,11 @@ describe('SyncCenter — état du système (E3)', () => {
     expect(screen.getByText('Connexion')).toBeInTheDocument();
     expect(screen.getByText('En ligne')).toBeInTheDocument(); // navigator.onLine = true par défaut (jsdom)
     expect(screen.getByText('Version')).toBeInTheDocument();
+    expect(screen.getByText('Commit')).toBeInTheDocument();
+    expect(screen.getByText('test-commit')).toBeInTheDocument();
+    expect(screen.getByText('Branche')).toBeInTheDocument();
+    expect(screen.getByText('test-branch')).toBeInTheDocument();
+    expect(screen.getByText('2026-07-07T00:00:00.000Z')).toBeInTheDocument();
     expect(screen.getByText(/test · test/)).toBeInTheDocument(); // __APP_VERSION__='test' · MODE='test'
     // La section anomalies est presente (repliable) ; aucune anomalie au rendu initial.
     expect(screen.getByText(/Anomalies techniques récentes/)).toBeInTheDocument();

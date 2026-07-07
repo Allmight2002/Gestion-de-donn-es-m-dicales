@@ -25,6 +25,9 @@ export function SyncCenter() {
   const [snapshots, setSnapshots] = useState<OfflineMeta[]>([]);
   const [errors] = useState(() => recentClientErrors());
   useEffect(() => { offlineCache.list().then(setSnapshots).catch(() => setSnapshots([])); }, []);
+  const buildCommit = __GIT_COMMIT__ || t('status.build_unknown');
+  const buildBranch = __GIT_BRANCH__ || t('status.build_unknown');
+  const buildTime = __BUILD_TIME__ || t('status.build_unknown');
 
   const deps: FlushDeps = {
     updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
@@ -71,6 +74,20 @@ export function SyncCenter() {
           <div className="card p-3">
             <p className="text-xs text-slate-500">{t('status.version')}</p>
             <p className="text-sm font-medium text-slate-700">{__APP_VERSION__} · {import.meta.env.MODE}</p>
+            <dl className="mt-2 space-y-1 text-[11px] leading-tight text-slate-500">
+              <div className="flex min-w-0 gap-1">
+                <dt className="shrink-0">{t('status.commit')}</dt>
+                <dd className="min-w-0 truncate font-mono text-slate-600" title={buildCommit}>{buildCommit}</dd>
+              </div>
+              <div className="flex min-w-0 gap-1">
+                <dt className="shrink-0">{t('status.branch')}</dt>
+                <dd className="min-w-0 truncate font-mono text-slate-600" title={buildBranch}>{buildBranch}</dd>
+              </div>
+              <div className="flex min-w-0 gap-1">
+                <dt className="shrink-0">{t('status.build_time')}</dt>
+                <dd className="min-w-0 truncate font-mono text-slate-600" title={buildTime}>{buildTime}</dd>
+              </div>
+            </dl>
           </div>
         </div>
 

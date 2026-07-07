@@ -84,6 +84,11 @@ describe('configuration de deploiement', () => {
     expect(prodEnv).toContain('VITE_REQUIRE_SERVER_INSPECTION=');
     expect(viteConfig).toContain("VITE_REQUIRE_SERVER_INSPECTION === 'true'");
     expect(viteConfig).toContain("VITE_USE_SIGNED_READ !== 'true'");
+    expect(viteConfig).toContain('VERCEL_GIT_COMMIT_SHA');
+    expect(viteConfig).toContain('VERCEL_GIT_COMMIT_REF');
+    expect(viteConfig).toContain('__GIT_COMMIT__');
+    expect(viteConfig).toContain('__GIT_BRANCH__');
+    expect(viteConfig).toContain('__BUILD_TIME__');
   });
 
   test('vercel.json declare les principaux headers de securite', () => {
