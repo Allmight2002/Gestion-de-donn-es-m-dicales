@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616096700_drafts_groups_activity_pagination.sql`
-- Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 168
+- Dernière migration incluse : `20260616097000_completeness_stats.sql`
+- Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 170
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -38,6 +38,8 @@ Policies :
 | deleted_at | timestamp with time zone | oui |  |
 | deleted_by | uuid | oui |  |
 | deletion_reason | text | oui |  |
+| inclusion_target | integer | oui |  |
+| inclusion_target_date | date | oui |  |
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
@@ -633,8 +635,10 @@ Triggers :
 | assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
-| base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text | DEFINER | plpgsql |
+| base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid | DEFINER | plpgsql |
+| base_completeness_stats | p_base_id uuid | INVOKER | sql |
 | base_identity_audit | p_base_id uuid | DEFINER | plpgsql |
+| base_inclusion_stats | p_base_id uuid | INVOKER | sql |
 | base_of_cohort | p_cohort uuid | DEFINER | sql |
 | base_of_patient | p_patient uuid | DEFINER | sql |
 | begin_import_batch | p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer | DEFINER | plpgsql |

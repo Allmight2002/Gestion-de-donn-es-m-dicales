@@ -28,12 +28,14 @@ export interface AuditRepository {
 
 export interface ActivityQueryOptions {
   before?: string | null;
+  beforeId?: string | null;
   limit?: number;
   action?: string | null;
 }
 
 /** Un evenement du journal d'activite d'une base (C3). */
 export interface ActivityEvent {
+  id: string;
   at: string;
   action: string;
   actorName: string;
@@ -62,6 +64,7 @@ export function makeAuditRepository(client: SupabaseClient | null): AuditReposit
       const { data, error } = await client.rpc('base_activity_log', {
         p_base_id: baseId,
         p_before: options?.before ?? null,
+        p_before_id: options?.beforeId ?? null,
         p_limit: options?.limit ?? 50,
         p_action_filter: options?.action ?? null,
       });

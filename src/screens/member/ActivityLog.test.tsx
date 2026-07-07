@@ -32,9 +32,9 @@ function renderActivity(audit: AuditRepository) {
 describe('ActivityLog (C3)', () => {
   test('affiche les libelles lisibles, le detail d import, et un repli pour action inconnue', async () => {
     const audit = makeAudit(async () => [
-      { at: '2026-07-03T10:00:00.000Z', action: 'data_imported', actorName: 'Dr Mbassi', metadata: { patients_new: 5, patients_updated: 2, encounters: 12, errors: 1 } },
-      { at: '2026-07-03T09:00:00.000Z', action: 'access_granted', actorName: 'Dr Mbassi', metadata: {} },
-      { at: '2026-07-03T08:00:00.000Z', action: 'weird_unknown_action', actorName: 'Dr Ngo', metadata: null },
+      { id: 'a1', at: '2026-07-03T10:00:00.000Z', action: 'data_imported', actorName: 'Dr Mbassi', metadata: { patients_new: 5, patients_updated: 2, encounters: 12, errors: 1 } },
+      { id: 'a2', at: '2026-07-03T09:00:00.000Z', action: 'access_granted', actorName: 'Dr Mbassi', metadata: {} },
+      { id: 'a3', at: '2026-07-03T08:00:00.000Z', action: 'weird_unknown_action', actorName: 'Dr Ngo', metadata: null },
     ]);
 
     renderActivity(audit);
@@ -49,9 +49,9 @@ describe('ActivityLog (C3)', () => {
   test('filtre le journal par action', async () => {
     const getBaseActivity = vi.fn<AuditRepository['getBaseActivity']>(async (_baseId, options) => {
       if (options?.action === 'access_revoked') {
-        return [{ at: '2026-07-03T11:00:00.000Z', action: 'access_revoked', actorName: 'Dr Mbassi', metadata: {} }];
+        return [{ id: 'a2', at: '2026-07-03T11:00:00.000Z', action: 'access_revoked', actorName: 'Dr Mbassi', metadata: {} }];
       }
-      return [{ at: '2026-07-03T10:00:00.000Z', action: 'access_granted', actorName: 'Dr Mbassi', metadata: {} }];
+      return [{ id: 'a1', at: '2026-07-03T10:00:00.000Z', action: 'access_granted', actorName: 'Dr Mbassi', metadata: {} }];
     });
     renderActivity(makeAudit(getBaseActivity));
 
@@ -64,6 +64,7 @@ describe('ActivityLog (C3)', () => {
 
   test('charge la page suivante avec un curseur temporel', async () => {
     const firstPage = Array.from({ length: 50 }, (_, i) => ({
+      id: `a${String(i).padStart(2, '0')}`,
       at: new Date(Date.UTC(2026, 6, 3, 10, 0 - i, 0)).toISOString(),
       action: 'access_granted',
       actorName: 'Dr Mbassi',
@@ -71,7 +72,7 @@ describe('ActivityLog (C3)', () => {
     }));
     const getBaseActivity = vi.fn<AuditRepository['getBaseActivity']>(async (_baseId, options) => {
       if (options?.before) {
-        return [{ at: '2026-07-03T08:00:00.000Z', action: 'export_created', actorName: 'Dr Mbassi', metadata: {} }];
+        return [{ id: 'next', at: '2026-07-03T08:00:00.000Z', action: 'export_created', actorName: 'Dr Mbassi', metadata: {} }];
       }
       return firstPage;
     });
@@ -83,6 +84,7 @@ describe('ActivityLog (C3)', () => {
     expect(within(await screen.findByRole('list')).getByText('Export généré')).toBeInTheDocument();
     expect(getBaseActivity).toHaveBeenLastCalledWith('b1', {
       before: firstPage[49].at,
+      beforeId: firstPage[49].id,
       limit: 50,
       action: null,
     });

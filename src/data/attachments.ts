@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
-import { REQUIRE_SERVER_INSPECTION, inspectUploadedFile } from './inspection';
+import { REQUIRE_SERVER_INSPECTION, cleanupUploadedObject, inspectUploadedFile } from './inspection';
 
 export const ATTACHMENTS_BUCKET = 'clinical-attachments';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -121,8 +121,8 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
         .select('id')
         .single();
       if (error) {
-        // Nettoyage best-effort de l'octet uploade si la ligne n'a pas pu etre creee.
-        await client.storage.from(ATTACHMENTS_BUCKET).remove([path]);
+        // Nettoyage serveur best-effort : les buckets prives n'exposent plus DELETE au client.
+        await cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path).catch(() => undefined);
         throw error;
       }
       const id = (data as { id: string }).id;

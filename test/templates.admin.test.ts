@@ -301,7 +301,7 @@ describe('renommer et supprimer un gabarit (v3.0)', () => {
     expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(0); // cascade
   });
 
-  test('suppression directe d un gabarit refusee : passage obligatoire par delete_template', async () => {
+  test('suppression directe d un gabarit refusee ; delete_template refuse les versions publiees', async () => {
     const made = await db.asUser(staffId, async (c) => {
       const tpl = await c.query("insert into public.template(name) values('RPC only') returning id");
       const ver = await c.query("insert into public.template_version(template_id, version_number, status, created_by) values($1,1,'draft',$2) returning id", [tpl.rows[0].id, staffId]);
@@ -313,9 +313,9 @@ describe('renommer et supprimer un gabarit (v3.0)', () => {
     expect(await rowsAs(staffId, 'delete from public.template where id=$1 returning id', [made.tplId])).toHaveLength(0);
     expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(1);
 
-    await rowsAs(staffId, 'select public.delete_template($1)', [made.tplId]);
-    expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(0);
-    expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(0);
+    await expect(rowsAs(staffId, 'select public.delete_template($1)', [made.tplId])).rejects.toThrow(/publie|archive/i);
+    expect((await db.admin.query('select id from public.template where id=$1', [made.tplId])).rows).toHaveLength(1);
+    expect((await db.admin.query('select id from public.template_version where id=$1', [made.verId])).rows).toHaveLength(1);
   });
 });
 

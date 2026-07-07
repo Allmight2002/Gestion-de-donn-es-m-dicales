@@ -17,7 +17,7 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 
 const seedEvent = (action: string, metadata: Record<string, unknown> = {}, createdAt?: string) =>
   db.admin.query(
-    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata, created_at) values($1,$2,'base',$3,$3,$4::jsonb, coalesce($5::timestamptz, now()))",
+    "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata, created_at) values($1,$2,'base',$3,$3,$4::jsonb, coalesce($5::timestamptz, now())) returning id",
     [aliceId, action, baseId, JSON.stringify(metadata), createdAt ?? null],
   );
 
@@ -83,7 +83,7 @@ describe('C3 base_activity_log (journal d activite lisible)', () => {
       aliceId,
       'select public.base_activity_log($1, null, 1, $2) as a',
       [baseId, 'pagination_probe'],
-    ))[0].a as { at: string; action: string }[];
+    ))[0].a as { id: string; at: string; action: string }[];
     expect(firstPage).toHaveLength(1);
     expect(firstPage[0].action).toBe('pagination_probe');
     expect(new Date(firstPage[0].at).toISOString()).toBe('2026-07-04T12:00:00.000Z');
@@ -92,9 +92,30 @@ describe('C3 base_activity_log (journal d activite lisible)', () => {
       aliceId,
       'select public.base_activity_log($1, $2::timestamptz, 10, $3) as a',
       [baseId, firstPage[0].at, 'pagination_probe'],
-    ))[0].a as { at: string; action: string }[];
+    ))[0].a as { id: string; at: string; action: string }[];
     expect(nextPage).toHaveLength(1);
     expect(nextPage[0].action).toBe('pagination_probe');
     expect(new Date(nextPage[0].at).toISOString()).toBe('2026-07-04T11:00:00.000Z');
+  });
+
+  test('la pagination conserve les evenements partageant exactement le meme timestamp', async () => {
+    await seedEvent('same_timestamp_probe', {}, '2026-07-04T13:00:00.000Z');
+    await seedEvent('same_timestamp_probe', {}, '2026-07-04T13:00:00.000Z');
+
+    const firstPage = (await rowsAs(
+      aliceId,
+      'select public.base_activity_log($1, null, 1, $2) as a',
+      [baseId, 'same_timestamp_probe'],
+    ))[0].a as { id: string; at: string; action: string }[];
+    expect(firstPage).toHaveLength(1);
+
+    const nextPage = (await rowsAs(
+      aliceId,
+      'select public.base_activity_log($1, $2::timestamptz, 1, $3, $4::uuid) as a',
+      [baseId, firstPage[0].at, 'same_timestamp_probe', firstPage[0].id],
+    ))[0].a as { id: string; at: string; action: string }[];
+    expect(nextPage).toHaveLength(1);
+    expect(nextPage[0].id).not.toBe(firstPage[0].id);
+    expect(new Date(nextPage[0].at).toISOString()).toBe('2026-07-04T13:00:00.000Z');
   });
 });

@@ -13,7 +13,7 @@ import { formatDateTime } from '../../lib/formatDate';
 const PAGE_SIZE = 50;
 const ACTION_OPTIONS = [
   'data_imported', 'access_granted', 'access_changed', 'access_revoked', 'invitation_created',
-  'patient_deleted', 'encounter_deleted', 'export_created', 'template_published', 'base_deleted',
+  'patient_deleted', 'encounter_deleted', 'export_created', 'template_published', 'file_inspected', 'base_deleted',
 ] as const;
 const KNOWN_ACTIONS = new Set<string>(ACTION_OPTIONS);
 
@@ -56,6 +56,7 @@ export function ActivityLog() {
     try {
       const rows = await audit.getBaseActivity(baseId, {
         before: events[events.length - 1].at,
+        beforeId: events[events.length - 1].id,
         limit: PAGE_SIZE,
         action: actionFilter || null,
       });
@@ -81,6 +82,9 @@ export function ActivityLog() {
     }
     if ((e.action === 'patient_deleted' || e.action === 'encounter_deleted') && typeof m.reason === 'string') {
       return `« ${m.reason} »`;
+    }
+    if (e.action === 'file_inspected' && typeof m.status === 'string') {
+      return [m.status, m.engine, m.detected_mime_type].filter((v) => typeof v === 'string' && v.length > 0).join(' · ');
     }
     return null;
   };

@@ -156,7 +156,7 @@ describe('audit v9 §5.1/§5.2 : creation clinique par RPC seulement + log_audit
 });
 
 describe('audit v10 §4.2 : verdict d inspection reserve au serveur', () => {
-  test('un utilisateur ne peut PAS s auto-attribuer inspection_status=accepted/quarantined', async () => {
+  test('un utilisateur ne peut PAS s auto-attribuer inspection_status=scanning/accepted/quarantined', async () => {
     const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
     // Piece jointe inseree cote serveur (admin), au statut client.
     const aid = (await db.admin.query(
@@ -166,12 +166,31 @@ describe('audit v10 §4.2 : verdict d inspection reserve au serveur', () => {
     // Alice (proprietaire, acces identite) NE PEUT PAS promouvoir le verdict serveur.
     await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='accepted' where id=$1", [aid]))
       .rejects.toThrow(/inspection/i);
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='scanning' where id=$1", [aid]))
+      .rejects.toThrow(/inspection/i);
     await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='quarantined' where id=$1", [aid]))
       .rejects.toThrow(/inspection/i);
     // Mais une mise a jour qui NE touche pas au verdict reste possible.
     await rowsAs(aliceId, "update public.clinical_attachment set label='ok' where id=$1", [aid]);
     expect((await db.admin.query('select inspection_status, label from public.clinical_attachment where id=$1', [aid])).rows[0])
       .toMatchObject({ inspection_status: 'accepted_client', label: 'ok' });
+  });
+
+  test('un utilisateur ne peut PAS sortir un fichier de scanning/quarantaine', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+    const scanningId = (await db.admin.query(
+      "insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, inspection_status) values($1,$2,true,'scanning') returning id",
+      [pid, `${baseId}/p/scanning.png`],
+    )).rows[0].id;
+    const quarantinedId = (await db.admin.query(
+      "insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, inspection_status) values($1,$2,true,'quarantined') returning id",
+      [pid, `${baseId}/p/quarantined.png`],
+    )).rows[0].id;
+
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='accepted_client' where id=$1", [scanningId]))
+      .rejects.toThrow(/terminal|inspection/i);
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set inspection_status='accepted_client' where id=$1", [quarantinedId]))
+      .rejects.toThrow(/terminal|inspection/i);
   });
 });
 

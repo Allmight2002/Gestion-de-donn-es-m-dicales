@@ -8,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
-import { REQUIRE_SERVER_INSPECTION, inspectUploadedFile } from './inspection';
+import { REQUIRE_SERVER_INSPECTION, cleanupUploadedObject, inspectUploadedFile } from './inspection';
 
 export const RAW_DOCUMENTS_BUCKET = 'raw-documents';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -317,7 +317,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         .select('id')
         .single();
       if (error) {
-        await client.storage.from(RAW_DOCUMENTS_BUCKET).remove([path]);
+        await cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path).catch(() => undefined);
         throw error;
       }
       const id = (data as { id: string }).id;

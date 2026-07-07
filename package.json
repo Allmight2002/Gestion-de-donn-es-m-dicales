@@ -21,7 +21,8 @@
     "create-account": "node scripts/create-account.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
     "schema": "node scripts/dump-schema.mjs",
-    "manifest": "node scripts/deploy-manifest.mjs"
+    "manifest": "node scripts/deploy-manifest.mjs",
+    "env:check": "node scripts/check-inspection-env.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

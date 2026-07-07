@@ -16,13 +16,43 @@
 -- => le 1er dossier du chemin est la base ; on en deduit le controle d'acces.
 -- =============================================================================
 
+-- Limites cote Storage : doivent rester <= MAX_INSPECT_UPLOAD_BYTES (Edge) et MAX_SCAN_BYTES
+-- (scanner ClamAV). Le frontend a la meme limite, mais celle-ci est le garde-fou serveur.
+-- 20 Mio laisse une marge sous la limite scanner locale par defaut de 25 Mio.
+
 -- ---------------------------------------------------------------------------
 -- 1) Documents bruts du POOL (v3.0) — deposes par le medecin proprietaire, lus par lui
 -- et par le staff de curation (curateur/validateur). Memes regles que la table raw_document.
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('raw-documents', 'raw-documents', false)
-on conflict (id) do nothing;
+on conflict (id) do update set
+  public = false,
+  file_size_limit = 20971520,
+  allowed_mime_types = array[
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ];
+
+update storage.buckets
+   set file_size_limit = 20971520,
+       allowed_mime_types = array[
+         'image/jpeg',
+         'image/png',
+         'image/webp',
+         'application/pdf',
+         'application/msword',
+         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+         'application/vnd.ms-excel',
+         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+       ]
+ where id = 'raw-documents';
 
 drop policy if exists "raw_documents_read"   on storage.objects;
 drop policy if exists "raw_documents_insert" on storage.objects;
@@ -48,7 +78,33 @@ with check (
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('clinical-attachments', 'clinical-attachments', false)
-on conflict (id) do nothing;
+on conflict (id) do update set
+  public = false,
+  file_size_limit = 20971520,
+  allowed_mime_types = array[
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ];
+
+update storage.buckets
+   set file_size_limit = 20971520,
+       allowed_mime_types = array[
+         'image/jpeg',
+         'image/png',
+         'image/webp',
+         'application/pdf',
+         'application/msword',
+         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+         'application/vnd.ms-excel',
+         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+       ]
+ where id = 'clinical-attachments';
 
 drop policy if exists "clinical_attachments_read"   on storage.objects;
 drop policy if exists "clinical_attachments_insert" on storage.objects;
@@ -75,7 +131,15 @@ with check (
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('scientific-exports', 'scientific-exports', false)
-on conflict (id) do nothing;
+on conflict (id) do update set
+  public = false,
+  file_size_limit = 20971520,
+  allowed_mime_types = array['text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
+update storage.buckets
+   set file_size_limit = 20971520,
+       allowed_mime_types = array['text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+ where id = 'scientific-exports';
 
 drop policy if exists "scientific_exports_read"   on storage.objects;
 drop policy if exists "scientific_exports_insert" on storage.objects;

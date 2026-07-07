@@ -17,6 +17,19 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
 
+function inspectionGate(status: string | null | undefined, requireInspection: boolean): Response | null {
+  if (status === 'quarantined') {
+    return json(409, { error: 'Fichier en quarantaine : lecture refusee' });
+  }
+  if (status === 'pending' || status === 'scanning') {
+    return json(409, { error: 'Document non encore valide par l\'inspection serveur' });
+  }
+  if (requireInspection && status !== 'accepted') {
+    return json(409, { error: 'Document non valide par l\'inspection serveur' });
+  }
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -42,9 +55,8 @@ Deno.serve(async (req: Request) => {
   const { data: who } = await asUser.auth.getUser();
   if (!who?.user) return json(401, { error: 'Session invalide' });
 
-  // §9.4 : exiger une inspection SERVEUR aboutie (inspection_status='accepted') avant de signer.
-  // Active uniquement si REQUIRE_SERVER_INSPECTION=true (donnees reelles, avec inspect-upload qui
-  // promeut 'accepted_client' -> 'accepted'). Inactif pour le pilote fictif (statut 'accepted_client').
+  // Les statuts non lisibles (pending/scanning/quarantined) sont TOUJOURS refuses. Le flag ne
+  // sert qu'a exiger le verdict serveur strict `accepted` dans les environnements cliniques.
   const requireInspection = Deno.env.get('REQUIRE_SERVER_INSPECTION') === 'true';
 
   let bucket: string, action: string, path: string, baseId: string | null;
@@ -53,17 +65,15 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await asUser
       .from('raw_document').select('id, base_id, storage_path, inspection_status').eq('id', id).is('deleted_at', null).maybeSingle();
     if (error || !data) return json(403, { error: 'Acces refuse' }); // RLS a masque -> non autorise
-    if (requireInspection && data.inspection_status !== 'accepted') {
-      return json(409, { error: 'Document non encore valide par l\'inspection serveur' });
-    }
+    const gate = inspectionGate(data.inspection_status, requireInspection);
+    if (gate) return gate;
     bucket = 'raw-documents'; action = 'raw_document_read'; path = data.storage_path; baseId = data.base_id;
   } else if (entity === 'attachment') {
     const { data, error } = await asUser
       .from('clinical_attachment').select('id, patient_id, storage_path, inspection_status').eq('id', id).is('deleted_at', null).maybeSingle();
     if (error || !data) return json(403, { error: 'Acces refuse' });
-    if (requireInspection && data.inspection_status !== 'accepted') {
-      return json(409, { error: 'Fichier non encore valide par l\'inspection serveur' });
-    }
+    const gate = inspectionGate(data.inspection_status, requireInspection);
+    if (gate) return gate;
     const { data: pat } = await admin.from('patient').select('base_id').eq('id', data.patient_id).maybeSingle();
     bucket = 'clinical-attachments'; action = 'attachment_read'; path = data.storage_path; baseId = pat?.base_id ?? null;
   } else {

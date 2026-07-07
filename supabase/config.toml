@@ -44,3 +44,7 @@ verify_jwt = false
 # preflight CORS ; la fonction verifie elle-meme le header Authorization + RLS.
 [functions.inspect-upload]
 verify_jwt = false
+
+# Nettoyage serveur des uploads orphelins apres echec d'insertion metier.
+[functions.cleanup-upload]
+verify_jwt = false

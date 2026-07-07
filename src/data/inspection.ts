@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export const REQUIRE_SERVER_INSPECTION = import.meta.env.VITE_REQUIRE_SERVER_INSPECTION === 'true';
 
 type InspectEntity = 'attachment' | 'raw_document';
+type CleanupBucket = 'clinical-attachments' | 'raw-documents' | 'scientific-exports';
 type InspectUploadResponse = {
   status?: 'accepted' | 'quarantined';
   error?: string;
@@ -39,5 +40,15 @@ export async function inspectUploadedFile(client: SupabaseClient, entity: Inspec
   if (data?.status !== 'accepted') {
     const detail = data?.error ?? (data?.status === 'quarantined' ? 'fichier mis en quarantaine' : 'verdict absent');
     throw new Error(`Inspection antivirus non validee : ${detail}.`);
+  }
+}
+
+export async function cleanupUploadedObject(client: SupabaseClient, bucket: CleanupBucket, path: string): Promise<void> {
+  const { error } = await client.functions.invoke('cleanup-upload', {
+    body: { bucket, path },
+  });
+  if (error) {
+    const detail = await functionErrorMessage(error);
+    throw new Error(`Nettoyage Storage impossible${detail ? ` : ${detail}` : ''}.`);
   }
 }

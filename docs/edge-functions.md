@@ -24,6 +24,7 @@ l'URL uniquement apres :
 
 ```bash
 supabase functions deploy signed-read
+supabase functions deploy cleanup-upload
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
@@ -40,8 +41,9 @@ refuse le repli de signature client.
 | `raw_document` | `raw_document` | `raw-documents` | `raw_document_read` |
 | `export` | `export_log` | `scientific-exports` | `export_read` |
 
-Quand le secret Edge `REQUIRE_SERVER_INSPECTION=true` est pose, `signed-read` refuse tout fichier
-dont `inspection_status <> 'accepted'`.
+`signed-read` refuse toujours les statuts `pending`, `scanning` et `quarantined`. Quand le secret
+Edge `REQUIRE_SERVER_INSPECTION=true` est pose, il refuse aussi le repli demo `accepted_client` et
+n'autorise que `accepted`.
 
 ---
 
@@ -53,16 +55,28 @@ Le flux serveur est implemente par
 1. Le frontend insere la ligne en `inspection_status='pending'` quand
    `VITE_REQUIRE_SERVER_INSPECTION=true`.
 2. Le frontend appelle `supabase.functions.invoke('inspect-upload', { body: { entity, id } })`.
-3. La fonction Edge autorise via RLS avec le JWT utilisateur, puis utilise `service_role` pour
-   telecharger l'objet prive.
-4. Elle recalcule `file_hash`, `file_size`, verifie la coherence extension / magic-bytes cote
-   serveur, puis appelle le scanner ClamAV HTTP (`CLAMAV_SCAN_URL`).
-5. Verdict propre : la ligne passe en `inspection_status='accepted'`.
-6. Verdict infecte ou fichier incoherent : la ligne passe en `inspection_status='quarantined'`.
-7. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
+3. La fonction Edge autorise via RLS avec le JWT utilisateur, pose atomiquement le verrou serveur
+   `inspection_status='scanning'`, puis utilise `service_role` pour telecharger l'objet prive.
+4. Elle refuse les objets trop volumineux avant `arrayBuffer()` (`MAX_INSPECT_UPLOAD_BYTES`) et
+   journalise la quarantaine via `file_inspected`.
+5. Elle recalcule `file_hash`, `file_size`, verifie la coherence extension / magic-bytes cote
+   serveur, controle les marqueurs OOXML pour `docx`/`xlsx`, puis appelle le scanner ClamAV HTTP
+   (`CLAMAV_SCAN_URL`).
+6. Verdict propre : la ligne passe en `inspection_status='accepted'`.
+7. Verdict infecte ou fichier incoherent : la ligne passe en `inspection_status='quarantined'`.
+8. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
 
-Le statut `accepted` / `quarantined` reste reserve au serveur par les triggers SQL existants :
-un utilisateur authentifie ne peut pas se l'attribuer depuis le frontend.
+Les statuts `scanning` / `accepted` / `quarantined` restent reserves au serveur par les triggers SQL :
+un utilisateur authentifie ne peut pas se les attribuer depuis le frontend, ni sortir un fichier
+`scanning` ou `quarantined` vers un statut lisible.
+
+### Nettoyage des uploads orphelins
+
+Les buckets prives n'exposent pas de policy `DELETE`. Si un upload Storage reussit mais que
+l'insertion de la ligne metier echoue, le frontend appelle
+[`cleanup-upload`](../supabase/functions/cleanup-upload/index.ts). La fonction verifie le JWT, le
+prefixe de base, le droit d'ecriture correspondant au bucket, puis refuse de supprimer l'objet si
+une ligne metier le reference deja.
 
 ### Deploy ClamAV
 
@@ -82,6 +96,10 @@ Authorization: Bearer <CLAMAV_SCAN_TOKEN>
 Content-Type: application/octet-stream
 ```
 
+`CLAMAV_SCAN_TOKEN` est obligatoire : le service refuse de demarrer avec un secret vide ou un
+secret de demonstration (`change-me` / `changeme`). La limite scanner locale par defaut est
+`MAX_SCAN_BYTES=26214400`; l'Edge doit rester inferieure ou egale a cette valeur.
+
 Reponses attendues :
 
 ```json
@@ -99,12 +117,21 @@ ou :
 ```bash
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
+supabase functions deploy cleanup-upload
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
                      CLAMAV_SCAN_URL=https://scanner.example.org/scan \
                      CLAMAV_SCAN_TOKEN=UN_SECRET_LONG \
-                     REQUIRE_SERVER_INSPECTION=true
+                     REQUIRE_SERVER_INSPECTION=true \
+                     MAX_INSPECT_UPLOAD_BYTES=20971520 \
+                     INSPECTION_SCANNING_STALE_MS=900000
+```
+
+Controlez la coherence des drapeaux avant un deploiement clinique :
+
+```bash
+npm run env:check
 ```
 
 Cote frontend, posez :

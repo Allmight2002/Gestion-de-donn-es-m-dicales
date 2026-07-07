@@ -89,14 +89,21 @@ que **toute consultation d'un fichier soit tracée côté serveur** et non conto
 ```bash
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
+supabase functions deploy cleanup-upload
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
                      CLAMAV_SCAN_URL=https://scanner.example.org/scan \
                      CLAMAV_SCAN_TOKEN=UN_SECRET_LONG \
-                     REQUIRE_SERVER_INSPECTION=true
+                     REQUIRE_SERVER_INSPECTION=true \
+                     MAX_INSPECT_UPLOAD_BYTES=20971520 \
+                     INSPECTION_SCANNING_STALE_MS=900000
 ```
+Avant un deploiement clinique, lancez aussi `npm run env:check` dans un contexte qui contient les
+variables frontend et les secrets Edge : le script refuse une divergence entre
+`VITE_REQUIRE_SERVER_INSPECTION` et `REQUIRE_SERVER_INSPECTION`.
+
 Puis, côté frontend, `VITE_USE_SIGNED_READ=true` (rebuild) : images et documents passent par
 `signed-read`, qui **autorise** (RLS) → **journalise** (`audit_log`) → **signe**. Si la
 journalisation échoue, l'URL n'est **pas** délivrée (§9.3).
@@ -107,11 +114,18 @@ journalisation échoue, l'URL n'est **pas** délivrée (§9.3).
 > posez le secret `REQUIRE_SERVER_INSPECTION=true` sur la fonction (§9.4). **Inutile pour le
 > pilote fictif** (les fichiers restent `accepted_client`).
 
+`cleanup-upload` est le nettoyage serveur des uploads orphelins : si un objet Storage est envoye
+mais que l'insertion metier echoue, le frontend demande a cette fonction de supprimer l'objet avec
+`service_role`, apres verification du JWT, du prefixe de base et de l'absence de ligne metier.
+
 Le scanner ClamAV fourni dans ce depot se lance avec :
 
 ```bash
 docker compose -f docker-compose.clamav.yml up -d --build
 ```
+
+Le compose refuse un `CLAMAV_SCAN_TOKEN` absent ou laisse par defaut. La limite Storage declaree
+dans `supabase/storage.sql` est de 20 Mio, inferieure a la limite scanner locale de 25 Mio.
 
 Quand ce mode est actif, posez aussi `VITE_REQUIRE_SERVER_INSPECTION=true` cote frontend. Le build
 refuse cette option si `VITE_USE_SIGNED_READ=true` n'est pas pose.

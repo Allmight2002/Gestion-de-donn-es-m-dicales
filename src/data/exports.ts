@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ExportEncounter, ExportPatient } from '../domain/export';
+import { cleanupUploadedObject } from './inspection';
 import { signedRead } from './signedRead';
 
 export const EXPORTS_BUCKET = 'scientific-exports';
@@ -141,7 +142,7 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
         .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path')
         .single();
       if (error) {
-        await client.storage.from(EXPORTS_BUCKET).remove([path]);
+        await cleanupUploadedObject(client, EXPORTS_BUCKET, path).catch(() => undefined);
         throw error;
       }
       return mapLog(data as LogRow);

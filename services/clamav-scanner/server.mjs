@@ -7,6 +7,12 @@ const CLAMD_PORT = Number(process.env.CLAMD_PORT ?? '3310');
 const CLAMD_TIMEOUT_MS = Number(process.env.CLAMD_TIMEOUT_MS ?? '30000');
 const MAX_SCAN_BYTES = Number(process.env.MAX_SCAN_BYTES ?? String(25 * 1024 * 1024));
 const SCAN_TOKEN = process.env.SCAN_TOKEN ?? '';
+const FORBIDDEN_TOKENS = new Set(['', 'change-me', 'changeme']);
+
+if (FORBIDDEN_TOKENS.has(SCAN_TOKEN.trim().toLowerCase())) {
+  console.error('SCAN_TOKEN must be set to a non-default secret');
+  process.exit(1);
+}
 
 function sendJson(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -14,24 +20,31 @@ function sendJson(res, status, body) {
 }
 
 function isAuthorized(req) {
-  return !SCAN_TOKEN || req.headers.authorization === `Bearer ${SCAN_TOKEN}`;
+  return req.headers.authorization === `Bearer ${SCAN_TOKEN}`;
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
+    let rejected = false;
     req.on('data', (chunk) => {
+      if (rejected) return;
       total += chunk.byteLength;
       if (total > MAX_SCAN_BYTES) {
+        rejected = true;
         reject(Object.assign(new Error('Payload too large'), { statusCode: 413 }));
-        req.destroy();
+        req.resume();
         return;
       }
       chunks.push(chunk);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    req.on('end', () => {
+      if (!rejected) resolve(Buffer.concat(chunks));
+    });
+    req.on('error', (error) => {
+      if (!rejected) reject(error);
+    });
   });
 }
 

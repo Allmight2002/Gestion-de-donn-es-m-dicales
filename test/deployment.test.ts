@@ -7,14 +7,18 @@ describe('configuration de deploiement', () => {
   test('les exports conserves passent par signed-read, pas par une policy Storage SELECT directe', () => {
     const storage = read('supabase/storage.sql');
     const edge = read('supabase/functions/signed-read/index.ts');
+    const exportsData = read('src/data/exports.ts');
 
     expect(storage).not.toMatch(/create policy "scientific_exports_read"/i);
     expect(storage).not.toMatch(/create policy "raw_documents_delete"/i);
     expect(storage).not.toMatch(/create policy "clinical_attachments_delete"/i);
+    expect(storage).toContain('file_size_limit = 20971520');
+    expect(storage).toContain('allowed_mime_types');
     expect(edge).toContain("entity !== 'export'");
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
+    expect(exportsData).toContain('cleanupUploadedObject(client, EXPORTS_BUCKET, path)');
   });
 
   test('inspect-upload impose un verdict serveur avant la lecture de donnees reelles', () => {
@@ -23,22 +27,38 @@ describe('configuration de deploiement', () => {
     const attachments = read('src/data/attachments.ts');
     const curation = read('src/data/curation.ts');
     const inspection = read('src/data/inspection.ts');
+    const cleanup = read('supabase/functions/cleanup-upload/index.ts');
+    const envCheck = read('scripts/check-inspection-env.mjs');
+    const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
     const config = read('supabase/config.toml');
 
+    expect(pkg.scripts['env:check']).toBe('node scripts/check-inspection-env.mjs');
+    expect(envCheck).toContain('frontendStrict !== edgeStrict');
+    expect(envCheck).toContain('MAX_INSPECT_UPLOAD_BYTES');
     expect(config).toContain('[functions.inspect-upload]');
+    expect(config).toContain('[functions.cleanup-upload]');
     expect(inspect).toContain("CLAMAV_SCAN_URL");
     expect(inspect).toContain("SUPABASE_SERVICE_ROLE_KEY");
-    expect(inspect).toContain("inspection_status: status");
+    expect(inspect).toContain("inspection_status: 'scanning'");
+    expect(inspect).toContain('MAX_INSPECT_UPLOAD_BYTES');
+    expect(inspect).toContain("engine: 'size-limit'");
+    expect(inspect).toContain('officeSubtypeMatches');
     expect(inspect).toContain("'accepted'");
     expect(inspect).toContain("'quarantined'");
     expect(inspect).toContain("path.startsWith(`${baseId}/`)");
     expect(signedRead).toContain("REQUIRE_SERVER_INSPECTION");
-    expect(signedRead).toContain("data.inspection_status !== 'accepted'");
+    expect(signedRead).toContain("status === 'quarantined'");
+    expect(signedRead).toContain("status === 'pending' || status === 'scanning'");
     expect(inspection).toContain("VITE_REQUIRE_SERVER_INSPECTION");
     expect(inspection).toContain("inspect-upload");
+    expect(inspection).toContain("cleanup-upload");
+    expect(cleanup).toContain("orphan_upload_removed");
+    expect(cleanup).toContain("Objet deja rattache a une ligne metier");
     expect(attachments).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
+    expect(attachments).toContain('cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path)');
     expect(attachments).toContain("inspectUploadedFile(client, 'attachment'");
     expect(curation).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
+    expect(curation).toContain('cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path)');
     expect(curation).toContain("inspectUploadedFile(client, 'raw_document'");
   });
 
@@ -50,8 +70,11 @@ describe('configuration de deploiement', () => {
 
     expect(compose).toContain('clamav/clamav:stable');
     expect(compose).toContain('clamav-scanner');
+    expect(compose).toContain('CLAMAV_SCAN_TOKEN requis');
+    expect(compose).toContain('clamdscan --ping');
     expect(scanner).toContain('zINSTREAM');
     expect(scanner).toContain('POST /scan expected');
+    expect(scanner).toContain('FORBIDDEN_TOKENS');
     expect(prodEnv).toContain('CLAMAV_SCAN_URL=');
     expect(prodEnv).toContain('CLAMAV_SCAN_TOKEN=');
     expect(prodEnv).toContain('VITE_REQUIRE_SERVER_INSPECTION=');

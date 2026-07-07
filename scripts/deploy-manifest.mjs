@@ -50,6 +50,7 @@ const manifest = {
   edgeFunctions: {
     expected: edgeFunctions,
     deployCommand: edgeFunctions.map((f) => `npx supabase functions deploy ${f}`).join(' && '),
+    inspectionPolicyCheckCommand: 'npm run env:check',
     requiredSecrets: [
       'SUPABASE_URL',
       'SUPABASE_ANON_KEY',
@@ -82,6 +83,7 @@ console.log('    → vérifier    : ' + manifest.database.checkOnCloud);
 console.log('  Storage         : storage.sql sha256[' + storageSha + '] (ré-exécuter dans le SQL Editor si modifié)');
 console.log('  Fonctions Edge  : ' + edgeFunctions.join(', '));
 console.log('    → déployer    : ' + manifest.edgeFunctions.deployCommand);
+console.log('    → verifier env: ' + manifest.edgeFunctions.inspectionPolicyCheckCommand);
 console.log('  Frontend        : ' + manifest.frontend.securityHeaders + ' ; env requis : ' + manifest.frontend.requiredEnv.join(' · '));
 console.log('  Snapshot schéma : ' + schemaState);
 console.log('');
