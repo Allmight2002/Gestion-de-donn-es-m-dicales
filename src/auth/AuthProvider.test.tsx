@@ -74,7 +74,7 @@ describe('gating par role', () => {
   // UI-1 : le libelle apparait aussi dans la barre laterale -> on vise le TITRE de page (heading).
   test('connecte system_admin -> administration des gabarits', async () => {
     renderApp(fakeBackend({ user: { id: 's', email: 's@demo.test' }, profile: adminProfile }));
-    expect(await screen.findByRole('heading', { name: 'Administration des gabarits' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Administration des modèles' })).toBeInTheDocument();
   });
 
   test('connecte membre -> tableau de bord', async () => {

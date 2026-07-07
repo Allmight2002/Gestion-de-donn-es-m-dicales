@@ -41,8 +41,8 @@ describe('TemplateFromFile (F1)', () => {
     await userEvent.upload(screen.getByLabelText(/Fichier/), file);
 
     // La proposition apparait (2 colonnes) + le nom du gabarit est pre-rempli depuis le fichier.
-    const createBtn = await screen.findByRole('button', { name: /Créer le gabarit/ });
-    expect((screen.getByLabelText('Nom du gabarit') as HTMLInputElement).value).toBe('cohorte');
+    const createBtn = await screen.findByRole('button', { name: /Créer le jeu de variables/ });
+    expect((screen.getByLabelText('Nom du jeu de variables') as HTMLInputElement).value).toBe('cohorte');
 
     await userEvent.click(createBtn);
     await waitFor(() => expect(createPersonalTemplate).toHaveBeenCalledWith('cohorte', null));

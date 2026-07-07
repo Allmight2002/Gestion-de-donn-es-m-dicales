@@ -44,7 +44,7 @@ describe('BaseLayout (UI-1, onglets)', () => {
   test('proprietaire : tous les onglets + fil d Ariane + Outlet ; naviguer vers Importer', async () => {
     renderLayout(listingWith('owner'));
     expect(await screen.findByRole('link', { name: /Importer/ })).toBeInTheDocument();
-    for (const label of ['Patients', 'Cohortes', 'Journal', 'Accès', 'Gabarit', 'Curation']) {
+    for (const label of ['Patients', 'Cohortes', 'Journal', 'Accès', 'Variables', 'Curation']) {
       expect(screen.getByRole('link', { name: new RegExp(label) })).toBeInTheDocument();
     }
     expect(screen.getByText('Gliomes 2026')).toBeInTheDocument(); // fil d'Ariane
@@ -58,7 +58,7 @@ describe('BaseLayout (UI-1, onglets)', () => {
     renderLayout(listingWith('viewer'));
     expect(await screen.findByRole('link', { name: /Journal/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Patients/ })).toBeInTheDocument();
-    for (const label of ['Importer', 'Cohortes', 'Accès', 'Gabarit', 'Curation']) {
+    for (const label of ['Importer', 'Cohortes', 'Accès', 'Variables', 'Curation']) {
       expect(screen.queryByRole('link', { name: new RegExp(label) })).not.toBeInTheDocument();
     }
   });

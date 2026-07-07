@@ -2,7 +2,6 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import type { MessageKey } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
@@ -99,12 +98,22 @@ export function Dashboard() {
             </label>
             <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
               {t('dashboard.gabarit')}
+              {/* V1 : modeles OFFICIELS (admin) et jeux de variables PERSONNELS separes en groupes. */}
               <select className="input" value={versionId} onChange={(e) => setVersionId(e.target.value)}>
-                {templates.map((tpl) => (
-                  <option key={tpl.versionId} value={tpl.versionId}>
-                    {tpl.name} · {t(`model.${tpl.scope}` as MessageKey)}
-                  </option>
-                ))}
+                {templates.some((tpl) => tpl.scope === 'global') && (
+                  <optgroup label={t('dashboard.models_official')}>
+                    {templates.filter((tpl) => tpl.scope === 'global').map((tpl) => (
+                      <option key={tpl.versionId} value={tpl.versionId}>{tpl.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {templates.some((tpl) => tpl.scope === 'personal') && (
+                  <optgroup label={t('dashboard.models_personal')}>
+                    {templates.filter((tpl) => tpl.scope === 'personal').map((tpl) => (
+                      <option key={tpl.versionId} value={tpl.versionId}>{tpl.name}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
             <button type="submit" disabled={busy || templates.length === 0} className="btn-primary">

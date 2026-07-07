@@ -101,7 +101,7 @@ describe('TemplatesAdmin', () => {
     renderAdmin(statefulMock('draft'));
     await screen.findByText('Neurochirurgie');
     await user.type(screen.getByLabelText('Nom'), 'Cardiologie');
-    await user.click(screen.getByRole('button', { name: 'Nouveau gabarit' }));
+    await user.click(screen.getByRole('button', { name: 'Nouveau modèle' }));
     // L'editeur affiche la section "Champs".
     expect(await screen.findByText('Champs')).toBeInTheDocument();
   });

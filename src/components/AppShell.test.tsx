@@ -55,7 +55,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
 
     expect(await screen.findByRole('link', { name: /Tableau de bord/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Groupes de recherche/ })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Mes gabarits/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Mes jeux de variables/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Synchronisation/ })).toBeInTheDocument();
     // Base recente de CE compte.
     expect(screen.getByRole('link', { name: /Gliomes 2026/ })).toBeInTheDocument();
@@ -68,7 +68,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
   test('curateur : navigation reduite (pool + synchro), pas de gabarits/groupes', async () => {
     renderShell({ id: 'u-cur', fullName: 'Curateur T', globalRole: 'curateur', language: 'fr' });
     expect(await screen.findByRole('link', { name: /Liste des requêtes/ })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Mes gabarits/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Mes jeux de variables/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Groupes de recherche/ })).not.toBeInTheDocument();
   });
 });
