@@ -64,14 +64,18 @@ describe('configuration de deploiement', () => {
 
   test('le service ClamAV local et les variables de deploiement sont declares', () => {
     const compose = read('docker-compose.clamav.yml');
+    const dockerfile = read('services/clamav-scanner/Dockerfile');
     const scanner = read('services/clamav-scanner/server.mjs');
     const prodEnv = read('.env.production.example');
     const viteConfig = read('vite.config.ts');
 
-    expect(compose).toContain('clamav/clamav:stable');
+    expect(compose).toContain('clamav/clamav:stable@sha256:6f4a9e7d616ffc8d1070200fe35ac860735fdd522161a1043f94856e6ee13c28');
     expect(compose).toContain('clamav-scanner');
     expect(compose).toContain('CLAMAV_SCAN_TOKEN requis');
     expect(compose).toContain('clamdscan --ping');
+    expect(dockerfile).toContain('node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2');
+    expect(compose).not.toMatch(/image:\s*clamav\/clamav:stable\s*$/m);
+    expect(dockerfile).not.toMatch(/^FROM\s+node:22-alpine\s*$/m);
     expect(scanner).toContain('zINSTREAM');
     expect(scanner).toContain('POST /scan expected');
     expect(scanner).toContain('FORBIDDEN_TOKENS');

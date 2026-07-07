@@ -1,11 +1,14 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
+import { FileText, Image as ImageIcon } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, PatientListItem } from '../../data/patients';
 import type { AttachmentItem } from '../../data/attachments';
 import type { MessageKey } from '../../i18n/messages';
+import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
+import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
 import { offlineCache, useOnline } from '../../data/offline';
 import { getTemplateFields } from '../../data/templates';
 import { isMissing, missingCodeOf } from '../../domain/validation';
@@ -19,11 +22,23 @@ type Column = { id: string; fieldKey: string; label: string; scope: string; disp
 
 // §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
 // une image s'affiche apres « Afficher l'image » ; un document s'ouvre dans un onglet.
-function AttachmentMedia({ isImage, label, load, onReveal }: {
-  isImage: boolean; label: string; load: () => Promise<string | null>; onReveal: () => void;
+function AttachmentMedia({ isImage, label, load, onReveal, readable }: {
+  isImage: boolean; label: string; load: () => Promise<string | null>; onReveal: () => void; readable: boolean;
 }) {
   const { t } = useI18n();
   const { url, busy, error, reveal } = useSignedFile(load, onReveal);
+  const Icon = isImage ? ImageIcon : FileText;
+  if (!readable) {
+    return (
+      <div
+        aria-disabled="true"
+        className="flex h-32 w-40 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-slate-50 text-slate-400"
+      >
+        <Icon className="h-7 w-7" aria-hidden="true" />
+        <span className="text-xs">{t('inspection.blocked')}</span>
+      </div>
+    );
+  }
   if (isImage && url) {
     return <img src={url} alt={label} className="h-32 w-40 rounded border border-slate-200 object-cover" />;
   }
@@ -135,6 +150,19 @@ export function PatientDetail() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function retryAttachmentInspection(id: string) {
+    setBusy(true);
+    try {
+      await attachmentsRepo.retryInspection(id);
+      await load();
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
   if (!patient) return <p className="text-slate-500">{t('notfound.title')}</p>;
@@ -283,19 +311,29 @@ export function PatientDetail() {
             <p className="text-sm text-slate-500">{t('image.none')}</p>
           ) : (
             <div className="flex flex-wrap gap-3">
-              {attachments.map((a) => (
-                <figure key={a.id} className="w-40">
-                  {/* §11 : l'URL signee (et l'audit) ne sont generes qu'au CLIC, pas au rendu. */}
-                  <AttachmentMedia
-                    isImage={(a.mimeType ?? '').startsWith('image/')}
-                    label={a.label ?? ''}
-                    load={() => attachmentsRepo.attachmentUrl(a.id, a.filePath)}
-                    onReveal={() => void audit.logAttachmentRead(a.id)}
-                  />
-                  <figcaption className="truncate text-xs text-slate-500">{a.label ?? a.kind}</figcaption>
-                  <DeleteWithReason onConfirm={async (reason) => { await attachmentsRepo.softDeleteAttachment(a.id, reason); await load(); }} />
-                </figure>
-              ))}
+              {attachments.map((a) => {
+                const readable = isInspectionReadable(a.inspectionStatus);
+                return (
+                  <figure key={a.id} className="w-40">
+                    {/* §11 : l'URL signee (et l'audit) ne sont generes qu'au CLIC, pas au rendu. */}
+                    <AttachmentMedia
+                      isImage={(a.mimeType ?? '').startsWith('image/')}
+                      label={a.label ?? ''}
+                      load={() => attachmentsRepo.attachmentUrl(a.id, a.filePath)}
+                      onReveal={() => void audit.logAttachmentRead(a.id)}
+                      readable={readable}
+                    />
+                    <figcaption className="truncate text-xs text-slate-500">{a.label ?? a.kind}</figcaption>
+                    <div className="mt-1 flex items-center gap-1">
+                      <InspectionStatusBadge status={a.inspectionStatus} />
+                      {isInspectionRetryable(a.inspectionStatus) && (
+                        <RetryInspectionButton disabled={busy} onClick={() => void retryAttachmentInspection(a.id)} />
+                      )}
+                    </div>
+                    <DeleteWithReason onConfirm={async (reason) => { await attachmentsRepo.softDeleteAttachment(a.id, reason); await load(); }} />
+                  </figure>
+                );
+              })}
             </div>
           )}
         </div>

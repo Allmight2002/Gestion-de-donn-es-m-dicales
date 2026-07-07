@@ -8,7 +8,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
-import { REQUIRE_SERVER_INSPECTION, cleanupUploadedObject, inspectUploadedFile } from './inspection';
+import {
+  REQUIRE_SERVER_INSPECTION,
+  cleanupUploadedObject,
+  inspectUploadedFile,
+  retryUploadedFileInspection,
+  type InspectionStatus,
+} from './inspection';
 
 export const RAW_DOCUMENTS_BUCKET = 'raw-documents';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -44,6 +50,7 @@ export interface RawDocumentItem {
   label: string | null;
   storagePath: string;
   mimeType: string;
+  inspectionStatus: InspectionStatus;
 }
 
 export interface CurationDraftItem {
@@ -95,6 +102,7 @@ export interface CurationRepository {
   /** §11 — URL signee d'un document A LA DEMANDE (au clic) : autorisation + audit ne se
    *  declenchent que pour une VRAIE ouverture, pas au chargement de la liste. null si indisponible. */
   documentUrl(id: string, storagePath: string): Promise<string | null>;
+  retryDocumentInspection(id: string): Promise<void>;
   /** Le medecin soumet un cas au pool (RPC atomique : soumission + tache ouverte + code).
    *  scope='patient' (donnees permanentes) ou 'encounter' (une rencontre). */
   createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
@@ -164,7 +172,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, documentUrl: fail, createSubmission: fail,
+      listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, documentUrl: fail, retryDocumentInspection: fail, createSubmission: fail,
       submitRequest: fail, deleteRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
       ensureDraft: fail, saveDraft: fail, finalizeTask: fail, requestClarification: fail, answerClarification: fail,
     };
@@ -216,13 +224,25 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       // demandee a l'ouverture d'un document (documentUrl) -> l'audit correspond a une vraie consultation.
       const { data: docs, error: e2 } = await client
         .from('raw_document')
-        .select('id, label, storage_path, mime_type')
+        .select('id, label, storage_path, mime_type, inspection_status')
         .eq('submission_id', task.submissionId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
       if (e2) throw e2;
-      const documents = ((docs ?? []) as { id: string; label: string | null; storage_path: string; mime_type: string }[])
-        .map((d) => ({ id: d.id, label: d.label, storagePath: d.storage_path, mimeType: d.mime_type }));
+      const documents = ((docs ?? []) as {
+        id: string;
+        label: string | null;
+        storage_path: string;
+        mime_type: string;
+        inspection_status: InspectionStatus;
+      }[])
+        .map((d) => ({
+          id: d.id,
+          label: d.label,
+          storagePath: d.storage_path,
+          mimeType: d.mime_type,
+          inspectionStatus: d.inspection_status,
+        }));
 
       const { data: draftRow, error: e3 } = await client
         .from('curation_draft')
@@ -263,6 +283,10 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
 
     async documentUrl(id, storagePath) {
       return signedRead(client, 'raw_document', id, RAW_DOCUMENTS_BUCKET, storagePath, SIGNED_URL_TTL);
+    },
+
+    async retryDocumentInspection(id) {
+      await retryUploadedFileInspection(client, 'raw_document', id);
     },
 
     async createSubmission(baseId, targetPatientId, externalRef, scope = 'patient') {

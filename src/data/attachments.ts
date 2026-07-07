@@ -7,7 +7,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
-import { REQUIRE_SERVER_INSPECTION, cleanupUploadedObject, inspectUploadedFile } from './inspection';
+import {
+  REQUIRE_SERVER_INSPECTION,
+  cleanupUploadedObject,
+  inspectUploadedFile,
+  retryUploadedFileInspection,
+  type InspectionStatus,
+} from './inspection';
 
 export const ATTACHMENTS_BUCKET = 'clinical-attachments';
 const SIGNED_URL_TTL = 60 * 10; // 10 min
@@ -18,6 +24,7 @@ export interface AttachmentItem {
   label: string | null;
   mimeType: string | null;
   filePath: string;
+  inspectionStatus: InspectionStatus;
 }
 
 export interface AddImageInput {
@@ -34,11 +41,19 @@ export interface AttachmentRepository {
   /** §11 — URL signee generee A LA DEMANDE (au clic), pas au chargement de la liste : autorisation
    *  + audit ne se declenchent que pour une VRAIE tentative de consultation. null si indisponible. */
   attachmentUrl(id: string, storagePath: string): Promise<string | null>;
+  retryInspection(id: string): Promise<void>;
   addImage(input: AddImageInput): Promise<{ id: string }>;
   softDeleteAttachment(id: string, reason: string): Promise<void>;
 }
 
-type AttachmentRow = { id: string; kind: string | null; label: string | null; mime_type: string | null; storage_path: string };
+type AttachmentRow = {
+  id: string;
+  kind: string | null;
+  label: string | null;
+  mime_type: string | null;
+  storage_path: string;
+  inspection_status: InspectionStatus;
+};
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
 
@@ -61,7 +76,7 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listAttachments: fail, attachmentUrl: fail, addImage: fail, softDeleteAttachment: fail };
+    return { listAttachments: fail, attachmentUrl: fail, retryInspection: fail, addImage: fail, softDeleteAttachment: fail };
   }
 
   return {
@@ -70,18 +85,27 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
       // par la RLS. L'URL est demandee a l'ouverture du document (attachmentUrl).
       const { data, error } = await client
         .from('clinical_attachment')
-        .select('id, kind, label, mime_type, storage_path')
+        .select('id, kind, label, mime_type, storage_path, inspection_status')
         .eq('patient_id', patientId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
       if (error) throw error;
       return ((data ?? []) as AttachmentRow[]).map((r) => ({
-        id: r.id, kind: r.kind, label: r.label, mimeType: r.mime_type, filePath: r.storage_path,
+        id: r.id,
+        kind: r.kind,
+        label: r.label,
+        mimeType: r.mime_type,
+        filePath: r.storage_path,
+        inspectionStatus: r.inspection_status,
       }));
     },
 
     async attachmentUrl(id, storagePath) {
       return signedRead(client, 'attachment', id, ATTACHMENTS_BUCKET, storagePath, SIGNED_URL_TTL);
+    },
+
+    async retryInspection(id) {
+      await retryUploadedFileInspection(client, 'attachment', id);
     },
 
     async addImage(input) {

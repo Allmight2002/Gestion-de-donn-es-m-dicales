@@ -6,6 +6,8 @@ import type { MessageKey } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
 import { useAuditRepository, useCurationRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
+import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
+import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
 import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
@@ -16,15 +18,17 @@ const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as
 const newEncounter = (): DraftEncounter => ({ encounter_type: 'consultation', encounter_date: '', age_unit: 'years', data: {} });
 
 // §11 : lien de document qui ne genere l'URL signee (et l'audit) qu'au CLIC, puis l'ouvre.
-function RawDocumentLink({ label, load, onReveal }: { label: string; load: () => Promise<string | null>; onReveal: () => void }) {
+function RawDocumentLink({ label, load, onReveal, readable }: {
+  label: string; load: () => Promise<string | null>; onReveal: () => void; readable: boolean;
+}) {
   const { t } = useI18n();
   const { busy, error, reveal } = useSignedFile(load, onReveal);
   return (
     <button
       type="button"
       onClick={() => void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); })}
-      disabled={busy}
-      className="text-teal-700 hover:underline disabled:opacity-50"
+      disabled={busy || !readable}
+      className={readable ? 'text-teal-700 hover:underline disabled:opacity-50' : 'cursor-not-allowed text-slate-400'}
     >
       {busy ? `${label} …` : error ? `${label} (${t('common.error')})` : label}
     </button>
@@ -104,6 +108,7 @@ export function CurationTask() {
   const canEdit = isCurator && assignedToMe && !!draft && draft.status === 'draft' && task.status === 'in_progress';
   const canAddDocs = isOwnerMedecin && isPreparing; // depot tant que le cas est en preparation
   const canSubmitRequest = isOwnerMedecin && isPreparing; // envoyer au pool
+  const documentsReady = documents.length > 0 && documents.every((d) => isInspectionReadable(d.inspectionStatus));
   // Clarification (§4.3) : le curateur affecte pose une question quand le cas est en cours ;
   // le medecin proprietaire repond a la clarification ouverte.
   const canAskClarification = isCurator && assignedToMe && task.status === 'in_progress';
@@ -123,6 +128,10 @@ export function CurationTask() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function retryDocumentInspection(id: string) {
+    await run(() => curation.retryDocumentInspection(id), t('inspection.retry_done'));
   }
 
   const updateEncounter = (i: number, patch: Partial<DraftEncounter>) =>
@@ -187,17 +196,25 @@ export function CurationTask() {
           <p className="text-xs text-slate-500">{t('curation.no_documents')}</p>
         ) : (
           <ul className="space-y-1 text-sm">
-            {documents.map((d) => (
-              <li key={d.id}>
-                {/* §11 : l'URL signee (et l'audit) ne sont generes qu'au CLIC, pas au chargement. */}
-                <RawDocumentLink
-                  label={d.label ?? d.storagePath}
-                  load={() => curation.documentUrl(d.id, d.storagePath)}
-                  onReveal={() => void audit.logRawDocumentRead(d.id)}
-                />
-                <span className="ml-2 text-xs text-slate-400">{d.mimeType}</span>
-              </li>
-            ))}
+            {documents.map((d) => {
+              const readable = isInspectionReadable(d.inspectionStatus);
+              return (
+                <li key={d.id} className="flex flex-wrap items-center gap-2">
+                  {/* §11 : l'URL signee (et l'audit) ne sont generes qu'au CLIC, pas au chargement. */}
+                  <RawDocumentLink
+                    label={d.label ?? d.storagePath}
+                    load={() => curation.documentUrl(d.id, d.storagePath)}
+                    onReveal={() => void audit.logRawDocumentRead(d.id)}
+                    readable={readable}
+                  />
+                  <span className="text-xs text-slate-400">{d.mimeType}</span>
+                  <InspectionStatusBadge status={d.inspectionStatus} />
+                  {isInspectionRetryable(d.inspectionStatus) && (
+                    <RetryInspectionButton disabled={busy} onClick={() => void retryDocumentInspection(d.id)} />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
         {canAddDocs && (
@@ -246,7 +263,7 @@ export function CurationTask() {
         <div className="space-y-2">
           <button
             type="button"
-            disabled={busy || documents.length === 0}
+            disabled={busy || !documentsReady}
             onClick={async () => {
               setBusy(true);
               try {
@@ -262,6 +279,7 @@ export function CurationTask() {
             {t('curation.submit_request')}
           </button>
           {documents.length === 0 && <p className="text-xs text-slate-500">{t('curation.submit_needs_doc')}</p>}
+          {documents.length > 0 && !documentsReady && <p className="text-xs text-slate-500">{t('curation.submit_needs_accepted_doc')}</p>}
         </div>
       )}
 

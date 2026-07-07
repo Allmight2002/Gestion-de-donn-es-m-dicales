@@ -228,6 +228,19 @@ describe('soumission de cas (medecin)', () => {
     expect((await db.admin.query('select status from public.raw_submission where id=$1', [subId])).rows[0].status).toBe('in_curation');
   });
 
+  test('un document brut pending/scanning/quarantined bloque la soumission au staff', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-002'", [baseId])).rows[0].id;
+    const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'scan-pending']);
+    const taskId = task[0].id as string, subId = task[0].submission_id as string;
+    await db.admin.query(
+      "insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type, inspection_status) values($1,$2,'d',$3,'application/pdf','pending')",
+      [subId, baseId, `${baseId}/${subId}/pending.pdf`],
+    );
+
+    await expect(rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId]))
+      .rejects.toThrow(/inspection|acceptes/i);
+  });
+
   test('portee "rencontre" : scope=encounter ; la finalisation cree une rencontre', async () => {
     const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-009'", [baseId])).rows[0].id;
     const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3,$4)', [baseId, pid, 'ENC', 'encounter']);

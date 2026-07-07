@@ -87,8 +87,10 @@ docker compose -f docker-compose.clamav.yml up -d --build
 curl http://127.0.0.1:8088/health
 ```
 
-Le compose utilise l'image officielle `clamav/clamav:stable` et le service
-`services/clamav-scanner`, qui expose :
+Le compose utilise l'image officielle `clamav/clamav:stable` epinglee par digest et le service
+`services/clamav-scanner`, construit depuis une base `node:22-alpine` elle aussi epinglee. Pour
+mettre a jour ces images, relevez le nouveau digest avec `docker buildx imagetools inspect`, puis
+validez `docker compose -f docker-compose.clamav.yml config` avant de redeployer. Le scanner expose :
 
 ```text
 POST /scan

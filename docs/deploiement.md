@@ -124,8 +124,11 @@ Le scanner ClamAV fourni dans ce depot se lance avec :
 docker compose -f docker-compose.clamav.yml up -d --build
 ```
 
-Le compose refuse un `CLAMAV_SCAN_TOKEN` absent ou laisse par defaut. La limite Storage declaree
-dans `supabase/storage.sql` est de 20 Mio, inferieure a la limite scanner locale de 25 Mio.
+Le compose refuse un `CLAMAV_SCAN_TOKEN` absent ou laisse par defaut, et les images Docker sont
+epinglees par digest (`clamav/clamav` + base Node du scanner). Pour les mettre a jour, relevez les
+nouveaux digests avec `docker buildx imagetools inspect`, puis validez
+`docker compose -f docker-compose.clamav.yml config`. La limite Storage declaree dans
+`supabase/storage.sql` est de 20 Mio, inferieure a la limite scanner locale de 25 Mio.
 
 Quand ce mode est actif, posez aussi `VITE_REQUIRE_SERVER_INSPECTION=true` cote frontend. Le build
 refuse cette option si `VITE_USE_SIGNED_READ=true` n'est pas pose.

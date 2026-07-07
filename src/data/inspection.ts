@@ -2,13 +2,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const REQUIRE_SERVER_INSPECTION = import.meta.env.VITE_REQUIRE_SERVER_INSPECTION === 'true';
 
+export type InspectionStatus = 'pending' | 'scanning' | 'accepted_client' | 'accepted' | 'quarantined';
+
 type InspectEntity = 'attachment' | 'raw_document';
 type CleanupBucket = 'clinical-attachments' | 'raw-documents' | 'scientific-exports';
 type InspectUploadResponse = {
-  status?: 'accepted' | 'quarantined';
+  status?: InspectionStatus;
   error?: string;
   signature?: string;
 };
+
+export function isInspectionReadable(status: InspectionStatus): boolean {
+  return status === 'accepted' || status === 'accepted_client';
+}
+
+export function isInspectionRetryable(status: InspectionStatus): boolean {
+  return status === 'pending' || status === 'scanning';
+}
 
 async function functionErrorMessage(error: unknown): Promise<string | null> {
   const context = (error as { context?: unknown }).context;
@@ -26,9 +36,7 @@ async function functionErrorMessage(error: unknown): Promise<string | null> {
   return typeof message === 'string' ? message : null;
 }
 
-export async function inspectUploadedFile(client: SupabaseClient, entity: InspectEntity, id: string): Promise<void> {
-  if (!REQUIRE_SERVER_INSPECTION) return;
-
+async function invokeInspection(client: SupabaseClient, entity: InspectEntity, id: string): Promise<void> {
   const { data, error } = await client.functions.invoke<InspectUploadResponse>('inspect-upload', {
     body: { entity, id },
   });
@@ -41,6 +49,15 @@ export async function inspectUploadedFile(client: SupabaseClient, entity: Inspec
     const detail = data?.error ?? (data?.status === 'quarantined' ? 'fichier mis en quarantaine' : 'verdict absent');
     throw new Error(`Inspection antivirus non validee : ${detail}.`);
   }
+}
+
+export async function inspectUploadedFile(client: SupabaseClient, entity: InspectEntity, id: string): Promise<void> {
+  if (!REQUIRE_SERVER_INSPECTION) return;
+  await invokeInspection(client, entity, id);
+}
+
+export async function retryUploadedFileInspection(client: SupabaseClient, entity: InspectEntity, id: string): Promise<void> {
+  await invokeInspection(client, entity, id);
 }
 
 export async function cleanupUploadedObject(client: SupabaseClient, bucket: CleanupBucket, path: string): Promise<void> {
