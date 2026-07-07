@@ -105,7 +105,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         let live = matches;
         try { live = await patients.findIdentityMatches(baseId, fullName.trim(), dob); setMatches(live); } catch { /* best-effort */ }
         if (live.length > 0) {
-          setError(t('patient.duplicate_confirm_required'));
+          const message = t('patient.duplicate_confirm_required');
+          setError(message);
+          toast(message, 'warning');
           return; // (finally libere busy)
         }
       }
@@ -131,7 +133,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       // pas afficher un message SQL brut (« duplicate key value violates ... »).
       const err = e as { code?: string; message?: string };
       if (err?.code === '23505' || /duplicate key|uq_identity_base_code/i.test(err?.message ?? '')) {
-        setError(t('patient.code_taken'));
+        const message = t('patient.code_taken');
+        setError(message);
+        toast(message, 'warning');
       } else {
         setError(msg(e));
       }

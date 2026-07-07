@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
+import { ToastProvider } from '../../components/Toast';
 import { PatientCreateChoice } from './PatientCreateChoice';
 import { EncounterCreateChoice } from './EncounterCreateChoice';
 import { NewPatient } from './NewPatient';
@@ -30,17 +31,19 @@ function renderAt(path: string, providers: { patients?: PatientRepository; curat
   return render(
     <I18nProvider>
       <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={providers.patients} curation={providers.curation}>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/bases/:id/patients/new" element={<PatientCreateChoice />} />
-            <Route path="/bases/:id/patients/new/manual" element={<div>MANUAL</div>} />
-            <Route path="/bases/:id/patients/new/submit" element={<NewPatient mode="submit" />} />
-            <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterCreateChoice />} />
-            <Route path="/bases/:id/patients/:patientId/encounters/new/manual" element={<div>ENC MANUAL</div>} />
-            <Route path="/bases/:id/patients/:patientId" element={<div>FICHE</div>} />
-            <Route path="/curation/:taskId" element={<div>CASE PAGE</div>} />
-          </Routes>
-        </MemoryRouter>
+        <ToastProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/bases/:id/patients/new" element={<PatientCreateChoice />} />
+              <Route path="/bases/:id/patients/new/manual" element={<div>MANUAL</div>} />
+              <Route path="/bases/:id/patients/new/submit" element={<NewPatient mode="submit" />} />
+              <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterCreateChoice />} />
+              <Route path="/bases/:id/patients/:patientId/encounters/new/manual" element={<div>ENC MANUAL</div>} />
+              <Route path="/bases/:id/patients/:patientId" element={<div>FICHE</div>} />
+              <Route path="/curation/:taskId" element={<div>CASE PAGE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
       </RepositoryProvider>
     </I18nProvider>,
   );
@@ -108,7 +111,7 @@ describe('NewPatient : detection de doublon', () => {
     // Soumettre IMMEDIATEMENT (pas d'attente de l'avertissement debounce).
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     expect(createPatient).not.toHaveBeenCalled(); // bloque par la re-verification au submit
-    expect(await screen.findByText(/cochez la confirmation pour créer quand même/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText(/cochez la confirmation pour créer quand même/i).length).toBeGreaterThan(1));
   });
 
   test('QA : un code patient deja utilise affiche un message humain (pas le SQL brut)', async () => {
@@ -122,7 +125,7 @@ describe('NewPatient : detection de doublon', () => {
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Autre Nom' } });
     fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1985-03-03' } });
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
-    expect(await screen.findByText(/déjà utilisé dans cette base/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText(/déjà utilisé dans cette base/i).length).toBeGreaterThan(1));
     expect(screen.queryByText(/duplicate key/i)).not.toBeInTheDocument(); // plus de SQL brut
   });
 
@@ -140,7 +143,7 @@ describe('NewPatient : detection de doublon', () => {
     // Soumettre SANS confirmer : rien n'est cree, un message demande la confirmation.
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     expect(createPatient).not.toHaveBeenCalled();
-    expect(screen.getByText(/cochez la confirmation pour créer quand même/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/cochez la confirmation pour créer quand même/i).length).toBeGreaterThan(1);
 
     // Cocher « patient différent » puis soumettre : le dossier est cree.
     await userEvent.click(screen.getByLabelText(/patient différent/i));
