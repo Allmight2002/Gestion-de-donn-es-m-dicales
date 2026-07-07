@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616097300_curation_requires_inspected_documents.sql`
+- Dernière migration incluse : `20260616097400_rename_gabarit_server_messages.sql`
 - Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 171
 
 ## Tables (colonnes, RLS, policies, triggers)

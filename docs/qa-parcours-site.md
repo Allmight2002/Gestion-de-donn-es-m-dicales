@@ -7,7 +7,7 @@
 
 ## 0. Règles impératives
 - **N'utiliser que des données fictives.** Ne jamais saisir de vrai nom/téléphone/adresse.
-- Préfixer **tout ce que tu crées** par `QA-` (patients `QA-001`, groupes `QA-groupe`, gabarits `QA-…`).
+- Préfixer **tout ce que tu crées** par `QA-` (patients `QA-001`, groupes `QA-groupe`, jeux de variables `QA-…`).
 - **Ne supprimer que ce que tu as créé toi-même** (préfixe `QA-`). Ne pas toucher aux données de démo existantes.
 - Ne pas tester la charge/performance (pas de boucles d'actions).
 - Ne pas tenter de contourner l'authentification autrement que par les tests négatifs listés en §7.
@@ -19,8 +19,9 @@ possible un 2ᵉ médecin sans accès (tests de cloisonnement §7).
 
 ### 1bis. Amorçage si le compte médecin est NEUF (aucune base)
 Avant le diagnostic §3, préparer un terrain de jeu :
-1. Mes gabarits → **Bibliothèque de modèles** → « Utiliser ce modèle » (n'importe lequel).
-2. Tableau de bord → créer la base **`QA-base`** à partir de ce gabarit.
+1. Mes jeux de variables → **Bibliothèque de modèles** → « Utiliser ce modèle » (n'importe lequel).
+2. Tableau de bord → créer la base **`QA-base`** à partir de ce jeu de variables (le sélecteur
+   sépare « Modèles officiels » et « Mes jeux de variables »).
 3. Créer 3 patients `QA-001/002/003` (noms fictifs) avec 1-2 rencontres chacun, en laissant
    volontairement des champs requis vides sur l'un d'eux (alimente « À compléter » et la
    complétude), et **finaliser** un des patients (alimente les statuts).
@@ -48,13 +49,13 @@ Connecté en **médecin propriétaire**, ouvrir une base existante puis :
 Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran si anomalie visuelle.
 
 ### 4.1 Coquille & navigation (UI-1)
-1. Barre latérale visible (desktop) : Tableau de bord, Groupes, Mes gabarits, Synchronisation, bases récentes.
+1. Barre latérale visible (desktop) : Tableau de bord, Groupes, Mes jeux de variables, Synchronisation, bases récentes.
 2. **Ctrl+K** ouvre la palette ; taper le nom d'une base → Entrée → la base s'ouvre.
 3. **Thème** (bas de la barre latérale) : passer en **Sombre** → vérifier que la barre latérale devient sombre (pas blanche !), textes lisibles ; passer sur 3-4 écrans en sombre et noter tout élément illisible ; revenir en Clair.
 4. Réduire la fenêtre en largeur mobile (~375 px) : barre haute + menu tiroir fonctionnels.
 
 ### 4.2 Page d'une base (onglets)
-5. Ouvrir une base : fil d'Ariane + onglets (Patients, Importer, Cohortes, À compléter, Statistiques, Journal, Accès, Gabarit, Curation).
+5. Ouvrir une base : fil d'Ariane + onglets (Patients, Importer, Cohortes, À compléter, Statistiques, Journal, Accès, Variables, Curation).
 6. **Statistiques** : cartes (Patients inclus/Objectif/Progression) ; fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré » → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
 7. **Complétude par variable** : les barres s'affichent, les moins complètes en premier, couleurs (rouge/ambre/vert).
 8. **À compléter** : cliquer « Compléter » sur une rencontre → le formulaire d'édition s'ouvre avec les bons champs.
@@ -67,17 +68,23 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 13. Éditer la rencontre créée : le **motif est requis** (essayer sans motif → blocage) ; avec motif → toast ; l'historique de correction s'affiche.
 14. Fiche patient : pastilles de statut **colorées** (ambre/bleu/vert), dates lisibles (« 7 juil. 2026 »), « Finaliser » passe le patient en Finalisé (vert).
 
-### 4.4 Gabarits (F1, F3)
-15. Mes gabarits → « **Depuis un fichier Excel** » : téléverser un petit CSV créé par toi (colonnes : `Age,Sexe,Date visite,Poids (kg),Commentaire` + 3-4 lignes) → vérifier les **types détectés** (entier/liste M-F/date/nombre/texte), modifier un libellé, décocher une colonne, créer → le gabarit `QA-…` apparaît dans Mes gabarits.
-16. Mes gabarits → « **Bibliothèque de modèles** » : les modèles s'affichent (globaux, ou les 4 par défaut avec le bandeau explicatif) ; « Utiliser ce modèle » → clone dans Mes gabarits.
-17. Supprimer les gabarits `QA-` créés.
+### 4.4 Jeux de variables (F1, F3)
+15. Mes jeux de variables → « **Depuis un fichier Excel** » : téléverser un petit CSV créé par toi (colonnes : `Age,Sexe,Date visite,Poids (kg),Commentaire` + 3-4 lignes) → vérifier les **types détectés** (entier/liste M-F/date/nombre/texte), modifier un libellé, décocher une colonne, créer → le jeu de variables `QA-…` apparaît dans Mes jeux de variables.
+16. Mes jeux de variables → « **Bibliothèque de modèles** » : les modèles s'affichent (globaux, ou les 4 par défaut avec le bandeau explicatif) ; « Utiliser ce modèle » → clone dans Mes jeux de variables.
+17. Supprimer les jeux de variables `QA-` créés.
 
 ### 4.5 Groupes (C2)
 18. Groupes de recherche : créer `QA-groupe`, y **rattacher** une base, ouvrir le groupe, **retirer** la base, **supprimer** le groupe → la **modale** de confirmation (pas un popup navigateur) apparaît ; la base n'est PAS supprimée.
 
-### 4.6 Import (rappel + §7.8)
+### 4.6 Import (rappel + §7.8 + import fluide V2)
 19. Importer un petit CSV (2 lignes patients fictifs `QA-IMP-1/2`) : aperçu → import → bilan (patients/rencontres/erreurs).
 20. **Réimporter le même contenu** (fichier renommé) : l'aperçu affiche « **Déjà importées (ignorées)** » et le commit ne crée **pas de doublon**.
+20bis. **Colonne non reconnue → créer la variable sur place** : importer un CSV avec une colonne
+   inconnue du jeu de variables (ex. `QA Poids (kg)` avec des valeurs numériques). La colonne reste
+   sur « Ignorer » et un bouton « **Créer la variable** » apparaît (propriétaire uniquement) →
+   cliquer : mini-formulaire pré-rempli (libellé = en-tête, **type détecté** depuis les valeurs) →
+   « Créer la variable » → toast de confirmation, la colonne est **mappée automatiquement** sur la
+   nouvelle variable → relancer l'aperçu → importer → la valeur apparaît sur la fiche patient.
 
 ### 4.7 Cohortes & exports
 21. Créer une cohorte figée simple, générer un **export CSV** → le fichier se télécharge + bandeau de succès.
@@ -91,7 +98,7 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 25. Onglet Journal : les actions récentes du parcours apparaissent (imports, accès, suppressions…) avec dates lisibles ; le **filtre par action** fonctionne ; « Charger plus » si > 50.
 
 ## 5. Parcours curateur (compte curateur)
-26. Connexion curateur : la barre latérale montre **Pool de curation + Synchronisation** seulement (pas de Tableau de bord médecin, pas de Groupes/Gabarits).
+26. Connexion curateur : la barre latérale montre **Pool de curation + Synchronisation** seulement (pas de Tableau de bord médecin, pas de Groupes/Jeux de variables).
 27. Ouvrir une tâche du pool si disponible : les documents sont accessibles, mais **AUCUN nom/date de naissance de patient n'est visible nulle part**. Chercher activement : fiche, titres, URLs.
 
 ## 6. Hors-ligne (rapide)
@@ -141,4 +148,4 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 ```
 
 ## 9. Nettoyage final
-Supprimer patients `QA-*` (avec motif « test QA »), groupes/gabarits/cohortes `QA-*`, révoquer les invitations `qa@example.test`. Noter ce qui n'a pas pu être supprimé.
+Supprimer patients `QA-*` (avec motif « test QA »), groupes/jeux de variables/cohortes `QA-*`, révoquer les invitations `qa@example.test`. Noter ce qui n'a pas pu être supprimé.

@@ -99,7 +99,7 @@ describe('audit v12 §6.2 : rattachement a un gabarit etranger interdit', () => 
     // Version d'un AUTRE gabarit (le seed en compte deux) -> rattachement REFUSE.
     const foreign = (await db.admin.query('select id from public.template_version where template_id <> $1 limit 1', [tA])).rows[0].id;
     await expect(rowsAs(bobId, 'select * from public.set_base_template_version($1,$2)', [baseId, foreign]))
-      .rejects.toThrow(/gabarit etranger/i);
+      .rejects.toThrow(/jeu de variables etranger/i);
 
     // Une nouvelle version du MEME gabarit reste acceptee (flux legitime createNextVersion).
     const sameTplNewVer = (await db.admin.query(
@@ -113,7 +113,7 @@ describe('audit v12 §6.2 : rattachement a un gabarit etranger interdit', () => 
   test('la version courante ne peut plus etre detachee puis remplacee par un gabarit prive etranger', async () => {
     const baseId = await bobCreatesBase();
     await expect(rowsAs(bobId, 'update public.base set current_template_version_id=null where id=$1', [baseId]))
-      .rejects.toThrow(/toujours pointer|gabarit/i);
+      .rejects.toThrow(/toujours pointer|jeu de variables/i);
   });
 });
 
