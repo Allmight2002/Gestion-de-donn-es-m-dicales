@@ -71,7 +71,7 @@ permission est un booléen indépendant, vérifié côté base par une fonction 
 
 ---
 
-## 3. Modèle de données (25 tables)
+## 3. Modèle de données
 
 ```mermaid
 erDiagram
@@ -209,7 +209,7 @@ seule, ou le patient **et** la demande.
 | i18n | `src/i18n/` | Messages fr/en |
 | **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) | RLS + domaine + rendu |
 
-### Liste des migrations (ordre d'application, 53 au total)
+### Liste des migrations (ordre d'application)
 
 > L'**état résultant** (tables, colonnes, RLS, triggers, fonctions) est régénérable dans
 > [`docs/schema-etat-final.md`](schema-etat-final.md) via `npm run schema` — inutile de rejouer
@@ -234,7 +234,7 @@ seule, ou le patient **et** la demande.
 093500_offline_snapshot_rpc      093600_import_duplicate_warnings
 
 # … suite : inspection serveur, gouvernance des accès, édition historique, exports audités,
-# idempotence d'import inter-lots … jusqu'à 095300 (voir le dossier et schema-etat-final.md)
+# idempotence d'import inter-lots … voir le dossier et schema-etat-final.md
 ```
 
 ---
@@ -252,7 +252,8 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
 ```
 
-État actuel : **42 fichiers / 326 tests verts** (53 migrations). Chaque refus RLS est doublé d'un
+État actuel : les compteurs exacts de tests et migrations sont fournis par `npm run manifest`,
+`npm run schema` et les sorties Vitest. Chaque refus RLS est doublé d'un
 **contrôle positif** prouvant qu'un utilisateur légitime voit bien la donnée (pas de faux
 positif par table vide).
 

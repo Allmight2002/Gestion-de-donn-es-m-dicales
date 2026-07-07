@@ -112,6 +112,21 @@ ou :
 { "status": "infected", "signature": "Eicar-Test-Signature", "engine": "clamav" }
 ```
 
+### Maintenance ClamAV
+
+En production, le service antivirus doit etre traite comme une dependance de securite active :
+
+- surveiller `GET /health` et alerter si le ping `clamd` ne repond pas ;
+- verifier que les signatures sont mises a jour par l'image ClamAV (`freshclam`) et redemarrer le
+  service si l'image signale une base de signatures obsolete ;
+- faire tourner periodiquement un scan de controle avec le fichier de test EICAR sur un
+  environnement de staging, puis confirmer que `signed-read` refuse toute URL pour le fichier
+  mis en quarantaine ;
+- faire une rotation de `CLAMAV_SCAN_TOKEN` comme les autres secrets Edge, puis relancer
+  `npm run env:check` avant de redeployer ;
+- garder `MAX_INSPECT_UPLOAD_BYTES <= MAX_SCAN_BYTES` pour eviter qu'une Edge Function accepte un
+  fichier que le scanner refusera ensuite.
+
 ### Deploy Edge + frontend
 
 ```bash

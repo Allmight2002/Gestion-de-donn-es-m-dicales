@@ -25,6 +25,11 @@ beforeAll(async () => {
 afterAll(async () => { await db?.stop(); });
 
 describe('C2 research_group (etiquette d organisation, privee)', () => {
+  test('un nom vide ou compose d espaces est refuse cote serveur', async () => {
+    await expect(rowsAs(aliceId, "insert into public.research_group(name, owner_user_id) values('   ',$1)", [aliceId]))
+      .rejects.toThrow(/research_group_name_not_blank|check/i);
+  });
+
   test('le proprietaire cree un groupe et rattache SA base ; un tiers ne voit rien et ne peut pas rattacher', async () => {
     const gid = (await rowsAs(aliceId, "insert into public.research_group(name, owner_user_id) values('Neuro-onco',$1) returning id", [aliceId]))[0].id;
     await rowsAs(aliceId, 'insert into public.research_group_base(group_id, base_id) values($1,$2)', [gid, baseId]);

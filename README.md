@@ -7,13 +7,14 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 **cloisonnement appliqué côté base (Row-Level Security), testé automatiquement**.
 
 > 🧭 **Nouvelle arrivée ?** Lisez d'abord **[docs/architecture.md](docs/architecture.md)** :
-> vue d'ensemble du modèle de données (25 tables), des rôles, du cloisonnement RLS et du
+> vue d'ensemble du modèle de données, des rôles, du cloisonnement RLS et du
 > cycle de curation. Le présent README est le guide de mise en route.
 
 État actuel : **3 rôles globaux** (`system_admin` / `medecin` / `curateur`), **2 rôles de
 partage** (`viewer` / `editor`) + **5 permissions granulaires** par base. Chaîne de curation
 complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
-**Tests : 42 fichiers / 326 verts** (Vitest ; RLS + sécurité côté base + rendu UI), **53 migrations**.
+Tests Vitest, RLS et migrations sont rejouables localement ; les compteurs exacts sont fournis par
+`npm run manifest`, `npm run schema` et les sorties de test.
 Build PWA OK ; **déployé** (Vercel + Supabase cloud, **données fictives**).
 
 > Besoin d'un backend Supabase pour le login réel ? Voir
@@ -103,7 +104,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 ├── supabase/
 │   ├── migrations/                       # Source de vérité du schéma (à appliquer sur Supabase)
 │   │   ├── 20260616090100_extensions.sql
-│   │   ├── 20260616090200_tables.sql         # Modèle de données (25 tables)
+│   │   ├── 20260616090200_tables.sql         # Modèle de données initial
 │   │   ├── 20260616090300_functions.sql      # Fonctions d'aide RLS (SECURITY DEFINER)
 │   │   ├── 20260616090400_rls.sql            # Activation RLS + politiques
 │   │   ├── 20260616090500_integrity.sql      # Triggers : profils, immuabilité gabarit, anti-escalade
@@ -117,11 +118,11 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   │   ├── 20260616091300_soft_delete.sql    # suppression logique
 │   │   ├── 20260616091400_curation.sql       # pool, brouillon, finalize_curation_task(), clarifications
 │   │   ├── 20260616091500_audit.sql          # audit_log (actions sensibles)
-│   │   └── … + 38 migrations de durcissement # 091600 → 095300 : édition de champs, règles
+│   │   └── … migrations de durcissement      # édition de champs, règles
 │   │                                          #   versionnées, import par lots + idempotence,
 │   │                                          #   écritures par RPC seulement, intégrité inter-bases,
 │   │                                          #   audit infalsifiable, hors-ligne, gouvernance des
-│   │                                          #   accès, exports audités… (53 au total ; voir
+│   │                                          #   accès, exports audités… (voir
 │   │                                          #   docs/schema-etat-final.md pour l'état résultant)
 │   ├── seed.sql                          # Données de démo FICTIVES
 │   ├── storage.sql                       # Buckets privés + RLS
@@ -175,7 +176,7 @@ npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le frontend (rendu + gating par rôle)
 ```
 
-Résultat attendu : **42 fichiers / 326 tests passants** — sécurité RLS (les scénarios
+Résultat attendu : toutes les suites passent — sécurité RLS (les scénarios
 d'attaque + leurs contrôles positifs), logique de rôle, règles JSON, validation de saisie,
 âge calculé sans exposer la DOB, corrections, images, cohortes, export immuable, accès,
 suppression logique, curation, audit, et rendu des écrans. Le premier lancement télécharge
