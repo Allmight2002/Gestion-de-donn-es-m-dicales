@@ -97,6 +97,29 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 ## 6. Hors-ligne (rapide)
 28. Sur une base : « Rendre disponible hors-ligne » → passer le navigateur **hors-ligne** (DevTools → Network → Offline) → recharger : bandeau hors-ligne, liste des patients consultable (codes, PAS d'identité), fiche patient lisible ; « À compléter »/actions d'écriture absentes ou en file. Repasser en ligne.
 
+## 6bis. Coopération à deux comptes (médecin propriétaire + 2ᵉ médecin)
+> L'invitation n'envoie PAS d'email : elle génère un **lien à partager** ; l'adresse saisie sert de
+> **verrou** (seul un compte connecté avec cette adresse peut accepter). Utiliser 2 fenêtres :
+> normale (propriétaire) + **navigation privée** (2ᵉ médecin).
+
+- **C1.** Propriétaire : base → Accès → profil **« Saisie »** → email du 2ᵉ médecin → « Créer
+  l'invitation » → copier le lien affiché.
+- **C2.** Fenêtre privée, connecté en 2ᵉ médecin : coller le lien → invitation acceptée → la base
+  apparaît sur son tableau de bord.
+- **C3.** Profil appliqué (2ᵉ médecin) : patients visibles (codes) + création de rencontre OK,
+  mais **AUCUNE identité** sur les fiches, pas d'onglet Accès, pas d'export.
+- **C4.** Propriétaire : l'accès listé avec le profil « Saisie » ; Journal → « Accès accordé » ;
+  cocher la permission **Identités** → après rechargement, le 2ᵉ médecin voit l'identité, et ses
+  consultations apparaissent dans « Consultations d'identité (30 j) » côté propriétaire.
+- **C5.** **Édition simultanée** : les 2 fenêtres ouvrent LA MÊME rencontre en édition ;
+  le propriétaire enregistre une correction ; le 2ᵉ médecin enregistre ensuite la sienne →
+  il doit être **refusé (conflit de version)**, pas d'écrasement silencieux.
+- **C6.** Lien à usage unique : recoller le lien déjà accepté → refus (statut non valable).
+- **C7.** Mauvais compte : créer une 2ᵉ invitation pour un email FICTIF différent, coller le lien
+  en étant connecté en 2ᵉ médecin → refus (« ne correspond pas à votre compte »).
+- **C8.** Révocation (propriétaire) : révoquer l'accès → chez le 2ᵉ médecin, la base disparaît du
+  tableau de bord et son URL directe ne renvoie plus rien.
+
 ## 7. Tests de sécurité négatifs (comportement ATTENDU = refus silencieux ou blocage)
 29. En **médecin**, taper l'URL `/admin` → redirection/blocage (pas d'écran admin).
 30. En **curateur**, taper l'URL `/bases/<id-d-une-base>` (récupérer un id depuis la session médecin) → pas de données (RLS).
