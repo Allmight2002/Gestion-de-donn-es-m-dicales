@@ -1,0 +1,115 @@
+# Plan de test du site déployé — instructions pour l'agent QA
+
+> **Cible** : https://gestion-de-donn-es-m-dicales.vercel.app (production, branche `main`).
+> **But** : vérifier que les fonctionnalités récentes marchent en ligne, détecter les écarts de
+> déploiement (migrations/Edge/storage pas encore appliqués), et produire un rapport structuré.
+> **Contexte** : registre clinique de recherche. Toutes les données du site sont **FICTIVES**.
+
+## 0. Règles impératives
+- **N'utiliser que des données fictives.** Ne jamais saisir de vrai nom/téléphone/adresse.
+- Préfixer **tout ce que tu crées** par `QA-` (patients `QA-001`, groupes `QA-groupe`, gabarits `QA-…`).
+- **Ne supprimer que ce que tu as créé toi-même** (préfixe `QA-`). Ne pas toucher aux données de démo existantes.
+- Ne pas tester la charge/performance (pas de boucles d'actions).
+- Ne pas tenter de contourner l'authentification autrement que par les tests négatifs listés en §7.
+
+## 1. Comptes de test (fournis par Dr Mbassi — à compléter avant l'exécution)
+| Rôle | Email | Mot de passe |
+|---|---|---|
+| Médecin **propriétaire** d'une base avec données | `________` | `________` |
+| **Curateur** | `________` | `________` |
+| (Optionnel) 2ᵉ médecin sans accès | `________` | `________` |
+| (Optionnel) Admin système | `________` | `________` |
+
+## 2. Préambule technique (avant tout test)
+1. Le site est une **PWA avec cache** : commencer par un **rechargement forcé** (Ctrl+Shift+R).
+2. Garder la **console navigateur ouverte** pendant TOUTE la session ; noter chaque erreur rouge
+   (page + message) et chaque requête réseau en échec (4xx/5xx hors 401 attendus).
+3. Après connexion, aller sur **Synchronisation** (barre latérale) et noter le panneau « État du
+   système » : **Version** affichée (ex. `0.1.0 · production`) → à mettre en tête du rapport.
+
+## 3. Diagnostic de déploiement (à faire EN PREMIER — oriente tout le reste)
+Connecté en **médecin propriétaire**, ouvrir une base existante puis :
+| Vérification | Si OK | Si KO → cause probable |
+|---|---|---|
+| Onglet **Statistiques** affiche la courbe + « Complétude par variable » | migrations ≥ 097000 appliquées | `db push` manquant (le reste des stats sera vide) |
+| Onglet **À compléter** liste des dossiers (ou message « Rien à compléter ») sans erreur | migration 097100 OK | `db push` manquant |
+| Onglet **Journal** affiche des événements + filtre par action | migrations journal OK | `db push` manquant |
+| Fiche patient → une **image s'ouvre** au clic | Edge `signed-read` déployée | Edge pas déployée ou `storage.sql` pas rejoué |
+| Onglet **Accès** → section « Consultations d'identité (30 j) » visible | migration 095400 OK | `db push` manquant (section masquée = normal alors) |
+> Reporter ce tableau tel quel dans le rapport : il dit **quoi corriger côté cloud** avant de juger les fonctionnalités.
+
+## 4. Parcours principal (médecin propriétaire) — dans cet ordre
+Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran si anomalie visuelle.
+
+### 4.1 Coquille & navigation (UI-1)
+1. Barre latérale visible (desktop) : Tableau de bord, Groupes, Mes gabarits, Synchronisation, bases récentes.
+2. **Ctrl+K** ouvre la palette ; taper le nom d'une base → Entrée → la base s'ouvre.
+3. **Thème** (bas de la barre latérale) : passer en **Sombre** → vérifier que la barre latérale devient sombre (pas blanche !), textes lisibles ; passer sur 3-4 écrans en sombre et noter tout élément illisible ; revenir en Clair.
+4. Réduire la fenêtre en largeur mobile (~375 px) : barre haute + menu tiroir fonctionnels.
+
+### 4.2 Page d'une base (onglets)
+5. Ouvrir une base : fil d'Ariane + onglets (Patients, Importer, Cohortes, À compléter, Statistiques, Journal, Accès, Gabarit, Curation).
+6. **Statistiques** : cartes (Patients inclus/Objectif/Progression) ; fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré » → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
+7. **Complétude par variable** : les barres s'affichent, les moins complètes en premier, couleurs (rouge/ambre/vert).
+8. **À compléter** : cliquer « Compléter » sur une rencontre → le formulaire d'édition s'ouvre avec les bons champs.
+
+### 4.3 Saisie (A2, A4, B5, UI-2)
+9. Créer un patient (manuel) `QA-001` avec nom fictif « Test Qa » + date de naissance : vérifier le **toast** « Patient enregistré ».
+10. Créer un **second** patient avec le MÊME nom fictif + même date de naissance : l'avertissement de doublon apparaît, la création est **bloquée** tant que la case « Je confirme qu'il s'agit bien d'un patient différent » n'est pas cochée ; cocher → création passe (patient `QA-002`).
+11. Nouvelle rencontre sur `QA-001` : le focus est déjà sur la date ; remplir ; enregistrer avec **Ctrl+Entrée** → toast « Rencontre enregistrée ».
+12. Rouvrir une nouvelle rencontre, saisir 2-3 champs, **fermer l'onglet** du navigateur, revenir sur la même page : bandeau « **Brouillon récupéré** » avec les valeurs restaurées ; cliquer « Effacer le brouillon » → formulaire vide.
+13. Éditer la rencontre créée : le **motif est requis** (essayer sans motif → blocage) ; avec motif → toast ; l'historique de correction s'affiche.
+14. Fiche patient : pastilles de statut **colorées** (ambre/bleu/vert), dates lisibles (« 7 juil. 2026 »), « Finaliser » passe le patient en Finalisé (vert).
+
+### 4.4 Gabarits (F1, F3)
+15. Mes gabarits → « **Depuis un fichier Excel** » : téléverser un petit CSV créé par toi (colonnes : `Age,Sexe,Date visite,Poids (kg),Commentaire` + 3-4 lignes) → vérifier les **types détectés** (entier/liste M-F/date/nombre/texte), modifier un libellé, décocher une colonne, créer → le gabarit `QA-…` apparaît dans Mes gabarits.
+16. Mes gabarits → « **Bibliothèque de modèles** » : les modèles s'affichent (globaux, ou les 4 par défaut avec le bandeau explicatif) ; « Utiliser ce modèle » → clone dans Mes gabarits.
+17. Supprimer les gabarits `QA-` créés.
+
+### 4.5 Groupes (C2)
+18. Groupes de recherche : créer `QA-groupe`, y **rattacher** une base, ouvrir le groupe, **retirer** la base, **supprimer** le groupe → la **modale** de confirmation (pas un popup navigateur) apparaît ; la base n'est PAS supprimée.
+
+### 4.6 Import (rappel + §7.8)
+19. Importer un petit CSV (2 lignes patients fictifs `QA-IMP-1/2`) : aperçu → import → bilan (patients/rencontres/erreurs).
+20. **Réimporter le même contenu** (fichier renommé) : l'aperçu affiche « **Déjà importées (ignorées)** » et le commit ne crée **pas de doublon**.
+
+### 4.7 Cohortes & exports
+21. Créer une cohorte figée simple, générer un **export CSV** → le fichier se télécharge + bandeau de succès.
+22. Dans l'historique des exports : « **Télécharger** » un export conservé → le fichier arrive (teste l'Edge `kind=export`).
+
+### 4.8 Accès (C1, E1)
+23. Onglet Accès : le sélecteur **« Profil »** propose Investigateur principal / Co-investigateur / Saisie / Moniteur / Personnalisé ; choisir « Saisie » → les cases se cochent toutes seules (saisie uniquement) ; modifier une case → passe en « Personnalisé ». Créer une invitation (email fictif `qa@example.test`) → lien généré ; puis **révoquer** l'invitation.
+24. Section « **Consultations d'identité (30 j)** » : présente, listant qui a consulté quels codes patients (après avoir ouvert 1-2 fiches, recharger : tes consultations apparaissent).
+
+### 4.9 Journal (C3)
+25. Onglet Journal : les actions récentes du parcours apparaissent (imports, accès, suppressions…) avec dates lisibles ; le **filtre par action** fonctionne ; « Charger plus » si > 50.
+
+## 5. Parcours curateur (compte curateur)
+26. Connexion curateur : la barre latérale montre **Pool de curation + Synchronisation** seulement (pas de Tableau de bord médecin, pas de Groupes/Gabarits).
+27. Ouvrir une tâche du pool si disponible : les documents sont accessibles, mais **AUCUN nom/date de naissance de patient n'est visible nulle part**. Chercher activement : fiche, titres, URLs.
+
+## 6. Hors-ligne (rapide)
+28. Sur une base : « Rendre disponible hors-ligne » → passer le navigateur **hors-ligne** (DevTools → Network → Offline) → recharger : bandeau hors-ligne, liste des patients consultable (codes, PAS d'identité), fiche patient lisible ; « À compléter »/actions d'écriture absentes ou en file. Repasser en ligne.
+
+## 7. Tests de sécurité négatifs (comportement ATTENDU = refus silencieux ou blocage)
+29. En **médecin**, taper l'URL `/admin` → redirection/blocage (pas d'écran admin).
+30. En **curateur**, taper l'URL `/bases/<id-d-une-base>` (récupérer un id depuis la session médecin) → pas de données (RLS).
+31. Avec le **2ᵉ médecin sans accès** (si fourni) : la base du propriétaire n'apparaît pas ; l'URL directe de la base → vide/refus ; l'URL directe d'une fiche patient → vide/refus.
+32. Déconnexion depuis chaque compte → retour à l'écran de connexion ; bouton Précédent du navigateur → ne réaffiche pas de données.
+
+## 8. Format du rapport attendu
+```
+# Rapport QA — <date> — version affichée : <…> — commit main attendu : ac7c17f
+## 1. Synthèse : X OK / Y KO / Z BLOQUÉ — verdict en 2 phrases
+## 2. Diagnostic de déploiement (tableau du §3 rempli)
+## 3. Résultats détaillés (par numéro d'étape : OK/KO/BLOQUÉ + observation)
+## 4. Anomalies (par gravité) :
+   - BLOQUANT (empêche un usage) / MAJEUR (contournable) / MINEUR (cosmétique)
+   - pour chaque : étapes de reproduction, attendu vs obtenu, capture
+## 5. Console & réseau : erreurs JS relevées + requêtes en échec (URL, code, page)
+## 6. Remarques UX libres (confusions, lenteurs ressenties, textes ambigus)
+## 7. Nettoyage effectué : liste des éléments QA-* supprimés / restants
+```
+
+## 9. Nettoyage final
+Supprimer patients `QA-*` (avec motif « test QA »), groupes/gabarits/cohortes `QA-*`, révoquer les invitations `qa@example.test`. Noter ce qui n'a pas pu être supprimé.
