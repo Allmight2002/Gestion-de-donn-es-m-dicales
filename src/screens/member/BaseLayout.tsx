@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useParams } from 'react-router-dom';
-import { ChartPie, ClipboardList, FileText, History, KeyRound, TrendingUp, Upload, Users } from 'lucide-react';
+import { ChartPie, ClipboardCheck, ClipboardList, FileText, History, KeyRound, TrendingUp, Upload, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useBaseRepository } from '../../data/RepositoryProvider';
@@ -47,6 +47,7 @@ export function BaseLayout() {
     ...(isOwner || listing?.permissions.canExportData || listing?.permissions.canEditStructuredData
       ? [{ to: `/bases/${id}/cohorts`, labelKey: 'base.tab_cohorts' as MessageKey, Icon: ChartPie }]
       : []),
+    ...(canEdit ? [{ to: `/bases/${id}/queue`, labelKey: 'base.tab_queue' as MessageKey, Icon: ClipboardCheck }] : []),
     ...(listing ? [{ to: `/bases/${id}/stats`, labelKey: 'base.tab_stats' as MessageKey, Icon: TrendingUp }] : []),
     ...(listing ? [{ to: `/bases/${id}/activity`, labelKey: 'base.tab_activity' as MessageKey, Icon: History }] : []),
     ...(isOwner || listing?.permissions.canManageAccess

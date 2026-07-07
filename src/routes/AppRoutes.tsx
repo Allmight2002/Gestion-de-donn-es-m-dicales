@@ -27,6 +27,7 @@ const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) 
 const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
+const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
 const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
 const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
 const GroupDetail = lazy(() => import('../screens/member/GroupDetail').then((m) => ({ default: m.GroupDetail })));
@@ -132,6 +133,7 @@ export function AppRoutes() {
         <Route path="import" element={<ImportData />} />
         <Route path="cohorts" element={<CohortBuilder />} />
         <Route path="stats" element={<BaseStats />} />
+        <Route path="queue" element={<CompletionQueue />} />
         <Route path="activity" element={<ActivityLog />} />
         <Route path="access" element={<AccessManagement />} />
         <Route path="template" element={<BaseTemplateEditor />} />

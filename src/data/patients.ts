@@ -101,6 +101,18 @@ export interface FieldChange {
   changedAt: string;
 }
 
+/** B2 — un dossier NON FINALISE avec ses champs requis manquants (file « a completer »). */
+export interface CompletionItem {
+  kind: 'patient' | 'encounter';
+  patientId: string;
+  encounterId?: string;
+  code: string;
+  encounterType?: string;
+  encounterDate?: string;
+  status: string;
+  missing: string[];
+}
+
 export interface PatientRepository {
   listPatients(baseId: string): Promise<PatientListItem[]>;
   /** Page de patients (pagination serveur) + effectif total de la base. */
@@ -134,6 +146,8 @@ export interface PatientRepository {
   completeImportBatch(batchId: string): Promise<void>;
   /** Annule un lot d'import en cours (libere le fichier). */
   cancelImportBatch(batchId: string): Promise<void>;
+  /** B2 : dossiers non finalises + champs requis manquants (RLS : sans acces -> vide). */
+  getCompletionQueue(baseId: string, limit?: number): Promise<CompletionItem[]>;
 }
 
 type PatientRow = {
@@ -195,7 +209,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
-      completeImportBatch: fail, cancelImportBatch: fail,
+      completeImportBatch: fail, cancelImportBatch: fail, getCompletionQueue: fail,
     };
   }
 
@@ -422,6 +436,12 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async cancelImportBatch(batchId) {
       const { error } = await client.rpc('cancel_import_batch', { p_batch_id: batchId });
       if (error) throw error;
+    },
+
+    async getCompletionQueue(baseId, limit) {
+      const { data, error } = await client.rpc('base_completion_queue', { p_base_id: baseId, p_limit: limit ?? 200 });
+      if (error) throw error;
+      return (data ?? []) as CompletionItem[];
     },
   };
 }

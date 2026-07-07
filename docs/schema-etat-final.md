@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616097000_completeness_stats.sql`
-- Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 170
+- Dernière migration incluse : `20260616097200_research_group_name_not_blank.sql`
+- Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 171
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -637,6 +637,7 @@ Triggers :
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
 | base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid | DEFINER | plpgsql |
 | base_completeness_stats | p_base_id uuid | INVOKER | sql |
+| base_completion_queue | p_base_id uuid, p_limit integer | INVOKER | sql |
 | base_identity_audit | p_base_id uuid | DEFINER | plpgsql |
 | base_inclusion_stats | p_base_id uuid | INVOKER | sql |
 | base_of_cohort | p_cohort uuid | DEFINER | sql |

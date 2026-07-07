@@ -47,8 +47,8 @@ Vue compacte pour téléphone : mes patients du jour, saisie une main au lit du 
 Vue colorée : quelles variables manquent, chez quels patients ; clic = aller compléter. **v1 livrée** : section « Complétude par variable » dans l'onglet Statistiques — barre colorée par variable (vert ≥ 80 %, ambre ≥ 50 %, rouge en dessous), les moins complètes d'abord ; champs rencontre rapportés aux types concernés ; code manquant explicite = renseigné. RPC `base_completeness_stats` (INVOKER, RLS naturelle), migration `097000`. **Pas encore** : la grille par patient + le clic « aller compléter » (rejoint B2, prochaine itération).
 **Pourquoi** : avant une analyse, le chercheur passe des heures à chercher « où sont les trous » ; cette vue transforme des heures en minutes.
 
-### B2. File de travail « à compléter » — **M**
-Liste automatique des patients/rencontres `draft` avec champs requis manquants, triable, assignable à un membre.
+### B2. File de travail « à compléter » — **M** — 🟡 v1 LIVRÉE (2026-07-07)
+Liste automatique des patients/rencontres `draft` avec champs requis manquants, triable, assignable à un membre. **v1 livrée** : onglet « À compléter » (membres avec droit de saisie) — dossiers non finalisés avec les **libellés** des champs requis manquants (chips), bouton « Compléter » → ouvre directement le bon formulaire. Chaque entité évaluée contre SA version de gabarit (§7.4) ; champs de rencontre exigés selon le type ; code manquant explicite = renseigné. RPC `base_completion_queue` (INVOKER, RLS naturelle), migration `097100`. **Pas encore** : l'assignation à un membre (prochaine itération).
 **Pourquoi** : la complétion devient un flux d'équipe mesurable, plus une chasse individuelle.
 
 ### B3. Détection d'aberrations (outliers) — **M**
