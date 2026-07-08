@@ -1,0 +1,4 @@
+# Registre clinique : outil metier sur invitation, volontairement NON indexe
+# (decision 2026-07-08). L'acces se fait par lien direct entre confreres.
+User-agent: *
+Disallow: /
