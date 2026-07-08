@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616097800_scientific_stats_completion.sql`
+- Dernière migration incluse : `20260616097900_inspection_attempt_limits.sql`
 - Tables : 29 · Policies RLS : 57 · Triggers : 43 · Fonctions : 178
 
 ## Tables (colonnes, RLS, policies, triggers)
@@ -137,6 +137,9 @@ Triggers :
 | deletion_reason | text | oui |  |
 | inspection_run_id | uuid | oui |  |
 | inspection_started_at | timestamp with time zone | oui |  |
+| inspection_attempt_count | integer | non | `0` |
+| last_inspection_attempt_at | timestamp with time zone | oui |  |
+| last_inspection_error | text | oui |  |
 
 Policies :
 - `ca_insert` (INSERT) — WITH CHECK can_write_identity(base_of_patient(patient_id))
@@ -462,6 +465,9 @@ Triggers :
 | deletion_reason | text | oui |  |
 | inspection_run_id | uuid | oui |  |
 | inspection_started_at | timestamp with time zone | oui |  |
+| inspection_attempt_count | integer | non | `0` |
+| last_inspection_attempt_at | timestamp with time zone | oui |  |
+| last_inspection_error | text | oui |  |
 
 Policies :
 - `rd_insert` (INSERT) — WITH CHECK is_base_owner(base_id)

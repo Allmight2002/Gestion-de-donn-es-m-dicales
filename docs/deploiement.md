@@ -98,7 +98,9 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      CLAMAV_SCAN_TOKEN=UN_SECRET_LONG \
                      REQUIRE_SERVER_INSPECTION=true \
                      MAX_INSPECT_UPLOAD_BYTES=20971520 \
-                     INSPECTION_SCANNING_STALE_MS=900000
+                     INSPECTION_SCANNING_STALE_MS=900000 \
+                     MAX_INSPECTION_ATTEMPTS=5 \
+                     INSPECTION_RETRY_COOLDOWN_MS=60000
 ```
 Avant un deploiement clinique, lancez aussi `npm run env:check` dans un contexte qui contient les
 variables frontend et les secrets Edge : le script refuse une divergence entre
@@ -135,7 +137,9 @@ Le compose refuse un `CLAMAV_SCAN_TOKEN` absent ou laisse par defaut, et les ima
 epinglees par digest (`clamav/clamav` + base Node du scanner). Pour les mettre a jour, relevez les
 nouveaux digests avec `docker buildx imagetools inspect`, puis validez
 `docker compose -f docker-compose.clamav.yml config`. La limite Storage declaree dans
-`supabase/storage.sql` est de 20 Mio, inferieure a la limite scanner locale de 25 Mio.
+`supabase/storage.sql` est de 20 Mio, inferieure a la limite scanner locale de 25 Mio. Les relances
+d'inspection sont bornees par `MAX_INSPECTION_ATTEMPTS` et espacees par
+`INSPECTION_RETRY_COOLDOWN_MS` ; le dernier echec technique est conserve en base pour diagnostic.
 
 Quand ce mode est actif, posez aussi `VITE_REQUIRE_SERVER_INSPECTION=true` cote frontend. Le build
 refuse cette option si `VITE_USE_SIGNED_READ=true` n'est pas pose.

@@ -32,11 +32,15 @@ if (edgeStrict) {
 
   const maxInspect = Number(value('MAX_INSPECT_UPLOAD_BYTES') || 20 * 1024 * 1024);
   const maxScan = Number(value('MAX_SCAN_BYTES') || 25 * 1024 * 1024);
+  const maxAttempts = Number(value('MAX_INSPECTION_ATTEMPTS') || 5);
+  const retryCooldown = Number(value('INSPECTION_RETRY_COOLDOWN_MS') || 60000);
   if (!Number.isFinite(maxInspect) || maxInspect <= 0) fail('MAX_INSPECT_UPLOAD_BYTES doit etre un entier positif.');
   if (!Number.isFinite(maxScan) || maxScan <= 0) fail('MAX_SCAN_BYTES doit etre un entier positif.');
   if (Number.isFinite(maxInspect) && Number.isFinite(maxScan) && maxInspect > maxScan) {
     fail('MAX_INSPECT_UPLOAD_BYTES doit rester inferieur ou egal a MAX_SCAN_BYTES.');
   }
+  if (!Number.isFinite(maxAttempts) || maxAttempts < 1) fail('MAX_INSPECTION_ATTEMPTS doit etre un entier positif.');
+  if (!Number.isFinite(retryCooldown) || retryCooldown < 0) fail('INSPECTION_RETRY_COOLDOWN_MS doit etre un entier positif ou nul.');
 }
 
 if (!process.exitCode) {

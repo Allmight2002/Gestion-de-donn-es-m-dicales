@@ -70,7 +70,11 @@ Le flux serveur est implemente par
 9. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
 
 Le `inspection_run_id` empeche un scan perime d'ecrire son verdict si un autre run a repris le
-verrou entre-temps.
+verrou entre-temps. Chaque prise de verrou incremente aussi `inspection_attempt_count`, conserve
+`last_inspection_attempt_at` et remet `last_inspection_error` a zero. Si le telechargement Storage
+ou le scanner echoue, la ligne redevient relancable (`pending` ou `accepted_client`) avec le dernier
+message d'erreur technique. Les relances sont bornees par `MAX_INSPECTION_ATTEMPTS` et freinees par
+`INSPECTION_RETRY_COOLDOWN_MS`.
 
 Les statuts `scanning` / `accepted` / `quarantined` restent reserves au serveur par les triggers SQL :
 un utilisateur authentifie ne peut pas se les attribuer depuis le frontend, ni sortir un fichier
@@ -148,7 +152,9 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      CLAMAV_SCAN_TOKEN=UN_SECRET_LONG \
                      REQUIRE_SERVER_INSPECTION=true \
                      MAX_INSPECT_UPLOAD_BYTES=20971520 \
-                     INSPECTION_SCANNING_STALE_MS=900000
+                     INSPECTION_SCANNING_STALE_MS=900000 \
+                     MAX_INSPECTION_ATTEMPTS=5 \
+                     INSPECTION_RETRY_COOLDOWN_MS=60000
 ```
 
 Controlez la coherence des drapeaux avant un deploiement clinique :

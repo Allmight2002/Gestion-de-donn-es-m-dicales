@@ -47,6 +47,8 @@ const MIME_BY_CONTAINER: Record<string, string> = {
 };
 const MAX_INSPECT_BYTES = Number(Deno.env.get('MAX_INSPECT_UPLOAD_BYTES') ?? String(20 * 1024 * 1024));
 const SCANNING_STALE_MS = Number(Deno.env.get('INSPECTION_SCANNING_STALE_MS') ?? String(15 * 60 * 1000));
+const MAX_INSPECTION_ATTEMPTS = Number(Deno.env.get('MAX_INSPECTION_ATTEMPTS') ?? '5');
+const INSPECTION_RETRY_COOLDOWN_MS = Number(Deno.env.get('INSPECTION_RETRY_COOLDOWN_MS') ?? '60000');
 
 function detectContainer(h: Uint8Array): string | null {
   const at = (off: number, sig: number[]) => sig.every((b, i) => h[off + i] === b);
@@ -189,11 +191,13 @@ Deno.serve(async (req: Request) => {
   let path: string;
   let baseId: string | null;
   let currentStatus: string;
+  let attemptCount = 0;
+  let lastAttemptAt: string | null = null;
 
   if (entity === 'raw_document') {
     const { data, error } = await asUser
       .from('raw_document')
-      .select('id, base_id, storage_path, inspection_status')
+      .select('id, base_id, storage_path, inspection_status, inspection_attempt_count, last_inspection_attempt_at')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -203,10 +207,12 @@ Deno.serve(async (req: Request) => {
     path = data.storage_path;
     baseId = data.base_id;
     currentStatus = data.inspection_status;
+    attemptCount = Number(data.inspection_attempt_count ?? 0);
+    lastAttemptAt = data.last_inspection_attempt_at ?? null;
   } else {
     const { data, error } = await asUser
       .from('clinical_attachment')
-      .select('id, patient_id, storage_path, inspection_status')
+      .select('id, patient_id, storage_path, inspection_status, inspection_attempt_count, last_inspection_attempt_at')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -217,6 +223,8 @@ Deno.serve(async (req: Request) => {
     path = data.storage_path;
     baseId = pat?.base_id ?? null;
     currentStatus = data.inspection_status;
+    attemptCount = Number(data.inspection_attempt_count ?? 0);
+    lastAttemptAt = data.last_inspection_attempt_at ?? null;
   }
 
   if (!baseId) return json(403, { error: 'Acces refuse' });
@@ -241,10 +249,32 @@ Deno.serve(async (req: Request) => {
     return json(409, { status: currentStatus, error: 'Statut non relancable par inspection serveur' });
   }
 
+  const maxAttempts = Number.isFinite(MAX_INSPECTION_ATTEMPTS) ? Math.max(1, Math.floor(MAX_INSPECTION_ATTEMPTS)) : 5;
+  const cooldownMs = Number.isFinite(INSPECTION_RETRY_COOLDOWN_MS) ? Math.max(0, Math.floor(INSPECTION_RETRY_COOLDOWN_MS)) : 60000;
+  if (attemptCount >= maxAttempts) {
+    return json(429, {
+      status: currentStatus,
+      error: 'Nombre maximal de tentatives d inspection atteint',
+      attempts: attemptCount,
+      maxAttempts,
+    });
+  }
+  const lastAttemptMs = lastAttemptAt ? Date.parse(lastAttemptAt) : NaN;
+  if (cooldownMs > 0 && Number.isFinite(lastAttemptMs)) {
+    const elapsed = Date.now() - lastAttemptMs;
+    if (elapsed >= 0 && elapsed < cooldownMs) {
+      return json(429, {
+        status: currentStatus,
+        error: 'Inspection relancee trop rapidement',
+        retryAfterMs: cooldownMs - elapsed,
+      });
+    }
+  }
+
   const runId = crypto.randomUUID();
   const inspectionStartedAt = new Date().toISOString();
 
-  const resetAfterInspectionFailure = async () => {
+  const resetAfterInspectionFailure = async (message: string) => {
     await admin
       .from(table)
       .update({
@@ -252,6 +282,7 @@ Deno.serve(async (req: Request) => {
         inspected_at: null,
         inspection_started_at: null,
         inspection_run_id: null,
+        last_inspection_error: message.slice(0, 500),
       })
       .eq('id', id)
       .eq('inspection_status', 'scanning')
@@ -266,6 +297,9 @@ Deno.serve(async (req: Request) => {
       inspected_at: inspectionStartedAt,
       inspection_started_at: inspectionStartedAt,
       inspection_run_id: runId,
+      inspection_attempt_count: attemptCount + 1,
+      last_inspection_attempt_at: inspectionStartedAt,
+      last_inspection_error: null,
     })
     .eq('id', id)
     .eq('inspection_status', lockFromStatus);
@@ -324,8 +358,9 @@ Deno.serve(async (req: Request) => {
 
   const { data: fileBlob, error: downloadErr } = await admin.storage.from(bucket).download(path);
   if (downloadErr || !fileBlob) {
-    await resetAfterInspectionFailure();
-    return json(500, { error: downloadErr?.message ?? 'Telechargement du fichier impossible' });
+    const message = downloadErr?.message ?? 'Telechargement du fichier impossible';
+    await resetAfterInspectionFailure(message);
+    return json(500, { error: message });
   }
   if (isFiniteLimit && fileBlob.size > MAX_INSPECT_BYTES) {
     const { error: quarantineErr, stale } = await quarantineTooLarge(fileBlob.size);
@@ -362,7 +397,7 @@ Deno.serve(async (req: Request) => {
   };
 
   if (!expectedContainer || detectedContainer !== expectedContainer) {
-    const { error, stale } = await mark('quarantined', 'container-check', {
+    const { error, stale } = await mark('quarantined', 'magic-bytes', {
       extra: { detected_container: detectedContainer, expected_container: expectedContainer ?? null },
     });
     if (error) return json(500, { error: 'Mise en quarantaine impossible' });
@@ -383,7 +418,7 @@ Deno.serve(async (req: Request) => {
 
   const verdict = await scanWithClamAV(bytes, path.split('/').pop() ?? path);
   if (!verdict.ok) {
-    await resetAfterInspectionFailure();
+    await resetAfterInspectionFailure(verdict.error);
     return json(503, { error: verdict.error });
   }
 

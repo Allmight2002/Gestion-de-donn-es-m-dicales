@@ -38,6 +38,8 @@ describe('configuration de deploiement', () => {
     expect(envCheck).toContain('frontendStrict !== edgeStrict');
     expect(envCheck).toContain('DB_REQUIRE_SERVER_INSPECTION');
     expect(envCheck).toContain('MAX_INSPECT_UPLOAD_BYTES');
+    expect(envCheck).toContain('MAX_INSPECTION_ATTEMPTS');
+    expect(envCheck).toContain('INSPECTION_RETRY_COOLDOWN_MS');
     expect(config).toContain('[functions.inspect-upload]');
     expect(config).toContain('[functions.cleanup-upload]');
     expect(inspect).toContain("CLAMAV_SCAN_URL");
@@ -47,7 +49,11 @@ describe('configuration de deploiement', () => {
     expect(inspect).toContain('inspection_run_id');
     expect(inspect).toContain("admin.rpc('complete_file_inspection'");
     expect(inspect).toContain('MAX_INSPECT_UPLOAD_BYTES');
+    expect(inspect).toContain('MAX_INSPECTION_ATTEMPTS');
+    expect(inspect).toContain('INSPECTION_RETRY_COOLDOWN_MS');
+    expect(inspect).toContain('last_inspection_error');
     expect(inspect).toContain("engine: 'size-limit'");
+    expect(inspect).toContain("'magic-bytes'");
     expect(inspect).toContain('officeSubtypeMatches');
     expect(inspect).toContain("'accepted'");
     expect(inspect).toContain("'quarantined'");
@@ -90,6 +96,8 @@ describe('configuration de deploiement', () => {
     expect(prodEnv).toContain('CLAMAV_SCAN_URL=');
     expect(prodEnv).toContain('CLAMAV_SCAN_TOKEN=');
     expect(prodEnv).toContain('VITE_REQUIRE_SERVER_INSPECTION=');
+    expect(prodEnv).toContain('MAX_INSPECTION_ATTEMPTS=');
+    expect(prodEnv).toContain('INSPECTION_RETRY_COOLDOWN_MS=');
     expect(viteConfig).toContain("VITE_REQUIRE_SERVER_INSPECTION === 'true'");
     expect(viteConfig).toContain("VITE_USE_SIGNED_READ !== 'true'");
     expect(viteConfig).toContain('VERCEL_GIT_COMMIT_SHA');

@@ -88,13 +88,14 @@ describe('complete_file_inspection', () => {
     expect(ok.rows[0].ok).toBe(true);
 
     const row = (await db.admin.query(
-      'select inspection_status, inspection_run_id, inspection_started_at, file_hash, file_size, detected_mime_type from public.clinical_attachment where id=$1',
+      'select inspection_status, inspection_run_id, inspection_started_at, last_inspection_error, file_hash, file_size, detected_mime_type from public.clinical_attachment where id=$1',
       [attId],
     )).rows[0];
     expect(row).toMatchObject({
       inspection_status: 'accepted',
       inspection_run_id: runId,
       inspection_started_at: null,
+      last_inspection_error: null,
       file_hash: 'hash-ok',
       file_size: '123',
       detected_mime_type: 'image/png',
@@ -161,5 +162,24 @@ describe('complete_file_inspection', () => {
       null,
       JSON.stringify({}),
     ])).rejects.toThrow(/permission|execute/i);
+  });
+
+  test('les compteurs de tentative restent controles par le serveur', async () => {
+    const rows = await rowsAs(aliceId, [
+      'insert into public.clinical_attachment(',
+      '  patient_id, storage_path, deidentification_confirmed, inspection_status,',
+      '  inspection_attempt_count, last_inspection_attempt_at, last_inspection_error',
+      ") values($1,$2,true,'accepted_client',7,now(),'client forged')",
+      'returning id, inspection_attempt_count, last_inspection_attempt_at, last_inspection_error',
+    ].join(' '), [patientId, `${baseId}/inspection/${randomUUID()}.png`]);
+    const inserted = rows[0];
+    expect(inserted.inspection_attempt_count).toBe(0);
+    expect(inserted.last_inspection_attempt_at).toBeNull();
+    expect(inserted.last_inspection_error).toBeNull();
+
+    await expect(rowsAs(aliceId, 'update public.clinical_attachment set inspection_attempt_count=9 where id=$1', [inserted.id]))
+      .rejects.toThrow(/immuable|verrouille/i);
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set last_inspection_error='fake' where id=$1", [inserted.id]))
+      .rejects.toThrow(/immuable|verrouille/i);
   });
 });
