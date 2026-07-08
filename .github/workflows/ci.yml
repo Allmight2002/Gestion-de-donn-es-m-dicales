@@ -41,3 +41,30 @@ jobs:
         env:
           VITE_USE_SIGNED_READ: 'true'
         run: npm run build
+
+  # Audit v18 P0 : l'image du scanner ClamAV doit DEMARRER, pas seulement se construire —
+  # un COPY manquant dans le Dockerfile ne casse pas `docker build`, seulement le lancement
+  # de node (ERR_MODULE_NOT_FOUND). On construit l'image, on la demarre avec un token de
+  # test, et on exige une reponse HTTP sur /health (503 attendu : clamd est ABSENT ici,
+  # seul le demarrage du serveur est teste ; le verdict antivirus a ses tests unitaires).
+  scanner-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construire l'image du scanner
+        run: docker build -t clamav-scanner-ci services/clamav-scanner
+
+      - name: Demarrer le conteneur et exiger une reponse HTTP
+        run: |
+          docker run -d --name scanner-ci -e SCAN_TOKEN=ci-smoke-token -p 8080:8080 clamav-scanner-ci
+          sleep 5
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/health || true)
+          echo "GET /health -> HTTP $code (503 attendu sans clamd)"
+          docker logs scanner-ci
+          test "$code" = "503" -o "$code" = "200"
+
+      - name: Nettoyage
+        if: always()
+        run: docker rm -f scanner-ci || true
