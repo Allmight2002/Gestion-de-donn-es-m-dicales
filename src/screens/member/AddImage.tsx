@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository } from '../../data/RepositoryProvider';
@@ -18,6 +18,15 @@ export function AddImage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [masking, setMasking] = useState(false);
+
+  // Chaque createObjectURL reserve de la memoire jusqu'a revocation explicite : on revoque
+  // l'apercu PRECEDENT a chaque remplacement, et le dernier au demontage (audit externe).
+  useEffect(() => {
+    if (!preview) return;
+    return () => {
+      try { URL.revokeObjectURL(preview); } catch { /* environnement sans createObjectURL */ }
+    };
+  }, [preview]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

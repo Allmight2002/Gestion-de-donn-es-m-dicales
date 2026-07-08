@@ -42,6 +42,16 @@ jobs:
           VITE_USE_SIGNED_READ: 'true'
         run: npm run build
 
+      - name: Aucun motif de cle serveur dans le bundle
+        # Ferme la classe « erreur de config » (ex. variable service_role prefixee VITE_ par
+        # megarde sur Vercel) : un bundle sain ne contient AUCUN de ces motifs (verifie).
+        run: |
+          if grep -rEn "sb_secret_|service_role|SUPABASE_SERVICE_ROLE_KEY" dist/; then
+            echo "::error::Motif de cle serveur detecte dans dist/ — le bundle frontend ne doit jamais embarquer de secret."
+            exit 1
+          fi
+          echo "dist/ : aucun motif de cle serveur"
+
   # Audit v18 P0 : l'image du scanner ClamAV doit DEMARRER, pas seulement se construire —
   # un COPY manquant dans le Dockerfile ne casse pas `docker build`, seulement le lancement
   # de node (ERR_MODULE_NOT_FOUND). On construit l'image, on la demarre avec un token de

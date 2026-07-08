@@ -40,6 +40,9 @@ describe('configuration de deploiement', () => {
     expect(pkg.scripts['env:check']).toBe('node scripts/check-inspection-env.mjs');
     expect(pkg.scripts['env:check:cloud']).toBe('node scripts/check-inspection-env.mjs --cloud');
     expect(ci).toContain('npm run env:check');
+    // Idee volee a un audit externe (qui croyait le controle deja present) : la CI refuse
+    // un bundle contenant un motif de cle serveur.
+    expect(ci).toContain('sb_secret_|service_role|SUPABASE_SERVICE_ROLE_KEY');
     // §6.2 audit v18 : le preflight de release interroge la valeur REELLE dans la base.
     expect(envCheck).toContain('require_server_inspection()');
     expect(envCheck).toContain('SUPABASE_DB_URL');

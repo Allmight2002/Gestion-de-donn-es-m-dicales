@@ -60,17 +60,41 @@ export function CohortBuilder() {
   function addCondition() {
     const f = fields.find((x) => x.fieldKey === draftField);
     if (!f || !draftValue.trim()) return;
+    // Garde de TYPE (audit externe) : cote base, value_cmp replie en tri LEXICAL quand le
+    // cast numerique echoue -> « poids > abc » renverrait un resultat absurde au lieu d'une
+    // erreur. Les donnees sont deja strictement typees ; seule la valeur du filtre peut deriver.
+    const toCheck = draftOp === 'in'
+      ? draftValue.split(',').map((s) => s.trim()).filter(Boolean)
+      : [draftValue.trim(), ...(draftOp === 'between' ? [draftValue2.trim()] : [])].filter(Boolean);
+    if (f.type === 'integer' && toCheck.some((v) => !/^-?\d+$/.test(v))) {
+      setError(t('cohort.value_int').replace('{field}', f.label));
+      return;
+    }
+    if (f.type === 'number' && toCheck.some((v) => !/^-?\d+(\.\d+)?$/.test(v.replace(',', '.')))) {
+      setError(t('cohort.value_num').replace('{field}', f.label));
+      return;
+    }
+    if ((f.type === 'date' || f.type === 'datetime') && toCheck.some((v) => !/^\d{4}-\d{2}-\d{2}/.test(v))) {
+      setError(t('cohort.value_date').replace('{field}', f.label));
+      return;
+    }
+    // Virgule decimale toleree a la saisie (habitude fr) mais STOCKEE en point : c'est le
+    // format que le cast numeric cote base accepte.
+    const normalize = (v: string) => (f.type === 'number' ? v.replace(',', '.') : v);
     const cond: FilterCondition = {
       scope: f.scope,
       field: f.fieldKey,
       op: draftOp,
-      value: draftOp === 'in' ? draftValue.split(',').map((s) => s.trim()).filter(Boolean) : draftValue.trim(),
-      ...(draftOp === 'between' ? { value2: draftValue2.trim() } : {}),
+      value: draftOp === 'in'
+        ? draftValue.split(',').map((s) => s.trim()).filter(Boolean).map(normalize)
+        : normalize(draftValue.trim()),
+      ...(draftOp === 'between' ? { value2: normalize(draftValue2.trim()) } : {}),
     };
     setConditions((c) => [...c, cond]);
     setDraftValue('');
     setDraftValue2('');
     setCounts(null);
+    setError(null);
   }
 
   const buildFilter = (): FilterDefinition => ({ conditions });

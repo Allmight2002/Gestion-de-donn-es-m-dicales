@@ -3,14 +3,24 @@
 // { message, details, hint, code }. Le test `e instanceof Error` echoue donc, et l'UI affichait
 // un message generique au lieu du VRAI motif renvoye par le serveur. On lit ici aussi `.message`
 // (et quelques variantes) sur les objets pour faire remonter l'erreur reelle.
+// Jetons techniques -> message ACTIONNABLE. NB : la detection de conflit de la synchro
+// hors-ligne (offline.ts, isConflict) lit err.message BRUT et n'est donc pas affectee.
+function humanize(message: string): string {
+  if (/CONFLIT_VERSION/i.test(message)) {
+    return 'Cette rencontre a été modifiée entre-temps (autre utilisateur ou autre onglet). '
+      + 'Rechargez la fiche pour voir la version à jour, puis réappliquez votre correction.';
+  }
+  return message;
+}
+
 export function errorMessage(e: unknown, fallback: string): string {
-  if (e instanceof Error && e.message) return e.message;
-  if (typeof e === 'string' && e) return e;
+  if (e instanceof Error && e.message) return humanize(e.message);
+  if (typeof e === 'string' && e) return humanize(e);
   if (e && typeof e === 'object') {
     const o = e as Record<string, unknown>;
     for (const k of ['message', 'error_description', 'error', 'hint', 'details']) {
       const v = o[k];
-      if (typeof v === 'string' && v.trim()) return v;
+      if (typeof v === 'string' && v.trim()) return humanize(v);
     }
   }
   return fallback;

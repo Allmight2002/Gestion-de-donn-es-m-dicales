@@ -24,7 +24,10 @@ const templateRepo = {
   async getVersion() {
     return {
       version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
-      fields: [field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'] })],
+      fields: [
+        field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'] }),
+        field({ fieldKey: 'poids', label: 'Poids', scope: 'patient', type: 'number' }),
+      ],
       rules: [],
     };
   },
@@ -73,5 +76,24 @@ describe('CohortBuilder', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la cohorte' }));
     expect(createSnapshot).toHaveBeenCalledTimes(1);
     expect(createSnapshot.mock.calls[0][1]).toBe('Cohorte M');
+  });
+
+  test('audit externe : une valeur non numerique sur un champ nombre est refusee AVANT l ajout', async () => {
+    renderBuilder(makeCohorts());
+    await screen.findByText('Constituer une cohorte');
+
+    // Champ « Poids » (number) + valeur texte -> erreur explicite, PAS de filtre ajoute
+    // (cote base, value_cmp replierait en tri lexical silencieux).
+    fireEvent.change(screen.getByLabelText('Variable'), { target: { value: 'poids' } });
+    fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'abc' } });
+    await userEvent.click(screen.getByRole('button', { name: /ajouter le filtre/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Poids.*num/i);
+    expect(screen.queryByRole('button', { name: 'Retirer' })).toBeNull();
+
+    // Virgule decimale toleree : « 12,5 » passe et est normalisee en « 12.5 ».
+    fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: '12,5' } });
+    await userEvent.click(screen.getByRole('button', { name: /ajouter le filtre/i }));
+    expect(screen.getByRole('button', { name: 'Retirer' })).toBeInTheDocument();
+    expect(screen.getByText(/12\.5/)).toBeInTheDocument();
   });
 });
