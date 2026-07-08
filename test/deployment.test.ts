@@ -31,15 +31,21 @@ describe('configuration de deploiement', () => {
     const envCheck = read('scripts/check-inspection-env.mjs');
     const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
     const config = read('supabase/config.toml');
+    const ci = read('.github/workflows/ci.yml');
 
     expect(pkg.scripts['env:check']).toBe('node scripts/check-inspection-env.mjs');
+    expect(ci).toContain('npm run env:check');
     expect(envCheck).toContain('frontendStrict !== edgeStrict');
+    expect(envCheck).toContain('DB_REQUIRE_SERVER_INSPECTION');
     expect(envCheck).toContain('MAX_INSPECT_UPLOAD_BYTES');
     expect(config).toContain('[functions.inspect-upload]');
     expect(config).toContain('[functions.cleanup-upload]');
     expect(inspect).toContain("CLAMAV_SCAN_URL");
     expect(inspect).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(inspect).toContain("inspection_status: 'scanning'");
+    expect(inspect).toContain("currentStatus === 'accepted_client'");
+    expect(inspect).toContain('inspection_run_id');
+    expect(inspect).toContain("admin.rpc('complete_file_inspection'");
     expect(inspect).toContain('MAX_INSPECT_UPLOAD_BYTES');
     expect(inspect).toContain("engine: 'size-limit'");
     expect(inspect).toContain('officeSubtypeMatches');
@@ -50,6 +56,8 @@ describe('configuration de deploiement', () => {
     expect(signedRead).toContain("status === 'quarantined'");
     expect(signedRead).toContain("status === 'pending' || status === 'scanning'");
     expect(inspection).toContain("VITE_REQUIRE_SERVER_INSPECTION");
+    expect(inspection).toContain("!requireServerInspection && status === 'accepted_client'");
+    expect(inspection).toContain("requireServerInspection && status === 'accepted_client'");
     expect(inspection).toContain("inspect-upload");
     expect(inspection).toContain("cleanup-upload");
     expect(cleanup).toContain("orphan_upload_removed");

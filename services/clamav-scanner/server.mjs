@@ -1,5 +1,6 @@
 import http from 'node:http';
 import net from 'node:net';
+import { parseScan } from './parse-scan.mjs';
 
 const PORT = Number(process.env.PORT ?? '8080');
 const CLAMD_HOST = process.env.CLAMD_HOST ?? '127.0.0.1';
@@ -91,13 +92,6 @@ async function scanBuffer(buffer) {
     }
     socket.write(Buffer.alloc(4));
   });
-}
-
-function parseScan(raw) {
-  if (/\bOK\b/i.test(raw)) return { status: 'clean', raw };
-  const found = raw.match(/:?\s*(.+?)\s+FOUND\b/i);
-  if (found) return { status: 'infected', signature: found[1].replace(/^stream:\s*/i, ''), raw };
-  return { status: 'error', raw };
 }
 
 const server = http.createServer(async (req, res) => {

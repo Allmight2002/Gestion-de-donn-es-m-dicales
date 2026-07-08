@@ -55,16 +55,22 @@ Le flux serveur est implemente par
 1. Le frontend insere la ligne en `inspection_status='pending'` quand
    `VITE_REQUIRE_SERVER_INSPECTION=true`.
 2. Le frontend appelle `supabase.functions.invoke('inspect-upload', { body: { entity, id } })`.
-3. La fonction Edge autorise via RLS avec le JWT utilisateur, pose atomiquement le verrou serveur
-   `inspection_status='scanning'`, puis utilise `service_role` pour telecharger l'objet prive.
+3. La fonction Edge autorise via RLS avec le JWT utilisateur, pose le verrou serveur
+   `inspection_status='scanning'` avec un `inspection_run_id`, puis utilise `service_role` pour
+   telecharger l'objet prive.
 4. Elle refuse les objets trop volumineux avant `arrayBuffer()` (`MAX_INSPECT_UPLOAD_BYTES`) et
    journalise la quarantaine via `file_inspected`.
 5. Elle recalcule `file_hash`, `file_size`, verifie la coherence extension / magic-bytes cote
    serveur, controle les marqueurs OOXML pour `docx`/`xlsx`, puis appelle le scanner ClamAV HTTP
    (`CLAMAV_SCAN_URL`).
-6. Verdict propre : la ligne passe en `inspection_status='accepted'`.
-7. Verdict infecte ou fichier incoherent : la ligne passe en `inspection_status='quarantined'`.
-8. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
+6. La finalisation passe par la RPC `complete_file_inspection` : verdict, metadonnees et audit
+   `file_inspected` sont ecrits dans une seule transaction.
+7. Verdict propre : la ligne passe en `inspection_status='accepted'`.
+8. Verdict infecte ou fichier incoherent : la ligne passe en `inspection_status='quarantined'`.
+9. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
+
+Le `inspection_run_id` empeche un scan perime d'ecrire son verdict si un autre run a repris le
+verrou entre-temps.
 
 Les statuts `scanning` / `accepted` / `quarantined` restent reserves au serveur par les triggers SQL :
 un utilisateur authentifie ne peut pas se les attribuer depuis le frontend, ni sortir un fichier
@@ -148,6 +154,7 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
 Controlez la coherence des drapeaux avant un deploiement clinique :
 
 ```bash
+DB_REQUIRE_SERVER_INSPECTION=true \
 npm run env:check
 ```
 
@@ -156,6 +163,15 @@ Cote frontend, posez :
 ```bash
 VITE_USE_SIGNED_READ=true
 VITE_REQUIRE_SERVER_INSPECTION=true
+```
+
+Et cote base cloud, activez la politique stricte qui empeche `accepted_client` d'entrer dans le
+pool de curation :
+
+```sql
+update public.app_security_setting
+   set value = 'true', updated_at = now()
+ where key = 'require_server_inspection';
 ```
 
 Puis rebuild. Le build refuse explicitement `VITE_REQUIRE_SERVER_INSPECTION=true` si

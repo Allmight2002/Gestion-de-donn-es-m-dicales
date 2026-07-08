@@ -241,6 +241,31 @@ describe('soumission de cas (medecin)', () => {
       .rejects.toThrow(/inspection|acceptes/i);
   });
 
+  test('en politique stricte, accepted_client bloque la soumission au staff', async () => {
+    await db.admin.query("update public.app_security_setting set value='true', updated_at=now() where key='require_server_inspection'");
+    try {
+      const pid = (await db.admin.query('select id from public.patient where base_id=$1 limit 1', [baseId])).rows[0].id;
+      const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'strict-client']);
+      const taskId = task[0].id as string, subId = task[0].submission_id as string;
+      await db.admin.query(
+        "insert into public.raw_document(submission_id, base_id, label, storage_path, mime_type, inspection_status) values($1,$2,'d',$3,'application/pdf','accepted_client')",
+        [subId, baseId, `${baseId}/${subId}/client.pdf`],
+      );
+
+      await expect(rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId]))
+        .rejects.toThrow(/inspection serveur|acceptes/i);
+
+      await db.admin.query(
+        "update public.raw_document set inspection_status='accepted', inspected_at=now() where submission_id=$1",
+        [subId],
+      );
+      const sent = await rowsAs(aliceId, 'select * from public.submit_curation_request($1)', [taskId]);
+      expect(sent[0].status).toBe('open');
+    } finally {
+      await db.admin.query("update public.app_security_setting set value='false', updated_at=now() where key='require_server_inspection'");
+    }
+  });
+
   test('portee "rencontre" : scope=encounter ; la finalisation cree une rencontre', async () => {
     const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-009'", [baseId])).rows[0].id;
     const task = await rowsAs(aliceId, 'select * from public.create_curation_submission($1,$2,$3,$4)', [baseId, pid, 'ENC', 'encounter']);

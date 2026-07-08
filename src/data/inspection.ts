@@ -12,12 +12,18 @@ type InspectUploadResponse = {
   signature?: string;
 };
 
-export function isInspectionReadable(status: InspectionStatus): boolean {
-  return status === 'accepted' || status === 'accepted_client';
+export function isInspectionReadable(
+  status: InspectionStatus,
+  requireServerInspection = REQUIRE_SERVER_INSPECTION,
+): boolean {
+  return status === 'accepted' || (!requireServerInspection && status === 'accepted_client');
 }
 
-export function isInspectionRetryable(status: InspectionStatus): boolean {
-  return status === 'pending' || status === 'scanning';
+export function isInspectionRetryable(
+  status: InspectionStatus,
+  requireServerInspection = REQUIRE_SERVER_INSPECTION,
+): boolean {
+  return status === 'pending' || status === 'scanning' || (requireServerInspection && status === 'accepted_client');
 }
 
 async function functionErrorMessage(error: unknown): Promise<string | null> {

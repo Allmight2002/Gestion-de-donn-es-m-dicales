@@ -20,6 +20,10 @@ if (frontendStrict && !yes('VITE_USE_SIGNED_READ')) {
 }
 
 if (edgeStrict) {
+  if (!yes('DB_REQUIRE_SERVER_INSPECTION')) {
+    fail("DB_REQUIRE_SERVER_INSPECTION='true' est requis avec REQUIRE_SERVER_INSPECTION=true. Appliquez aussi la mise a jour SQL de public.app_security_setting.");
+  }
+
   if (!value('CLAMAV_SCAN_URL')) fail('CLAMAV_SCAN_URL est requis quand REQUIRE_SERVER_INSPECTION=true.');
   const token = value('CLAMAV_SCAN_TOKEN').trim().toLowerCase();
   if (!token || token === 'change-me' || token === 'changeme') {

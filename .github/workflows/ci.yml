@@ -29,6 +29,9 @@ jobs:
       - name: Lint (tournures a risque, regles des hooks React)
         run: npm run lint
 
+      - name: Inspection env preflight
+        run: npm run env:check
+
       - name: Tests (RLS embarque + UI)
         run: npm test
 

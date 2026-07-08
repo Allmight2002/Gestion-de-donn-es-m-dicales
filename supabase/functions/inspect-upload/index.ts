@@ -235,14 +235,38 @@ Deno.serve(async (req: Request) => {
       return json(409, { status: 'scanning', error: 'Inspection deja en cours' });
     }
     lockFromStatus = 'scanning';
+  } else if (currentStatus === 'accepted_client') {
+    lockFromStatus = 'accepted_client';
   } else if (currentStatus !== 'pending') {
     return json(409, { status: currentStatus, error: 'Statut non relancable par inspection serveur' });
   }
 
+  const runId = crypto.randomUUID();
+  const inspectionStartedAt = new Date().toISOString();
+
+  const resetAfterInspectionFailure = async () => {
+    await admin
+      .from(table)
+      .update({
+        inspection_status: lockFromStatus === 'accepted_client' ? 'accepted_client' : 'pending',
+        inspected_at: null,
+        inspection_started_at: null,
+        inspection_run_id: null,
+      })
+      .eq('id', id)
+      .eq('inspection_status', 'scanning')
+      .eq('inspection_run_id', runId);
+  };
+
   const lockCutoff = new Date(Date.now() - SCANNING_STALE_MS).toISOString();
   let lockQuery = admin
     .from(table)
-    .update({ inspection_status: 'scanning', inspected_at: new Date().toISOString() })
+    .update({
+      inspection_status: 'scanning',
+      inspected_at: inspectionStartedAt,
+      inspection_started_at: inspectionStartedAt,
+      inspection_run_id: runId,
+    })
     .eq('id', id)
     .eq('inspection_status', lockFromStatus);
   if (lockFromStatus === 'scanning') lockQuery = lockQuery.lt('inspected_at', lockCutoff);
@@ -252,53 +276,61 @@ Deno.serve(async (req: Request) => {
     return json(409, { status: 'scanning', error: 'Inspection deja en cours ou statut non relancable' });
   }
 
-  const auditInspection = async (metadata: Record<string, unknown>) => {
-    await admin.from('audit_log').insert({
-      user_id: who.user.id,
-      action: 'file_inspected',
-      entity: table,
-      entity_id: id,
-      base_id: baseId,
-      metadata,
-    });
-  };
+  const completeInspection = async (
+    status: 'accepted' | 'quarantined',
+    input: {
+      engine: string;
+      fileHash?: string | null;
+      fileSize?: number | null;
+      detectedMimeType?: string | null;
+      mimeType?: string | null;
+      signature?: string | null;
+      extra?: Record<string, unknown>;
+    },
+  ) => admin.rpc('complete_file_inspection', {
+    p_entity: table,
+    p_id: id,
+    p_run_id: runId,
+    p_user_id: who.user.id,
+    p_status: status,
+    p_inspected_at: new Date().toISOString(),
+    p_file_hash: input.fileHash ?? null,
+    p_file_size: input.fileSize ?? null,
+    p_detected_mime_type: input.detectedMimeType ?? null,
+    p_mime_type: input.mimeType ?? null,
+    p_engine: input.engine,
+    p_signature: input.signature ?? null,
+    p_extra: input.extra ?? {},
+  });
 
   const quarantineTooLarge = async (fileSize: number) => {
-    const { error } = await admin.from(table).update({
-      inspection_status: 'quarantined',
-      inspected_at: new Date().toISOString(),
-      file_size: fileSize,
-    }).eq('id', id);
-    if (!error) {
-      await auditInspection({
-        status: 'quarantined',
-        engine: 'size-limit',
-        file_size: fileSize,
-        max_size: MAX_INSPECT_BYTES,
-        detected_mime_type: null,
-        signature: null,
-      });
-    }
-    return error;
+    const { data, error } = await completeInspection('quarantined', {
+      engine: 'size-limit',
+      fileSize,
+      extra: { max_size: MAX_INSPECT_BYTES },
+    });
+    return { error, stale: data !== true };
   };
 
   if (isFiniteLimit) {
     const listedSize = await storageObjectSize(admin, bucket, path);
     if (listedSize !== null && listedSize > MAX_INSPECT_BYTES) {
-      const quarantineErr = await quarantineTooLarge(listedSize);
+      const { error: quarantineErr, stale } = await quarantineTooLarge(listedSize);
       if (quarantineErr) return json(500, { error: 'Mise en quarantaine impossible' });
+      if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
       return json(413, { status: 'quarantined', error: 'Fichier trop volumineux', fileSize: listedSize, maxSize: MAX_INSPECT_BYTES });
     }
   }
 
   const { data: fileBlob, error: downloadErr } = await admin.storage.from(bucket).download(path);
   if (downloadErr || !fileBlob) {
-    await admin.from(table).update({ inspection_status: 'pending', inspected_at: null }).eq('id', id);
+    await resetAfterInspectionFailure();
     return json(500, { error: downloadErr?.message ?? 'Telechargement du fichier impossible' });
   }
   if (isFiniteLimit && fileBlob.size > MAX_INSPECT_BYTES) {
-    const quarantineErr = await quarantineTooLarge(fileBlob.size);
+    const { error: quarantineErr, stale } = await quarantineTooLarge(fileBlob.size);
     if (quarantineErr) return json(500, { error: 'Mise en quarantaine impossible' });
+    if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
     return json(413, { status: 'quarantined', error: 'Fichier trop volumineux', fileSize: fileBlob.size, maxSize: MAX_INSPECT_BYTES });
   }
 
@@ -311,33 +343,30 @@ Deno.serve(async (req: Request) => {
   const detectedMimeType = detectedContainer && expectedContainer === detectedContainer
     ? MIME_BY_EXT[ext]
     : detectedContainer ? (MIME_BY_CONTAINER[detectedContainer] ?? null) : null;
-  const inspectedAt = new Date().toISOString();
 
-  const mark = async (status: 'accepted' | 'quarantined', extra: Record<string, unknown> = {}, signature?: string) => {
-    const updateResult = await admin.from(table).update({
-      inspection_status: status,
-      inspected_at: inspectedAt,
-      file_hash: fileHash,
-      file_size: fileSize,
-      detected_mime_type: detectedMimeType,
-      ...extra,
-    }).eq('id', id);
-    if (!updateResult.error) {
-      await auditInspection({
-        status,
-        engine: 'clamav',
-        file_hash: fileHash,
-        file_size: fileSize,
-        detected_mime_type: detectedMimeType,
-        signature: signature ?? null,
-      });
-    }
-    return updateResult;
+  const mark = async (
+    status: 'accepted' | 'quarantined',
+    engine: string,
+    input: { mimeType?: string | null; signature?: string | null; extra?: Record<string, unknown> } = {},
+  ) => {
+    const { data, error } = await completeInspection(status, {
+      engine,
+      fileHash,
+      fileSize,
+      detectedMimeType,
+      mimeType: input.mimeType ?? null,
+      signature: input.signature ?? null,
+      extra: input.extra,
+    });
+    return { error, stale: data !== true };
   };
 
   if (!expectedContainer || detectedContainer !== expectedContainer) {
-    const { error } = await mark('quarantined');
+    const { error, stale } = await mark('quarantined', 'container-check', {
+      extra: { detected_container: detectedContainer, expected_container: expectedContainer ?? null },
+    });
     if (error) return json(500, { error: 'Mise en quarantaine impossible' });
+    if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
     return json(409, {
       status: 'quarantined',
       error: 'Type de fichier incoherent',
@@ -346,24 +375,27 @@ Deno.serve(async (req: Request) => {
     });
   }
   if (!officeSubtypeMatches(ext, bytes)) {
-    const { error } = await mark('quarantined');
+    const { error, stale } = await mark('quarantined', 'office-subtype-check', { extra: { ext } });
     if (error) return json(500, { error: 'Mise en quarantaine impossible' });
+    if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
     return json(409, { status: 'quarantined', error: 'Sous-format Office incoherent', ext });
   }
 
   const verdict = await scanWithClamAV(bytes, path.split('/').pop() ?? path);
   if (!verdict.ok) {
-    await admin.from(table).update({ inspection_status: 'pending', inspected_at: null }).eq('id', id);
+    await resetAfterInspectionFailure();
     return json(503, { error: verdict.error });
   }
 
   if (verdict.infected) {
-    const { error } = await mark('quarantined', {}, verdict.signature);
+    const { error, stale } = await mark('quarantined', 'clamav', { signature: verdict.signature });
     if (error) return json(500, { error: 'Mise en quarantaine impossible' });
+    if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
     return json(409, { status: 'quarantined', error: 'Fichier infecte', signature: verdict.signature });
   }
 
-  const { error } = await mark('accepted', { mime_type: MIME_BY_EXT[ext] });
+  const { error, stale } = await mark('accepted', 'clamav', { mimeType: MIME_BY_EXT[ext] });
   if (error) return json(500, { error: 'Validation serveur impossible' });
+  if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
   return json(200, { status: 'accepted', id, fileHash, fileSize, detectedMimeType: MIME_BY_EXT[ext] });
 });

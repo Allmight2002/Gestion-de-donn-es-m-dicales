@@ -102,7 +102,14 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
 ```
 Avant un deploiement clinique, lancez aussi `npm run env:check` dans un contexte qui contient les
 variables frontend et les secrets Edge : le script refuse une divergence entre
-`VITE_REQUIRE_SERVER_INSPECTION` et `REQUIRE_SERVER_INSPECTION`.
+`VITE_REQUIRE_SERVER_INSPECTION` et `REQUIRE_SERVER_INSPECTION`. Quand ce mode est actif, posez
+aussi `DB_REQUIRE_SERVER_INSPECTION=true` dans le contexte du check et activez la politique DB :
+
+```sql
+update public.app_security_setting
+   set value = 'true', updated_at = now()
+ where key = 'require_server_inspection';
+```
 
 Puis, côté frontend, `VITE_USE_SIGNED_READ=true` (rebuild) : images et documents passent par
 `signed-read`, qui **autorise** (RLS) → **journalise** (`audit_log`) → **signe**. Si la
