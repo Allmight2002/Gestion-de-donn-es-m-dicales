@@ -68,6 +68,7 @@ create policy "raw_documents_insert" on storage.objects for insert to authentica
 with check (
   bucket_id = 'raw-documents'
   and public.is_base_owner(((storage.foldername(name))[1])::uuid)
+  and public.has_pending_upload_ticket(bucket_id, name)
 );
 
 -- Pas de policy DELETE : les octets acceptes restent immuables. Toute suppression
@@ -119,6 +120,7 @@ create policy "clinical_attachments_insert" on storage.objects for insert to aut
 with check (
   bucket_id = 'clinical-attachments'
   and public.can_write_identity(((storage.foldername(name))[1])::uuid)
+  and public.has_pending_upload_ticket(bucket_id, name)
 );
 
 -- Pas de policy DELETE : les octets acceptes restent immuables. Toute suppression
@@ -148,5 +150,6 @@ create policy "scientific_exports_insert" on storage.objects for insert to authe
 with check (
   bucket_id = 'scientific-exports'
   and public.can_export_data(((storage.foldername(name))[1])::uuid)
+  and public.has_pending_upload_ticket(bucket_id, name)
 );
 -- (pas de policy update/delete : conservation immuable)

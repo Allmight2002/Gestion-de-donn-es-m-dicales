@@ -5,7 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ExportEncounter, ExportPatient } from '../domain/export';
-import { cleanupUploadedObject } from './inspection';
+import { cleanupUploadedObject, createUploadTicket } from './inspection';
 import { signedRead } from './signedRead';
 
 export const EXPORTS_BUCKET = 'scientific-exports';
@@ -124,28 +124,33 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
     async recordExport(input) {
       const fileHash = await sha256Hex(input.content);
       const path = `${input.baseId}/${input.cohortId}/${Date.now()}.${input.ext}`;
-      const { error: upErr } = await client.storage.from(EXPORTS_BUCKET).upload(path, input.content, { upsert: false });
-      if (upErr) throw upErr;
+      const ticketId = await createUploadTicket(client, input.baseId, EXPORTS_BUCKET, path);
+      let data: LogRow;
+      try {
+        const { error: upErr } = await client.storage.from(EXPORTS_BUCKET).upload(path, input.content, { upsert: false });
+        if (upErr) throw upErr;
 
-      const { data, error } = await client
-        .from('export_log')
-        .insert({
-          cohort_id: input.cohortId,
-          template_versions: input.templateVersions,
-          format: input.format,
-          export_options: input.options,
-          patient_count: input.patientCount,
-          encounter_count: input.encounterCount,
-          stored_file_path: path,
-          file_hash: fileHash,
-        })
-        .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path')
-        .single();
-      if (error) {
-        await cleanupUploadedObject(client, EXPORTS_BUCKET, path).catch(() => undefined);
+        const inserted = await client
+          .from('export_log')
+          .insert({
+            cohort_id: input.cohortId,
+            template_versions: input.templateVersions,
+            format: input.format,
+            export_options: input.options,
+            patient_count: input.patientCount,
+            encounter_count: input.encounterCount,
+            stored_file_path: path,
+            file_hash: fileHash,
+          })
+          .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path')
+          .single();
+        if (inserted.error) throw inserted.error;
+        data = inserted.data as LogRow;
+      } catch (error) {
+        await cleanupUploadedObject(client, EXPORTS_BUCKET, path, ticketId).catch(() => undefined);
         throw error;
       }
-      return mapLog(data as LogRow);
+      return mapLog(data);
     },
 
     async listExports(cohortId) {

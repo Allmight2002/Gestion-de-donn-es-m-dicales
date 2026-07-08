@@ -85,8 +85,15 @@ un utilisateur authentifie ne peut pas se les attribuer depuis le frontend, ni s
 Les buckets prives n'exposent pas de policy `DELETE`. Si un upload Storage reussit mais que
 l'insertion de la ligne metier echoue, le frontend appelle
 [`cleanup-upload`](../supabase/functions/cleanup-upload/index.ts). La fonction verifie le JWT, le
-prefixe de base, le droit d'ecriture correspondant au bucket, puis refuse de supprimer l'objet si
-une ligne metier le reference deja.
+prefixe de base, le droit d'ecriture correspondant au bucket et surtout le `upload_ticket`
+court-vivant cree avant l'upload. Ce ticket appartient a l'utilisateur, porte le bucket/path exact,
+et passe a `attached` dans la meme transaction SQL que la ligne metier. `cleanup-upload` ne peut
+donc supprimer qu'un objet dont le ticket est encore `pending`; il refuse aussi l'objet si une ligne
+metier le reference deja.
+
+Apres la migration SQL qui cree `upload_ticket`, reappliquez aussi
+[`supabase/storage.sql`](../supabase/storage.sql) dans le SQL Editor : les policies d'insert Storage
+exigent `has_pending_upload_ticket(bucket_id, name)`.
 
 ### Deploy ClamAV
 

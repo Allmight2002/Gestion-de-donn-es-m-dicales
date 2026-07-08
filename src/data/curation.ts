@@ -11,6 +11,7 @@ import { signedRead } from './signedRead';
 import {
   REQUIRE_SERVER_INSPECTION,
   cleanupUploadedObject,
+  createUploadTicket,
   inspectUploadedFile,
   retryUploadedFileInspection,
   type InspectionStatus,
@@ -324,27 +325,32 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       const v = await inspectFile(input.file);
       if (!v.ok) throw new Error(v.error);
       const path = `${input.baseId}/${input.submissionId}/${crypto.randomUUID()}.${v.ext}`;
-      const { error: upErr } = await client.storage.from(RAW_DOCUMENTS_BUCKET).upload(path, input.file, {
-        contentType: v.type,
-        upsert: false,
-      });
-      if (upErr) throw upErr;
-      const { data, error } = await client
-        .from('raw_document')
-        .insert({
-          submission_id: input.submissionId, base_id: input.baseId, label: input.label ?? null,
-          storage_path: path, mime_type: v.type, detected_mime_type: v.type,
-          file_size: input.file.size, file_hash: await sha256Hex(input.file),
-          inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
-          inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
-        })
-        .select('id')
-        .single();
-      if (error) {
-        await cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path).catch(() => undefined);
+      const ticketId = await createUploadTicket(client, input.baseId, RAW_DOCUMENTS_BUCKET, path);
+      let data: { id: string };
+      try {
+        const { error: upErr } = await client.storage.from(RAW_DOCUMENTS_BUCKET).upload(path, input.file, {
+          contentType: v.type,
+          upsert: false,
+        });
+        if (upErr) throw upErr;
+        const inserted = await client
+          .from('raw_document')
+          .insert({
+            submission_id: input.submissionId, base_id: input.baseId, label: input.label ?? null,
+            storage_path: path, mime_type: v.type, detected_mime_type: v.type,
+            file_size: input.file.size, file_hash: await sha256Hex(input.file),
+            inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
+            inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+        if (inserted.error) throw inserted.error;
+        data = inserted.data as { id: string };
+      } catch (error) {
+        await cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path, ticketId).catch(() => undefined);
         throw error;
       }
-      const id = (data as { id: string }).id;
+      const id = data.id;
       await inspectUploadedFile(client, 'raw_document', id);
       return { id };
     },

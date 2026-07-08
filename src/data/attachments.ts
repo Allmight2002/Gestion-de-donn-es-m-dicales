@@ -10,6 +10,7 @@ import { signedRead } from './signedRead';
 import {
   REQUIRE_SERVER_INSPECTION,
   cleanupUploadedObject,
+  createUploadTicket,
   inspectUploadedFile,
   retryUploadedFileInspection,
   type InspectionStatus,
@@ -120,36 +121,41 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
       // Images : reencodees (EXIF supprime). Documents (PDF/Office) : envoyes tels quels.
       const blob: Blob = v.isImage ? await reencodeImage(input.file, v.type) : input.file;
       const path = `${input.baseId}/${input.patientId}/${crypto.randomUUID()}.${v.ext}`;
-      const { error: upErr } = await client.storage.from(ATTACHMENTS_BUCKET).upload(path, blob, {
-        contentType: v.type,
-        upsert: false,
-      });
-      if (upErr) throw upErr;
+      const ticketId = await createUploadTicket(client, input.baseId, ATTACHMENTS_BUCKET, path);
+      let data: { id: string };
+      try {
+        const { error: upErr } = await client.storage.from(ATTACHMENTS_BUCKET).upload(path, blob, {
+          contentType: v.type,
+          upsert: false,
+        });
+        if (upErr) throw upErr;
 
-      const { data, error } = await client
-        .from('clinical_attachment')
-        .insert({
-          patient_id: input.patientId,
-          encounter_id: input.encounterId ?? null,
-          kind: v.isImage ? 'imagerie' : 'document',
-          label: input.label.trim(),
-          storage_path: path,
-          mime_type: v.type,
-          detected_mime_type: v.type,
-          file_size: blob.size,
-          file_hash: await sha256Hex(blob),
-          inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
-          inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
-          deidentification_confirmed: true,
-        })
-        .select('id')
-        .single();
-      if (error) {
+        const inserted = await client
+          .from('clinical_attachment')
+          .insert({
+            patient_id: input.patientId,
+            encounter_id: input.encounterId ?? null,
+            kind: v.isImage ? 'imagerie' : 'document',
+            label: input.label.trim(),
+            storage_path: path,
+            mime_type: v.type,
+            detected_mime_type: v.type,
+            file_size: blob.size,
+            file_hash: await sha256Hex(blob),
+            inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
+            inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
+            deidentification_confirmed: true,
+          })
+          .select('id')
+          .single();
+        if (inserted.error) throw inserted.error;
+        data = inserted.data as { id: string };
+      } catch (error) {
         // Nettoyage serveur best-effort : les buckets prives n'exposent plus DELETE au client.
-        await cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path).catch(() => undefined);
+        await cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path, ticketId).catch(() => undefined);
         throw error;
       }
-      const id = (data as { id: string }).id;
+      const id = data.id;
       await inspectUploadedFile(client, 'attachment', id);
       return { id };
     },

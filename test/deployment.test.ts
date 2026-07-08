@@ -18,7 +18,9 @@ describe('configuration de deploiement', () => {
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
-    expect(exportsData).toContain('cleanupUploadedObject(client, EXPORTS_BUCKET, path)');
+    expect(storage).toContain('has_pending_upload_ticket');
+    expect(exportsData).toContain('createUploadTicket(client, input.baseId, EXPORTS_BUCKET, path)');
+    expect(exportsData).toContain('cleanupUploadedObject(client, EXPORTS_BUCKET, path, ticketId)');
   });
 
   test('inspect-upload impose un verdict serveur avant la lecture de donnees reelles', () => {
@@ -66,13 +68,19 @@ describe('configuration de deploiement', () => {
     expect(inspection).toContain("requireServerInspection && status === 'accepted_client'");
     expect(inspection).toContain("inspect-upload");
     expect(inspection).toContain("cleanup-upload");
+    expect(inspection).toContain("create_upload_ticket");
     expect(cleanup).toContain("orphan_upload_removed");
+    expect(cleanup).toContain("ticketId requis");
+    expect(cleanup).toContain(".from('upload_ticket')");
+    expect(cleanup).toContain("Ticket upload non proprietaire");
     expect(cleanup).toContain("Objet deja rattache a une ligne metier");
     expect(attachments).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
-    expect(attachments).toContain('cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path)');
+    expect(attachments).toContain('createUploadTicket(client, input.baseId, ATTACHMENTS_BUCKET, path)');
+    expect(attachments).toContain('cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path, ticketId)');
     expect(attachments).toContain("inspectUploadedFile(client, 'attachment'");
     expect(curation).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
-    expect(curation).toContain('cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path)');
+    expect(curation).toContain('createUploadTicket(client, input.baseId, RAW_DOCUMENTS_BUCKET, path)');
+    expect(curation).toContain('cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path, ticketId)');
     expect(curation).toContain("inspectUploadedFile(client, 'raw_document'");
   });
 

@@ -6,6 +6,7 @@ export type InspectionStatus = 'pending' | 'scanning' | 'accepted_client' | 'acc
 
 type InspectEntity = 'attachment' | 'raw_document';
 type CleanupBucket = 'clinical-attachments' | 'raw-documents' | 'scientific-exports';
+export type UploadBucket = CleanupBucket;
 type InspectUploadResponse = {
   status?: InspectionStatus;
   error?: string;
@@ -66,9 +67,25 @@ export async function retryUploadedFileInspection(client: SupabaseClient, entity
   await invokeInspection(client, entity, id);
 }
 
-export async function cleanupUploadedObject(client: SupabaseClient, bucket: CleanupBucket, path: string): Promise<void> {
+export async function createUploadTicket(
+  client: SupabaseClient,
+  baseId: string,
+  bucket: UploadBucket,
+  path: string,
+): Promise<string> {
+  const { data, error } = await client.rpc('create_upload_ticket', {
+    p_base_id: baseId,
+    p_bucket: bucket,
+    p_path: path,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string') throw new Error('Ticket upload absent');
+  return data;
+}
+
+export async function cleanupUploadedObject(client: SupabaseClient, bucket: CleanupBucket, path: string, ticketId: string): Promise<void> {
   const { error } = await client.functions.invoke('cleanup-upload', {
-    body: { bucket, path },
+    body: { bucket, path, ticketId },
   });
   if (error) {
     const detail = await functionErrorMessage(error);

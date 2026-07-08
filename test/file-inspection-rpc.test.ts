@@ -166,12 +166,15 @@ describe('complete_file_inspection', () => {
 
   test('les compteurs de tentative restent controles par le serveur', async () => {
     const rows = await rowsAs(aliceId, [
+      'with ticket as (',
+      "  select public.create_upload_ticket($1, 'clinical-attachments', $3)",
+      ')',
       'insert into public.clinical_attachment(',
       '  patient_id, storage_path, deidentification_confirmed, inspection_status,',
       '  inspection_attempt_count, last_inspection_attempt_at, last_inspection_error',
-      ") values($1,$2,true,'accepted_client',7,now(),'client forged')",
+      ") select $2,$3,true,'accepted_client',7,now(),'client forged' from ticket",
       'returning id, inspection_attempt_count, last_inspection_attempt_at, last_inspection_error',
-    ].join(' '), [patientId, `${baseId}/inspection/${randomUUID()}.png`]);
+    ].join(' '), [baseId, patientId, `${baseId}/inspection/${randomUUID()}.png`]);
     const inserted = rows[0];
     expect(inserted.inspection_attempt_count).toBe(0);
     expect(inserted.last_inspection_attempt_at).toBeNull();

@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
   const auth = req.headers.get('Authorization');
   if (!auth) return json(401, { error: 'Authentification requise' });
 
-  let payload: { bucket?: string; path?: string };
+  let payload: { bucket?: string; path?: string; ticketId?: string };
   try {
     payload = await req.json();
   } catch {
@@ -62,6 +62,9 @@ Deno.serve(async (req: Request) => {
   if (!bucketConfig || !baseId || !payload.path?.startsWith(`${baseId}/`)) {
     return json(400, { error: 'bucket/path invalides' });
   }
+  if (typeof payload.ticketId !== 'string' || !UUID_RE.test(payload.ticketId)) {
+    return json(400, { error: 'ticketId requis' });
+  }
 
   const URL = Deno.env.get('SUPABASE_URL')!;
   const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -72,6 +75,27 @@ Deno.serve(async (req: Request) => {
 
   const { data: who } = await asUser.auth.getUser();
   if (!who?.user) return json(401, { error: 'Session invalide' });
+
+  const { data: ticket, error: ticketErr } = await admin
+    .from('upload_ticket')
+    .select('id, owner_user_id, base_id, bucket, path, status, expires_at')
+    .eq('id', payload.ticketId)
+    .maybeSingle();
+  if (ticketErr) return json(500, { error: 'Verification du ticket impossible' });
+  if (!ticket) return json(404, { error: 'Ticket upload introuvable' });
+  if (
+    ticket.owner_user_id !== who.user.id ||
+    ticket.base_id !== baseId ||
+    ticket.bucket !== bucket ||
+    ticket.path !== payload.path
+  ) {
+    return json(403, { error: 'Ticket upload non proprietaire' });
+  }
+  if (ticket.status !== 'pending') return json(409, { error: 'Ticket upload deja consomme' });
+  if (Date.parse(ticket.expires_at) <= Date.now()) {
+    await admin.from('upload_ticket').update({ status: 'expired', last_error: 'expired before cleanup' }).eq('id', ticket.id);
+    return json(410, { error: 'Ticket upload expire' });
+  }
 
   const { data: allowed, error: allowedErr } = await asUser.rpc(bucketConfig.authRpc, { p_base: baseId });
   if (allowedErr || allowed !== true) return json(403, { error: 'Acces refuse' });
@@ -85,8 +109,31 @@ Deno.serve(async (req: Request) => {
   if (existingErr) return json(500, { error: 'Verification metier impossible' });
   if (existing) return json(409, { error: 'Objet deja rattache a une ligne metier' });
 
+  const { data: claimed, error: claimErr } = await admin
+    .from('upload_ticket')
+    .update({ status: 'cleaning', last_error: null })
+    .eq('id', ticket.id)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle();
+  if (claimErr) return json(500, { error: 'Reservation du ticket impossible' });
+  if (!claimed) return json(409, { error: 'Ticket upload deja consomme' });
+
   const { data: removed, error: removeErr } = await admin.storage.from(bucket).remove([payload.path]);
-  if (removeErr) return json(500, { error: removeErr.message ?? 'Suppression Storage impossible' });
+  if (removeErr) {
+    await admin
+      .from('upload_ticket')
+      .update({ status: 'pending', last_error: removeErr.message ?? 'storage remove failed' })
+      .eq('id', ticket.id)
+      .eq('status', 'cleaning');
+    return json(500, { error: removeErr.message ?? 'Suppression Storage impossible' });
+  }
+
+  await admin
+    .from('upload_ticket')
+    .update({ status: 'cleaned', cleaned_at: new Date().toISOString(), last_error: null })
+    .eq('id', ticket.id)
+    .eq('status', 'cleaning');
 
   await admin.from('audit_log').insert({
     user_id: who.user.id,
@@ -94,7 +141,7 @@ Deno.serve(async (req: Request) => {
     entity: 'storage_object',
     entity_id: null,
     base_id: baseId,
-    metadata: { bucket, path: payload.path },
+    metadata: { bucket, path: payload.path, ticket_id: ticket.id },
   });
 
   return json(200, { status: 'removed', count: removed?.length ?? 0 });

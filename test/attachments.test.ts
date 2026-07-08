@@ -18,8 +18,14 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
 const INSERT_ATT = (deid = true) =>
-  `insert into public.clinical_attachment(patient_id, kind, label, storage_path, mime_type, deidentification_confirmed, created_by)
-   values($1,'imagerie','TDM',(select base_id::text || '/p/x.jpg' from public.patient where id=$1),'image/jpeg',${deid},auth.uid())`;
+  `with upload as (
+     select base_id, base_id::text || '/p/' || gen_random_uuid()::text || '.jpg' as path
+       from public.patient where id=$1
+   ), ticket as (
+     select public.create_upload_ticket(base_id, 'clinical-attachments', path) from upload
+   )
+   insert into public.clinical_attachment(patient_id, kind, label, storage_path, mime_type, deidentification_confirmed, created_by)
+   select $1,'imagerie','TDM',upload.path,'image/jpeg',${deid},auth.uid() from upload, ticket`;
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true });
@@ -80,8 +86,13 @@ describe('coherence Storage des pieces jointes', () => {
   test('created_by documentaire est impose par le serveur', async () => {
     const att = await rowsAs(
       aliceId,
-      `insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, created_by)
-       values($1,$2,true,$3) returning id`,
+      `with upload as (
+         select base_id from public.patient where id=$1
+       ), ticket as (
+         select public.create_upload_ticket(base_id, 'clinical-attachments', $2) from upload
+       )
+       insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, created_by)
+       select $1,$2,true,$3 from ticket returning id`,
       [patientId, `${baseId}/author-${Date.now()}.jpg`, bobId],
     );
     expect((await db.admin.query('select created_by from public.clinical_attachment where id=$1', [att[0].id])).rows[0].created_by)
@@ -90,7 +101,11 @@ describe('coherence Storage des pieces jointes', () => {
     const raw = (await db.admin.query('select id, base_id from public.raw_submission where base_id=$1 limit 1', [baseId])).rows[0];
     const doc = await rowsAs(
       aliceId,
-      "insert into public.raw_document(submission_id, base_id, storage_path, mime_type, created_by) values($1,$2,$3,'application/pdf',$4) returning id",
+      `with ticket as (
+         select public.create_upload_ticket($2, 'raw-documents', $3)
+       )
+       insert into public.raw_document(submission_id, base_id, storage_path, mime_type, created_by)
+       select $1,$2,$3,'application/pdf',$4 from ticket returning id`,
       [raw.id, raw.base_id, `${baseId}/${raw.id}/author-${Date.now()}.pdf`, bobId],
     );
     expect((await db.admin.query('select created_by from public.raw_document where id=$1', [doc[0].id])).rows[0].created_by)

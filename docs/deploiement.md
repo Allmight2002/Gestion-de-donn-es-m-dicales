@@ -125,7 +125,10 @@ journalisation échoue, l'URL n'est **pas** délivrée (§9.3).
 
 `cleanup-upload` est le nettoyage serveur des uploads orphelins : si un objet Storage est envoye
 mais que l'insertion metier echoue, le frontend demande a cette fonction de supprimer l'objet avec
-`service_role`, apres verification du JWT, du prefixe de base et de l'absence de ligne metier.
+`service_role`. Le nettoyage exige maintenant un `upload_ticket` court-vivant, cree avant l'upload
+et appartenant a l'utilisateur courant ; la ligne metier consomme ce ticket en base avant de pointer
+vers l'objet. Apres la migration `0980`, reappliquez `supabase/storage.sql` dans le SQL Editor afin
+que les policies d'insert Storage exigent aussi `has_pending_upload_ticket(bucket_id, name)`.
 
 Le scanner ClamAV fourni dans ce depot se lance avec :
 

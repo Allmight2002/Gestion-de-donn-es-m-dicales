@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616097900_inspection_attempt_limits.sql`
-- Tables : 29 · Policies RLS : 57 · Triggers : 43 · Fonctions : 178
+- Dernière migration incluse : `20260616098000_upload_tickets.sql`
+- Tables : 30 · Policies RLS : 58 · Triggers : 46 · Fonctions : 183
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -150,6 +150,7 @@ Triggers :
 - `trg_ca_inspection_guard` — BEFORE INSERT/UPDATE → `guard_inspection_status()`
 - `trg_clinical_attachment_created_by` — BEFORE INSERT/UPDATE → `guard_document_created_by()`
 - `trg_clinical_attachment_storage_path_scope` — BEFORE INSERT/UPDATE → `guard_storage_path_scope()`
+- `trg_clinical_attachment_upload_ticket` — BEFORE INSERT/UPDATE → `guard_upload_ticket_attachment()`
 
 ### cohort · RLS activée
 
@@ -318,6 +319,7 @@ Policies :
 
 Triggers :
 - `trg_audit_export` — AFTER INSERT → `trg_audit_export_fn()`
+- `trg_export_log_upload_ticket` — BEFORE INSERT/UPDATE → `guard_upload_ticket_attachment()`
 
 ### field_change_log · RLS activée
 
@@ -477,6 +479,7 @@ Policies :
 Triggers :
 - `trg_raw_document_created_by` — BEFORE INSERT/UPDATE → `guard_document_created_by()`
 - `trg_raw_document_storage_path_scope` — BEFORE INSERT/UPDATE → `guard_storage_path_scope()`
+- `trg_raw_document_upload_ticket` — BEFORE INSERT/UPDATE → `guard_upload_ticket_attachment()`
 - `trg_rd_inspection_guard` — BEFORE INSERT/UPDATE → `guard_inspection_status()`
 - `trg_xbase_document` — BEFORE INSERT/UPDATE → `guard_xbase_document()`
 
@@ -620,6 +623,25 @@ Triggers :
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
+### upload_ticket · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| owner_user_id | uuid | non |  |
+| base_id | uuid | non |  |
+| bucket | text | non |  |
+| path | text | non |  |
+| status | text | non | `'pending'::text` |
+| created_at | timestamp with time zone | non | `now()` |
+| expires_at | timestamp with time zone | non | `(now() + '00:30:00'::interval)` |
+| attached_at | timestamp with time zone | oui |  |
+| cleaned_at | timestamp with time zone | oui |  |
+| last_error | text | oui |  |
+
+Policies :
+- `upload_ticket_select_own` (SELECT) — USING (owner_user_id = auth.uid())
+
 ### validation_rule · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -656,6 +678,7 @@ Triggers :
 | assert_no_unknown_fields | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
+| assert_upload_path_scope | p_base_id uuid, p_bucket text, p_path text | DEFINER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
 | base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid | DEFINER | plpgsql |
 | base_completeness_stats | p_base_id uuid, p_mode text | INVOKER | sql |
@@ -687,6 +710,7 @@ Triggers :
 | create_encounter | p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text | DEFINER | plpgsql |
 | create_next_personal_template_version | p_template_id uuid | DEFINER | plpgsql |
 | create_patient | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
+| create_upload_ticket | p_base_id uuid, p_bucket text, p_path text, p_ttl_seconds integer | DEFINER | plpgsql |
 | crypt | text, text | INVOKER | c |
 | curation_pool | — | DEFINER | sql |
 | dearmor | text | INVOKER | c |
@@ -727,6 +751,7 @@ Triggers :
 | guard_template_field_locked_insert | — | DEFINER | plpgsql |
 | guard_template_field_update | — | DEFINER | plpgsql |
 | guard_template_version_state | — | DEFINER | plpgsql |
+| guard_upload_ticket_attachment | — | DEFINER | plpgsql |
 | guard_validation_rule_inuse | — | INVOKER | plpgsql |
 | guard_validation_rule_locked | — | DEFINER | plpgsql |
 | guard_validation_rule_structure | — | INVOKER | plpgsql |
@@ -737,6 +762,7 @@ Triggers :
 | guard_xbase_task | — | DEFINER | plpgsql |
 | handle_new_user | — | DEFINER | plpgsql |
 | has_base_access | p_base uuid | DEFINER | sql |
+| has_pending_upload_ticket | p_bucket text, p_path text | DEFINER | sql |
 | hmac | bytea, bytea, text | INVOKER | c |
 | hmac | text, text, text | INVOKER | c |
 | import_records | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
@@ -817,6 +843,7 @@ Triggers :
 | update_encounter | p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
+| upload_ticket_authorized | p_base_id uuid, p_bucket text | DEFINER | sql |
 | validation_rank | p_status text | INVOKER | sql |
 | value_cmp | a text, b text | INVOKER | plpgsql |
 | value_documented | v jsonb | INVOKER | sql |

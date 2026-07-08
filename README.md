@@ -292,11 +292,13 @@ d'exemple, et des cas de curation de démonstration.
 - **[docs/tester-en-local.md](docs/tester-en-local.md)** — lancer le projet en local.
 
 **Fonctionnalités restant à intégrer** (au-delà du code livré) : intégration réelle de
-**DocAssist** (aujourd'hui un simple encart facultatif après export), **scan antivirus /
-quarantaine serveur** des documents bruts (seule l'inspection magic-bytes côté client existe),
+**DocAssist** (aujourd'hui un simple encart facultatif après export), **vraie quarantaine physique**
+des documents infectés (l'inspection serveur ClamAV et la quarantaine logique sont livrées),
 **évaluation des règles conditionnelles inter-champs côté serveur** (aujourd'hui en React),
 **simplification du schéma** (fusion du sous-système de curation), et **cadre juridique/éthique**
 (condition préalable à toute donnée réelle).
 
 > Storage : pour activer réellement l'upload d'images/documents, appliquer
 > [supabase/storage.sql](supabase/storage.sql) sur le projet Supabase (buckets privés + RLS).
+> Depuis les tickets d'upload, ce fichier doit être réappliqué après la migration SQL qui crée
+> `upload_ticket`, car les policies Storage exigent `has_pending_upload_ticket(bucket_id, name)`.

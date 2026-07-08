@@ -16,8 +16,14 @@ let tvId: string;
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
-const EXPORT_INSERT = `insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
-  values($1, to_jsonb(array[$2::uuid]), auth.uid(), 'csv', '{}'::jsonb, 1, 1, 'p/x.csv', 'h1') returning id`;
+const EXPORT_INSERT = `with upload as (
+    select public.base_of_cohort($1) as base_id,
+           public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path
+  ), ticket as (
+    select public.create_upload_ticket(base_id, 'scientific-exports', path) from upload
+  )
+  insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
+  select $1, to_jsonb(array[$2::uuid]), auth.uid(), 'csv', '{}'::jsonb, 1, 1, upload.path, 'h1' from upload, ticket returning id`;
 const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 
 beforeAll(async () => {
