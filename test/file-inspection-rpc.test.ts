@@ -114,6 +114,39 @@ describe('complete_file_inspection', () => {
     expect(audit[0].metadata).toMatchObject({ status: 'accepted', engine: 'clamav', inspection_run_id: runId });
   });
 
+  test('audit v19 §5.2 : un verdict accepted sans hash/taille/MIME est refuse par la base', async () => {
+    const runId = randomUUID();
+    const attId = await scanningAttachment(runId);
+
+    // Metadonnees absentes -> refus (le garde de la 097700, perdu par la 098100, est restaure).
+    await expect(db.admin.query(COMPLETE, [
+      'clinical_attachment', attId, runId, aliceId, 'accepted',
+      new Date().toISOString(), null, null, null, null, 'clamav', null, JSON.stringify({}),
+    ])).rejects.toThrow(/hash, taille et mime/i);
+
+    // Taille nulle ou negative -> refus aussi.
+    await expect(db.admin.query(COMPLETE, [
+      'clinical_attachment', attId, runId, aliceId, 'accepted',
+      new Date().toISOString(), 'hash-ok', 0, 'image/png', 'image/png', 'clamav', null, JSON.stringify({}),
+    ])).rejects.toThrow(/hash, taille et mime/i);
+
+    // Rien n'a bouge : la ligne reste sous verrou scanning, aucun audit ecrit.
+    const row = (await db.admin.query(
+      'select inspection_status, file_hash from public.clinical_attachment where id=$1', [attId],
+    )).rows[0];
+    expect(row).toMatchObject({ inspection_status: 'scanning', file_hash: null });
+    expect((await db.admin.query(
+      "select count(*)::int as n from public.audit_log where action='file_inspected' and entity_id=$1", [attId],
+    )).rows[0].n).toBe(0);
+
+    // Non-regression : un accepted COMPLET passe toujours.
+    const ok = await db.admin.query(COMPLETE, [
+      'clinical_attachment', attId, runId, aliceId, 'accepted',
+      new Date().toISOString(), 'hash-ok', 42, 'image/png', 'image/png', 'clamav', null, JSON.stringify({}),
+    ]);
+    expect(ok.rows[0].ok).toBe(true);
+  });
+
   test('un run perime ne peut pas ecraser le verrou du run courant', async () => {
     const staleRunId = randomUUID();
     const currentRunId = randomUUID();

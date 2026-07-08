@@ -363,11 +363,24 @@ Deno.serve(async (req: Request) => {
     return { ok: true as const, bucket: QUARANTINE_BUCKET, path: targetPath };
   };
 
+  // Audit v19 §5.4 : restauration JOURNALISEE — supabase-js ne leve pas d'exception, il
+  // RENVOIE { error } ; sans lecture explicite, un echec de restauration etait invisible.
   const restoreFromPhysicalQuarantine = async (quarantineObject: { bucket: string; path: string }) => {
     const contentType = detectedMimeType ?? fileBlob.type ?? 'application/octet-stream';
     const body = new Blob([bytes], { type: contentType });
-    await admin.storage.from(bucket).upload(path, body, { contentType, upsert: true });
-    await admin.storage.from(quarantineObject.bucket).remove([quarantineObject.path]);
+    const { error: uploadErr } = await admin.storage.from(bucket).upload(path, body, { contentType, upsert: true });
+    if (uploadErr) {
+      // Original NON revenu : l'objet reste en quarantaine (bucket prive, aucun acces
+      // utilisateur) et la ligne reste en scanning -> reinspection possible plus tard.
+      console.error(`restauration quarantaine impossible (upload ${bucket}/${path}) : ${uploadErr.message}`);
+      return { ok: false as const, error: uploadErr.message ?? 'restauration impossible' };
+    }
+    const { error: removeErr } = await admin.storage.from(quarantineObject.bucket).remove([quarantineObject.path]);
+    if (removeErr) {
+      // Original de retour ; l'objet residuel en quarantaine est sans risque (prive).
+      console.error(`purge quarantaine impossible (${quarantineObject.bucket}/${quarantineObject.path}) : ${removeErr.message}`);
+    }
+    return { ok: true as const };
   };
 
   const mark = async (
@@ -397,7 +410,13 @@ Deno.serve(async (req: Request) => {
     });
     const stale = data !== true;
     if ((error || stale) && quarantineObject?.ok) {
-      await restoreFromPhysicalQuarantine(quarantineObject);
+      const restored = await restoreFromPhysicalQuarantine(quarantineObject);
+      if (!restored.ok) {
+        console.error(
+          `verdict quarantined non finalise ET restauration echouee pour ${table}/${id} (run ${runId}) : ` +
+          `octets conserves dans ${quarantineObject.bucket}/${quarantineObject.path}`,
+        );
+      }
     }
     return { error, stale };
   };

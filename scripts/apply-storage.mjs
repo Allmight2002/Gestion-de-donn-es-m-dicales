@@ -27,7 +27,12 @@ try {
   console.log('✓ storage.sql applique (buckets raw-documents / clinical-attachments / scientific-exports + RLS).');
 } catch (e) {
   console.error('✗ Echec de l\'application de storage.sql :', e.message);
-  console.error('  Verifiez que `npm run supabase:start` tourne (DB sur 127.0.0.1:54322).');
+  if (url) {
+    // Mode CLOUD (audit v19 §6.2) : ne pas renvoyer vers le Supabase local.
+    console.error('  Cible : SUPABASE_DB_URL. Verifiez la chaine de connexion (dashboard Supabase > Connect, Session pooler) et les droits du role.');
+  } else {
+    console.error('  Verifiez que `npm run supabase:start` tourne (DB sur 127.0.0.1:54322).');
+  }
   process.exitCode = 1;
 } finally {
   await client.end();

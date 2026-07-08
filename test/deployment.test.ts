@@ -66,6 +66,9 @@ describe('configuration de deploiement', () => {
     expect(inspect).toContain('.from(bucket).remove([path])');
     expect(inspect).toContain('p_quarantine_bucket');
     expect(inspect).toContain('p_quarantine_path');
+    // Audit v19 §5.4 : la restauration depuis la quarantaine lit { error } et journalise.
+    expect(inspect).toContain('restauration quarantaine impossible');
+    expect(inspect).toContain('restored.ok');
     expect(inspect).toContain('last_inspection_error');
     expect(inspect).toContain("'size-limit'");
     expect(inspect).toContain("'magic-bytes'");
