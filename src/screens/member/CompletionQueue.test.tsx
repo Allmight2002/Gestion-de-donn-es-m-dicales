@@ -33,8 +33,8 @@ function renderQueue(patients: PatientRepository) {
 
 describe('CompletionQueue (B2)', () => {
   test('liste les dossiers + manquants, et « Compléter » ouvre le bon formulaire', async () => {
-    const getCompletionQueue = vi.fn(async () => items);
-    renderQueue({ getCompletionQueue } as unknown as PatientRepository);
+    const getCompletionQueuePage = vi.fn(async () => ({ items, total: items.length, limit: 50, offset: 0, hasMore: false }));
+    renderQueue({ getCompletionQueuePage } as unknown as PatientRepository);
 
     expect(await screen.findByText('Données permanentes')).toBeInTheDocument();
     expect(screen.getByText('Année de naissance')).toBeInTheDocument(); // chip manquant
@@ -47,7 +47,7 @@ describe('CompletionQueue (B2)', () => {
   });
 
   test('file vide : message de felicitation', async () => {
-    renderQueue({ getCompletionQueue: vi.fn(async () => []) } as unknown as PatientRepository);
+    renderQueue({ getCompletionQueuePage: vi.fn(async () => ({ items: [], total: 0, limit: 50, offset: 0, hasMore: false })) } as unknown as PatientRepository);
     expect(await screen.findByText(/Rien à compléter/)).toBeInTheDocument();
   });
 });
