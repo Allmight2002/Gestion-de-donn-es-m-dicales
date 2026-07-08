@@ -14,6 +14,9 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 type Item = { kind: string; patientId: string; encounterId?: string; code: string; status: string; missing: string[] };
 const queueAs = async (uid: string): Promise<Item[]> =>
   (await rowsAs(uid, 'select public.base_completion_queue($1) as q', [baseId]))[0].q as Item[];
+type QueuePage = { items: Item[]; total: number; limit: number; offset: number; hasMore: boolean };
+const queuePageAs = async (uid: string, limit: number, offset: number): Promise<QueuePage> =>
+  (await rowsAs(uid, 'select public.base_completion_queue_page($1,$2,$3) as q', [baseId, limit, offset]))[0].q as QueuePage;
 
 const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 const CREATE_ENC = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
@@ -51,6 +54,45 @@ describe('B2 base_completion_queue (file « a completer »)', () => {
     expect(encItem.missing).toContain(await byLabel('glasgow_score'));
     // admission_date (requis pour hospitalisation seulement) n'est PAS exige d'une consultation.
     expect(encItem.missing).not.toContain(await byLabel('admission_date'));
+  });
+
+  test('exclut les brouillons sans champ requis manquant et pagine le resultat', async () => {
+    await rowsAs(aliceId, CREATE_PAT, [
+      baseId,
+      'B2-FULL',
+      'Queue Complete',
+      '1980-01-01',
+      null,
+      null,
+      null,
+      JSON.stringify({ sexe: 'F', birth_year: 1980 }),
+    ]);
+    const p2 = await rowsAs(aliceId, CREATE_PAT, [
+      baseId,
+      'B2-PAGE',
+      'Queue Page',
+      '1981-01-01',
+      null,
+      null,
+      null,
+      JSON.stringify({ sexe: 'M' }),
+    ]);
+    await rowsAs(aliceId, CREATE_ENC, [p2[0].id, 'consultation', '2024-05-02', 'draft', JSON.stringify({}), 'years']);
+
+    const items = await queueAs(aliceId);
+    expect(items.some((i) => i.code === 'B2-FULL')).toBe(false);
+    expect(items.some((i) => i.code === 'B2-PAGE')).toBe(true);
+
+    const first = await queuePageAs(aliceId, 1, 0);
+    expect(first.items).toHaveLength(1);
+    expect(first.total).toBeGreaterThan(1);
+    expect(first.limit).toBe(1);
+    expect(first.offset).toBe(0);
+    expect(first.hasMore).toBe(true);
+
+    const second = await queuePageAs(aliceId, 1, 1);
+    expect(second.items).toHaveLength(1);
+    expect(second.offset).toBe(1);
   });
 
   test('sans acces a la base : liste vide (RLS)', async () => {

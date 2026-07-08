@@ -113,6 +113,14 @@ export interface CompletionItem {
   missing: string[];
 }
 
+export interface CompletionQueuePage {
+  items: CompletionItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface PatientRepository {
   listPatients(baseId: string): Promise<PatientListItem[]>;
   /** Page de patients (pagination serveur) + effectif total de la base. */
@@ -148,6 +156,8 @@ export interface PatientRepository {
   cancelImportBatch(batchId: string): Promise<void>;
   /** B2 : dossiers non finalises + champs requis manquants (RLS : sans acces -> vide). */
   getCompletionQueue(baseId: string, limit?: number): Promise<CompletionItem[]>;
+  /** B2 : version paginee de la file de completion. */
+  getCompletionQueuePage(baseId: string, limit: number, offset: number): Promise<CompletionQueuePage>;
 }
 
 type PatientRow = {
@@ -209,7 +219,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
-      completeImportBatch: fail, cancelImportBatch: fail, getCompletionQueue: fail,
+      completeImportBatch: fail, cancelImportBatch: fail, getCompletionQueue: fail, getCompletionQueuePage: fail,
     };
   }
 
@@ -442,6 +452,23 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       const { data, error } = await client.rpc('base_completion_queue', { p_base_id: baseId, p_limit: limit ?? 200 });
       if (error) throw error;
       return (data ?? []) as CompletionItem[];
+    },
+
+    async getCompletionQueuePage(baseId, limit, offset) {
+      const { data, error } = await client.rpc('base_completion_queue_page', {
+        p_base_id: baseId,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (error) throw error;
+      const page = (data ?? {}) as Partial<CompletionQueuePage>;
+      return {
+        items: page.items ?? [],
+        total: page.total ?? 0,
+        limit: page.limit ?? limit,
+        offset: page.offset ?? offset,
+        hasMore: page.hasMore ?? false,
+      };
     },
   };
 }

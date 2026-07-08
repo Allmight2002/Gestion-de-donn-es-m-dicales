@@ -4,10 +4,20 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616097400_rename_gabarit_server_messages.sql`
-- Tables : 28 · Policies RLS : 57 · Triggers : 42 · Fonctions : 171
+- Dernière migration incluse : `20260616097800_scientific_stats_completion.sql`
+- Tables : 29 · Policies RLS : 57 · Triggers : 43 · Fonctions : 178
 
 ## Tables (colonnes, RLS, policies, triggers)
+
+### app_security_setting · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| key | text | non |  |
+| value | text | non |  |
+| updated_at | timestamp with time zone | non | `now()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### audit_log · RLS activée
 
@@ -125,6 +135,8 @@ Triggers :
 | deleted_at | timestamp with time zone | oui |  |
 | deleted_by | uuid | oui |  |
 | deletion_reason | text | oui |  |
+| inspection_run_id | uuid | oui |  |
+| inspection_started_at | timestamp with time zone | oui |  |
 
 Policies :
 - `ca_insert` (INSERT) — WITH CHECK can_write_identity(base_of_patient(patient_id))
@@ -279,6 +291,7 @@ Triggers :
 - `trg_encounter_recompute_age` — BEFORE UPDATE → `recompute_encounter_age()`
 - `trg_encounter_structural_immutable` — BEFORE UPDATE → `guard_structural_immutable()`
 - `trg_encounter_updated` — BEFORE UPDATE → `set_updated_at()`
+- `trg_refresh_patient_inclusion_date` — AFTER INSERT/UPDATE → `trg_refresh_patient_inclusion_date()`
 
 ### export_log · RLS activée
 
@@ -374,6 +387,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | deleted_at | timestamp with time zone | oui |  |
 | deleted_by | uuid | oui |  |
 | deletion_reason | text | oui |  |
+| inclusion_date | date | oui | `CURRENT_DATE` |
 
 Policies :
 - `p_select` (SELECT) — USING (has_base_access(base_id) AND (deleted_at IS NULL))
@@ -446,6 +460,8 @@ Triggers :
 | created_at | timestamp with time zone | non | `now()` |
 | deleted_at | timestamp with time zone | oui |  |
 | deletion_reason | text | oui |  |
+| inspection_run_id | uuid | oui |  |
+| inspection_started_at | timestamp with time zone | oui |  |
 
 Policies :
 - `rd_insert` (INSERT) — WITH CHECK is_base_owner(base_id)
@@ -636,8 +652,9 @@ Triggers :
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
 | base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid | DEFINER | plpgsql |
-| base_completeness_stats | p_base_id uuid | INVOKER | sql |
+| base_completeness_stats | p_base_id uuid, p_mode text | INVOKER | sql |
 | base_completion_queue | p_base_id uuid, p_limit integer | INVOKER | sql |
+| base_completion_queue_page | p_base_id uuid, p_limit integer, p_offset integer | INVOKER | sql |
 | base_identity_audit | p_base_id uuid | DEFINER | plpgsql |
 | base_inclusion_stats | p_base_id uuid | INVOKER | sql |
 | base_of_cohort | p_cohort uuid | DEFINER | sql |
@@ -654,6 +671,7 @@ Triggers :
 | cancel_import_batch | p_batch_id uuid | DEFINER | plpgsql |
 | claim_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | cohort_preview | p_base_id uuid, p_filter jsonb, p_validated_only boolean | INVOKER | sql |
+| complete_file_inspection | p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb | DEFINER | plpgsql |
 | complete_import_batch | p_batch_id uuid | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
@@ -761,9 +779,11 @@ Triggers :
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
+| refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |
+| require_server_inspection | — | DEFINER | sql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
 | rule_apply_op | op text, a jsonb, b jsonb | INVOKER | plpgsql |
@@ -786,9 +806,12 @@ Triggers :
 | trg_audit_export_fn | — | DEFINER | plpgsql |
 | trg_audit_invitation_fn | — | DEFINER | plpgsql |
 | trg_audit_template_publish_fn | — | DEFINER | plpgsql |
+| trg_refresh_patient_inclusion_date | — | DEFINER | plpgsql |
 | update_base_access_permissions | p_access_id uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | plpgsql |
 | update_encounter | p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | validation_rank | p_status text | INVOKER | sql |
 | value_cmp | a text, b text | INVOKER | plpgsql |
+| value_documented | v jsonb | INVOKER | sql |
+| value_missing_code | v jsonb | INVOKER | sql |

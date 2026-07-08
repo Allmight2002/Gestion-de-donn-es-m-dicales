@@ -45,14 +45,20 @@ export interface InclusionStats {
   total: number;
   target: number | null;
   targetDate: string | null;
+  dateField?: string | null;
   monthly: { month: string; count: number }[];
 }
 
-// B1 — complétude par variable (version courante du gabarit). Analytique pur (comptes).
+// B1 — completude par variable. Par defaut, chaque dossier est evalue contre sa version historique.
 export interface CompletenessRow {
+  mode?: 'historical' | 'current';
+  templateVersionId?: string;
+  versionNumber?: number;
   fieldKey: string;
   label: string;
   scope: 'patient' | 'encounter';
+  observed?: number;
+  missingCoded?: number;
   filled: number;
   total: number;
 }
@@ -71,7 +77,7 @@ export interface BaseRepository {
   /** D2 : fixe/retire l'objectif d'inclusion (proprietaire seulement, RLS base_update). */
   setInclusionTarget(baseId: string, target: number | null, targetDate: string | null): Promise<void>;
   /** B1 : completude par variable, les moins renseignees d'abord (RLS : sans acces -> vide). */
-  getCompletenessStats(baseId: string): Promise<CompletenessRow[]>;
+  getCompletenessStats(baseId: string, mode?: 'historical' | 'current' | 'both'): Promise<CompletenessRow[]>;
 }
 
 type BaseRow = {
@@ -213,7 +219,13 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       const { data, error } = await client.rpc('base_inclusion_stats', { p_base_id: baseId });
       if (error) throw error;
       const s = (data ?? {}) as Partial<InclusionStats>;
-      return { total: s.total ?? 0, target: s.target ?? null, targetDate: s.targetDate ?? null, monthly: s.monthly ?? [] };
+      return {
+        total: s.total ?? 0,
+        target: s.target ?? null,
+        targetDate: s.targetDate ?? null,
+        dateField: s.dateField ?? null,
+        monthly: s.monthly ?? [],
+      };
     },
 
     async setInclusionTarget(baseId, target, targetDate) {
@@ -224,8 +236,8 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       if (error) throw error;
     },
 
-    async getCompletenessStats(baseId) {
-      const { data, error } = await client.rpc('base_completeness_stats', { p_base_id: baseId });
+    async getCompletenessStats(baseId, mode = 'historical') {
+      const { data, error } = await client.rpc('base_completeness_stats', { p_base_id: baseId, p_mode: mode });
       if (error) throw error;
       return (data ?? []) as CompletenessRow[];
     },

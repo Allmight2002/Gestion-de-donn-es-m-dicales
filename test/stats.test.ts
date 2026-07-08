@@ -13,7 +13,7 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 const statsAs = async (uid: string) =>
   (await rowsAs(uid, 'select public.base_inclusion_stats($1) as s', [baseId]))[0].s as {
-    total: number; target: number | null; targetDate: string | null; monthly: { month: string; count: number }[];
+    total: number; target: number | null; targetDate: string | null; dateField?: string; monthly: { month: string; count: number }[];
   };
 
 beforeAll(async () => {
@@ -33,6 +33,7 @@ describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
     const s1 = await statsAs(aliceId);
     expect(s1.total).toBeGreaterThan(0);
     expect(s1.monthly.length).toBeGreaterThan(0);
+    expect(s1.dateField).toBe('patient.inclusion_date');
     // La somme des mois = le total (serie coherente).
     expect(s1.monthly.reduce((acc, m) => acc + m.count, 0)).toBe(s1.total);
     expect(s1.target).toBeNull();
@@ -42,6 +43,13 @@ describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
     const s2 = await statsAs(aliceId);
     expect(s2.target).toBe(150);
     expect(s2.targetDate).toBe('2026-12-31');
+  });
+
+  test('la serie utilise la date scientifique d inclusion, pas created_at', async () => {
+    const pid = (await db.admin.query('select id from public.patient where base_id=$1 order by created_at limit 1', [baseId])).rows[0].id;
+    await db.admin.query("update public.patient set inclusion_date='2020-01-15' where id=$1", [pid]);
+    const s = await statsAs(aliceId);
+    expect(s.monthly.some((m) => m.month === '2020-01')).toBe(true);
   });
 
   test('sans acces a la base : serie vide, total 0, objectif invisible ; et pas de modification possible', async () => {
@@ -57,13 +65,24 @@ describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
 });
 
 describe('B1 base_completeness_stats (completude par variable)', () => {
-  type Row = { fieldKey: string; label: string; scope: string; filled: number; total: number };
+  type Row = {
+    mode: 'historical' | 'current';
+    fieldKey: string;
+    label: string;
+    scope: string;
+    versionNumber: number;
+    observed: number;
+    missingCoded: number;
+    filled: number;
+    total: number;
+  };
   const compAs = async (uid: string): Promise<Row[]> =>
     (await rowsAs(uid, 'select public.base_completeness_stats($1) as c', [baseId]))[0].c as Row[];
 
   test('taux coherents (verifies par comptage independant) + tri des moins completes d abord', async () => {
     const rows = await compAs(aliceId);
     expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.mode === 'historical')).toBe(true);
 
     // Champ PATIENT « sexe » : compare au comptage direct (admin).
     const sexe = rows.find((r) => r.fieldKey === 'sexe' && r.scope === 'patient');
@@ -72,6 +91,14 @@ describe('B1 base_completeness_stats (completude par variable)', () => {
     const expFilled = Number((await db.admin.query("select count(*)::int n from public.patient where base_id=$1 and deleted_at is null and nullif(data->>'sexe','') is not null", [baseId])).rows[0].n);
     expect(sexe!.total).toBe(expTotal);
     expect(sexe!.filled).toBe(expFilled);
+    expect(sexe!.observed).toBe(expFilled);
+    expect(sexe!.missingCoded).toBe(0);
+
+    // Les codes manquants sont distingues des valeurs observees.
+    const hb = rows.find((r) => r.fieldKey === 'hemoglobin' && r.scope === 'encounter');
+    expect(hb).toBeTruthy();
+    expect(hb!.missingCoded).toBeGreaterThan(0);
+    expect(hb!.filled).toBe(hb!.observed + hb!.missingCoded);
 
     // Champ RENCONTRE limite a un type (admission_date -> hospitalisation) : le denominateur est
     // le nombre de rencontres DE CE TYPE, pas toutes les rencontres.
@@ -90,5 +117,11 @@ describe('B1 base_completeness_stats (completude par variable)', () => {
 
   test('sans acces a la base : liste vide (RLS)', async () => {
     expect(await compAs(bobId)).toEqual([]);
+  });
+
+  test('la vue courante reste disponible separement pour l harmonisation', async () => {
+    const current = (await rowsAs(aliceId, "select public.base_completeness_stats($1, 'current') as c", [baseId]))[0].c as Row[];
+    expect(current.length).toBeGreaterThan(0);
+    expect(current.every((r) => r.mode === 'current')).toBe(true);
   });
 });

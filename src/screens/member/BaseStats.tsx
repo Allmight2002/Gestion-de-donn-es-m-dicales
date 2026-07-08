@@ -162,14 +162,17 @@ export function BaseStats() {
           <p className="mb-3 mt-0.5 text-xs text-slate-400">{t('stats.completeness_hint')}</p>
           <ul className="space-y-2">
             {completeness.map((r) => {
+              const observed = r.observed ?? r.filled;
+              const missingCoded = r.missingCoded ?? 0;
               const pct = r.total > 0 ? Math.round((r.filled / r.total) * 100) : null;
               const barColor = pct == null ? 'bg-slate-300' : pct >= 80 ? 'bg-teal-600' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
               return (
-                <li key={`${r.scope}-${r.fieldKey}`} className="text-sm">
+                <li key={`${r.mode ?? 'legacy'}-${r.templateVersionId ?? 'v'}-${r.scope}-${r.fieldKey}`} className="text-sm">
                   <div className="mb-0.5 flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-slate-700">
                       {r.label}
                       <span className="ml-1.5 text-[11px] text-slate-400">{t(`scope.${r.scope}`)}</span>
+                      {r.versionNumber != null && <span className="ml-1.5 text-[11px] text-slate-400">v{r.versionNumber}</span>}
                     </span>
                     <span className="whitespace-nowrap text-xs text-slate-500">
                       {pct == null ? '—' : `${r.filled} / ${r.total} (${pct} %)`}
@@ -178,6 +181,11 @@ export function BaseStats() {
                   <div className="h-1.5 rounded-full bg-slate-100">
                     <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${pct ?? 0}%` }} />
                   </div>
+                  {missingCoded > 0 && (
+                    <p className="mt-0.5 text-[11px] text-slate-400">
+                      {observed} {t('stats.observed_short')} + {missingCoded} {t('stats.missing_coded_short')}
+                    </p>
+                  )}
                 </li>
               );
             })}

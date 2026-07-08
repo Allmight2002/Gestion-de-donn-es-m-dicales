@@ -11,6 +11,8 @@ import { formatDate } from '../../lib/formatDate';
 
 // B2 v1 — file de travail « a completer » : dossiers non finalises + champs requis manquants,
 // avec acces direct au bon formulaire. La completion devient un flux visible d'equipe.
+const PAGE_SIZE = 50;
+
 export function CompletionQueue() {
   const { id: baseId } = useParams();
   const navigate = useNavigate();
@@ -18,6 +20,8 @@ export function CompletionQueue() {
   const patients = usePatientRepository();
 
   const [items, setItems] = useState<CompletionItem[]>([]);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +29,9 @@ export function CompletionQueue() {
     if (!baseId) return;
     setLoading(true);
     try {
-      setItems(await patients.getCompletionQueue(baseId));
+      const res = await patients.getCompletionQueuePage(baseId, PAGE_SIZE, page * PAGE_SIZE);
+      setItems(res.items);
+      setTotal(res.total);
       setError(null);
     } catch (e) {
       setError(errorMessage(e, t('common.error')));
@@ -33,9 +39,11 @@ export function CompletionQueue() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patients]);
+  }, [baseId, page, patients]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => { setPage(0); }, [baseId]);
 
   const openItem = (it: CompletionItem) =>
     navigate(it.kind === 'patient'
@@ -48,6 +56,32 @@ export function CompletionQueue() {
     <section className="max-w-3xl space-y-4">
       <p className="text-sm text-slate-500">{t('queue.subtitle')}</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span>
+            {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}
+          </span>
+          <span className="inline-flex gap-2">
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('pager.prev')}
+            </button>
+            <button
+              type="button"
+              disabled={(page + 1) * PAGE_SIZE >= total}
+              onClick={() => setPage((p) => p + 1)}
+              className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('pager.next')}
+            </button>
+          </span>
+        </div>
+      )}
 
       {items.length === 0 ? (
         <div className="card border-dashed p-10 text-center text-slate-500">{t('queue.empty')}</div>
