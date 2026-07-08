@@ -1,4 +1,5 @@
 import { BrowserRouter } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { I18nProvider } from './i18n/I18nProvider';
 import { AuthProvider } from './auth/AuthProvider';
 import { RepositoryProvider } from './data/RepositoryProvider';
@@ -23,6 +24,7 @@ export function App() {
           </RepositoryProvider>
         </AuthProvider>
       </ErrorBoundary>
+      <Analytics />
     </I18nProvider>
   );
 }
