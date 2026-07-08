@@ -57,11 +57,18 @@ jobs:
         run: docker build -t clamav-scanner-ci services/clamav-scanner
 
       - name: Demarrer le conteneur et exiger une reponse HTTP
+        # Boucle de retry (30 s max) : un sleep fixe etait FLAKY sur les runners (HTTP 000
+        # observe a froid alors que le meme commit passait sur l autre branche).
         run: |
           docker run -d --name scanner-ci -e SCAN_TOKEN=ci-smoke-token -p 8080:8080 clamav-scanner-ci
-          sleep 5
-          code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/health || true)
+          code=000
+          for i in $(seq 1 30); do
+            sleep 1
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/health || true)
+            if [ "$code" = "503" ] || [ "$code" = "200" ]; then break; fi
+          done
           echo "GET /health -> HTTP $code (503 attendu sans clamd)"
+          docker ps -a --filter name=scanner-ci --format '{{.Status}}'
           docker logs scanner-ci
           test "$code" = "503" -o "$code" = "200"
 
