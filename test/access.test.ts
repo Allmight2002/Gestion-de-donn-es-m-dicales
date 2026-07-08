@@ -44,6 +44,11 @@ describe('invitations : gestion reservee au proprietaire', () => {
 });
 
 describe('revocation d une invitation', () => {
+  test('accept_invitation voit pgcrypto dans le schema extensions en production Supabase', async () => {
+    const def = (await db.admin.query("select pg_get_functiondef('public.accept_invitation(text)'::regprocedure) as def")).rows[0].def as string;
+    expect(def).toMatch(/SET search_path TO 'public', 'extensions', 'pg_temp'/);
+  });
+
   test('une invitation revoquee ne peut plus etre acceptee ; une valide cree l acces', async () => {
     const inv = (await rowsAs(aliceId, INVITE, [baseId, 'bob@demo.test', 'editor', 'tok-revoked']))[0];
     await rowsAs(aliceId, 'select public.revoke_base_invitation($1)', [inv.id]);
