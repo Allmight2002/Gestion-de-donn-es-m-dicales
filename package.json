@@ -22,7 +22,8 @@
     "db:verify": "node scripts/verify-migrations.mjs",
     "schema": "node scripts/dump-schema.mjs",
     "manifest": "node scripts/deploy-manifest.mjs",
-    "env:check": "node scripts/check-inspection-env.mjs"
+    "env:check": "node scripts/check-inspection-env.mjs",
+    "env:check:cloud": "node scripts/check-inspection-env.mjs --cloud"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

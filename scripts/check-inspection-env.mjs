@@ -1,6 +1,13 @@
 // Verifie la coherence des variables d'inspection documentaire avant un deploiement clinique.
 // A lancer dans un contexte qui contient a la fois les variables frontend et les secrets Edge.
+//
+// Mode --cloud (audit v18 §6.2) : en plus des controles STATIQUES ci-dessous, se connecte a
+// la base (SUPABASE_DB_URL) et compare la valeur REELLE de public.require_server_inspection()
+// avec la configuration declaree — attrape une base cloud pas encore migree alors que les
+// variables annoncent le mode strict. Le mode par defaut reste SANS dependance (import pg
+// uniquement dans la branche cloud).
 
+const cloudMode = process.argv.includes('--cloud');
 const yes = (name) => process.env[name] === 'true';
 const value = (name) => process.env[name] ?? '';
 const fail = (message) => {
@@ -47,6 +54,40 @@ if (edgeStrict) {
   }
   if (quarantineBucket !== 'quarantined-uploads') {
     fail('QUARANTINE_BUCKET doit valoir quarantined-uploads pour correspondre au schema SQL.');
+  }
+}
+
+// --cloud : verifier la valeur REELLE dans la base (pas seulement la variable declaree).
+if (cloudMode) {
+  const dbUrl = value('SUPABASE_DB_URL');
+  if (!dbUrl) {
+    fail("--cloud exige SUPABASE_DB_URL (chaine de connexion Postgres du projet — dashboard Supabase > Connect).");
+  } else {
+    let client = null;
+    try {
+      const { default: pg } = await import('pg');
+      client = new pg.Client({ connectionString: dbUrl });
+      await client.connect();
+      const { rows } = await client.query('select public.require_server_inspection() as strict');
+      const actual = rows[0]?.strict === true;
+      const declared = yes('DB_REQUIRE_SERVER_INSPECTION');
+      if (actual !== declared) {
+        fail(`DB_REQUIRE_SERVER_INSPECTION='${value('DB_REQUIRE_SERVER_INSPECTION')}' mais public.require_server_inspection() renvoie ${actual} dans la base : migrez la base (npx supabase db push + mise a jour de app_security_setting) ou corrigez la variable.`);
+      }
+      if (edgeStrict && !actual) {
+        fail('REQUIRE_SERVER_INSPECTION=true cote Edge mais la base n impose PAS l inspection stricte : base cloud en retard sur la configuration.');
+      }
+      if (!edgeStrict && actual) {
+        fail("la base impose l'inspection stricte mais REQUIRE_SERVER_INSPECTION n'est pas 'true' cote Edge : les uploads resteraient bloques en pending.");
+      }
+      if (!process.exitCode) {
+        console.log(`Base: require_server_inspection() = ${actual} (conforme a la configuration declaree)`);
+      }
+    } catch (e) {
+      fail(`verification cloud impossible : ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      if (client) await client.end().catch(() => {});
+    }
   }
 }
 

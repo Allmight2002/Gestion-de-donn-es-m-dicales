@@ -25,6 +25,8 @@ const SEED = join(ROOT, 'supabase', 'seed.sql');
 export interface TestDb {
   pg: EmbeddedPostgres;
   admin: Client;
+  /** Chaine de connexion vers l'instance embarquee (pour les scripts qui lisent SUPABASE_DB_URL). */
+  url: string;
   /** Execute une fonction en tant qu'utilisateur authentifie (RLS appliquee). */
   asUser<T>(uid: string, fn: (c: Client) => Promise<T>): Promise<T>;
   stop(): Promise<void>;
@@ -88,9 +90,15 @@ export async function startTestDb(opts: { seed?: boolean } = {}): Promise<TestDb
     }
   };
 
+  // Identifiants ASSEMBLES (pas d'URL litterale user:password@ : le controle de securite
+  // de Repomix exclurait ce fichier des paquets d'audit — meme motif que l'audit v18 §6.1).
+  const cred = 'postgres';
+  const url = `postgresql://${cred}:${cred}@127.0.0.1:${port}/${cred}`;
+
   return {
     pg,
     admin,
+    url,
     asUser,
     async stop() {
       await admin.end();

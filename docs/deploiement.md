@@ -114,6 +114,12 @@ update public.app_security_setting
  where key = 'require_server_inspection';
 ```
 
+Enfin, **`npm run env:check:cloud`** (audit v18 §6.2) : avec `SUPABASE_DB_URL` pointant sur la base
+du projet (dashboard Supabase → Connect), le script interroge la valeur **réelle** de
+`public.require_server_inspection()` et refuse la release si la base ne correspond pas aux
+variables déclarées (base pas migrée, politique pas activée, ou l'inverse). C'est le seul contrôle
+qui attrape une base cloud en retard sur la configuration annoncée.
+
 Puis, côté frontend, `VITE_USE_SIGNED_READ=true` (rebuild) : images et documents passent par
 `signed-read`, qui **autorise** (RLS) → **journalise** (`audit_log`) → **signe**. Si la
 journalisation échoue, l'URL n'est **pas** délivrée (§9.3).

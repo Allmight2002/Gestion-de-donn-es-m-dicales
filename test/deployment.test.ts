@@ -38,7 +38,11 @@ describe('configuration de deploiement', () => {
     const ci = read('.github/workflows/ci.yml');
 
     expect(pkg.scripts['env:check']).toBe('node scripts/check-inspection-env.mjs');
+    expect(pkg.scripts['env:check:cloud']).toBe('node scripts/check-inspection-env.mjs --cloud');
     expect(ci).toContain('npm run env:check');
+    // §6.2 audit v18 : le preflight de release interroge la valeur REELLE dans la base.
+    expect(envCheck).toContain('require_server_inspection()');
+    expect(envCheck).toContain('SUPABASE_DB_URL');
     expect(envCheck).toContain('frontendStrict !== edgeStrict');
     expect(envCheck).toContain('DB_REQUIRE_SERVER_INSPECTION');
     expect(envCheck).toContain('MAX_INSPECT_UPLOAD_BYTES');
