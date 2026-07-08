@@ -100,7 +100,8 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      MAX_INSPECT_UPLOAD_BYTES=20971520 \
                      INSPECTION_SCANNING_STALE_MS=900000 \
                      MAX_INSPECTION_ATTEMPTS=5 \
-                     INSPECTION_RETRY_COOLDOWN_MS=60000
+                     INSPECTION_RETRY_COOLDOWN_MS=60000 \
+                     QUARANTINE_BUCKET=quarantined-uploads
 ```
 Avant un deploiement clinique, lancez aussi `npm run env:check` dans un contexte qui contient les
 variables frontend et les secrets Edge : le script refuse une divergence entre
@@ -129,6 +130,9 @@ mais que l'insertion metier echoue, le frontend demande a cette fonction de supp
 et appartenant a l'utilisateur courant ; la ligne metier consomme ce ticket en base avant de pointer
 vers l'objet. Apres la migration `0980`, reappliquez `supabase/storage.sql` dans le SQL Editor afin
 que les policies d'insert Storage exigent aussi `has_pending_upload_ticket(bucket_id, name)`.
+Apres la migration `0981`, ce meme `storage.sql` cree aussi le bucket prive
+`quarantined-uploads`, reserve aux Edge Functions avec `service_role` : les fichiers rejetes y sont
+copies avant suppression de l'objet original.
 
 Le scanner ClamAV fourni dans ce depot se lance avec :
 
@@ -143,6 +147,8 @@ nouveaux digests avec `docker buildx imagetools inspect`, puis validez
 `supabase/storage.sql` est de 20 Mio, inferieure a la limite scanner locale de 25 Mio. Les relances
 d'inspection sont bornees par `MAX_INSPECTION_ATTEMPTS` et espacees par
 `INSPECTION_RETRY_COOLDOWN_MS` ; le dernier echec technique est conserve en base pour diagnostic.
+`QUARANTINE_BUCKET` vaut `quarantined-uploads` par defaut et doit correspondre au bucket cree par
+`supabase/storage.sql`.
 
 Quand ce mode est actif, posez aussi `VITE_REQUIRE_SERVER_INSPECTION=true` cote frontend. Le build
 refuse cette option si `VITE_USE_SIGNED_READ=true` n'est pas pose.

@@ -302,3 +302,5 @@ des documents infectés (l'inspection serveur ClamAV et la quarantaine logique s
 > [supabase/storage.sql](supabase/storage.sql) sur le projet Supabase (buckets privés + RLS).
 > Depuis les tickets d'upload, ce fichier doit être réappliqué après la migration SQL qui crée
 > `upload_ticket`, car les policies Storage exigent `has_pending_upload_ticket(bucket_id, name)`.
+> Il crée aussi le bucket privé `quarantined-uploads`, utilisé par `inspect-upload` pour isoler
+> physiquement les fichiers rejetés avant de supprimer l'objet du bucket documentaire normal.

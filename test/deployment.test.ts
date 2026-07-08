@@ -14,6 +14,8 @@ describe('configuration de deploiement', () => {
     expect(storage).not.toMatch(/create policy "clinical_attachments_delete"/i);
     expect(storage).toContain('file_size_limit = 20971520');
     expect(storage).toContain('allowed_mime_types');
+    expect(storage).toContain("values ('quarantined-uploads'");
+    expect(storage).toContain('quarantined_uploads_insert');
     expect(edge).toContain("entity !== 'export'");
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");
@@ -42,6 +44,7 @@ describe('configuration de deploiement', () => {
     expect(envCheck).toContain('MAX_INSPECT_UPLOAD_BYTES');
     expect(envCheck).toContain('MAX_INSPECTION_ATTEMPTS');
     expect(envCheck).toContain('INSPECTION_RETRY_COOLDOWN_MS');
+    expect(envCheck).toContain('QUARANTINE_BUCKET');
     expect(config).toContain('[functions.inspect-upload]');
     expect(config).toContain('[functions.cleanup-upload]');
     expect(inspect).toContain("CLAMAV_SCAN_URL");
@@ -53,8 +56,14 @@ describe('configuration de deploiement', () => {
     expect(inspect).toContain('MAX_INSPECT_UPLOAD_BYTES');
     expect(inspect).toContain('MAX_INSPECTION_ATTEMPTS');
     expect(inspect).toContain('INSPECTION_RETRY_COOLDOWN_MS');
+    expect(inspect).toContain('QUARANTINE_BUCKET');
+    expect(inspect).toContain('moveToPhysicalQuarantine');
+    expect(inspect).toContain('.from(QUARANTINE_BUCKET).upload');
+    expect(inspect).toContain('.from(bucket).remove([path])');
+    expect(inspect).toContain('p_quarantine_bucket');
+    expect(inspect).toContain('p_quarantine_path');
     expect(inspect).toContain('last_inspection_error');
-    expect(inspect).toContain("engine: 'size-limit'");
+    expect(inspect).toContain("'size-limit'");
     expect(inspect).toContain("'magic-bytes'");
     expect(inspect).toContain('officeSubtypeMatches');
     expect(inspect).toContain("'accepted'");
@@ -106,6 +115,7 @@ describe('configuration de deploiement', () => {
     expect(prodEnv).toContain('VITE_REQUIRE_SERVER_INSPECTION=');
     expect(prodEnv).toContain('MAX_INSPECTION_ATTEMPTS=');
     expect(prodEnv).toContain('INSPECTION_RETRY_COOLDOWN_MS=');
+    expect(prodEnv).toContain('QUARANTINE_BUCKET=');
     expect(viteConfig).toContain("VITE_REQUIRE_SERVER_INSPECTION === 'true'");
     expect(viteConfig).toContain("VITE_USE_SIGNED_READ !== 'true'");
     expect(viteConfig).toContain('VERCEL_GIT_COMMIT_SHA');

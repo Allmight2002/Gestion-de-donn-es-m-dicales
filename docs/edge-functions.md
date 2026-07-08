@@ -58,15 +58,18 @@ Le flux serveur est implemente par
 3. La fonction Edge autorise via RLS avec le JWT utilisateur, pose le verrou serveur
    `inspection_status='scanning'` avec un `inspection_run_id`, puis utilise `service_role` pour
    telecharger l'objet prive.
-4. Elle refuse les objets trop volumineux avant `arrayBuffer()` (`MAX_INSPECT_UPLOAD_BYTES`) et
-   journalise la quarantaine via `file_inspected`.
-5. Elle recalcule `file_hash`, `file_size`, verifie la coherence extension / magic-bytes cote
+4. Elle telecharge l'objet, recalcule `file_hash` / `file_size`, puis refuse les objets au-dela de
+   `MAX_INSPECT_UPLOAD_BYTES`.
+5. Elle verifie la coherence extension / magic-bytes cote
    serveur, controle les marqueurs OOXML pour `docx`/`xlsx`, puis appelle le scanner ClamAV HTTP
    (`CLAMAV_SCAN_URL`).
 6. La finalisation passe par la RPC `complete_file_inspection` : verdict, metadonnees et audit
    `file_inspected` sont ecrits dans une seule transaction.
 7. Verdict propre : la ligne passe en `inspection_status='accepted'`.
-8. Verdict infecte ou fichier incoherent : la ligne passe en `inspection_status='quarantined'`.
+8. Verdict infecte, trop volumineux ou incoherent : l'objet est d'abord copie dans le bucket prive
+   `quarantined-uploads` (`QUARANTINE_BUCKET`), puis supprime du bucket documentaire normal. La
+   ligne passe ensuite en `inspection_status='quarantined'` avec `quarantine_bucket`,
+   `quarantine_path` et `quarantined_at`.
 9. `signed-read` bloque la lecture tant que la ligne n'est pas `accepted`.
 
 Le `inspection_run_id` empeche un scan perime d'ecrire son verdict si un autre run a repris le
@@ -161,7 +164,8 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      MAX_INSPECT_UPLOAD_BYTES=20971520 \
                      INSPECTION_SCANNING_STALE_MS=900000 \
                      MAX_INSPECTION_ATTEMPTS=5 \
-                     INSPECTION_RETRY_COOLDOWN_MS=60000
+                     INSPECTION_RETRY_COOLDOWN_MS=60000 \
+                     QUARANTINE_BUCKET=quarantined-uploads
 ```
 
 Controlez la coherence des drapeaux avant un deploiement clinique :

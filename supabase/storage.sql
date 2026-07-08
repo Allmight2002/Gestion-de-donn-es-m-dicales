@@ -11,6 +11,7 @@
 --   * raw-documents        : documents bruts (zone restreinte) -> can_view_raw_documents
 --   * clinical-attachments : images / pieces cliniques (identite) -> can_view/can_write_identity
 --   * scientific-exports   : exports figes IMMUABLES -> lecture base, ecriture can_export_data
+--   * quarantined-uploads  : fichiers rejetes par l'inspection serveur -> service_role uniquement
 --
 -- Convention de chemin (cf. src/data/*) : <base_id>/<...>/<uuid>.<ext>
 -- => le 1er dossier du chemin est la base ; on en deduit le controle d'acces.
@@ -153,3 +154,26 @@ with check (
   and public.has_pending_upload_ticket(bucket_id, name)
 );
 -- (pas de policy update/delete : conservation immuable)
+
+-- ---------------------------------------------------------------------------
+-- 4) Quarantaine physique (aucun acces JWT utilisateur). Les fichiers rejetes
+-- par `inspect-upload` sont copies ici, puis supprimes du bucket documentaire
+-- normal. Seules les Edge Functions avec `service_role` y accedent.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('quarantined-uploads', 'quarantined-uploads', false)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = 20971520,
+  allowed_mime_types = null;
+
+update storage.buckets
+   set public = false,
+       file_size_limit = 20971520,
+       allowed_mime_types = null
+ where id = 'quarantined-uploads';
+
+drop policy if exists "quarantined_uploads_read" on storage.objects;
+drop policy if exists "quarantined_uploads_insert" on storage.objects;
+drop policy if exists "quarantined_uploads_update" on storage.objects;
+drop policy if exists "quarantined_uploads_delete" on storage.objects;

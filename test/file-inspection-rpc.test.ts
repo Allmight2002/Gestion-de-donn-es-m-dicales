@@ -13,6 +13,11 @@ const COMPLETE = `
     $1,$2,$3,$4,$5,$6::timestamptz,$7,$8,$9,$10,$11,$12,$13::jsonb
   ) as ok
 `;
+const COMPLETE_WITH_QUARANTINE = `
+  select public.complete_file_inspection(
+    $1,$2,$3,$4,$5,$6::timestamptz,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15
+  ) as ok
+`;
 
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
@@ -146,6 +151,55 @@ describe('complete_file_inspection', () => {
     )).rows[0].n).toBe(0);
   });
 
+  test('un verdict quarantined conserve le pointeur de quarantaine physique dans la ligne et l audit', async () => {
+    const runId = randomUUID();
+    const attId = await scanningAttachment(runId);
+    const quarantinePath = `${baseId}/clinical_attachment/${attId}/${runId}/eicar.pdf`;
+
+    const ok = await db.admin.query(COMPLETE_WITH_QUARANTINE, [
+      'clinical_attachment',
+      attId,
+      runId,
+      aliceId,
+      'quarantined',
+      new Date().toISOString(),
+      'hash-eicar',
+      456,
+      'application/pdf',
+      null,
+      'clamav',
+      'Eicar-Test-Signature',
+      JSON.stringify({ original_bucket: 'clinical-attachments', original_path: `${baseId}/inspection/eicar.pdf` }),
+      'quarantined-uploads',
+      quarantinePath,
+    ]);
+    expect(ok.rows[0].ok).toBe(true);
+
+    const row = (await db.admin.query(
+      `select inspection_status, quarantine_bucket, quarantine_path, quarantined_at
+         from public.clinical_attachment where id=$1`,
+      [attId],
+    )).rows[0];
+    expect(row).toMatchObject({
+      inspection_status: 'quarantined',
+      quarantine_bucket: 'quarantined-uploads',
+      quarantine_path: quarantinePath,
+    });
+    expect(row.quarantined_at).not.toBeNull();
+
+    const audit = (await db.admin.query(
+      "select metadata from public.audit_log where action='file_inspected' and entity_id=$1",
+      [attId],
+    )).rows[0].metadata;
+    expect(audit).toMatchObject({
+      status: 'quarantined',
+      engine: 'clamav',
+      signature: 'Eicar-Test-Signature',
+      quarantine_bucket: 'quarantined-uploads',
+      quarantine_path: quarantinePath,
+    });
+  });
+
   test('la RPC serveur n est pas executable par un utilisateur authentifie', async () => {
     await expect(rowsAs(aliceId, COMPLETE, [
       'clinical_attachment',
@@ -171,18 +225,26 @@ describe('complete_file_inspection', () => {
       ')',
       'insert into public.clinical_attachment(',
       '  patient_id, storage_path, deidentification_confirmed, inspection_status,',
-      '  inspection_attempt_count, last_inspection_attempt_at, last_inspection_error',
-      ") select $2,$3,true,'accepted_client',7,now(),'client forged' from ticket",
-      'returning id, inspection_attempt_count, last_inspection_attempt_at, last_inspection_error',
+      '  inspection_attempt_count, last_inspection_attempt_at, last_inspection_error,',
+      '  quarantine_bucket, quarantine_path, quarantined_at',
+      ") select $2,$3,true,'accepted_client',7,now(),'client forged',",
+      "         'quarantined-uploads',$1::text || '/fake/quarantine.bin',now() from ticket",
+      'returning id, inspection_attempt_count, last_inspection_attempt_at, last_inspection_error,',
+      '          quarantine_bucket, quarantine_path, quarantined_at',
     ].join(' '), [baseId, patientId, `${baseId}/inspection/${randomUUID()}.png`]);
     const inserted = rows[0];
     expect(inserted.inspection_attempt_count).toBe(0);
     expect(inserted.last_inspection_attempt_at).toBeNull();
     expect(inserted.last_inspection_error).toBeNull();
+    expect(inserted.quarantine_bucket).toBeNull();
+    expect(inserted.quarantine_path).toBeNull();
+    expect(inserted.quarantined_at).toBeNull();
 
     await expect(rowsAs(aliceId, 'update public.clinical_attachment set inspection_attempt_count=9 where id=$1', [inserted.id]))
       .rejects.toThrow(/immuable|verrouille/i);
     await expect(rowsAs(aliceId, "update public.clinical_attachment set last_inspection_error='fake' where id=$1", [inserted.id]))
       .rejects.toThrow(/immuable|verrouille/i);
+    await expect(rowsAs(aliceId, "update public.clinical_attachment set quarantine_path=$2 where id=$1", [inserted.id, `${baseId}/fake.bin`]))
+      .rejects.toThrow(/immuable|serveur/i);
   });
 });

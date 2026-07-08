@@ -34,6 +34,7 @@ if (edgeStrict) {
   const maxScan = Number(value('MAX_SCAN_BYTES') || 25 * 1024 * 1024);
   const maxAttempts = Number(value('MAX_INSPECTION_ATTEMPTS') || 5);
   const retryCooldown = Number(value('INSPECTION_RETRY_COOLDOWN_MS') || 60000);
+  const quarantineBucket = value('QUARANTINE_BUCKET') || 'quarantined-uploads';
   if (!Number.isFinite(maxInspect) || maxInspect <= 0) fail('MAX_INSPECT_UPLOAD_BYTES doit etre un entier positif.');
   if (!Number.isFinite(maxScan) || maxScan <= 0) fail('MAX_SCAN_BYTES doit etre un entier positif.');
   if (Number.isFinite(maxInspect) && Number.isFinite(maxScan) && maxInspect > maxScan) {
@@ -41,6 +42,12 @@ if (edgeStrict) {
   }
   if (!Number.isFinite(maxAttempts) || maxAttempts < 1) fail('MAX_INSPECTION_ATTEMPTS doit etre un entier positif.');
   if (!Number.isFinite(retryCooldown) || retryCooldown < 0) fail('INSPECTION_RETRY_COOLDOWN_MS doit etre un entier positif ou nul.');
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(quarantineBucket)) {
+    fail('QUARANTINE_BUCKET doit etre un nom de bucket simple en minuscules, sans slash.');
+  }
+  if (quarantineBucket !== 'quarantined-uploads') {
+    fail('QUARANTINE_BUCKET doit valoir quarantined-uploads pour correspondre au schema SQL.');
+  }
 }
 
 if (!process.exitCode) {

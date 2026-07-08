@@ -58,6 +58,7 @@ const manifest = {
       'CLAMAV_SCAN_URL (si REQUIRE_SERVER_INSPECTION=true)',
       'CLAMAV_SCAN_TOKEN (si REQUIRE_SERVER_INSPECTION=true)',
       'REQUIRE_SERVER_INSPECTION=true (donnees reelles)',
+      'QUARANTINE_BUCKET=quarantined-uploads (donnees reelles)',
     ],
   },
   frontend: {

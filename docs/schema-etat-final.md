@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616098000_upload_tickets.sql`
+- Dernière migration incluse : `20260616098100_physical_quarantine.sql`
 - Tables : 30 · Policies RLS : 58 · Triggers : 46 · Fonctions : 183
 
 ## Tables (colonnes, RLS, policies, triggers)
@@ -140,6 +140,9 @@ Triggers :
 | inspection_attempt_count | integer | non | `0` |
 | last_inspection_attempt_at | timestamp with time zone | oui |  |
 | last_inspection_error | text | oui |  |
+| quarantine_bucket | text | oui |  |
+| quarantine_path | text | oui |  |
+| quarantined_at | timestamp with time zone | oui |  |
 
 Policies :
 - `ca_insert` (INSERT) — WITH CHECK can_write_identity(base_of_patient(patient_id))
@@ -470,6 +473,9 @@ Triggers :
 | inspection_attempt_count | integer | non | `0` |
 | last_inspection_attempt_at | timestamp with time zone | oui |  |
 | last_inspection_error | text | oui |  |
+| quarantine_bucket | text | oui |  |
+| quarantine_path | text | oui |  |
+| quarantined_at | timestamp with time zone | oui |  |
 
 Policies :
 - `rd_insert` (INSERT) — WITH CHECK is_base_owner(base_id)
@@ -700,7 +706,7 @@ Triggers :
 | cancel_import_batch | p_batch_id uuid | DEFINER | plpgsql |
 | claim_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | cohort_preview | p_base_id uuid, p_filter jsonb, p_validated_only boolean | INVOKER | sql |
-| complete_file_inspection | p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb | DEFINER | plpgsql |
+| complete_file_inspection | p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb, p_quarantine_bucket text, p_quarantine_path text | DEFINER | plpgsql |
 | complete_import_batch | p_batch_id uuid | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |

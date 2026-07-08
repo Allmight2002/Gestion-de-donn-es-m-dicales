@@ -5,7 +5,8 @@
 //   2) retelecharge l'objet avec la cle service_role ;
 //   3) recalcule hash/taille/type reel par magic bytes ;
 //   4) appelle un scanner HTTP ClamAV ;
-//   5) promeut la ligne en `accepted` ou `quarantined` cote serveur uniquement.
+//   5) si le fichier est rejete, le deplace dans le bucket de quarantaine prive ;
+//   6) promeut la ligne en `accepted` ou `quarantined` cote serveur uniquement.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const CORS = {
@@ -49,6 +50,7 @@ const MAX_INSPECT_BYTES = Number(Deno.env.get('MAX_INSPECT_UPLOAD_BYTES') ?? Str
 const SCANNING_STALE_MS = Number(Deno.env.get('INSPECTION_SCANNING_STALE_MS') ?? String(15 * 60 * 1000));
 const MAX_INSPECTION_ATTEMPTS = Number(Deno.env.get('MAX_INSPECTION_ATTEMPTS') ?? '5');
 const INSPECTION_RETRY_COOLDOWN_MS = Number(Deno.env.get('INSPECTION_RETRY_COOLDOWN_MS') ?? '60000');
+const QUARANTINE_BUCKET = Deno.env.get('QUARANTINE_BUCKET') ?? 'quarantined-uploads';
 
 function detectContainer(h: Uint8Array): string | null {
   const at = (off: number, sig: number[]) => sig.every((b, i) => h[off + i] === b);
@@ -92,28 +94,6 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes.buffer)));
 }
 
-function metadataSize(row: Record<string, unknown> | null | undefined): number | null {
-  const metadata = row?.metadata;
-  if (!metadata || typeof metadata !== 'object') return null;
-  const size = (metadata as Record<string, unknown>).size ?? (metadata as Record<string, unknown>).contentLength;
-  const parsed = typeof size === 'number' ? size : typeof size === 'string' ? Number(size) : NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function storageObjectSize(
-  admin: ReturnType<typeof createClient>,
-  bucket: string,
-  path: string,
-): Promise<number | null> {
-  const parts = path.split('/');
-  const name = parts.pop();
-  if (!name) return null;
-  const prefix = parts.join('/');
-  const { data } = await admin.storage.from(bucket).list(prefix, { limit: 100, search: name });
-  const row = (data ?? []).find((item: Record<string, unknown>) => item.name === name) as Record<string, unknown> | undefined;
-  return metadataSize(row);
-}
-
 function parseScannerVerdict(body: unknown): { status: 'clean' | 'infected'; signature?: string } | null {
   if (!body || typeof body !== 'object') return null;
   const status = (body as { status?: unknown }).status;
@@ -128,6 +108,12 @@ function parseScannerVerdict(body: unknown): { status: 'clean' | 'infected'; sig
     return { status: 'infected', signature: typeof signature === 'string' ? signature : undefined };
   }
   return null;
+}
+
+function quarantinePath(baseId: string, table: string, id: string, runId: string, sourcePath: string): string {
+  const rawName = sourcePath.split('/').pop() || 'file.bin';
+  const safeName = rawName.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120) || 'file.bin';
+  return `${baseId}/${table}/${id}/${runId}/${safeName}`;
 }
 
 async function scanWithClamAV(bytes: Uint8Array, filename: string): Promise<
@@ -319,6 +305,8 @@ Deno.serve(async (req: Request) => {
       detectedMimeType?: string | null;
       mimeType?: string | null;
       signature?: string | null;
+      quarantineBucket?: string | null;
+      quarantinePath?: string | null;
       extra?: Record<string, unknown>;
     },
   ) => admin.rpc('complete_file_inspection', {
@@ -335,38 +323,15 @@ Deno.serve(async (req: Request) => {
     p_engine: input.engine,
     p_signature: input.signature ?? null,
     p_extra: input.extra ?? {},
+    p_quarantine_bucket: input.quarantineBucket ?? null,
+    p_quarantine_path: input.quarantinePath ?? null,
   });
-
-  const quarantineTooLarge = async (fileSize: number) => {
-    const { data, error } = await completeInspection('quarantined', {
-      engine: 'size-limit',
-      fileSize,
-      extra: { max_size: MAX_INSPECT_BYTES },
-    });
-    return { error, stale: data !== true };
-  };
-
-  if (isFiniteLimit) {
-    const listedSize = await storageObjectSize(admin, bucket, path);
-    if (listedSize !== null && listedSize > MAX_INSPECT_BYTES) {
-      const { error: quarantineErr, stale } = await quarantineTooLarge(listedSize);
-      if (quarantineErr) return json(500, { error: 'Mise en quarantaine impossible' });
-      if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
-      return json(413, { status: 'quarantined', error: 'Fichier trop volumineux', fileSize: listedSize, maxSize: MAX_INSPECT_BYTES });
-    }
-  }
 
   const { data: fileBlob, error: downloadErr } = await admin.storage.from(bucket).download(path);
   if (downloadErr || !fileBlob) {
     const message = downloadErr?.message ?? 'Telechargement du fichier impossible';
     await resetAfterInspectionFailure(message);
     return json(500, { error: message });
-  }
-  if (isFiniteLimit && fileBlob.size > MAX_INSPECT_BYTES) {
-    const { error: quarantineErr, stale } = await quarantineTooLarge(fileBlob.size);
-    if (quarantineErr) return json(500, { error: 'Mise en quarantaine impossible' });
-    if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
-    return json(413, { status: 'quarantined', error: 'Fichier trop volumineux', fileSize: fileBlob.size, maxSize: MAX_INSPECT_BYTES });
   }
 
   const bytes = new Uint8Array(await fileBlob.arrayBuffer());
@@ -379,11 +344,43 @@ Deno.serve(async (req: Request) => {
     ? MIME_BY_EXT[ext]
     : detectedContainer ? (MIME_BY_CONTAINER[detectedContainer] ?? null) : null;
 
+  const moveToPhysicalQuarantine = async () => {
+    const targetPath = quarantinePath(baseId, table, id, runId, path);
+    const contentType = detectedMimeType ?? fileBlob.type ?? 'application/octet-stream';
+    const body = new Blob([bytes], { type: contentType });
+    const { error: uploadErr } = await admin.storage.from(QUARANTINE_BUCKET).upload(targetPath, body, {
+      contentType,
+      upsert: false,
+    });
+    if (uploadErr) return { ok: false as const, error: uploadErr.message ?? 'Copie vers la quarantaine impossible' };
+
+    const { error: removeErr } = await admin.storage.from(bucket).remove([path]);
+    if (removeErr) {
+      await admin.storage.from(QUARANTINE_BUCKET).remove([targetPath]);
+      return { ok: false as const, error: removeErr.message ?? 'Suppression de l original impossible' };
+    }
+
+    return { ok: true as const, bucket: QUARANTINE_BUCKET, path: targetPath };
+  };
+
+  const restoreFromPhysicalQuarantine = async (quarantineObject: { bucket: string; path: string }) => {
+    const contentType = detectedMimeType ?? fileBlob.type ?? 'application/octet-stream';
+    const body = new Blob([bytes], { type: contentType });
+    await admin.storage.from(bucket).upload(path, body, { contentType, upsert: true });
+    await admin.storage.from(quarantineObject.bucket).remove([quarantineObject.path]);
+  };
+
   const mark = async (
     status: 'accepted' | 'quarantined',
     engine: string,
     input: { mimeType?: string | null; signature?: string | null; extra?: Record<string, unknown> } = {},
   ) => {
+    const quarantineObject = status === 'quarantined' ? await moveToPhysicalQuarantine() : null;
+    if (quarantineObject && !quarantineObject.ok) {
+      await resetAfterInspectionFailure(quarantineObject.error);
+      return { error: new Error(quarantineObject.error), stale: false };
+    }
+
     const { data, error } = await completeInspection(status, {
       engine,
       fileHash,
@@ -391,10 +388,28 @@ Deno.serve(async (req: Request) => {
       detectedMimeType,
       mimeType: input.mimeType ?? null,
       signature: input.signature ?? null,
-      extra: input.extra,
+      quarantineBucket: quarantineObject?.bucket ?? null,
+      quarantinePath: quarantineObject?.path ?? null,
+      extra: {
+        ...(input.extra ?? {}),
+        ...(quarantineObject ? { original_bucket: bucket, original_path: path } : {}),
+      },
     });
-    return { error, stale: data !== true };
+    const stale = data !== true;
+    if ((error || stale) && quarantineObject?.ok) {
+      await restoreFromPhysicalQuarantine(quarantineObject);
+    }
+    return { error, stale };
   };
+
+  if (isFiniteLimit && fileSize > MAX_INSPECT_BYTES) {
+    const { error: quarantineErr, stale } = await mark('quarantined', 'size-limit', {
+      extra: { max_size: MAX_INSPECT_BYTES },
+    });
+    if (quarantineErr) return json(500, { error: 'Mise en quarantaine impossible' });
+    if (stale) return json(409, { status: 'scanning', error: 'Inspection remplacee par un run plus recent' });
+    return json(413, { status: 'quarantined', error: 'Fichier trop volumineux', fileSize, maxSize: MAX_INSPECT_BYTES });
+  }
 
   if (!expectedContainer || detectedContainer !== expectedContainer) {
     const { error, stale } = await mark('quarantined', 'magic-bytes', {
