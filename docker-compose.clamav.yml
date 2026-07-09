@@ -5,7 +5,9 @@ services:
     volumes:
       - clamav-db:/var/lib/clamav
     healthcheck:
-      test: ["CMD-SHELL", "clamdscan --ping >/dev/null 2>&1 || exit 1"]
+      # NB : --ping EXIGE un nombre de tentatives ; sans lui, clamdscan sort en erreur et le
+      # conteneur restait unhealthy pour toujours (trouve lors du 1er vrai `compose up`, E2E).
+      test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
