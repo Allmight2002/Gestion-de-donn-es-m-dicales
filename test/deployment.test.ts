@@ -39,6 +39,8 @@ describe('configuration de deploiement', () => {
     expect(generateExport).toContain("generation_mode: 'server'");
     expect(generateExport).toContain("generated_by: 'edge:generate-export'");
     expect(generateExport).toContain('fileHash');
+    expect(generateExport).toContain("from 'npm:xlsx@0.18.5'");
+    expect(generateExport).not.toContain('https://cdn.sheetjs.com');
   });
 
   test('inspect-upload impose un verdict serveur avant la lecture de donnees reelles', () => {

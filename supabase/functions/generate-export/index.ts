@@ -2,7 +2,7 @@
 //
 // Generation serveur des exports scientifiques (audit v20 §7.6).
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
+import * as XLSX from 'npm:xlsx@0.18.5';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
