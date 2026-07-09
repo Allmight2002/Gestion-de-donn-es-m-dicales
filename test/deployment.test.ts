@@ -15,7 +15,13 @@ describe('configuration de deploiement', () => {
     expect(storage).toContain('file_size_limit = 20971520');
     expect(storage).toContain('allowed_mime_types');
     expect(storage).toContain("values ('quarantined-uploads'");
-    expect(storage).toContain('quarantined_uploads_insert');
+    // Audit v20 §7.5 : prouver l'ETAT voulu — la quarantaine n'a AUCUNE policy utilisateur
+    // (service_role seulement, qui contourne la RLS). L'ancienne assertion toContain
+    // matchait une chaine presente... dans un drop policy.
+    expect(storage).not.toMatch(/create policy "quarantined[^"]*"/i);
+    for (const op of ['read', 'insert', 'update', 'delete']) {
+      expect(storage).toContain(`drop policy if exists "quarantined_uploads_${op}"`);
+    }
     expect(edge).toContain("entity !== 'export'");
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");

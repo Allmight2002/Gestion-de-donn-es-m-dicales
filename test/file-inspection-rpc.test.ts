@@ -184,6 +184,34 @@ describe('complete_file_inspection', () => {
     )).rows[0].n).toBe(0);
   });
 
+  test('audit v20 §7.3 : un verdict quarantined sans hash/taille/moteur est refuse (trace forensique)', async () => {
+    const runId = randomUUID();
+    const attId = await scanningAttachment(runId);
+
+    // Un fichier quarantined a toujours ete LU (telechargement avant verdict) : la base
+    // exige hash + taille + moteur. Un fichier illisible doit rester pending, pas quarantined.
+    await expect(db.admin.query(COMPLETE_WITH_QUARANTINE, [
+      'clinical_attachment', attId, runId, aliceId, 'quarantined',
+      new Date().toISOString(), null, null, null, null, 'clamav', 'Eicar-Test-Signature',
+      JSON.stringify({}), 'quarantined-uploads', `${baseId}/q/${attId}.bin`,
+    ])).rejects.toThrow(/moteur requis|quarantaine/i);
+
+    await expect(db.admin.query(COMPLETE_WITH_QUARANTINE, [
+      'clinical_attachment', attId, runId, aliceId, 'quarantined',
+      new Date().toISOString(), 'hash-x', 10, null, null, '  ', null,
+      JSON.stringify({}), 'quarantined-uploads', `${baseId}/q/${attId}.bin`,
+    ])).rejects.toThrow(/moteur requis|quarantaine/i);
+
+    // La ligne n'a pas bouge (toujours sous verrou scanning), aucun audit ecrit.
+    const row = (await db.admin.query(
+      'select inspection_status, quarantine_path from public.clinical_attachment where id=$1', [attId],
+    )).rows[0];
+    expect(row).toMatchObject({ inspection_status: 'scanning', quarantine_path: null });
+    expect((await db.admin.query(
+      "select count(*)::int as n from public.audit_log where action='file_inspected' and entity_id=$1", [attId],
+    )).rows[0].n).toBe(0);
+  });
+
   test('un verdict quarantined conserve le pointeur de quarantaine physique dans la ligne et l audit', async () => {
     const runId = randomUUID();
     const attId = await scanningAttachment(runId);
