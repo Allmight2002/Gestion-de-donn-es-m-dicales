@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { App } from './App';
 import { initTheme } from './lib/theme';
 import './index.css';
@@ -13,5 +14,7 @@ createRoot(document.getElementById('root')!).render(
     {/* Vercel Analytics : pages vues anonymes (routes SPA suivies automatiquement).
         Inactif en dev ; n'emet que sur le deploiement Vercel. Aucune donnee applicative. */}
     <Analytics />
+    {/* Vercel Speed Insights : Core Web Vitals collectes uniquement sur deploiement Vercel. */}
+    <SpeedInsights />
   </StrictMode>,
 );
