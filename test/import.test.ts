@@ -28,6 +28,18 @@ const enc = (type: string, date: string, data: object) => ({ encounter_type: typ
 const row = (code: string | null, encounter: object | null, patient_data: object = {}, identity: object | null = null) =>
   ({ patient_code: code, identity, patient_data, encounter });
 const J = (arr: unknown[]) => JSON.stringify(arr);
+const sourceRow = (
+  sourceRowNumber: number,
+  normalizedRowHash: string,
+  code: string | null,
+  encounter: object | null,
+  patient_data: object = {},
+  identity: object | null = null,
+) => ({
+  ...row(code, encounter, patient_data, identity),
+  source_row_number: sourceRowNumber,
+  normalized_row_hash: normalizedRowHash,
+});
 const countPatients = async () =>
   Number((await db.admin.query('select count(*)::int n from public.patient where base_id=$1', [baseId])).rows[0].n);
 
@@ -313,6 +325,37 @@ describe('import_records', () => {
     // ...et n'est donc pas verrouille : le fichier corrige reste rejouable.
     const rep2 = (await rowsAs(aliceId, CALL7, [baseId, J([row('B77-OK2', null, { sexe: 'M' })]), false, 'draft', 'fill', h, null]))[0].report;
     expect(rep2.error_count).toBe(0);
+  });
+
+  test('audit v20 provenance source : la reprise ignore seulement les lignes deja reussies', async () => {
+    const h = 'src77-' + Date.now();
+    const okLine = sourceRow(1, 'src-ok-v1', 'SRC77-OK', enc('consultation', '2024-01-05', { diagnosis: 'ok', glasgow_score: 10 }));
+    const badLine = sourceRow(2, 'src-bad-v1', null, enc('consultation', '2024-01-06', { diagnosis: 'ko', glasgow_score: 10 }));
+
+    const first = (await rowsAs(aliceId, CALL7, [baseId, J([okLine, badLine]), false, 'draft', 'fill', h, null]))[0].report;
+    expect(first).toMatchObject({ encounters: 1, error_count: 1, already_imported: 0 });
+    expect((await db.admin.query('select status from public.import_batch where base_id=$1 and file_hash=$2', [baseId, h])).rows[0].status)
+      .toBe('completed_with_errors');
+
+    const fixedLine = sourceRow(2, 'src-fixed-v1', 'SRC77-FIX', enc('consultation', '2024-01-06', { diagnosis: 'corrige', glasgow_score: 12 }));
+    const replay = (await rowsAs(aliceId, CALL7, [baseId, J([okLine, fixedLine]), false, 'draft', 'fill', h, null]))[0].report;
+    expect(replay).toMatchObject({ already_imported: 1, encounters: 1, error_count: 0 });
+
+    const sourceHashes = await db.admin.query(
+      "select source_row_number, normalized_row_hash from public.import_row_hash where base_id=$1 and hash_kind='source' and source_file_hash=$2 order by source_row_number",
+      [baseId, h],
+    );
+    expect(sourceHashes.rows).toEqual([
+      { source_row_number: 1, normalized_row_hash: 'src-ok-v1' },
+      { source_row_number: 2, normalized_row_hash: 'src-fixed-v1' },
+    ]);
+
+    const n = await db.admin.query(
+      `select count(*)::int n from public.encounter e join public.patient p on p.id = e.patient_id
+       where p.base_id = $1 and p.patient_code in ('SRC77-OK','SRC77-FIX')`,
+      [baseId],
+    );
+    expect(n.rows[0].n).toBe(2);
   });
 
   test('§7.8 rejouer un fichier corrige (NOUVEAU lot) ignore les lignes deja reussies, sans doublon', async () => {

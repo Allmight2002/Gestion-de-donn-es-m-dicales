@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616098300_complete_inspection_quarantined_guard.sql`
-- Tables : 30 · Policies RLS : 58 · Triggers : 46 · Fonctions : 183
+- Dernière migration incluse : `20260616098600_import_source_idempotence.sql`
+- Tables : 31 · Policies RLS : 58 · Triggers : 47 · Fonctions : 187
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -315,6 +315,9 @@ Triggers :
 | stored_file_path | text | oui |  |
 | file_hash | text | oui |  |
 | template_versions | jsonb | oui |  |
+| generation_mode | text | non | `'client'::text` |
+| generated_by_function | text | oui |  |
+| server_generated_at | timestamp with time zone | oui |  |
 
 Policies :
 - `el_insert` (INSERT) — WITH CHECK can_export_data(base_of_cohort(cohort_id))
@@ -322,6 +325,7 @@ Policies :
 
 Triggers :
 - `trg_audit_export` — AFTER INSERT → `trg_audit_export_fn()`
+- `trg_export_generation_mode` — BEFORE INSERT/UPDATE → `guard_export_generation_mode()`
 - `trg_export_log_upload_ticket` — BEFORE INSERT/UPDATE → `guard_upload_ticket_attachment()`
 
 ### field_change_log · RLS activée
@@ -375,6 +379,10 @@ Policies :
 | batch_id | uuid | non |  |
 | row_hash | text | non |  |
 | base_id | uuid | non |  |
+| hash_kind | text | non | `'clinical'::text` |
+| source_file_hash | text | oui |  |
+| source_row_number | integer | oui |  |
+| normalized_row_hash | text | oui |  |
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
@@ -448,6 +456,35 @@ Policies :
 
 Triggers :
 - `trg_guard_profile_role` — BEFORE UPDATE → `guard_profile_role()`
+
+### quarantine_move_log · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| entity | text | non |  |
+| entity_id | uuid | non |  |
+| base_id | uuid | non |  |
+| run_id | uuid | non |  |
+| inspected_by | uuid | oui |  |
+| source_bucket | text | non |  |
+| source_path | text | non |  |
+| quarantine_bucket | text | non | `'quarantined-uploads'::text` |
+| quarantine_path | text | non |  |
+| status | text | non | `'started'::text` |
+| engine | text | non |  |
+| signature | text | oui |  |
+| file_hash | text | non |  |
+| file_size | bigint | non |  |
+| detected_mime_type | text | oui |  |
+| mime_type | text | oui |  |
+| extra | jsonb | non | `'{}'::jsonb` |
+| last_error | text | oui |  |
+| created_at | timestamp with time zone | non | `now()` |
+| updated_at | timestamp with time zone | non | `now()` |
+| finalized_at | timestamp with time zone | oui |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### raw_document · RLS activée
 
@@ -747,6 +784,7 @@ Triggers :
 | guard_base_template_version | — | DEFINER | plpgsql |
 | guard_curation_draft_scope | — | DEFINER | plpgsql |
 | guard_document_created_by | — | DEFINER | plpgsql |
+| guard_export_generation_mode | — | DEFINER | plpgsql |
 | guard_finalized_draft | — | INVOKER | plpgsql |
 | guard_inspection_status | — | INVOKER | plpgsql |
 | guard_no_curated_downgrade | — | INVOKER | plpgsql |
@@ -816,7 +854,9 @@ Triggers :
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
+| quarantine_reconciliation_candidates | p_limit integer | DEFINER | sql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
+| record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
@@ -848,6 +888,7 @@ Triggers :
 | update_base_access_permissions | p_access_id uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | plpgsql |
 | update_encounter | p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
+| update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | upload_ticket_authorized | p_base_id uuid, p_bucket text | DEFINER | sql |
 | validation_rank | p_status text | INVOKER | sql |

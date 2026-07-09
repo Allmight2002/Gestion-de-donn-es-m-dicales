@@ -250,7 +250,7 @@ npm run db:verify # applique toutes les migrations depuis zéro
 | Couche | Emplacement |
 |---|---|
 | Migrations SQL (source de vérité) | `supabase/migrations/` ; état résultant : `docs/schema-etat-final.md` |
-| Edge Functions | `supabase/functions/signed-read/` |
+| Edge Functions | `supabase/functions/` (`signed-read`, `inspect-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`) |
 | Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `signedRead`) |
 | Domaine pur | `src/domain/` (validation, règles, import, inspection de fichiers, tableur) |
 | Écrans | `src/screens/member/`, `src/screens/staff/` |
@@ -269,8 +269,8 @@ présent cahier et des audits successifs.
 - **Confidentialité** : la RLS protège l'accès **applicatif** ; l'administrateur du serveur peut
   techniquement lire la base. Garantie forte = chiffrement côté client (hors MVP) → **données
   fictives uniquement**.
-- **À durcir au déploiement** (déjà documenté/partiel) : antivirus serveur réel et inspection
-  approfondie des fichiers ; **génération des exports côté serveur** (aujourd'hui orchestrée
-  navigateur) ; politique d'« appareil de confiance » + chiffrement local du cache hors-ligne.
+- **À durcir au déploiement** (déjà documenté/partiel) : activer le moteur antivirus réel et
+  l'inspection stricte en cloud ; politique d'« appareil de confiance » + chiffrement local du
+  cache hors-ligne.
 - **Dépendances** : avis `npm audit` restants limités à l'**outillage de développement**
   (esbuild/vite/vitest) — aucun au **runtime** (`npm audit --omit=dev` = 0).

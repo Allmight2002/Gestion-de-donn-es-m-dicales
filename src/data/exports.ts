@@ -1,11 +1,9 @@
 // Couche d'acces a l'export (cahier §9.2, §9.3).
-// Les donnees exportees proviennent d'une cohorte FIGEE (membres geles). Le fichier
-// definitif est conserve dans un bucket IMMUABLE (insert seul), avec file_hash, et la
-// trace est ecrite dans export_log (ajout seul).
+// Les donnees exportees proviennent d'une cohorte FIGEE. La generation et le hash
+// du fichier conserve sont produits cote serveur par l'Edge Function `generate-export`.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ExportEncounter, ExportPatient } from '../domain/export';
-import { cleanupUploadedObject, createUploadTicket } from './inspection';
 import { signedRead } from './signedRead';
 
 export const EXPORTS_BUCKET = 'scientific-exports';
@@ -24,6 +22,7 @@ export interface ExportLogItem {
   encounterCount: number | null;
   fileHash: string | null;
   storedFilePath: string | null;
+  generationMode?: 'client' | 'server' | null;
 }
 
 export interface RecordExportInput {
@@ -33,10 +32,6 @@ export interface RecordExportInput {
   templateVersions: string[];
   format: 'csv' | 'xlsx';
   options: Record<string, unknown>;
-  content: Blob;
-  ext: string;
-  patientCount: number;
-  encounterCount: number;
 }
 
 export interface ExportRepository {
@@ -50,12 +45,6 @@ type PatientRow = { id: string; patient_code: string; data: Record<string, unkno
 type EncRow = { id: string; patient_id: string; encounter_date: string; encounter_type: string; data: Record<string, unknown> };
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
-
-async function sha256Hex(blob: Blob): Promise<string> {
-  const buf = await blob.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 export function makeExportRepository(client: SupabaseClient | null): ExportRepository {
   if (!client) {
@@ -122,41 +111,23 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
     },
 
     async recordExport(input) {
-      const fileHash = await sha256Hex(input.content);
-      const path = `${input.baseId}/${input.cohortId}/${Date.now()}.${input.ext}`;
-      const ticketId = await createUploadTicket(client, input.baseId, EXPORTS_BUCKET, path);
-      let data: LogRow;
-      try {
-        const { error: upErr } = await client.storage.from(EXPORTS_BUCKET).upload(path, input.content, { upsert: false });
-        if (upErr) throw upErr;
-
-        const inserted = await client
-          .from('export_log')
-          .insert({
-            cohort_id: input.cohortId,
-            template_versions: input.templateVersions,
-            format: input.format,
-            export_options: input.options,
-            patient_count: input.patientCount,
-            encounter_count: input.encounterCount,
-            stored_file_path: path,
-            file_hash: fileHash,
-          })
-          .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path')
-          .single();
-        if (inserted.error) throw inserted.error;
-        data = inserted.data as LogRow;
-      } catch (error) {
-        await cleanupUploadedObject(client, EXPORTS_BUCKET, path, ticketId).catch(() => undefined);
-        throw error;
-      }
-      return mapLog(data);
+      const { data, error } = await client.functions.invoke('generate-export', {
+        body: {
+          cohortId: input.cohortId,
+          baseId: input.baseId,
+          templateVersions: input.templateVersions,
+          format: input.format,
+          options: input.options,
+        },
+      });
+      if (error) throw error;
+      return mapLog(data as LogRow);
     },
 
     async listExports(cohortId) {
       const { data, error } = await client
         .from('export_log')
-        .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path')
+        .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path, generation_mode')
         .eq('cohort_id', cohortId)
         .order('exported_at', { ascending: false });
       if (error) throw error;
@@ -172,10 +143,12 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
 type LogRow = {
   id: string; format: string; exported_at: string; patient_count: number | null;
   encounter_count: number | null; file_hash: string | null; stored_file_path: string | null;
+  generation_mode?: 'client' | 'server' | null;
 };
 const mapLog = (r: LogRow): ExportLogItem => ({
   id: r.id, format: r.format, exportedAt: r.exported_at, patientCount: r.patient_count,
   encounterCount: r.encounter_count, fileHash: r.file_hash, storedFilePath: r.stored_file_path,
+  generationMode: r.generation_mode ?? null,
 });
 
 export const exportRepository: ExportRepository = makeExportRepository(supabase);

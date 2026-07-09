@@ -261,6 +261,51 @@ describe('complete_file_inspection', () => {
     });
   });
 
+  test('audit v20 : les mouvements de quarantaine sont journalises et reserves au serveur', async () => {
+    const runId = randomUUID();
+    const attId = await scanningAttachment(runId);
+    const sourcePath = `${baseId}/inspection/${attId}.png`;
+    const quarantinePath = `${baseId}/clinical_attachment/${attId}/${runId}/eicar.png`;
+
+    const created = await db.admin.query(
+      `select public.record_quarantine_move(
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb
+      ) as id`,
+      [
+        'clinical_attachment',
+        attId,
+        runId,
+        aliceId,
+        baseId,
+        'clinical-attachments',
+        sourcePath,
+        'quarantined-uploads',
+        quarantinePath,
+        'clamav',
+        'Eicar-Test-Signature',
+        'hash-quarantine-log',
+        456,
+        'image/png',
+        'image/png',
+        JSON.stringify({ original_bucket: 'clinical-attachments', original_path: sourcePath }),
+      ],
+    );
+    const moveId = created.rows[0].id;
+    await db.admin.query('select public.update_quarantine_move($1,$2,$3)', [moveId, 'copied', null]);
+    await db.admin.query('select public.update_quarantine_move($1,$2,$3)', [moveId, 'finalized', null]);
+
+    const row = (await db.admin.query(
+      'select status, source_path, quarantine_path, finalized_at from public.quarantine_move_log where id=$1',
+      [moveId],
+    )).rows[0];
+    expect(row).toMatchObject({ status: 'finalized', source_path: sourcePath, quarantine_path: quarantinePath });
+    expect(row.finalized_at).not.toBeNull();
+
+    await expect(rowsAs(aliceId, 'select id from public.quarantine_move_log')).rejects.toThrow(/permission|denied/i);
+    await expect(rowsAs(aliceId, 'select public.update_quarantine_move($1,$2,$3)', [moveId, 'copied', null]))
+      .rejects.toThrow(/permission|execute/i);
+  });
+
   test('la RPC serveur n est pas executable par un utilisateur authentifie', async () => {
     await expect(rowsAs(aliceId, COMPLETE, [
       'clinical_attachment',

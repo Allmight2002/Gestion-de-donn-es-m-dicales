@@ -20,6 +20,8 @@ export type ColumnMapping = Record<number, ImportTarget>;
 
 export interface ImportRow {
   patient_code: string | null;
+  source_row_number?: number;
+  normalized_row_hash?: string;
   identity: { full_name?: string; date_of_birth?: string } | null;
   patient_data: Record<string, unknown>;
   encounter: { encounter_type: string; encounter_date: string; data: Record<string, unknown> } | null;
@@ -48,6 +50,16 @@ const META_ALIASES: Record<string, ImportTarget> = {
   fullname: 'identity.full_name', nom: 'identity.full_name', nomcomplet: 'identity.full_name', name: 'identity.full_name',
   dateofbirth: 'identity.date_of_birth', datedenaissance: 'identity.date_of_birth', naissance: 'identity.date_of_birth', dob: 'identity.date_of_birth',
 };
+
+function stableHash(value: unknown): string {
+  const input = JSON.stringify(value);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
 
 /** Pre-remplit la correspondance (par INDEX) : meta connue, puis champ de gabarit par libelle/cle. */
 export function autoMapColumns(headers: string[], fields: TemplateField[]): ColumnMapping {
@@ -101,7 +113,7 @@ export function buildImportRows(rows: unknown[][], mapping: ColumnMapping, field
     }
     return s;
   };
-  return rows.map((cells) => {
+  return rows.map((cells, rowIndex) => {
     let patient_code: string | null = null;
     const identity: { full_name?: string; date_of_birth?: string } = {};
     const patient_data: Record<string, unknown> = {};
@@ -135,6 +147,8 @@ export function buildImportRows(rows: unknown[][], mapping: ColumnMapping, field
     const hasIdentity = !!(identity.full_name || identity.date_of_birth);
     return {
       patient_code,
+      source_row_number: rowIndex + 1,
+      normalized_row_hash: stableHash(cells.map((v) => (v == null ? '' : String(v).trim()))),
       identity: hasIdentity ? identity : null,
       patient_data,
       encounter: hasEnc ? { encounter_type: encType || 'consultation', encounter_date: encDate, data: encData } : null,

@@ -43,7 +43,7 @@ const templateRepo = {
 describe('ExportPanel', () => {
   test('genere et conserve un export CSV (trace recordExport)', async () => {
     const recordExport = vi.fn(async (_i: RecordExportInput): Promise<ExportLogItem> => ({
-      id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'deadbeef', storedFilePath: 'p',
+      id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'deadbeef', storedFilePath: null,
     }));
     const exportsRepo = {
       async getSnapshotData() {
@@ -74,8 +74,8 @@ describe('ExportPanel', () => {
     await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
     const arg = recordExport.mock.calls[0][0];
     expect(arg.format).toBe('csv');
-    expect(arg.patientCount).toBe(1);
-    expect(arg.encounterCount).toBe(1);
+    expect(arg.options).toMatchObject({ mode: 'encounter', rule: 'last', scope: 'matching' });
+    expect('content' in arg).toBe(false);
   });
 
   test('telecharge un export conserve via URL signee (et trace best-effort en local)', async () => {

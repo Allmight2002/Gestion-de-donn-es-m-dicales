@@ -2,7 +2,7 @@
 
 Ces fonctions tournent cote serveur dans le runtime Deno de Supabase. Elles servent aux chemins
 qui ne doivent pas etre pilotables uniquement par le navigateur : lecture de fichiers prives,
-journalisation non contournable et inspection antivirus.
+journalisation non contournable, inspection antivirus et generation d'exports conserves.
 
 Le mode demo reste possible sans antivirus, mais tout deploiement avec donnees reelles doit
 activer `signed-read` et, pour les uploads, `inspect-upload`.
@@ -25,6 +25,7 @@ l'URL uniquement apres :
 ```bash
 supabase functions deploy signed-read
 supabase functions deploy cleanup-upload
+supabase functions deploy generate-export
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
@@ -98,6 +99,53 @@ Apres la migration SQL qui cree `upload_ticket`, reappliquez aussi
 [`supabase/storage.sql`](../supabase/storage.sql) dans le SQL Editor : les policies d'insert Storage
 exigent `has_pending_upload_ticket(bucket_id, name)`.
 
+---
+
+## 10.3 - Exports scientifiques generes cote serveur (`generate-export`)
+
+Probleme traite : un export conserve ne doit plus etre assemble, hashe puis uploade par le
+navigateur. Le frontend appelle
+[`generate-export`](../supabase/functions/generate-export/index.ts), qui :
+
+1. verifie le JWT utilisateur et l'autorisation `can_export_data(base_id)` ;
+2. relit la cohorte figee et les donnees curees cote serveur ;
+3. applique la liste blanche analytique et refuse toute colonne identifiante ;
+4. genere le CSV ou le XLSX, calcule `file_hash`, stocke le fichier dans `scientific-exports` ;
+5. insere `export_log` avec `generation_mode='server'`.
+
+Le telechargement reste separe : l'historique passe par `signed-read`, qui journalise
+`export_read` avant de delivrer l'URL signee.
+
+### Deploy
+
+```bash
+supabase functions deploy generate-export
+```
+
+La fonction utilise les memes secrets que `signed-read` : `SUPABASE_URL`, `SUPABASE_ANON_KEY` et
+`SUPABASE_SERVICE_ROLE_KEY`.
+
+---
+
+## 10.4 - Reconciliation de quarantaine (`reconcile-quarantine`)
+
+Probleme traite : le deplacement Storage vers `quarantined-uploads` et la finalisation SQL ne sont
+pas atomiques. `inspect-upload` ecrit chaque etape dans `quarantine_move_log`; en cas de coupure,
+[`reconcile-quarantine`](../supabase/functions/reconcile-quarantine/index.ts) reprend les mouvements
+incomplets.
+
+Cette fonction est reservee aux profils `system_admin`. Elle marque les mouvements non recuperables
+en `reconcile_failed` et finalise ceux dont l'objet de quarantaine est deja copie et dont la ligne
+documentaire est encore sur le meme `inspection_run_id`.
+
+### Deploy
+
+```bash
+supabase functions deploy reconcile-quarantine
+```
+
+Elle utilise les memes secrets Supabase que les autres fonctions Edge.
+
 ### Deploy ClamAV
 
 Le depot fournit un pont HTTP minimal vers `clamd` :
@@ -155,6 +203,8 @@ En production, le service antivirus doit etre traite comme une dependance de sec
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
 supabase functions deploy cleanup-upload
+supabase functions deploy generate-export
+supabase functions deploy reconcile-quarantine
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \

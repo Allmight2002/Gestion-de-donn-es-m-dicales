@@ -344,23 +344,67 @@ Deno.serve(async (req: Request) => {
     ? MIME_BY_EXT[ext]
     : detectedContainer ? (MIME_BY_CONTAINER[detectedContainer] ?? null) : null;
 
-  const moveToPhysicalQuarantine = async () => {
+  const updateQuarantineMove = async (moveId: string, status: string, lastError: string | null = null) => {
+    const { error } = await admin.rpc('update_quarantine_move', {
+      p_move_id: moveId,
+      p_status: status,
+      p_last_error: lastError,
+    });
+    if (error) console.error(`journal quarantaine non mis a jour (${status}) : ${error.message}`);
+  };
+
+  const moveToPhysicalQuarantine = async (
+    engine: string,
+    input: { mimeType?: string | null; signature?: string | null; extra?: Record<string, unknown> } = {},
+  ) => {
     const targetPath = quarantinePath(baseId, table, id, runId, path);
+    const { data: moveId, error: moveErr } = await admin.rpc('record_quarantine_move', {
+      p_entity: table,
+      p_entity_id: id,
+      p_run_id: runId,
+      p_user_id: who.user.id,
+      p_base_id: baseId,
+      p_source_bucket: bucket,
+      p_source_path: path,
+      p_quarantine_bucket: QUARANTINE_BUCKET,
+      p_quarantine_path: targetPath,
+      p_engine: engine,
+      p_signature: input.signature ?? null,
+      p_file_hash: fileHash,
+      p_file_size: fileSize,
+      p_detected_mime_type: detectedMimeType,
+      p_mime_type: input.mimeType ?? null,
+      p_extra: {
+        ...(input.extra ?? {}),
+        original_bucket: bucket,
+        original_path: path,
+      },
+    });
+    if (moveErr || !moveId) {
+      return { ok: false as const, error: moveErr?.message ?? 'Journal de quarantaine impossible' };
+    }
+
     const contentType = detectedMimeType ?? fileBlob.type ?? 'application/octet-stream';
     const body = new Blob([bytes], { type: contentType });
     const { error: uploadErr } = await admin.storage.from(QUARANTINE_BUCKET).upload(targetPath, body, {
       contentType,
       upsert: false,
     });
-    if (uploadErr) return { ok: false as const, error: uploadErr.message ?? 'Copie vers la quarantaine impossible' };
+    if (uploadErr) {
+      await updateQuarantineMove(moveId, 'reconcile_failed', uploadErr.message ?? 'Copie vers la quarantaine impossible');
+      return { ok: false as const, error: uploadErr.message ?? 'Copie vers la quarantaine impossible' };
+    }
+    await updateQuarantineMove(moveId, 'copied');
 
     const { error: removeErr } = await admin.storage.from(bucket).remove([path]);
     if (removeErr) {
       await admin.storage.from(QUARANTINE_BUCKET).remove([targetPath]);
+      await updateQuarantineMove(moveId, 'restored', removeErr.message ?? 'Suppression de l original impossible');
       return { ok: false as const, error: removeErr.message ?? 'Suppression de l original impossible' };
     }
+    await updateQuarantineMove(moveId, 'original_deleted');
 
-    return { ok: true as const, bucket: QUARANTINE_BUCKET, path: targetPath };
+    return { ok: true as const, moveId, bucket: QUARANTINE_BUCKET, path: targetPath };
   };
 
   // Audit v19 §5.4 : restauration JOURNALISEE — supabase-js ne leve pas d'exception, il
@@ -388,7 +432,7 @@ Deno.serve(async (req: Request) => {
     engine: string,
     input: { mimeType?: string | null; signature?: string | null; extra?: Record<string, unknown> } = {},
   ) => {
-    const quarantineObject = status === 'quarantined' ? await moveToPhysicalQuarantine() : null;
+    const quarantineObject = status === 'quarantined' ? await moveToPhysicalQuarantine(engine, input) : null;
     if (quarantineObject && !quarantineObject.ok) {
       await resetAfterInspectionFailure(quarantineObject.error);
       return { error: new Error(quarantineObject.error), stale: false };
@@ -412,11 +456,16 @@ Deno.serve(async (req: Request) => {
     if ((error || stale) && quarantineObject?.ok) {
       const restored = await restoreFromPhysicalQuarantine(quarantineObject);
       if (!restored.ok) {
+        await updateQuarantineMove(quarantineObject.moveId, 'reconcile_failed', restored.error);
         console.error(
           `verdict quarantined non finalise ET restauration echouee pour ${table}/${id} (run ${runId}) : ` +
           `octets conserves dans ${quarantineObject.bucket}/${quarantineObject.path}`,
         );
+      } else {
+        await updateQuarantineMove(quarantineObject.moveId, 'restored', error?.message ?? (stale ? 'run remplace' : null));
       }
+    } else if (quarantineObject?.ok) {
+      await updateQuarantineMove(quarantineObject.moveId, 'finalized');
     }
     return { error, stale };
   };

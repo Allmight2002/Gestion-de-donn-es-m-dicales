@@ -79,12 +79,15 @@ describe('ImportData (ecran d import)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
     await waitFor(() => expect(importRecords).toHaveBeenCalledTimes(1));
     expect(importRecords.mock.calls[0][2]).toMatchObject({ dryRun: true, status: 'draft', conflict: 'fill' });
-    // Les lignes structurees : 1 patient P1 + 1 rencontre.
+    // Les lignes structurees : 1 patient P1 + 1 rencontre, AVEC la provenance source
+    // (audit v20 §7.7 : numero de ligne + empreinte normalisee pour la reprise technique).
     const sent = importRecords.mock.calls[0][1];
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual({
       patient_code: 'P1', identity: null, patient_data: { sexe: 'M' },
       encounter: { encounter_type: 'consultation', encounter_date: '2024-01-05', data: { diagnosis: 'TC', glasgow_score: 12 } },
+      source_row_number: 1,
+      normalized_row_hash: expect.stringMatching(/^[0-9a-f]{8}$/),
     });
     expect(await screen.findByText(/encore été écrit/i)).toBeInTheDocument(); // rapport d'apercu
     expect(screen.getByText(/nouveaux patients/i)).toBeInTheDocument();

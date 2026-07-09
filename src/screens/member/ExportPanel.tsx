@@ -2,27 +2,10 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import { useAuditRepository, useBaseRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useAuditRepository, useBaseRepository, useExportRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';
-import { getTemplateFields } from '../../data/templates';
 import { formatDateTime } from '../../lib/formatDate';
-import {
-  buildDictionary, buildEncounterExport, buildPatientExport, toCsv, assertNoIdentity,
-  type AggregationRule, type ExportField, type ExportTable,
-} from '../../domain/export';
-
-function download(content: Blob, filename: string) {
-  try {
-    const url = URL.createObjectURL(content);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch {
-    /* environnement sans createObjectURL (tests) */
-  }
-}
+import type { AggregationRule } from '../../domain/export';
 
 function downloadUrl(url: string, filename: string) {
   try {
@@ -36,31 +19,17 @@ function downloadUrl(url: string, filename: string) {
   }
 }
 
-// xlsx est charge a la DEMANDE (import dynamique) : ~400 Ko hors du bundle initial.
-async function xlsxBlob(main: ExportTable, dict: ExportTable): Promise<Blob> {
-  assertNoIdentity(main.columns);
-  const XLSX = await import('xlsx');
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(main.rows, { header: main.columns }), 'Export');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dict.rows, { header: dict.columns }), 'Dictionnaire');
-  return new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-}
-
 // Export d'une cohorte FIGEE (cahier §9.2/§9.3). Choix EXPLICITES : mode, regle
-// d'agregation, portee des rencontres, format. Genere le fichier + le dictionnaire,
-// et conserve le fichier immuable (file_hash + export_log).
+// d'agregation, portee des rencontres, format. La generation, le hash et la conservation
+// du fichier sont executes cote serveur par l'Edge Function `generate-export`.
 export function ExportPanel() {
   const { id: baseId, cohortId } = useParams();
   const navigate = useNavigate();
   const { t, lang } = useI18n();
   const bases = useBaseRepository();
-  const templates = useTemplateRepository();
   const exportsRepo = useExportRepository();
   const audit = useAuditRepository();
 
-  const [fields, setFields] = useState<ExportField[]>([]);
   const [tvId, setTvId] = useState<string | null>(null);
   const [history, setHistory] = useState<ExportLogItem[]>([]);
   const [mode, setMode] = useState<'encounter' | 'patient'>('encounter');
@@ -79,19 +48,12 @@ export function ExportPanel() {
     try {
       const base = await bases.getBase(baseId);
       setTvId(base?.base.currentTemplateVersionId ?? null);
-      if (base?.base.currentTemplateVersionId) {
-        setFields(
-          (await getTemplateFields(templates, base.base.currentTemplateVersionId))
-            .sort((a, b) => a.displayOrder - b.displayOrder)
-            .map((f) => ({ fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type, unit: f.unit, allowedValues: f.allowedValues })),
-        );
-      }
       setHistory(await exportsRepo.listExports(cohortId));
     } catch (e) {
       setError(msg(e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, cohortId, bases, templates, exportsRepo]);
+  }, [baseId, cohortId, bases, exportsRepo]);
 
   useEffect(() => {
     void load();
@@ -102,25 +64,14 @@ export function ExportPanel() {
     setBusy(true);
     setDone(false);
     try {
-      const data = await exportsRepo.getSnapshotData(cohortId, scope);
-      const main = mode === 'patient'
-        ? buildPatientExport(data.patients, data.encounters, fields, rule)
-        : buildEncounterExport(data.encounters, fields);
-      const dict = buildDictionary(fields);
-      assertNoIdentity(main.columns); // verification automatique : aucune identite
-
-      const ext = format;
-      const content = format === 'csv' ? new Blob([toCsv(main)], { type: 'text/csv;charset=utf-8' }) : await xlsxBlob(main, dict);
-
-      await exportsRepo.recordExport({
-        cohortId, baseId, templateVersions: tvId ? [tvId] : [], format, ext,
+      const item = await exportsRepo.recordExport({
+        cohortId, baseId, templateVersions: tvId ? [tvId] : [], format,
         options: { mode, rule, scope },
-        content,
-        patientCount: data.patients.length,
-        encounterCount: data.encounters.length,
       });
-      download(content, `cohorte.${ext}`);
-      if (format === 'csv') download(new Blob([toCsv(dict)], { type: 'text/csv;charset=utf-8' }), 'dictionnaire.csv');
+      if (item.storedFilePath) {
+        const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
+        if (url) downloadUrl(url, item.storedFilePath.split('/').pop() ?? `cohorte.${format}`);
+      }
       setDone(true);
       await load();
       setError(null);

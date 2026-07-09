@@ -48,3 +48,11 @@ verify_jwt = false
 # Nettoyage serveur des uploads orphelins apres echec d'insertion metier.
 [functions.cleanup-upload]
 verify_jwt = false
+
+# Generation serveur des exports scientifiques conserves.
+[functions.generate-export]
+verify_jwt = false
+
+# Reconciliation operationnelle des mouvements de quarantaine incomplets.
+[functions.reconcile-quarantine]
+verify_jwt = false

@@ -7,7 +7,9 @@ describe('configuration de deploiement', () => {
   test('les exports conserves passent par signed-read, pas par une policy Storage SELECT directe', () => {
     const storage = read('supabase/storage.sql');
     const edge = read('supabase/functions/signed-read/index.ts');
+    const generateExport = read('supabase/functions/generate-export/index.ts');
     const exportsData = read('src/data/exports.ts');
+    const config = read('supabase/config.toml');
 
     expect(storage).not.toMatch(/create policy "scientific_exports_read"/i);
     expect(storage).not.toMatch(/create policy "raw_documents_delete"/i);
@@ -27,12 +29,21 @@ describe('configuration de deploiement', () => {
     expect(edge).toContain("action = 'export_read'");
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
     expect(storage).toContain('has_pending_upload_ticket');
-    expect(exportsData).toContain('createUploadTicket(client, input.baseId, EXPORTS_BUCKET, path)');
-    expect(exportsData).toContain('cleanupUploadedObject(client, EXPORTS_BUCKET, path, ticketId)');
+    expect(config).toContain('[functions.generate-export]');
+    expect(exportsData).toContain("client.functions.invoke('generate-export'");
+    expect(exportsData).not.toContain('createUploadTicket(client, input.baseId, EXPORTS_BUCKET');
+    expect(exportsData).not.toContain('cleanupUploadedObject(client, EXPORTS_BUCKET');
+    expect(exportsData).not.toContain('crypto.subtle.digest');
+    expect(generateExport).toContain('can_export_data');
+    expect(generateExport).toContain('admin.storage.from(EXPORTS_BUCKET).upload');
+    expect(generateExport).toContain("generation_mode: 'server'");
+    expect(generateExport).toContain("generated_by: 'edge:generate-export'");
+    expect(generateExport).toContain('fileHash');
   });
 
   test('inspect-upload impose un verdict serveur avant la lecture de donnees reelles', () => {
     const inspect = read('supabase/functions/inspect-upload/index.ts');
+    const reconcile = read('supabase/functions/reconcile-quarantine/index.ts');
     const signedRead = read('supabase/functions/signed-read/index.ts');
     const attachments = read('src/data/attachments.ts');
     const curation = read('src/data/curation.ts');
@@ -60,6 +71,7 @@ describe('configuration de deploiement', () => {
     expect(envCheck).toContain('QUARANTINE_BUCKET');
     expect(config).toContain('[functions.inspect-upload]');
     expect(config).toContain('[functions.cleanup-upload]');
+    expect(config).toContain('[functions.reconcile-quarantine]');
     expect(inspect).toContain("CLAMAV_SCAN_URL");
     expect(inspect).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(inspect).toContain("inspection_status: 'scanning'");
@@ -71,6 +83,8 @@ describe('configuration de deploiement', () => {
     expect(inspect).toContain('INSPECTION_RETRY_COOLDOWN_MS');
     expect(inspect).toContain('QUARANTINE_BUCKET');
     expect(inspect).toContain('moveToPhysicalQuarantine');
+    expect(inspect).toContain('record_quarantine_move');
+    expect(inspect).toContain('update_quarantine_move');
     expect(inspect).toContain('.from(QUARANTINE_BUCKET).upload');
     expect(inspect).toContain('.from(bucket).remove([path])');
     expect(inspect).toContain('p_quarantine_bucket');
@@ -85,6 +99,9 @@ describe('configuration de deploiement', () => {
     expect(inspect).toContain("'accepted'");
     expect(inspect).toContain("'quarantined'");
     expect(inspect).toContain("path.startsWith(`${baseId}/`)");
+    expect(reconcile).toContain('quarantine_reconciliation_candidates');
+    expect(reconcile).toContain("profile?.global_role !== 'system_admin'");
+    expect(reconcile).toContain("admin.rpc('complete_file_inspection'");
     expect(signedRead).toContain("REQUIRE_SERVER_INSPECTION");
     expect(signedRead).toContain("status === 'quarantined'");
     expect(signedRead).toContain("status === 'pending' || status === 'scanning'");

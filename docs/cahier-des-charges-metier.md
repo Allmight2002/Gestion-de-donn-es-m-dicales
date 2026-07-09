@@ -253,9 +253,8 @@ preparing ──soumission (≥1 doc)──► open ──réservation──► 
 ## 8. Hors périmètre (à ce stade)
 
 - Auto-inscription publique depuis l'app ; gestion fine des comptes en self-service.
-- Antivirus serveur réel et inspection approfondie des fichiers (approche documentée, à activer au
-  déploiement avec un vrai moteur).
-- Génération des **exports côté serveur** (actuellement orchestrée côté navigateur ; cible : Edge).
+- Exploitation clinique de l'inspection antivirus : activer le vrai moteur ClamAV, les secrets Edge
+  et la politique stricte en production.
 - Création **hors-ligne** de patients / identité / documents (l'outbox se limite volontairement aux
   corrections de rencontres).
 - Chiffrement local du cache, politique d'« appareil de confiance », verrouillage de session.

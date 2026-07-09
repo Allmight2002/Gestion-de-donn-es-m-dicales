@@ -90,6 +90,8 @@ que **toute consultation d'un fichier soit tracée côté serveur** et non conto
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
 supabase functions deploy cleanup-upload
+supabase functions deploy generate-export
+supabase functions deploy reconcile-quarantine
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
@@ -159,6 +161,12 @@ d'inspection sont bornees par `MAX_INSPECTION_ATTEMPTS` et espacees par
 Quand ce mode est actif, posez aussi `VITE_REQUIRE_SERVER_INSPECTION=true` cote frontend. Le build
 refuse cette option si `VITE_USE_SIGNED_READ=true` n'est pas pose.
 
+Les exports conserves passent par `generate-export` : la cohorte figee est relue cote serveur,
+le fichier est genere puis hashe avec `service_role`, et `export_log.generation_mode` vaut
+`server`. Le bouton `Telecharger` de l'historique reste servi par `signed-read`.
+`reconcile-quarantine` sert aux operations : un `system_admin` peut relancer la reconciliation si
+un deplacement vers `quarantined-uploads` a ete interrompu entre Storage et la finalisation SQL.
+
 ---
 
 ## 7. Vérification de mise en ligne (smoke test)
@@ -180,11 +188,9 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
 
 - **Cadre juridique/éthique** 🚩 : base légale, consentement, approbation éthique, **résidence
   des données** (région d'hébergement Supabase), accord de traitement (DPA).
-- **Durcissement serveur** (déplacer côté serveur, via Edge Functions, les opérations encore
-  pilotées par le client) : audit des lectures + URL signées, inspection/antivirus des fichiers
-  à l'upload, génération/figement des exports. Voir **[docs/edge-functions.md](edge-functions.md)**
-  (la fonction `signed-read` §10.1 est livrée prête à déployer). *(Les règles de cohérence sont
-  désormais évaluées côté serveur.)*
+- **Durcissement serveur** : deploiement et verification des Edge Functions (`signed-read`,
+  `inspect-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
+  l'inspection stricte et controle `env:check:cloud`. Voir **[docs/edge-functions.md](edge-functions.md)**.
 - **Limite d'anonymat** : la RLS protège l'accès *applicatif*, mais l'administrateur du serveur
   peut techniquement lire la base. Une garantie forte suppose un chiffrement côté client ou des
   identités hors serveur central.
