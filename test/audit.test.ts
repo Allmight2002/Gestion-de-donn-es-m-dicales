@@ -19,11 +19,9 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 const EXPORT_INSERT = `with upload as (
     select public.base_of_cohort($1) as base_id,
            public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path
-  ), ticket as (
-    select public.create_upload_ticket(base_id, 'scientific-exports', path) from upload
   )
   insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
-  select $1, to_jsonb(array[$2::uuid]), auth.uid(), 'csv', '{}'::jsonb, 1, 1, upload.path, 'h1' from upload, ticket returning id`;
+  select $1, to_jsonb(array[$2::uuid]), $3::uuid, 'csv', '{}'::jsonb, 1, 1, upload.path, 'h1' from upload returning id`;
 const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 
 beforeAll(async () => {
@@ -46,7 +44,7 @@ afterAll(async () => {
 
 describe('trace automatique des actions sensibles', () => {
   test('un export genere une trace export_created', async () => {
-    const ex = await rowsAs(annaId, EXPORT_INSERT, [cohortId, tvId]);
+    const ex = (await db.admin.query(EXPORT_INSERT, [cohortId, tvId, annaId])).rows;
     const exportId = ex[0].id;
     const audit = await db.admin.query("select user_id, base_id from public.audit_log where action='export_created' and entity_id=$1", [exportId]);
     expect(audit.rows).toHaveLength(1);

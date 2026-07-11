@@ -12,6 +12,7 @@ describe('configuration de deploiement', () => {
     const config = read('supabase/config.toml');
 
     expect(storage).not.toMatch(/create policy "scientific_exports_read"/i);
+    expect(storage).not.toMatch(/create policy "scientific_exports_insert"/i);
     expect(storage).not.toMatch(/create policy "raw_documents_delete"/i);
     expect(storage).not.toMatch(/create policy "clinical_attachments_delete"/i);
     expect(storage).toContain('file_size_limit = 20971520');
@@ -40,6 +41,9 @@ describe('configuration de deploiement', () => {
     expect(generateExport).toContain("generated_by: 'edge:generate-export'");
     expect(generateExport).toContain('fileHash');
     expect(generateExport).toContain("from 'npm:xlsx@0.18.5'");
+    expect(generateExport).toContain("from './exportContract.ts'");
+    expect(generateExport).toContain('referencedTemplateVersions(patients, encounters)');
+    expect(generateExport).not.toContain(".eq('template_version_id', base.current_template_version_id)");
     expect(generateExport).not.toContain('https://cdn.sheetjs.com');
   });
 

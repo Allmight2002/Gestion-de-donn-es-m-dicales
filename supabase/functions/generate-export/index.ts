@@ -3,6 +3,7 @@
 // Generation serveur des exports scientifiques (audit v20 §7.6).
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import * as XLSX from 'npm:xlsx@0.18.5';
+import { assertNoIdentity, buildDictionary, buildEncounterExport, buildPatientExport, mergeExportFields, neutralizeExportTable, referencedTemplateVersions, toCsv } from './exportContract.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -12,86 +13,10 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
 
 const EXPORTS_BUCKET = 'scientific-exports';
-const FORBIDDEN_EXPORT_KEYS = [
-  'full_name', 'name', 'patient_name', 'first_name', 'last_name',
-  'date_of_birth', 'dob', 'birth_date', 'phone', 'address', 'contact', 'email',
-];
-
-const csvCell = (v: unknown): string => {
-  const s = v === null || v === undefined ? '' : String(v);
-  return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-const assertNoIdentity = (columns: string[]) => {
-  const bad = columns.find((c) => FORBIDDEN_EXPORT_KEYS.includes(c.toLowerCase()));
-  if (bad) throw new Error(`Colonne identifiante interdite a l export: ${bad}`);
-};
-const formatValue = (v: unknown): string => {
-  if (v === null || v === undefined) return '';
-  if (Array.isArray(v)) return v.join('; ');
-  if (typeof v === 'boolean') return v ? '1' : '0';
-  if (typeof v === 'object' && v && 'missing' in v) return String((v as Record<string, unknown>).code ?? '');
-  return String(v);
-};
-const toCsv = (table: { columns: string[]; rows: Record<string, unknown>[] }) => {
-  assertNoIdentity(table.columns);
-  return [
-    table.columns.map(csvCell).join(','),
-    ...table.rows.map((r) => table.columns.map((c) => csvCell(r[c])).join(',')),
-  ].join('\n');
-};
 const sha256Hex = async (bytes: Uint8Array): Promise<string> =>
   Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-
-function buildEncounterExport(encounters: unknown[], fields: unknown[]) {
-  const encFields = fields.filter((f) => f.scope === 'encounter');
-  const columns = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_at_encounter', ...encFields.map((f) => f.label)];
-  const rows = encounters.map((e) => {
-    const row: Record<string, unknown> = {
-      patient_code: e.patientCode,
-      encounter_id: e.id,
-      encounter_date: e.encounterDate,
-      encounter_type: e.encounterType,
-      age_at_encounter: formatValue(e.data?.age_at_encounter),
-    };
-    for (const f of encFields) row[f.label] = formatValue(e.data?.[f.fieldKey]);
-    return row;
-  });
-  return { columns, rows };
-}
-
-function buildPatientExport(patients: unknown[], encounters: unknown[], fields: unknown[], rule: 'first' | 'last') {
-  const permFields = fields.filter((f) => f.scope === 'patient');
-  const encFields = fields.filter((f) => f.scope === 'encounter');
-  const columns = ['patient_code', ...permFields.map((f) => f.label), 'age_at_encounter', ...encFields.map((f) => f.label)];
-  const byPatient = new Map<string, unknown[]>();
-  for (const e of encounters) byPatient.set(e.patientCode, [...(byPatient.get(e.patientCode) ?? []), e]);
-  const rows = patients.map((p) => {
-    const row: Record<string, unknown> = { patient_code: p.code };
-    for (const f of permFields) row[f.label] = formatValue(p.data?.[f.fieldKey]);
-    const encs = [...(byPatient.get(p.code) ?? [])].sort((a, b) => String(a.encounterDate).localeCompare(String(b.encounterDate)));
-    const enc = encs.length ? (rule === 'first' ? encs[0] : encs[encs.length - 1]) : null;
-    row.age_at_encounter = enc ? formatValue(enc.data?.age_at_encounter) : '';
-    for (const f of encFields) row[f.label] = enc ? formatValue(enc.data?.[f.fieldKey]) : '';
-    return row;
-  });
-  return { columns, rows };
-}
-
-function buildDictionary(fields: unknown[]) {
-  const columns = ['field_key', 'label', 'scope', 'section', 'type', 'unit', 'allowed_values'];
-  const rows = fields.map((f) => ({
-    field_key: f.fieldKey,
-    label: f.label,
-    scope: f.scope,
-    section: f.section,
-    type: f.type,
-    unit: f.unit ?? '',
-    allowed_values: Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
-  }));
-  return { columns, rows };
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -130,39 +55,16 @@ Deno.serve(async (req: Request) => {
   const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', { p_base: cohort.base_id });
   if (canExportErr || canExport !== true) return json(403, { error: 'Acces export refuse' });
 
-  const { data: base, error: baseErr } = await admin
-    .from('base')
-    .select('current_template_version_id')
-    .eq('id', cohort.base_id)
-    .maybeSingle();
-  if (baseErr || !base?.current_template_version_id) return json(409, { error: 'Version de gabarit introuvable' });
-
-  const { data: rawFields, error: fieldsErr } = await admin
-    .from('template_field')
-    .select('field_key, label, scope, section, type, unit, allowed_values, display_order')
-    .eq('template_version_id', base.current_template_version_id)
-    .order('display_order', { ascending: true });
-  if (fieldsErr) return json(500, { error: fieldsErr.message });
-  const fields = (rawFields ?? []).map((f) => ({
-    fieldKey: f.field_key,
-    label: f.label,
-    scope: f.scope,
-    section: f.section,
-    type: f.type,
-    unit: f.unit,
-    allowedValues: f.allowed_values,
-  }));
-
   const { data: cm, error: cmErr } = await admin.from('cohort_member').select('patient_id').eq('cohort_id', cohortId);
   if (cmErr) return json(500, { error: cmErr.message });
   const patientIds = (cm ?? []).map((r) => r.patient_id);
 
   const { data: patientRows, error: patientErr } = patientIds.length
-    ? await admin.from('patient').select('id, patient_code, data').in('id', patientIds).is('deleted_at', null).eq('validation_status', 'curated')
+    ? await admin.from('patient').select('id, patient_code, template_version_id, data').in('id', patientIds).is('deleted_at', null).eq('validation_status', 'curated').order('patient_code')
     : { data: [], error: null };
   if (patientErr) return json(500, { error: patientErr.message });
   const idToCode = new Map((patientRows ?? []).map((p) => [p.id, p.patient_code]));
-  const patients = (patientRows ?? []).map((p) => ({ code: p.patient_code, data: p.data ?? {} }));
+  const patients = (patientRows ?? []).map((p) => ({ code: p.patient_code, templateVersionId: p.template_version_id, data: p.data ?? {} }));
 
   const encMap = new Map<string, unknown>();
   if (options.scope === 'matching' || options.scope === 'both') {
@@ -172,7 +74,7 @@ Deno.serve(async (req: Request) => {
     if (encIds.length) {
       const { data: encs, error: encErr } = await admin
         .from('encounter')
-        .select('id, patient_id, encounter_date, encounter_type, age_value, data')
+        .select('id, patient_id, template_version_id, encounter_date, encounter_type, age_value, age_unit, data')
         .in('id', encIds)
         .is('deleted_at', null)
         .eq('validation_status', 'curated');
@@ -183,7 +85,7 @@ Deno.serve(async (req: Request) => {
   if ((options.scope === 'all' || options.scope === 'both') && patientIds.length) {
     const { data: encs, error: encErr } = await admin
       .from('encounter')
-      .select('id, patient_id, encounter_date, encounter_type, age_value, data')
+      .select('id, patient_id, template_version_id, encounter_date, encounter_type, age_value, age_unit, data')
       .in('patient_id', patientIds)
       .is('deleted_at', null)
       .eq('validation_status', 'curated');
@@ -202,8 +104,20 @@ Deno.serve(async (req: Request) => {
     patientCode: idToCode.get(e.patient_id) ?? '',
     encounterDate: e.encounter_date,
     encounterType: e.encounter_type,
-    data: { ...(e.data ?? {}), age_at_encounter: e.age_value ?? null },
+    templateVersionId: e.template_version_id,
+    ageValue: e.age_value,
+    ageUnit: e.age_unit,
+    data: e.data ?? {},
   }));
+
+  const templateVersions = referencedTemplateVersions(patients, encounters);
+  if (!templateVersions.length) return json(409, { error: 'Aucune version de gabarit referencee' });
+  const { data: rawFields, error: fieldsErr } = await admin.from('template_field')
+    .select('template_version_id, field_key, label, scope, section, type, unit, allowed_values, display_order')
+    .in('template_version_id', templateVersions)
+    .order('scope').order('field_key').order('display_order').order('template_version_id');
+  if (fieldsErr) return json(500, { error: fieldsErr.message });
+  const fields = mergeExportFields((rawFields ?? []).map((f) => ({ fieldKey: f.field_key, label: f.label, scope: f.scope, section: f.section, type: f.type, unit: f.unit, allowedValues: f.allowed_values, displayOrder: f.display_order, templateVersionIds: [f.template_version_id] })));
 
   try {
     const main = options.mode === 'patient'
@@ -215,9 +129,11 @@ Deno.serve(async (req: Request) => {
     let bytes: Uint8Array;
     let contentType: string;
     if (format === 'xlsx') {
+      const safeMain = neutralizeExportTable(main);
+      const safeDict = neutralizeExportTable(dict);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(main.rows, { header: main.columns }), 'Export');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dict.rows, { header: dict.columns }), 'Dictionnaire');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safeMain.rows, { header: safeMain.columns }), 'Export');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safeDict.rows, { header: safeDict.columns }), 'Dictionnaire');
       bytes = new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }));
       contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     } else {
@@ -238,7 +154,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         cohort_id: cohortId,
         exported_by: who.user.id,
-        template_versions: [base.current_template_version_id],
+        template_versions: templateVersions,
         format,
         export_options: {
           ...options,

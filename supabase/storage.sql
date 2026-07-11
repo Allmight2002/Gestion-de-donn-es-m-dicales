@@ -146,13 +146,8 @@ update storage.buckets
 
 drop policy if exists "scientific_exports_read"   on storage.objects;
 drop policy if exists "scientific_exports_insert" on storage.objects;
-
-create policy "scientific_exports_insert" on storage.objects for insert to authenticated
-with check (
-  bucket_id = 'scientific-exports'
-  and public.can_export_data(((storage.foldername(name))[1])::uuid)
-  and public.has_pending_upload_ticket(bucket_id, name)
-);
+-- Aucun JWT utilisateur ne peut creer un export conserve. generate-export utilise
+-- service_role, qui contourne volontairement les policies Storage.
 -- (pas de policy update/delete : conservation immuable)
 
 -- ---------------------------------------------------------------------------
