@@ -25,6 +25,9 @@ function statefulMock(status: VersionStatus): TemplateRepository {
     async createPersonalTemplate() {
       return { id: 'vperso', templateId: 'tperso', versionNumber: 1, status: 'draft' };
     },
+    async createTemplateBundle() {
+      return { templateId: 'tbundle', versionId: 'vbundle', baseId: null };
+    },
     async getVersion() {
       return { version, fields: [...fields], rules: [] };
     },
