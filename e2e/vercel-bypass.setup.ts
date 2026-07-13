@@ -2,13 +2,8 @@ import { request, type FullConfig } from '@playwright/test';
 import { rm } from 'node:fs/promises';
 import { VERCEL_BYPASS_STORAGE_STATE } from './vercel-bypass-state';
 
-export function sameDeploymentRedirect(location: string, baseUrl: URL): URL {
-  if (!location) throw new Error('Vercel n a pas fourni la redirection de bypass attendue.');
-  const redirectUrl = new URL(location, baseUrl);
-  if (redirectUrl.protocol !== 'https:' || redirectUrl.hostname !== baseUrl.hostname) {
-    throw new Error('La redirection de bypass Vercel quitte le deploiement staging attendu.');
-  }
-  return redirectUrl;
+export function validBypassBootstrapStatus(status: number): boolean {
+  return status >= 200 && status < 400;
 }
 
 export default async function vercelBypassSetup(_config: FullConfig) {
@@ -32,7 +27,6 @@ export default async function vercelBypassSetup(_config: FullConfig) {
   });
 
   let bootstrapState;
-  let verificationUrl = baseUrl;
   try {
     // Aucun JavaScript n'est execute. On bloque le suivi automatique pour que le header secret ne
     // puisse jamais etre propage par Playwright a une redirection hors origine.
@@ -41,11 +35,8 @@ export default async function vercelBypassSetup(_config: FullConfig) {
     if (responseUrl.hostname !== baseUrl.hostname) {
       throw new Error('Le bypass Vercel n a pas donne acces au deploiement staging attendu.');
     }
-    if (!response.ok()) {
-      if (response.status() < 300 || response.status() >= 400) {
-        throw new Error('Le bypass Vercel n a pas donne acces au deploiement staging attendu.');
-      }
-      verificationUrl = sameDeploymentRedirect(response.headers().location ?? '', baseUrl);
+    if (!validBypassBootstrapStatus(response.status())) {
+      throw new Error('Le bypass Vercel n a pas donne acces au deploiement staging attendu.');
     }
 
     bootstrapState = await bootstrapApi.storageState();
@@ -64,7 +55,9 @@ export default async function vercelBypassSetup(_config: FullConfig) {
   // le bypass et l'absence de propagation du secret aux navigations ou aux appels cross-origin.
   const verificationApi = await request.newContext({ storageState: bootstrapState });
   try {
-    const response = await verificationApi.get(verificationUrl.href);
+    // La cible Location du 3xx est volontairement ignoree. On recharge l'origine approuvee avec
+    // le cookie host-only ; aucune redirection ne peut donc recevoir le header secret bootstrap.
+    const response = await verificationApi.get(baseUrl.href);
     const finalUrl = new URL(response.url());
     if (!response.ok() || finalUrl.hostname !== baseUrl.hostname) {
       throw new Error('Le cookie de bypass Vercel ne donne pas acces au deploiement staging attendu.');
