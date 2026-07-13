@@ -243,9 +243,11 @@ describe('configuration de deploiement', () => {
     expect(config).not.toContain('extraHTTPHeaders');
     expect(setup).toContain("'x-vercel-protection-bypass': secret");
     expect(setup).toContain("'x-vercel-set-bypass-cookie': 'true'");
-    expect(setup).toContain('await api.storageState');
-    expect(setup).toContain("await api.get('/', { maxRedirects: 0 });");
-    expect(setup).toContain('state.cookies.some');
+    expect(setup).toContain("await bootstrapApi.get('/', { maxRedirects: 0 });");
+    expect(setup).toContain("sameDeploymentRedirect(response.headers().location ?? '', baseUrl)");
+    expect(setup).toContain('request.newContext({ storageState: bootstrapState })');
+    expect(setup).toContain('await verificationApi.storageState');
+    expect(setup).toContain('bootstrapState.cookies.some');
     expect(state).toContain('process.env.RUNNER_TEMP ?? tmpdir()');
   });
 
