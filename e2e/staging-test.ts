@@ -24,26 +24,25 @@ export function validatedStagingOrigin(rawUrl: string): string {
   return url.origin;
 }
 
-export function bypassHeadersForRequest(
+export function sanitizedHeadersForRequest(
   requestUrl: string,
   stagingOrigin: string,
   currentHeaders: Record<string, string>,
-  secret: string,
 ): HeaderEntry[] | undefined {
   let requestOrigin: string;
   try {
     requestOrigin = new URL(requestUrl).origin;
   } catch {
-    return undefined;
+    requestOrigin = '';
   }
-  if (requestOrigin !== stagingOrigin) return undefined;
+  // Pour l'origine approuvee, ne pas fournir d'override CDP : le header pose par Playwright
+  // reste intact. Pour TOUTE autre destination (redirection incluse), reconstruire les headers
+  // sans le secret avant l'envoi reseau.
+  if (requestOrigin === stagingOrigin) return undefined;
 
-  return [
-    ...Object.entries(currentHeaders)
-      .filter(([name]) => name.toLowerCase() !== BYPASS_HEADER)
-      .map(([name, value]) => ({ name, value })),
-    { name: BYPASS_HEADER, value: secret },
-  ];
+  return Object.entries(currentHeaders)
+    .filter(([name]) => name.toLowerCase() !== BYPASS_HEADER)
+    .map(([name, value]) => ({ name, value }));
 }
 
 async function installScopedBypass(page: Page, stagingOrigin: string, secret: string) {
@@ -55,11 +54,10 @@ async function installScopedBypass(page: Page, stagingOrigin: string, secret: st
   const onPaused = (event: PausedRequest) => {
     const operation = (async () => {
       try {
-        const headers = bypassHeadersForRequest(
+        const headers = sanitizedHeadersForRequest(
           event.request.url,
           stagingOrigin,
           event.request.headers,
-          secret,
         );
         await session.send('Fetch.continueRequest', {
           requestId: event.requestId,
@@ -76,14 +74,17 @@ async function installScopedBypass(page: Page, stagingOrigin: string, secret: st
   };
 
   session.on('Fetch.requestPaused', onPaused);
-  // Le filtre CDP ne suspend que l'origine staging. Contrairement aux headers de route Playwright,
-  // l'override Fetch.continueRequest ne se propage pas aux redirections : chaque saut est re-evalue.
+  // Playwright pose le header recommande par Vercel. CDP suspend ensuite CHAQUE requete et retire
+  // ce header de toute origine non approuvee. Fetch.continueRequest ne propage pas ses overrides
+  // aux redirections : chaque saut est donc re-evalue et nettoye avant l'envoi reseau.
   await session.send('Fetch.enable', {
-    patterns: [{ urlPattern: `${stagingOrigin}/*`, requestStage: 'Request' }],
+    patterns: [{ urlPattern: '*', requestStage: 'Request' }],
   });
+  await page.setExtraHTTPHeaders({ [BYPASS_HEADER]: secret });
 
   return async () => {
     stopping = true;
+    await page.setExtraHTTPHeaders({}).catch(() => undefined);
     await session.send('Fetch.disable').catch(() => undefined);
     await Promise.allSettled([...pending]);
     await session.detach().catch(() => undefined);
