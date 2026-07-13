@@ -120,9 +120,9 @@ jobs:
       - name: Deploy all Edge Functions
         env: *staging_env
         run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done
-      - name: Verify backend, scanner and drift
+      - name: Verify backend drift before frontend
         env: *staging_env
-        run: npm run env:check:cloud && npm run release:drift && npm run e2e:staging
+        run: npm run release:drift
 
   frontend-staging:
     if: inputs.target == 'staging'
@@ -165,6 +165,34 @@ jobs:
             -H "x-vercel-set-bypass-cookie: true" \
             "$URL"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Activate strict DB last, then run cloud and backend E2E gates
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+          CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+          STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+          REQUIRE_SERVER_INSPECTION: 'true'
+          DB_REQUIRE_SERVER_INSPECTION: 'true'
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          npm run inspection:activate -- --target=staging
+          npm run env:check:cloud
+          npm run release:drift
+          npm run e2e:staging
 
   browser-e2e-staging:
     if: inputs.target == 'staging'
@@ -254,7 +282,7 @@ jobs:
                 core.setFailed(`Le run indique ne contient pas un job ${required} reussi.`);
               }
             }
-      - name: Backend promotion and cloud verification
+      - name: Backend promotion before frontend strict switch
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -270,8 +298,8 @@ jobs:
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done && npm run env:check:cloud && npm run release:drift
-      - name: Promote frontend last
+        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done && npm run release:drift
+      - name: Deploy frontend before strict database switch
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -285,3 +313,20 @@ jobs:
           npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token "$VERCEL_TOKEN"
           URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")
           curl --fail --silent --show-error --head "$URL"
+      - name: Activate strict database last and verify cloud
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+          CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          REQUIRE_SERVER_INSPECTION: 'true'
+          DB_REQUIRE_SERVER_INSPECTION: 'true'
+        run: npm run inspection:activate -- --target=production && npm run env:check:cloud && npm run release:drift
