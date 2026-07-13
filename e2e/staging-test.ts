@@ -3,6 +3,8 @@ import { expect, test as base, type Page } from '@playwright/test';
 const BYPASS_HEADER = 'x-vercel-protection-bypass';
 const SET_BYPASS_COOKIE_HEADER = 'x-vercel-set-bypass-cookie';
 const STAGING_ONLY_HEADERS = new Set([BYPASS_HEADER, SET_BYPASS_COOKIE_HEADER]);
+const VERCEL_CONTROL_ORIGIN = 'https://vercel.com';
+const VERCEL_SSO_PATH = '/sso-api';
 
 type HeaderEntry = { name: string; value: string };
 type PausedRequest = {
@@ -31,16 +33,21 @@ export function sanitizedHeadersForRequest(
   stagingOrigin: string,
   currentHeaders: Record<string, string>,
 ): HeaderEntry[] | undefined {
-  let requestOrigin: string;
+  let requestUrlObject: URL | undefined;
   try {
-    requestOrigin = new URL(requestUrl).origin;
+    requestUrlObject = new URL(requestUrl);
   } catch {
-    requestOrigin = '';
+    // Une URL illisible n'est jamais approuvee : les headers de bypass seront retires.
   }
-  // Pour l'origine approuvee, ne pas fournir d'override CDP : le header pose par Playwright
-  // reste intact. Pour TOUTE autre destination (redirection incluse), reconstruire les headers
-  // sans le secret avant l'envoi reseau.
-  if (requestOrigin === stagingOrigin) return undefined;
+  const isStagingOrigin = requestUrlObject?.origin === stagingOrigin;
+  // Le cycle cookie documente par Vercel passe par son endpoint SSO. L'autorisation est limitee
+  // a ce chemin EXACT ; /login, les autres chemins Vercel et toutes les API tierces sont nettoyes.
+  const isVercelSso =
+    requestUrlObject?.origin === VERCEL_CONTROL_ORIGIN &&
+    requestUrlObject.pathname === VERCEL_SSO_PATH &&
+    !requestUrlObject.username &&
+    !requestUrlObject.password;
+  if (isStagingOrigin || isVercelSso) return undefined;
 
   return Object.entries(currentHeaders)
     .filter(([name]) => !STAGING_ONLY_HEADERS.has(name.toLowerCase()))

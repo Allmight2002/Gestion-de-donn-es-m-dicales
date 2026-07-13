@@ -13,7 +13,7 @@ describe('bypass Vercel limite au staging', () => {
     expect(() => validatedStagingOrigin('https://example.org')).toThrow('vercel.app');
   });
 
-  test('conserve le header sur le staging exact et le retire de toute autre origine', () => {
+  test('conserve les headers seulement sur le staging exact et le controle SSO Vercel', () => {
     const origin = 'https://meddata-staging-example.vercel.app';
     const current = {
       Accept: 'text/html',
@@ -21,10 +21,18 @@ describe('bypass Vercel limite au staging', () => {
       'x-vercel-set-bypass-cookie': 'true',
     };
     expect(sanitizedHeadersForRequest(`${origin}/login`, origin, current)).toBeUndefined();
+    expect(
+      sanitizedHeadersForRequest(
+        `https://vercel.com/sso-api?url=${encodeURIComponent(`${origin}/login`)}&nonce=test`,
+        origin,
+        current,
+      ),
+    ).toBeUndefined();
 
     for (const url of [
       'https://gmsxrniiclrheehhoakn.supabase.co/rest/v1/profile',
-      'https://vercel.com/sso-api',
+      'https://vercel.com/login',
+      'https://vercel.com/sso-api/other',
       'https://another-preview.vercel.app/',
       'not-a-url',
     ]) {
