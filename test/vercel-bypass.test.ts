@@ -1,19 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { sameDeploymentRedirect } from '../e2e/vercel-bypass.setup';
+import { validBypassBootstrapStatus } from '../e2e/vercel-bypass.setup';
 
-describe('redirection du bypass Vercel', () => {
-  const base = new URL('https://meddata-staging-example.vercel.app');
-
-  test('accepte seulement une redirection relative ou absolue sur le meme deploiement HTTPS', () => {
-    expect(sameDeploymentRedirect('/?set-bypass-cookie=1', base).href)
-      .toBe('https://meddata-staging-example.vercel.app/?set-bypass-cookie=1');
-    expect(sameDeploymentRedirect('https://meddata-staging-example.vercel.app/', base).hostname)
-      .toBe(base.hostname);
+describe('bootstrap du bypass Vercel', () => {
+  test('accepte le succes direct et la redirection porteuse du cookie', () => {
+    expect(validBypassBootstrapStatus(200)).toBe(true);
+    expect(validBypassBootstrapStatus(307)).toBe(true);
   });
 
-  test('refuse toute propagation vers une autre origine ou vers HTTP', () => {
-    expect(() => sameDeploymentRedirect('https://attacker.example/', base)).toThrow('quitte le deploiement');
-    expect(() => sameDeploymentRedirect('http://meddata-staging-example.vercel.app/', base)).toThrow('quitte le deploiement');
-    expect(() => sameDeploymentRedirect('', base)).toThrow('redirection');
+  test('refuse les reponses de protection ou les erreurs serveur', () => {
+    expect(validBypassBootstrapStatus(401)).toBe(false);
+    expect(validBypassBootstrapStatus(500)).toBe(false);
   });
 });
