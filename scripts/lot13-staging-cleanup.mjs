@@ -8,7 +8,10 @@ if (!prefix) {
 
 try {
   const result = await cleanupLot13(prefix);
-  console.log(`Nettoyage LOT 13 termine: ${result.bases} base(s), ${result.templates} modele(s), ${result.storageObjects} objet(s) Storage.`);
+  console.log(
+    `Nettoyage LOT 13 termine: ${result.bases} base(s), ${result.templates} modele(s), `
+    + `${result.storageObjects} objet(s) Storage, ${result.authUsers} compte(s) ephemere(s).`,
+  );
 } catch (error) {
   console.error(`Nettoyage LOT 13 incomplet: ${safeMessage(error)}`);
   process.exit(1);

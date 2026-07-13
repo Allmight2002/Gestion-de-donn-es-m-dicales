@@ -141,7 +141,24 @@ export async function cleanupLot13(prefixInput) {
       await db.query('rollback');
       throw error;
     }
-    return { bases: bases.length, templates: templates.length, storageObjects: removedObjects };
+
+    const ephemeralUsers = (await db.query(
+      `select id from auth.users
+        where lower(email) = $1
+          and raw_user_meta_data->>'lot13_prefix' = $2`,
+      [`${prefix.toLowerCase()}-curator@meddata-staging.invalid`, prefix],
+    )).rows;
+    for (const user of ephemeralUsers) {
+      const { error } = await service.auth.admin.deleteUser(user.id);
+      if (error) throw error;
+    }
+
+    return {
+      bases: bases.length,
+      templates: templates.length,
+      storageObjects: removedObjects,
+      authUsers: ephemeralUsers.length,
+    };
   } finally {
     await db.end();
   }

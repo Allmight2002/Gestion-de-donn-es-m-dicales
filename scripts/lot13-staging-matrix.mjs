@@ -914,29 +914,56 @@ try {
   });
 
   await check('reservation concurrente, brouillon unique et finalisation curation', async () => {
-    const curatorProfiles = await query("select id from public.profiles where global_role='curateur' order by id");
-    assert(curatorProfiles.length >= 2, 'Deux profils curateurs requis pour la concurrence');
-    const claims = await Promise.allSettled(curatorProfiles.slice(0, 2).map((profile) =>
-      asUser(profile.id, 'select (public.claim_curation_task($1)).*', [curationCreation.task_id])));
+    const ephemeralEmail = `${prefix.toLowerCase()}-curator@meddata-staging.invalid`;
+    const ephemeralPassword = `T!${randomUUID()}aA9`;
+    const { data: created, error: createError } = await service.auth.admin.createUser({
+      email: ephemeralEmail,
+      password: ephemeralPassword,
+      email_confirm: true,
+      user_metadata: {
+        display_name: 'LOT13 Curateur concurrent fictif',
+        lot13_prefix: prefix,
+      },
+    });
+    assert(!createError && created.user, 'Creation du curateur concurrent ephemere impossible');
+    const promoted = await query(
+      "update public.profiles set global_role='curateur' where id=$1 returning id",
+      [created.user.id],
+    );
+    assert(promoted.length === 1, 'Promotion du curateur concurrent ephemere impossible');
+    const ephemeralCurator = await signIn(
+      { email: ephemeralEmail, password: ephemeralPassword },
+      'curateur concurrent ephemere',
+    );
+    const claimers = [curatorLogin, ephemeralCurator];
+    const claims = await Promise.allSettled(claimers.map((claimer) =>
+      rpc(claimer.supabase, 'claim_curation_task', { p_task_id: curationCreation.task_id })));
     assert(claims.filter((entry) => entry.status === 'fulfilled').length === 1, 'Reservation concurrente: nombre de gagnants different de un');
     const task = (await query('select assigned_to,status from public.curation_task where id=$1', [curationCreation.task_id]))[0];
     assert(task.status === 'in_progress' && task.assigned_to, 'Tache non reservee');
-    const identity = await asUser(task.assigned_to, 'select id from public.patient_identity where base_id=$1', [bundle.baseId]);
-    assert(identity.length === 0, 'Curateur gagnant voit les identites');
+    const winner = claimers.find((claimer) => claimer.user.id === task.assigned_to);
+    assert(winner, 'Tache reservee par un acteur concurrent inattendu');
+    const { data: identity, error: identityError } = await winner.supabase
+      .from('patient_identity')
+      .select('id')
+      .eq('base_id', bundle.baseId);
+    assert(!identityError && identity.length === 0, 'Curateur gagnant voit les identites');
     await Promise.all([
-      asUser(task.assigned_to, 'select (public.ensure_curation_draft($1,$2)).id', [curationCreation.task_id, bundle.baseId]),
-      asUser(task.assigned_to, 'select (public.ensure_curation_draft($1,$2)).id', [curationCreation.task_id, bundle.baseId]),
+      rpc(winner.supabase, 'ensure_curation_draft', { p_task_id: curationCreation.task_id, p_base_id: bundle.baseId }),
+      rpc(winner.supabase, 'ensure_curation_draft', { p_task_id: curationCreation.task_id, p_base_id: bundle.baseId }),
     ]);
     const drafts = await query('select id from public.curation_draft where task_id=$1 and superseded_at is null', [curationCreation.task_id]);
     assert(drafts.length === 1, 'Double brouillon actif');
-    await query(
-      `update public.curation_draft set patient_data=$1::jsonb,encounters='[]'::jsonb where id=$2`,
-      [JSON.stringify({ weight: 76 }), drafts[0].id],
-    );
-    const finalized = await asUser(task.assigned_to, 'select (public.finalize_curation_task($1)).status', [curationCreation.task_id]);
-    assert(finalized[0]?.status === 'completed', 'Curation non finalisee');
+    const { data: updatedDraft, error: updateError } = await winner.supabase
+      .from('curation_draft')
+      .update({ patient_data: { weight: 76 }, encounters: [] })
+      .eq('id', drafts[0].id)
+      .select('id');
+    assert(!updateError && updatedDraft.length === 1, 'Brouillon non modifiable par le curateur gagnant');
+    const finalized = firstRow(await rpc(winner.supabase, 'finalize_curation_task', { p_task_id: curationCreation.task_id }));
+    assert(finalized?.status === 'completed', 'Curation non finalisee');
     await expectFailure(
-      () => asUser(task.assigned_to, 'select public.finalize_curation_task($1)', [curationCreation.task_id]),
+      () => rpc(winner.supabase, 'finalize_curation_task', { p_task_id: curationCreation.task_id }),
       /cours|statut|reserve/i,
       'double finalisation curation',
     );
