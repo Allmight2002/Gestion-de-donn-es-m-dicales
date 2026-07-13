@@ -1,9 +1,18 @@
-import { request, type FullConfig } from '@playwright/test';
+import { chromium, request, type FullConfig } from '@playwright/test';
 import { rm } from 'node:fs/promises';
 import { VERCEL_BYPASS_STORAGE_STATE } from './vercel-bypass-state';
 
 export function validBypassBootstrapStatus(status: number): boolean {
   return status >= 200 && status < 400;
+}
+
+export function safeBootstrapRedirect(location: string, baseUrl: URL): URL {
+  if (!location) return baseUrl;
+  const redirectUrl = new URL(location, baseUrl);
+  if (redirectUrl.protocol !== 'https:' || redirectUrl.username || redirectUrl.password) {
+    throw new Error('La redirection de bootstrap Vercel n est pas une URL HTTPS sure.');
+  }
+  return redirectUrl;
 }
 
 export default async function vercelBypassSetup(_config: FullConfig) {
@@ -27,6 +36,7 @@ export default async function vercelBypassSetup(_config: FullConfig) {
   });
 
   let bootstrapState;
+  let redirectUrl = baseUrl;
   try {
     // Aucun JavaScript n'est execute. On bloque le suivi automatique pour que le header secret ne
     // puisse jamais etre propage par Playwright a une redirection hors origine.
@@ -38,6 +48,7 @@ export default async function vercelBypassSetup(_config: FullConfig) {
     if (!validBypassBootstrapStatus(response.status())) {
       throw new Error('Le bypass Vercel n a pas donne acces au deploiement staging attendu.');
     }
+    if (!response.ok()) redirectUrl = safeBootstrapRedirect(response.headers().location ?? '', baseUrl);
 
     bootstrapState = await bootstrapApi.storageState();
     const hasHostCookie = bootstrapState.cookies.some((cookie) => {
@@ -51,20 +62,25 @@ export default async function vercelBypassSetup(_config: FullConfig) {
     await bootstrapApi.dispose();
   }
 
-  // Second contexte SANS header secret : seul le cookie Vercel est conserve. Cela prouve a la fois
-  // le bypass et l'absence de propagation du secret aux navigations ou aux appels cross-origin.
-  const verificationApi = await request.newContext({ storageState: bootstrapState });
+  // Le cycle de redirection Vercel doit s'executer dans un navigateur. Ce contexte ne recoit AUCUN
+  // header secret : seulement le cookie host-scope emis par la requete bootstrap arretee au 3xx.
+  const browser = await chromium.launch({ headless: true });
   try {
-    // La cible Location du 3xx est volontairement ignoree. On recharge l'origine approuvee avec
-    // le cookie host-only ; aucune redirection ne peut donc recevoir le header secret bootstrap.
-    const response = await verificationApi.get(baseUrl.href);
-    const finalUrl = new URL(response.url());
-    if (!response.ok() || finalUrl.hostname !== baseUrl.hostname) {
-      throw new Error('Le cookie de bypass Vercel ne donne pas acces au deploiement staging attendu.');
+    const context = await browser.newContext({ storageState: bootstrapState });
+    try {
+      const page = await context.newPage();
+      await page.goto(redirectUrl.href, { waitUntil: 'domcontentloaded' });
+      const response = await page.goto(baseUrl.href, { waitUntil: 'domcontentloaded' });
+      const finalUrl = new URL(page.url());
+      if (!response?.ok() || finalUrl.hostname !== baseUrl.hostname) {
+        throw new Error('Le cookie de bypass Vercel ne donne pas acces au deploiement staging attendu.');
+      }
+      await context.storageState({ path: VERCEL_BYPASS_STORAGE_STATE });
+    } finally {
+      await context.close();
     }
-    await verificationApi.storageState({ path: VERCEL_BYPASS_STORAGE_STATE });
   } finally {
-    await verificationApi.dispose();
+    await browser.close();
   }
 
   return async () => {
