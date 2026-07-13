@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260616098600_import_source_idempotence.sql`
-- Tables : 31 · Policies RLS : 58 · Triggers : 47 · Fonctions : 187
+- Dernière migration incluse : `20260712000600_curation_draft_uniqueness.sql`
+- Tables : 34 · Policies RLS : 58 · Triggers : 52 · Fonctions : 203
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -143,6 +143,7 @@ Triggers :
 | quarantine_bucket | text | oui |  |
 | quarantine_path | text | oui |  |
 | quarantined_at | timestamp with time zone | oui |  |
+| upload_ticket_id | uuid | oui |  |
 
 Policies :
 - `ca_insert` (INSERT) — WITH CHECK can_write_identity(base_of_patient(patient_id))
@@ -175,6 +176,9 @@ Policies :
 - `c_select` (SELECT) — USING has_base_access(base_id)
 - `c_update` (UPDATE) — USING can_curate(base_id) · WITH CHECK can_curate(base_id)
 
+Triggers :
+- `trg_cohort_base_immutable` — BEFORE UPDATE → `guard_cohort_base_immutable()`
+
 ### cohort_encounter_member · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -188,6 +192,9 @@ Policies :
 - `cem_insert` (INSERT) — WITH CHECK can_curate(base_of_cohort(cohort_id))
 - `cem_select` (SELECT) — USING has_base_access(base_of_cohort(cohort_id))
 
+Triggers :
+- `trg_cohort_encounter_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_encounter_membership()`
+
 ### cohort_member · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -200,6 +207,9 @@ Policies :
 - `cm_delete` (DELETE) — USING can_curate(base_of_cohort(cohort_id))
 - `cm_insert` (INSERT) — WITH CHECK can_curate(base_of_cohort(cohort_id))
 - `cm_select` (SELECT) — USING has_base_access(base_of_cohort(cohort_id))
+
+Triggers :
+- `trg_cohort_patient_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_patient_membership()`
 
 ### curation_clarification · RLS activée
 
@@ -235,6 +245,8 @@ Triggers :
 | created_by | uuid | oui |  |
 | created_at | timestamp with time zone | non | `now()` |
 | updated_at | timestamp with time zone | non | `now()` |
+| superseded_at | timestamp with time zone | oui |  |
+| superseded_by | uuid | oui |  |
 
 Policies :
 - `cd_insert` (INSERT) — WITH CHECK (is_base_owner(base_id) OR (is_curateur() AND is_active_assigned_curator(task_id)))
@@ -243,6 +255,7 @@ Policies :
 
 Triggers :
 - `trg_curation_draft_scope` — BEFORE INSERT/UPDATE → `guard_curation_draft_scope()`
+- `trg_curation_draft_supersession` — BEFORE INSERT/UPDATE → `guard_curation_draft_supersession()`
 - `trg_curation_draft_updated` — BEFORE UPDATE → `set_updated_at()`
 - `trg_guard_finalized_draft` — BEFORE UPDATE → `guard_finalized_draft()`
 - `trg_xbase_draft` — BEFORE INSERT/UPDATE → `guard_xbase_draft()`
@@ -320,7 +333,7 @@ Triggers :
 | server_generated_at | timestamp with time zone | oui |  |
 
 Policies :
-- `el_insert` (INSERT) — WITH CHECK can_export_data(base_of_cohort(cohort_id))
+- `el_insert` (INSERT) — WITH CHECK false
 - `el_select` (SELECT) — USING can_export_data(base_of_cohort(cohort_id))
 
 Triggers :
@@ -368,9 +381,26 @@ Policies :
 | target_validation_status | text | oui |  |
 | expected_rows | integer | oui |  |
 | error_count | integer | non | `0` |
+| resume_state | text | non | `'modern'::text` |
+| replaces_batch_id | uuid | oui |  |
+| replacement_report | jsonb | oui |  |
 
 Policies :
 - `ib_select` (SELECT) — USING has_base_access(base_id)
+
+### import_batch_row · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| batch_id | uuid | non |  |
+| source_row_number | integer | non |  |
+| normalized_row_hash | text | non |  |
+| outcome | text | non |  |
+| result | jsonb | non | `'{}'::jsonb` |
+| created_at | timestamp with time zone | non | `now()` |
+| updated_at | timestamp with time zone | non | `now()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### import_row_hash · RLS activée
 
@@ -404,6 +434,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | deleted_by | uuid | oui |  |
 | deletion_reason | text | oui |  |
 | inclusion_date | date | oui | `CURRENT_DATE` |
+| row_version | bigint | non | `1` |
 
 Policies :
 - `p_select` (SELECT) — USING (has_base_access(base_id) AND (deleted_at IS NULL))
@@ -411,8 +442,23 @@ Policies :
 Triggers :
 - `trg_patient_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
 - `trg_patient_no_downgrade` — BEFORE UPDATE → `guard_no_curated_downgrade()`
+- `trg_patient_row_version` — BEFORE UPDATE → `bump_patient_row_version()`
 - `trg_patient_structural_immutable` — BEFORE UPDATE → `guard_structural_immutable()`
 - `trg_patient_updated` — BEFORE UPDATE → `set_updated_at()`
+
+### patient_curation_idempotency · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| user_id | uuid | non |  |
+| idempotency_key | text | non |  |
+| request_fingerprint | text | non |  |
+| patient_id | uuid | non |  |
+| submission_id | uuid | non |  |
+| task_id | uuid | non |  |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### patient_identity · RLS activée
 
@@ -513,6 +559,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | quarantine_bucket | text | oui |  |
 | quarantine_path | text | oui |  |
 | quarantined_at | timestamp with time zone | oui |  |
+| upload_ticket_id | uuid | oui |  |
 
 Policies :
 - `rd_insert` (INSERT) — WITH CHECK is_base_owner(base_id)
@@ -631,6 +678,18 @@ Triggers :
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
 
+### template_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| owner_user_id | uuid | non |  |
+| operation_key | uuid | non |  |
+| payload_hash | text | non |  |
+| result | jsonb | non |  |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ### template_version · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -681,6 +740,10 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | attached_at | timestamp with time zone | oui |  |
 | cleaned_at | timestamp with time zone | oui |  |
 | last_error | text | oui |  |
+| idempotency_key | uuid | oui |  |
+| file_hash | text | oui |  |
+| file_size | bigint | oui |  |
+| mime_type | text | oui |  |
 
 Policies :
 - `upload_ticket_select_own` (SELECT) — USING (owner_user_id = auth.uid())
@@ -732,6 +795,7 @@ Triggers :
 | base_of_cohort | p_cohort uuid | DEFINER | sql |
 | base_of_patient | p_patient uuid | DEFINER | sql |
 | begin_import_batch | p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer | DEFINER | plpgsql |
+| bump_patient_row_version | — | INVOKER | plpgsql |
 | can_curate | p_base uuid | DEFINER | sql |
 | can_edit_structured_data | p_base uuid | DEFINER | sql |
 | can_export_data | p_base uuid | DEFINER | sql |
@@ -745,6 +809,7 @@ Triggers :
 | cohort_preview | p_base_id uuid, p_filter jsonb, p_validated_only boolean | INVOKER | sql |
 | complete_file_inspection | p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb, p_quarantine_bucket text, p_quarantine_path text | DEFINER | plpgsql |
 | complete_import_batch | p_batch_id uuid | DEFINER | plpgsql |
+| complete_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_entity text, p_metadata jsonb, p_verified_file_hash text, p_verified_file_size bigint, p_verified_mime_type text | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
 | create_base_invitation | p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone | DEFINER | plpgsql |
@@ -753,6 +818,9 @@ Triggers :
 | create_encounter | p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text | DEFINER | plpgsql |
 | create_next_personal_template_version | p_template_id uuid | DEFINER | plpgsql |
 | create_patient | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
+| create_patient_curation_submission | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_idempotency_key text | DEFINER | plpgsql |
+| create_template_bundle | p_payload jsonb, p_operation_key uuid | DEFINER | plpgsql |
+| create_upload_operation | p_base_id uuid, p_bucket text, p_path text, p_idempotency_key uuid, p_file_hash text, p_file_size bigint, p_mime_type text, p_ttl_seconds integer | DEFINER | plpgsql |
 | create_upload_ticket | p_base_id uuid, p_bucket text, p_path text, p_ttl_seconds integer | DEFINER | plpgsql |
 | crypt | text, text | INVOKER | c |
 | curation_pool | — | DEFINER | sql |
@@ -769,20 +837,27 @@ Triggers :
 | duplicate_template_version | p_source_version_id uuid | DEFINER | plpgsql |
 | encrypt | bytea, bytea, text | INVOKER | c |
 | encrypt_iv | bytea, bytea, bytea, text | INVOKER | c |
+| ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | finalize_patient | p_patient_id uuid | DEFINER | plpgsql |
+| finalize_upload_operation | p_ticket_id uuid, p_entity text, p_metadata jsonb | DEFINER | plpgsql |
 | find_identity_matches | p_base_id uuid, p_full_name text, p_date_of_birth date | DEFINER | plpgsql |
 | fips_mode | — | INVOKER | c |
 | gen_random_bytes | integer | INVOKER | c |
 | gen_random_uuid | — | INVOKER | c |
 | gen_salt | text | INVOKER | c |
 | gen_salt | text, integer | INVOKER | c |
+| get_import_batch_state | p_batch_id uuid | DEFINER | plpgsql |
 | get_patient_identity | p_patient_id uuid | DEFINER | plpgsql |
 | guard_access_escalation | — | INVOKER | plpgsql |
 | guard_base_access_medecin | — | DEFINER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
+| guard_cohort_base_immutable | — | DEFINER | plpgsql |
+| guard_cohort_encounter_membership | — | DEFINER | plpgsql |
+| guard_cohort_patient_membership | — | DEFINER | plpgsql |
 | guard_curation_draft_scope | — | DEFINER | plpgsql |
+| guard_curation_draft_supersession | — | DEFINER | plpgsql |
 | guard_document_created_by | — | DEFINER | plpgsql |
 | guard_export_generation_mode | — | DEFINER | plpgsql |
 | guard_finalized_draft | — | INVOKER | plpgsql |
@@ -810,6 +885,8 @@ Triggers :
 | hmac | bytea, bytea, text | INVOKER | c |
 | hmac | text, text, text | INVOKER | c |
 | import_records | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
+| import_records_legacy | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
+| import_records_with_receipts | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | invitation_permissions_still_valid | p_base_id uuid, p_actor uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | sql |
 | is_active_assigned_curator | p_task_id uuid | DEFINER | sql |
 | is_assigned_curator | p_task_id uuid | DEFINER | sql |
@@ -864,6 +941,7 @@ Triggers :
 | require_server_inspection | — | DEFINER | sql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
+| rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |
 | rule_apply_op | op text, a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_holds | rule jsonb, data jsonb | INVOKER | plpgsql |
@@ -888,6 +966,7 @@ Triggers :
 | update_base_access_permissions | p_access_id uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | plpgsql |
 | update_encounter | p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
+| update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | upload_ticket_authorized | p_base_id uuid, p_bucket text | DEFINER | sql |
