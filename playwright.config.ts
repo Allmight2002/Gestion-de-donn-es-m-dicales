@@ -31,7 +31,10 @@ export default defineConfig({
     // ensuite chaque requete et le retire avant toute destination hors origine approuvee.
     extraHTTPHeaders:
       process.env.E2E_BASE_URL && target === 'staging'
-        ? { 'x-vercel-protection-bypass': bypassSecret! }
+        ? {
+            'x-vercel-protection-bypass': bypassSecret!,
+            'x-vercel-set-bypass-cookie': 'true',
+          }
         : undefined,
     // Une trace reseau pourrait conserver ce header secret : captures/videos, mais jamais de trace.
     trace: target === 'staging' ? 'off' : 'retain-on-failure',

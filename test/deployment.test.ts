@@ -239,7 +239,8 @@ describe('configuration de deploiement', () => {
 
     expect(config).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(config).toContain('extraHTTPHeaders:');
-    expect(config).toContain("{ 'x-vercel-protection-bypass': bypassSecret! }");
+    expect(config).toContain("'x-vercel-protection-bypass': bypassSecret!");
+    expect(config).toContain("'x-vercel-set-bypass-cookie': 'true'");
     expect(config).not.toContain('globalSetup');
     expect(config).not.toContain('storageState');
     expect(config).toContain("trace: target === 'staging' ? 'off'");
@@ -249,7 +250,7 @@ describe('configuration de deploiement', () => {
     expect(fixture).toContain("urlPattern: '*'");
     expect(fixture).toContain("'Fetch.continueRequest'");
     expect(fixture).toContain('requestOrigin === stagingOrigin');
-    expect(fixture).toContain('name.toLowerCase() !== BYPASS_HEADER');
+    expect(fixture).toContain('STAGING_ONLY_HEADERS.has(name.toLowerCase())');
     expect(fixture).not.toContain('extraHTTPHeaders');
     for (const spec of ['auth-roles.spec.ts', 'export-journey.spec.ts', 'patient-journey.spec.ts']) {
       expect(read(`e2e/${spec}`)).toContain("from './staging-test'");
