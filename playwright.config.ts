@@ -26,8 +26,8 @@ export default defineConfig({
     : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL,
-    // Le bypass Vercel staging est injecte au niveau CDP. Une trace reseau pourrait conserver
-    // ce header secret : on garde captures/videos, mais jamais de trace pour cette cible.
+    // Le bypass Vercel staging est pose par la fixture puis filtre au niveau CDP. Une trace reseau
+    // pourrait conserver ce header secret : on garde captures/videos, mais jamais de trace ici.
     trace: target === 'staging' ? 'off' : 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

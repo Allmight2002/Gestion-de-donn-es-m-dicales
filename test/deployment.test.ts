@@ -243,10 +243,12 @@ describe('configuration de deploiement', () => {
     expect(config).not.toContain('storageState');
     expect(config).toContain("trace: target === 'staging' ? 'off'");
     expect(fixture).toContain('newCDPSession(page)');
+    expect(fixture).toContain('page.setExtraHTTPHeaders({ [BYPASS_HEADER]: secret })');
     expect(fixture).toContain("session.on('Fetch.requestPaused'");
-    expect(fixture).toContain("urlPattern: `${stagingOrigin}/*`");
+    expect(fixture).toContain("urlPattern: '*'");
     expect(fixture).toContain("'Fetch.continueRequest'");
-    expect(fixture).toContain('requestOrigin !== stagingOrigin');
+    expect(fixture).toContain('requestOrigin === stagingOrigin');
+    expect(fixture).toContain('name.toLowerCase() !== BYPASS_HEADER');
     expect(fixture).not.toContain('extraHTTPHeaders');
     for (const spec of ['auth-roles.spec.ts', 'export-journey.spec.ts', 'patient-journey.spec.ts']) {
       expect(read(`e2e/${spec}`)).toContain("from './staging-test'");
