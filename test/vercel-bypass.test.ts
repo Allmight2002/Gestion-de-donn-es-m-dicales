@@ -15,7 +15,11 @@ describe('bypass Vercel limite au staging', () => {
 
   test('conserve le header sur le staging exact et le retire de toute autre origine', () => {
     const origin = 'https://meddata-staging-example.vercel.app';
-    const current = { Accept: 'text/html', 'x-vercel-protection-bypass': 'test-secret' };
+    const current = {
+      Accept: 'text/html',
+      'x-vercel-protection-bypass': 'test-secret',
+      'x-vercel-set-bypass-cookie': 'true',
+    };
     expect(sanitizedHeadersForRequest(`${origin}/login`, origin, current)).toBeUndefined();
 
     for (const url of [
@@ -27,6 +31,7 @@ describe('bypass Vercel limite au staging', () => {
       const sanitized = sanitizedHeadersForRequest(url, origin, current);
       expect(sanitized).toContainEqual({ name: 'Accept', value: 'text/html' });
       expect(sanitized).not.toContainEqual(expect.objectContaining({ name: 'x-vercel-protection-bypass' }));
+      expect(sanitized).not.toContainEqual(expect.objectContaining({ name: 'x-vercel-set-bypass-cookie' }));
     }
   });
 });

@@ -1,6 +1,8 @@
 import { expect, test as base, type Page } from '@playwright/test';
 
 const BYPASS_HEADER = 'x-vercel-protection-bypass';
+const SET_BYPASS_COOKIE_HEADER = 'x-vercel-set-bypass-cookie';
+const STAGING_ONLY_HEADERS = new Set([BYPASS_HEADER, SET_BYPASS_COOKIE_HEADER]);
 
 type HeaderEntry = { name: string; value: string };
 type PausedRequest = {
@@ -41,7 +43,7 @@ export function sanitizedHeadersForRequest(
   if (requestOrigin === stagingOrigin) return undefined;
 
   return Object.entries(currentHeaders)
-    .filter(([name]) => name.toLowerCase() !== BYPASS_HEADER)
+    .filter(([name]) => !STAGING_ONLY_HEADERS.has(name.toLowerCase()))
     .map(([name, value]) => ({ name, value }));
 }
 
