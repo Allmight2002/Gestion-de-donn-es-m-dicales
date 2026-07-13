@@ -298,7 +298,7 @@ try {
     assert(buckets.length === expectedBuckets.length, 'Bucket staging manquant');
     assert(buckets.every((row) => row.public === false), 'Bucket clinique public');
     const storagePolicies = await query(
-      `select policyname,cmd,roles from pg_policies
+      `select policyname,cmd,roles::text[] as roles from pg_policies
         where schemaname='storage' and tablename='objects' order by policyname`,
     );
     const expectedStoragePolicies = new Map([
