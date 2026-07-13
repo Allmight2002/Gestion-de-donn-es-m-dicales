@@ -288,9 +288,11 @@ try {
       [protectedTables],
     );
     const withPolicies = new Set(policyCounts.filter((row) => row.count > 0).map((row) => row.tablename));
-    for (const table of protectedTables.filter((name) => name !== 'export_log')) {
+    const directlyReadable = ['base', 'base_access', 'patient', 'encounter', 'cohort', 'raw_document', 'curation_task', 'clinical_attachment'];
+    for (const table of directlyReadable) {
       assert(withPolicies.has(table), `Aucune policy RLS trouvee pour ${table}`);
     }
+    assert(!withPolicies.has('patient_identity'), 'patient_identity ne doit pas exposer de lecture directe; utiliser la RPC auditee');
     const expectedBuckets = ['clinical-attachments', 'quarantined-uploads', 'raw-documents', 'scientific-exports'];
     const buckets = await query('select id,public from storage.buckets where id=any($1::text[]) order by id', [expectedBuckets]);
     assert(buckets.length === expectedBuckets.length, 'Bucket staging manquant');
@@ -305,6 +307,7 @@ try {
     return {
       rlsTables: rls.length,
       publicPolicyTables: withPolicies.size,
+      patientIdentityDirectPolicies: 0,
       buckets: buckets.map((row) => row.id),
       storagePolicies: storagePolicies.map((row) => row.policyname),
     };
