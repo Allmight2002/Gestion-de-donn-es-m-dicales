@@ -3,7 +3,7 @@
 // (aucun reseau, aucun Supabase requis).
 import 'fake-indexeddb/auto';
 import { useContext } from 'react';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
@@ -21,6 +21,18 @@ beforeAll(() => {
   vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
 });
 afterAll(() => vi.unstubAllEnvs());
+
+const setNavigatorOnline = (online: boolean) => {
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: online });
+};
+
+afterEach(() => {
+  setNavigatorOnline(true);
+  for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+    const key = localStorage.key(i) ?? '';
+    if (key.startsWith('meddata:offline-profile:')) localStorage.removeItem(key);
+  }
+});
 
 function fakeBackend(init: { user: SessionUser | null; profile: Profile | null }): AuthBackend {
   let user = init.user;
@@ -77,9 +89,26 @@ function AuthProbe() {
   return (
     <div>
       <p data-testid="auth-state">{auth.status}:{auth.user?.id ?? 'none'}</p>
+      <p data-testid="profile-state">{auth.profile ? `${auth.profile.globalRole}:${auth.profile.fullName || 'minimal'}` : 'none'}</p>
       {auth.error && <p role="alert">{auth.error}</p>}
       <button type="button" onClick={() => void auth.signOut()}>Force sign out</button>
     </div>
+  );
+}
+
+function renderAuthProbe(backend: AuthBackend) {
+  return render(
+    <I18nProvider>
+      <AuthProvider
+        backend={backend}
+        initializeOffline={async (userId) => {
+          setOfflineUser(userId);
+          return { previousOwner: userId, ownerChanged: false, recoveredSyncing: 0, errors: [] };
+        }}
+      >
+        <AuthProbe />
+      </AuthProvider>
+    </I18nProvider>,
   );
 }
 
@@ -100,6 +129,70 @@ describe('gating par role', () => {
     expect(await screen.findByRole('heading', { name: 'Tableau de bord' }, { timeout: 5000 })).toBeInTheDocument();
   });
 
+  test('le fallback hors-ligne ne conserve qu un marqueur medecin minimal et borne', async () => {
+    setNavigatorOnline(true);
+    renderAuthProbe(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
+    expect(await screen.findByTestId('profile-state')).toHaveTextContent('medecin:Medecin');
+
+    const marker = JSON.parse(localStorage.getItem('meddata:offline-profile:m') ?? '{}') as Record<string, unknown>;
+    expect(marker).toMatchObject({ version: 1, userId: 'm', globalRole: 'medecin', language: 'fr' });
+    expect(marker.expiresAt).toEqual(expect.any(Number));
+    expect(marker).not.toHaveProperty('fullName');
+    expect(marker).not.toHaveProperty('email');
+    expect(marker).not.toHaveProperty('token');
+  });
+
+  test('un profil serveur inaccessible reste ferme en ligne malgre le marqueur local', async () => {
+    localStorage.setItem('meddata:offline-profile:m', JSON.stringify({
+      version: 1, userId: 'm', globalRole: 'medecin', language: 'fr', expiresAt: Date.now() + 60_000,
+    }));
+    setNavigatorOnline(true);
+    const backend = {
+      ...fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }),
+      async fetchProfile() { throw new Error('Supabase inaccessible'); },
+    };
+    renderAuthProbe(backend);
+    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_in:m');
+    expect(screen.getByTestId('profile-state')).toHaveTextContent('none');
+  });
+
+  test('un refresh hors-ligne reutilise le marqueur minimal puis reconcilie le profil au retour reseau', async () => {
+    localStorage.setItem('meddata:offline-profile:m', JSON.stringify({
+      version: 1, userId: 'm', globalRole: 'medecin', language: 'fr', expiresAt: Date.now() + 60_000,
+    }));
+    let offline = true;
+    setNavigatorOnline(false);
+    const backend = {
+      ...fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }),
+      async fetchProfile() {
+        if (offline) throw new Error('offline');
+        return memberProfile;
+      },
+    };
+    renderAuthProbe(backend);
+    expect(await screen.findByTestId('profile-state')).toHaveTextContent('medecin:minimal');
+
+    offline = false;
+    setNavigatorOnline(true);
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(screen.getByTestId('profile-state')).toHaveTextContent('medecin:Medecin'));
+  });
+
+  test('un marqueur hors-ligne expire est refuse et supprime', async () => {
+    localStorage.setItem('meddata:offline-profile:m', JSON.stringify({
+      version: 1, userId: 'm', globalRole: 'medecin', language: 'fr', expiresAt: Date.now() - 1,
+    }));
+    setNavigatorOnline(false);
+    const backend = {
+      ...fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }),
+      async fetchProfile() { throw new Error('offline'); },
+    };
+    renderAuthProbe(backend);
+    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_in:m');
+    expect(screen.getByTestId('profile-state')).toHaveTextContent('none');
+    expect(localStorage.getItem('meddata:offline-profile:m')).toBeNull();
+  });
+
   test('un curateur ne peut pas ouvrir directement l export d une cohorte', async () => {
     window.history.replaceState({}, '', '/bases/b1/cohorts/c1/export');
     renderApp(fakeBackend({ user: { id: 'c', email: 'c@demo.test' }, profile: curatorProfile }));
@@ -111,8 +204,10 @@ describe('gating par role', () => {
   test('deconnexion -> retour a l ecran de connexion', async () => {
     renderApp(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
     await screen.findByRole('heading', { name: 'Tableau de bord' });
+    expect(localStorage.getItem('meddata:offline-profile:m')).not.toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Se déconnecter' }));
     expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument();
+    expect(localStorage.getItem('meddata:offline-profile:m')).toBeNull();
   });
   test('ignore une reponse profil arrivee apres deconnexion', async () => {
     let user: SessionUser | null = { id: 'm', email: 'm@demo.test' };
