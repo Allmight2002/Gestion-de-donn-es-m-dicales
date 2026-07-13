@@ -24,6 +24,7 @@ l'URL uniquement apres :
 
 ```bash
 supabase functions deploy signed-read
+supabase functions deploy finalize-upload
 supabase functions deploy cleanup-upload
 supabase functions deploy generate-export
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
@@ -227,6 +228,7 @@ En production, le service antivirus doit etre traite comme une dependance de sec
 ```bash
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
+supabase functions deploy finalize-upload
 supabase functions deploy cleanup-upload
 supabase functions deploy generate-export
 supabase functions deploy reconcile-quarantine
