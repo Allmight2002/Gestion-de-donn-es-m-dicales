@@ -354,11 +354,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (e2) throw e2;
       const i = (((identRows ?? []) as IdentityRow[])[0]) ?? null;
       return {
-        id: row.id,
-        code: row.patient_code,
-        templateVersionId: row.template_version_id,
-        data: row.data ?? {},
-        validationStatus: row.validation_status,
+        ...toListItem(row),
         identity: i ? mapIdentity(i) : null,
       };
     },
