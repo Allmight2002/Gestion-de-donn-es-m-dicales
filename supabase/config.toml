@@ -45,6 +45,10 @@ verify_jwt = false
 [functions.inspect-upload]
 verify_jwt = false
 
+# Finalisation serveur apres preuve de l'objet Storage exact.
+[functions.finalize-upload]
+verify_jwt = false
+
 # Nettoyage serveur des uploads orphelins apres echec d'insertion metier.
 [functions.cleanup-upload]
 verify_jwt = false

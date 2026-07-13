@@ -10,10 +10,11 @@ import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
 import {
   REQUIRE_SERVER_INSPECTION,
-  cleanupUploadedObject,
-  createUploadTicket,
+  createUploadOperation,
+  finalizeUploadOperation,
   inspectUploadedFile,
   retryUploadedFileInspection,
+  stableUploadOperationKey,
   type InspectionStatus,
 } from './inspection';
 
@@ -94,6 +95,16 @@ export interface AddRawDocumentInput {
   label?: string;
 }
 
+export interface CreatePatientCurationInput {
+  code: string;
+  fullName: string;
+  dateOfBirth: string;
+  phone: string | null;
+  address: string | null;
+  externalIdentifier: string | null;
+  idempotencyKey: string;
+}
+
 export interface CurationRepository {
   /** Pool GLOBAL : toutes les taches visibles par le staff de curation (curateur). */
   listPool(): Promise<CurationTaskItem[]>;
@@ -107,6 +118,8 @@ export interface CurationRepository {
   /** Le medecin soumet un cas au pool (RPC atomique : soumission + tache ouverte + code).
    *  scope='patient' (donnees permanentes) ou 'encounter' (une rencontre). */
   createSubmission(baseId: string, targetPatientId: string, externalRef: string | null, scope?: 'patient' | 'encounter'): Promise<{ taskId: string; submissionId: string }>;
+  /** Cree le patient et son workflow de curation dans la meme transaction, rejouable par cle stable. */
+  createPatientCuration(baseId: string, input: CreatePatientCurationInput): Promise<{ patientId: string; patientCode: string; submissionId: string; taskId: string; replayed: boolean }>;
   /** Le medecin proprietaire ENVOIE la demande au pool (exige >= 1 document). */
   submitRequest(taskId: string): Promise<void>;
   /** Le medecin proprietaire SUPPRIME (logique) une demande ; deletePatient=true supprime
@@ -116,7 +129,7 @@ export interface CurationRepository {
   claimTask(taskId: string): Promise<void>;
   /** Le curateur affecte libere un cas. */
   releaseTask(taskId: string): Promise<void>;
-  addRawDocument(input: AddRawDocumentInput): Promise<{ id: string }>;
+  addRawDocument(input: AddRawDocumentInput): Promise<{ id: string; inspectionPending?: boolean }>;
   /** Renvoie le brouillon de la tache, en le creant s'il n'existe pas encore. */
   ensureDraft(taskId: string, baseId: string): Promise<CurationDraftItem>;
   saveDraft(draftId: string, patientData: Record<string, unknown>, encounters: DraftEncounter[]): Promise<void>;
@@ -173,7 +186,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, documentUrl: fail, retryDocumentInspection: fail, createSubmission: fail,
+      listPool: fail, listBaseSubmissions: fail, getTaskBundle: fail, documentUrl: fail, retryDocumentInspection: fail, createSubmission: fail, createPatientCuration: fail,
       submitRequest: fail, deleteRequest: fail, claimTask: fail, releaseTask: fail, addRawDocument: fail,
       ensureDraft: fail, saveDraft: fail, finalizeTask: fail, requestClarification: fail, answerClarification: fail,
     };
@@ -249,6 +262,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
         .from('curation_draft')
         .select('id, task_id, patient_data, encounters, status')
         .eq('task_id', taskId)
+        .is('superseded_at', null)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -299,6 +313,19 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       return { taskId: row.id, submissionId: row.submission_id };
     },
 
+    async createPatientCuration(baseId, input) {
+      const { data, error } = await client.rpc('create_patient_curation_submission', {
+        p_base_id: baseId, p_patient_code: input.code, p_full_name: input.fullName,
+        p_date_of_birth: input.dateOfBirth, p_phone: input.phone, p_address: input.address,
+        p_external_identifier: input.externalIdentifier, p_idempotency_key: input.idempotencyKey,
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        patient_id: string; patient_code: string; submission_id: string; task_id: string; replayed: boolean;
+      };
+      return { patientId: row.patient_id, patientCode: row.patient_code, submissionId: row.submission_id, taskId: row.task_id, replayed: row.replayed };
+    },
+
     async submitRequest(taskId) {
       const { error } = await client.rpc('submit_curation_request', { p_task_id: taskId });
       if (error) throw error;
@@ -324,54 +351,40 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       // le type REEL detecte + l'empreinte, plutot que de faire confiance au navigateur.
       const v = await inspectFile(input.file);
       if (!v.ok) throw new Error(v.error);
-      const path = `${input.baseId}/${input.submissionId}/${crypto.randomUUID()}.${v.ext}`;
-      const ticketId = await createUploadTicket(client, input.baseId, RAW_DOCUMENTS_BUCKET, path);
-      let data: { id: string };
-      try {
-        const { error: upErr } = await client.storage.from(RAW_DOCUMENTS_BUCKET).upload(path, input.file, {
+      const fileHash = await sha256Hex(input.file);
+      const operationKey = stableUploadOperationKey(
+        `raw-document:${input.baseId}:${input.submissionId}:${v.ext}`,
+        fileHash,
+        input.label ?? null,
+      );
+      const operation = await createUploadOperation(client, {
+        baseId: input.baseId, bucket: RAW_DOCUMENTS_BUCKET,
+        path: `${input.baseId}/${input.submissionId}/${operationKey}.${v.ext}`,
+        idempotencyKey: operationKey, fileHash, fileSize: input.file.size, mimeType: v.type,
+      });
+      let id = operation.documentId;
+      if (!id) {
+        const { error: upErr } = await client.storage.from(RAW_DOCUMENTS_BUCKET).upload(operation.path, input.file, {
           contentType: v.type,
           upsert: false,
         });
-        if (upErr) throw upErr;
-        const inserted = await client
-          .from('raw_document')
-          .insert({
-            submission_id: input.submissionId, base_id: input.baseId, label: input.label ?? null,
-            storage_path: path, mime_type: v.type, detected_mime_type: v.type,
-            file_size: input.file.size, file_hash: await sha256Hex(input.file),
-            inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
-            inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
-          })
-          .select('id')
-          .single();
-        if (inserted.error) throw inserted.error;
-        data = inserted.data as { id: string };
-      } catch (error) {
-        await cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path, ticketId).catch(() => undefined);
-        throw error;
+        if (upErr && (upErr as { statusCode?: string }).statusCode !== '409') throw upErr;
+        id = await finalizeUploadOperation(client, operation.ticketId, 'raw_document', {
+          submission_id: input.submissionId, label: input.label ?? null,
+        });
       }
-      const id = data.id;
-      await inspectUploadedFile(client, 'raw_document', id);
-      return { id };
+      await inspectUploadedFile(client, 'raw_document', id).catch(() => undefined);
+      return { id, inspectionPending: REQUIRE_SERVER_INSPECTION };
     },
 
     async ensureDraft(taskId, baseId) {
-      const { data: existing, error } = await client
-        .from('curation_draft')
-        .select('id, task_id, patient_data, encounters, status')
-        .eq('task_id', taskId)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data, error } = await client.rpc('ensure_curation_draft', {
+        p_task_id: taskId, p_base_id: baseId,
+      });
       if (error) throw error;
-      if (existing) return mapDraft(existing as DraftRow);
-      const { data, error: e2 } = await client
-        .from('curation_draft')
-        .insert({ task_id: taskId, base_id: baseId })
-        .select('id, task_id, patient_data, encounters, status')
-        .single();
-      if (e2) throw e2;
-      return mapDraft(data as DraftRow);
+      const row = (Array.isArray(data) ? data[0] : data) as DraftRow | null;
+      if (!row) throw new Error('Brouillon absent');
+      return mapDraft(row);
     },
 
     async saveDraft(draftId, patientData, encounters) {

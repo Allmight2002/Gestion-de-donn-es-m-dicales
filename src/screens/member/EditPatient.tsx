@@ -28,6 +28,7 @@ export function EditPatient() {
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
+  const [baseVersion, setBaseVersion] = useState<number | null>(null);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -43,7 +44,7 @@ export function EditPatient() {
     setLoading(true);
     try {
       const [p, base] = await Promise.all([patients.getPatient(baseId, patientId), bases.getBase(baseId)]);
-      if (p) { setValues(p.data); setStatus(p.validationStatus); }
+      if (p) { setValues(p.data); setStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
       // §7.4 (audit v12, etendu) : un patient HISTORIQUE s'edite avec SA version de gabarit — memes
       // libelles/champs/regles que le serveur. La version courante de la base n'est qu'un repli.
       const versionId = p?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
@@ -77,11 +78,17 @@ export function EditPatient() {
 
     setBusy(true);
     try {
-      await patients.updatePatientData(patientId, values, status, reason.trim());
+      const saved = await patients.updatePatientData(patientId, values, status, reason.trim(), baseVersion);
+      setBaseVersion(saved.version);
       toast(t('toast.patient_saved')); // UI-2
       back();
     } catch (e) {
-      setError(msg(e));
+      const detail = e as { message?: string };
+      if (/CONFLIT_VERSION/i.test(detail?.message ?? '')) {
+        setError('Ce patient a ete modifie par une autre personne. Vos changements ne sont pas enregistres : rechargez les donnees avant de recommencer.');
+      } else {
+        setError(msg(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -130,6 +137,7 @@ export function EditPatient() {
         <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">{t('encounter.save')}</button>
           <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
+          {error?.includes('modifie par une autre personne') && <button type="button" onClick={() => void load()} className="btn-secondary">Recharger les donnees</button>}
           <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>

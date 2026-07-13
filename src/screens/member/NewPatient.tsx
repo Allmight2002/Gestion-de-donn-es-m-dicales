@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -23,6 +23,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const curation = useCurationRepository();
+  const submitIdempotencyKey = useRef<string | null>(null);
   const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
@@ -111,6 +112,18 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           return; // (finally libere busy)
         }
       }
+      if (mode === 'submit') {
+        // La cle vit pendant toute la tentative : un retry apres reponse perdue rejoue la meme operation.
+        submitIdempotencyKey.current ??= crypto.randomUUID();
+        const created = await curation.createPatientCuration(baseId, {
+          code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
+          address: address || null, externalIdentifier: externalId.trim() || null,
+          idempotencyKey: submitIdempotencyKey.current,
+        });
+        toast(t('toast.patient_saved'));
+        navigate(`/curation/${created.taskId}`);
+        return;
+      }
       const created = await patients.createPatient(baseId, {
         code: code.trim(),
         fullName: fullName.trim() || null,
@@ -118,16 +131,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         phone: phone || null,
         address: address || null,
         externalIdentifier: externalId.trim() || null,
-        permanentData: mode === 'submit' ? {} : permanent,
+        permanentData: permanent,
       });
       toast(t('toast.patient_saved')); // UI-2
-      if (mode === 'submit') {
-        // Confie le cas au pool (portee patient) -> page de depot des documents.
-        const { taskId } = await curation.createSubmission(baseId, created.id, null, 'patient');
-        navigate(`/curation/${taskId}`);
-      } else {
-        navigate(`/bases/${baseId}/patients/${created.id}`);
-      }
+      navigate(`/bases/${baseId}/patients/${created.id}`);
     } catch (e) {
       // QA : le doublon de CODE patient (contrainte unique) doit parler a l'utilisateur,
       // pas afficher un message SQL brut (« duplicate key value violates ... »).
