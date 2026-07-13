@@ -274,6 +274,8 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('Bootstrap scoped Vercel browser cookie');
     expect(workflow).toContain('scripts/vercel-cookie-state.mjs');
     expect(workflow).toContain('E2E_VERCEL_STORAGE_STATE');
+    expect(workflow).toContain('"vercel@$VERCEL_CLI_VERSION" curl /login');
+    expect(workflow).not.toContain('"vercel@$VERCEL_CLI_VERSION" --token "$VERCEL_TOKEN" curl');
     expect(workflow).toContain('Remove ephemeral Vercel browser state');
     expect(workflow).not.toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(workflow).toContain("node-version: '22'");
