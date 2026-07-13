@@ -18,7 +18,7 @@ documents.
    `_DB_URL` (Session pooler, mot de passe **percent-encodé**), comptes de test).
 2. Provisionner le staging : `db push` (toutes les migrations), `apply-storage.mjs`
    (buckets + policies), deployer les Edge Functions (`signed-read`, `inspect-upload`,
-   `cleanup-upload`, `generate-export`, `reconcile-quarantine`), creer un compte `medecin`.
+   `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), creer un compte `medecin`.
 3. **Scanner ClamAV joignable par l'Edge.** `inspect-upload` s'exécute dans le cloud : il ne
    peut pas joindre `localhost`. En local :
    ```bash

@@ -20,8 +20,18 @@ jobs:
           node-version: '20'
           cache: npm
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.9.2'
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify XLSX and browser test versions
+        run: npm ls xlsx@0.20.3 @playwright/test@1.54.1 --depth=0 && grep -F 'xlsx-0.20.3/package/xlsx.mjs' deno.json deno.lock && ! grep -F 'npm:xlsx@0.18.5' deno.json deno.lock
+
+      - name: Dependency audit (registry)
+        run: npm audit --omit=dev
 
       - name: Typecheck
         run: npm run typecheck
@@ -30,7 +40,37 @@ jobs:
         run: npm run lint
 
       - name: Inspection env preflight
+        env:
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
+          VITE_USE_SIGNED_READ: 'true'
         run: npm run env:check
+
+      - name: Validation de la configuration de PR
+        env:
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'false'
+        run: npm run release:env -- --target=pr
+
+      - name: Migrations applicables depuis zero
+        run: npm run db:verify
+
+      - name: Contrat statique des Edge Functions
+        run: npm run release:edge:check
+
+      - name: Format des Edge Functions
+        run: deno task edge:fmt
+
+      - name: Lint des Edge Functions
+        run: deno task edge:lint
+
+      - name: Typage et resolution figee des imports Edge
+        run: deno task edge:check
+
+      - name: Tests Deno unitaires et contractuels
+        run: deno task edge:test
 
       - name: Tests (RLS embarque + UI)
         run: npm test
@@ -39,6 +79,8 @@ jobs:
         # §5.7 : le build de production EXIGE la lecture de fichiers auditee (signed-read).
         # Ce n'est pas un secret mais un drapeau de fonctionnalite -> on l'arme pour la CI.
         env:
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
           VITE_USE_SIGNED_READ: 'true'
         run: npm run build
 

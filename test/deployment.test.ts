@@ -1,13 +1,26 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 
 const read = (path: string) => readFileSync(path, 'utf8');
 
+// Source COMPLETE d'une Edge Function : index.ts (adaptateur mince) + modules extraits (handler.ts,
+// etc.). Les gardes structurelles doivent porter sur le comportement, pas sur son emplacement : apres
+// l'extraction de handleRequest (audit lot 9 §C3), la logique vit dans handler.ts et non plus dans
+// index.ts. On concatene donc tous les .ts non-test du dossier pour rester robuste au refactor.
+const readFn = (name: string): string => {
+  const dir = `supabase/functions/${name}`;
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.ts') && !f.endsWith('_test.ts'))
+    .sort()
+    .map((f) => read(`${dir}/${f}`))
+    .join('\n');
+};
+
 describe('configuration de deploiement', () => {
   test('les exports conserves passent par signed-read, pas par une policy Storage SELECT directe', () => {
     const storage = read('supabase/storage.sql');
-    const edge = read('supabase/functions/signed-read/index.ts');
-    const generateExport = read('supabase/functions/generate-export/index.ts');
+    const edge = readFn('signed-read');
+    const generateExport = readFn('generate-export');
     const exportsData = read('src/data/exports.ts');
     const config = read('supabase/config.toml');
 
@@ -25,7 +38,7 @@ describe('configuration de deploiement', () => {
     for (const op of ['read', 'insert', 'update', 'delete']) {
       expect(storage).toContain(`drop policy if exists "quarantined_uploads_${op}"`);
     }
-    expect(edge).toContain("entity !== 'export'");
+    expect(edge).toContain("['attachment', 'raw_document', 'export']");
     expect(edge).toContain("bucket = 'scientific-exports'");
     expect(edge).toContain("action = 'export_read'");
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
@@ -40,21 +53,32 @@ describe('configuration de deploiement', () => {
     expect(generateExport).toContain("generation_mode: 'server'");
     expect(generateExport).toContain("generated_by: 'edge:generate-export'");
     expect(generateExport).toContain('fileHash');
-    expect(generateExport).toContain("from 'npm:xlsx@0.18.5'");
+    // XLSX (audit lot 9 §C1) : l'invariant REEL, pas un import npm en dur. La version vit dans UNE
+    // seule source de verite (l'alias `xlsx` de deno.json), elle est VERROUILLEE dans deno.lock, et
+    // generate-export l'importe par alias sans version flottante ni URL/import npm concurrent.
+    const denoImports = (JSON.parse(read('deno.json')) as { imports: Record<string, string> }).imports;
+    const xlsxSpecifier = denoImports.xlsx;
+    expect(xlsxSpecifier).toBe('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+    expect(read('deno.lock')).toContain(xlsxSpecifier); // present + resolution figee du meme specifier
+    expect(generateExport).toContain("from 'xlsx'");
+    expect(generateExport).not.toMatch(/from ['"]npm:xlsx/); // aucun import npm direct concurrent
+    expect(generateExport).not.toContain('cdn.sheetjs.com'); // aucune URL en dur hors deno.json
+    expect(generateExport).not.toContain('xlsx@0.18.5'); // aucune version flottante/obsolete
     expect(generateExport).toContain("from './exportContract.ts'");
     expect(generateExport).toContain('referencedTemplateVersions(patients, encounters)');
     expect(generateExport).not.toContain(".eq('template_version_id', base.current_template_version_id)");
-    expect(generateExport).not.toContain('https://cdn.sheetjs.com');
   });
 
   test('inspect-upload impose un verdict serveur avant la lecture de donnees reelles', () => {
-    const inspect = read('supabase/functions/inspect-upload/index.ts');
-    const reconcile = read('supabase/functions/reconcile-quarantine/index.ts');
-    const signedRead = read('supabase/functions/signed-read/index.ts');
+    const inspect = readFn('inspect-upload');
+    const reconcile = readFn('reconcile-quarantine');
+    const signedRead = readFn('signed-read');
     const attachments = read('src/data/attachments.ts');
     const curation = read('src/data/curation.ts');
     const inspection = read('src/data/inspection.ts');
-    const cleanup = read('supabase/functions/cleanup-upload/index.ts');
+    const uploadHardening = read('supabase/migrations/20260712000100_upload_operation_hardening.sql');
+    const cleanup = readFn('cleanup-upload');
+    const finalizeUpload = readFn('finalize-upload');
     const envCheck = read('scripts/check-inspection-env.mjs');
     const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
     const config = read('supabase/config.toml');
@@ -77,9 +101,19 @@ describe('configuration de deploiement', () => {
     expect(envCheck).toContain('QUARANTINE_BUCKET');
     expect(config).toContain('[functions.inspect-upload]');
     expect(config).toContain('[functions.cleanup-upload]');
+    expect(config).toContain('[functions.finalize-upload]');
     expect(config).toContain('[functions.reconcile-quarantine]');
     expect(inspect).toContain("CLAMAV_SCAN_URL");
-    expect(inspect).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    // Service role (audit lot 9 §C1) : la cle n'est lue QUE via le helper partage supabaseEnvironment()
+    // (contracts.ts), qui l'EXIGE explicitement (requiredEnv -> echec si absente) ; inspect-upload ne la
+    // lit jamais en direct et construit le client admin cote serveur via env.serviceRoleKey. La preuve de
+    // non-fuite (aucune cle/token dans une reponse ou un log) est portee par les tests comportementaux
+    // du handler (handler_test.ts).
+    const sharedContracts = read('supabase/functions/_shared/contracts.ts');
+    expect(inspect).toContain('supabaseEnvironment()');
+    expect(inspect).toContain('createClient(env.url, env.serviceRoleKey');
+    expect(inspect).not.toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')"); // aucune lecture directe hors helper
+    expect(sharedContracts).toMatch(/requiredEnv\(\[[^\]]*'SUPABASE_SERVICE_ROLE_KEY'/); // le helper l'exige
     expect(inspect).toContain("inspection_status: 'scanning'");
     expect(inspect).toContain("currentStatus === 'accepted_client'");
     expect(inspect).toContain('inspection_run_id');
@@ -91,7 +125,7 @@ describe('configuration de deploiement', () => {
     expect(inspect).toContain('moveToPhysicalQuarantine');
     expect(inspect).toContain('record_quarantine_move');
     expect(inspect).toContain('update_quarantine_move');
-    expect(inspect).toContain('.from(QUARANTINE_BUCKET).upload');
+    expect(inspect).toContain('.from(config.quarantineBucket).upload');
     expect(inspect).toContain('.from(bucket).remove([path])');
     expect(inspect).toContain('p_quarantine_bucket');
     expect(inspect).toContain('p_quarantine_path');
@@ -115,21 +149,40 @@ describe('configuration de deploiement', () => {
     expect(inspection).toContain("!requireServerInspection && status === 'accepted_client'");
     expect(inspection).toContain("requireServerInspection && status === 'accepted_client'");
     expect(inspection).toContain("inspect-upload");
-    expect(inspection).toContain("cleanup-upload");
-    expect(inspection).toContain("create_upload_ticket");
+    // Le client passe par l'operation idempotente serveur ; les wrappers historiques ont disparu.
+    expect(inspection).toContain('create_upload_operation');
+    expect(inspection).toContain("functions.invoke('finalize-upload'");
+    expect(finalizeUpload).toContain("admin.rpc('complete_verified_upload_operation'");
+    expect(finalizeUpload).toContain("admin.storage.from(ticket.bucket).download(ticket.path)");
+    expect(inspection).not.toContain('export async function createUploadTicket');
+    expect(inspection).not.toContain('export async function cleanupUploadedObject');
     expect(cleanup).toContain("orphan_upload_removed");
     expect(cleanup).toContain("ticketId requis");
     expect(cleanup).toContain(".from('upload_ticket')");
     expect(cleanup).toContain("Ticket upload non proprietaire");
     expect(cleanup).toContain("Objet deja rattache a une ligne metier");
-    expect(attachments).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
-    expect(attachments).toContain('createUploadTicket(client, input.baseId, ATTACHMENTS_BUCKET, path)');
-    expect(attachments).toContain('cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path, ticketId)');
+    // --- Architecture REELLE des uploads : identite/idempotence/verdict cote serveur (§ lot uploads) ---
+    // Les deux couches d'acces utilisent l'operation idempotente et la finalisation serveur ; elles ne
+    // recalculent plus le verdict initial et ne peuvent pas reintroduire la voie ticket+cleanup directe.
+    for (const src of [attachments, curation]) {
+      expect(src).toContain('createUploadOperation(client, {');
+      expect(src).toContain('finalizeUploadOperation(client, operation.ticketId');
+      expect(src).toContain('stableUploadOperationKey(');
+      expect(src).not.toMatch(/'pending'\s*:\s*'accepted_client'/); // verdict initial: plus decide cote client
+      expect(src).not.toContain('createUploadTicket(');
+      expect(src).not.toContain('cleanupUploadedObject(');
+    }
     expect(attachments).toContain("inspectUploadedFile(client, 'attachment'");
-    expect(curation).toContain("REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client'");
-    expect(curation).toContain('createUploadTicket(client, input.baseId, RAW_DOCUMENTS_BUCKET, path)');
-    expect(curation).toContain('cleanupUploadedObject(client, RAW_DOCUMENTS_BUCKET, path, ticketId)');
     expect(curation).toContain("inspectUploadedFile(client, 'raw_document'");
+    // Le verdict pending/accepted_client est decide en SQL ; le client ne peut poser ni 'accepted'
+    // ni 'quarantined' a la finalisation (seul inspect-upload ecrit un verdict terminal).
+    expect(uploadHardening).toContain('require_server_inspection()');
+    expect(uploadHardening).toContain("then 'pending' else 'accepted_client'");
+    expect(uploadHardening).not.toContain("'accepted'");
+    expect(uploadHardening).not.toContain("'quarantined'");
+    // Durcissement additif : creations concurrentes deterministes + refus explicite du soft-delete rejoue.
+    expect(uploadHardening).toContain('when unique_violation then');
+    expect(uploadHardening).toContain('Document supprime : operation d upload non rejouable');
   });
 
   test('le service ClamAV local et les variables de deploiement sont declares', () => {
