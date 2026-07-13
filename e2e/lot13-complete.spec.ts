@@ -169,7 +169,7 @@ test('@lot13 navigator en ligne mais Supabase inaccessible, latence puis reconne
   await page.route('**/rest/v1/**', (route) => route.abort('connectionrefused'));
   await page.goto(`/bases/${state.baseId}`);
   expect(await page.evaluate(() => navigator.onLine)).toBe(true);
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByText(/Profil indisponible|Profile unavailable/i)).toBeVisible();
   await expect(page.getByRole('button', { name: state.patients[0].code })).toHaveCount(0);
 
   await page.unroute('**/rest/v1/**');
