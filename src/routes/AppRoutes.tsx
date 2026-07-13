@@ -158,7 +158,7 @@ export function AppRoutes() {
       <Route
         path="/bases/:id/cohorts/:cohortId/export"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={['medecin']}>
             <ExportPanel />
           </ProtectedRoute>
         }

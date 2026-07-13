@@ -52,6 +52,7 @@ function fakeBackend(init: { user: SessionUser | null; profile: Profile | null }
 
 const adminProfile: Profile = { id: 's', fullName: 'Admin', globalRole: 'system_admin', language: 'fr' };
 const memberProfile: Profile = { id: 'm', fullName: 'Medecin', globalRole: 'medecin', language: 'fr' };
+const curatorProfile: Profile = { id: 'c', fullName: 'Curateur', globalRole: 'curateur', language: 'fr' };
 
 function renderApp(backend: AuthBackend) {
   return render(
@@ -97,6 +98,14 @@ describe('gating par role', () => {
   test('connecte membre -> tableau de bord', async () => {
     renderApp(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
     expect(await screen.findByRole('heading', { name: 'Tableau de bord' }, { timeout: 5000 })).toBeInTheDocument();
+  });
+
+  test('un curateur ne peut pas ouvrir directement l export d une cohorte', async () => {
+    window.history.replaceState({}, '', '/bases/b1/cohorts/c1/export');
+    renderApp(fakeBackend({ user: { id: 'c', email: 'c@demo.test' }, profile: curatorProfile }));
+    await waitFor(() => expect(window.location.pathname).toBe('/curation'));
+    expect(screen.queryByRole('heading', { name: /Exporter une cohorte/i })).not.toBeInTheDocument();
+    window.history.replaceState({}, '', '/');
   });
 
   test('deconnexion -> retour a l ecran de connexion', async () => {
