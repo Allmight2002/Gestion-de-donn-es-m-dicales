@@ -234,7 +234,9 @@ jobs:
           NODE
           (
             cd "$control_dir"
-            npx --yes "vercel@$VERCEL_CLI_VERSION" --token "$VERCEL_TOKEN" curl /login \
+            # vercel curl v55 lit VERCEL_TOKEN dans l'environnement ; son option globale --token
+            # serait transmise par erreur au binaire curl sous-jacent.
+            npx --yes "vercel@$VERCEL_CLI_VERSION" curl /login \
               --deployment "$E2E_BASE_URL" --yes -- \
               --silent --show-error --fail --location \
               --cookie-jar "$cookie_jar" --output /dev/null \
