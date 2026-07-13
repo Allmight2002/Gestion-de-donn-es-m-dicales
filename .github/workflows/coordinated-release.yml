@@ -119,7 +119,7 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy all Edge Functions
         env: *staging_env
-        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done
+        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done
       - name: Verify backend, scanner and drift
         env: *staging_env
         run: npm run env:check:cloud && npm run release:drift && npm run e2e:staging
@@ -270,7 +270,7 @@ jobs:
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done && npm run env:check:cloud && npm run release:drift
+        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done && npm run env:check:cloud && npm run release:drift
       - name: Promote frontend last
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

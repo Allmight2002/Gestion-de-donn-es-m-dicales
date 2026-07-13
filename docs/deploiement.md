@@ -87,12 +87,12 @@ que **toute consultation d'un fichier soit tracée côté serveur** et non conto
 §9.2/§9.3), déployez la fonction Edge puis activez le drapeau :
 
 ```bash
-supabase functions deploy signed-read
-supabase functions deploy inspect-upload
-supabase functions deploy finalize-upload
-supabase functions deploy cleanup-upload
-supabase functions deploy generate-export
-supabase functions deploy reconcile-quarantine
+supabase functions deploy signed-read --import-map deno.json
+supabase functions deploy inspect-upload --import-map deno.json
+supabase functions deploy finalize-upload --import-map deno.json
+supabase functions deploy cleanup-upload --import-map deno.json
+supabase functions deploy generate-export --import-map deno.json
+supabase functions deploy reconcile-quarantine --import-map deno.json
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
