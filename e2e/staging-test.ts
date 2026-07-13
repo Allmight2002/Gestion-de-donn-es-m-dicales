@@ -45,7 +45,7 @@ export function sanitizedHeadersForRequest(
     .map(([name, value]) => ({ name, value }));
 }
 
-async function installScopedBypass(page: Page, stagingOrigin: string, secret: string) {
+async function installScopedBypass(page: Page, stagingOrigin: string) {
   const session = await page.context().newCDPSession(page);
   const pending = new Set<Promise<void>>();
   let stopping = false;
@@ -74,17 +74,16 @@ async function installScopedBypass(page: Page, stagingOrigin: string, secret: st
   };
 
   session.on('Fetch.requestPaused', onPaused);
-  // Playwright pose le header recommande par Vercel. CDP suspend ensuite CHAQUE requete et retire
+  // Le contexte Playwright pose le header recommande par Vercel avant de creer cette page. CDP
+  // suspend ensuite CHAQUE requete et retire
   // ce header de toute origine non approuvee. Fetch.continueRequest ne propage pas ses overrides
   // aux redirections : chaque saut est donc re-evalue et nettoye avant l'envoi reseau.
   await session.send('Fetch.enable', {
     patterns: [{ urlPattern: '*', requestStage: 'Request' }],
   });
-  await page.setExtraHTTPHeaders({ [BYPASS_HEADER]: secret });
 
   return async () => {
     stopping = true;
-    await page.setExtraHTTPHeaders({}).catch(() => undefined);
     await session.send('Fetch.disable').catch(() => undefined);
     await Promise.allSettled([...pending]);
     await session.detach().catch(() => undefined);
@@ -100,11 +99,12 @@ export const test = base.extend<{ scopedVercelBypass: void }>({
         return;
       }
 
-      const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
-      if (!secret) throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET est requis pour le staging protege.');
+      if (!process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
+        throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET est requis pour le staging protege.');
+      }
 
       const stagingOrigin = validatedStagingOrigin(process.env.E2E_BASE_URL);
-      const uninstall = await installScopedBypass(page, stagingOrigin, secret);
+      const uninstall = await installScopedBypass(page, stagingOrigin);
       try {
         await useFixture();
       } finally {
