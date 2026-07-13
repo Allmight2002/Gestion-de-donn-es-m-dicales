@@ -222,6 +222,13 @@ describe('structuration -> finalisation (pool, sans validateur)', () => {
 });
 
 describe('soumission de cas (medecin)', () => {
+  test('la RPC atomique resout pgcrypto dans le schema Supabase extensions', async () => {
+    const config = (await db.admin.query(
+      "select proconfig from pg_proc where oid = 'public.create_patient_curation_submission(uuid,text,text,date,text,text,text,text)'::regprocedure",
+    )).rows[0].proconfig as string[];
+    expect(config).toContain('search_path=public, extensions, pg_temp');
+  });
+
   test('creation complete ; un retry apres reponse perdue restitue exactement les memes ids', async () => {
     const key = `atomic-${Date.now()}`;
     const call = (code: string) => atomicCall(aliceId, key, code);

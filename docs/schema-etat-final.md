@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260712000600_curation_draft_uniqueness.sql`
+- Dernière migration incluse : `20260713000100_pgcrypto_rpc_search_path.sql`
 - Tables : 34 · Policies RLS : 58 · Triggers : 52 · Fonctions : 203
 
 ## Tables (colonnes, RLS, policies, triggers)

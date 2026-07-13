@@ -78,6 +78,13 @@ describe('creation transactionnelle de jeu de variables', () => {
   const create = (payload: unknown, operationKey = key()) =>
     rowsAs(memberId, 'select public.create_template_bundle($1::jsonb, $2::uuid) as result', [JSON.stringify(payload), operationKey]);
 
+  test('la RPC transactionnelle resout pgcrypto dans le schema Supabase extensions', async () => {
+    const config = (await db.admin.query(
+      "select proconfig from pg_proc where oid = 'public.create_template_bundle(jsonb,uuid)'::regprocedure",
+    )).rows[0].proconfig as string[];
+    expect(config).toContain('search_path=public, extensions, pg_temp');
+  });
+
   test('cree en bulk les champs ordonnes et la base optionnelle', async () => {
     const out = (await create({ name: 'Bundle nominal', specialty: 'neuro', withBase: true, baseName: 'Base bundle', fields: [
       { fieldKey: 'age', label: 'Age', scope: 'patient', section: 'clinique', type: 'integer', required: true },
