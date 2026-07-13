@@ -301,9 +301,28 @@ try {
       `select policyname,cmd,roles from pg_policies
         where schemaname='storage' and tablename='objects' order by policyname`,
     );
-    assert(storagePolicies.length >= 4, 'Policies storage.objects incompletes');
-    assert(storagePolicies.some((row) => row.cmd === 'SELECT'), 'Policy Storage SELECT absente');
-    assert(storagePolicies.some((row) => row.cmd === 'INSERT'), 'Policy Storage INSERT absente');
+    const expectedStoragePolicies = new Map([
+      ['clinical_attachments_insert', 'INSERT'],
+      ['raw_documents_insert', 'INSERT'],
+    ]);
+    assert(
+      storagePolicies.length === expectedStoragePolicies.size,
+      'Inventaire storage.objects inattendu: seules les deux policies INSERT auditees sont autorisees',
+    );
+    for (const [policyName, command] of expectedStoragePolicies) {
+      const policy = storagePolicies.find((row) => row.policyname === policyName);
+      assert(policy?.cmd === command, `Policy Storage attendue absente ou invalide: ${policyName}`);
+      assert(
+        Array.isArray(policy.roles)
+          && policy.roles.length === 1
+          && policy.roles[0] === 'authenticated',
+        `Role Storage inattendu pour ${policyName}`,
+      );
+    }
+    assert(
+      storagePolicies.every((row) => !['SELECT', 'UPDATE', 'DELETE'].includes(row.cmd)),
+      'Une policy Storage directe contourne signed-read ou l\'immutabilite des objets',
+    );
     return {
       rlsTables: rls.length,
       publicPolicyTables: withPolicies.size,
