@@ -266,5 +266,12 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('--project-ref "$SUPABASE_PROJECT_REF"');
     expect(workflow).toContain('functions deploy "$fn" --import-map deno.json');
     expect(workflow).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
+    const edgeDeploy = workflow.indexOf('Deploy all Edge Functions');
+    const frontendDeploy = workflow.indexOf('vercel@$VERCEL_CLI_VERSION" deploy --prebuilt');
+    const strictActivation = workflow.indexOf('npm run inspection:activate -- --target=staging');
+    const cloudGate = workflow.indexOf('npm run env:check:cloud', strictActivation);
+    expect(frontendDeploy).toBeGreaterThan(edgeDeploy);
+    expect(strictActivation).toBeGreaterThan(frontendDeploy);
+    expect(cloudGate).toBeGreaterThan(strictActivation);
   });
 });

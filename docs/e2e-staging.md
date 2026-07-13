@@ -40,7 +40,12 @@ soumission de curation avec documents. Ordre correct :
    `QUARANTINE_BUCKET=quarantined-uploads`
    (`npx supabase secrets set --project-ref <ref> …`).
 3. Frontend : `VITE_REQUIRE_SERVER_INSPECTION=true` + `VITE_USE_SIGNED_READ=true`, puis rebuild.
-4. **Alors seulement**, en base (SQL Editor / service_role) :
+4. **Alors seulement**, activer transactionnellement la base apres avoir prouve `/health`, un
+   fichier synthetique sain et EICAR sur le scanner isole :
+   ```bash
+   npm run inspection:activate -- --target=staging
+   ```
+   La commande execute de facon idempotente l'equivalent de :
    ```sql
    update public.app_security_setting
       set value = 'true', updated_at = now()
