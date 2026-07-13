@@ -6,7 +6,7 @@
 //   E2E_TARGET=staging, E2E_BASE_URL, identifiants medecin,
 //   E2E_MEDECIN_BASE_ID (base de test possedee par le medecin, gabarit vide accepte),
 //   E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY (nettoyage best-effort du residu).
-import { expect, test } from '@playwright/test';
+import { expect, test } from './staging-test';
 import { backendConfigured, cleanupPatient, fixtureBackend, hasCredentials, seedBaseId, signIn, uniquePatientCode } from './fixtures';
 
 test.describe('@critical parcours patient critique (medecin)', () => {

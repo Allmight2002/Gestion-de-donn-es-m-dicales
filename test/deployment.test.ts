@@ -233,27 +233,24 @@ describe('configuration de deploiement', () => {
     expect(headers.get('permissions-policy')).toContain('camera=()');
   });
 
-  test('les E2E staging obtiennent un cookie Vercel sans propager le secret aux appels cross-origin', () => {
+  test('les E2E staging limitent le bypass Vercel a l origine exacte sans trace reseau', () => {
     const config = read('playwright.config.ts');
-    const setup = read('e2e/vercel-bypass.setup.ts');
-    const state = read('e2e/vercel-bypass-state.ts');
+    const fixture = read('e2e/staging-test.ts');
 
-    expect(config).toContain("globalSetup: './e2e/vercel-bypass.setup.ts'");
     expect(config).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(config).not.toContain('extraHTTPHeaders');
-    expect(setup).toContain("'x-vercel-protection-bypass': secret");
-    expect(setup).toContain("'x-vercel-set-bypass-cookie': 'true'");
-    expect(setup).toContain("await bootstrapApi.get('/', { maxRedirects: 0 });");
-    expect(setup).toContain("safeBootstrapRedirect(response.headers().location ?? '', baseUrl)");
-    expect(setup).toContain('chromium.launch({ headless: true })');
-    expect(setup).toContain('browser.newContext({ storageState: bootstrapState })');
-    expect(setup).toContain('await page.goto(redirectUrl.href');
-    expect(setup).toContain('await page.goto(baseUrl.href');
-    expect(setup).not.toContain('context.route');
-    expect(setup).not.toContain('extraHTTPHeaders: {\n      ...');
-    expect(setup).toContain('await context.storageState');
-    expect(setup).toContain('bootstrapState.cookies.some');
-    expect(state).toContain('process.env.RUNNER_TEMP ?? tmpdir()');
+    expect(config).not.toContain('globalSetup');
+    expect(config).not.toContain('storageState');
+    expect(config).toContain("trace: target === 'staging' ? 'off'");
+    expect(fixture).toContain('newCDPSession(page)');
+    expect(fixture).toContain("session.on('Fetch.requestPaused'");
+    expect(fixture).toContain("urlPattern: `${stagingOrigin}/*`");
+    expect(fixture).toContain("'Fetch.continueRequest'");
+    expect(fixture).toContain('requestOrigin !== stagingOrigin');
+    expect(fixture).not.toContain('extraHTTPHeaders');
+    for (const spec of ['auth-roles.spec.ts', 'export-journey.spec.ts', 'patient-journey.spec.ts']) {
+      expect(read(`e2e/${spec}`)).toContain("from './staging-test'");
+    }
   });
 
   test('la release coordonnee verrouille la cible avant toute ecriture staging', () => {

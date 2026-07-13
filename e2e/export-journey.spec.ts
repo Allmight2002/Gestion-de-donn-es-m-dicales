@@ -8,7 +8,7 @@
 // Le skip vit en `beforeAll` : une fixture absente marque le test indisponible SANS ouvrir
 // de navigateur.
 import { statSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './staging-test';
 import { exportBaseId, exportCohortId, hasCredentials, signIn } from './fixtures';
 
 const exportReady = () => Boolean(exportBaseId() && exportCohortId());
