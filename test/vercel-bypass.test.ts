@@ -1,22 +1,32 @@
 import { describe, expect, test } from 'vitest';
-import { safeBootstrapRedirect, validBypassBootstrapStatus } from '../e2e/vercel-bypass.setup';
+import { bypassHeadersForRequest, validatedStagingOrigin } from '../e2e/staging-test';
 
-describe('bootstrap du bypass Vercel', () => {
-  test('accepte le succes direct et la redirection porteuse du cookie', () => {
-    expect(validBypassBootstrapStatus(200)).toBe(true);
-    expect(validBypassBootstrapStatus(307)).toBe(true);
+describe('bypass Vercel limite au staging', () => {
+  test('valide uniquement une origine HTTPS vercel.app sans identifiants', () => {
+    expect(validatedStagingOrigin('https://meddata-staging-example.vercel.app/path')).toBe(
+      'https://meddata-staging-example.vercel.app',
+    );
+    expect(() => validatedStagingOrigin('http://meddata-staging-example.vercel.app')).toThrow('HTTPS');
+    expect(() => validatedStagingOrigin('https://user:password@meddata-staging-example.vercel.app')).toThrow(
+      'sans identifiants',
+    );
+    expect(() => validatedStagingOrigin('https://example.org')).toThrow('vercel.app');
   });
 
-  test('refuse les reponses de protection ou les erreurs serveur', () => {
-    expect(validBypassBootstrapStatus(401)).toBe(false);
-    expect(validBypassBootstrapStatus(500)).toBe(false);
-  });
+  test('ajoute le secret seulement a l origine staging exacte', () => {
+    const origin = 'https://meddata-staging-example.vercel.app';
+    const headers = bypassHeadersForRequest(`${origin}/login`, origin, { Accept: 'text/html' }, 'test-secret');
+    expect(headers).toContainEqual({ name: 'Accept', value: 'text/html' });
+    expect(headers).toContainEqual({ name: 'x-vercel-protection-bypass', value: 'test-secret' });
 
-  test('accepte une cible HTTPS sans identifiants et refuse les schemas dangereux', () => {
-    const base = new URL('https://meddata-staging-example.vercel.app');
-    expect(safeBootstrapRedirect('', base)).toBe(base);
-    expect(safeBootstrapRedirect('https://vercel.com/bootstrap', base).protocol).toBe('https:');
-    expect(() => safeBootstrapRedirect('http://vercel.com/bootstrap', base)).toThrow('HTTPS sure');
-    expect(() => safeBootstrapRedirect('https://user:password@vercel.com/bootstrap', base)).toThrow('HTTPS sure');
+    expect(
+      bypassHeadersForRequest('https://gmsxrniiclrheehhoakn.supabase.co/rest/v1/profile', origin, {}, 'test-secret'),
+    ).toBeUndefined();
+    expect(
+      bypassHeadersForRequest('https://vercel.com/sso-api', origin, {}, 'test-secret'),
+    ).toBeUndefined();
+    expect(
+      bypassHeadersForRequest('https://another-preview.vercel.app/', origin, {}, 'test-secret'),
+    ).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './staging-test';
 import { signIn } from './fixtures';
 
 // Socle E2E critique : authentification, session et CLOISONNEMENT des roles.
