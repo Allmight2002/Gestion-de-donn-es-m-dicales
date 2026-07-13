@@ -269,8 +269,9 @@ test('@lot13 upload navigateur: reponse Storage perdue puis retry du meme fichie
   await page.unroute('**/storage/v1/object/clinical-attachments/**');
   await send.click();
   await expect(page).toHaveURL(new RegExp(`/patients/${patient.id}$`, 'i'));
-  await expect(page.getByText(label)).toBeVisible();
-  await expect(page.getByText(/Accept.|Accepted/i)).toBeVisible({ timeout: 30_000 });
+  const uploadedFigure = page.getByRole('figure', { name: label });
+  await expect(uploadedFigure).toBeVisible();
+  await expect(uploadedFigure.getByText(/Accept.|Accepted/i)).toBeVisible({ timeout: 30_000 });
   expect(Number((await db.query(
     `select count(*)::int count from public.clinical_attachment a
       join public.patient p on p.id=a.patient_id where p.base_id=$1 and a.label=$2 and a.deleted_at is null`,
