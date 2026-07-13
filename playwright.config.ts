@@ -1,17 +1,24 @@
+import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173';
 const isCi = Boolean(process.env.CI);
 const target = process.env.E2E_TARGET ?? (process.env.E2E_BASE_URL ? '' : 'local');
-const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+const vercelStorageState = process.env.E2E_VERCEL_STORAGE_STATE?.trim();
 if (!['local', 'staging'].includes(target)) {
   throw new Error('E2E_TARGET doit valoir local ou staging; la production est interdite.');
 }
 if (process.env.E2E_BASE_URL && target !== 'staging') {
   throw new Error('Une URL E2E externe exige E2E_TARGET=staging.');
 }
-if (process.env.E2E_BASE_URL && target === 'staging' && !bypassSecret) {
-  throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET est requis pour le staging protege.');
+if (process.env.E2E_BASE_URL && target === 'staging' && !vercelStorageState) {
+  throw new Error('E2E_VERCEL_STORAGE_STATE est requis pour le staging protege.');
+}
+if (vercelStorageState && (!process.env.E2E_BASE_URL || target !== 'staging')) {
+  throw new Error('E2E_VERCEL_STORAGE_STATE est reserve aux E2E staging externes.');
+}
+if (vercelStorageState && !existsSync(vercelStorageState)) {
+  throw new Error('Le fichier E2E_VERCEL_STORAGE_STATE est introuvable.');
 }
 
 export default defineConfig({
@@ -27,16 +34,10 @@ export default defineConfig({
     : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL,
-    // Vercel recommande le header au niveau du contexte Playwright. La fixture staging intercepte
-    // ensuite chaque requete et le retire avant toute destination hors origine approuvee.
-    extraHTTPHeaders:
-      process.env.E2E_BASE_URL && target === 'staging'
-        ? {
-            'x-vercel-protection-bypass': bypassSecret!,
-            'x-vercel-set-bypass-cookie': 'true',
-          }
-        : undefined,
-    // Une trace reseau pourrait conserver ce header secret : captures/videos, mais jamais de trace.
+    // Le cookie est cree hors Playwright par Vercel CLI puis limite au domaine du deploiement exact.
+    // Aucun header de bypass n'est donc propage aux appels Supabase ou aux redirections tierces.
+    storageState: vercelStorageState || undefined,
+    // Une trace reseau pourrait conserver le cookie : captures/videos, mais jamais de trace en staging.
     trace: target === 'staging' ? 'off' : 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
