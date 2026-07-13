@@ -12,16 +12,50 @@ export interface ParsedSheet {
   rows: unknown[][];
 }
 
+export const SPREADSHEET_LIMITS = {
+  sheets: 5,
+  rows: 5_001, // en-tete + 5 000 lignes de donnees
+  columns: 256,
+  cells: 500_000,
+  cellCharacters: 32_767,
+} as const;
+
 // Parsing PUR (utilise tel quel par le worker, et en repli sur le thread principal).
 export async function parseSpreadsheet(buf: ArrayBuffer): Promise<ParsedSheet> {
   const XLSX = await import('xlsx');
   // cellDates -> les dates deviennent des objets Date ; on les normalise en ISO nous-memes
   // (sinon Excel/CSV les rendrait au format LOCAL, ex. "1/5/24"). §6.6.
-  const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+  const wb = XLSX.read(new Uint8Array(buf), {
+    type: 'array',
+    cellDates: true,
+    sheetRows: SPREADSHEET_LIMITS.rows + 1,
+  });
+  if (wb.SheetNames.length === 0) throw new Error('Le classeur ne contient aucune feuille.');
+  if (wb.SheetNames.length > SPREADSHEET_LIMITS.sheets) {
+    throw new Error(`Le classeur depasse la limite de ${SPREADSHEET_LIMITS.sheets} feuilles.`);
+  }
   const sheet = wb.Sheets[wb.SheetNames[0]];
+  const range = sheet?.['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null;
+  const rowCount = range ? range.e.r - range.s.r + 1 : 0;
+  const columnCount = range ? range.e.c - range.s.c + 1 : 0;
+  if (rowCount > SPREADSHEET_LIMITS.rows) {
+    throw new Error(`Le fichier depasse la limite de ${SPREADSHEET_LIMITS.rows - 1} lignes.`);
+  }
+  if (columnCount > SPREADSHEET_LIMITS.columns) {
+    throw new Error(`Le fichier depasse la limite de ${SPREADSHEET_LIMITS.columns} colonnes.`);
+  }
+  if (rowCount * columnCount > SPREADSHEET_LIMITS.cells) {
+    throw new Error(`Le fichier depasse la limite de ${SPREADSHEET_LIMITS.cells} cellules.`);
+  }
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true }) as unknown[][];
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const cell = (c: unknown): unknown => (c instanceof Date ? iso(c) : (c ?? ''));
+  const cell = (c: unknown): unknown => {
+    const value = c instanceof Date ? iso(c) : (c ?? '');
+    if (typeof value === 'string' && value.length > SPREADSHEET_LIMITS.cellCharacters) {
+      throw new Error(`Une cellule depasse la limite de ${SPREADSHEET_LIMITS.cellCharacters} caracteres.`);
+    }
+    return value;
+  };
   const headers = (aoa[0] ?? []).map((h) => String(cell(h)).trim()); // garde TOUTES les colonnes (meme vides)
   const rows = aoa.slice(1).map((r) => r.map(cell)).filter((r) => r.some((c) => String(c).trim() !== ''));
   return { headers, rows };

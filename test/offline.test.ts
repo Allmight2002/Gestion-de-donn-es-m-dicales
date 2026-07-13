@@ -1,12 +1,20 @@
 // Tests du cache HORS-LIGNE (Phase 1) : garantie "analytique seulement" (aucune identite) +
 // stockage IndexedDB (via fake-indexeddb). Tourne en node, sans PostgreSQL.
 import 'fake-indexeddb/auto';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildSnapshot, clearOfflineSnapshots, downloadBaseSnapshot, enqueueEncounterUpdate, flushOutbox,
-  isExpired, offlineCache, OFFLINE_TTL_MS, outbox, purgeExpiredSnapshots, resolveKeepMine,
+  isExpired, offlineCache, OFFLINE_TTL_MS, OUTBOX_TTL_MS, outbox, purgeExpiredOutbox, purgeExpiredSnapshots,
+  recoverAbandonedSyncing, resolveKeepMine,
   resolveKeepServer, setOfflineUser, type FlushDeps, type SnapshotSource,
 } from '../src/data/offline.js';
+
+beforeAll(() => {
+  vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
+  vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
+});
+beforeEach(() => setOfflineUser('offline-test-user'));
+afterAll(() => vi.unstubAllEnvs());
 
 // Petit utilitaire : amorce un cache avec 1 patient + 1 rencontre (analytique).
 async function seedBase(baseId: string, encUpdatedAt: string) {
@@ -214,6 +222,59 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
     expect(e.updatedAt).toBe('2024-01-02T00:00:00.000Z'); // jeton rafraichi
     await offlineCache.remove('bOB');
   });
+
+  test('erreur reseau : revient pending, conserve les donnees puis reussit au retry sans double envoi', async () => {
+    await seedBase('b-network', '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId: 'b-network', patientId: 'p1', encounterId: 'e1', data: { score: 12 },
+      reason: 'reseau', validationStatus: 'draft', baseUpdatedAt: null,
+    });
+    let calls = 0;
+    const deps: FlushDeps = {
+      updateEncounter: async () => { calls++; if (calls === 1) throw new TypeError('Failed to fetch'); },
+      getEncounter: async () => ({ data: { score: 12 }, updatedAt: '2024-01-02T00:00:00.000Z' }),
+    };
+    expect(await flushOutbox(deps, 'b-network')).toMatchObject({ failed: 1, synced: 0 });
+    expect((await outbox.list('b-network'))[0]).toMatchObject({ state: 'pending', attemptCount: 1, lastError: 'Failed to fetch' });
+    expect(await flushOutbox(deps, 'b-network')).toMatchObject({ failed: 0, synced: 1 });
+    expect(await outbox.count('b-network')).toBe(0);
+    await flushOutbox(deps, 'b-network');
+    expect(calls).toBe(2);
+    await offlineCache.remove('b-network');
+  });
+
+  test('HTTP 5xx reste rejouable et une permission refusee devient rejected visible', async () => {
+    await seedBase('b-errors', '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId: 'b-errors', patientId: 'p1', encounterId: 'e1', data: { score: 8 },
+      reason: 'serveur', validationStatus: 'draft', baseUpdatedAt: null,
+    });
+    await flushOutbox({
+      updateEncounter: async () => { throw Object.assign(new Error('Service unavailable'), { status: 503 }); },
+      getEncounter: async () => null,
+    }, 'b-errors');
+    expect((await outbox.list('b-errors'))[0].state).toBe('pending');
+    await flushOutbox({
+      updateEncounter: async () => { throw Object.assign(new Error('permission denied'), { status: 403 }); },
+      getEncounter: async () => null,
+    }, 'b-errors');
+    expect((await outbox.list('b-errors'))[0]).toMatchObject({ state: 'rejected', attemptCount: 2, lastError: 'permission denied' });
+    await outbox.remove((await outbox.list('b-errors'))[0].id);
+    await offlineCache.remove('b-errors');
+  });
+
+  test('une fermeture simulee reprend une entree syncing en pending', async () => {
+    await seedBase('b-resume', '2024-01-01T00:00:00.000Z');
+    const entry = await enqueueEncounterUpdate({
+      baseId: 'b-resume', patientId: 'p1', encounterId: 'e1', data: { score: 9 },
+      reason: 'reprise', validationStatus: 'draft', baseUpdatedAt: null,
+    });
+    await outbox.put({ ...entry, state: 'syncing', syncingStartedAt: Date.now() - 1000 });
+    expect(await recoverAbandonedSyncing('b-resume')).toBe(1);
+    expect((await outbox.get(entry.id))?.state).toBe('pending');
+    await outbox.remove(entry.id);
+    await offlineCache.remove('b-resume');
+  });
 });
 
 describe('§5.5 cloisonnement par utilisateur (poste partage)', () => {
@@ -367,5 +428,50 @@ describe('outbox — conflits (Phase 3)', () => {
     expect((await cachedEnc('bS')).data.glasgow_score).toBe(7); // valeur serveur restauree
     expect((await cachedEnc('bS')).pending).toBe(false);
     await offlineCache.remove('bS');
+  });
+});
+
+describe('securite de conservation hors-ligne', () => {
+  test('une outbox expiree est purgee et ne peut pas etre synchronisee', async () => {
+    setOfflineUser('expiry-user');
+    await seedBase('ttl-outbox', '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId: 'ttl-outbox', patientId: 'p1', encounterId: 'e1', data: { score: 1 },
+      reason: 'test', validationStatus: 'draft', baseUpdatedAt: null,
+    });
+    const entry = (await outbox.list('ttl-outbox'))[0];
+    expect(entry.expiresAt - entry.createdAt).toBe(OUTBOX_TTL_MS);
+    await outbox.put({ ...entry, expiresAt: Date.now() - 1 });
+    expect(await purgeExpiredOutbox()).toBe(1);
+    expect(await outbox.count('ttl-outbox')).toBe(0);
+    await offlineCache.remove('ttl-outbox');
+    setOfflineUser(null);
+  });
+
+  test('mode desactive : aucun snapshot ni ajout outbox n est enregistre', async () => {
+    vi.stubEnv('VITE_OFFLINE_MODE', 'disabled');
+    const snapshot = buildSnapshot({ id: 'disabled', name: 'x', templateVersionId: null }, [], {}, []);
+    await expect(offlineCache.save(snapshot)).rejects.toThrow(/desactive/i);
+    await expect(enqueueEncounterUpdate({
+      baseId: 'disabled', patientId: 'p1', encounterId: 'e1', data: {}, reason: 'x',
+      validationStatus: 'draft', baseUpdatedAt: null,
+    })).rejects.toThrow(/desactive/i);
+    expect(await outbox.count('disabled')).toBe(0);
+    vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
+  });
+
+  test('le stockage construit exclut identite, piece jointe et document brut', () => {
+    const snapshot = buildSnapshot(
+      { id: 'safe', name: 'safe', templateVersionId: 'v1' },
+      [{
+        id: 'p1', code: 'P-1', templateVersionId: 'v1', data: { score: 1 }, validationStatus: 'draft',
+        identity: { fullName: 'Identite Secrete' }, rawDocument: { name: 'document-secret.pdf' }, attachments: ['scan-secret.png'],
+      } as never],
+      {},
+    );
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain('Identite Secrete');
+    expect(serialized).not.toContain('document-secret.pdf');
+    expect(serialized).not.toContain('scan-secret.png');
   });
 });

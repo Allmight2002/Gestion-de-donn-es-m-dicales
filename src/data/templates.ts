@@ -17,6 +17,8 @@ export interface TemplateRepository {
   /** Medecin : cree un gabarit PERSONNEL vierge (brouillon v1) qu'il pourra remplir puis utiliser
    *  pour une base. Renvoie la version a editer. (RLS : owner = soi, is_global = false.) */
   createPersonalTemplate(name: string, specialty: string | null): Promise<TemplateVersion>;
+  /** Commande atomique de creation/clonage. Les champs et la base optionnelle sont persistés ensemble. */
+  createTemplateBundle(input: TemplateBundleInput): Promise<TemplateBundleResult>;
   getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>;
   /** Lecture legere pour les ecrans qui n'ont besoin que d'afficher des champs. */
   getFields?(versionId: string): Promise<TemplateField[]>;
@@ -41,6 +43,18 @@ export interface TemplateRepository {
   /** Supprime un gabarit (cascade versions). Refuse s'il est utilise par une base / des donnees. */
   deleteTemplate(templateId: string): Promise<void>;
 }
+
+export interface TemplateBundleInput {
+  name: string;
+  specialty: string | null;
+  fields?: NewField[];
+  sourceVersionId?: string;
+  withBase?: boolean;
+  baseName?: string;
+  isGlobal?: boolean;
+  operationKey: string;
+}
+export interface TemplateBundleResult { templateId: string; versionId: string; baseId: string | null; }
 
 type VersionRow = { id: string; template_id: string; version_number: number; status: TemplateVersion['status'] };
 type FieldRow = {
@@ -74,7 +88,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, getVersion: fail, addField: fail, updateField: fail,
+      listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, createTemplateBundle: fail, getVersion: fail, addField: fail, updateField: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
@@ -88,6 +102,25 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
   const clearVersionCache = () => { versionCache.clear(); fieldsCache.clear(); };
 
   return {
+    async createTemplateBundle(input) {
+      const { data, error } = await client.rpc('create_template_bundle', {
+        p_payload: {
+          name: input.name,
+          specialty: input.specialty,
+          fields: input.fields ?? [],
+          sourceVersionId: input.sourceVersionId ?? null,
+          withBase: input.withBase ?? false,
+          baseName: input.baseName ?? null,
+          isGlobal: input.isGlobal ?? false,
+        },
+        p_operation_key: input.operationKey,
+      });
+      if (error) throw error;
+      clearVersionCache();
+      const row = (Array.isArray(data) ? data[0] : data) as { templateId: string; versionId: string; baseId?: string | null };
+      return { templateId: row.templateId, versionId: row.versionId, baseId: row.baseId ?? null };
+    },
+
     async listTemplates() {
       const { data, error } = await client
         .from('template')
@@ -107,43 +140,16 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async createTemplate(name, specialty) {
-      // Cree par le gestionnaire de gabarits (admin) -> modele GLOBAL propose a tous.
-      const { data: t, error: e1 } = await client
-        .from('template')
-        .insert({ name, specialty, is_global: true })
-        .select('id, name, specialty')
-        .single();
-      if (e1) throw e1;
-      const { data: v, error: e2 } = await client
-        .from('template_version')
-        .insert({ template_id: t.id, version_number: 1, status: 'draft' })
-        .select('id, template_id, version_number, status')
-        .single();
-      if (e2) throw e2;
+      const result = await this.createTemplateBundle({ name, specialty, isGlobal: true, operationKey: crypto.randomUUID() });
       return {
-        template: { id: t.id, name: t.name, specialty: t.specialty ?? null },
-        version: mapVersion(v as VersionRow),
+        template: { id: result.templateId, name, specialty },
+        version: { id: result.versionId, templateId: result.templateId, versionNumber: 1, status: 'draft' },
       };
     },
 
     async createPersonalTemplate(name, specialty) {
-      // Gabarit PERSONNEL du medecin (jamais global). owner_user_id = soi -> autorise par la RLS.
-      const { data: who } = await client.auth.getSession();
-      const ownerId = who.session?.user?.id;
-      if (!ownerId) throw new Error('Session invalide');
-      const { data: t, error: e1 } = await client
-        .from('template')
-        .insert({ name, specialty, is_global: false, owner_user_id: ownerId })
-        .select('id')
-        .single();
-      if (e1) throw e1;
-      const { data: v, error: e2 } = await client
-        .from('template_version')
-        .insert({ template_id: t.id, version_number: 1, status: 'draft' })
-        .select('id, template_id, version_number, status')
-        .single();
-      if (e2) throw e2;
-      return mapVersion(v as VersionRow);
+      const result = await this.createTemplateBundle({ name, specialty, operationKey: crypto.randomUUID() });
+      return { id: result.versionId, templateId: result.templateId, versionNumber: 1, status: 'draft' };
     },
 
     async getVersion(versionId) {

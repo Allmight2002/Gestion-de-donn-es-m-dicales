@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
@@ -31,6 +31,7 @@ export function MyTemplates() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newSpec, setNewSpec] = useState('');
+  const createOperationKey = useRef<string | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -78,10 +79,14 @@ export function MyTemplates() {
   async function createTemplate() {
     if (!newName.trim()) return;
     await run(async () => {
-      const v = await repo.createPersonalTemplate(newName.trim(), newSpec.trim() || null);
+      const result = await repo.createTemplateBundle({
+        name: newName.trim(), specialty: newSpec.trim() || null,
+        operationKey: createOperationKey.current ?? (createOperationKey.current = crypto.randomUUID()),
+      });
       setNewName('');
       setNewSpec('');
-      setSelected(v.id);
+      createOperationKey.current = null;
+      setSelected(result.versionId);
     });
   }
 

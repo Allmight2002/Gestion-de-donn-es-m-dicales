@@ -5,6 +5,7 @@ import { startTestDb, type TestDb } from './harness/db.js';
 
 let db: TestDb;
 let aliceId: string;
+let editorId: string;
 let annaId: string;
 let baseId: string;
 let encounterId: string;
@@ -27,6 +28,7 @@ beforeAll(async () => {
     (await db.admin.query('select email, id from auth.users')).rows.map((r) => [r.email, r.id]),
   );
   aliceId = byEmail.get('alice@demo.test')!;
+  editorId = byEmail.get('editor@demo.test')!;
   annaId = byEmail.get('anna.analyst@demo.test')!;
   baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
 
@@ -113,14 +115,72 @@ describe('§5.3 ecritures cliniques par RPC seulement', () => {
 });
 
 describe('update_patient (donnees permanentes)', () => {
-  const UPDATE_PAT = 'select * from public.update_patient($1,$2::jsonb,$3,$4)';
-  test('corrige les donnees permanentes (journalise) ; valeur hors liste refusee', async () => {
+  const UPDATE_PAT = 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)';
+  test('un ancien bundle appelant quatre arguments echoue explicitement sans ecriture', async () => {
     const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
-    const out = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'correction sexe']);
+    const before = (await db.admin.query('select data,row_version from public.patient where id=$1', [pid])).rows[0];
+    await expect(rowsAs(aliceId,
+      'select * from public.update_patient($1,$2::jsonb,$3,$4)',
+      [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'ancien bundle'],
+    )).rejects.toThrow(/CLIENT_UPDATE_REQUIRED|rechargez/i);
+    const after = (await db.admin.query('select data,row_version from public.patient where id=$1', [pid])).rows[0];
+    expect(after).toEqual(before);
+  });
+  test('corrige les donnees permanentes avec verrou optimiste ; conflit preserve la premiere ecriture', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
+    const before = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
+    const out = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'correction sexe', before]);
     expect(out[0].data.sexe).toBe('F');
     expect((await db.admin.query("select 1 from public.field_change_log where entity='patient' and entity_id=$1 and field_key='sexe'", [pid])).rows.length).toBeGreaterThan(0);
+    // Une seconde lecture faite avant la premiere ecriture ne peut pas ecraser son resultat.
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'M' }), 'draft', 'version obsolete', before]))
+      .rejects.toThrow(/CONFLIT_VERSION/);
+    expect((await db.admin.query('select data from public.patient where id=$1', [pid])).rows[0].data.sexe).toBe('F');
+    const fresh = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
+    const retried = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'M' }), 'draft', 'apres rechargement', fresh]);
+    expect(retried[0].data.sexe).toBe('M');
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'sans version', null]))
+      .rejects.toThrow(/CONFLIT_VERSION/);
     // re-validation serveur : une valeur hors liste autorisee est refusee.
-    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'Z' }), 'draft', 'invalide'])).rejects.toThrow();
+    const current = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'Z' }), 'draft', 'invalide', current])).rejects.toThrow();
+  });
+
+  test('deux connexions partant de la meme version : une seule gagne, puis le rechargement permet le retry', async () => {
+    const code = `CORR-RACE-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient Course', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M', birth_year: 1980 }),
+    ]))[0];
+    const expected = Number(patient.row_version);
+    const writes = await Promise.allSettled([
+      rowsAs(aliceId, UPDATE_PAT, [patient.id, JSON.stringify({ sexe: 'M', birth_year: 1981 }), 'draft', 'course A', expected]),
+      rowsAs(aliceId, UPDATE_PAT, [patient.id, JSON.stringify({ sexe: 'M', birth_year: 1982 }), 'draft', 'course B', expected]),
+    ]);
+    expect(writes.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = writes.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(String(rejected?.reason?.message ?? rejected?.reason)).toMatch(/CONFLIT_VERSION/);
+
+    const stored = (await db.admin.query('select data, row_version from public.patient where id=$1', [patient.id])).rows[0];
+    expect([1981, 1982]).toContain(stored.data.birth_year);
+    const retryValue = stored.data.birth_year === 1981 ? 1982 : 1981;
+    const retried = await rowsAs(aliceId, UPDATE_PAT, [patient.id, JSON.stringify({ sexe: 'M', birth_year: retryValue }), 'draft', 'apres rechargement', Number(stored.row_version)]);
+    expect(retried[0].data.birth_year).toBe(retryValue);
+  });
+
+  test('une permission revoquee entre lecture et ecriture refuse la sauvegarde sans modifier le patient', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
+    const loaded = (await rowsAs(editorId, 'select data, row_version, updated_at from public.patient where id=$1', [pid]))[0];
+    await db.admin.query('update public.base_access set revoked_at=now() where base_id=$1 and user_id=$2', [baseId, editorId]);
+    try {
+      await expect(rowsAs(editorId, UPDATE_PAT, [pid, JSON.stringify({ ...loaded.data, birth_year: 1999 }), 'draft', 'permission revoquee', Number(loaded.row_version)]))
+        .rejects.toThrow(/Acces refuse/i);
+      const after = (await db.admin.query('select data, updated_at from public.patient where id=$1', [pid])).rows[0];
+      expect(after.data).toEqual(loaded.data);
+      expect(after.updated_at.toISOString()).toBe(loaded.updated_at.toISOString());
+    } finally {
+      await db.admin.query('update public.base_access set revoked_at=null where base_id=$1 and user_id=$2', [baseId, editorId]);
+    }
   });
 });
 

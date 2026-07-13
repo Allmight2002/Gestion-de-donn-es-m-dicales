@@ -21,11 +21,9 @@ const runAs = (uid: string, sql: string, params?: unknown[]) =>
 const INSERT = `with upload as (
     select public.base_of_cohort($1) as base_id,
            public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path
-  ), ticket as (
-    select public.create_upload_ticket(base_id, 'scientific-exports', path) from upload
   )
   insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
-  select $1, to_jsonb(array[$2::uuid]), auth.uid(),'csv','{}'::jsonb,5,6,upload.path,'abc123' from upload, ticket returning id`;
+  select $1, to_jsonb(array[$2::uuid]), auth.uid(),'csv','{}'::jsonb,5,6,upload.path,'abc123' from upload returning id`;
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true });
@@ -45,10 +43,19 @@ afterAll(async () => {
   await db?.stop();
 });
 
-describe('export_log : ecriture reservee a can_curate', () => {
-  test('un analyste peut tracer un export', async () => {
-    const r = await rowsAs(annaId, INSERT, [cohortId, tvId]);
-    expect(r).toHaveLength(1);
+describe('export_log : generation uniquement serveur', () => {
+  test('un analyste autorise a exporter ne peut pas creer directement une trace', async () => {
+    await expect(rowsAs(annaId, INSERT, [cohortId, tvId])).rejects.toThrow();
+  });
+
+  test('un analyste autorise a exporter ne peut pas creer de ticket export', async () => {
+    const path = `${baseId}/exports/${crypto.randomUUID()}.csv`;
+    await expect(rowsAs(annaId, "select public.create_upload_ticket($1, 'scientific-exports', $2)", [baseId, path])).rejects.toThrow();
+  });
+
+  test('la generation serveur (service role) reste autorisee', async () => {
+    const result = await db.admin.query(INSERT, [cohortId, tvId]);
+    expect(result.rows).toHaveLength(1);
   });
 
   test('un viewer ne peut pas tracer un export', async () => {
@@ -69,7 +76,7 @@ describe('export_log : ecriture reservee a can_curate', () => {
 
 describe('export_log : trace immuable (ajout seul)', () => {
   test('aucune mise a jour ni suppression possible', async () => {
-    const id = (await rowsAs(aliceId, INSERT, [cohortId, tvId]))[0].id;
+    const id = (await db.admin.query(INSERT, [cohortId, tvId])).rows[0].id;
     // Pas de politique UPDATE/DELETE -> 0 ligne affectee (RLS), la trace reste intacte.
     expect(await runAs(aliceId, "update public.export_log set file_hash='HACK' where id=$1", [id])).toBe(0);
     expect(await runAs(aliceId, 'delete from public.export_log where id=$1', [id])).toBe(0);

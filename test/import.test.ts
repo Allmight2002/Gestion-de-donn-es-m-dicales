@@ -456,4 +456,188 @@ describe('import_records', () => {
       db.admin.query('insert into public.import_row_hash(batch_id, base_id, row_hash) values($1,$2,$3)', [b2, baseId, 'same-row']),
     ).rejects.toThrow(/duplicate|unique/i);
   });
+
+  test('reprise idempotente : le renvoi d un chunk confirme ne recompte ni ne reecrit', async () => {
+    const h = 'resume-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))[0].id;
+    const chunk = [
+      sourceRow(1, 'resume-row-1', 'RESUME-1', null, { sexe: 'M' }),
+      sourceRow(2, 'resume-row-2', 'RESUME-2', null, { sexe: 'F' }),
+    ];
+    const first = (await rowsAs(aliceId, CALL8, [baseId, J(chunk), false, 'draft', 'fill', null, null, batchId]))[0].report;
+    const replay = (await rowsAs(aliceId, CALL8, [baseId, J(chunk), false, 'draft', 'fill', null, null, batchId]))[0].report;
+    expect(first.newly_imported).toBe(2);
+    expect(replay).toMatchObject({ newly_imported: 0, already_processed: 2, error_count: 0 });
+    expect((await db.admin.query('select row_count from public.import_batch where id=$1', [batchId])).rows[0].row_count).toBe(2);
+    expect(await countPatients()).toBeGreaterThanOrEqual(2);
+    await rowsAs(aliceId, COMPLETE, [batchId]);
+    expect((await db.admin.query('select status from public.import_batch where id=$1', [batchId])).rows[0].status).toBe('completed');
+  });
+
+  test('reprise concurrente : deux retries du meme chunk ne produisent qu un recu', async () => {
+    const h = 'resume-concurrent-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id;
+    const chunk = J([sourceRow(1, 'concurrent-row-1', 'RESUME-CONCURRENT', null, { sexe: 'M' })]);
+    const reports = await Promise.all([
+      rowsAs(aliceId, CALL8, [baseId, chunk, false, 'draft', 'fill', null, null, batchId]),
+      rowsAs(aliceId, CALL8, [baseId, chunk, false, 'draft', 'fill', null, null, batchId]),
+    ]);
+    expect(reports.map((r) => r[0].report.newly_imported).sort()).toEqual([0, 1]);
+    expect((await db.admin.query('select row_count from public.import_batch where id=$1', [batchId])).rows[0].row_count).toBe(1);
+    expect((await db.admin.query('select count(*)::int n from public.import_batch_row where batch_id=$1', [batchId])).rows[0].n).toBe(1);
+  });
+
+  test('lot historique partiel sans recu : la reprise est refusee sans depasser expected_rows', async () => {
+    const h = 'resume-historical-' + Date.now();
+    const tv = (await db.admin.query('select current_template_version_id from public.base where id=$1', [baseId])).rows[0].current_template_version_id;
+    const batchId = (await db.admin.query(
+      `insert into public.import_batch(
+         base_id, file_hash, template_version_id, conflict_mode, target_validation_status,
+         expected_rows, row_count, error_count, imported_by, status
+       ) values($1,$2,$3,'fill','draft',2,1,0,$4,'processing') returning id`,
+      [baseId, h, tv, aliceId],
+    )).rows[0].id;
+
+    const resumed = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))[0].id;
+    expect(resumed).toBe(batchId);
+    expect((await rowsAs(aliceId, 'select public.get_import_batch_state($1) as state', [batchId]))[0].state)
+      .toMatchObject({ resume_state: 'historical_unsafe', row_count: 1 });
+    await expect(rowsAs(aliceId, CALL8, [
+      baseId, J([sourceRow(2, 'historical-row-2', 'HIST-2', null, { sexe: 'F' })]),
+      false, 'draft', 'fill', null, null, batchId,
+    ])).rejects.toThrow(/ancien lot sans recus non reprenable|annulez-le/i);
+
+    expect((await db.admin.query(
+      'select row_count, error_count, expected_rows from public.import_batch where id=$1', [batchId],
+    )).rows[0]).toMatchObject({ row_count: 1, error_count: 0, expected_rows: 2 });
+    expect((await db.admin.query(
+      'select count(*)::int n from public.import_batch_row where batch_id=$1', [batchId],
+    )).rows[0].n).toBe(0);
+    await rowsAs(aliceId, CANCEL, [batchId]);
+    await expect(rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))
+      .rejects.toThrow(/preuves historiques incompletes|revue manuelle/i);
+  });
+
+  test('annulation puis remplacement historique ajoute seulement les lignes absentes et produit un rapport', async () => {
+    const h = 'historical-replacement-' + Date.now();
+    const oldBatch = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))[0].id;
+    const oldLine = sourceRow(1, 'hist-old-v1', 'HIST-REPLACE-OLD',
+      enc('consultation', '2025-01-01', { diagnosis: 'deja', glasgow_score: 10 }), { sexe: 'M' });
+    await rowsAs(aliceId, CALL8, [baseId, J([oldLine]), false, 'draft', 'fill', null, null, oldBatch]);
+    await db.admin.query(
+      `insert into public.import_row_hash(
+         batch_id,base_id,row_hash,hash_kind,source_file_hash,source_row_number,normalized_row_hash
+       ) values($1,$2,$3,'source',$4,1,$5)`,
+      [oldBatch, baseId, `source|${h}|1|hist-old-v1`, h, 'hist-old-v1'],
+    );
+    await db.admin.query('delete from public.import_batch_row where batch_id=$1', [oldBatch]);
+    await db.admin.query("update public.import_batch set resume_state='historical_unsafe' where id=$1", [oldBatch]);
+
+    await expect(rowsAs(aliceId, CALL8, [baseId, J([oldLine]), false, 'draft', 'fill', null, null, oldBatch]))
+      .rejects.toThrow(/non reprenable|annulez/i);
+    await rowsAs(aliceId, CANCEL, [oldBatch]);
+    await expect(rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))
+      .rejects.toThrow(/nombre de lignes incoherent/i);
+    const replacement = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))[0].id;
+    expect(replacement).not.toBe(oldBatch);
+    expect((await db.admin.query('select replaces_batch_id,resume_state from public.import_batch where id=$1', [replacement])).rows[0])
+      .toMatchObject({ replaces_batch_id: oldBatch, resume_state: 'replacement' });
+
+    const baseB = (await db.admin.query(
+      "insert into public.base(name,owner_user_id,current_template_version_id) select 'Import B',$1,current_template_version_id from public.base where id=$2 returning id",
+      [aliceId, baseId],
+    )).rows[0].id;
+    await expect(rowsAs(aliceId, CALL8, [
+      baseB, J([oldLine]), false, 'draft', 'fill', null, null, replacement,
+    ])).rejects.toThrow(/autre base|rattache/i);
+
+    const newLine = sourceRow(2, 'hist-new-v1', 'HIST-REPLACE-NEW',
+      enc('consultation', '2025-01-02', { diagnosis: 'nouvelle', glasgow_score: 11 }), { sexe: 'F' });
+    const report = (await rowsAs(aliceId, CALL8, [
+      baseId, J([oldLine, newLine]), false, 'draft', 'fill', null, null, replacement,
+    ]))[0].report;
+    expect(report).toMatchObject({ historical_replaced: oldBatch, historical_source_proven: 1, newly_imported: 1, conflicts: 0 });
+    await rowsAs(aliceId, COMPLETE, [replacement]);
+    const counts = await db.admin.query(
+      `select p.patient_code,count(e.id)::int n from public.patient p left join public.encounter e on e.patient_id=p.id
+       where p.base_id=$1 and p.patient_code in ('HIST-REPLACE-OLD','HIST-REPLACE-NEW') group by p.patient_code order by p.patient_code`,
+      [baseId],
+    );
+    expect(counts.rows).toEqual([
+      { patient_code: 'HIST-REPLACE-NEW', n: 1 }, { patient_code: 'HIST-REPLACE-OLD', n: 1 },
+    ]);
+    expect((await db.admin.query('select replacement_report from public.import_batch where id=$1', [replacement])).rows[0].replacement_report)
+      .toMatchObject({ historical_batch_id: oldBatch, historical_source_proven: 1, processed_without_historical_receipt: 1, conflicts: 0 });
+    await expect(rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2])).rejects.toThrow(/deja ete importe|doublon/i);
+  });
+
+  test('un payload historique modifie est un conflit et ne cree aucune seconde rencontre', async () => {
+    const h = 'historical-conflict-' + Date.now();
+    const oldBatch = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id;
+    const original = sourceRow(1, 'hist-conflict-v1', 'HIST-CONFLICT',
+      { ...enc('consultation', '2025-02-01', { diagnosis: 'original', glasgow_score: 10 }), age_unit: 'years' },
+      { sexe: 'M', birth_year: 1980 }, { full_name: 'Patient Historique', date_of_birth: '1980-01-01' });
+    await rowsAs(aliceId, CALL8, [baseId, J([original]), false, 'draft', 'fill', null, null, oldBatch]);
+    await db.admin.query(
+      `insert into public.import_row_hash(
+         batch_id,base_id,row_hash,hash_kind,source_file_hash,source_row_number,normalized_row_hash
+       ) values($1,$2,$3,'source',$4,1,$5)`,
+      [oldBatch, baseId, `source|${h}|1|hist-conflict-v1`, h, 'hist-conflict-v1'],
+    );
+    await db.admin.query('delete from public.import_batch_row where batch_id=$1', [oldBatch]);
+    await db.admin.query("update public.import_batch set resume_state='historical_unsafe' where id=$1", [oldBatch]);
+    await rowsAs(aliceId, CANCEL, [oldBatch]);
+    const replacement = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 1]))[0].id;
+    const modified = sourceRow(1, 'hist-conflict-v2', 'HIST-CONFLICT',
+      { ...enc('consultation', '2025-02-01', { diagnosis: 'original', glasgow_score: 10 }), age_unit: 'months' },
+      { sexe: 'F', birth_year: 1981 }, { full_name: 'Nom Modifie', date_of_birth: '1981-01-01' });
+    const report = (await rowsAs(aliceId, CALL8, [
+      baseId, J([modified]), false, 'draft', 'fill', null, null, replacement,
+    ]))[0].report;
+    expect(report).toMatchObject({ conflicts: 1, rejected: 1, newly_imported: 0 });
+    await rowsAs(aliceId, COMPLETE, [replacement]);
+    expect((await db.admin.query('select status from public.import_batch where id=$1', [replacement])).rows[0].status)
+      .toBe('completed_with_errors');
+    const n = await db.admin.query(
+      `select count(*)::int n from public.encounter e join public.patient p on p.id=e.patient_id
+       where p.base_id=$1 and p.patient_code='HIST-CONFLICT'`, [baseId],
+    );
+    expect(n.rows[0].n).toBe(1);
+    const preserved = (await db.admin.query(
+      `select p.data,i.full_name,to_char(i.date_of_birth,'YYYY-MM-DD') as date_of_birth from public.patient p
+       join public.patient_identity i on i.base_id=p.base_id and i.patient_code=p.patient_code
+       where p.base_id=$1 and p.patient_code='HIST-CONFLICT'`, [baseId],
+    )).rows[0];
+    expect(preserved.data).toMatchObject({ sexe: 'M', birth_year: 1980 });
+    expect(preserved.full_name).toBe('Patient Historique');
+    expect(preserved.date_of_birth).toBe('1980-01-01');
+  });
+
+  test('rejet rejoue et concurrent : error_count est reconcilie depuis l unique recu', async () => {
+    const h = 'resume-rejected-' + Date.now();
+    const batchId = (await rowsAs(aliceId, BEGIN6, [baseId, h, null, 'fill', 'draft', 2]))[0].id;
+    const invalid = J([sourceRow(1, 'rejected-row-1', null, null)]);
+
+    const reports = await Promise.all([
+      rowsAs(aliceId, CALL8, [baseId, invalid, false, 'draft', 'fill', null, null, batchId]),
+      rowsAs(aliceId, CALL8, [baseId, invalid, false, 'draft', 'fill', null, null, batchId]),
+    ]);
+    expect(reports.map((r) => r[0].report.rejected)).toEqual([1, 1]);
+
+    const successful = (await rowsAs(aliceId, CALL8, [
+      baseId, J([sourceRow(2, 'accepted-row-2', 'RESUME-AFTER-REJECT', null, { sexe: 'M' })]),
+      false, 'draft', 'fill', null, null, batchId,
+    ]))[0].report;
+    expect(successful).toMatchObject({ newly_imported: 1, rejected: 0, error_count: 1 });
+
+    const replay = (await rowsAs(aliceId, CALL8, [baseId, invalid, false, 'draft', 'fill', null, null, batchId]))[0].report;
+    expect(replay).toMatchObject({ newly_imported: 0, rejected: 1, error_count: 1 });
+    expect((await db.admin.query(
+      'select row_count, error_count from public.import_batch where id=$1', [batchId],
+    )).rows[0]).toMatchObject({ row_count: 2, error_count: 1 });
+    expect((await db.admin.query(
+      `select count(*)::int n from public.import_batch_row
+       where batch_id=$1 and outcome='rejected'`, [batchId],
+    )).rows[0].n).toBe(1);
+  });
 });

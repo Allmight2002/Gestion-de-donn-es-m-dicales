@@ -3,6 +3,7 @@
 // un editor SANS can_view_identity peut ecrire l'analytique mais PAS les images ;
 // deidentification_confirmed obligatoire.
 import { beforeAll, afterAll, describe, expect, test } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import type { Client } from 'pg';
 import { startTestDb, type TestDb } from './harness/db.js';
 
@@ -16,6 +17,33 @@ let patientId: string;
 
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
+
+async function verifiedAttachment(uid: string, path = `${baseId}/p/${randomUUID()}.jpg`) {
+  const key = randomUUID();
+  const operation = await rowsAs(uid,
+    "select * from public.create_upload_operation($1,'clinical-attachments',$2,$3,$4,12,'image/jpeg')",
+    [baseId, path, key, 'a'.repeat(64)],
+  );
+  return (await db.admin.query(
+    `select public.complete_verified_upload_operation(
+       $1,$2,'attachment',$3::jsonb,t.file_hash,t.file_size,t.mime_type
+     ) as id from public.upload_ticket t where t.id=$1`,
+    [operation[0].ticket_id, uid, JSON.stringify({ patient_id: patientId, kind: 'imagerie', label: 'TDM' })],
+  )).rows;
+}
+
+async function verifiedRawDocument(uid: string, submissionId: string, path: string) {
+  const operation = await rowsAs(uid,
+    "select * from public.create_upload_operation($1,'raw-documents',$2,$3,$4,12,'application/pdf')",
+    [baseId, path, randomUUID(), 'b'.repeat(64)],
+  );
+  return (await db.admin.query(
+    `select public.complete_verified_upload_operation(
+       $1,$2,'raw_document',$3::jsonb,t.file_hash,t.file_size,t.mime_type
+     ) as id from public.upload_ticket t where t.id=$1`,
+    [operation[0].ticket_id, uid, JSON.stringify({ submission_id: submissionId, label: 'document' })],
+  )).rows;
+}
 
 const INSERT_ATT = (deid = true) =>
   `with upload as (
@@ -63,7 +91,7 @@ describe('can_view_identity gouverne l acces aux images', () => {
     );
     expect((await rowsAs(bobId, 'select id from public.patient where id=$1', [patientId])).length).toBeGreaterThan(0); // analytique OK
     expect(await rowsAs(bobId, 'select id from public.clinical_attachment where patient_id=$1', [patientId])).toHaveLength(0); // images masquees
-    await expect(rowsAs(bobId, INSERT_ATT(), [patientId])).rejects.toThrow();
+    await expect(verifiedAttachment(bobId)).rejects.toThrow(/acces|refuse|permission/i);
   });
 
   test('un editor AVEC identite : voit et ajoute des images', async () => {
@@ -71,7 +99,7 @@ describe('can_view_identity gouverne l acces aux images', () => {
       "update public.base_access set can_view_identity=true, can_edit_structured_data=true where base_id=$1 and user_id=$2",
       [baseId, bobId],
     );
-    await db.asUser(bobId, (c) => c.query(INSERT_ATT(), [patientId]));
+    await verifiedAttachment(bobId);
     expect((await rowsAs(bobId, 'select id from public.clinical_attachment where patient_id=$1', [patientId])).length).toBeGreaterThan(0);
   });
 });
@@ -84,30 +112,12 @@ describe('deidentification confirmee obligatoire (§13)', () => {
 
 describe('coherence Storage des pieces jointes', () => {
   test('created_by documentaire est impose par le serveur', async () => {
-    const att = await rowsAs(
-      aliceId,
-      `with upload as (
-         select base_id from public.patient where id=$1
-       ), ticket as (
-         select public.create_upload_ticket(base_id, 'clinical-attachments', $2) from upload
-       )
-       insert into public.clinical_attachment(patient_id, storage_path, deidentification_confirmed, created_by)
-       select $1,$2,true,$3 from ticket returning id`,
-      [patientId, `${baseId}/author-${Date.now()}.jpg`, bobId],
-    );
+    const att = await verifiedAttachment(aliceId, `${baseId}/author-${Date.now()}.jpg`);
     expect((await db.admin.query('select created_by from public.clinical_attachment where id=$1', [att[0].id])).rows[0].created_by)
       .toBe(aliceId);
 
     const raw = (await db.admin.query('select id, base_id from public.raw_submission where base_id=$1 limit 1', [baseId])).rows[0];
-    const doc = await rowsAs(
-      aliceId,
-      `with ticket as (
-         select public.create_upload_ticket($2, 'raw-documents', $3)
-       )
-       insert into public.raw_document(submission_id, base_id, storage_path, mime_type, created_by)
-       select $1,$2,$3,'application/pdf',$4 from ticket returning id`,
-      [raw.id, raw.base_id, `${baseId}/${raw.id}/author-${Date.now()}.pdf`, bobId],
-    );
+    const doc = await verifiedRawDocument(aliceId, raw.id, `${baseId}/${raw.id}/author-${Date.now()}.pdf`);
     expect((await db.admin.query('select created_by from public.raw_document where id=$1', [doc[0].id])).rows[0].created_by)
       .toBe(aliceId);
   });

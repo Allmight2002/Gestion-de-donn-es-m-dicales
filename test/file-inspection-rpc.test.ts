@@ -325,7 +325,7 @@ describe('complete_file_inspection', () => {
   });
 
   test('les compteurs de tentative restent controles par le serveur', async () => {
-    const rows = await rowsAs(aliceId, [
+    await expect(rowsAs(aliceId, [
       'with ticket as (',
       "  select public.create_upload_ticket($1, 'clinical-attachments', $3)",
       ')',
@@ -337,8 +337,17 @@ describe('complete_file_inspection', () => {
       "         'quarantined-uploads',$1::text || '/fake/quarantine.bin',now() from ticket",
       'returning id, inspection_attempt_count, last_inspection_attempt_at, last_inspection_error,',
       '          quarantine_bucket, quarantine_path, quarantined_at',
-    ].join(' '), [baseId, patientId, `${baseId}/inspection/${randomUUID()}.png`]);
-    const inserted = rows[0];
+    ].join(' '), [baseId, patientId, `${baseId}/inspection/${randomUUID()}.png`]))
+      .rejects.toThrow(/permission|denied/i);
+
+    const inserted = (await db.admin.query(
+      `insert into public.clinical_attachment(
+         patient_id,storage_path,deidentification_confirmed,inspection_status
+       ) values($1,$2,true,'accepted_client')
+       returning id,inspection_attempt_count,last_inspection_attempt_at,last_inspection_error,
+                 quarantine_bucket,quarantine_path,quarantined_at`,
+      [patientId, `${baseId}/inspection/${randomUUID()}.png`],
+    )).rows[0];
     expect(inserted.inspection_attempt_count).toBe(0);
     expect(inserted.last_inspection_attempt_at).toBeNull();
     expect(inserted.last_inspection_error).toBeNull();

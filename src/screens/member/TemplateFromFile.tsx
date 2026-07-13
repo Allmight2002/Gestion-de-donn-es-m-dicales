@@ -1,8 +1,8 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useState, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
-import { useBaseRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { proposeFieldsFromSheet, type ProposedField } from '../../domain/templateFromSheet';
@@ -21,8 +21,8 @@ export function TemplateFromFile() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const templates = useTemplateRepository();
-  const bases = useBaseRepository();
   const { toast } = useToast();
+  const operationKey = useRef<string | null>(null);
 
   const [name, setName] = useState('');
   const [specialty, setSpecialty] = useState('');
@@ -45,6 +45,7 @@ export function TemplateFromFile() {
       const parsed = await parseSpreadsheetOffThread(await file.arrayBuffer());
       const proposed = proposeFieldsFromSheet(parsed.headers, parsed.rows);
       setFields(proposed);
+      operationKey.current = null;
       setFileName(file.name);
       const stem = file.name.replace(/\.[^.]+$/, '');
       if (!name.trim()) setName(stem); // pre-remplit le nom du jeu de variables
@@ -63,20 +64,20 @@ export function TemplateFromFile() {
     if (withBase && !baseName.trim()) { setError(t('tfile.need_base_name')); return; }
     setBusy(true);
     try {
-      const version = await templates.createPersonalTemplate(name.trim(), specialty.trim() || null);
-      for (const f of chosen) {
-        const field: NewField = {
+      const bundle = await templates.createTemplateBundle({
+        name: name.trim(), specialty: specialty.trim() || null,
+        fields: chosen.map((f): NewField => ({
           fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type, required: false,
           allowedValues: (f.type === 'select' || f.type === 'multiselect') ? (f.allowedValues ?? null) : null,
-        };
-        await templates.addField(version.id, field);
-      }
+        })),
+        withBase, baseName: withBase ? baseName.trim() : undefined,
+        operationKey: operationKey.current ?? (operationKey.current = crypto.randomUUID()),
+      });
       if (withBase) {
-        // V3 : la base copie le jeu qu'on vient de creer (create_base_from_model, atomique),
-        // puis on atterrit DIRECTEMENT sur l'ecran d'import pour deposer le meme fichier.
-        const base = await bases.createBase(baseName.trim(), specialty.trim() || null, version.id);
+        // La base pointe directement sur la version creee dans la meme transaction.
+        if (!bundle.baseId) throw new Error('Base absente du resultat transactionnel');
         toast(t('tfile.base_created'), 'success');
-        navigate(`/bases/${base.id}/import`);
+        navigate(`/bases/${bundle.baseId}/import`);
       } else {
         navigate('/templates');
       }

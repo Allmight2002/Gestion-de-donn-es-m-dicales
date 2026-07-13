@@ -24,6 +24,7 @@ l'URL uniquement apres :
 
 ```bash
 supabase functions deploy signed-read
+supabase functions deploy finalize-upload
 supabase functions deploy cleanup-upload
 supabase functions deploy generate-export
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
@@ -182,6 +183,31 @@ ou :
 { "status": "infected", "signature": "Eicar-Test-Signature", "engine": "clamav" }
 ```
 
+### Test temporaire depuis un PC
+
+Pour un test de bout en bout, le scanner peut tourner localement avec Docker et etre rendu
+joignable par Supabase au moyen d'un tunnel Cloudflare temporaire :
+
+```powershell
+$env:CLAMAV_SCAN_TOKEN = 'un-secret-aleatoire-long'
+docker compose -f docker-compose.clamav.yml up -d --build
+cloudflared tunnel --url http://127.0.0.1:8088
+```
+
+Le tunnel affiche une URL `https://...trycloudflare.com`. Configurez alors seulement pour la
+session de test :
+
+```powershell
+npx supabase secrets set `
+  "CLAMAV_SCAN_URL=https://...trycloudflare.com/scan" `
+  "CLAMAV_SCAN_TOKEN=$env:CLAMAV_SCAN_TOKEN"
+```
+
+Cette URL est ephemere : elle cesse de fonctionner quand le processus `cloudflared`, Docker ou le
+PC s'arrete. Ne pas activer `REQUIRE_SERVER_INSPECTION=true`, la politique SQL stricte ou le build
+Vercel strict avec ce montage. Pour un environnement clinique, utiliser un tunnel Cloudflare nomme
+vers un serveur/VPS disponible en continu, puis seulement activer les drapeaux stricts.
+
 ### Maintenance ClamAV
 
 En production, le service antivirus doit etre traite comme une dependance de securite active :
@@ -202,6 +228,7 @@ En production, le service antivirus doit etre traite comme une dependance de sec
 ```bash
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
+supabase functions deploy finalize-upload
 supabase functions deploy cleanup-upload
 supabase functions deploy generate-export
 supabase functions deploy reconcile-quarantine

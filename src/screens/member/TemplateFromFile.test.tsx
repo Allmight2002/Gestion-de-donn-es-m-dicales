@@ -14,8 +14,7 @@ import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { TemplateFromFile } from './TemplateFromFile';
 import type { BaseRepository } from '../../data/bases';
-import type { TemplateRepository } from '../../data/templates';
-import type { NewField } from '../../data/types';
+import type { TemplateBundleInput, TemplateRepository } from '../../data/templates';
 
 function renderScreen(templates: TemplateRepository, bases?: BaseRepository) {
   return render(
@@ -42,9 +41,8 @@ async function uploadSheet() {
 
 describe('TemplateFromFile (F1)', () => {
   test('un fichier propose des champs, puis « créer » construit le jeu de variables', async () => {
-    const createPersonalTemplate = vi.fn(async () => ({ id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const }));
-    const addField = vi.fn(async (_v: string, _f: NewField) => ({} as never));
-    renderScreen({ createPersonalTemplate, addField } as unknown as TemplateRepository);
+    const createTemplateBundle = vi.fn(async (_input: TemplateBundleInput) => ({ templateId: 't1', versionId: 'v1', baseId: null }));
+    renderScreen({ createTemplateBundle } as unknown as TemplateRepository);
 
     await uploadSheet();
 
@@ -53,18 +51,16 @@ describe('TemplateFromFile (F1)', () => {
     expect((screen.getByLabelText('Nom du jeu de variables') as HTMLInputElement).value).toBe('cohorte');
 
     await userEvent.click(createBtn);
-    await waitFor(() => expect(createPersonalTemplate).toHaveBeenCalledWith('cohorte', null));
-    expect(addField).toHaveBeenCalledTimes(2); // Age + Sexe
+    await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
+    expect(createTemplateBundle.mock.calls[0][0]).toMatchObject({ name: 'cohorte', specialty: null, withBase: false });
+    expect(createTemplateBundle.mock.calls[0][0].fields).toHaveLength(2);
     expect(await screen.findByText('TEMPLATES')).toBeInTheDocument(); // redirection apres creation
   });
 
   test('V3 : « créer aussi une base » cree jeu + base et atterrit sur l ecran d import', async () => {
-    const createPersonalTemplate = vi.fn(async () => ({ id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const }));
-    const addField = vi.fn(async (_v: string, _f: NewField) => ({} as never));
-    const createBase = vi.fn(async () => ({ id: 'bnew', name: 'cohorte', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'vcopy' }));
+    const createTemplateBundle = vi.fn(async (_input: TemplateBundleInput) => ({ templateId: 't1', versionId: 'v1', baseId: 'bnew' }));
     renderScreen(
-      { createPersonalTemplate, addField } as unknown as TemplateRepository,
-      { createBase } as unknown as BaseRepository,
+      { createTemplateBundle } as unknown as TemplateRepository,
     );
 
     await uploadSheet();
@@ -75,9 +71,9 @@ describe('TemplateFromFile (F1)', () => {
     expect((screen.getByLabelText('Nom de la base') as HTMLInputElement).value).toBe('cohorte');
     await userEvent.click(screen.getByRole('button', { name: 'Créer le jeu de variables + la base' }));
 
-    // Jeu cree, puis base creee a partir de SA version, puis redirection vers l'import.
-    await waitFor(() => expect(createBase).toHaveBeenCalledWith('cohorte', null, 'v1'));
-    expect(addField).toHaveBeenCalledTimes(2);
+    // Une seule commande cree jeu, champs et base, puis redirection vers l'import.
+    await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
+    expect(createTemplateBundle.mock.calls[0][0]).toMatchObject({ name: 'cohorte', baseName: 'cohorte', withBase: true });
     expect(await screen.findByText('IMPORT-ECRAN')).toBeInTheDocument();
   });
 });

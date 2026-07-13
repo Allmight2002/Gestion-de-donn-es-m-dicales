@@ -13,12 +13,14 @@ export default tseslint.config(
       'dist/**',
       'dev-dist/**',
       'coverage/**',
-      // Runtime Deno (imports jsr:, globals Deno) : hors perimetre du lint Node/navigateur.
-      'supabase/functions/**',
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ['supabase/functions/**/*.ts'],
+    languageOptions: { globals: { ...globals.deno, ...globals.browser } },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },

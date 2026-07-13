@@ -89,6 +89,7 @@ que **toute consultation d'un fichier soit tracée côté serveur** et non conto
 ```bash
 supabase functions deploy signed-read
 supabase functions deploy inspect-upload
+supabase functions deploy finalize-upload
 supabase functions deploy cleanup-upload
 supabase functions deploy generate-export
 supabase functions deploy reconcile-quarantine
@@ -189,7 +190,7 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
 - **Cadre juridique/éthique** 🚩 : base légale, consentement, approbation éthique, **résidence
   des données** (région d'hébergement Supabase), accord de traitement (DPA).
 - **Durcissement serveur** : deploiement et verification des Edge Functions (`signed-read`,
-  `inspect-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
+  `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
   l'inspection stricte et controle `env:check:cloud`. Voir **[docs/edge-functions.md](edge-functions.md)**.
 - **Limite d'anonymat** : la RLS protège l'accès *applicatif*, mais l'administrateur du serveur
   peut techniquement lire la base. Une garantie forte suppose un chiffrement côté client ou des

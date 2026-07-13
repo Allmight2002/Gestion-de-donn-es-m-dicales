@@ -1,9 +1,9 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { NewField, TemplateField } from '../../data/types';
+import type { NewField } from '../../data/types';
 import type { PublishedTemplateOption } from '../../data/bases';
 import { TEMPLATE_LIBRARY } from '../../domain/templateLibrary';
 
@@ -11,13 +11,6 @@ import { TEMPLATE_LIBRARY } from '../../domain/templateLibrary';
 // l'admin systeme dans /admin, stockes en base). « Utiliser » clone les champs du modele dans un
 // gabarit PERSONNEL. Repli sur les modeles livres en dur tant qu'aucun modele global n'est publie
 // (la bibliotheque n'est jamais vide).
-const toNewField = (f: TemplateField): NewField => ({
-  fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type,
-  required: f.required, allowedValues: f.allowedValues ? f.allowedValues.map(String) : null,
-  minValue: f.minValue, maxValue: f.maxValue, unit: f.unit,
-  allowMissingCodes: f.allowMissingCodes, encounterTypes: f.encounterTypes,
-});
-
 export function TemplateLibrary() {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -28,6 +21,7 @@ export function TemplateLibrary() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // cle du modele en cours de creation
   const [error, setError] = useState<string | null>(null);
+  const operationKeys = useRef(new Map<string, string>());
 
   useEffect(() => {
     bases.listTemplateModels()
@@ -37,12 +31,12 @@ export function TemplateLibrary() {
   }, [bases]);
 
   // Cree un gabarit personnel a partir d'un nom/specialite + d'une resolution paresseuse des champs.
-  const createFrom = useCallback(async (key: string, name: string, specialty: string | null, resolveFields: () => Promise<NewField[]>) => {
+  const createFrom = useCallback(async (key: string, name: string, specialty: string | null, input: { fields?: NewField[]; sourceVersionId?: string }) => {
     setBusy(key);
     try {
-      const fields = await resolveFields();
-      const version = await templates.createPersonalTemplate(name, specialty);
-      for (const f of fields) await templates.addField(version.id, f);
+      const operationKey = operationKeys.current.get(key) ?? crypto.randomUUID();
+      operationKeys.current.set(key, operationKey);
+      await templates.createTemplateBundle({ name, specialty, ...input, operationKey });
       navigate('/templates');
     } catch (e) {
       setError(errorMessage(e, t('common.error')));
@@ -77,7 +71,7 @@ export function TemplateLibrary() {
                 </div>
                 <p className="flex-1 text-sm text-slate-500">{m.description}</p>
                 <p className="text-xs text-slate-400">{m.fields.length} {t('tlib.fields')}</p>
-                <button onClick={() => void createFrom(m.id, m.name, m.specialty, async () => m.fields)} disabled={busy !== null} className="btn-primary self-start">
+                <button onClick={() => void createFrom(m.id, m.name, m.specialty, { fields: m.fields })} disabled={busy !== null} className="btn-primary self-start">
                   {busy === m.id ? t('tlib.creating') : t('tlib.use')}
                 </button>
               </div>
@@ -90,7 +84,7 @@ export function TemplateLibrary() {
                 </div>
                 <p className="flex-1 text-sm text-slate-400">{t('tlib.global_hint')}</p>
                 <button
-                  onClick={() => void createFrom(m.versionId, m.name, m.specialty, async () => (await templates.getVersion(m.versionId)).fields.map(toNewField))}
+                  onClick={() => void createFrom(m.versionId, m.name, m.specialty, { sourceVersionId: m.versionId })}
                   disabled={busy !== null}
                   className="btn-primary self-start"
                 >

@@ -46,12 +46,6 @@ describe('ExportPanel', () => {
       id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'deadbeef', storedFilePath: null,
     }));
     const exportsRepo = {
-      async getSnapshotData() {
-        return {
-          patients: [{ code: 'P-001', data: { sexe: 'M' } }],
-          encounters: [{ id: 'e1', patientCode: 'P-001', encounterDate: '2024-01-01', encounterType: 'consultation', data: { glasgow_score: 10, age_at_encounter: 44 } }],
-        };
-      },
       recordExport,
       async listExports() { return []; },
     } as unknown as ExportRepository;
@@ -82,9 +76,6 @@ describe('ExportPanel', () => {
     const getExportDownloadUrl = vi.fn(async () => 'https://signed.test/export.csv');
     const logExportRead = vi.fn(async () => {});
     const exportsRepo = {
-      async getSnapshotData() {
-        return { patients: [], encounters: [] };
-      },
       async recordExport() {
         return {
           id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 0, encounterCount: 0, fileHash: 'deadbeef', storedFilePath: 'p',

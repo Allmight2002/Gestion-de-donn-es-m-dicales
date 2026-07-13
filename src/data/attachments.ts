@@ -9,10 +9,11 @@ import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
 import {
   REQUIRE_SERVER_INSPECTION,
-  cleanupUploadedObject,
-  createUploadTicket,
+  createUploadOperation,
+  finalizeUploadOperation,
   inspectUploadedFile,
   retryUploadedFileInspection,
+  stableUploadOperationKey,
   type InspectionStatus,
 } from './inspection';
 
@@ -43,7 +44,7 @@ export interface AttachmentRepository {
    *  + audit ne se declenchent que pour une VRAIE tentative de consultation. null si indisponible. */
   attachmentUrl(id: string, storagePath: string): Promise<string | null>;
   retryInspection(id: string): Promise<void>;
-  addImage(input: AddImageInput): Promise<{ id: string }>;
+  addImage(input: AddImageInput): Promise<{ id: string; inspectionPending?: boolean }>;
   softDeleteAttachment(id: string, reason: string): Promise<void>;
 }
 
@@ -120,44 +121,36 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
 
       // Images : reencodees (EXIF supprime). Documents (PDF/Office) : envoyes tels quels.
       const blob: Blob = v.isImage ? await reencodeImage(input.file, v.type) : input.file;
-      const path = `${input.baseId}/${input.patientId}/${crypto.randomUUID()}.${v.ext}`;
-      const ticketId = await createUploadTicket(client, input.baseId, ATTACHMENTS_BUCKET, path);
-      let data: { id: string };
-      try {
-        const { error: upErr } = await client.storage.from(ATTACHMENTS_BUCKET).upload(path, blob, {
+      const fileHash = await sha256Hex(blob);
+      const operationKey = stableUploadOperationKey(
+        `attachment:${input.baseId}:${input.patientId}:${input.encounterId ?? ''}:${v.ext}`,
+        fileHash,
+        input.label.trim(),
+      );
+      const operation = await createUploadOperation(client, {
+        baseId: input.baseId, bucket: ATTACHMENTS_BUCKET,
+        path: `${input.baseId}/${input.patientId}/${operationKey}.${v.ext}`,
+        idempotencyKey: operationKey, fileHash, fileSize: blob.size, mimeType: v.type,
+      });
+      let id = operation.documentId;
+      if (!id) {
+        const { error: upErr } = await client.storage.from(ATTACHMENTS_BUCKET).upload(operation.path, blob, {
           contentType: v.type,
           upsert: false,
         });
-        if (upErr) throw upErr;
-
-        const inserted = await client
-          .from('clinical_attachment')
-          .insert({
-            patient_id: input.patientId,
-            encounter_id: input.encounterId ?? null,
-            kind: v.isImage ? 'imagerie' : 'document',
-            label: input.label.trim(),
-            storage_path: path,
-            mime_type: v.type,
-            detected_mime_type: v.type,
-            file_size: blob.size,
-            file_hash: await sha256Hex(blob),
-            inspection_status: REQUIRE_SERVER_INSPECTION ? 'pending' : 'accepted_client',
-            inspected_at: REQUIRE_SERVER_INSPECTION ? null : new Date().toISOString(),
-            deidentification_confirmed: true,
-          })
-          .select('id')
-          .single();
-        if (inserted.error) throw inserted.error;
-        data = inserted.data as { id: string };
-      } catch (error) {
-        // Nettoyage serveur best-effort : les buckets prives n'exposent plus DELETE au client.
-        await cleanupUploadedObject(client, ATTACHMENTS_BUCKET, path, ticketId).catch(() => undefined);
-        throw error;
+        // A conflict on the operation's immutable path is the expected retry case
+        // after Storage committed but its response was lost.  The server RPC below
+        // consumes the same ticket and creates at most one business row.
+        if (upErr && (upErr as { statusCode?: string }).statusCode !== '409') throw upErr;
+        id = await finalizeUploadOperation(client, operation.ticketId, 'attachment', {
+          patient_id: input.patientId, encounter_id: input.encounterId ?? null,
+          kind: v.isImage ? 'imagerie' : 'document', label: input.label.trim(),
+        });
       }
-      const id = data.id;
-      await inspectUploadedFile(client, 'attachment', id);
-      return { id };
+      // The document is durable now. Inspection errors are represented by the persisted
+      // status, not as a claim that the upload itself was lost.
+      await inspectUploadedFile(client, 'attachment', id).catch(() => undefined);
+      return { id, inspectionPending: REQUIRE_SERVER_INSPECTION };
     },
 
     async softDeleteAttachment(id, reason) {

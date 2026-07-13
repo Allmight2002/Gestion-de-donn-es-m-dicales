@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -63,6 +63,8 @@ export function ImportData() {
   const [warnings, setWarnings] = useState<ImportDuplicateWarning[]>([]); // §7.6 doublons probables
   const [committed, setCommitted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const runInFlight = useRef(false);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -151,8 +153,9 @@ export function ImportData() {
   const canRun = hasPatientCode && dups.length === 0;
 
   async function run(dryRun: boolean) {
-    if (!baseId) return;
-    setBusy(true); setError(null); setProgress(null);
+    if (!baseId || runInFlight.current) return;
+    runInFlight.current = true;
+    setBusy(true); setError(null);
     try {
       // §7.6 : a l'apercu, signaler les rencontres ressemblant a des existantes (sans bloquer).
       // Resilient : si la RPC n'est pas encore deployee, on n'empeche pas l'apercu.
@@ -165,27 +168,90 @@ export function ImportData() {
       } else {
         // §6.5 import par LOTS : ouverture du lot (idempotence + verrous) puis chunks + progression.
         const batchId = dryRun ? null : await patients.beginImportBatch(baseId, { status, conflict, fileHash, templateVersionId: versionId, expectedRows: rows.length });
-        const agg: ImportReport = { dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0, error_count: 0, already_imported: 0, errors: [] };
+        if (batchId) setActiveBatchId(batchId);
+        let succeeded = new Set<number>();
+        let serverRowCount = 0;
+        let serverErrorCount = 0;
+        if (batchId) {
+          // Le navigateur peut perdre la reponse apres le commit: la reprise
+          // repart de cet etat serveur, jamais d'un offset local suppose.
+          const state = await patients.getImportBatchState(batchId);
+          succeeded = new Set(state.succeeded_source_rows);
+          serverRowCount = state.row_count;
+          serverErrorCount = state.error_count;
+          setProgress({ done: state.row_count, total: rows.length });
+          if (state.resume_state === 'historical_unsafe') {
+            setError(t('import.historical_cancel_required'));
+            return;
+          }
+        }
+        const agg: ImportReport = {
+          dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0,
+          encounters: 0, error_count: serverErrorCount, already_imported: 0,
+          newly_imported: 0, already_processed: succeeded.size, rejected: 0,
+          server_row_count: serverRowCount, server_error_count: serverErrorCount, errors: [],
+        };
         for (let i = 0; i < rows.length; i += CHUNK) {
-          const rep = await patients.importRecords(baseId, rows.slice(i, i + CHUNK), {
+          const chunk = rows.slice(i, i + CHUNK).filter((row) => !succeeded.has(row.source_row_number ?? -1));
+          if (chunk.length === 0) continue;
+          const rep = await patients.importRecords(baseId, chunk, {
             dryRun, status, conflict, fileHash: null, templateVersionId: versionId, batchId,
           });
           agg.patients_new += rep.patients_new; agg.patients_updated += rep.patients_updated;
-          agg.encounters += rep.encounters; agg.error_count += rep.error_count;
+          agg.encounters += rep.encounters;
           agg.already_imported = (agg.already_imported ?? 0) + (rep.already_imported ?? 0); // §7.8
+          agg.newly_imported = (agg.newly_imported ?? 0) + (rep.newly_imported ?? 0);
+          agg.already_processed = (agg.already_processed ?? 0) + (rep.already_processed ?? 0);
+          agg.rejected = (agg.rejected ?? 0) + (rep.rejected ?? rep.error_count);
           agg.errors.push(...rep.errors.map((er) => ({ ...er, row: er.row + i }))); // n° de ligne global
-          setProgress({ done: Math.min(i + CHUNK, rows.length), total: rows.length });
+          if (batchId) {
+            const state = await patients.getImportBatchState(batchId);
+            succeeded = new Set(state.succeeded_source_rows);
+            agg.error_count = state.error_count;
+            agg.server_row_count = state.row_count;
+            agg.server_error_count = state.error_count;
+            setProgress({ done: state.row_count, total: rows.length });
+          } else {
+            agg.error_count += rep.error_count;
+          }
         }
         // §6.2 : cloture du lot -> active l'idempotence du fichier. En cas d'erreur, le lot
         // reste 'processing' et peut etre REPRIS (re-lancer l'import reprend le meme lot).
-        if (batchId) await patients.completeImportBatch(batchId);
+        if (batchId) {
+          await patients.completeImportBatch(batchId);
+          const state = await patients.getImportBatchState(batchId);
+          agg.error_count = state.error_count;
+          agg.server_row_count = state.row_count;
+          agg.server_error_count = state.error_count;
+          setProgress({ done: state.row_count, total: rows.length });
+          setActiveBatchId(null);
+        }
         setReport(agg);
       }
       if (!dryRun) setCommitted(true);
     } catch (e) {
       setError(msg(e));
     } finally {
-      setBusy(false); setProgress(null);
+      setBusy(false);
+      runInFlight.current = false;
+    }
+  }
+
+  async function cancelActiveBatch() {
+    if (!activeBatchId || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await patients.cancelImportBatch(activeBatchId);
+      const state = await patients.getImportBatchState(activeBatchId);
+      setProgress({ done: state.row_count, total: state.expected_rows ?? rows.length });
+      setActiveBatchId(null);
+      setReport(null);
+      setCommitted(false);
+      toast(t('import.cancelled'), 'success');
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -362,6 +428,11 @@ export function ImportData() {
           {progress && (
             <p className="text-xs text-slate-500">{t('import.progress').replace('{done}', String(progress.done)).replace('{total}', String(progress.total))}</p>
           )}
+          {activeBatchId && !committed && (
+            <button type="button" onClick={() => void cancelActiveBatch()} disabled={busy} className="btn-secondary text-red-700">
+              {t('import.cancel_batch')}
+            </button>
+          )}
         </>
       )}
 
@@ -375,7 +446,15 @@ export function ImportData() {
             {(report.already_imported ?? 0) > 0 && (
               <li className="text-slate-500">{t('import.already_imported')} : <strong>{report.already_imported}</strong></li>
             )}
+            {report.newly_imported !== undefined && <li>{t('import.newly_imported')} : <strong>{report.newly_imported}</strong></li>}
+            {report.already_processed !== undefined && <li className="text-slate-500">{t('import.already_processed')} : <strong>{report.already_processed}</strong></li>}
+            {report.rejected !== undefined && <li className={report.rejected > 0 ? 'text-red-600' : ''}>{t('import.rejected_current')} : <strong>{report.rejected}</strong></li>}
             <li className={report.error_count > 0 ? 'text-red-600' : ''}>{t('import.errors')} : <strong>{report.error_count}</strong></li>
+            {report.server_row_count !== undefined && (
+              <li className="text-slate-500">{t('import.server_state')
+                .replace('{processed}', String(report.server_row_count))
+                .replace('{rejected}', String(report.server_error_count ?? report.error_count))}</li>
+            )}
           </ul>
           {report.errors.length > 0 && (
             <div className="max-h-48 overflow-auto rounded-lg border border-red-100 bg-red-50 p-2 text-xs text-red-700">

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Test de rendu du gating par role (cahier §7) avec un backend d'auth INJECTE
 // (aucun reseau, aucun Supabase requis).
+import 'fake-indexeddb/auto';
 import { useContext } from 'react';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
@@ -11,6 +12,15 @@ import { AuthContext, AuthProvider } from './AuthProvider';
 import { AppRoutes } from '../routes/AppRoutes';
 import type { AuthBackend } from './backend';
 import type { Profile, SessionUser } from './types';
+import {
+  buildSnapshot, getOfflineUser, initializeOfflineForUser, offlineCache, outbox, purgeAllOfflineData, setOfflineUser,
+} from '../data/offline';
+
+beforeAll(() => {
+  vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
+  vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
+});
+afterAll(() => vi.unstubAllEnvs());
 
 function fakeBackend(init: { user: SessionUser | null; profile: Profile | null }): AuthBackend {
   let user = init.user;
@@ -46,7 +56,13 @@ const memberProfile: Profile = { id: 'm', fullName: 'Medecin', globalRole: 'mede
 function renderApp(backend: AuthBackend) {
   return render(
     <I18nProvider>
-      <AuthProvider backend={backend}>
+      <AuthProvider
+        backend={backend}
+        initializeOffline={async (userId) => {
+          setOfflineUser(userId);
+          return { previousOwner: userId, ownerChanged: false, recoveredSyncing: 0, errors: [] };
+        }}
+      >
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>
@@ -60,6 +76,7 @@ function AuthProbe() {
   return (
     <div>
       <p data-testid="auth-state">{auth.status}:{auth.user?.id ?? 'none'}</p>
+      {auth.error && <p role="alert">{auth.error}</p>}
       <button type="button" onClick={() => void auth.signOut()}>Force sign out</button>
     </div>
   );
@@ -74,12 +91,12 @@ describe('gating par role', () => {
   // UI-1 : le libelle apparait aussi dans la barre laterale -> on vise le TITRE de page (heading).
   test('connecte system_admin -> administration des gabarits', async () => {
     renderApp(fakeBackend({ user: { id: 's', email: 's@demo.test' }, profile: adminProfile }));
-    expect(await screen.findByRole('heading', { name: 'Administration des modèles' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Administration des modèles' }, { timeout: 5000 })).toBeInTheDocument();
   });
 
   test('connecte membre -> tableau de bord', async () => {
     renderApp(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
-    expect(await screen.findByRole('heading', { name: 'Tableau de bord' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Tableau de bord' }, { timeout: 5000 })).toBeInTheDocument();
   });
 
   test('deconnexion -> retour a l ecran de connexion', async () => {
@@ -132,5 +149,62 @@ describe('gating par role', () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none');
+  });
+
+  test('montage neuf A vers B purge toutes les donnees avant d activer le cache de B', async () => {
+    await purgeAllOfflineData();
+    expect((await initializeOfflineForUser('fresh-A')).errors).toHaveLength(0);
+    await offlineCache.save(buildSnapshot(
+      { id: 'fresh-base-A', name: 'A', templateVersionId: null }, [], {}, [], Date.now(),
+    ));
+    await outbox.put({
+      id: 'fresh-outbox-A', dataType: 'analytic_outbox', baseId: 'fresh-base-A', patientId: 'pA', encounterId: 'eA',
+      data: { score: 1 }, reason: 'A', validationStatus: 'draft', baseUpdatedAt: null,
+      createdAt: Date.now(), expiresAt: Date.now() + 60_000, state: 'pending', ownerUserId: 'fresh-A',
+    });
+    setOfflineUser(null); // nouveau chargement du module : plus d ancien utilisateur en memoire
+
+    render(
+      <I18nProvider>
+        <AuthProvider backend={fakeBackend({ user: { id: 'fresh-B', email: 'b@demo.test' }, profile: memberProfile })}>
+          <AuthProbe />
+        </AuthProvider>
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:fresh-B'));
+    expect(localStorage.getItem('meddata:offline-cache-owner')).toBe('fresh-B');
+    expect(await offlineCache.get('fresh-base-A')).toBeNull();
+    expect(await outbox.count()).toBe(0);
+    await purgeAllOfflineData();
+    setOfflineUser(null);
+  });
+
+  test('une purge inter-comptes partielle est remontee a l interface et bloque le cache', async () => {
+    render(
+      <I18nProvider>
+        <AuthProvider
+          backend={fakeBackend({ user: { id: 'purge-B', email: 'b@demo.test' }, profile: memberProfile })}
+          initializeOffline={async () => ({ previousOwner: 'purge-A', ownerChanged: true, recoveredSyncing: 0, errors: ['IndexedDB bloquee'] })}
+        >
+          <AuthProbe />
+        </AuthProvider>
+      </I18nProvider>,
+    );
+    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_in:purge-B');
+    expect(screen.getByRole('alert')).toHaveTextContent(/Purge locale incomplete.*IndexedDB bloquee/i);
+  });
+
+  test('une purge partielle conserve l ancien proprietaire pour imposer une nouvelle tentative', async () => {
+    localStorage.setItem('meddata:offline-cache-owner', 'owner-A');
+    const report = await initializeOfflineForUser('owner-B', {
+      purgeAll: async () => ({
+        indexedDb: false, localStorage: true, cacheStorage: true, serviceWorkers: true,
+        errors: ['IndexedDB bloquee'],
+      }),
+    });
+    expect(report.ownerChanged).toBe(true);
+    expect(report.errors).toContain('IndexedDB bloquee');
+    expect(localStorage.getItem('meddata:offline-cache-owner')).toBe('owner-A');
+    expect(getOfflineUser()).toBeNull();
   });
 });
