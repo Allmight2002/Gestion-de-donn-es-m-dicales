@@ -92,6 +92,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -100,10 +101,20 @@ jobs:
           STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run release:env -- --target=staging
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          npm run release:env -- --target=staging
       - name: Migrations then Storage
         env: *staging_env
         run: npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
+      - name: Configure strict Edge runtime secrets
+        env: *staging_env
+        run: |
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" secrets set \
+            "CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL" \
+            "CLAMAV_SCAN_TOKEN=$CLAMAV_SCAN_TOKEN" \
+            "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION" \
+            --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy all Edge Functions
         env: *staging_env
         run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done
@@ -134,15 +145,23 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.sha }}
         run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          npm run release:target -- --target=staging --frontend-only
           npm run release:env -- --target=pr
           npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=preview --token "$VERCEL_TOKEN"
           npx --yes "vercel@$VERCEL_CLI_VERSION" build --token "$VERCEL_TOKEN"
           URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --yes --token "$VERCEL_TOKEN")
-          curl --fail --silent --show-error --head "$URL"
+          curl --fail --silent --show-error --head \
+            -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+            -H "x-vercel-set-bypass-cookie: true" \
+            "$URL"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
   browser-e2e-staging:
@@ -172,6 +191,7 @@ jobs:
           E2E_CURATEUR_PASSWORD: ${{ secrets.STAGING_CURATEUR_PASSWORD }}
           E2E_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           # Fixtures des parcours metier : nettoyage best-effort + identifiants de donnees semees.
           # Absents => les parcours patient/export sont marques INDISPONIBLES (jamais un succes silencieux).
           E2E_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

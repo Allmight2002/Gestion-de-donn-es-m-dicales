@@ -1,4 +1,6 @@
-// Gate de release : valide uniquement la presence et le format des variables. Ne jamais afficher une valeur.
+// Gate de release : valide presence, format et identite coherente de la cible. Ne jamais afficher une valeur.
+import { validateSupabaseTarget } from './check-supabase-target.mjs';
+
 const target = process.argv.find((arg) => arg.startsWith('--target='))?.slice(9) ?? 'pr';
 const fail = (message) => { console.error(`Configuration release invalide: ${message}`); process.exitCode = 1; };
 const present = (name) => Boolean(process.env[name]?.trim());
@@ -35,5 +37,7 @@ if (target !== 'pr') {
   if ((process.env.CLAMAV_SCAN_TOKEN ?? '').length < 12) fail('CLAMAV_SCAN_TOKEN est absent ou trop court.');
   bool('REQUIRE_SERVER_INSPECTION', true); bool('DB_REQUIRE_SERVER_INSPECTION', true);
   if (process.env.VITE_REQUIRE_SERVER_INSPECTION !== 'true') fail('VITE_REQUIRE_SERVER_INSPECTION=true est requis pour une release clinique.');
+  for (const error of validateSupabaseTarget({ target })) fail(error);
+  if (target === 'staging') required('VERCEL_AUTOMATION_BYPASS_SECRET');
 }
 if (!process.exitCode) console.log(`Configuration release ${target}: OK (valeurs masquees).`);

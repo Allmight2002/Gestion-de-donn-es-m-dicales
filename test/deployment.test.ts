@@ -232,4 +232,38 @@ describe('configuration de deploiement', () => {
     expect(headers.get('referrer-policy')).toBe('no-referrer');
     expect(headers.get('permissions-policy')).toContain('camera=()');
   });
+
+  test('les E2E staging obtiennent un cookie Vercel sans propager le secret aux appels cross-origin', () => {
+    const config = read('playwright.config.ts');
+    const setup = read('e2e/vercel-bypass.setup.ts');
+    const state = read('e2e/vercel-bypass-state.ts');
+
+    expect(config).toContain("globalSetup: './e2e/vercel-bypass.setup.ts'");
+    expect(config).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
+    expect(config).not.toContain('extraHTTPHeaders');
+    expect(setup).toContain("'x-vercel-protection-bypass': secret");
+    expect(setup).toContain("'x-vercel-set-bypass-cookie': 'true'");
+    expect(setup).toContain('await api.storageState');
+    expect(setup).toContain("await api.get('/', { maxRedirects: 0 });");
+    expect(setup).toContain('state.cookies.some');
+    expect(state).toContain('process.env.RUNNER_TEMP ?? tmpdir()');
+  });
+
+  test('la release coordonnee verrouille la cible avant toute ecriture staging', () => {
+    const workflow = read('.github/workflows/coordinated-release.yml');
+    const targetGate = workflow.indexOf('npm run release:env -- --target=staging');
+    const databaseWrite = workflow.indexOf('supabase@$SUPABASE_CLI_VERSION" db push');
+    const storageWrite = workflow.indexOf('npm run supabase:storage');
+    const edgeWrite = workflow.indexOf('supabase@$SUPABASE_CLI_VERSION" secrets set');
+
+    expect(targetGate).toBeGreaterThan(-1);
+    expect(databaseWrite).toBeGreaterThan(targetGate);
+    expect(storageWrite).toBeGreaterThan(targetGate);
+    expect(edgeWrite).toBeGreaterThan(targetGate);
+    expect(workflow).toContain('test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"');
+    expect(workflow).toContain('"CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL"');
+    expect(workflow).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
+    expect(workflow).toContain('--project-ref "$SUPABASE_PROJECT_REF"');
+    expect(workflow).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
+  });
 });
