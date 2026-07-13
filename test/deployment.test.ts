@@ -264,6 +264,7 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('"CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL"');
     expect(workflow).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
     expect(workflow).toContain('--project-ref "$SUPABASE_PROJECT_REF"');
+    expect(workflow).toContain('functions deploy "$fn" --import-map deno.json');
     expect(workflow).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
   });
 });

@@ -23,10 +23,10 @@ l'URL uniquement apres :
 ### Deploy
 
 ```bash
-supabase functions deploy signed-read
-supabase functions deploy finalize-upload
-supabase functions deploy cleanup-upload
-supabase functions deploy generate-export
+supabase functions deploy signed-read --import-map deno.json
+supabase functions deploy finalize-upload --import-map deno.json
+supabase functions deploy cleanup-upload --import-map deno.json
+supabase functions deploy generate-export --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
@@ -120,7 +120,7 @@ Le telechargement reste separe : l'historique passe par `signed-read`, qui journ
 ### Deploy
 
 ```bash
-supabase functions deploy generate-export
+supabase functions deploy generate-export --import-map deno.json
 ```
 
 La fonction utilise les memes secrets que `signed-read` : `SUPABASE_URL`, `SUPABASE_ANON_KEY` et
@@ -142,7 +142,7 @@ documentaire est encore sur le meme `inspection_run_id`.
 ### Deploy
 
 ```bash
-supabase functions deploy reconcile-quarantine
+supabase functions deploy reconcile-quarantine --import-map deno.json
 ```
 
 Elle utilise les memes secrets Supabase que les autres fonctions Edge.
@@ -226,12 +226,12 @@ En production, le service antivirus doit etre traite comme une dependance de sec
 ### Deploy Edge + frontend
 
 ```bash
-supabase functions deploy signed-read
-supabase functions deploy inspect-upload
-supabase functions deploy finalize-upload
-supabase functions deploy cleanup-upload
-supabase functions deploy generate-export
-supabase functions deploy reconcile-quarantine
+supabase functions deploy signed-read --import-map deno.json
+supabase functions deploy inspect-upload --import-map deno.json
+supabase functions deploy finalize-upload --import-map deno.json
+supabase functions deploy cleanup-upload --import-map deno.json
+supabase functions deploy generate-export --import-map deno.json
+supabase functions deploy reconcile-quarantine --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
