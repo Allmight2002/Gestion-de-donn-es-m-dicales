@@ -52,8 +52,10 @@ jobs:
       - run: npm run edge:fmt && npm run edge:lint && npm run edge:check && npm run edge:test
       - name: Build artifact (frontend is not deployed here)
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Ce build de validation n'est jamais deploye. Des valeurs publiques et
+          # deterministes evitent d'ouvrir les secrets d'environnement avant les gates cloud.
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
           RELEASE_TARGET: ${{ inputs.target }}
