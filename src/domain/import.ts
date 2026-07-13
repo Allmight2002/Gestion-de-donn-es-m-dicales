@@ -37,6 +37,13 @@ export interface ImportReport {
   error_count: number;
   /** §7.8 : lignes IGNOREES car deja importees avec succes par un lot anterieur (idempotence). */
   already_imported?: number;
+  /** Resultat de la requete courante pour un import par lots reprenable. */
+  newly_imported?: number;
+  already_processed?: number;
+  rejected?: number;
+  /** Compteurs autoritatifs du lot, relus depuis le serveur. */
+  server_row_count?: number;
+  server_error_count?: number;
   errors: { row: number; patient_code: string; message: string }[];
 }
 
