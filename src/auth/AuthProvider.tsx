@@ -10,7 +10,12 @@ import {
 } from 'react';
 import type { AuthBackend } from './backend';
 import { supabaseBackend } from '../lib/supabaseBackend';
-import { setOfflineUser, clearOfflineSnapshots, purgeExpiredSnapshots } from '../data/offline';
+import {
+  initializeOfflineForUser,
+  purgeAllOfflineData,
+  setOfflineUser,
+  type OfflineInitializationReport,
+} from '../data/offline';
 import { clearDraftsForCurrentUser, purgeExpiredDrafts } from '../data/drafts';
 import type { AuthStatus, Profile, SessionUser } from './types';
 
@@ -32,9 +37,10 @@ interface Props {
   children: ReactNode;
   /** Injectable pour les tests ; defaut = backend Supabase reel. */
   backend?: AuthBackend;
+  initializeOffline?: (userId: string) => Promise<OfflineInitializationReport>;
 }
 
-export function AuthProvider({ children, backend = supabaseBackend }: Props) {
+export function AuthProvider({ children, backend = supabaseBackend, initializeOffline = initializeOfflineForUser }: Props) {
   const [status, setStatus] = useState<AuthStatus>(backend.configured ? 'loading' : 'unconfigured');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -45,6 +51,7 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
   const currentProfile = useRef<Profile | null>(null);
   const profileRequest = useRef<{ userId: string; promise: Promise<Profile | null> } | null>(null);
   const authGeneration = useRef(0);
+  const signOutInProgress = useRef(false);
 
   const applyUser = useCallback(
     async (nextUser: SessionUser | null) => {
@@ -55,7 +62,10 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         // §5.9 : on efface les instantanes de l'utilisateur COURANT AVANT de le remettre a null
         // (sinon on effacerait ceux du compte « null », pas les siens).
         clearDraftsForCurrentUser();
-        void clearOfflineSnapshots();
+        if (!signOutInProgress.current) {
+          const purge = await purgeAllOfflineData();
+          if (purge.errors.length) setError(`Purge locale incomplete: ${purge.errors.join('; ')}`);
+        }
         setOfflineUser(null);
         currentUserId.current = null;
         currentProfile.current = null;
@@ -66,7 +76,9 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         setStatus('signed_out');
         return;
       }
-      setOfflineUser(nextUser.id); // (re)cible l'utilisateur courant a la connexion / restauration
+      const offlineInit = await initializeOffline(nextUser.id);
+      if (offlineInit.errors.length) setError(`Purge locale incomplete: ${offlineInit.errors.join('; ')}`);
+      else setError(null);
       if (currentUserId.current === nextUser.id && currentProfile.current) return;
       try {
         let req = profileRequest.current;
@@ -93,12 +105,11 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         setStatus('signed_in');
       }
     },
-    [backend],
+    [backend, initializeOffline],
   );
 
   useEffect(() => {
     mounted.current = true;
-    void purgeExpiredSnapshots(); // §5.6 : menage des instantanes expires au demarrage
     purgeExpiredDrafts(); // Brouillons locaux ephemeres : purge au demarrage
     if (!backend.configured) {
       setStatus('unconfigured');
@@ -131,14 +142,20 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   const signOut = useCallback(async () => {
     authGeneration.current += 1;
+    signOutInProgress.current = true;
     clearDraftsForCurrentUser();
-    void clearOfflineSnapshots();
-    await backend.signOut();
+    const purge = await purgeAllOfflineData();
+    if (purge.errors.length) setError(`Purge locale incomplete: ${purge.errors.join('; ')}`);
     setOfflineUser(null);
-    authGeneration.current += 1;
     currentUserId.current = null;
     currentProfile.current = null;
     profileRequest.current = null;
+    try {
+      await backend.signOut();
+    } finally {
+      signOutInProgress.current = false;
+    }
+    authGeneration.current += 1;
     if (!mounted.current) return;
     setUser(null);
     setProfile(null);

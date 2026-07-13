@@ -10,7 +10,7 @@ import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SkeletonList } from '../../components/Skeleton';
 import {
-  downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
+  downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
 } from '../../data/offline';
 
@@ -108,6 +108,10 @@ export function BaseHome() {
   // Telecharge l'instantane analytique de la base pour consultation hors-ligne.
   const doDownloadSnapshot = useCallback(async () => {
     if (!id) return;
+    if (!isOfflineEnabled()) {
+      setError('Mode hors-ligne desactive par la politique de securite de cet environnement.');
+      return;
+    }
     setSaving(true);
     try {
       const src: SnapshotSource = {

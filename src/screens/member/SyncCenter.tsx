@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { usePatientRepository } from '../../data/RepositoryProvider';
 import {
-  flushOutbox, offlineCache, resolveKeepMine, resolveKeepServer, useOnline, useOutbox,
+  discardOutboxEntry, flushOutbox, offlineCache, resolveKeepMine, resolveKeepServer,
+  retryOutboxEntry, useOnline, useOutbox,
   type FlushDeps, type FlushReport, type OfflineMeta, type OutboxEntry,
 } from '../../data/offline';
 import { recentClientErrors } from '../../lib/reportError';
@@ -49,7 +50,11 @@ export function SyncCenter() {
   }, [patients]);
 
   const pending = entries.filter((e) => e.state === 'pending');
+  const syncing = entries.filter((e) => e.state === 'syncing');
   const conflicts = entries.filter((e) => e.state === 'conflict');
+  const rejected = entries.filter((e) => e.state === 'rejected');
+  const expired = entries.filter((e) => e.state === 'expired');
+  const unresolvedCount = pending.length + syncing.length + conflicts.length + rejected.length;
 
   return (
     <section className="max-w-3xl space-y-6">
@@ -65,7 +70,7 @@ export function SyncCenter() {
           </div>
           <div className="card p-3">
             <p className="text-xs text-slate-500">{t('status.pending_writes')}</p>
-            <p className="text-sm font-medium text-slate-700">{pending.length}{conflicts.length > 0 ? ` · ${conflicts.length} ${t('sync.conflicts').toLowerCase()}` : ''}</p>
+            <p className="text-sm font-medium text-slate-700">{unresolvedCount}</p>
           </div>
           <div className="card p-3">
             <p className="text-xs text-slate-500">{t('status.offline_bases')}</p>
@@ -146,27 +151,90 @@ export function SyncCenter() {
         </div>
       )}
 
-      {pending.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700">{t('sync.pending')} ({pending.length})</h2>
-          {pending.map((e) => (
-            <div key={e.id} className="card p-4 text-sm">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="font-medium text-slate-700">{t('sync.encounter_edit')}</span>
-                <button
-                  onClick={() => navigate(`/bases/${e.baseId}/patients/${e.patientId}`)}
-                  className="text-xs text-teal-700 hover:underline"
-                >
-                  {t('sync.view_patient')}
-                </button>
-              </div>
-              <pre className="overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-600">{JSON.stringify(e.data, null, 2)}</pre>
-              {e.reason && <p className="mt-1 text-xs italic text-slate-400">« {e.reason} »</p>}
-            </div>
+      {([
+        ['pending', t('sync.pending'), pending],
+        ['syncing', t('sync.syncing'), syncing],
+        ['rejected', t('sync.rejected'), rejected],
+        ['expired', t('sync.expired'), expired],
+      ] as const).map(([state, label, stateEntries]) => stateEntries.length > 0 && (
+        <div key={state} className="space-y-3">
+          <h2 className={`text-sm font-semibold ${state === 'rejected' ? 'text-red-700' : 'text-slate-700'}`}>{label} ({stateEntries.length})</h2>
+          {stateEntries.map((entry) => (
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              onView={() => navigate(`/bases/${entry.baseId}/patients/${entry.patientId}`)}
+              onRetry={async () => { await retryOutboxEntry(entry.id); await sync(); }}
+              onError={setError}
+            />
           ))}
         </div>
-      )}
+      ))}
     </section>
+  );
+}
+
+async function copyEntry(entry: OutboxEntry): Promise<void> {
+  if (!navigator.clipboard) throw new Error('Presse-papiers indisponible');
+  await navigator.clipboard.writeText(JSON.stringify(entry, null, 2));
+}
+
+function EntryDetails({ entry }: { entry: OutboxEntry }) {
+  const { t } = useI18n();
+  const stateLabel = entry.state === 'pending' ? t('sync.pending')
+    : entry.state === 'syncing' ? t('sync.syncing')
+      : entry.state === 'conflict' ? t('sync.conflicts')
+        : entry.state === 'rejected' ? t('sync.rejected')
+          : entry.state === 'expired' ? t('sync.expired') : t('sync.synced');
+  return (
+    <>
+      <dl className="mb-2 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
+        <div><dt className="inline font-semibold">{t('sync.state')} : </dt><dd className="inline">{stateLabel}</dd></div>
+        <div><dt className="inline font-semibold">{t('sync.created_at')} : </dt><dd className="inline">{new Date(entry.createdAt).toLocaleString()}</dd></div>
+        <div><dt className="inline font-semibold">Ressource : </dt><dd className="inline font-mono">{entry.encounterId}</dd></div>
+        <div><dt className="inline font-semibold">{t('sync.attempts')} : </dt><dd className="inline">{entry.attemptCount ?? 0}</dd></div>
+        <div><dt className="inline font-semibold">{t('offline.expires_at')} : </dt><dd className="inline">{new Date(entry.expiresAt).toLocaleString()}</dd></div>
+      </dl>
+      {entry.lastError && <p role="alert" className="mb-2 text-xs text-red-700"><span className="font-semibold">{t('sync.last_error')} :</span> {entry.lastError}</p>}
+    </>
+  );
+}
+
+function EntryCard({
+  entry, onView, onRetry, onError,
+}: {
+  entry: OutboxEntry;
+  onView: () => void;
+  onRetry: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const run = async (action: () => Promise<void>, successMessage = '') => {
+    setBusy(true);
+    try { await action(); onError(successMessage); }
+    catch (e) { onError(errorMessage(e, t('common.error'))); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className={`card p-4 text-sm ${entry.state === 'rejected' ? 'border-red-200' : ''}`}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="font-medium text-slate-700">{t('sync.encounter_edit')}</span>
+        <button type="button" onClick={onView} className="text-xs text-teal-700 hover:underline">{t('sync.view_patient')}</button>
+      </div>
+      <EntryDetails entry={entry} />
+      <pre className="overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-600">{JSON.stringify(entry.data, null, 2)}</pre>
+      {entry.reason && <p className="mt-1 text-xs italic text-slate-400">« {entry.reason} »</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(entry.state === 'pending' || entry.state === 'rejected') && (
+          <button disabled={busy} type="button" onClick={() => void run(onRetry)} className="btn-secondary">{t('sync.retry')}</button>
+        )}
+        <button disabled={busy} type="button" onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>
+        {entry.state !== 'syncing' && (
+          <button disabled={busy} type="button" onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700">{t('sync.delete')}</button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -182,6 +250,7 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
 
   return (
     <div className="card border-red-200 p-4 text-sm">
+      <EntryDetails entry={entry} />
       <p className="mb-2 text-xs text-red-700">{t('sync.conflict_explain')}</p>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -200,6 +269,8 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
         <button disabled={busy} onClick={() => void run(() => resolveKeepServer(entry.id))} className="btn-secondary">
           {t('sync.keep_server')}
         </button>
+        <button disabled={busy} onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>
+        <button disabled={busy} onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700">{t('sync.delete')}</button>
       </div>
     </div>
   );

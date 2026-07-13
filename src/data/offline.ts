@@ -61,6 +61,7 @@ export interface OfflineRule {
 }
 
 export interface OfflineSnapshot {
+  dataType: 'analytic_snapshot';
   baseId: string;
   baseName: string;
   templateVersionId: string | null;
@@ -86,7 +87,18 @@ export interface OfflineMeta {
   patientCount: number;
 }
 
-export const OFFLINE_TTL_MS = 7 * 24 * 3600 * 1000; // 7 jours
+/** Production: aucune donnee clinique reelle hors-ligne. Exception demo explicite uniquement. */
+export const isOfflineEnabled = (): boolean =>
+  import.meta.env.VITE_OFFLINE_MODE === 'demo' && import.meta.env.VITE_OFFLINE_ADMIN_ACK === 'true';
+export const offlinePolicy = {
+  get enabled() { return isOfflineEnabled(); },
+  get mode() { return import.meta.env.VITE_OFFLINE_MODE === 'demo' ? 'demo' : 'disabled'; },
+} as const;
+const assertOfflineEnabled = (): void => {
+  if (!isOfflineEnabled()) throw new Error('Le mode hors-ligne est desactive par la politique produit.');
+};
+export const OFFLINE_TTL_MS = 24 * 3600 * 1000;
+export const OUTBOX_TTL_MS = 24 * 3600 * 1000;
 // §5.8 : au-dela de ce nombre de patients, l'instantane (un seul gros bloc JSON) devient lourd
 // (memoire, quota IndexedDB, delai) -> on demande confirmation avant de le telecharger.
 export const MAX_OFFLINE_PATIENTS = 2000;
@@ -123,6 +135,7 @@ export function buildSnapshot(
   rulesByVersion?: Record<string, OfflineRule[]>,
 ): OfflineSnapshot {
   return {
+    dataType: 'analytic_snapshot',
     baseId: base.id,
     baseName: base.name,
     templateVersionId: base.templateVersionId,
@@ -161,12 +174,14 @@ const DB_NAME = 'meddata-offline';
 const DB_VERSION = 3; // v3 : cle snapshot composite `ownerUserId::baseId` (§5.9)
 const STORE = 'snapshots';
 const OUTBOX = 'outbox';
+// Migration securite: declenche la reevaluation/purge des enveloppes legacy.
+const SECURITY_DB_VERSION = DB_VERSION + 1;
 
 function openDb(): Promise<IDBDatabase> {
   // IndexedDB peut etre absent (SSR, vieux navigateur, environnement de test sans polyfill).
   if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB indisponible'));
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = indexedDB.open(DB_NAME, SECURITY_DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       // §5.9 : la cle du snapshot passe de `baseId` a `ownerUserId::baseId`. Changer un keyPath
@@ -206,17 +221,24 @@ export interface OfflineCache {
 
 export const offlineCache: OfflineCache = {
   // L'enregistreur est le proprietaire : on estampille l'utilisateur + on pose la cle composite.
-  async save(snap) { await tx(STORE, 'readwrite', (s) => s.put({ ...snap, ownerUserId: currentUser, key: snapKey(snap.baseId) })); },
+  async save(snap) {
+    assertOfflineEnabled();
+    if (!currentUser) throw new Error('Aucun proprietaire de cache hors-ligne actif.');
+    await tx(STORE, 'readwrite', (s) => s.put({ ...snap, dataType: 'analytic_snapshot', ownerUserId: currentUser, key: snapKey(snap.baseId) }));
+  },
   async get(baseId) {
+    if (!isOfflineEnabled() || !currentUser) return null;
     const snap = await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(snapKey(baseId)));
+    if (snap && snap.dataType !== 'analytic_snapshot') return null;
     if (!snap || !ownedByCurrent(snap)) return null;            // §5.5 : pas de lecture inter-comptes
     if (isExpired(snap)) { void offlineCache.remove(baseId); return null; } // §5.6 : TTL applique
     return snap;
   },
   async list() {
+    if (!isOfflineEnabled() || !currentUser) return [];
     const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent);
     for (const s of mine) if (isExpired(s)) void offlineCache.remove(s.baseId); // purge a la lecture
-    return mine.filter((s) => !isExpired(s)).map(snapshotMeta);
+    return mine.filter((s) => s.dataType === 'analytic_snapshot' && !isExpired(s)).map(snapshotMeta);
   },
   async remove(baseId) { await tx(STORE, 'readwrite', (s) => s.delete(snapKey(baseId))); },
 };
@@ -226,10 +248,8 @@ const deleteByKey = (key: string) => tx(STORE, 'readwrite', (s) => s.delete(key)
 
 // §5.6 — purge des instantanes EXPIRES (TOUS comptes), pour le menage au demarrage.
 export async function purgeExpiredSnapshots(now = Date.now()): Promise<void> {
-  try {
-    const all = await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll());
-    for (const s of all) if (isExpired(s, now) && s.key) await deleteByKey(s.key);
-  } catch { /* IndexedDB indisponible : rien a purger */ }
+  const all = await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll());
+  for (const s of all) if ((s.dataType !== 'analytic_snapshot' || isExpired(s, now)) && s.key) await deleteByKey(s.key);
 }
 
 // §5.6/§5.9 — a la DECONNEXION, vide UNIQUEMENT les instantanes de l'utilisateur COURANT (pas ceux
@@ -252,6 +272,7 @@ export async function clearOfflineSnapshots(userId: string | null = currentUser)
 // un verrou optimiste (baseUpdatedAt) -> aucune voie d'ecriture parallele, integrite preservee.
 // =====================================================================================
 export interface OutboxEntry {
+  dataType: 'analytic_outbox';
   id: string;
   baseId: string;
   patientId: string;
@@ -261,7 +282,12 @@ export interface OutboxEntry {
   validationStatus: string;          // statut cible de la rencontre
   baseUpdatedAt: string | null;      // jeton optimiste = version vue hors-ligne
   createdAt: number;
-  state: 'pending' | 'conflict';
+  expiresAt: number;
+  state: 'pending' | 'syncing' | 'succeeded' | 'rejected' | 'expired' | 'conflict';
+  attemptCount?: number;
+  lastAttemptAt?: number;
+  syncingStartedAt?: number;
+  lastError?: string;
   serverData?: Record<string, unknown>; // valeur serveur (renseignee en cas de conflit, pour l'UI)
   /** §5.5 : auteur de l'ecriture en attente (cloisonnement sur poste partage). */
   ownerUserId?: string | null;
@@ -279,7 +305,7 @@ export const outbox = {
   async put(entry: OutboxEntry) { await tx(OUTBOX, 'readwrite', (s) => s.put(entry)); emitOutboxChange(); },
   async list(baseId?: string): Promise<OutboxEntry[]> {
     const all = (await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll())).filter(ownedByCurrent); // §5.5
-    return (baseId ? all.filter((e) => e.baseId === baseId) : all).sort((a, b) => a.createdAt - b.createdAt);
+    return (baseId ? all.filter((e) => e.baseId === baseId) : all).filter((e) => e.dataType === 'analytic_outbox').sort((a, b) => a.createdAt - b.createdAt);
   },
   async get(id: string): Promise<OutboxEntry | null> {
     const e = await tx<OutboxEntry | undefined>(OUTBOX, 'readonly', (s) => s.get(id));
@@ -313,7 +339,13 @@ export async function enqueueEncounterUpdate(input: {
   baseId: string; patientId: string; encounterId: string;
   data: Record<string, unknown>; reason: string; validationStatus: string; baseUpdatedAt: string | null;
 }): Promise<OutboxEntry> {
-  const entry: OutboxEntry = { id: newId(), createdAt: Date.now(), state: 'pending', ownerUserId: currentUser, ...input };
+  assertOfflineEnabled();
+  if (!currentUser) throw new Error('Aucun proprietaire de cache hors-ligne actif.');
+  const createdAt = Date.now();
+  const entry: OutboxEntry = {
+    id: newId(), dataType: 'analytic_outbox', createdAt, expiresAt: createdAt + OUTBOX_TTL_MS,
+    state: 'pending', attemptCount: 0, ownerUserId: currentUser, ...input,
+  };
   await outbox.put(entry);
   await patchCachedEncounter(input.baseId, input.encounterId, (e) => ({
     ...e, data: input.data, validationStatus: input.validationStatus, pending: true,
@@ -327,32 +359,176 @@ export interface FlushDeps {
 }
 export interface FlushReport { synced: number; conflicts: number; failed: number; errors: string[]; }
 
-const isConflict = (m: string) => /CONFLIT_VERSION/i.test(m);
+type SyncErrorKind = 'conflict' | 'rejected' | 'transient';
+const classifySyncError = (error: unknown): SyncErrorKind => {
+  const e = error as { message?: string; code?: string; status?: number; statusCode?: number } | null;
+  const message = e?.message ?? String(error);
+  const status = e?.status ?? e?.statusCode;
+  if (/CONFLIT_VERSION/i.test(message)) return 'conflict';
+  if (status === 401 || status === 403 || e?.code === '42501' || /permission denied|not authorized|unauthorized|forbidden/i.test(message)) return 'rejected';
+  if (status === 400 || status === 404 || status === 409 || status === 422 || /invalid payload|validation failed|resource .*not found|ressource .*supprimee/i.test(message)) return 'rejected';
+  return 'transient';
+};
+
+const activeSyncIds = new Set<string>();
+
+/** Reprend uniquement les leases qui ne correspondent a aucune operation active dans ce runtime. */
+export async function recoverAbandonedSyncing(baseId?: string): Promise<number> {
+  let recovered = 0;
+  for (const entry of await outbox.list(baseId)) {
+    if (entry.state === 'syncing' && !activeSyncIds.has(entry.id)) {
+      await outbox.put({ ...entry, state: 'pending', syncingStartedAt: undefined });
+      recovered++;
+    }
+  }
+  return recovered;
+}
+
+export async function retryOutboxEntry(entryId: string): Promise<void> {
+  const entry = await outbox.get(entryId);
+  if (!entry) return;
+  await outbox.put({ ...entry, state: 'pending', syncingStartedAt: undefined });
+}
+
+export async function discardOutboxEntry(entryId: string): Promise<void> {
+  const entry = await outbox.get(entryId);
+  if (!entry) return;
+  await outbox.remove(entryId);
+  await patchCachedEncounter(entry.baseId, entry.encounterId, (encounter) => ({ ...encounter, pending: false }));
+}
 
 // Rejoue les entrees "pending" via la RPC validee. Conflit -> entree marquee + valeur serveur
 // memorisee (a resoudre) ; autre erreur -> conservee et rapportee.
 export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<FlushReport> {
+  assertOfflineEnabled();
+  await recoverAbandonedSyncing(baseId);
   const rep: FlushReport = { synced: 0, conflicts: 0, failed: 0, errors: [] };
   for (const e of (await outbox.list(baseId)).filter((x) => x.state === 'pending')) {
+    if (e.expiresAt <= Date.now() || e.ownerUserId !== currentUser) {
+      await outbox.put({ ...e, state: 'expired' });
+      rep.failed++; rep.errors.push(`Operation hors-ligne expiree: ${e.id}`);
+      continue;
+    }
+    if (activeSyncIds.has(e.id)) continue;
+    const attemptCount = (e.attemptCount ?? 0) + 1;
+    const lastAttemptAt = Date.now();
     try {
+      activeSyncIds.add(e.id);
+      await outbox.put({ ...e, state: 'syncing', attemptCount, lastAttemptAt, syncingStartedAt: lastAttemptAt, lastError: undefined });
       await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, e.baseUpdatedAt);
+      await outbox.put({ ...e, state: 'succeeded', attemptCount, lastAttemptAt, syncingStartedAt: undefined, lastError: undefined });
       await outbox.remove(e.id);
       const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
       await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
       rep.synced++;
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
-      if (isConflict(m)) {
+      const kind = classifySyncError(err);
+      if (kind === 'conflict') {
         const server = await deps.getEncounter(e.encounterId).catch(() => null);
-        await outbox.put({ ...e, state: 'conflict', serverData: server?.data });
+        await outbox.put({ ...e, state: 'conflict', attemptCount, lastAttemptAt, syncingStartedAt: undefined, lastError: m, serverData: server?.data });
         rep.conflicts++;
+      } else if (kind === 'rejected') {
+        await outbox.put({ ...e, state: 'rejected', attemptCount, lastAttemptAt, syncingStartedAt: undefined, lastError: m });
+        rep.failed++;
+        rep.errors.push(m);
       } else {
+        await outbox.put({ ...e, state: 'pending', attemptCount, lastAttemptAt, syncingStartedAt: undefined, lastError: m });
         rep.failed++;
         rep.errors.push(m);
       }
+    } finally {
+      activeSyncIds.delete(e.id);
     }
   }
   return rep;
+}
+
+/** Anciennes entrees ou entrees expirees: jamais rejouees automatiquement. */
+export async function purgeExpiredOutbox(now = Date.now()): Promise<number> {
+  const all = await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll());
+  let removed = 0;
+  for (const entry of all) {
+    if (entry.dataType !== 'analytic_outbox' || entry.state === 'succeeded' || !entry.ownerUserId || !Number.isFinite(entry.createdAt) || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
+      await outbox.remove(entry.id); removed++;
+    }
+  }
+  return removed;
+}
+
+export interface OfflinePurgeReport { indexedDb: boolean; localStorage: boolean; cacheStorage: boolean; serviceWorkers: boolean; errors: string[]; }
+
+const OFFLINE_OWNER_KEY = 'meddata:offline-cache-owner';
+
+/** Effacement verificable des donnees applicatives locales, sans toucher a la session d'authentification. */
+export async function purgeAllOfflineData(): Promise<OfflinePurgeReport> {
+  const report: OfflinePurgeReport = { indexedDb: false, localStorage: false, cacheStorage: false, serviceWorkers: false, errors: [] };
+  try {
+    if (typeof indexedDB !== 'undefined') await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(DB_NAME);
+      request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('IndexedDB bloquee par un autre onglet'));
+    });
+    report.indexedDb = true;
+  } catch (e) { report.errors.push(`IndexedDB: ${String(e)}`); }
+  try {
+    if (typeof localStorage !== 'undefined') for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i) ?? '';
+      if (key.startsWith('meddata:') || key.startsWith('import-resume:') || key.startsWith('upload-operation:')) localStorage.removeItem(key);
+    }
+    report.localStorage = true;
+  } catch (e) { report.errors.push(`localStorage: ${String(e)}`); }
+  try { if ('caches' in globalThis) for (const key of await caches.keys()) await caches.delete(key); report.cacheStorage = true; } catch (e) { report.errors.push(`Cache Storage: ${String(e)}`); }
+  try { if (typeof navigator !== 'undefined' && navigator.serviceWorker) for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister(); report.serviceWorkers = true; } catch (e) { report.errors.push(`Service worker: ${String(e)}`); }
+  return report;
+}
+
+export interface OfflineInitializationReport {
+  previousOwner: string | null;
+  ownerChanged: boolean;
+  recoveredSyncing: number;
+  errors: string[];
+}
+
+export interface OfflineInitializationDeps {
+  purgeAll?: () => Promise<OfflinePurgeReport>;
+}
+
+/** Point unique d'initialisation: migration, TTL, proprietaire persistant, reprise de l'outbox. */
+export async function initializeOfflineForUser(
+  userId: string,
+  deps: OfflineInitializationDeps = {},
+): Promise<OfflineInitializationReport> {
+  const report: OfflineInitializationReport = { previousOwner: null, ownerChanged: false, recoveredSyncing: 0, errors: [] };
+  try { const db = await openDb(); db.close(); } catch (e) { report.errors.push(`IndexedDB: ${String(e)}`); }
+  try { await purgeExpiredSnapshots(); } catch (e) { report.errors.push(`Expiration snapshots: ${String(e)}`); }
+  try { await purgeExpiredOutbox(); } catch (e) { report.errors.push(`Expiration outbox: ${String(e)}`); }
+  try { report.previousOwner = typeof localStorage === 'undefined' ? null : localStorage.getItem(OFFLINE_OWNER_KEY); }
+  catch (e) { report.errors.push(`Lecture proprietaire: ${String(e)}`); }
+
+  report.ownerChanged = Boolean(report.previousOwner && report.previousOwner !== userId);
+  if (report.ownerChanged) {
+    const purge = await (deps.purgeAll ?? purgeAllOfflineData)();
+    report.errors.push(...purge.errors);
+  }
+  if (report.errors.length) {
+    try {
+      if (report.previousOwner) localStorage.setItem(OFFLINE_OWNER_KEY, report.previousOwner);
+    } catch (e) {
+      report.errors.push(`Conservation proprietaire: ${String(e)}`);
+    }
+    setOfflineUser(null);
+    return report;
+  }
+  try {
+    localStorage.setItem(OFFLINE_OWNER_KEY, userId);
+    setOfflineUser(userId);
+    report.recoveredSyncing = await recoverAbandonedSyncing();
+  } catch (e) {
+    setOfflineUser(null);
+    report.errors.push(`Initialisation hors-ligne: ${String(e)}`);
+  }
+  return report;
 }
 
 // Resolution « garder ma version » : reapplique en FORCANT (expected=null) puis nettoie.
@@ -424,6 +600,7 @@ function isRpcMissing(e: unknown): boolean {
 }
 
 export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, now = Date.now()): Promise<OfflineMeta> {
+  assertOfflineEnabled();
   // §8 — un seul aller-retour si la source le permet (RPC download_base_snapshot). Si la RPC n'est
   // pas encore deployee sur le cloud, on retombe sur le repli N+1 : la migration reste une simple
   // OPTIMISATION, jamais une dependance bloquante.

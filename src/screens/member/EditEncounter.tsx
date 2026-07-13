@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
 import type { TemplateField, ValidationRule } from '../../data/types';
-import { enqueueEncounterUpdate, offlineCache, useOnline } from '../../data/offline';
+import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import { validateValues, evaluateRules, isMissing, missingCodeOf } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
@@ -127,6 +127,7 @@ export function EditEncounter() {
     setBusy(true);
     try {
       if (!online) {
+        if (!isOfflineEnabled()) throw new Error('Mode hors-ligne desactive par la politique de securite');
         // HORS-LIGNE : on met la correction en file d'attente (synchro au retour du reseau).
         await enqueueEncounterUpdate({
           baseId, patientId, encounterId,
