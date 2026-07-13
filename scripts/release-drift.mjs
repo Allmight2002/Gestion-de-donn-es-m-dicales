@@ -7,6 +7,9 @@ import pg from 'pg';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const required = ['SUPABASE_DB_URL', 'SUPABASE_ACCESS_TOKEN', 'SUPABASE_PROJECT_REF'];
 for (const key of required) if (!process.env[key]) { console.error(`Drift non verifiable: ${key} manquant.`); process.exit(1); }
+const supabaseCliVersion = process.env.SUPABASE_CLI_VERSION ?? '2.109.1';
+if (!/^\d+\.\d+\.\d+$/.test(supabaseCliVersion)) { console.error('Drift non verifiable: SUPABASE_CLI_VERSION invalide.'); process.exit(1); }
+if (!/^[a-z0-9]{20}$/i.test(process.env.SUPABASE_PROJECT_REF)) { console.error('Drift non verifiable: SUPABASE_PROJECT_REF invalide.'); process.exit(1); }
 const migrations = readdirSync(join(root, 'supabase/migrations')).filter((n) => n.endsWith('.sql')).map((n) => n.slice(0, 14)).sort();
 const functions = readdirSync(join(root, 'supabase/functions'), { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_')
@@ -27,7 +30,7 @@ try {
   console.log(`Preuve Storage requise: SHA-256 depot=${storageSha}; l'API Postgres ne conserve pas le checksum de storage.sql. Verifiez le rapport d'application joint a cette release.`);
 } catch (error) { console.error(`Drift detecte: ${error.message}`); process.exitCode = 1; } finally { await client.end().catch(() => {}); }
 // Le CLI est utilise apres authentification pour obtenir l'inventaire effectivement deploye.
-const command = `npx supabase functions list --project-ref ${process.env.SUPABASE_PROJECT_REF}`;
+const command = `npx --yes supabase@${supabaseCliVersion} functions list --project-ref ${process.env.SUPABASE_PROJECT_REF}`;
 const { execSync } = await import('node:child_process');
 try {
   const output = execSync(command, { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }).toString();

@@ -3,6 +3,11 @@
 La procedure executable est `.github/workflows/coordinated-release.yml`. Elle est manuelle
 (`workflow_dispatch`) : aucun de ses jobs ne deploie un cloud depuis ce depot local.
 
+GitHub exige qu'un workflow `workflow_dispatch` existe sur la branche par defaut. Pour conserver
+`main` comme branche de production sans y fusionner une release avant validation staging, la
+branche par defaut du depot est `develop`. Ce reglage GitHub est independant de la branche de
+production Vercel, qui reste `main`.
+
 ## Avant et maintenant
 
 Avant, `.github/workflows/ci.yml` executait tests et build, tandis que migrations, Storage,
@@ -42,7 +47,8 @@ etre prefixe `VITE_`.
 3. Il découvre et déploie toutes les fonctions déclarées dans `supabase/functions/`
    (dont `finalize-upload`), puis exécute `env:check:cloud`, `release:drift` et E2E.
 4. `frontend-staging` reconstruit le frontend depuis le SHA fige (`npm ci` depuis le lockfile +
-   memes variables `VITE_*` forcees) puis deploie Vercel, seulement apres ces gates : aucun
+   memes variables `VITE_*` forcees), produit l'artefact Vercel avec `vercel pull` puis
+   `vercel build`, et le deploie avec `--prebuilt` seulement apres ces gates : aucun
    artefact `dist/` n'est promu entre jobs, c'est le meme SHA immuable qui garantit l'egalite.
 5. Pour production, un approbateur de l'environnement GitHub protege confirme le rapport staging
    du meme SHA/tag et renseigne son `staging_run_id`; le workflow exige un job
@@ -51,6 +57,9 @@ etre prefixe `VITE_`.
 Tout echec stoppe les jobs dependants et bloque le frontend. Configurer les reviewers obligatoires
 pour `production`, les protections de branche exigeant CI, et desactiver toute auto-promotion
 Vercel de `main`; ces reglages distants ne sont pas verifiables depuis ce depot.
+
+Les CLI de release sont figees dans le workflow (`supabase@2.109.1`, `vercel@55.0.0`) afin qu'un
+nouveau `latest` publie entre deux releases ne modifie pas silencieusement la procedure.
 
 ## Drift, rapports et limites
 

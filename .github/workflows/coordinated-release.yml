@@ -21,6 +21,10 @@ permissions:
   contents: read
   actions: read
 
+env:
+  SUPABASE_CLI_VERSION: '2.109.1'
+  VERCEL_CLI_VERSION: '55.0.0'
+
 concurrency:
   group: coordinated-release-${{ inputs.target }}
   cancel-in-progress: false
@@ -37,9 +41,15 @@ jobs:
       - id: ref
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: npm }
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.9.2'
       - run: npm ci
       - run: npm run typecheck && npm run lint && npm test && npm run db:verify && npm run release:edge:check
+      - run: npm run edge:fmt && npm run edge:lint && npm run edge:check && npm run edge:test
       - name: Build artifact (frontend is not deployed here)
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -61,9 +71,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { ref: ${{ needs.validate.outputs.sha }} }
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: npm }
+        with:
+          node-version: '20'
+          cache: npm
       - run: npm ci
       - name: Validate secrets and target
         env: &staging_env
@@ -90,10 +103,10 @@ jobs:
         run: npm run release:env -- --target=staging
       - name: Migrations then Storage
         env: *staging_env
-        run: npx supabase db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
+        run: npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
       - name: Deploy all Edge Functions
         env: *staging_env
-        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done
+        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done
       - name: Verify backend, scanner and drift
         env: *staging_env
         run: npm run env:check:cloud && npm run release:drift && npm run e2e:staging
@@ -107,9 +120,12 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: ${{ needs.validate.outputs.sha }} }
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: npm }
+        with:
+          node-version: '20'
+          cache: npm
       - run: npm ci
       - id: deploy
         name: Promote frontend only after backend gates
@@ -121,7 +137,13 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npm run release:env -- --target=pr && npm run build && URL=$(npx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN") && curl --fail --silent --show-error --head "$URL" && echo "url=$URL" >> "$GITHUB_OUTPUT"
+        run: |
+          npm run release:env -- --target=pr
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=preview --token "$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" build --token "$VERCEL_TOKEN"
+          URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --yes --token "$VERCEL_TOKEN")
+          curl --fail --silent --show-error --head "$URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
 
   browser-e2e-staging:
     if: inputs.target == 'staging'
@@ -131,9 +153,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with: { ref: ${{ needs.validate.outputs.sha }} }
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: npm }
+        with:
+          node-version: '20'
+          cache: npm
       - run: npm ci
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -173,9 +198,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { ref: ${{ needs.validate.outputs.sha }} }
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: npm }
+        with:
+          node-version: '20'
+          cache: npm
       - run: npm ci
       - name: Verify successful staging evidence for this SHA
         uses: actions/github-script@v7
@@ -205,7 +233,7 @@ jobs:
               }
             }
       - name: Backend promotion and cloud verification
-        env: &production_env
+        env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
@@ -220,7 +248,7 @@ jobs:
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run release:env -- --target=production && npx supabase db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done && npm run env:check:cloud && npm run release:drift
+        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; done && npm run env:check:cloud && npm run release:drift
       - name: Promote frontend last
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -230,4 +258,8 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npm run build && URL=$(npx vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN") && curl --fail --silent --show-error --head "$URL"
+        run: |
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token "$VERCEL_TOKEN"
+          URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")
+          curl --fail --silent --show-error --head "$URL"
