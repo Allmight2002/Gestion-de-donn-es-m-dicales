@@ -298,8 +298,6 @@ jobs:
     timeout-minutes: 90
     env:
       LOT13_RUN_PREFIX: LOT13-${{ github.run_id }}
-      LOT13_STATE_FILE: ${{ runner.temp }}/lot13/state.json
-      LOT13_EVIDENCE_DIR: ${{ runner.temp }}/lot13/evidence
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       VITE_USE_SIGNED_READ: 'true'
@@ -345,6 +343,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
           test "$SUPABASE_PROJECT_REF" = "gmsxrniiclrheehhoakn"
+          echo "LOT13_STATE_FILE=$RUNNER_TEMP/lot13/state.json" >> "$GITHUB_ENV"
+          echo "LOT13_EVIDENCE_DIR=$RUNNER_TEMP/lot13/evidence" >> "$GITHUB_ENV"
+          LOT13_STATE_FILE="$RUNNER_TEMP/lot13/state.json"
+          LOT13_EVIDENCE_DIR="$RUNNER_TEMP/lot13/evidence"
           mkdir -p "$LOT13_EVIDENCE_DIR" "$(dirname "$LOT13_STATE_FILE")"
           npm run release:env -- --target=staging
           npm run release:drift > "$LOT13_EVIDENCE_DIR/drift.txt"
