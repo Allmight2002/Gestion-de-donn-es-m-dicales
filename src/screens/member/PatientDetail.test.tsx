@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { PatientDetail } from './PatientDetail';
+import { EditPatient } from './EditPatient';
 import { EditEncounter } from './EditEncounter';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
@@ -44,6 +45,8 @@ const templateRepo = {
 
 const patientView: PatientListItem = {
   id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'curated',
+  version: 7,
+  updatedAt: '2026-07-11T10:00:00.123456Z',
   identity: { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null },
 };
 const encounter: Encounter = { id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'complete', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 } };
@@ -71,6 +74,7 @@ function renderAt(path: string, patients: PatientRepository, audit?: AuditReposi
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} />
+            <Route path="/bases/:id/patients/:patientId/edit" element={<EditPatient />} />
             <Route path="/bases/:id/patients/:patientId/encounters/:encounterId/edit" element={<EditEncounter />} />
           </Routes>
         </MemoryRouter>
@@ -144,5 +148,29 @@ describe('EditEncounter (correction)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
     expect(updateEncounter).toHaveBeenCalledTimes(1);
     expect(updateEncounter.mock.calls[0][3]).toBe('erreur de frappe');
+  });
+});
+
+describe('EditPatient (verrou optimiste)', () => {
+  test('transmet la version chargee et distingue un conflit d une erreur reseau avec rechargement explicite', async () => {
+    const getPatient = vi.fn(async () => patientView);
+    const updatePatientData = vi.fn(async () => {
+      throw new Error('CONFLIT_VERSION : le patient a ete modifie entre-temps');
+    });
+    renderAt('/bases/b1/patients/p1/edit', makePatients({ getPatient, updatePatientData }));
+
+    fireEvent.change(await screen.findByLabelText('Sexe'), { target: { value: 'F' } });
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'correction concurrente' } });
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+
+    expect(updatePatientData).toHaveBeenCalledWith(
+      'p1', expect.objectContaining({ sexe: 'F' }), 'curated', 'correction concurrente',
+      7,
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(/modifie par une autre personne/i);
+    const reload = screen.getByRole('button', { name: /recharger les donnees/i });
+    await userEvent.click(reload);
+    await waitFor(() => expect(getPatient).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /recharger les donnees/i })).not.toBeInTheDocument());
   });
 });

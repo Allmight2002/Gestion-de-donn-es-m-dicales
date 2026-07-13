@@ -185,8 +185,9 @@ export function PatientDetail() {
               onConfirm={async (reason) => {
                 if (!patientId) return;
                 await patients.softDeletePatient(patientId, reason);
-                navigate(`/bases/${baseId}`);
               }}
+              onSuccess={() => navigate(`/bases/${baseId}`)}
+              verifyDeletedAfterError={async () => !!baseId && !!patientId && (await patients.getPatient(baseId, patientId)) === null}
             />
             <button
               onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
@@ -276,7 +277,11 @@ export function PatientDetail() {
                       >
                         {t('encounter.edit')}
                       </button>
-                      <DeleteWithReason onConfirm={async (reason) => { await patients.softDeleteEncounter(e.id, reason); await load(); }} />
+                      <DeleteWithReason
+                        onConfirm={(reason) => patients.softDeleteEncounter(e.id, reason)}
+                        onSuccess={load}
+                        verifyDeletedAfterError={async () => !(await patients.listEncounters(patientId!)).some((current) => current.id === e.id)}
+                      />
                     </span>
                   )}
                 </div>
@@ -330,7 +335,11 @@ export function PatientDetail() {
                         <RetryInspectionButton disabled={busy} onClick={() => void retryAttachmentInspection(a.id)} />
                       )}
                     </div>
-                    <DeleteWithReason onConfirm={async (reason) => { await attachmentsRepo.softDeleteAttachment(a.id, reason); await load(); }} />
+                    <DeleteWithReason
+                      onConfirm={(reason) => attachmentsRepo.softDeleteAttachment(a.id, reason)}
+                      onSuccess={load}
+                      verifyDeletedAfterError={async () => !(await attachmentsRepo.listAttachments(patientId!)).some((current) => current.id === a.id)}
+                    />
                   </figure>
                 );
               })}
