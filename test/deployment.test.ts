@@ -238,12 +238,13 @@ describe('configuration de deploiement', () => {
     const fixture = read('e2e/staging-test.ts');
 
     expect(config).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
-    expect(config).not.toContain('extraHTTPHeaders');
+    expect(config).toContain('extraHTTPHeaders:');
+    expect(config).toContain("{ 'x-vercel-protection-bypass': bypassSecret! }");
     expect(config).not.toContain('globalSetup');
     expect(config).not.toContain('storageState');
     expect(config).toContain("trace: target === 'staging' ? 'off'");
     expect(fixture).toContain('newCDPSession(page)');
-    expect(fixture).toContain('page.setExtraHTTPHeaders({ [BYPASS_HEADER]: secret })');
+    expect(fixture).not.toContain('setExtraHTTPHeaders');
     expect(fixture).toContain("session.on('Fetch.requestPaused'");
     expect(fixture).toContain("urlPattern: '*'");
     expect(fixture).toContain("'Fetch.continueRequest'");
