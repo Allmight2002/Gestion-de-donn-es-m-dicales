@@ -233,28 +233,23 @@ describe('configuration de deploiement', () => {
     expect(headers.get('permissions-policy')).toContain('camera=()');
   });
 
-  test('les E2E staging limitent le bypass Vercel a l origine exacte sans trace reseau', () => {
+  test('les E2E staging utilisent un cookie Vercel ephemere limite au deploiement exact', () => {
     const config = read('playwright.config.ts');
     const fixture = read('e2e/staging-test.ts');
+    const cookieState = read('scripts/vercel-cookie-state.mjs');
 
-    expect(config).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
-    expect(config).toContain('extraHTTPHeaders:');
-    expect(config).toContain("'x-vercel-protection-bypass': bypassSecret!");
-    expect(config).toContain("'x-vercel-set-bypass-cookie': 'true'");
+    expect(config).toContain('E2E_VERCEL_STORAGE_STATE');
+    expect(config).toContain('storageState: vercelStorageState || undefined');
+    expect(config).not.toContain('extraHTTPHeaders:');
+    expect(config).not.toContain('x-vercel-protection-bypass');
     expect(config).not.toContain('globalSetup');
-    expect(config).not.toContain('storageState');
     expect(config).toContain("trace: target === 'staging' ? 'off'");
-    expect(fixture).toContain('newCDPSession(page)');
-    expect(fixture).not.toContain('setExtraHTTPHeaders');
-    expect(fixture).toContain("session.on('Fetch.requestPaused'");
-    expect(fixture).toContain("urlPattern: '*'");
-    expect(fixture).toContain("'Fetch.continueRequest'");
-    expect(fixture).toContain('requestUrlObject?.origin === stagingOrigin');
-    expect(fixture).toContain("VERCEL_CONTROL_ORIGIN = 'https://vercel.com'");
-    expect(fixture).toContain("VERCEL_SSO_PATH = '/sso-api'");
-    expect(fixture).toContain('requestUrlObject.pathname === VERCEL_SSO_PATH');
-    expect(fixture).toContain('STAGING_ONLY_HEADERS.has(name.toLowerCase())');
-    expect(fixture).not.toContain('extraHTTPHeaders');
+    expect(fixture).not.toContain('newCDPSession');
+    expect(fixture).toContain("export { expect, test } from '@playwright/test'");
+    expect(cookieState).toContain("const VERCEL_COOKIE_NAME = '_vercel_jwt'");
+    expect(cookieState).toContain("url.hostname.endsWith('.vercel.app')");
+    expect(cookieState).toContain("rawSecure !== 'TRUE'");
+    expect(cookieState).toContain("sameSite: 'Lax'");
     for (const spec of ['auth-roles.spec.ts', 'export-journey.spec.ts', 'patient-journey.spec.ts']) {
       expect(read(`e2e/${spec}`)).toContain("from './staging-test'");
     }
@@ -276,7 +271,11 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
     expect(workflow).toContain('--project-ref "$SUPABASE_PROJECT_REF"');
     expect(workflow).toContain('functions deploy "$fn" --import-map deno.json');
-    expect(workflow).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
+    expect(workflow).toContain('Bootstrap scoped Vercel browser cookie');
+    expect(workflow).toContain('scripts/vercel-cookie-state.mjs');
+    expect(workflow).toContain('E2E_VERCEL_STORAGE_STATE');
+    expect(workflow).toContain('Remove ephemeral Vercel browser state');
+    expect(workflow).not.toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(workflow).toContain("node-version: '22'");
     expect(workflow).not.toContain("node-version: '20'");
     const edgeDeploy = workflow.indexOf('Deploy all Edge Functions');

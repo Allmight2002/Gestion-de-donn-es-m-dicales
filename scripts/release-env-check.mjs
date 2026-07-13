@@ -38,6 +38,5 @@ if (target !== 'pr') {
   bool('REQUIRE_SERVER_INSPECTION', true); bool('DB_REQUIRE_SERVER_INSPECTION', true);
   if (process.env.VITE_REQUIRE_SERVER_INSPECTION !== 'true') fail('VITE_REQUIRE_SERVER_INSPECTION=true est requis pour une release clinique.');
   for (const error of validateSupabaseTarget({ target })) fail(error);
-  if (target === 'staging') required('VERCEL_AUTOMATION_BYPASS_SECRET');
 }
 if (!process.exitCode) console.log(`Configuration release ${target}: OK (valeurs masquees).`);

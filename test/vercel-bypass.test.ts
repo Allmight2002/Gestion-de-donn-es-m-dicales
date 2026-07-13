@@ -1,45 +1,58 @@
 import { describe, expect, test } from 'vitest';
-import { sanitizedHeadersForRequest, validatedStagingOrigin } from '../e2e/staging-test';
+import {
+  createVercelStorageState,
+  validatedVercelDeploymentHostname,
+} from '../scripts/vercel-cookie-state.mjs';
 
 describe('bypass Vercel limite au staging', () => {
-  test('valide uniquement une origine HTTPS vercel.app sans identifiants', () => {
-    expect(validatedStagingOrigin('https://meddata-staging-example.vercel.app/path')).toBe(
-      'https://meddata-staging-example.vercel.app',
+  const deployment = 'https://meddata-staging-example.vercel.app';
+  const future = 2_000_000_000;
+  const cookie = (domain = 'meddata-staging-example.vercel.app', secure = 'TRUE', expires = future) =>
+    `#HttpOnly_${domain}\tFALSE\t/\t${secure}\t${expires}\t_vercel_jwt\tfictional-cookie`;
+
+  test('valide uniquement un deploiement HTTPS vercel.app sans identifiants', () => {
+    expect(validatedVercelDeploymentHostname(`${deployment}/path`)).toBe(
+      'meddata-staging-example.vercel.app',
     );
-    expect(() => validatedStagingOrigin('http://meddata-staging-example.vercel.app')).toThrow('HTTPS');
-    expect(() => validatedStagingOrigin('https://user:password@meddata-staging-example.vercel.app')).toThrow(
+    expect(() => validatedVercelDeploymentHostname('http://meddata-staging-example.vercel.app')).toThrow(
+      'HTTPS',
+    );
+    expect(() =>
+      validatedVercelDeploymentHostname('https://user:password@meddata-staging-example.vercel.app'),
+    ).toThrow(
       'sans identifiants',
     );
-    expect(() => validatedStagingOrigin('https://example.org')).toThrow('vercel.app');
+    expect(() => validatedVercelDeploymentHostname('https://example.org')).toThrow('vercel.app');
   });
 
-  test('conserve les headers seulement sur le staging exact et le controle SSO Vercel', () => {
-    const origin = 'https://meddata-staging-example.vercel.app';
-    const current = {
-      Accept: 'text/html',
-      'x-vercel-protection-bypass': 'test-secret',
-      'x-vercel-set-bypass-cookie': 'true',
-    };
-    expect(sanitizedHeadersForRequest(`${origin}/login`, origin, current)).toBeUndefined();
-    expect(
-      sanitizedHeadersForRequest(
-        `https://vercel.com/sso-api?url=${encodeURIComponent(`${origin}/login`)}&nonce=test`,
-        origin,
-        current,
-      ),
-    ).toBeUndefined();
+  test('produit un storage state avec un unique cookie exact, HttpOnly et Secure', () => {
+    const jar = ['# Netscape HTTP Cookie File', cookie(), 'example.org\tFALSE\t/\tTRUE\t2000000000\tother\tx'].join(
+      '\n',
+    );
+    const state = createVercelStorageState(jar, deployment, 1_900_000_000);
 
-    for (const url of [
-      'https://gmsxrniiclrheehhoakn.supabase.co/rest/v1/profile',
-      'https://vercel.com/login',
-      'https://vercel.com/sso-api/other',
-      'https://another-preview.vercel.app/',
-      'not-a-url',
-    ]) {
-      const sanitized = sanitizedHeadersForRequest(url, origin, current);
-      expect(sanitized).toContainEqual({ name: 'Accept', value: 'text/html' });
-      expect(sanitized).not.toContainEqual(expect.objectContaining({ name: 'x-vercel-protection-bypass' }));
-      expect(sanitized).not.toContainEqual(expect.objectContaining({ name: 'x-vercel-set-bypass-cookie' }));
-    }
+    expect(state.origins).toEqual([]);
+    expect(state.cookies).toEqual([
+      {
+        name: '_vercel_jwt',
+        value: 'fictional-cookie',
+        domain: 'meddata-staging-example.vercel.app',
+        path: '/',
+        expires: future,
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+      },
+    ]);
+  });
+
+  test('refuse un cookie hors domaine, non securise ou expire', () => {
+    expect(() => createVercelStorageState(cookie('another-preview.vercel.app'), deployment)).toThrow(
+      'staging exact',
+    );
+    expect(() => createVercelStorageState(cookie(undefined, 'FALSE'), deployment)).toThrow(
+      'HttpOnly, Secure',
+    );
+    expect(() => createVercelStorageState(cookie(undefined, 'TRUE', 100), deployment, 101)).toThrow('expire');
   });
 });

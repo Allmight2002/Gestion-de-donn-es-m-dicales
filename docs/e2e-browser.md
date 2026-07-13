@@ -108,3 +108,6 @@ parcours **navigateur** reste à ajouter avec une fixture administrative dédié
   `browser-e2e-staging`) exécute `npm run e2e:browser:critical` contre le frontend staging déployé,
   **après** les portes backend. Les parcours métier ne s'exécutent que si leurs variables de fixture
   (ci-dessus) sont configurées ; sinon ils sont marqués indisponibles.
+- L'accès au déploiement protégé est amorcé par Vercel CLI dans un répertoire temporaire. Playwright
+  reçoit uniquement un cookie HttpOnly/Secure limité au domaine exact du déploiement ; le jeton Vercel,
+  le cookie et son fichier d'état ne sont ni placés dans le dépôt, ni conservés dans les artefacts.
