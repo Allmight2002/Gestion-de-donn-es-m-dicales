@@ -234,6 +234,12 @@ test('@lot13 import nominal par le frontend deploye', async ({ page }) => {
   const csv = `patient_code,Nom complet,Date de naissance,Poids renomme\n${code},Import fictif UI,2001-01-01,63\n`;
   await page.locator('input[type="file"]').setInputFiles({ name: 'lot13-import.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await expect(page.getByText(/lot13-import\.csv/i)).toBeVisible();
+  const mapping = page.getByRole('heading', { name: /Correspondance des colonnes|Column mapping/i }).locator('..');
+  const mappedColumns = mapping.getByRole('combobox');
+  await expect(mappedColumns.nth(0)).toHaveValue('patient_code', { timeout: 30_000 });
+  await expect(mappedColumns.nth(1)).toHaveValue('identity.full_name', { timeout: 30_000 });
+  await expect(mappedColumns.nth(2)).toHaveValue('identity.date_of_birth', { timeout: 30_000 });
+  await expect(mappedColumns.nth(3)).toHaveValue('patient:weight', { timeout: 30_000 });
   await page.getByRole('button', { name: /Aper.u|Preview/i }).click();
   await expect(page.getByText(/Aper.u \(rien|Preview \(nothing/i)).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: /^Importer$|^Import$/i }).click();

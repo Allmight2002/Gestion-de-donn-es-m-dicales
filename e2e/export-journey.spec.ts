@@ -30,6 +30,10 @@ test.describe('parcours export critique (medecin)', () => {
     // 2) ouverture d'une cohorte fictive eligible
     await page.goto(`/bases/${baseId}/cohorts/${cohortId}/export`);
     await expect(page.getByRole('heading', { name: /Exporter une cohorte|Export a cohort/i })).toBeVisible();
+    const history = page.getByRole('heading', { name: /Exports conserv.s|Saved exports/i }).locator('..');
+    const historyRows = history.getByRole('listitem');
+    await expect(historyRows.first()).toBeVisible();
+    const historyCountBefore = await historyRows.count();
 
     // 3) lancement d'un export CSV
     await page.getByLabel(/Format/i).selectOption('csv');
@@ -38,8 +42,12 @@ test.describe('parcours export critique (medecin)', () => {
     // 4) attente du resultat
     await expect(page.getByText(/Export g.n.r. et conserv.|Export generated and kept/i)).toBeVisible({ timeout: 30_000 });
 
-    // 5) presence de l'export dans l'historique
-    const downloadButton = page.getByRole('button', { name: /T.l.charger|Download/i }).first();
+    // 5) presence de CET export dans l'historique. Le message de succes precede volontairement
+    // le rechargement de la liste : attendre le compteur evite de cliquer un ancien XLSX.
+    await expect(historyRows).toHaveCount(historyCountBefore + 1, { timeout: 30_000 });
+    const createdRow = historyRows.first();
+    await expect(createdRow).toContainText(/CSV/i);
+    const downloadButton = createdRow.getByRole('button', { name: /T.l.charger|Download/i });
     await expect(downloadButton).toBeVisible();
 
     // 6) telechargement intercepte + 7) verification minimale nom / type / taille
