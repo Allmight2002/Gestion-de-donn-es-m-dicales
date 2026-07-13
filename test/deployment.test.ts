@@ -249,7 +249,10 @@ describe('configuration de deploiement', () => {
     expect(fixture).toContain("session.on('Fetch.requestPaused'");
     expect(fixture).toContain("urlPattern: '*'");
     expect(fixture).toContain("'Fetch.continueRequest'");
-    expect(fixture).toContain('requestOrigin === stagingOrigin');
+    expect(fixture).toContain('requestUrlObject?.origin === stagingOrigin');
+    expect(fixture).toContain("VERCEL_CONTROL_ORIGIN = 'https://vercel.com'");
+    expect(fixture).toContain("VERCEL_SSO_PATH = '/sso-api'");
+    expect(fixture).toContain('requestUrlObject.pathname === VERCEL_SSO_PATH');
     expect(fixture).toContain('STAGING_ONLY_HEADERS.has(name.toLowerCase())');
     expect(fixture).not.toContain('extraHTTPHeaders');
     for (const spec of ['auth-roles.spec.ts', 'export-journey.spec.ts', 'patient-journey.spec.ts']) {
