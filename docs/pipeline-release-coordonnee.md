@@ -13,7 +13,7 @@ production Vercel, qui reste `main`.
 Avant, `.github/workflows/ci.yml` executait tests et build, tandis que migrations, Storage,
 fonctions Edge, scanner, E2E staging et Vercel etaient manuels. Un frontend pouvait donc etre
 publie avant son backend. Le nouveau CI de PR ajoute la validation des variables publiques,
-l'application vierge des migrations et le contrat des cinq fonctions. Le workflow de release fige
+l'application vierge des migrations et le contrat des six fonctions. Le workflow de release fige
 un SHA et impose l'ordre backend puis frontend.
 
 ## Secrets et environnements
@@ -66,7 +66,7 @@ nouveau `latest` publie entre deux releases ne modifie pas silencieusement la pr
 `release:drift` compare l'historique de migrations, la RPC stricte, les policies Storage et la
 presence des fonctions listees par le CLI. `env:check:cloud` compare le mode strict DB/release.
 Le manifeste/artifact conserve 30 jours fige le SHA (court et complet), la branche, la cible
-(staging/production), le workflow et le run, la liste des migrations attendues, les cinq fonctions
+(staging/production), le workflow et le run, la liste des migrations attendues, les six fonctions
 Edge attendues, le hash SHA-256 de `storage.sql` et l'heure de generation. Ni checksum Storage ni commit source des fonctions ne sont
 exposes de facon portable par Supabase : joindre la sortie du workflow comme preuve et effectuer
 la validation manuelle explicite; ne pas presenter cette verification comme automatique.
@@ -74,7 +74,7 @@ la validation manuelle explicite; ne pas presenter cette verification comme auto
 ## Rollback et echec partiel
 
 - Frontend : redeployer le precedent deployment Vercel, puis smoke tests.
-- Functions : redeployer les cinq fonctions depuis le tag/SHA precedent, puis verifier drift/E2E.
+- Functions : redeployer les six fonctions depuis le tag/SHA precedent, puis verifier drift/E2E.
 - Configuration : restaurer les secrets precedents, sans les coller dans logs ou tickets.
 - Storage : reappliquer le `storage.sql` du SHA precedent et conserver son hash/verification.
 - Base : les migrations sont forward-only. Pour une migration reversible, backup teste et migration
