@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260713201143_query_path_indexes.sql`
+- Dernière migration incluse : `20260714040500_offline_replay_lock_order.sql`
 - Tables : 35 · Policies RLS : 58 · Triggers : 54 · Fonctions : 208
 
 ## Tables (colonnes, RLS, policies, triggers)
