@@ -15,6 +15,7 @@ import type { Profile, SessionUser } from './types';
 import {
   buildSnapshot, getOfflineUser, initializeOfflineForUser, offlineCache, outbox, purgeAllOfflineData, setOfflineUser,
 } from '../data/offline';
+import { isPwaRegistrationAllowed, setPwaRegistrationAllowed } from '../pwa/registrationPolicy';
 
 beforeAll(() => {
   vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
@@ -27,6 +28,7 @@ const setNavigatorOnline = (online: boolean) => {
 };
 
 afterEach(() => {
+  setPwaRegistrationAllowed(false);
   setNavigatorOnline(true);
   for (let i = localStorage.length - 1; i >= 0; i -= 1) {
     const key = localStorage.key(i) ?? '';
@@ -127,6 +129,16 @@ describe('gating par role', () => {
   test('connecte membre -> tableau de bord', async () => {
     renderApp(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
     expect(await screen.findByRole('heading', { name: 'Tableau de bord' }, { timeout: 5000 })).toBeInTheDocument();
+  });
+
+  test('autorise le worker apres initialisation puis le desarme avant logout', async () => {
+    renderAuthProbe(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:m'));
+    expect(isPwaRegistrationAllowed()).toBe(true);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Force sign out' }));
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none'));
+    expect(isPwaRegistrationAllowed()).toBe(false);
   });
 
   test('le fallback hors-ligne ne conserve qu un marqueur medecin minimal et borne', async () => {
@@ -296,6 +308,7 @@ describe('gating par role', () => {
     );
     await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:purge-B'));
     expect(screen.getByRole('alert')).toHaveTextContent(/Purge locale incomplete.*IndexedDB bloquee/i);
+    expect(isPwaRegistrationAllowed()).toBe(false);
   });
 
   test('une purge partielle conserve l ancien proprietaire pour imposer une nouvelle tentative', async () => {
