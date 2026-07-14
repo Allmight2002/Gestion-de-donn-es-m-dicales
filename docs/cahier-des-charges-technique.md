@@ -176,11 +176,12 @@ synchronisation hors-ligne.
 - **ET-20. Construction de l'instantané** : `buildSnapshot` ne recopie **que** les champs
   analytiques (garantie par construction). Téléchargement en **un appel** via
   `download_base_snapshot` (repli transparent sur l'ancien chemin si la RPC est absente).
-- **ET-21. Synchronisation** : chaque entrée de l'outbox est rejouée via la **même** RPC validée
-  (`update_encounter`) avec le verrou optimiste ; **conflit** → choix « garder ma version »
+- **ET-21. Synchronisation** : chaque entrée de l'outbox est rejouée via la RPC validée et
+  idempotente `replay_encounter_update`, avec identifiant d'opération stable et verrou optimiste ;
+  une réponse perdue peut être rejouée sans seconde écriture ; **conflit** → choix « garder ma version »
   (forçage) / « garder la version serveur ».
 - **ET-22. Cloisonnement & cycle de vie** : `ownerUserId` sur chaque instantané/entrée ;
-  `get/list` filtrent l'utilisateur courant ; **expiration** 7 jours appliquée à la lecture ;
+  `get/list` filtrent l'utilisateur courant ; **expiration** 24 heures appliquée à la lecture ;
   **purge au démarrage** et **effacement des instantanés à la déconnexion** (la file d'écritures
   non synchronisées est conservée mais cloisonnée).
 
@@ -239,7 +240,8 @@ npm run db:verify # applique toutes les migrations depuis zéro
   bundle. La latence résiduelle est principalement liée à la distance réseau (≈ Afrique de
   l'Ouest ↔ région Supabase).
 - **Limites de charge** : import borné (5000 lignes), traité par lots de 300 avec progression.
-- **PWA** : application installable, manifeste + icônes, mise à jour automatique du service worker.
+- **PWA** : application installable, manifeste + icônes ; une version détectée attend une
+  activation explicite (« maintenant » / « plus tard ») avant rechargement.
 - **Robustesse** : les nouveaux chemins serveur dégradent **proprement** si une migration n'est pas
   encore appliquée (ex. instantané hors-ligne → repli ; avertissement de doublon → silencieux).
 

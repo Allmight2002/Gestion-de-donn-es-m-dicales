@@ -47,7 +47,7 @@ function mockBases(): BaseRepository {
       return [...bases];
     },
     async getInclusionStats() {
-      return { total: 0, target: null, targetDate: null, monthly: [] };
+      return { total: 0, target: null, targetDate: null, targetRevision: 0, monthly: [] };
     },
     async getCompletenessStats() {
       return [];
@@ -94,7 +94,8 @@ describe('Dashboard', () => {
     renderApp(mockBases());
     expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
     expect(screen.getByText('Propriétaire')).toBeInTheDocument();
-    // V3 : le chemin « creer depuis un fichier » est propose sous le formulaire de creation.
+    // La creation est progressive : le formulaire ne concurrence pas la liste au chargement.
+    await userEvent.click(screen.getByRole('button', { name: 'Nouvelle base' }));
     expect(screen.getByRole('link', { name: /depuis un fichier Excel/ })).toBeInTheDocument();
   });
 
@@ -102,6 +103,7 @@ describe('Dashboard', () => {
     const user = userEvent.setup();
     renderApp(mockBases());
     await screen.findByText('Registre Neuro');
+    await user.click(screen.getByRole('button', { name: 'Nouvelle base' }));
     await user.type(screen.getByLabelText('Nom de la base'), 'Registre AVC');
     await user.click(screen.getByRole('button', { name: 'Créer la base' }));
     // Navigation vers /bases/:id -> BaseHome affiche la nouvelle base.

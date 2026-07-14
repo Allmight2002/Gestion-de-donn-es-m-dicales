@@ -47,6 +47,14 @@ export interface ImportReport {
   errors: { row: number; patient_code: string; message: string }[];
 }
 
+export interface InFileEncounterDuplicate {
+  row: number;
+  firstRow: number;
+  patientCode: string;
+  encounterDate: string;
+  encounterType: string;
+}
+
 const norm = (s: string) =>
   s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
@@ -66,6 +74,49 @@ function stableHash(value: unknown): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/**
+ * Detecte les rencontres strictement dupliquees sur l'ensemble du fichier.
+ * Le serveur applique la meme identite fonctionnelle (patient, date, type et
+ * donnees), mais son etat `seen` est local a chaque appel dry-run. Ce controle
+ * global rend donc honnete l'apercu lorsque le fichier est decoupe en chunks.
+ */
+export function findInFileEncounterDuplicates(rows: ImportRow[]): InFileEncounterDuplicate[] {
+  const seen = new Map<string, number>();
+  const duplicates: InFileEncounterDuplicate[] = [];
+  rows.forEach((row, index) => {
+    if (!row.encounter || !row.patient_code) return;
+    const sourceRow = row.source_row_number ?? index + 1;
+    const key = canonicalJson([
+      row.patient_code.trim(),
+      row.encounter.encounter_date,
+      row.encounter.encounter_type,
+      row.encounter.data ?? {},
+    ]);
+    const firstRow = seen.get(key);
+    if (firstRow === undefined) {
+      seen.set(key, sourceRow);
+      return;
+    }
+    duplicates.push({
+      row: sourceRow,
+      firstRow,
+      patientCode: row.patient_code.trim(),
+      encounterDate: row.encounter.encounter_date,
+      encounterType: row.encounter.encounter_type,
+    });
+  });
+  return duplicates;
 }
 
 /** Pre-remplit la correspondance (par INDEX) : meta connue, puis champ de gabarit par libelle/cle. */

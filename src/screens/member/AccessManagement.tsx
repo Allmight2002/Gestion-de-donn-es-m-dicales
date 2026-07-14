@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useAccessRepository, useBaseRepository } from '../../data/RepositoryProvider';
@@ -8,6 +8,7 @@ import {
   permissionsForPreset, presetOf, roleForPermissions, ROLE_PRESETS,
   type AccessItem, type BasePermissions, type IdentityAudit, type InvitationItem, type RolePreset,
 } from '../../data/access';
+import { PageHeader } from '../../components/PageHeader';
 
 // Partage de base ENTRE MEDECINS uniquement (v3.0). Le role curateur est un role GLOBAL
 // (admin) qui travaille le pool de curation, jamais invite ici.
@@ -25,7 +26,6 @@ const presetLabel = (p: BasePermissions, t: (k: MessageKey) => string): string =
 // can_manage_access) uniquement ; la base applique aussi les invariants par CHECK.
 export function AccessManagement() {
   const { id: baseId } = useParams();
-  const navigate = useNavigate();
   const { t } = useI18n();
   const bases = useBaseRepository();
   const accessRepo = useAccessRepository();
@@ -108,13 +108,8 @@ export function AccessManagement() {
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
 
   return (
-    <section className="max-w-2xl space-y-6">
-      <div>
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
-          ← {t('admin.back')}
-        </button>
-        <h1 className="page-title mt-2">{t('access.title')}</h1>
-      </div>
+    <section className="max-w-4xl space-y-6">
+      <PageHeader title={t('access.title')} description={t('access.subtitle')} />
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 

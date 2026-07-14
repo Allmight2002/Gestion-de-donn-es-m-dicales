@@ -1,11 +1,14 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { History } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useAuditRepository } from '../../data/RepositoryProvider';
 import type { ActivityEvent } from '../../data/audit';
 import { formatDateTime } from '../../lib/formatDate';
+import { PageHeader } from '../../components/PageHeader';
+import { EmptyState } from '../../components/EmptyState';
 
 // C3 — Journal d'activite d'une base : timeline HUMAINE construite sur audit_log (imports, acces,
 // suppressions, exports, publications). Les lectures sensibles (identite/documents) en sont exclues
@@ -19,7 +22,6 @@ const KNOWN_ACTIONS = new Set<string>(ACTION_OPTIONS);
 
 export function ActivityLog() {
   const { id: baseId } = useParams();
-  const navigate = useNavigate();
   const { t, lang } = useI18n();
   const audit = useAuditRepository();
 
@@ -92,14 +94,8 @@ export function ActivityLog() {
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
 
   return (
-    <section className="max-w-2xl space-y-5">
-      <div>
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
-          ← {t('admin.back')}
-        </button>
-        <h1 className="page-title mt-2">{t('activity.title')}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t('activity.subtitle')}</p>
-      </div>
+    <section className="max-w-4xl space-y-5">
+      <PageHeader title={t('activity.title')} description={t('activity.subtitle')} />
 
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="activity-action-filter" className="text-sm font-medium text-slate-600">
@@ -121,7 +117,7 @@ export function ActivityLog() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       {events.length === 0 ? (
-        <div className="card border-dashed p-10 text-center text-slate-500">{t('activity.empty')}</div>
+        <EmptyState icon={History} title={t('activity.empty')} />
       ) : (
         <ul className="space-y-2 text-sm">
           {events.map((e, i) => {

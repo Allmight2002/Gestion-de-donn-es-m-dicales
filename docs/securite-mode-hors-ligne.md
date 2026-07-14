@@ -26,6 +26,13 @@ expiree ou d'un autre compte ne part jamais automatiquement. Les conflits resten
 l'interface. En production reelle, l'absence d'outbox est la strategie qui evite une perte ou une
 exportation locale de donnees cliniques non synchronisees.
 
+Chaque correction rejouee porte l'identifiant stable de son entree d'outbox. La RPC
+`replay_encounter_update` lie cet identifiant a l'utilisateur et a l'empreinte exacte de la requete,
+verrouille la rencontre, puis conserve seulement l'accuse minimal cote serveur. Si le commit a
+reussi mais que la reponse reseau est perdue, un rejeu identique renvoie le meme accuse sans
+seconde ecriture ni faux conflit. La meme cle avec un autre payload est refusee ; une tentative en
+echec ne laisse ni accuse incomplet ni modification partielle.
+
 ## Purge et exploitation
 
 Au logout, a l'expiration de session et au changement de compte, l'application attend la purge

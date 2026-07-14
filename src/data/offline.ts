@@ -354,7 +354,14 @@ export async function enqueueEncounterUpdate(input: {
 }
 
 export interface FlushDeps {
-  updateEncounter(encounterId: string, data: Record<string, unknown>, status: string, reason: string, expectedUpdatedAt: string | null): Promise<unknown>;
+  updateEncounter(
+    encounterId: string,
+    data: Record<string, unknown>,
+    status: string,
+    reason: string,
+    expectedUpdatedAt: string | null,
+    operationId: string,
+  ): Promise<unknown>;
   getEncounter(encounterId: string): Promise<{ data: Record<string, unknown>; updatedAt?: string | null } | null>;
 }
 export interface FlushReport { synced: number; conflicts: number; failed: number; errors: string[]; }
@@ -366,7 +373,10 @@ const classifySyncError = (error: unknown): SyncErrorKind => {
   const status = e?.status ?? e?.statusCode;
   if (/CONFLIT_VERSION/i.test(message)) return 'conflict';
   if (status === 401 || status === 403 || e?.code === '42501' || /permission denied|not authorized|unauthorized|forbidden/i.test(message)) return 'rejected';
-  if (status === 400 || status === 404 || status === 409 || status === 422 || /invalid payload|validation failed|resource .*not found|ressource .*supprimee/i.test(message)) return 'rejected';
+  if (
+    status === 400 || status === 404 || status === 409 || status === 422
+    || /invalid payload|validation failed|resource .*not found|ressource .*supprimee|RESOURCE_NOT_FOUND|AUTHENTICATION_REQUIRED|OFFLINE_OPERATION_(?:INVALID|MISMATCH|INCOMPLETE)/i.test(message)
+  ) return 'rejected';
   return 'transient';
 };
 
@@ -415,7 +425,7 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
     try {
       activeSyncIds.add(e.id);
       await outbox.put({ ...e, state: 'syncing', attemptCount, lastAttemptAt, syncingStartedAt: lastAttemptAt, lastError: undefined });
-      await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, e.baseUpdatedAt);
+      await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, e.baseUpdatedAt, e.id);
       await outbox.put({ ...e, state: 'succeeded', attemptCount, lastAttemptAt, syncingStartedAt: undefined, lastError: undefined });
       await outbox.remove(e.id);
       const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
@@ -535,7 +545,7 @@ export async function initializeOfflineForUser(
 export async function resolveKeepMine(entryId: string, deps: FlushDeps): Promise<void> {
   const e = await outbox.get(entryId);
   if (!e) return;
-  await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, null);
+  await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, null, e.id);
   await outbox.remove(entryId);
   const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
   await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, data: e.data, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));

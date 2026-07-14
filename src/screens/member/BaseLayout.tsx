@@ -65,23 +65,25 @@ export function BaseLayout() {
         <span className="text-slate-600">{name || '…'}</span>
       </p>
 
-      <nav aria-label={name} className="flex flex-wrap gap-1 border-b border-slate-200">
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            end={tab.end}
-            className={({ isActive }) =>
-              `-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition ${
-                isActive ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`
-            }
-          >
-            <tab.Icon size={15} aria-hidden />
-            {t(tab.labelKey)}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <nav aria-label={name} className="flex min-w-max gap-1 border-b border-slate-200">
+          {tabs.map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              end={tab.end}
+              className={({ isActive }) =>
+                `-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
+                  isActive ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`
+              }
+            >
+              <tab.Icon size={15} aria-hidden />
+              {t(tab.labelKey)}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
 
       <Outlet />
     </section>

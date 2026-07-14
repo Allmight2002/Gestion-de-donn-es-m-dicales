@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export interface DbResult {
   data: unknown;
   error: unknown;
+  count?: number | null;
 }
 
 export interface FromCall {
@@ -31,7 +32,11 @@ export interface StorageCall {
 export type ClientCall = FromCall | RpcCall | StorageCall;
 export type Responder = (call: ClientCall) => DbResult | Promise<DbResult>;
 
-const ok = (data: unknown): DbResult => ({ data, error: null });
+const ok = (data: unknown, count?: number | null): DbResult => ({
+  data,
+  error: null,
+  count: count === undefined ? (Array.isArray(data) ? data.length : null) : count,
+});
 const fail = (error: unknown): DbResult => ({ data: null, error });
 export const okResult = ok;
 export const errorResult = fail;
@@ -88,6 +93,9 @@ class FakeQuery implements PromiseLike<DbResult> {
   }
   limit(...a: unknown[]): this {
     return this.chain('limit', ...a);
+  }
+  range(...a: unknown[]): this {
+    return this.chain('range', ...a);
   }
   private run(): Promise<DbResult> {
     return Promise.resolve(this.responder({ role: this.role, kind: 'from', table: this.table, ops: this.ops }));

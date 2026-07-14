@@ -1,10 +1,13 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ClipboardList } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useCurationRepository } from '../../data/RepositoryProvider';
 import type { CurationTaskItem } from '../../data/curation';
+import { PageHeader } from '../../components/PageHeader';
+import { EmptyState } from '../../components/EmptyState';
 
 // "Suivi des demandes" cote MEDECIN (cahier v3.0) : liste, EN LECTURE SEULE, les cas
 // confies au staff (pool) et leur avancement. La soumission se fait desormais depuis les
@@ -53,19 +56,15 @@ export function CurationBoard() {
   if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
 
   return (
-    <section className="max-w-3xl space-y-6">
-      <div>
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
-        <h1 className="page-title mt-2">{t('curation.board')}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t('curation.board_hint')}</p>
-      </div>
+    <section className="max-w-5xl space-y-6">
+      <PageHeader title={t('curation.board')} description={t('curation.board_hint')} />
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       {tasks.length === 0 ? (
-        <div className="card border-dashed p-10 text-center text-slate-500">{t('curation.no_tasks')}</div>
+        <EmptyState icon={ClipboardList} title={t('curation.no_tasks')} />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full border-collapse text-sm">
+        <div className="data-table-shell">
+          <table className="data-table">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-2.5">{t('curation.case_code')}</th>

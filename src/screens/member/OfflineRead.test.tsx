@@ -67,7 +67,7 @@ describe('BaseHome hors-ligne', () => {
     renderAt('/bases/b1', <BaseHome />, '/bases/:id');
     expect(await screen.findByText('Base hors-ligne')).toBeInTheDocument();
     expect(screen.getByText('P-OFF')).toBeInTheDocument(); // code patient
-    expect(screen.getByText('Sexe')).toBeInTheDocument(); // colonne analytique
+    expect(screen.getByRole('columnheader', { name: 'Sexe' })).toBeInTheDocument(); // colonne analytique
     expect(screen.getByText('M')).toBeInTheDocument(); // valeur analytique
     expect(screen.getByText('Lecture seule (hors-ligne)')).toBeInTheDocument();
     // Pas de colonne identite, pas de bouton de creation.

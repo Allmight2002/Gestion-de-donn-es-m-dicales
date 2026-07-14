@@ -396,7 +396,11 @@ export function CurationTask() {
           {canEdit && (
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => void run(() => curation.saveDraft(draft.id, patientData, encounters), t('curation.saved'))}
+                onClick={() =>
+                  void run(
+                    () => curation.saveDraft(draft.id, patientData, encounters, draft.revision),
+                    t('curation.saved'),
+                  )}
                 disabled={busy}
                 className="btn-secondary"
               >
@@ -404,7 +408,11 @@ export function CurationTask() {
               </button>
               {/* Le curateur finalise directement (plus de validateur) : enregistre puis finalise. */}
               <button
-                onClick={() => void run(async () => { await curation.saveDraft(draft.id, patientData, encounters); await curation.finalizeTask(task.id); }, t('curation.finalized'))}
+                onClick={() =>
+                  void run(async () => {
+                    await curation.saveDraft(draft.id, patientData, encounters, draft.revision);
+                    await curation.finalizeTask(task.id);
+                  }, t('curation.finalized'))}
                 disabled={busy}
                 className="btn-primary"
               >

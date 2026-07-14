@@ -1,6 +1,7 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ClipboardCheck } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { usePatientRepository } from '../../data/RepositoryProvider';
@@ -8,6 +9,8 @@ import type { CompletionItem } from '../../data/patients';
 import { StatusBadge } from '../../components/StatusBadge';
 import { SkeletonList } from '../../components/Skeleton';
 import { formatDate } from '../../lib/formatDate';
+import { PageHeader } from '../../components/PageHeader';
+import { EmptyState } from '../../components/EmptyState';
 
 // B2 v1 — file de travail « a completer » : dossiers non finalises + champs requis manquants,
 // avec acces direct au bon formulaire. La completion devient un flux visible d'equipe.
@@ -53,9 +56,9 @@ export function CompletionQueue() {
   if (loading) return <SkeletonList rows={5} />;
 
   return (
-    <section className="max-w-3xl space-y-4">
-      <p className="text-sm text-slate-500">{t('queue.subtitle')}</p>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    <section className="max-w-4xl space-y-5">
+      <PageHeader title={t('queue.title')} description={t('queue.subtitle')} />
+      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
       {total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
@@ -84,7 +87,7 @@ export function CompletionQueue() {
       )}
 
       {items.length === 0 ? (
-        <div className="card border-dashed p-10 text-center text-slate-500">{t('queue.empty')}</div>
+        <EmptyState icon={ClipboardCheck} title={t('queue.empty')} />
       ) : (
         <ul className="space-y-2 text-sm">
           {items.map((it) => (

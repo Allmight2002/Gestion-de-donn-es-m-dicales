@@ -154,7 +154,14 @@ export interface PatientRepository {
   createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
   getEncounter(encounterId: string): Promise<Encounter | null>;
-  updateEncounter(encounterId: string, data: Record<string, unknown>, status: string, reason: string, expectedUpdatedAt?: string | null): Promise<{ id: string }>;
+  updateEncounter(
+    encounterId: string,
+    data: Record<string, unknown>,
+    status: string,
+    reason: string,
+    expectedUpdatedAt?: string | null,
+    operationId?: string | null,
+  ): Promise<{ id: string }>;
   listFieldChanges(entity: 'patient' | 'encounter', entityId: string): Promise<FieldChange[]>;
   softDeletePatient(patientId: string, reason: string): Promise<void>;
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
@@ -381,14 +388,23 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return data ? mapEncounter(data as EncounterRow) : null;
     },
 
-    async updateEncounter(encounterId, data, status, reason, expectedUpdatedAt) {
-      const { data: row, error } = await client.rpc('update_encounter', {
-        p_encounter_id: encounterId,
-        p_data: data,
-        p_validation_status: status,
-        p_reason: reason,
-        p_expected_updated_at: expectedUpdatedAt ?? null,
-      });
+    async updateEncounter(encounterId, data, status, reason, expectedUpdatedAt, operationId) {
+      const { data: row, error } = operationId
+        ? await client.rpc('replay_encounter_update', {
+          p_operation_id: operationId,
+          p_encounter_id: encounterId,
+          p_data: data,
+          p_validation_status: status,
+          p_reason: reason,
+          p_expected_updated_at: expectedUpdatedAt ?? null,
+        })
+        : await client.rpc('update_encounter', {
+          p_encounter_id: encounterId,
+          p_data: data,
+          p_validation_status: status,
+          p_reason: reason,
+          p_expected_updated_at: expectedUpdatedAt ?? null,
+        });
       if (error) throw error;
       const r = (Array.isArray(row) ? row[0] : row) as { id: string };
       return { id: r.id };
