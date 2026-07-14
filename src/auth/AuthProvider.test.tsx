@@ -132,7 +132,7 @@ describe('gating par role', () => {
   test('le fallback hors-ligne ne conserve qu un marqueur medecin minimal et borne', async () => {
     setNavigatorOnline(true);
     renderAuthProbe(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
-    expect(await screen.findByTestId('profile-state')).toHaveTextContent('medecin:Medecin');
+    await waitFor(() => expect(screen.getByTestId('profile-state')).toHaveTextContent('medecin:Medecin'));
 
     const marker = JSON.parse(localStorage.getItem('meddata:offline-profile:m') ?? '{}') as Record<string, unknown>;
     expect(marker).toMatchObject({ version: 1, userId: 'm', globalRole: 'medecin', language: 'fr' });
@@ -170,7 +170,7 @@ describe('gating par role', () => {
       },
     };
     renderAuthProbe(backend);
-    expect(await screen.findByTestId('profile-state')).toHaveTextContent('medecin:minimal');
+    await waitFor(() => expect(screen.getByTestId('profile-state')).toHaveTextContent('medecin:minimal'));
 
     offline = false;
     setNavigatorOnline(true);
