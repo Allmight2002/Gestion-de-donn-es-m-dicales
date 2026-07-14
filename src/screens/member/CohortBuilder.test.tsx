@@ -64,7 +64,7 @@ describe('CohortBuilder', () => {
     renderBuilder(makeCohorts({ preview, createSnapshot }));
 
     await screen.findByRole('heading', { name: 'Cohortes' });
-    fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'M' } });
+    fireEvent.change(await screen.findByLabelText('Valeur'), { target: { value: 'M' } });
     await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
     expect(screen.getByRole('button', { name: 'Retirer' })).toBeInTheDocument(); // filtre ajoute
 
@@ -84,6 +84,7 @@ describe('CohortBuilder', () => {
 
     // Champ « Poids » (number) + valeur texte -> erreur explicite, PAS de filtre ajoute
     // (cote base, value_cmp replierait en tri lexical silencieux).
+    await screen.findByLabelText('Valeur');
     fireEvent.change(screen.getByLabelText('Variable'), { target: { value: 'poids' } });
     fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'abc' } });
     await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
@@ -101,7 +102,7 @@ describe('CohortBuilder', () => {
     renderBuilder(makeCohorts());
     await screen.findByRole('heading', { name: 'Cohortes' });
 
-    fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'F' } });
+    fireEvent.change(await screen.findByLabelText('Valeur'), { target: { value: 'F' } });
     await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Voir le résultat' }));
 
