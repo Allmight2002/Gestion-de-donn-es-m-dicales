@@ -92,6 +92,28 @@ describe('NewPatient', () => {
 });
 
 describe('BaseHome (liste patients)', () => {
+  test('une erreur de liste ne transforme pas une base accessible en Page introuvable', async () => {
+    const patientRepo = {
+      async listPatientsPage() { throw new Error('Liste temporairement indisponible'); },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Liste temporairement indisponible');
+    expect(screen.queryByText('Page introuvable')).not.toBeInTheDocument();
+  });
+
   test('liste PSEUDONYMISEE (§5.8) : affiche le code, JAMAIS le nom (meme si le repo en fournit un)', async () => {
     // Le repo renvoie volontairement une identite : on verifie que la liste ne l'expose PAS
     // (le nom n'est revele que sur la fiche patient, ou la consultation est journalisee).

@@ -82,15 +82,19 @@ export function BaseHome() {
 
       // EN LIGNE : base + page de patients EN PARALLELE (independants), puis champs du gabarit.
       setOfflineView(false);
-      const [b, pageRes] = await Promise.all([
+      const [baseResult, pageResult] = await Promise.allSettled([
         bases.getBase(id),
         patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE),
       ]);
+      if (baseResult.status === 'rejected') throw baseResult.reason;
+      const b = baseResult.value;
       setListing(b);
       if (b) {
         setBaseName(b.base.name);
         recordRecentBase(id, b.base.name); // UI-1 : navigation laterale « bases recentes »
       }
+      if (pageResult.status === 'rejected') throw pageResult.reason;
+      const pageRes = pageResult.value;
       setRows(pageRes.rows);
       setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {
