@@ -55,15 +55,24 @@ export function BaseHome() {
   const [saving, setSaving] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false); // UI-2 : modale §5.8 (grosse base)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
     setLoading(true);
+    // Ne jamais conserver l'etat d'une autre base pendant une navigation ou un echec.
+    setListing(null);
+    setBaseName('');
+    setRows([]);
+    setFields([]);
+    setVisibleFieldKeys([]);
+    setTotal(0);
+    setCachedMeta(null);
+    setError(null);
     try {
       if (!online) {
         // HORS-LIGNE : tout vient de l'instantane local (analytique uniquement).
         const snap = await offlineCache.get(id);
+        if (isCancelled()) return;
         setOfflineView(true);
-        setListing(null);
         if (!snap) {
           setRows([]); setFields([]); setCachedMeta(null); setError(t('offline.not_cached'));
           return;
@@ -86,6 +95,7 @@ export function BaseHome() {
         bases.getBase(id),
         patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE),
       ]);
+      if (isCancelled()) return;
       if (baseResult.status === 'rejected') throw baseResult.reason;
       const b = baseResult.value;
       setListing(b);
@@ -99,6 +109,7 @@ export function BaseHome() {
       setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {
         const fields = await getTemplateFields(templates, b.base.currentTemplateVersionId);
+        if (isCancelled()) return;
         const available = fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn);
         setFields(available);
         setVisibleFieldKeys((current) => {
@@ -106,18 +117,22 @@ export function BaseHome() {
           return retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey);
         });
       }
-      void offlineCache.get(id).then((s) => setCachedMeta(s ? snapshotMeta(s) : null)).catch(() => {});
+      void offlineCache.get(id)
+        .then((s) => { if (!isCancelled()) setCachedMeta(s ? snapshotMeta(s) : null); })
+        .catch(() => {});
       setError(null);
     } catch (e) {
-      setError(errorMessage(e, t('common.error')));
+      if (!isCancelled()) setError(errorMessage(e, t('common.error')));
     } finally {
-      setLoading(false);
+      if (!isCancelled()) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, page, online, bases, templates, patients]);
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    void load(() => cancelled);
+    return () => { cancelled = true; };
   }, [load]);
 
   // Telecharge l'instantane analytique de la base pour consultation hors-ligne.

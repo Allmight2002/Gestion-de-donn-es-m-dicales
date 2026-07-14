@@ -3,6 +3,24 @@ import { describe, expect, test, vi } from 'vitest';
 import { makePatientRepository } from '../src/data/patients';
 
 describe('repository patient', () => {
+  test('ne retente pas une lecture refusee par RLS', async () => {
+    class DeniedPatientListQuery {
+      eq(_column: string, _value: unknown) { return this; }
+      is(_column: string, _value: unknown) { return this; }
+      order(_column: string, _options: unknown) { return this; }
+      async range(_from: number, _to: number) {
+        return { data: null, count: null, error: { code: '42501', message: 'permission denied' } };
+      }
+    }
+
+    const select = vi.fn(() => new DeniedPatientListQuery());
+    const client = { from: vi.fn(() => ({ select })) } as unknown as SupabaseClient;
+
+    await expect(makePatientRepository(client).listPatientsPage('base-interdite', 20, 0))
+      .rejects.toMatchObject({ code: '42501' });
+    expect(select).toHaveBeenCalledTimes(1);
+  });
+
   test('retente la liste sans row_version uniquement si la colonne manque', async () => {
     const patientRow = {
       id: '00000000-0000-0000-0000-000000000001',
