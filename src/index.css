@@ -73,7 +73,14 @@
   .dark .text-slate-400 { color: #64748b; }
   .dark .bg-white { background-color: #0f172a; }
   .dark .bg-white\/80 { background-color: rgb(15 23 42 / 0.85); }
+  .dark .bg-white\/60 { background-color: rgb(15 23 42 / 0.72); }
   .dark .bg-slate-50 { background-color: #1e293b; }
+  .dark .bg-slate-50\/95 { background-color: rgb(30 41 59 / 0.95); }
+  .dark .bg-slate-50\/80,
+  .dark .bg-slate-50\/70,
+  .dark .bg-slate-50\/60,
+  .dark .bg-slate-50\/50,
+  .dark .bg-slate-50\/40 { background-color: rgb(30 41 59 / 0.55); }
   .dark .bg-slate-100 { background-color: #1e293b; }
   .dark .border-slate-100 { border-color: #1e293b; }
   .dark .border-slate-200 { border-color: #263244; }
@@ -83,11 +90,16 @@
   .dark .hover\:bg-slate-100:hover { background-color: #1e293b; }
   .dark .text-teal-700 { color: #2dd4bf; }
   .dark .text-teal-800 { color: #5eead4; }
+  .dark .text-teal-900 { color: #99f6e4; }
   .dark .bg-teal-50 { background-color: rgb(19 78 74 / 0.35); }
+  .dark .bg-teal-50\/70,
+  .dark .bg-teal-50\/50,
+  .dark .bg-teal-50\/40 { background-color: rgb(19 78 74 / 0.35); }
   .dark .bg-teal-100 { background-color: rgb(19 78 74 / 0.55); }
   .dark .border-teal-100 { border-color: rgb(15 118 110 / 0.4); }
   .dark .text-amber-800, .dark .text-amber-900 { color: #fcd34d; }
   .dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.3); }
+  .dark .bg-amber-50\/50 { background-color: rgb(120 53 15 / 0.3); }
   .dark .bg-amber-100 { background-color: rgb(120 53 15 / 0.45); }
   .dark .border-amber-200, .dark .border-amber-300 { border-color: rgb(180 83 9 / 0.45); }
   .dark .text-red-600, .dark .text-red-700 { color: #f87171; }
@@ -103,6 +115,8 @@
   .dark .border-indigo-100 { border-color: rgb(67 56 202 / 0.4); }
 .dark .text-green-700 { color: #4ade80; }
 .dark .bg-green-50 { background-color: rgb(20 83 45 / 0.3); }
+.dark .hover\:bg-slate-50\/70:hover,
+.dark .hover\:bg-slate-50\/60:hover { background-color: rgb(30 41 59 / 0.65); }
 
 /* Primitives reutilisables : appliquees progressivement dans les ecrans. */
 @layer components {

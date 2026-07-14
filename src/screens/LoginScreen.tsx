@@ -26,12 +26,12 @@ export function LoginScreen() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
       {/* Fond decoratif (degrade + halos) */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-teal-50 via-white to-slate-100" />
-      <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-teal-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-teal-100/40 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-teal-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-teal-950" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-teal-200/40 blur-3xl dark:bg-teal-900/30" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-teal-100/40 blur-3xl dark:bg-teal-950/50" />
 
       <div className="relative w-full max-w-sm">
-        <div className="card p-7 shadow-xl shadow-slate-300/40">
+        <div className="card p-7 shadow-xl shadow-slate-300/40 dark:shadow-black/30">
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <Logo className="h-10 w-10" />
