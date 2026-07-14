@@ -263,10 +263,25 @@ await db.connect();
 
 try {
   await check('garde staging et nettoyage initial', async () => {
+    const stalePrefixes = await query(
+      `select distinct prefix from (
+         select substring(name from '^(LOT13-[0-9]+)-') prefix
+           from (
+             select name from public.base where name like 'LOT13-%'
+             union all
+             select name from public.template where name like 'LOT13-%'
+           ) fixtures
+       ) candidates where prefix is not null and prefix <> $1`,
+      [prefix],
+    );
+    const staleRemovals = [];
+    for (const stale of stalePrefixes) {
+      staleRemovals.push({ prefix: stale.prefix, removed: await cleanupLot13(stale.prefix) });
+    }
     const removed = await cleanupLot13(prefix);
     const strict = (await query('select public.require_server_inspection() as strict'))[0]?.strict;
     assert(strict === true, 'Mode scanner strict inactif');
-    return { removed, stagingRef: 'gmsxrniiclrheehhoakn', strict };
+    return { removed, staleRemovals, stagingRef: 'gmsxrniiclrheehhoakn', strict };
   });
 
   await check('RLS, policies Storage et buckets attendus actifs', async () => {

@@ -121,6 +121,14 @@ export async function cleanupLot13(prefixInput) {
     try {
       if (bases.length) {
         await db.query(
+          `delete from public.offline_encounter_operation operation
+            using public.encounter encounter, public.patient patient
+            where operation.encounter_id=encounter.id
+              and encounter.patient_id=patient.id
+              and patient.base_id=any($1::uuid[])`,
+          [bases],
+        );
+        await db.query(
           `delete from public.patient_curation_idempotency i
             using public.patient p
             where i.patient_id=p.id and p.base_id=any($1::uuid[])`,
