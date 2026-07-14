@@ -1,8 +1,10 @@
 import { assert, assertEquals, assertStringIncludes } from '@std/assert';
-import { type GenerateExportDeps, handleGenerateExport } from './handler.ts';
+import { EXPORT_LIMITS, type GenerateExportDeps, handleGenerateExport } from './handler.ts';
 import {
+  type DbResult,
   errorResult,
   fakeSupabaseClient,
+  type FromCall,
   makeRequest,
   okResult,
   readResponse,
@@ -27,6 +29,7 @@ const ENCOUNTER = {
 };
 const FIELDS = [
   {
+    id: 'f1',
     template_version_id: TV,
     field_key: 'sbp',
     label: 'SBP',
@@ -38,6 +41,7 @@ const FIELDS = [
     display_order: 1,
   },
   {
+    id: 'f2',
     template_version_id: TV,
     field_key: 'danger',
     label: 'D',
@@ -49,6 +53,7 @@ const FIELDS = [
     display_order: 2,
   },
   {
+    id: 'f3',
     template_version_id: TV,
     field_key: 'miss',
     label: 'M',
@@ -73,6 +78,28 @@ interface Opts {
   patientRows?: unknown[];
   encounterMemberRows?: Array<{ encounter_id: string }>;
   encounterRows?: unknown[];
+  fromResponder?: (call: FromCall) => DbResult | undefined;
+}
+
+function queriedRows<T extends Record<string, unknown>>(
+  call: FromCall,
+  input: T[],
+  orderKey: keyof T,
+): DbResult {
+  let rows = [...input];
+  for (const op of call.ops.filter((candidate) => candidate.m === 'in')) {
+    const [column, rawValues] = op.a as [string, unknown[]];
+    const values = new Set(rawValues);
+    rows = rows.filter((row) => values.has(row[column]));
+  }
+  rows.sort((left, right) => String(left[orderKey]).localeCompare(String(right[orderKey])));
+  const total = rows.length;
+  const range = call.ops.findLast((op) => op.m === 'range');
+  if (range) {
+    const [from, to] = range.a as [number, number];
+    rows = rows.slice(from, to + 1);
+  }
+  return okResult(rows, total);
 }
 
 function deps(opts: Opts = {}): GenerateExportDeps {
@@ -86,19 +113,27 @@ function deps(opts: Opts = {}): GenerateExportDeps {
       return okResult([{}]);
     }
     if (call.kind === 'from') {
+      const override = opts.fromResponder?.(call);
+      if (override) return override;
       switch (call.table) {
         case 'cohort':
           return okResult(cohort);
         case 'cohort_member':
-          return okResult(opts.memberRows ?? [{ patient_id: 'p1' }]);
+          return queriedRows(call, opts.memberRows ?? [{ patient_id: 'p1' }], 'patient_id');
         case 'patient':
-          return okResult(opts.patientRows ?? [{ id: 'p1', patient_code: 'P001', template_version_id: TV, data: {} }]);
+          return queriedRows(
+            call,
+            (opts.patientRows ?? [{ id: 'p1', patient_code: 'P001', template_version_id: TV, data: {} }]) as Array<
+              Record<string, unknown>
+            >,
+            'id',
+          );
         case 'cohort_encounter_member':
-          return okResult(opts.encounterMemberRows ?? [{ encounter_id: 'e1' }]);
+          return queriedRows(call, opts.encounterMemberRows ?? [{ encounter_id: 'e1' }], 'encounter_id');
         case 'encounter':
-          return okResult(opts.encounterRows ?? [ENCOUNTER]);
+          return queriedRows(call, (opts.encounterRows ?? [ENCOUNTER]) as Array<Record<string, unknown>>, 'id');
         case 'template_field':
-          return okResult(FIELDS);
+          return queriedRows(call, FIELDS, 'id');
         case 'export_log':
           return opts.insertError ? errorResult(opts.insertError) : okResult({
             id: 'exp1',
@@ -176,7 +211,8 @@ Deno.test('generate-export: patient historique hors perimetre ou masque -> expor
     ),
   );
   assertEquals(status, 409);
-  assertEquals(b.error, 'Cohorte incoherente : export refuse');
+  assertEquals(b.code, 'EXPORT_INCOMPLETE');
+  assertEquals(b.resource, 'patients');
   assert(!text.includes('p-other-base'));
 });
 
@@ -188,7 +224,8 @@ Deno.test('generate-export: rencontre historique absente ou hors base -> aucun s
     ),
   );
   assertEquals(status, 409);
-  assertEquals(b.error, 'Cohorte incoherente : export refuse');
+  assertEquals(b.code, 'EXPORT_INCOMPLETE');
+  assertEquals(b.resource, 'encounters');
   assert(!text.includes('e-other-base'));
 });
 
@@ -204,6 +241,159 @@ Deno.test('generate-export: rencontre valide sans cohort_member charge son paren
     ),
   );
   assertEquals(status, 200);
+});
+
+Deno.test('generate-export: plus de 1000 patients sont pagines sans doublon et les filtres sont segmentes', async () => {
+  const patientRows = Array.from({ length: 1_205 }, (_, index) => ({
+    id: `p${String(index).padStart(4, '0')}`,
+    patient_code: `P${String(index).padStart(4, '0')}`,
+    template_version_id: TV,
+    data: {},
+  }));
+  const memberRows = patientRows.map((patient) => ({ patient_id: patient.id }));
+  let memberPages = 0;
+  let largestIn = 0;
+  let uploaded: Blob | null = null;
+  const d = deps({
+    memberRows,
+    patientRows,
+    encounterMemberRows: [],
+    fromResponder: (call) => {
+      if (call.table === 'cohort_member' && call.ops.some((op) => op.m === 'range')) memberPages += 1;
+      for (const op of call.ops.filter((candidate) => candidate.m === 'in')) {
+        largestIn = Math.max(largestIn, (op.a[1] as unknown[]).length);
+      }
+      return undefined;
+    },
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { ...body(), options: { mode: 'patient', scope: 'matching' } } }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  assert(memberPages >= 3);
+  assert(largestIn <= 200);
+  const uploadedBlob = uploaded as Blob | null;
+  assert(uploadedBlob !== null);
+  const lines = (await uploadedBlob.text()).split('\n');
+  assertEquals(lines.length, patientRows.length + 1);
+  assertEquals(new Set(lines.slice(1).map((line) => line.split(',')[0])).size, patientRows.length);
+});
+
+Deno.test('generate-export: plus de 1000 rencontres sont paginees exhaustivement', async () => {
+  const encounterRows = Array.from({ length: 1_205 }, (_, index) => ({
+    ...ENCOUNTER,
+    id: `e${String(index).padStart(4, '0')}`,
+  }));
+  const encounterMemberRows = encounterRows.map((encounter) => ({ encounter_id: encounter.id }));
+  let encounterMemberPages = 0;
+  let largestIn = 0;
+  const d = deps({
+    encounterRows,
+    encounterMemberRows,
+    fromResponder: (call) => {
+      if (call.table === 'cohort_encounter_member' && call.ops.some((op) => op.m === 'range')) {
+        encounterMemberPages += 1;
+      }
+      for (const op of call.ops.filter((candidate) => candidate.m === 'in')) {
+        largestIn = Math.max(largestIn, (op.a[1] as unknown[]).length);
+      }
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body() }), d));
+  assertEquals(status, 200);
+  assert(encounterMemberPages >= 3);
+  assert(largestIn <= 200);
+});
+
+Deno.test('generate-export: erreur sur une page intermediaire -> export refuse', async () => {
+  const members = Array.from({ length: 1_001 }, (_, index) => ({ patient_id: `p${index}` }));
+  let uploads = 0;
+  const d = deps({
+    fromResponder: (call) => {
+      if (call.table !== 'cohort_member') return undefined;
+      const range = call.ops.findLast((op) => op.m === 'range');
+      if (!range) return undefined;
+      const [from, to] = range.a as [number, number];
+      return from === 500
+        ? errorResult({ message: 'page unavailable' })
+        : okResult(members.slice(from, to + 1), members.length);
+    },
+    onStorage: (method) => {
+      if (method === 'upload') uploads += 1;
+    },
+  });
+  const { status, body: responseBody, text } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body() }), d),
+  );
+  assertEquals(status, 500);
+  assertEquals(responseBody.code, 'EXPORT_READ_FAILED');
+  assertEquals(responseBody.resource, 'patients');
+  assertEquals(uploads, 0);
+  assert(!text.includes('page unavailable'));
+});
+
+Deno.test('generate-export: page tronquee malgre le compte exact -> export refuse', async () => {
+  const members = Array.from({ length: 1_001 }, (_, index) => ({ patient_id: `p${index}` }));
+  const d = deps({
+    fromResponder: (call) => {
+      if (call.table !== 'cohort_member') return undefined;
+      const range = call.ops.findLast((op) => op.m === 'range');
+      if (!range) return undefined;
+      const [from, to] = range.a as [number, number];
+      if (from >= 900) return okResult([], members.length);
+      const rows = from === 500 ? members.slice(500, 900) : members.slice(from, to + 1);
+      return okResult(rows, members.length);
+    },
+  });
+  const { status, body: responseBody } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body() }), d),
+  );
+  assertEquals(status, 409);
+  assertEquals(responseBody.code, 'EXPORT_INCOMPLETE');
+});
+
+Deno.test('generate-export: doublon entre deux pages -> export refuse', async () => {
+  const members = Array.from({ length: 1_000 }, (_, index) => ({ patient_id: `p${index}` }));
+  const d = deps({
+    fromResponder: (call) => {
+      if (call.table !== 'cohort_member') return undefined;
+      const range = call.ops.findLast((op) => op.m === 'range');
+      if (!range) return undefined;
+      const [from, to] = range.a as [number, number];
+      if (from === 500) return okResult([members[499], ...members.slice(500, 999)], members.length);
+      return okResult(members.slice(from, to + 1), members.length);
+    },
+  });
+  const { status, body: responseBody } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body() }), d),
+  );
+  assertEquals(status, 409);
+  assertEquals(responseBody.code, 'EXPORT_INCOMPLETE');
+});
+
+Deno.test('generate-export: limite produit depassee -> 413 explicite avant chargement complet', async () => {
+  const d = deps({
+    fromResponder: (call) => {
+      if (call.table !== 'cohort_member') return undefined;
+      return okResult([{ patient_id: 'p0' }], EXPORT_LIMITS.patients + 1);
+    },
+  });
+  const { status, body: responseBody } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body() }), d),
+  );
+  assertEquals(status, 413);
+  assertEquals(responseBody.code, 'EXPORT_LIMIT_EXCEEDED');
+  assertEquals(responseBody.resource, 'patients');
+  assertEquals(responseBody.limit, EXPORT_LIMITS.patients);
+  assertEquals(responseBody.observed, EXPORT_LIMITS.patients + 1);
 });
 
 Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs/manquants', async () => {

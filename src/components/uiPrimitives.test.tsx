@@ -9,6 +9,9 @@ import { StatusBadge } from './StatusBadge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ToastProvider, useToast } from './Toast';
 import { formatDate, formatDateTime } from '../lib/formatDate';
+import { PageHeader } from './PageHeader';
+import { EmptyState } from './EmptyState';
+import { WorkflowSteps } from './WorkflowSteps';
 
 const wrap = (ui: React.ReactNode) => render(<I18nProvider>{ui}</I18nProvider>);
 
@@ -52,5 +55,21 @@ describe('Toast', () => {
     wrap(<ToastProvider><ToastTester /></ToastProvider>);
     await userEvent.click(screen.getByRole('button', { name: 'go' }));
     expect(await screen.findByText('Rencontre enregistrée')).toBeInTheDocument();
+  });
+});
+
+describe('primitives de structure', () => {
+  test('expose une hierarchie de page et un etat vide actionnable', () => {
+    wrap(
+      <>
+        <PageHeader title="Cohortes" description="Populations d’étude" actions={<button>Créer</button>} />
+        <WorkflowSteps steps={[{ label: 'Définir' }, { label: 'Vérifier' }, { label: 'Enregistrer' }]} current={2} />
+        <EmptyState title="Aucune cohorte" action={<button>Commencer</button>} />
+      </>,
+    );
+    expect(screen.getByRole('heading', { level: 1, name: 'Cohortes' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Progression' })).toBeInTheDocument();
+    expect(screen.getByText('Vérifier').closest('li')).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByRole('button', { name: 'Commencer' })).toBeInTheDocument();
   });
 });

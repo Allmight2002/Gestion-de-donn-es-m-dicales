@@ -4,6 +4,10 @@ Ces fonctions tournent cote serveur dans le runtime Deno de Supabase. Elles serv
 qui ne doivent pas etre pilotables uniquement par le navigateur : lecture de fichiers prives,
 journalisation non contournable, inspection antivirus et generation d'exports conserves.
 
+Une modification locale sous `supabase/functions/` ne change pas le cloud : chaque fonction doit
+etre redeployee explicitement, puis verifiee sur la cible. Les validations locales de ce document
+ne constituent donc jamais une preuve de version Edge deployee.
+
 Le mode demo reste possible sans antivirus, mais tout deploiement avec donnees reelles doit
 activer `signed-read` et, pour les uploads, `inspect-upload`.
 
@@ -109,10 +113,18 @@ navigateur. Le frontend appelle
 [`generate-export`](../supabase/functions/generate-export/index.ts), qui :
 
 1. verifie le JWT utilisateur et l'autorisation `can_export_data(base_id)` ;
-2. relit la cohorte figee et les donnees curees cote serveur ;
+2. relit la cohorte figee et les donnees curees cote serveur par pages de 500, avec comptage exact
+   et ordre stable ; les filtres de listes sont decoupes par groupes de 200 identifiants ;
 3. applique la liste blanche analytique et refuse toute colonne identifiante ;
 4. genere le CSV ou le XLSX, calcule `file_hash`, stocke le fichier dans `scientific-exports` ;
 5. insere `export_log` avec `generation_mode='server'`.
+
+L'export est borne avant materialisation : 10 000 patients, 50 000 rencontres, 25 000 champs de
+dictionnaire, 1 000 000 cellules, 1 000 colonnes CSV ou 256 colonnes XLSX. Un depassement renvoie
+HTTP 413 avec `EXPORT_LIMIT_EXCEEDED`. Un compte ou une pagination incoherente, une page
+intermediaire incomplete ou un doublon entre pages ferme le chemin avec HTTP 409
+`EXPORT_INCOMPLETE`; une lecture serveur en echec renvoie HTTP 500 `EXPORT_READ_FAILED`. Aucune de
+ces situations ne peut produire un export HTTP 200 partiel.
 
 Le telechargement reste separe : l'historique passe par `signed-read`, qui journalise
 `export_read` avant de delivrer l'URL signee.

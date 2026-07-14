@@ -207,15 +207,19 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
     expect(e.pending).toBe(true);
   });
 
-  test('flush (succes) : rejoue via la RPC avec le jeton optimiste, vide la file, leve pending', async () => {
-    const calls: Array<{ exp: string | null }> = [];
+  test('flush (succes) : rejoue via la RPC avec le jeton optimiste et un id stable, vide la file, leve pending', async () => {
+    const pending = (await outbox.list('bOB'))[0];
+    const calls: Array<{ exp: string | null; operationId: string }> = [];
     const deps: FlushDeps = {
-      updateEncounter: async (_id, _data, _status, _reason, exp) => { calls.push({ exp }); return {}; },
+      updateEncounter: async (_id, _data, _status, _reason, exp, operationId) => {
+        calls.push({ exp, operationId }); return {};
+      },
       getEncounter: async () => ({ data: { glasgow_score: 12 }, updatedAt: '2024-01-02T00:00:00.000Z' }),
     };
     const rep = await flushOutbox(deps, 'bOB');
     expect(rep).toMatchObject({ synced: 1, conflicts: 0, failed: 0 });
     expect(calls[0].exp).toBe('2024-01-01T00:00:00.000Z'); // jeton optimiste transmis
+    expect(calls[0].operationId).toBe(pending.id); // cle d'idempotence issue de l'outbox
     expect(await outbox.count('bOB')).toBe(0);
     const e = await cachedEnc('bOB');
     expect(e.pending).toBe(false);
@@ -223,15 +227,26 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
     await offlineCache.remove('bOB');
   });
 
-  test('erreur reseau : revient pending, conserve les donnees puis reussit au retry sans double envoi', async () => {
+  test('reponse reseau perdue apres commit : le retry garde le meme id et ne reapplique pas l ecriture', async () => {
     await seedBase('b-network', '2024-01-01T00:00:00.000Z');
     await enqueueEncounterUpdate({
       baseId: 'b-network', patientId: 'p1', encounterId: 'e1', data: { score: 12 },
       reason: 'reseau', validationStatus: 'draft', baseUpdatedAt: null,
     });
-    let calls = 0;
+    const operationIds: string[] = [];
+    const committed = new Set<string>();
+    let logicalWrites = 0;
     const deps: FlushDeps = {
-      updateEncounter: async () => { calls++; if (calls === 1) throw new TypeError('Failed to fetch'); },
+      updateEncounter: async (_id, _data, _status, _reason, _expected, operationId) => {
+        operationIds.push(operationId);
+        if (!committed.has(operationId)) {
+          committed.add(operationId);
+          logicalWrites++;
+          // Le serveur a valide et commite, mais le navigateur ne recoit pas la reponse.
+          throw new TypeError('Failed to fetch');
+        }
+        return { replayed: true };
+      },
       getEncounter: async () => ({ data: { score: 12 }, updatedAt: '2024-01-02T00:00:00.000Z' }),
     };
     expect(await flushOutbox(deps, 'b-network')).toMatchObject({ failed: 1, synced: 0 });
@@ -239,7 +254,9 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
     expect(await flushOutbox(deps, 'b-network')).toMatchObject({ failed: 0, synced: 1 });
     expect(await outbox.count('b-network')).toBe(0);
     await flushOutbox(deps, 'b-network');
-    expect(calls).toBe(2);
+    expect(operationIds).toHaveLength(2);
+    expect(operationIds[1]).toBe(operationIds[0]);
+    expect(logicalWrites).toBe(1);
     await offlineCache.remove('b-network');
   });
 
@@ -399,13 +416,17 @@ describe('outbox — conflits (Phase 3)', () => {
 
   test('garder ma version : reapplique en forcant (expected=null) puis vide la file', async () => {
     let forced: string | null | undefined = '?';
+    let operationId: string | undefined;
     const deps: FlushDeps = {
-      updateEncounter: async (_id, _data, _status, _reason, exp) => { forced = exp; return {}; },
+      updateEncounter: async (_id, _data, _status, _reason, exp, op) => {
+        forced = exp; operationId = op; return {};
+      },
       getEncounter: async () => ({ data: { glasgow_score: 12 }, updatedAt: '2024-01-04T00:00:00.000Z' }),
     };
     const entry = (await outbox.list('bC'))[0];
     await resolveKeepMine(entry.id, deps);
     expect(forced).toBeNull(); // forcage
+    expect(operationId).toBe(entry.id);
     expect(await outbox.count('bC')).toBe(0);
     expect((await cachedEnc('bC')).data.glasgow_score).toBe(12);
     await offlineCache.remove('bC');

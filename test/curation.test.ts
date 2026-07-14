@@ -590,3 +590,120 @@ describe('audit v9 §5.4 : creation du workflow de curation par RPC seulement', 
     ).rejects.toThrow();
   });
 });
+
+describe('ecriture de brouillon gardee : resultat, permissions et concurrence', () => {
+  const save = (
+    uid: string,
+    draftId: string,
+    patientData: unknown,
+    encounters: unknown,
+    revision: number,
+  ) => rowsAs(
+    uid,
+    'select * from public.save_curation_draft($1,$2::jsonb,$3::jsonb,$4)',
+    [draftId, JSON.stringify(patientData), JSON.stringify(encounters), revision],
+  );
+
+  test('mise a jour autorisee, double soumission, ressource absente et aucune modification partielle', async () => {
+    const c = await claimAndDraft('NCH-002', {}, []);
+    const before = (await db.admin.query(
+      'select patient_data, encounters, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+
+    const updated = await save(curator1Id, c.draftId, { blood_group: 'A+' }, [], before.revision);
+    expect(updated[0].outcome).toBe('updated');
+    expect(Number(updated[0].revision)).toBe(Number(before.revision) + 1);
+
+    const replay = await save(curator1Id, c.draftId, { blood_group: 'B+' }, [], before.revision);
+    expect(replay[0].outcome).toBe('stale');
+    expect((await db.admin.query('select patient_data from public.curation_draft where id=$1', [c.draftId])).rows[0].patient_data)
+      .toEqual({ blood_group: 'A+' });
+
+    const current = (await db.admin.query(
+      'select patient_data, encounters, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+    const invalid = await save(curator1Id, c.draftId, [], [{ encounter_type: 'suivi' }], current.revision);
+    expect(invalid[0].outcome).toBe('invalid_input');
+    const afterInvalid = (await db.admin.query(
+      'select patient_data, encounters, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+    expect(afterInvalid).toEqual(current);
+
+    const absent = await save(
+      curator1Id,
+      '00000000-0000-0000-0000-000000000001',
+      {},
+      [],
+      0,
+    );
+    expect(absent[0].outcome).toBe('not_found');
+  });
+
+  test('permission revoquee, reattribution et cloture sont refusees explicitement', async () => {
+    const revoked = await claimAndDraft('NCH-003', {}, []);
+    const revokedRevision = Number((await db.admin.query(
+      'select revision from public.curation_draft where id=$1',
+      [revoked.draftId],
+    )).rows[0].revision);
+    await db.admin.query("update public.profiles set global_role='medecin' where id=$1", [curator1Id]);
+    try {
+      expect((await save(curator1Id, revoked.draftId, { blood_group: 'A+' }, [], revokedRevision))[0].outcome)
+        .toBe('forbidden');
+    } finally {
+      await db.admin.query("update public.profiles set global_role='curateur' where id=$1", [curator1Id]);
+    }
+
+    await db.admin.query('update public.curation_task set assigned_to=$2 where id=$1', [revoked.taskId, curator2Id]);
+    expect((await save(curator1Id, revoked.draftId, {}, [], revokedRevision))[0].outcome).toBe('forbidden');
+
+    const closed = await claimAndDraft('NCH-005', {}, []);
+    const closedRevision = Number((await db.admin.query(
+      'select revision from public.curation_draft where id=$1',
+      [closed.draftId],
+    )).rows[0].revision);
+    await db.admin.query("update public.curation_task set status='completed' where id=$1", [closed.taskId]);
+    expect((await save(curator1Id, closed.draftId, {}, [], closedRevision))[0].outcome).toBe('invalid_state');
+  });
+
+  test('deux ecritures concurrentes avec la meme revision : une seule est appliquee', async () => {
+    const c = await claimAndDraft('NCH-006', {}, []);
+    const revision = Number((await db.admin.query(
+      'select revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0].revision);
+
+    const [a, b] = await Promise.all([
+      save(curator1Id, c.draftId, { blood_group: 'A+' }, [], revision),
+      save(curator1Id, c.draftId, { blood_group: 'B+' }, [], revision),
+    ]);
+    expect([a[0].outcome, b[0].outcome].sort()).toEqual(['stale', 'updated']);
+    const final = (await db.admin.query(
+      'select patient_data, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+    expect([{ blood_group: 'A+' }, { blood_group: 'B+' }]).toContainEqual(final.patient_data);
+    expect(Number(final.revision)).toBe(revision + 1);
+  });
+
+  test('RPC definer : auth explicite, search_path fixe et EXECUTE limite a authenticated', async () => {
+    const metadata = (await db.admin.query(
+      `select p.prosecdef, p.proconfig,
+              has_function_privilege('anon', p.oid, 'execute') as anon_exec,
+              has_function_privilege('authenticated', p.oid, 'execute') as authenticated_exec
+         from pg_proc p
+        where p.oid = 'public.save_curation_draft(uuid,jsonb,jsonb,bigint)'::regprocedure`,
+    )).rows[0];
+    expect(metadata.prosecdef).toBe(true);
+    expect(metadata.proconfig).toContain('search_path=public, pg_temp');
+    expect(metadata.anon_exec).toBe(false);
+    expect(metadata.authenticated_exec).toBe(true);
+    const unauthenticated = (await db.admin.query(
+      'select * from public.save_curation_draft($1,$2::jsonb,$3::jsonb,$4)',
+      ['00000000-0000-0000-0000-000000000001', '{}', '[]', 0],
+    )).rows[0];
+    expect(unauthenticated.outcome).toBe('forbidden');
+  });
+});

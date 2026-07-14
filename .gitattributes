@@ -1,0 +1,2 @@
+# Deno's formatter requires LF. Keep Edge sources stable on Windows checkouts.
+supabase/functions/**/*.ts text eol=lf

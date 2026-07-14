@@ -62,6 +62,10 @@ const CSV = 'Code patient,Sexe,Diagnostic,Score de Glasgow,Date\nP1,M,TC,12,2024
 const largeCsv = (count = 301) => `Code patient,Sexe\n${Array.from(
   { length: count }, (_, i) => `P${i + 1},${i % 2 ? 'F' : 'M'}`,
 ).join('\n')}\n`;
+const crossChunkDuplicateCsv = () => `Code patient,Diagnostic,Date\n${Array.from(
+  { length: 301 },
+  (_, i) => (i === 300 ? 'P1,D0,2024-01-01' : `P${i + 1},D${i},2024-01-${String((i % 28) + 1).padStart(2, '0')}`),
+).join('\n')}\n`;
 
 // jsdom : File.arrayBuffer() n'est pas garanti -> on le fournit explicitement (octets reels).
 function csvFile(content: string, name = 'data.csv') {
@@ -162,6 +166,29 @@ describe('ImportData (ecran d import)', () => {
     expect(await screen.findByText(/associez une colonne/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aperçu' })).toBeDisabled();
     expect(importRecords).not.toHaveBeenCalled();
+  });
+
+  test('apercu de 301 lignes : detecte un doublon exact situe dans deux chunks differents', async () => {
+    const importRecords = vi.fn(async (_b: string, chunk: ImportRow[], opts: ImportOptions): Promise<ImportReport> => ({
+      dry_run: opts.dryRun,
+      status: 'draft',
+      patients_new: chunk.length,
+      patients_updated: 0,
+      encounters: chunk.length,
+      error_count: 0,
+      errors: [],
+    }));
+    const { getVersion } = renderImport(importRecords);
+    await waitFor(() => expect(getVersion).toHaveBeenCalled());
+    upload(crossChunkDuplicateCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('encounter:diagnosis'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+
+    await waitFor(() => expect(importRecords).toHaveBeenCalledTimes(2));
+    expect(importRecords.mock.calls.map((call) => call[1].length)).toEqual([300, 1]);
+    expect(await screen.findByText(/premiere ligne 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ligne 301/i)).toHaveTextContent(/double dans le fichier/i);
   });
 
   test('double clic sur Importer : un seul lot est ouvert et complete', async () => {

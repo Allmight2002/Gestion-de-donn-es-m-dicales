@@ -17,7 +17,7 @@ const listing: BaseListing = {
   templateName: 'Neuro', versionNumber: 1,
 };
 const stats: InclusionStats = {
-  total: 12, target: 20, targetDate: '2026-12-01',
+  total: 12, target: 20, targetDate: '2026-12-01', targetRevision: 7,
   monthly: [{ month: '2026-01', count: 5 }, { month: '2026-02', count: 7 }],
 };
 
@@ -62,12 +62,32 @@ describe('BaseStats (D2)', () => {
     // Le proprietaire modifie l'objectif -> enregistre via le repository.
     fireEvent.change(screen.getByLabelText('Objectif'), { target: { value: '30' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer l’objectif' }));
-    await waitFor(() => expect(setInclusionTarget).toHaveBeenCalledWith('b1', 30, '2026-12-01'));
+    await waitFor(() => expect(setInclusionTarget).toHaveBeenCalledWith('b1', 30, '2026-12-01', 7));
+  });
+
+  test('un refus ne declenche aucun succes et affiche une erreur utilisateur', async () => {
+    const setInclusionTarget = vi.fn(async () => {
+      throw new Error('WRITE_STALE');
+    });
+    const bases = {
+      async getInclusionStats() { return stats; },
+      async getCompletenessStats() { return []; },
+      async getBase() { return listing; },
+      setInclusionTarget,
+    } as unknown as BaseRepository;
+    renderStats(bases);
+    await screen.findByText('Patients inclus');
+    fireEvent.change(screen.getByLabelText('Objectif'), { target: { value: '30' } });
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer l.objectif/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/modifiees entre-temps/i);
+    expect(screen.queryByText('Objectif enregistrÃ©.')).not.toBeInTheDocument();
   });
 
   test('sans donnees : message d attente, pas de graphique', async () => {
     const bases = {
-      async getInclusionStats(): Promise<InclusionStats> { return { total: 0, target: null, targetDate: null, monthly: [] }; },
+      async getInclusionStats(): Promise<InclusionStats> {
+        return { total: 0, target: null, targetDate: null, targetRevision: 0, monthly: [] };
+      },
       async getCompletenessStats() { return []; },
       async getBase() { return { ...listing, role: 'viewer' as const }; },
       setInclusionTarget: vi.fn(),

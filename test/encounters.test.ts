@@ -21,6 +21,7 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 
 const CALL = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
+const UPDATE = 'select * from public.update_encounter($1,$2::jsonb,$3,$4,$5::timestamptz)';
 const encArgs = (data: object, status = 'complete') => [patientId, 'consultation', TEST_DATE, status, JSON.stringify(data), 'years'];
 
 beforeAll(async () => {
@@ -118,6 +119,15 @@ describe('RLS sur la saisie', () => {
 });
 
 describe('promotion directe en curated : completude imposee (4.3)', () => {
+  test('draft incomplet accepte ; valeur structurellement invalide refusee', async () => {
+    const draft = await rowsAs(aliceId, CALL, encArgs({}, 'draft'));
+    expect(draft[0].validation_status).toBe('draft');
+    expect(draft[0].data).toEqual({});
+    await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 78 }, 'draft'))).rejects.toThrow(
+      /maximum|glasgow/i,
+    );
+  });
+
   test('curated avec un champ requis manquant -> refus ; complet -> accepte', async () => {
     // 'complete' reste libre (brouillon avance) : OK meme partiel.
     expect((await rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'complete')))[0].validation_status).toBe('complete');
@@ -126,6 +136,26 @@ describe('promotion directe en curated : completude imposee (4.3)', () => {
     // 'curated' complet -> accepte.
     const ok = await rowsAs(aliceId, CALL, encArgs({ admission_date: '2024-01-05', diagnosis: 'TC grave', glasgow_score: 12 }, 'curated'));
     expect(ok[0].validation_status).toBe('curated');
+  });
+
+  test('edition d un ancien draft incomplet acceptee ; promotion refusee puis acceptee une fois complete', async () => {
+    const created = (await rowsAs(aliceId, CALL, encArgs({}, 'draft')))[0];
+    const saved = (await rowsAs(aliceId, UPDATE, [created.id, '{}', 'draft', 'brouillon', created.updated_at]))[0];
+    expect(saved.validation_status).toBe('draft');
+    expect(saved.data).toEqual({});
+
+    await expect(
+      rowsAs(aliceId, UPDATE, [saved.id, '{}', 'curated', 'promotion incomplete', saved.updated_at]),
+    ).rejects.toThrow(/requis|manquant/i);
+
+    const curated = await rowsAs(aliceId, UPDATE, [
+      saved.id,
+      JSON.stringify({ diagnosis: 'controle', glasgow_score: 12 }),
+      'curated',
+      'promotion complete',
+      saved.updated_at,
+    ]);
+    expect(curated[0].validation_status).toBe('curated');
   });
 });
 

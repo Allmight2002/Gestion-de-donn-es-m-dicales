@@ -149,6 +149,51 @@ describe('EditEncounter (correction)', () => {
     expect(updateEncounter).toHaveBeenCalledTimes(1);
     expect(updateEncounter.mock.calls[0][3]).toBe('erreur de frappe');
   });
+
+  test('un ancien draft incomplet reste editable et enregistrable', async () => {
+    const updateEncounter = vi.fn(
+      async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }),
+    );
+    renderAt(
+      '/bases/b1/patients/p1/encounters/e1/edit',
+      makePatients({
+        getEncounter: async () => ({ ...encounter, validationStatus: 'draft', data: {} }),
+        updateEncounter,
+      }),
+    );
+
+    expect(await screen.findByLabelText('Glasgow')).toHaveValue(null);
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'brouillon conserve' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(updateEncounter).toHaveBeenCalledTimes(1));
+    expect(updateEncounter.mock.calls[0][1]).toEqual({});
+    expect(updateEncounter.mock.calls[0][2]).toBe('draft');
+  });
+
+  test('le passage draft vers curated est bloque tant que la saisie est incomplete', async () => {
+    const updateEncounter = vi.fn(
+      async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }),
+    );
+    renderAt(
+      '/bases/b1/patients/p1/encounters/e1/edit',
+      makePatients({
+        getEncounter: async () => ({ ...encounter, validationStatus: 'draft', data: {} }),
+        updateEncounter,
+      }),
+    );
+
+    await screen.findByLabelText('Glasgow');
+    fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'curated' } });
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'promotion' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(updateEncounter).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '12' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(updateEncounter).toHaveBeenCalledTimes(1));
+    expect(updateEncounter.mock.calls[0][2]).toBe('curated');
+  });
 });
 
 describe('EditPatient (verrou optimiste)', () => {

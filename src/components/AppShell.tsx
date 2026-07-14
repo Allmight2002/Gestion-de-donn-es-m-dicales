@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isOfflineEnabled() || !online || pendingCount === 0 || syncing.current) return;
     const deps: FlushDeps = {
-      updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
+      updateEncounter: (id, data, status, reason, exp, operationId) => patients.updateEncounter(id, data, status, reason, exp, operationId),
       getEncounter: (id) => patients.getEncounter(id),
     };
     syncing.current = true;
@@ -224,7 +224,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         )}
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       </div>
       <CommandPalette />
       {confirmSignOut && (

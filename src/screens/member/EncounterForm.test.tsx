@@ -91,6 +91,48 @@ describe('EncounterForm', () => {
     expect(createEncounter).toHaveBeenCalledTimes(1);
   });
 
+  test('un draft incomplet est accepte mais une valeur renseignee hors bornes reste refusee', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderForm(makePatientRepo(createEncounter));
+    await screen.findByText('Glasgow');
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(createEncounter.mock.calls[0][1]).toEqual(expect.objectContaining({
+      validationStatus: 'draft',
+      data: {},
+    }));
+
+    const invalidCreate = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e2' }));
+    renderForm(makePatientRepo(invalidCreate));
+    await screen.findAllByText('Glasgow');
+    const dates = screen.getAllByLabelText('Date de la rencontre');
+    const glasgows = screen.getAllByLabelText('Glasgow');
+    fireEvent.change(dates.at(-1)!, { target: { value: '2024-06-02' } });
+    fireEvent.change(glasgows.at(-1)!, { target: { value: '99' } });
+    const saveButtons = screen.getAllByRole('button', { name: 'Enregistrer la rencontre' });
+    await userEvent.click(saveButtons.at(-1)!);
+    expect(await screen.findByText(/valeur maximale/i)).toBeInTheDocument();
+    expect(invalidCreate).not.toHaveBeenCalled();
+  });
+
+  test('curated incomplet est refuse et curated conforme est accepte', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderForm(makePatientRepo(createEncounter));
+    await screen.findByText('Glasgow');
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'curated' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(createEncounter).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(createEncounter.mock.calls[0][1]).toEqual(expect.objectContaining({ validationStatus: 'curated' }));
+  });
+
   test('A2 : Ctrl+Entrée enregistre la rencontre depuis le clavier', async () => {
     const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
     const { container } = renderForm(makePatientRepo(createEncounter));
@@ -125,6 +167,7 @@ describe('EncounterForm', () => {
     renderForm(makePatientRepo(createEncounter));
     await screen.findByText('Glasgow');
     fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'curated' } });
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Admission'), { target: { value: '2024-01-10' } });
     fireEvent.change(screen.getByLabelText('Sortie'), { target: { value: '2024-01-05' } });

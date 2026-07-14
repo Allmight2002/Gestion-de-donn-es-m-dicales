@@ -32,7 +32,15 @@ const openTask: CurationTaskItem = {
 const bundle = (status: string, taskStatus: string): TaskBundle => ({
   task: { ...openTask, status: taskStatus, assignedTo: 'cur', assignedName: 'Carl' },
   documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', inspectionStatus: 'accepted' }],
-  draft: { id: 'dr1', taskId: 'tk1', patientData: {}, encounters: [], status },
+  draft: {
+    id: 'dr1',
+    taskId: 'tk1',
+    patientData: {},
+    encounters: [],
+    status,
+    revision: 4,
+    updatedAt: '2026-07-13T12:00:00Z',
+  },
   patientIdentity: null,
   clarifications: [],
 });
@@ -81,6 +89,23 @@ describe('CurationTask (pool)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Finaliser la curation' }));
     await waitFor(() => expect(finalizeTask).toHaveBeenCalledWith('tk1'));
     expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect(saveDraft).toHaveBeenCalledWith('dr1', {}, [], 4);
+  });
+
+  test('un refus d ecriture est visible et aucun message de succes n est affiche', async () => {
+    const saveDraft = vi.fn(async () => {
+      throw new Error('WRITE_FORBIDDEN');
+    });
+    const curation = {
+      async getTaskBundle() {
+        return bundle('draft', 'in_progress');
+      },
+      saveDraft,
+    } as unknown as CurationRepository;
+    renderAt('/curation/tk1', curation);
+    await userEvent.click(await screen.findByRole('button', { name: 'Enregistrer le brouillon' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/droits ou votre affectation/i);
+    expect(screen.queryByText('Brouillon enregistrÃ©.')).not.toBeInTheDocument();
   });
 });
 

@@ -1,11 +1,14 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { ClipboardCheck, Target, TrendingUp, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { CompletenessRow, InclusionStats } from '../../data/bases';
 import { useToast } from '../../components/Toast';
 import { SkeletonList } from '../../components/Skeleton';
+import { PageHeader } from '../../components/PageHeader';
+import { SectionCard } from '../../components/SectionCard';
 
 // D2 — Courbe d'inclusion : inclusions cumulees par mois vs OBJECTIF date (le graphique de
 // reunion d'etude). Analytique pur (aucune identite). L'objectif est fixe par le proprietaire.
@@ -54,11 +57,12 @@ export function BaseStats() {
 
   async function saveTarget(e: FormEvent) {
     e.preventDefault();
-    if (!baseId) return;
+    if (!baseId || !stats) return;
+    const expectedRevision = stats.targetRevision;
     setBusy(true);
     try {
       const n = target.trim() === '' ? null : Math.max(1, Math.round(Number(target)));
-      await bases.setInclusionTarget(baseId, n, targetDate || null);
+      await bases.setInclusionTarget(baseId, n, targetDate || null, expectedRevision);
       toast(t('stats.saved'));
       await load();
     } catch (e) {
@@ -90,34 +94,35 @@ export function BaseStats() {
   const pct = stats.target ? Math.min(100, Math.round((stats.total / stats.target) * 100)) : null;
 
   return (
-    <section className="max-w-3xl space-y-5">
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    <section className="max-w-4xl space-y-6">
+      <PageHeader title={t('stats.page_title')} description={t('stats.page_subtitle')} />
+      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="card p-3">
-          <p className="text-xs text-slate-500">{t('stats.total')}</p>
-          <p className="text-2xl font-semibold text-slate-900">{stats.total}</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="card flex items-center gap-3 p-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700"><Users size={19} aria-hidden /></span>
+          <div><p className="text-sm text-slate-500">{t('stats.total')}</p><p className="text-2xl font-semibold tracking-tight text-slate-900">{stats.total}</p></div>
         </div>
-        <div className="card p-3">
-          <p className="text-xs text-slate-500">{t('stats.target_label')}</p>
-          <p className="text-2xl font-semibold text-slate-900">{stats.target ?? '—'}</p>
+        <div className="card flex items-center gap-3 p-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-700"><Target size={19} aria-hidden /></span>
+          <div><p className="text-sm text-slate-500">{t('stats.target_label')}</p><p className="text-2xl font-semibold tracking-tight text-slate-900">{stats.target ?? '—'}</p></div>
         </div>
-        <div className="card p-3">
-          <p className="text-xs text-slate-500">{t('stats.progress')}</p>
-          <p className="text-2xl font-semibold text-slate-900">{pct != null ? `${pct} %` : '—'}</p>
+        <div className="card flex items-center gap-3 p-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-700"><TrendingUp size={19} aria-hidden /></span>
+          <div><p className="text-sm text-slate-500">{t('stats.progress')}</p><p className="text-2xl font-semibold tracking-tight text-slate-900">{pct != null ? `${pct} %` : '—'}</p></div>
         </div>
       </div>
 
-      <div className="card p-4">
-        <div className="mb-1 flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-700">{t('stats.title')}</h2>
-          {stats.target && (
+      <SectionCard
+        title={t('stats.title')}
+        icon={TrendingUp}
+        actions={stats.target && (
             <p className="text-xs text-slate-400">
               {t('stats.target_label')} : {stats.target}
               {stats.targetDate ? ` · ${new Date(stats.targetDate).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' })}` : ''}
             </p>
-          )}
-        </div>
+        )}
+      >
 
         {!chart ? (
           <p className="py-8 text-center text-sm text-slate-500">{t('stats.no_data')}</p>
@@ -153,13 +158,11 @@ export function BaseStats() {
             )}
           </>
         )}
-      </div>
+      </SectionCard>
 
       {/* B1 — completude par variable, les moins renseignees d'abord (liste de travail). */}
       {completeness.length > 0 && (
-        <div className="card p-4">
-          <h2 className="text-sm font-semibold text-slate-700">{t('stats.completeness_title')}</h2>
-          <p className="mb-3 mt-0.5 text-xs text-slate-400">{t('stats.completeness_hint')}</p>
+        <SectionCard title={t('stats.completeness_title')} description={t('stats.completeness_hint')} icon={ClipboardCheck}>
           <ul className="space-y-2">
             {completeness.map((r) => {
               const observed = r.observed ?? r.filled;
@@ -190,22 +193,24 @@ export function BaseStats() {
               );
             })}
           </ul>
-        </div>
+        </SectionCard>
       )}
 
       {isOwner && (
-        <form onSubmit={saveTarget} className="card flex flex-wrap items-end gap-3 p-4 text-sm">
-          <label className="flex flex-col text-xs text-slate-600">
-            {t('stats.target_label')}
-            <input type="number" min="1" className="input mt-1 w-32" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="150" />
-          </label>
-          <label className="flex flex-col text-xs text-slate-600">
-            {t('stats.target_date')}
-            <input type="date" className="input mt-1" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-          </label>
-          <button type="submit" disabled={busy} className="btn-primary">{t('stats.save')}</button>
-          <span className="text-xs text-slate-400">{t('stats.target_hint')}</span>
-        </form>
+        <SectionCard title={t('stats.goal_title')} description={t('stats.goal_description')} icon={Target}>
+          <form onSubmit={saveTarget} className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <label className="form-label">
+              {t('stats.target_label')}
+              <input type="number" min="1" className="input w-full sm:w-36" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="150" />
+            </label>
+            <label className="form-label">
+              {t('stats.target_date')}
+              <input type="date" className="input" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+            </label>
+            <button type="submit" disabled={busy} className="btn-primary">{t('stats.save')}</button>
+            <span className="helper-text sm:pb-2">{t('stats.target_hint')}</span>
+          </form>
+        </SectionCard>
       )}
     </section>
   );

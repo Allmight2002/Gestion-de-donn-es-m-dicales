@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
-import { FileText, Image as ImageIcon } from 'lucide-react';
+import { CalendarDays, FileText, Image as ImageIcon, Plus } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -16,6 +16,9 @@ import { formatDate } from '../../lib/formatDate';
 import { StatusBadge } from '../../components/StatusBadge';
 import { DeleteWithReason } from './DeleteWithReason';
 import { useSignedFile } from '../../lib/useSignedFile';
+import { PageHeader } from '../../components/PageHeader';
+import { SectionCard } from '../../components/SectionCard';
+import { EmptyState } from '../../components/EmptyState';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 type Column = { id: string; fieldKey: string; label: string; scope: string; displayOrder: number };
@@ -168,18 +171,17 @@ export function PatientDetail() {
   if (!patient) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
   return (
-    <section className="max-w-3xl space-y-6">
+    <section className="max-w-4xl space-y-6">
       <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
         ← {t('admin.back')}
       </button>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="page-title">
-          {t('patient.detail')} <span className="font-mono text-base font-normal text-slate-400">{patient.code}</span>
-          {offlineView && <span className="badge ml-3 bg-amber-100 text-amber-800">{t('offline.read_only')}</span>}
-        </h1>
-        {!offlineView && (
-          <div className="flex items-center gap-3">
+      <PageHeader
+        title={t('patient.detail')}
+        eyebrow={<span className="font-mono">{patient.code}</span>}
+        badge={offlineView ? <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span> : undefined}
+        actions={!offlineView ? (
+          <>
             <DeleteWithReason
               label={t('del.patient')}
               onConfirm={async (reason) => {
@@ -193,11 +195,11 @@ export function PatientDetail() {
               onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
               className="btn-primary"
             >
-              + {t('encounter.add')}
+              <Plus size={16} aria-hidden /> {t('encounter.add')}
             </button>
-          </div>
-        )}
-      </div>
+          </>
+        ) : undefined}
+      />
 
       {patient.identity && (
         <fieldset className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm shadow-sm">
@@ -209,10 +211,10 @@ export function PatientDetail() {
         </fieldset>
       )}
 
-      <div className="card p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
-          <span className="flex items-center gap-3">
+      <SectionCard
+        title={t('patient.permanent_section')}
+        actions={(
+          <span className="flex flex-wrap items-center gap-2">
             <StatusBadge status={patient.validationStatus} />
             {canEdit && (
               <button
@@ -237,21 +239,22 @@ export function PatientDetail() {
               </button>
             )}
           </span>
-        </div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        )}
+      >
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
           {patientFields.map((f) => (
-            <div key={f.id} className="contents">
-              <dt className="text-slate-500">{f.label}</dt>
-              <dd>{fmt(patient.data[f.fieldKey])}</dd>
+            <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
+              <dt className="text-xs text-slate-500">{f.label}</dt>
+              <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey])}</dd>
             </div>
           ))}
         </dl>
-      </div>
+      </SectionCard>
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>
         {encounters.length === 0 ? (
-          <div className="card border-dashed p-8 text-center text-slate-500">{t('patient.no_encounters')}</div>
+          <EmptyState icon={CalendarDays} title={t('patient.no_encounters')} compact />
         ) : (
           <ul className="space-y-3">
             {encounters.map((e) => (

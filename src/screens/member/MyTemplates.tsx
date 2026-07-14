@@ -1,11 +1,15 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FileText } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
 import { useToast } from '../../components/Toast';
+import { PageHeader } from '../../components/PageHeader';
+import { SectionCard } from '../../components/SectionCard';
+import { EmptyState } from '../../components/EmptyState';
 import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 
 type Tpl = Template & { versions: TemplateVersion[] };
@@ -96,34 +100,33 @@ export function MyTemplates() {
   }
 
   return (
-    <section className="max-w-3xl space-y-6">
-      <div>
-        <button onClick={() => navigate('/')} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('base.back_to_dashboard')}</button>
-        <h1 className="page-title mt-2">{t('mytemplates.title')}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t('mytemplates.hint')}</p>
-      </div>
+    <section className="max-w-4xl space-y-6">
+      <PageHeader title={t('mytemplates.title')} description={t('mytemplates.hint')} />
 
-      <form onSubmit={(e) => { e.preventDefault(); void createTemplate(); }} className="card p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('mytemplates.create')}</h2>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+      <SectionCard title={t('mytemplates.create')} icon={FileText}>
+        <form onSubmit={(e) => { e.preventDefault(); void createTemplate(); }} className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="form-label">
             {t('admin.name')}
             <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} required />
           </label>
-          <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="form-label">
             {t('admin.specialty')}
             <input className="input" value={newSpec} onChange={(e) => setNewSpec(e.target.value)} />
           </label>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
           <button type="submit" disabled={busy || !newName.trim()} className="btn-primary">{t('mytemplates.create')}</button>
           <button type="button" onClick={() => navigate('/templates/from-file')} className="btn-secondary">{t('mytemplates.from_file')}</button>
           <button type="button" onClick={() => navigate('/templates/library')} className="btn-secondary">{t('tlib.title')}</button>
         </div>
-      </form>
+        </form>
+      </SectionCard>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading && <p className="text-slate-500">{t('common.loading')}</p>}
       {!loading && templates.length === 0 && (
-        <div className="card border-dashed p-10 text-center text-slate-500">{t('mytemplates.empty')}</div>
+        <EmptyState icon={FileText} title={t('mytemplates.empty')} />
       )}
 
       <ul className="space-y-2">

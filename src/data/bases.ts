@@ -4,6 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { AccessRole, BasePermissions } from './access';
+import { requireUpdatedRow } from '../lib/guardedWrite';
 
 export type BaseRole = 'owner' | AccessRole;
 
@@ -45,6 +46,7 @@ export interface InclusionStats {
   total: number;
   target: number | null;
   targetDate: string | null;
+  targetRevision: number;
   dateField?: string | null;
   monthly: { month: string; count: number }[];
 }
@@ -75,7 +77,12 @@ export interface BaseRepository {
   /** D2 : inclusions par mois + objectif (RLS : sans acces -> serie vide). */
   getInclusionStats(baseId: string): Promise<InclusionStats>;
   /** D2 : fixe/retire l'objectif d'inclusion (proprietaire seulement, RLS base_update). */
-  setInclusionTarget(baseId: string, target: number | null, targetDate: string | null): Promise<void>;
+  setInclusionTarget(
+    baseId: string,
+    target: number | null,
+    targetDate: string | null,
+    expectedRevision: number,
+  ): Promise<void>;
   /** B1 : completude par variable, les moins renseignees d'abord (RLS : sans acces -> vide). */
   getCompletenessStats(baseId: string, mode?: 'historical' | 'current' | 'both'): Promise<CompletenessRow[]>;
 }
@@ -223,17 +230,21 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         total: s.total ?? 0,
         target: s.target ?? null,
         targetDate: s.targetDate ?? null,
+        targetRevision: s.targetRevision ?? 0,
         dateField: s.dateField ?? null,
         monthly: s.monthly ?? [],
       };
     },
 
-    async setInclusionTarget(baseId, target, targetDate) {
-      const { error } = await client
-        .from('base')
-        .update({ inclusion_target: target, inclusion_target_date: targetDate })
-        .eq('id', baseId);
-      if (error) throw error;
+    async setInclusionTarget(baseId, target, targetDate, expectedRevision) {
+      const { data, error } = await client.rpc('set_base_inclusion_target', {
+        p_base_id: baseId,
+        p_target: target,
+        p_target_date: targetDate,
+        p_expected_revision: expectedRevision,
+      });
+      if (error) throw new Error('WRITE_FAILED');
+      requireUpdatedRow(data);
     },
 
     async getCompletenessStats(baseId, mode = 'historical') {

@@ -116,9 +116,14 @@ export function EditEncounter() {
     e.preventDefault();
     if (!baseId || !patientId || !encounterId) return;
 
+    const requireComplete = status === 'curated';
+    const ruleEval = evaluateRules(
+      rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
+      values,
+    );
     const block = [
-      ...validateValues(fields, values).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
-      ...evaluateRules(rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })), values).blocking,
+      ...validateValues(fields, values, requireComplete).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
+      ...(requireComplete ? ruleEval.blocking : []),
     ];
     if (!reason.trim()) block.unshift(t('encounter.reason_required'));
     setBlocking(block);

@@ -17,6 +17,7 @@ const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8:
 const CREATE_ENC = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
 const UPDATE_ENC = 'select * from public.update_encounter($1,$2::jsonb,$3,$4)';
 const UPDATE_ENC5 = 'select * from public.update_encounter($1,$2::jsonb,$3,$4,$5::timestamptz)';
+const REPLAY_ENC = 'select * from public.replay_encounter_update($1,$2,$3::jsonb,$4,$5,$6::timestamptz)';
 const encUpdatedAt = async (): Promise<Date> =>
   (await db.admin.query('select updated_at from public.encounter where id=$1', [encounterId])).rows[0].updated_at;
 const changes = (uid: string) =>
@@ -86,6 +87,127 @@ describe('§13 verrou optimiste (synchronisation hors-ligne)', () => {
     // Forcage (expected = null) : applique malgre le decalage (resolution « garder ma version »).
     const forced = await rowsAs(aliceId, UPDATE_ENC5, [encounterId, JSON.stringify({ glasgow_score: 15, diagnosis: 'TC' }), 'curated', 'forcage', null]);
     expect(forced[0].data.glasgow_score).toBe(15);
+  });
+});
+
+describe('rejeu hors-ligne idempotent apres une reponse perdue', () => {
+  test('un rejeu strictement identique renvoie le meme accuse sans seconde ecriture', async () => {
+    const code = `OFFLINE-REPLAY-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient fictif', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M' }),
+    ]))[0];
+    const encounter = (await rowsAs(aliceId, CREATE_ENC, [
+      patient.id, 'consultation', '2024-04-01', 'draft',
+      JSON.stringify({ glasgow_score: 10 }), 'years',
+    ]))[0];
+    const expected = encounter.updated_at.toISOString();
+    const operationId = `outbox-${Date.now()}-response-lost`;
+    const payload = JSON.stringify({ glasgow_score: 11 });
+
+    const first = await rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, payload, 'draft', 'correction hors-ligne', expected,
+    ]);
+    const changesAfterCommit = Number((await db.admin.query(
+      "select count(*)::int n from public.field_change_log where entity='encounter' and entity_id=$1",
+      [encounter.id],
+    )).rows[0].n);
+
+    // Simulation d'une reponse HTTP perdue : le client ne connait pas first et rejoue la meme intention.
+    const replay = await rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, payload, 'draft', 'correction hors-ligne', expected,
+    ]);
+    const changesAfterReplay = Number((await db.admin.query(
+      "select count(*)::int n from public.field_change_log where entity='encounter' and entity_id=$1",
+      [encounter.id],
+    )).rows[0].n);
+
+    expect(first[0]).toMatchObject({ id: encounter.id, replayed: false });
+    expect(replay[0]).toMatchObject({ id: encounter.id, replayed: true });
+    expect(replay[0].updated_at.toISOString()).toBe(first[0].updated_at.toISOString());
+    expect(changesAfterCommit).toBe(1);
+    expect(changesAfterReplay).toBe(changesAfterCommit);
+    expect((await db.admin.query('select data from public.encounter where id=$1', [encounter.id])).rows[0].data.glasgow_score).toBe(11);
+  });
+
+  test('une meme cle avec un payload different est refusee sans modification partielle', async () => {
+    const code = `OFFLINE-MISMATCH-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient fictif', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'F' }),
+    ]))[0];
+    const encounter = (await rowsAs(aliceId, CREATE_ENC, [
+      patient.id, 'consultation', '2024-04-02', 'draft',
+      JSON.stringify({ glasgow_score: 8 }), 'years',
+    ]))[0];
+    const operationId = `outbox-${Date.now()}-mismatch`;
+    await rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, JSON.stringify({ glasgow_score: 9 }), 'draft', 'hors-ligne', encounter.updated_at.toISOString(),
+    ]);
+    const before = (await db.admin.query('select data, updated_at from public.encounter where id=$1', [encounter.id])).rows[0];
+
+    await expect(rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, JSON.stringify({ glasgow_score: 15 }), 'draft', 'hors-ligne', encounter.updated_at.toISOString(),
+    ])).rejects.toThrow(/OFFLINE_OPERATION_MISMATCH/);
+
+    const after = (await db.admin.query('select data, updated_at from public.encounter where id=$1', [encounter.id])).rows[0];
+    expect(after.data).toEqual(before.data);
+    expect(after.updated_at.toISOString()).toBe(before.updated_at.toISOString());
+  });
+
+  test('deux intentions concurrentes sur la meme version : une seule gagne et l autre ne laisse aucune trace', async () => {
+    const code = `OFFLINE-RACE-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient fictif', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M' }),
+    ]))[0];
+    const encounter = (await rowsAs(aliceId, CREATE_ENC, [
+      patient.id, 'consultation', '2024-04-03', 'draft',
+      JSON.stringify({ glasgow_score: 7 }), 'years',
+    ]))[0];
+    const expected = encounter.updated_at.toISOString();
+    const prefix = `outbox-${Date.now()}-race`;
+    const writes = await Promise.allSettled([
+      rowsAs(aliceId, REPLAY_ENC, [`${prefix}-a`, encounter.id, JSON.stringify({ glasgow_score: 12 }), 'draft', 'course A', expected]),
+      rowsAs(aliceId, REPLAY_ENC, [`${prefix}-b`, encounter.id, JSON.stringify({ glasgow_score: 13 }), 'draft', 'course B', expected]),
+    ]);
+
+    expect(writes.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = writes.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    expect(String(rejected?.reason?.message ?? rejected?.reason)).toMatch(/CONFLIT_VERSION/);
+    expect([12, 13]).toContain(
+      (await db.admin.query('select data from public.encounter where id=$1', [encounter.id])).rows[0].data.glasgow_score,
+    );
+    expect(Number((await db.admin.query(
+      'select count(*)::int n from public.offline_encounter_operation where operation_id like $1',
+      [`${prefix}%`],
+    )).rows[0].n)).toBe(1);
+    expect(Number((await db.admin.query(
+      "select count(*)::int n from public.field_change_log where entity='encounter' and entity_id=$1",
+      [encounter.id],
+    )).rows[0].n)).toBe(1);
+  });
+
+  test('la table reste serveur-only et la RPC a des privileges bornes', async () => {
+    await expect(rowsAs(aliceId, 'select * from public.offline_encounter_operation')).rejects.toThrow(/permission denied/i);
+    const functionName = 'public.replay_encounter_update(text,uuid,jsonb,text,text,timestamp with time zone)';
+    const metadata = (await db.admin.query(
+      `select p.prosecdef, p.proconfig,
+              has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth_execute,
+              has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
+              has_function_privilege('public', p.oid, 'EXECUTE') as public_execute
+         from pg_proc p
+        where p.oid = $1::regprocedure`,
+      [functionName],
+    )).rows[0];
+    expect(metadata.prosecdef).toBe(true);
+    expect(metadata.proconfig).toContain('search_path=public, extensions, pg_temp');
+    expect(metadata.auth_execute).toBe(true);
+    expect(metadata.anon_execute).toBe(false);
+    expect(metadata.public_execute).toBe(false);
+    await expect(db.admin.query(REPLAY_ENC, [
+      'no-auth-operation', encounterId, JSON.stringify({ glasgow_score: 15, diagnosis: 'TC' }), 'curated', 'sans auth', null,
+    ])).rejects.toThrow(/AUTHENTICATION_REQUIRED/);
   });
 });
 

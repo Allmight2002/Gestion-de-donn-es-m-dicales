@@ -63,37 +63,52 @@ describe('CohortBuilder', () => {
     const createSnapshot = vi.fn(async (_b: string, _n: string, _f: FilterDefinition) => ({ id: 'c1' }));
     renderBuilder(makeCohorts({ preview, createSnapshot }));
 
-    await screen.findByText('Constituer une cohorte');
+    await screen.findByRole('heading', { name: 'Cohortes' });
     fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'M' } });
-    await userEvent.click(screen.getByRole('button', { name: /ajouter le filtre/i }));
+    await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
     expect(screen.getByRole('button', { name: 'Retirer' })).toBeInTheDocument(); // filtre ajoute
 
-    await userEvent.click(screen.getByRole('button', { name: 'Calculer les effectifs' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voir le résultat' }));
     await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
     expect((preview.mock.calls[0][1] as FilterDefinition).conditions).toHaveLength(1);
 
     fireEvent.change(screen.getByLabelText('Nom de la cohorte'), { target: { value: 'Cohorte M' } });
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la cohorte' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Créer la cohorte' }));
     expect(createSnapshot).toHaveBeenCalledTimes(1);
     expect(createSnapshot.mock.calls[0][1]).toBe('Cohorte M');
   });
 
   test('audit externe : une valeur non numerique sur un champ nombre est refusee AVANT l ajout', async () => {
     renderBuilder(makeCohorts());
-    await screen.findByText('Constituer une cohorte');
+    await screen.findByRole('heading', { name: 'Cohortes' });
 
     // Champ « Poids » (number) + valeur texte -> erreur explicite, PAS de filtre ajoute
     // (cote base, value_cmp replierait en tri lexical silencieux).
     fireEvent.change(screen.getByLabelText('Variable'), { target: { value: 'poids' } });
     fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'abc' } });
-    await userEvent.click(screen.getByRole('button', { name: /ajouter le filtre/i }));
+    await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Poids.*num/i);
     expect(screen.queryByRole('button', { name: 'Retirer' })).toBeNull();
 
     // Virgule decimale toleree : « 12,5 » passe et est normalisee en « 12.5 ».
     fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: '12,5' } });
-    await userEvent.click(screen.getByRole('button', { name: /ajouter le filtre/i }));
+    await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
     expect(screen.getByRole('button', { name: 'Retirer' })).toBeInTheDocument();
     expect(screen.getByText(/12\.5/)).toBeInTheDocument();
+  });
+
+  test('modifier les criteres invalide les effectifs avant l enregistrement', async () => {
+    renderBuilder(makeCohorts());
+    await screen.findByRole('heading', { name: 'Cohortes' });
+
+    fireEvent.change(screen.getByLabelText('Valeur'), { target: { value: 'F' } });
+    await userEvent.click(screen.getByRole('button', { name: /ajouter ce critère/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voir le résultat' }));
+
+    expect(await screen.findByLabelText('Nom de la cohorte')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
+
+    expect(screen.queryByLabelText('Nom de la cohorte')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voir le résultat' })).toHaveClass('btn-primary');
   });
 });

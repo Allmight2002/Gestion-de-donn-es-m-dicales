@@ -31,7 +31,7 @@ export function SyncCenter() {
   const buildTime = __BUILD_TIME__ || t('status.build_unknown');
 
   const deps: FlushDeps = {
-    updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
+    updateEncounter: (id, data, status, reason, exp, operationId) => patients.updateEncounter(id, data, status, reason, exp, operationId),
     getEncounter: (id) => patients.getEncounter(id),
   };
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));

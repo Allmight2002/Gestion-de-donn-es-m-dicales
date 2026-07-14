@@ -8,6 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { inspectFile, sha256Hex } from '../domain/imageUpload';
 import { signedRead } from './signedRead';
+import { requireUpdatedRow } from '../lib/guardedWrite';
 import {
   REQUIRE_SERVER_INSPECTION,
   createUploadOperation,
@@ -61,6 +62,8 @@ export interface CurationDraftItem {
   patientData: Record<string, unknown>;
   encounters: DraftEncounter[];
   status: string;
+  revision: number;
+  updatedAt: string;
 }
 
 /** Identite MINIMALE du patient, visible UNIQUEMENT du medecin proprietaire (RLS).
@@ -132,7 +135,12 @@ export interface CurationRepository {
   addRawDocument(input: AddRawDocumentInput): Promise<{ id: string; inspectionPending?: boolean }>;
   /** Renvoie le brouillon de la tache, en le creant s'il n'existe pas encore. */
   ensureDraft(taskId: string, baseId: string): Promise<CurationDraftItem>;
-  saveDraft(draftId: string, patientData: Record<string, unknown>, encounters: DraftEncounter[]): Promise<void>;
+  saveDraft(
+    draftId: string,
+    patientData: Record<string, unknown>,
+    encounters: DraftEncounter[],
+    expectedRevision: number,
+  ): Promise<void>;
   /** Le curateur affecte (ou le proprietaire) FINALISE la curation -> donnees curees. */
   finalizeTask(taskId: string): Promise<void>;
   /** Le curateur affecte DEMANDE une clarification au medecin (tache -> clarification_requested). */
@@ -150,7 +158,15 @@ type TaskRow = {
   id: string; base_id: string; status: string; submission_id: string; assigned_to: string | null;
   assignee: AssigneeRel; raw_submission: SubmissionRel;
 };
-type DraftRow = { id: string; task_id: string; patient_data: Record<string, unknown>; encounters: DraftEncounter[]; status: string };
+type DraftRow = {
+  id: string;
+  task_id: string;
+  patient_data: Record<string, unknown>;
+  encounters: DraftEncounter[];
+  status: string;
+  revision: number;
+  updated_at: string;
+};
 // Ligne du pool minimal (RPC curation_pool) : aucune metadonnee sensible.
 type PoolRow = {
   task_id: string; status: string; case_code: string | null; scope: 'patient' | 'encounter';
@@ -177,7 +193,13 @@ const mapTask = (r: TaskRow): CurationTaskItem => ({
   externalRef: r.raw_submission?.external_ref ?? null,
 });
 const mapDraft = (r: DraftRow): CurationDraftItem => ({
-  id: r.id, taskId: r.task_id, patientData: r.patient_data ?? {}, encounters: r.encounters ?? [], status: r.status,
+  id: r.id,
+  taskId: r.task_id,
+  patientData: r.patient_data ?? {},
+  encounters: r.encounters ?? [],
+  status: r.status,
+  revision: r.revision,
+  updatedAt: r.updated_at,
 });
 
 export function makeCurationRepository(client: SupabaseClient | null): CurationRepository {
@@ -260,7 +282,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
 
       const { data: draftRow, error: e3 } = await client
         .from('curation_draft')
-        .select('id, task_id, patient_data, encounters, status')
+        .select('id, task_id, patient_data, encounters, status, revision, updated_at')
         .eq('task_id', taskId)
         .is('superseded_at', null)
         .order('updated_at', { ascending: false })
@@ -387,12 +409,15 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       return mapDraft(row);
     },
 
-    async saveDraft(draftId, patientData, encounters) {
-      const { error } = await client
-        .from('curation_draft')
-        .update({ patient_data: patientData, encounters })
-        .eq('id', draftId);
-      if (error) throw error;
+    async saveDraft(draftId, patientData, encounters, expectedRevision) {
+      const { data, error } = await client.rpc('save_curation_draft', {
+        p_draft_id: draftId,
+        p_patient_data: patientData,
+        p_encounters: encounters,
+        p_expected_revision: expectedRevision,
+      });
+      if (error) throw new Error('WRITE_FAILED');
+      requireUpdatedRow(data);
     },
 
     async finalizeTask(taskId) {

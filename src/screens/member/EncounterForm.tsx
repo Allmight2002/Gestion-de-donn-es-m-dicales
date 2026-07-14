@@ -131,12 +131,17 @@ export function EncounterForm() {
     const applicableData = Object.fromEntries(
       Object.entries(values).filter(([k]) => applicable.some((f) => f.fieldKey === k)),
     );
-    const fieldErrors = validateValues(applicable, applicableData).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
+    // Le serveur valide toujours les valeurs renseignees, mais n'impose la completude et les
+    // regles bloquantes qu'au statut curated. Le frontend reproduit exactement cette frontiere.
+    const requireComplete = status === 'curated';
+    const fieldErrors = validateValues(applicable, applicableData, requireComplete).map((fe) =>
+      `${labelOf(fe.fieldKey)} : ${fe.message}`
+    );
     const ruleEval = evaluateRules(
       rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
       applicableData,
     );
-    const block = [...fieldErrors, ...ruleEval.blocking];
+    const block = [...fieldErrors, ...(requireComplete ? ruleEval.blocking : [])];
     if (!encounterDate) block.unshift(t('encounter.date'));
     setBlocking(block);
     setWarnings(ruleEval.warnings);

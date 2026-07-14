@@ -3,6 +3,7 @@ import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { Logo } from '../components/Logo';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 export function LoginScreen() {
   const { signIn, sendPasswordReset, busy, error } = useAuth();
@@ -37,7 +38,10 @@ export function LoginScreen() {
               <Logo className="h-10 w-10" />
               <h1 className="text-lg font-semibold tracking-tight text-slate-900">{t('app.title')}</h1>
             </div>
-            <LanguageSwitcher />
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <LanguageSwitcher />
+            </div>
           </div>
           <p className="mb-6 text-sm text-slate-500">{t('app.tagline')}</p>
 
