@@ -23,7 +23,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const curation = useCurationRepository();
-  const submitIdempotencyKey = useRef<string | null>(null);
+  const submitAttempt = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
   const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
@@ -96,13 +96,20 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       setError(t('patient.identity_required'));
       return;
     }
+    const patientCurationInput = mode === 'submit' ? {
+      code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
+      address: address || null, externalIdentifier: externalId.trim() || null,
+    } : null;
+    const submitFingerprint = patientCurationInput ? JSON.stringify(patientCurationInput) : null;
+    const isSameOperationRetry = submitFingerprint !== null
+      && submitAttempt.current?.fingerprint === submitFingerprint;
     setBusy(true);
     try {
       // B5 : verification FRAICHE au moment de l'enregistrement. La detection debouncee (400 ms)
       // peut ne pas avoir abouti si la saisie est rapide (copier-coller + Entree) -> sans cette
       // re-verification, la garde se contourne involontairement par la vitesse. Best-effort :
       // si la recherche echoue (reseau), on n'empeche pas la creation.
-      if (!ackDuplicate && fullName.trim() && dob) {
+      if (!isSameOperationRetry && !ackDuplicate && fullName.trim() && dob) {
         let live = matches;
         try { live = await patients.findIdentityMatches(baseId, fullName.trim(), dob); setMatches(live); } catch { /* best-effort */ }
         if (live.length > 0) {
@@ -112,13 +119,17 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           return; // (finally libere busy)
         }
       }
-      if (mode === 'submit') {
-        // La cle vit pendant toute la tentative : un retry apres reponse perdue rejoue la meme operation.
-        submitIdempotencyKey.current ??= crypto.randomUUID();
+      if (patientCurationInput && submitFingerprint) {
+        // Une tentative ayant atteint la RPC conserve sa cle. Si sa reponse se perd, le retry
+        // strictement identique doit atteindre la RPC idempotente sans etre bloque par le patient
+        // que la premiere tentative a peut-etre deja cree. Toute modification produit une nouvelle
+        // empreinte, une nouvelle cle et repasse par la detection normale des doublons.
+        if (!isSameOperationRetry) {
+          submitAttempt.current = { fingerprint: submitFingerprint, idempotencyKey: crypto.randomUUID() };
+        }
         const created = await curation.createPatientCuration(baseId, {
-          code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
-          address: address || null, externalIdentifier: externalId.trim() || null,
-          idempotencyKey: submitIdempotencyKey.current,
+          ...patientCurationInput,
+          idempotencyKey: submitAttempt.current!.idempotencyKey,
         });
         toast(t('toast.patient_saved'));
         navigate(`/curation/${created.taskId}`);

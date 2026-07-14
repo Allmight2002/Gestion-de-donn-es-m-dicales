@@ -78,6 +78,52 @@ describe('NewPatient mode submit', () => {
     expect(createPatient).not.toHaveBeenCalled();
     expect(createSubmission).not.toHaveBeenCalled();
   });
+
+  test('rejoue la meme operation apres une reponse perdue sans etre bloque par son propre doublon', async () => {
+    const findIdentityMatches = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ patientId: 'p1', code: 'P-0001', fullName: 'Marie Retry', dateOfBirth: '1990-01-01' }]);
+    const createPatientCuration = vi.fn()
+      .mockRejectedValueOnce(new Error('Gateway Timeout'))
+      .mockResolvedValue({ patientId: 'p1', patientCode: 'P-0001', taskId: 'tk9', submissionId: 's9', replayed: true });
+    const patients = { async listPatients() { return []; }, findIdentityMatches } as unknown as PatientRepository;
+    const curation = { createPatientCuration } as unknown as CurationRepository;
+
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
+    const firstKey = createPatientCuration.mock.calls[0][1].idempotencyKey;
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
+    expect(createPatientCuration).toHaveBeenCalledTimes(2);
+    expect(createPatientCuration.mock.calls[1][1].idempotencyKey).toBe(firstKey);
+  });
+
+  test('une saisie modifiee apres echec reste soumise au controle de doublon', async () => {
+    const match = { patientId: 'p1', code: 'P-0001', fullName: 'Marie Retry', dateOfBirth: '1990-01-01' };
+    const findIdentityMatches = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([match]);
+    const createPatientCuration = vi.fn().mockRejectedValue(new Error('Gateway Timeout'));
+    const patients = { async listPatients() { return []; }, findIdentityMatches } as unknown as PatientRepository;
+    const curation = { createPatientCuration } as unknown as CurationRepository;
+
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText(/code patient/i), { target: { value: 'P-0099' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+
+    await waitFor(() => expect(screen.getAllByText(/cochez la confirmation pour cr.er quand m.me/i).length).toBeGreaterThan(1));
+    expect(createPatientCuration).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('NewPatient : detection de doublon', () => {

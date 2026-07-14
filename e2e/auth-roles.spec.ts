@@ -7,6 +7,7 @@ import { signIn } from './fixtures';
 test.describe('Socle E2E critique — authentification et cloisonnement des roles', () => {
   test('@critical une route protegee refuse une session absente', async ({ page }) => {
     await page.goto('/bases/00000000-0000-0000-0000-000000000000');
+    await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 20_000 });
     await expect(page.getByRole('button', { name: /Se connecter|Sign in/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Nouveau patient|New patient/i })).toHaveCount(0);
   });

@@ -67,7 +67,7 @@ jobs:
           retention-days: 30
 
   backend-staging:
-    if: inputs.target == 'staging'
+    if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
     needs: validate
     environment: staging
     runs-on: ubuntu-latest
@@ -124,7 +124,7 @@ jobs:
         run: npm run release:drift
 
   frontend-staging:
-    if: inputs.target == 'staging'
+    if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
     needs: [validate, backend-staging]
     environment: staging
     runs-on: ubuntu-latest
@@ -190,7 +190,7 @@ jobs:
           npm run e2e:staging
 
   browser-e2e-staging:
-    if: inputs.target == 'staging'
+    if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
     needs: [validate, frontend-staging]
     environment: staging
     runs-on: ubuntu-latest
@@ -285,6 +285,173 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 14
+
+  # LOT 13 complet, volontairement isole du chemin de deploiement coordonne : ce job
+  # ne pousse aucune migration, ne reapplique pas storage.sql et ne redeploie aucune
+  # Edge Function. Il lit le backend staging partage et deploie uniquement un preview
+  # frontend jetable, afin de ne pas entrer en conflit avec un chantier parallele.
+  lot13-complete-staging:
+    if: inputs.target == 'staging' && github.ref_name == 'codex/lot13-complete-validation'
+    needs: validate
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      LOT13_RUN_PREFIX: LOT13-${{ github.run_id }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_USE_SIGNED_READ: 'true'
+      VITE_REQUIRE_SERVER_INSPECTION: 'true'
+      VITE_OFFLINE_MODE: demo
+      VITE_OFFLINE_ADMIN_ACK: 'true'
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+      CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+      STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+      STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+      STAGING_SECOND_MEDECIN_EMAIL: ${{ secrets.STAGING_SECOND_MEDECIN_EMAIL }}
+      STAGING_SECOND_MEDECIN_PASSWORD: ${{ secrets.STAGING_SECOND_MEDECIN_PASSWORD }}
+      STAGING_CURATEUR_EMAIL: ${{ secrets.STAGING_CURATEUR_EMAIL }}
+      STAGING_CURATEUR_PASSWORD: ${{ secrets.STAGING_CURATEUR_PASSWORD }}
+      STAGING_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+      STAGING_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+      REQUIRE_SERVER_INSPECTION: 'true'
+      DB_REQUIRE_SERVER_INSPECTION: 'true'
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Garde staging et inventaire distant en lecture seule
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          test "$SUPABASE_PROJECT_REF" = "gmsxrniiclrheehhoakn"
+          echo "LOT13_STATE_FILE=$RUNNER_TEMP/lot13/state.json" >> "$GITHUB_ENV"
+          echo "LOT13_EVIDENCE_DIR=$RUNNER_TEMP/lot13/evidence" >> "$GITHUB_ENV"
+          LOT13_STATE_FILE="$RUNNER_TEMP/lot13/state.json"
+          LOT13_EVIDENCE_DIR="$RUNNER_TEMP/lot13/evidence"
+          mkdir -p "$LOT13_EVIDENCE_DIR" "$(dirname "$LOT13_STATE_FILE")"
+          npm run release:env -- --target=staging
+          npm run release:drift > "$LOT13_EVIDENCE_DIR/drift.txt"
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" migration list --db-url "$SUPABASE_DB_URL" > "$LOT13_EVIDENCE_DIR/migrations.txt"
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" functions list --project-ref "$SUPABASE_PROJECT_REF" --output json > "$LOT13_EVIDENCE_DIR/functions.json"
+          git show -s --format='commit=%H%nbranch=%D%nauthor_date=%aI%nsubject=%s' HEAD > "$LOT13_EVIDENCE_DIR/revision.txt"
+      - id: deploy
+        name: Deployer le preview LOT 13 isole (offline demo autorise)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=preview --token "$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" build --token "$VERCEL_TOKEN"
+          URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --yes --token "$VERCEL_TOKEN")
+          node -e "const u=new URL(process.argv[1]); if(u.protocol!=='https:' || !u.hostname.endsWith('.vercel.app')) process.exit(1)" "$URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          printf 'frontend_url=%s\nfrontend_commit=%s\nfrontend_offline_mode=demo\n' "$URL" "${{ needs.validate.outputs.sha }}" > "$LOT13_EVIDENCE_DIR/frontend.txt"
+      - name: Bootstrap du cookie navigateur Vercel limite au preview
+        env:
+          E2E_BASE_URL: ${{ steps.deploy.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          control_dir="$RUNNER_TEMP/vercel-control"
+          cookie_jar="$RUNNER_TEMP/vercel-bypass.cookies"
+          storage_state="$RUNNER_TEMP/vercel-bypass-storage.json"
+          mkdir -p "$control_dir/.vercel"
+          CONTROL_PROJECT_FILE="$control_dir/.vercel/project.json" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.CONTROL_PROJECT_FILE, JSON.stringify({
+            orgId: process.env.VERCEL_ORG_ID,
+            projectId: process.env.VERCEL_PROJECT_ID,
+            projectName: 'gestion-de-donn-es-m-dicales',
+          }), { mode: 0o600 });
+          NODE
+          (
+            cd "$control_dir"
+            npx --yes "vercel@$VERCEL_CLI_VERSION" curl /login \
+              --deployment "$E2E_BASE_URL" --yes -- \
+              --silent --show-error --fail --location \
+              --cookie-jar "$cookie_jar" --output /dev/null \
+              --header "x-vercel-set-bypass-cookie: true"
+          )
+          curl --fail --silent --show-error --cookie "$cookie_jar" "$E2E_BASE_URL/login" \
+            | grep --fixed-strings --quiet '<div id="root"></div>'
+          node "$GITHUB_WORKSPACE/scripts/vercel-cookie-state.mjs" \
+            "$cookie_jar" "$storage_state" "$E2E_BASE_URL"
+          rm -f "$cookie_jar"
+      - name: Matrice backend distante LOT 13
+        run: node scripts/lot13-staging-matrix.mjs
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Parcours critiques et matrice navigateur LOT 13
+        env:
+          E2E_TARGET: staging
+          E2E_BASE_URL: ${{ steps.deploy.outputs.url }}
+          E2E_VERCEL_STORAGE_STATE: ${{ runner.temp }}/vercel-bypass-storage.json
+          E2E_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+          E2E_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+          E2E_SECOND_MEDECIN_EMAIL: ${{ secrets.STAGING_SECOND_MEDECIN_EMAIL }}
+          E2E_SECOND_MEDECIN_PASSWORD: ${{ secrets.STAGING_SECOND_MEDECIN_PASSWORD }}
+          E2E_CURATEUR_EMAIL: ${{ secrets.STAGING_CURATEUR_EMAIL }}
+          E2E_CURATEUR_PASSWORD: ${{ secrets.STAGING_CURATEUR_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+          E2E_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          E2E_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          LOT13_EXPECTED_COMMIT: ${{ needs.validate.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_ID=$(node -e "const s=require(process.argv[1]); process.stdout.write(s.baseId)" "$LOT13_STATE_FILE")
+          COHORT_ID=$(node -e "const s=require(process.argv[1]); process.stdout.write(s.cohortId)" "$LOT13_STATE_FILE")
+          export E2E_MEDECIN_BASE_ID="$BASE_ID"
+          export E2E_EXPORT_BASE_ID="$BASE_ID"
+          export E2E_EXPORT_COHORT_ID="$COHORT_ID"
+          npx playwright test \
+            e2e/auth-roles.spec.ts \
+            e2e/patient-journey.spec.ts \
+            e2e/export-journey.spec.ts \
+            e2e/lot13-complete.spec.ts
+      - name: Nettoyer toutes les fixtures LOT 13
+        if: always()
+        run: node scripts/lot13-staging-cleanup.mjs
+      - name: Supprimer les etats navigateur ephemeres
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/vercel-bypass.cookies"
+          rm -f "$RUNNER_TEMP/vercel-bypass-storage.json"
+          rm -f "$RUNNER_TEMP/vercel-control/.vercel/project.json"
+      - name: Conserver les preuves sans secrets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lot13-complete-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/lot13/evidence/
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 30
 
   production:
     if: inputs.target == 'production'

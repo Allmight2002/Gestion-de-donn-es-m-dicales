@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260713000100_pgcrypto_rpc_search_path.sql`
-- Tables : 34 · Policies RLS : 58 · Triggers : 52 · Fonctions : 203
+- Dernière migration incluse : `20260714040500_offline_replay_lock_order.sql`
+- Tables : 35 · Policies RLS : 58 · Triggers : 54 · Fonctions : 208
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -50,6 +50,7 @@ Policies :
 | deletion_reason | text | oui |  |
 | inclusion_target | integer | oui |  |
 | inclusion_target_date | date | oui |  |
+| inclusion_target_revision | bigint | non | `0` |
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
@@ -61,6 +62,7 @@ Policies :
 Triggers :
 - `trg_base_owner_immutable` — BEFORE UPDATE → `guard_base_owner_immutable()`
 - `trg_base_template_version` — BEFORE UPDATE → `guard_base_template_version()`
+- `trg_guard_base_inclusion_target_revision` — BEFORE UPDATE → `guard_base_inclusion_target_revision()`
 
 ### base_access · RLS activée
 
@@ -247,6 +249,7 @@ Triggers :
 | updated_at | timestamp with time zone | non | `now()` |
 | superseded_at | timestamp with time zone | oui |  |
 | superseded_by | uuid | oui |  |
+| revision | bigint | non | `0` |
 
 Policies :
 - `cd_insert` (INSERT) — WITH CHECK (is_base_owner(base_id) OR (is_curateur() AND is_active_assigned_curator(task_id)))
@@ -254,6 +257,7 @@ Policies :
 - `cd_update` (UPDATE) — USING (is_base_owner(base_id) OR (is_curateur() AND is_active_assigned_curator(task_id))) · WITH CHECK (is_base_owner(base_id) OR (is_curateur() AND is_active_assigned_curator(task_id)))
 
 Triggers :
+- `trg_bump_curation_draft_revision` — BEFORE UPDATE → `bump_curation_draft_revision()`
 - `trg_curation_draft_scope` — BEFORE INSERT/UPDATE → `guard_curation_draft_scope()`
 - `trg_curation_draft_supersession` — BEFORE INSERT/UPDATE → `guard_curation_draft_supersession()`
 - `trg_curation_draft_updated` — BEFORE UPDATE → `set_updated_at()`
@@ -413,6 +417,20 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | source_file_hash | text | oui |  |
 | source_row_number | integer | oui |  |
 | normalized_row_hash | text | oui |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
+### offline_encounter_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| user_id | uuid | non |  |
+| operation_id | text | non |  |
+| encounter_id | uuid | non |  |
+| request_fingerprint | text | non |  |
+| result_updated_at | timestamp with time zone | oui |  |
+| created_at | timestamp with time zone | non | `now()` |
+| completed_at | timestamp with time zone | oui |  |
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
@@ -795,6 +813,7 @@ Triggers :
 | base_of_cohort | p_cohort uuid | DEFINER | sql |
 | base_of_patient | p_patient uuid | DEFINER | sql |
 | begin_import_batch | p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer | DEFINER | plpgsql |
+| bump_curation_draft_revision | — | INVOKER | plpgsql |
 | bump_patient_row_version | — | INVOKER | plpgsql |
 | can_curate | p_base uuid | DEFINER | sql |
 | can_edit_structured_data | p_base uuid | DEFINER | sql |
@@ -851,6 +870,7 @@ Triggers :
 | get_patient_identity | p_patient_id uuid | DEFINER | plpgsql |
 | guard_access_escalation | — | INVOKER | plpgsql |
 | guard_base_access_medecin | — | DEFINER | plpgsql |
+| guard_base_inclusion_target_revision | — | INVOKER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
 | guard_cohort_base_immutable | — | DEFINER | plpgsql |
@@ -937,6 +957,7 @@ Triggers :
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
+| replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |
 | require_server_inspection | — | DEFINER | sql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
@@ -946,6 +967,8 @@ Triggers :
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_holds | rule jsonb, data jsonb | INVOKER | plpgsql |
 | rule_value_present | v jsonb | INVOKER | sql |
+| save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
+| set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |
 | set_base_template_version | p_base_id uuid, p_version_id uuid | DEFINER | plpgsql |
 | set_updated_at | — | INVOKER | plpgsql |
 | soft_delete_attachment | p_attachment_id uuid, p_reason text | DEFINER | plpgsql |

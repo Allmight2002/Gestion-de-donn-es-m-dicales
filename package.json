@@ -35,7 +35,7 @@
     "release:drift": "node scripts/release-drift.mjs",
     "e2e:staging": "node scripts/e2e-staging.mjs",
     "e2e:browser": "playwright test",
-    "e2e:browser:critical": "playwright test --grep @critical"
+    "e2e:browser:critical": "playwright test e2e/auth-roles.spec.ts e2e/export-journey.spec.ts e2e/patient-journey.spec.ts --grep @critical"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
