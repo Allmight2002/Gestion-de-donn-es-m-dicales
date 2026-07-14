@@ -12,7 +12,7 @@
 // par l'Edge (tunnel). Le script REFUSE de viser un projet non-staging.
 // =============================================================================
 import { readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -23,11 +23,12 @@ const ROOT = join(HERE, '..');
 
 // ---- .env.staging -----------------------------------------------------------
 const env = {};
-for (const line of readFileSync(join(ROOT, '.env.staging'), 'utf8').split(/\r?\n/)) {
+try { for (const line of readFileSync(join(ROOT, '.env.staging'), 'utf8').split(/\r?\n/)) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m) env[m[1]] = m[2].trim();
-}
+} } catch { /* CI injecte les secrets sans les ecrire sur disque. */ }
 const need = (k) => {
+  if (process.env[k]) return process.env[k];
   if (!env[k]) { console.error(`✗ ${k} manquant dans .env.staging`); process.exit(1); }
   return env[k];
 };
@@ -164,19 +165,32 @@ async function ensureFixture(medecinId) {
 
 // ---- brique commune : ticket -> upload -> ligne metier -------------------------
 async function uploadAttachment({ baseId, patientId }, bytes, label, status = 'pending', ext = 'pdf', mime = 'application/pdf') {
-  const path = `${baseId}/e2e/${randomUUID()}.${ext}`;
-  const { data: ticket, error: te } = await user.rpc('create_upload_ticket', {
+  if (status !== 'pending' && status !== 'accepted_client') throw new Error('Statut E2E invalide');
+  const key = randomUUID();
+  const path = `${baseId}/e2e/${key}.${ext}`;
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  const { data: operationRows, error: te } = await user.rpc('create_upload_operation', {
     p_base_id: baseId, p_bucket: 'clinical-attachments', p_path: path,
+    p_idempotency_key: key, p_file_hash: hash, p_file_size: bytes.byteLength, p_mime_type: mime,
   });
-  if (te) throw new Error(`ticket: ${te.message}`);
+  if (te) throw new Error(`operation upload: ${te.message}`);
+  const operation = Array.isArray(operationRows) ? operationRows[0] : operationRows;
   const { error: ue } = await user.storage.from('clinical-attachments')
     .upload(path, bytes, { contentType: mime });
   if (ue) throw new Error(`upload: ${ue.message}`);
-  const { data: row, error: ie } = await user.from('clinical_attachment')
-    .insert({ patient_id: patientId, storage_path: path, mime_type: mime, label, deidentification_confirmed: true, inspection_status: status })
-    .select('id').single();
-  if (ie) throw new Error(`ligne metier: ${ie.message}`);
-  return { id: row.id, path, ticket };
+  const finalized = await edge('finalize-upload', {
+    ticketId: operation.ticket_id, entity: 'attachment',
+    metadata: { patient_id: patientId, kind: 'document', label },
+  });
+  if (finalized.status !== 200 || !finalized.data?.id) {
+    throw new Error(`finalize-upload: ${JSON.stringify(finalized.data ?? finalized.error ?? finalized.status)}`);
+  }
+  // Fixture historique explicite : le client courant ne peut plus creer ce
+  // statut, mais le test de reprise doit encore couvrir les anciennes lignes.
+  if (status === 'accepted_client') {
+    await q('update public.clinical_attachment set inspection_status=$1 where id=$2', [status, finalized.data.id]);
+  }
+  return { id: finalized.data.id, path, ticket: operation.ticket_id };
 }
 
 async function main() {

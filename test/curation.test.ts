@@ -9,6 +9,7 @@ import { startTestDb, type TestDb } from './harness/db.js';
 let db: TestDb;
 let adminId: string;
 let aliceId: string;     // medecin proprietaire
+let editorId: string;    // collaborateur avec droits structure + identite, mais non proprietaire
 let curator1Id: string;  // curateur global
 let curator2Id: string;  // curateur global
 let annaId: string;      // medecin collaborateur (export seul) — EXCLU du pool
@@ -17,6 +18,10 @@ let seedTaskId: string;  // tache OUVERTE du seed (avec document)
 
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
+
+const atomicCall = (uid: string, key: string, code: string) => rowsAs(uid,
+  'select * from public.create_patient_curation_submission($1,$2,$3,$4,$5,$6,$7,$8)',
+  [baseId, code, 'Patient atomique', '1980-01-01', null, null, null, key]);
 
 // Cree un cas OUVERT (dans le pool) : la RPC le cree en 'preparing', puis on depose un
 // document (condition cote medecin) et on le SOUMET -> 'open', reservable par un curateur.
@@ -48,6 +53,7 @@ beforeAll(async () => {
   );
   adminId = byEmail.get('admin@demo.test')!;
   aliceId = byEmail.get('alice@demo.test')!;
+  editorId = byEmail.get('editor@demo.test')!;
   curator1Id = byEmail.get('curator1@demo.test')!;
   curator2Id = byEmail.get('curator2@demo.test')!;
   annaId = byEmail.get('anna.analyst@demo.test')!;
@@ -121,6 +127,22 @@ describe('reservation (anti-collision)', () => {
 
   test('un non-curateur (collaborateur export) ne peut pas reserver', async () => {
     await expect(rowsAs(annaId, 'select * from public.claim_curation_task($1)', [seedTaskId])).rejects.toThrow(/curateur/i);
+  });
+
+  test('deux creations concurrentes convergent vers un seul brouillon actif par tache', async () => {
+    const { taskId } = await openCase('NCH-008');
+    await rowsAs(curator1Id, 'select * from public.claim_curation_task($1)', [taskId]);
+    const [a, b] = await Promise.all([
+      rowsAs(curator1Id, 'select (public.ensure_curation_draft($1,$2)).id as id', [taskId, baseId]),
+      rowsAs(curator1Id, 'select (public.ensure_curation_draft($1,$2)).id as id', [taskId, baseId]),
+    ]);
+    expect(a[0].id).toBe(b[0].id);
+    expect((await db.admin.query(
+      'select count(*)::int n from public.curation_draft where task_id=$1 and superseded_at is null', [taskId],
+    )).rows[0].n).toBe(1);
+    await expect(rowsAs(curator1Id,
+      "insert into public.curation_draft(task_id,base_id,status) values($1,$2,'draft')", [taskId, baseId],
+    )).rejects.toThrow(/unique|duplicate/i);
   });
 });
 
@@ -200,6 +222,123 @@ describe('structuration -> finalisation (pool, sans validateur)', () => {
 });
 
 describe('soumission de cas (medecin)', () => {
+  test('la RPC atomique resout pgcrypto dans le schema Supabase extensions', async () => {
+    const config = (await db.admin.query(
+      "select proconfig from pg_proc where oid = 'public.create_patient_curation_submission(uuid,text,text,date,text,text,text,text)'::regprocedure",
+    )).rows[0].proconfig as string[];
+    expect(config).toContain('search_path=public, extensions, pg_temp');
+  });
+
+  test('creation complete ; un retry apres reponse perdue restitue exactement les memes ids', async () => {
+    const key = `atomic-${Date.now()}`;
+    const call = (code: string) => atomicCall(aliceId, key, code);
+    const first = await call('ATOMIC-001'); // la reponse peut etre perdue par le client
+    expect(first[0].replayed).toBe(false);
+    expect((await db.admin.query('select count(*)::int n from public.raw_submission where target_patient_id=$1', [first[0].patient_id])).rows[0].n).toBe(1);
+    expect((await db.admin.query('select count(*)::int n from public.curation_task where id=$1', [first[0].task_id])).rows[0].n).toBe(1);
+    expect(await rowsAs(aliceId, 'select id from public.raw_submission where id=$1', [first[0].submission_id])).toHaveLength(1);
+    expect(await rowsAs(aliceId, 'select id from public.curation_task where id=$1', [first[0].task_id])).toHaveLength(1);
+    await expect(rowsAs(aliceId, 'select * from public.patient_curation_idempotency')).rejects.toThrow(/permission|denied/i);
+    const retry = await call('ATOMIC-001');
+    expect(retry[0]).toMatchObject({ patient_id: first[0].patient_id, submission_id: first[0].submission_id, task_id: first[0].task_id, replayed: true });
+    await expect(call('ATOMIC-CHANGED')).rejects.toThrow(/CLE_IDEMPOTENCE_CONTRADICTOIRE/);
+    expect((await db.admin.query("select count(*)::int n from public.patient where base_id=$1 and patient_code='ATOMIC-CHANGED'", [baseId])).rows[0].n).toBe(0);
+  });
+
+  test('la finalisation ignore un doublon historique supersede meme s il a le updated_at le plus recent', async () => {
+    const c = await claimAndDraft('NCH-005', { blood_group: 'A+' }, []);
+    const historical = (await db.admin.query(
+      `insert into public.curation_draft(
+         task_id,base_id,patient_data,encounters,status,created_by,
+         superseded_at,superseded_by,updated_at
+       ) values($1,$2,$3::jsonb,'[]'::jsonb,'draft',$4,now(),$5,now()+interval '1 day') returning id`,
+      [c.taskId, baseId, JSON.stringify({ blood_group: 'VALEUR-INVALIDE' }), curator1Id, c.draftId],
+    )).rows[0].id as string;
+
+    await expect(rowsAs(curator1Id,
+      "update public.curation_draft set patient_data='{}'::jsonb where id=$1", [historical],
+    )).rejects.toThrow(/historique|modifiable/i);
+    await rowsAs(curator1Id, 'select * from public.finalize_curation_task($1)', [c.taskId]);
+    const drafts = (await db.admin.query(
+      'select id,status,superseded_at from public.curation_draft where task_id=$1 order by id', [c.taskId],
+    )).rows;
+    expect(drafts.find((d) => d.id === c.draftId)).toMatchObject({ status: 'finalized', superseded_at: null });
+    expect(drafts.find((d) => d.id === historical)?.superseded_at).not.toBeNull();
+    expect((await db.admin.query('select data from public.patient where id=$1', [c.patientId])).rows[0].data.blood_group).toBe('A+');
+  });
+
+  test('un double clic concurrent ne cree qu un patient, une soumission et une tache', async () => {
+    const key = `atomic-concurrent-${Date.now()}`;
+    const code = `ATOMIC-CONCURRENT-${Date.now()}`;
+    const [a, b] = await Promise.all([
+      atomicCall(aliceId, key, code),
+      atomicCall(aliceId, key, code),
+    ]);
+    expect([a[0].replayed, b[0].replayed].sort()).toEqual([false, true]);
+    expect(b[0]).toMatchObject({ patient_id: a[0].patient_id, submission_id: a[0].submission_id, task_id: a[0].task_id });
+    const counts = (await db.admin.query(`
+      select
+        (select count(*)::int from public.patient where base_id=$1 and patient_code=$2) patients,
+        (select count(*)::int from public.patient_identity where base_id=$1 and patient_code=$2) identities,
+        (select count(*)::int from public.raw_submission where target_patient_id=$3) submissions,
+        (select count(*)::int from public.curation_task where submission_id=$4) tasks
+    `, [baseId, code, a[0].patient_id, a[0].submission_id])).rows[0];
+    expect(counts).toEqual({ patients: 1, identities: 1, submissions: 1, tasks: 1 });
+  });
+
+  test('une erreur pendant la soumission ou la tache annule toutes les ecritures', async () => {
+    await db.admin.query(`
+      create or replace function public.test_fail_atomic_patient_curation()
+      returns trigger language plpgsql set search_path = public, pg_temp as $$
+      declare v_code text;
+      begin
+        if tg_table_name = 'raw_submission' then
+          select patient_code into v_code from public.patient where id = new.target_patient_id;
+          if v_code = 'ATOMIC-FAIL-SUBMISSION' then raise exception 'TEST_FAIL_SUBMISSION'; end if;
+        elsif tg_table_name = 'curation_task' then
+          select p.patient_code into v_code
+          from public.raw_submission s join public.patient p on p.id = s.target_patient_id
+          where s.id = new.submission_id;
+          if v_code = 'ATOMIC-FAIL-TASK' then raise exception 'TEST_FAIL_TASK'; end if;
+        end if;
+        return new;
+      end $$;
+      create trigger test_fail_atomic_submission before insert on public.raw_submission
+        for each row execute function public.test_fail_atomic_patient_curation();
+      create trigger test_fail_atomic_task before insert on public.curation_task
+        for each row execute function public.test_fail_atomic_patient_curation();
+    `);
+    try {
+      await expect(atomicCall(aliceId, `fail-sub-${Date.now()}`, 'ATOMIC-FAIL-SUBMISSION')).rejects.toThrow(/TEST_FAIL_SUBMISSION/);
+      await expect(atomicCall(aliceId, `fail-task-${Date.now()}`, 'ATOMIC-FAIL-TASK')).rejects.toThrow(/TEST_FAIL_TASK/);
+      for (const code of ['ATOMIC-FAIL-SUBMISSION', 'ATOMIC-FAIL-TASK']) {
+        expect((await db.admin.query('select count(*)::int n from public.patient where base_id=$1 and patient_code=$2', [baseId, code])).rows[0].n).toBe(0);
+        expect((await db.admin.query('select count(*)::int n from public.patient_identity where base_id=$1 and patient_code=$2', [baseId, code])).rows[0].n).toBe(0);
+      }
+      expect((await db.admin.query('select count(*)::int n from public.raw_submission s left join public.patient p on p.id=s.target_patient_id where p.id is null')).rows[0].n).toBe(0);
+      expect((await db.admin.query('select count(*)::int n from public.curation_task t left join public.raw_submission s on s.id=t.submission_id where s.id is null')).rows[0].n).toBe(0);
+    } finally {
+      await db.admin.query(`
+        drop trigger if exists test_fail_atomic_submission on public.raw_submission;
+        drop trigger if exists test_fail_atomic_task on public.curation_task;
+        drop function if exists public.test_fail_atomic_patient_curation();
+      `);
+    }
+  });
+
+  test('la creation combinee reste reservee au proprietaire et ne cree aucun cas fantome', async () => {
+    const attempts = [
+      { uid: editorId, code: `ATOMIC-EDITOR-${Date.now()}`, role: /proprietaire/i },
+      { uid: annaId, code: `ATOMIC-VIEWER-${Date.now()}`, role: /proprietaire/i },
+      { uid: curator1Id, code: `ATOMIC-CURATOR-${Date.now()}`, role: /proprietaire/i },
+    ];
+    for (const attempt of attempts) {
+      await expect(atomicCall(attempt.uid, `denied-${attempt.code}`, attempt.code)).rejects.toThrow(attempt.role);
+      expect((await db.admin.query('select count(*)::int n from public.patient where base_id=$1 and patient_code=$2', [baseId, attempt.code])).rows[0].n).toBe(0);
+      expect((await db.admin.query('select count(*)::int n from public.patient_identity where base_id=$1 and patient_code=$2', [baseId, attempt.code])).rows[0].n).toBe(0);
+    }
+  });
+
   test('seul le medecin proprietaire cree un cas ; un curateur ne peut pas', async () => {
     const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='NCH-008'", [baseId])).rows[0].id;
     await expect(rowsAs(curator1Id, 'select * from public.create_curation_submission($1,$2,$3)', [baseId, pid, 'x'])).rejects.toThrow(/proprietaire/i);
@@ -449,5 +588,122 @@ describe('audit v9 §5.4 : creation du workflow de curation par RPC seulement', 
       "insert into public.raw_submission(base_id, target_patient_id, template_version_id, scope, case_code, status, submitted_by) values($1,$2,$3,'patient','HACK-'||floor(random()*1000000)::text,'received',$4)",
       [baseId, c.patientId, tv, aliceId]),
     ).rejects.toThrow();
+  });
+});
+
+describe('ecriture de brouillon gardee : resultat, permissions et concurrence', () => {
+  const save = (
+    uid: string,
+    draftId: string,
+    patientData: unknown,
+    encounters: unknown,
+    revision: number,
+  ) => rowsAs(
+    uid,
+    'select * from public.save_curation_draft($1,$2::jsonb,$3::jsonb,$4)',
+    [draftId, JSON.stringify(patientData), JSON.stringify(encounters), revision],
+  );
+
+  test('mise a jour autorisee, double soumission, ressource absente et aucune modification partielle', async () => {
+    const c = await claimAndDraft('NCH-002', {}, []);
+    const before = (await db.admin.query(
+      'select patient_data, encounters, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+
+    const updated = await save(curator1Id, c.draftId, { blood_group: 'A+' }, [], before.revision);
+    expect(updated[0].outcome).toBe('updated');
+    expect(Number(updated[0].revision)).toBe(Number(before.revision) + 1);
+
+    const replay = await save(curator1Id, c.draftId, { blood_group: 'B+' }, [], before.revision);
+    expect(replay[0].outcome).toBe('stale');
+    expect((await db.admin.query('select patient_data from public.curation_draft where id=$1', [c.draftId])).rows[0].patient_data)
+      .toEqual({ blood_group: 'A+' });
+
+    const current = (await db.admin.query(
+      'select patient_data, encounters, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+    const invalid = await save(curator1Id, c.draftId, [], [{ encounter_type: 'suivi' }], current.revision);
+    expect(invalid[0].outcome).toBe('invalid_input');
+    const afterInvalid = (await db.admin.query(
+      'select patient_data, encounters, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+    expect(afterInvalid).toEqual(current);
+
+    const absent = await save(
+      curator1Id,
+      '00000000-0000-0000-0000-000000000001',
+      {},
+      [],
+      0,
+    );
+    expect(absent[0].outcome).toBe('not_found');
+  });
+
+  test('permission revoquee, reattribution et cloture sont refusees explicitement', async () => {
+    const revoked = await claimAndDraft('NCH-003', {}, []);
+    const revokedRevision = Number((await db.admin.query(
+      'select revision from public.curation_draft where id=$1',
+      [revoked.draftId],
+    )).rows[0].revision);
+    await db.admin.query("update public.profiles set global_role='medecin' where id=$1", [curator1Id]);
+    try {
+      expect((await save(curator1Id, revoked.draftId, { blood_group: 'A+' }, [], revokedRevision))[0].outcome)
+        .toBe('forbidden');
+    } finally {
+      await db.admin.query("update public.profiles set global_role='curateur' where id=$1", [curator1Id]);
+    }
+
+    await db.admin.query('update public.curation_task set assigned_to=$2 where id=$1', [revoked.taskId, curator2Id]);
+    expect((await save(curator1Id, revoked.draftId, {}, [], revokedRevision))[0].outcome).toBe('forbidden');
+
+    const closed = await claimAndDraft('NCH-005', {}, []);
+    const closedRevision = Number((await db.admin.query(
+      'select revision from public.curation_draft where id=$1',
+      [closed.draftId],
+    )).rows[0].revision);
+    await db.admin.query("update public.curation_task set status='completed' where id=$1", [closed.taskId]);
+    expect((await save(curator1Id, closed.draftId, {}, [], closedRevision))[0].outcome).toBe('invalid_state');
+  });
+
+  test('deux ecritures concurrentes avec la meme revision : une seule est appliquee', async () => {
+    const c = await claimAndDraft('NCH-006', {}, []);
+    const revision = Number((await db.admin.query(
+      'select revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0].revision);
+
+    const [a, b] = await Promise.all([
+      save(curator1Id, c.draftId, { blood_group: 'A+' }, [], revision),
+      save(curator1Id, c.draftId, { blood_group: 'B+' }, [], revision),
+    ]);
+    expect([a[0].outcome, b[0].outcome].sort()).toEqual(['stale', 'updated']);
+    const final = (await db.admin.query(
+      'select patient_data, revision from public.curation_draft where id=$1',
+      [c.draftId],
+    )).rows[0];
+    expect([{ blood_group: 'A+' }, { blood_group: 'B+' }]).toContainEqual(final.patient_data);
+    expect(Number(final.revision)).toBe(revision + 1);
+  });
+
+  test('RPC definer : auth explicite, search_path fixe et EXECUTE limite a authenticated', async () => {
+    const metadata = (await db.admin.query(
+      `select p.prosecdef, p.proconfig,
+              has_function_privilege('anon', p.oid, 'execute') as anon_exec,
+              has_function_privilege('authenticated', p.oid, 'execute') as authenticated_exec
+         from pg_proc p
+        where p.oid = 'public.save_curation_draft(uuid,jsonb,jsonb,bigint)'::regprocedure`,
+    )).rows[0];
+    expect(metadata.prosecdef).toBe(true);
+    expect(metadata.proconfig).toContain('search_path=public, pg_temp');
+    expect(metadata.anon_exec).toBe(false);
+    expect(metadata.authenticated_exec).toBe(true);
+    const unauthenticated = (await db.admin.query(
+      'select * from public.save_curation_draft($1,$2::jsonb,$3::jsonb,$4)',
+      ['00000000-0000-0000-0000-000000000001', '{}', '[]', 0],
+    )).rows[0];
+    expect(unauthenticated.outcome).toBe('forbidden');
   });
 });

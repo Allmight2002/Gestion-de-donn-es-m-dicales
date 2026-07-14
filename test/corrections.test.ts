@@ -5,6 +5,7 @@ import { startTestDb, type TestDb } from './harness/db.js';
 
 let db: TestDb;
 let aliceId: string;
+let editorId: string;
 let annaId: string;
 let baseId: string;
 let encounterId: string;
@@ -16,6 +17,7 @@ const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8:
 const CREATE_ENC = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
 const UPDATE_ENC = 'select * from public.update_encounter($1,$2::jsonb,$3,$4)';
 const UPDATE_ENC5 = 'select * from public.update_encounter($1,$2::jsonb,$3,$4,$5::timestamptz)';
+const REPLAY_ENC = 'select * from public.replay_encounter_update($1,$2,$3::jsonb,$4,$5,$6::timestamptz)';
 const encUpdatedAt = async (): Promise<Date> =>
   (await db.admin.query('select updated_at from public.encounter where id=$1', [encounterId])).rows[0].updated_at;
 const changes = (uid: string) =>
@@ -27,6 +29,7 @@ beforeAll(async () => {
     (await db.admin.query('select email, id from auth.users')).rows.map((r) => [r.email, r.id]),
   );
   aliceId = byEmail.get('alice@demo.test')!;
+  editorId = byEmail.get('editor@demo.test')!;
   annaId = byEmail.get('anna.analyst@demo.test')!;
   baseId = (await db.admin.query('select id from public.base limit 1')).rows[0].id;
 
@@ -87,6 +90,127 @@ describe('§13 verrou optimiste (synchronisation hors-ligne)', () => {
   });
 });
 
+describe('rejeu hors-ligne idempotent apres une reponse perdue', () => {
+  test('un rejeu strictement identique renvoie le meme accuse sans seconde ecriture', async () => {
+    const code = `OFFLINE-REPLAY-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient fictif', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M' }),
+    ]))[0];
+    const encounter = (await rowsAs(aliceId, CREATE_ENC, [
+      patient.id, 'consultation', '2024-04-01', 'draft',
+      JSON.stringify({ glasgow_score: 10 }), 'years',
+    ]))[0];
+    const expected = encounter.updated_at.toISOString();
+    const operationId = `outbox-${Date.now()}-response-lost`;
+    const payload = JSON.stringify({ glasgow_score: 11 });
+
+    const first = await rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, payload, 'draft', 'correction hors-ligne', expected,
+    ]);
+    const changesAfterCommit = Number((await db.admin.query(
+      "select count(*)::int n from public.field_change_log where entity='encounter' and entity_id=$1",
+      [encounter.id],
+    )).rows[0].n);
+
+    // Simulation d'une reponse HTTP perdue : le client ne connait pas first et rejoue la meme intention.
+    const replay = await rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, payload, 'draft', 'correction hors-ligne', expected,
+    ]);
+    const changesAfterReplay = Number((await db.admin.query(
+      "select count(*)::int n from public.field_change_log where entity='encounter' and entity_id=$1",
+      [encounter.id],
+    )).rows[0].n);
+
+    expect(first[0]).toMatchObject({ id: encounter.id, replayed: false });
+    expect(replay[0]).toMatchObject({ id: encounter.id, replayed: true });
+    expect(replay[0].updated_at.toISOString()).toBe(first[0].updated_at.toISOString());
+    expect(changesAfterCommit).toBe(1);
+    expect(changesAfterReplay).toBe(changesAfterCommit);
+    expect((await db.admin.query('select data from public.encounter where id=$1', [encounter.id])).rows[0].data.glasgow_score).toBe(11);
+  });
+
+  test('une meme cle avec un payload different est refusee sans modification partielle', async () => {
+    const code = `OFFLINE-MISMATCH-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient fictif', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'F' }),
+    ]))[0];
+    const encounter = (await rowsAs(aliceId, CREATE_ENC, [
+      patient.id, 'consultation', '2024-04-02', 'draft',
+      JSON.stringify({ glasgow_score: 8 }), 'years',
+    ]))[0];
+    const operationId = `outbox-${Date.now()}-mismatch`;
+    await rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, JSON.stringify({ glasgow_score: 9 }), 'draft', 'hors-ligne', encounter.updated_at.toISOString(),
+    ]);
+    const before = (await db.admin.query('select data, updated_at from public.encounter where id=$1', [encounter.id])).rows[0];
+
+    await expect(rowsAs(aliceId, REPLAY_ENC, [
+      operationId, encounter.id, JSON.stringify({ glasgow_score: 15 }), 'draft', 'hors-ligne', encounter.updated_at.toISOString(),
+    ])).rejects.toThrow(/OFFLINE_OPERATION_MISMATCH/);
+
+    const after = (await db.admin.query('select data, updated_at from public.encounter where id=$1', [encounter.id])).rows[0];
+    expect(after.data).toEqual(before.data);
+    expect(after.updated_at.toISOString()).toBe(before.updated_at.toISOString());
+  });
+
+  test('deux intentions concurrentes sur la meme version : une seule gagne et l autre ne laisse aucune trace', async () => {
+    const code = `OFFLINE-RACE-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient fictif', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M' }),
+    ]))[0];
+    const encounter = (await rowsAs(aliceId, CREATE_ENC, [
+      patient.id, 'consultation', '2024-04-03', 'draft',
+      JSON.stringify({ glasgow_score: 7 }), 'years',
+    ]))[0];
+    const expected = encounter.updated_at.toISOString();
+    const prefix = `outbox-${Date.now()}-race`;
+    const writes = await Promise.allSettled([
+      rowsAs(aliceId, REPLAY_ENC, [`${prefix}-a`, encounter.id, JSON.stringify({ glasgow_score: 12 }), 'draft', 'course A', expected]),
+      rowsAs(aliceId, REPLAY_ENC, [`${prefix}-b`, encounter.id, JSON.stringify({ glasgow_score: 13 }), 'draft', 'course B', expected]),
+    ]);
+
+    expect(writes.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = writes.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    expect(String(rejected?.reason?.message ?? rejected?.reason)).toMatch(/CONFLIT_VERSION/);
+    expect([12, 13]).toContain(
+      (await db.admin.query('select data from public.encounter where id=$1', [encounter.id])).rows[0].data.glasgow_score,
+    );
+    expect(Number((await db.admin.query(
+      'select count(*)::int n from public.offline_encounter_operation where operation_id like $1',
+      [`${prefix}%`],
+    )).rows[0].n)).toBe(1);
+    expect(Number((await db.admin.query(
+      "select count(*)::int n from public.field_change_log where entity='encounter' and entity_id=$1",
+      [encounter.id],
+    )).rows[0].n)).toBe(1);
+  });
+
+  test('la table reste serveur-only et la RPC a des privileges bornes', async () => {
+    await expect(rowsAs(aliceId, 'select * from public.offline_encounter_operation')).rejects.toThrow(/permission denied/i);
+    const functionName = 'public.replay_encounter_update(text,uuid,jsonb,text,text,timestamp with time zone)';
+    const metadata = (await db.admin.query(
+      `select p.prosecdef, p.proconfig,
+              has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth_execute,
+              has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
+              has_function_privilege('public', p.oid, 'EXECUTE') as public_execute
+         from pg_proc p
+        where p.oid = $1::regprocedure`,
+      [functionName],
+    )).rows[0];
+    expect(metadata.prosecdef).toBe(true);
+    expect(metadata.proconfig).toContain('search_path=public, extensions, pg_temp');
+    expect(metadata.auth_execute).toBe(true);
+    expect(metadata.anon_execute).toBe(false);
+    expect(metadata.public_execute).toBe(false);
+    await expect(db.admin.query(REPLAY_ENC, [
+      'no-auth-operation', encounterId, JSON.stringify({ glasgow_score: 15, diagnosis: 'TC' }), 'curated', 'sans auth', null,
+    ])).rejects.toThrow(/AUTHENTICATION_REQUIRED/);
+  });
+});
+
 describe('§5.2 triggers (defense en profondeur) : pas de retrogradation ni d age falsifie', () => {
   // Ecritures PRIVILEGIEES (admin) : la RLS est contournee mais les TRIGGERS s'appliquent.
   test('une rencontre curated ne peut etre RETROGRADEE (trigger)', async () => {
@@ -113,14 +237,72 @@ describe('§5.3 ecritures cliniques par RPC seulement', () => {
 });
 
 describe('update_patient (donnees permanentes)', () => {
-  const UPDATE_PAT = 'select * from public.update_patient($1,$2::jsonb,$3,$4)';
-  test('corrige les donnees permanentes (journalise) ; valeur hors liste refusee', async () => {
+  const UPDATE_PAT = 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)';
+  test('un ancien bundle appelant quatre arguments echoue explicitement sans ecriture', async () => {
     const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
-    const out = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'correction sexe']);
+    const before = (await db.admin.query('select data,row_version from public.patient where id=$1', [pid])).rows[0];
+    await expect(rowsAs(aliceId,
+      'select * from public.update_patient($1,$2::jsonb,$3,$4)',
+      [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'ancien bundle'],
+    )).rejects.toThrow(/CLIENT_UPDATE_REQUIRED|rechargez/i);
+    const after = (await db.admin.query('select data,row_version from public.patient where id=$1', [pid])).rows[0];
+    expect(after).toEqual(before);
+  });
+  test('corrige les donnees permanentes avec verrou optimiste ; conflit preserve la premiere ecriture', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
+    const before = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
+    const out = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'correction sexe', before]);
     expect(out[0].data.sexe).toBe('F');
     expect((await db.admin.query("select 1 from public.field_change_log where entity='patient' and entity_id=$1 and field_key='sexe'", [pid])).rows.length).toBeGreaterThan(0);
+    // Une seconde lecture faite avant la premiere ecriture ne peut pas ecraser son resultat.
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'M' }), 'draft', 'version obsolete', before]))
+      .rejects.toThrow(/CONFLIT_VERSION/);
+    expect((await db.admin.query('select data from public.patient where id=$1', [pid])).rows[0].data.sexe).toBe('F');
+    const fresh = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
+    const retried = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'M' }), 'draft', 'apres rechargement', fresh]);
+    expect(retried[0].data.sexe).toBe('M');
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'F' }), 'draft', 'sans version', null]))
+      .rejects.toThrow(/CONFLIT_VERSION/);
     // re-validation serveur : une valeur hors liste autorisee est refusee.
-    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'Z' }), 'draft', 'invalide'])).rejects.toThrow();
+    const current = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
+    await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'Z' }), 'draft', 'invalide', current])).rejects.toThrow();
+  });
+
+  test('deux connexions partant de la meme version : une seule gagne, puis le rechargement permet le retry', async () => {
+    const code = `CORR-RACE-${Date.now()}`;
+    const patient = (await rowsAs(aliceId, CREATE_PAT, [
+      baseId, code, 'Patient Course', '1980-01-01', null, null, null,
+      JSON.stringify({ sexe: 'M', birth_year: 1980 }),
+    ]))[0];
+    const expected = Number(patient.row_version);
+    const writes = await Promise.allSettled([
+      rowsAs(aliceId, UPDATE_PAT, [patient.id, JSON.stringify({ sexe: 'M', birth_year: 1981 }), 'draft', 'course A', expected]),
+      rowsAs(aliceId, UPDATE_PAT, [patient.id, JSON.stringify({ sexe: 'M', birth_year: 1982 }), 'draft', 'course B', expected]),
+    ]);
+    expect(writes.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = writes.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(String(rejected?.reason?.message ?? rejected?.reason)).toMatch(/CONFLIT_VERSION/);
+
+    const stored = (await db.admin.query('select data, row_version from public.patient where id=$1', [patient.id])).rows[0];
+    expect([1981, 1982]).toContain(stored.data.birth_year);
+    const retryValue = stored.data.birth_year === 1981 ? 1982 : 1981;
+    const retried = await rowsAs(aliceId, UPDATE_PAT, [patient.id, JSON.stringify({ sexe: 'M', birth_year: retryValue }), 'draft', 'apres rechargement', Number(stored.row_version)]);
+    expect(retried[0].data.birth_year).toBe(retryValue);
+  });
+
+  test('une permission revoquee entre lecture et ecriture refuse la sauvegarde sans modifier le patient', async () => {
+    const pid = (await db.admin.query("select id from public.patient where base_id=$1 and patient_code='CORR-001'", [baseId])).rows[0].id;
+    const loaded = (await rowsAs(editorId, 'select data, row_version, updated_at from public.patient where id=$1', [pid]))[0];
+    await db.admin.query('update public.base_access set revoked_at=now() where base_id=$1 and user_id=$2', [baseId, editorId]);
+    try {
+      await expect(rowsAs(editorId, UPDATE_PAT, [pid, JSON.stringify({ ...loaded.data, birth_year: 1999 }), 'draft', 'permission revoquee', Number(loaded.row_version)]))
+        .rejects.toThrow(/Acces refuse/i);
+      const after = (await db.admin.query('select data, updated_at from public.patient where id=$1', [pid])).rows[0];
+      expect(after.data).toEqual(loaded.data);
+      expect(after.updated_at.toISOString()).toBe(loaded.updated_at.toISOString());
+    } finally {
+      await db.admin.query('update public.base_access set revoked_at=null where base_id=$1 and user_id=$2', [baseId, editorId]);
+    }
   });
 });
 

@@ -23,5 +23,15 @@ Thumbs.db
 # Artefact genere par repomix (bundle du depot, non versionne)
 repomix-output.xml
 
+# Playwright browser artefacts (CI uploads them on failure).
+playwright-report/
+test-results/
+
 # Manifeste de deploiement (instantane de release genere par `npm run manifest`)
 deploy-manifest.json
+
+# Outillage IA local (agents, configs, skills) — non versionne
+.claude/
+.codex/
+.agents/
+AGENTS.md

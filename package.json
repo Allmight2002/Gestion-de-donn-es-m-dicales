@@ -24,7 +24,18 @@
     "manifest": "node scripts/deploy-manifest.mjs",
     "env:check": "node scripts/check-inspection-env.mjs",
     "env:check:cloud": "node scripts/check-inspection-env.mjs --cloud",
-    "e2e:staging": "node scripts/e2e-staging.mjs"
+    "inspection:activate": "node scripts/activate-strict-inspection.mjs",
+    "release:env": "node scripts/release-env-check.mjs",
+    "release:target": "node scripts/check-supabase-target.mjs",
+    "release:edge:check": "node scripts/verify-edge-functions.mjs",
+    "edge:fmt": "deno task edge:fmt",
+    "edge:lint": "deno task edge:lint",
+    "edge:check": "deno task edge:check",
+    "edge:test": "deno task edge:test",
+    "release:drift": "node scripts/release-drift.mjs",
+    "e2e:staging": "node scripts/e2e-staging.mjs",
+    "e2e:browser": "playwright test",
+    "e2e:browser:critical": "playwright test e2e/auth-roles.spec.ts e2e/export-journey.spec.ts e2e/patient-journey.spec.ts --grep @critical"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -38,6 +49,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.54.1",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",

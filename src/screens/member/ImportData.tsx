@@ -1,17 +1,22 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { CheckCircle2, Columns3, FileSpreadsheet, Settings2, ShieldAlert, Upload } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { getTemplateFields } from '../../data/templates';
 import type { FieldScope, FieldSection, FieldType, TemplateField } from '../../data/types';
 import {
-  autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping, type ImportReport, type ImportTarget,
+  autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
+  type ColumnMapping, type ImportReport, type ImportTarget,
 } from '../../domain/import';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { normalizeKey, proposeFieldsFromSheet } from '../../domain/templateFromSheet';
 import type { ImportDuplicateWarning } from '../../data/patients';
 import { useToast } from '../../components/Toast';
+import { PageHeader } from '../../components/PageHeader';
+import { SectionCard } from '../../components/SectionCard';
+import { WorkflowSteps } from '../../components/WorkflowSteps';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
@@ -63,6 +68,8 @@ export function ImportData() {
   const [warnings, setWarnings] = useState<ImportDuplicateWarning[]>([]); // §7.6 doublons probables
   const [committed, setCommitted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const runInFlight = useRef(false);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,14 +153,39 @@ export function ImportData() {
   }, [mapping, status, conflict, rawRows, versionId]);
 
   const rows = useMemo(() => buildImportRows(rawRows, mapping, fields), [rawRows, mapping, fields]);
+  const inFileDuplicates = useMemo(() => findInFileEncounterDuplicates(rows), [rows]);
   const hasPatientCode = Object.values(mapping).includes('patient_code');
   const dups = useMemo(() => duplicateTargets(mapping), [mapping]);
   const canRun = hasPatientCode && dups.length === 0;
 
   async function run(dryRun: boolean) {
-    if (!baseId) return;
-    setBusy(true); setError(null); setProgress(null);
+    if (!baseId || runInFlight.current) return;
+    runInFlight.current = true;
+    setBusy(true); setError(null);
     try {
+      const includeGlobalDuplicateErrors = (source: ImportReport): ImportReport => {
+        if (!dryRun || inFileDuplicates.length === 0) return source;
+        const alreadyReported = new Set(
+          source.errors
+            .filter((item) => /double dans le fichier/i.test(item.message))
+            .map((item) => item.row),
+        );
+        const missing = inFileDuplicates.filter((item) => !alreadyReported.has(item.row));
+        if (missing.length === 0) return source;
+        return {
+          ...source,
+          error_count: source.error_count + missing.length,
+          rejected: source.rejected === undefined ? undefined : source.rejected + missing.length,
+          errors: [
+            ...source.errors,
+            ...missing.map((item) => ({
+              row: item.row,
+              patient_code: item.patientCode,
+              message: `Rencontre en double dans le fichier (meme patient, date, type et donnees ; premiere ligne ${item.firstRow})`,
+            })),
+          ],
+        };
+      };
       // §7.6 : a l'apercu, signaler les rencontres ressemblant a des existantes (sans bloquer).
       // Resilient : si la RPC n'est pas encore deployee, on n'empeche pas l'apercu.
       if (dryRun) {
@@ -161,31 +193,95 @@ export function ImportData() {
       }
       if (rows.length <= CHUNK) {
         // Petit volume : un seul appel.
-        setReport(await patients.importRecords(baseId, rows, { dryRun, status, conflict, fileHash, templateVersionId: versionId }));
+        const preview = await patients.importRecords(baseId, rows, { dryRun, status, conflict, fileHash, templateVersionId: versionId });
+        setReport(includeGlobalDuplicateErrors(preview));
       } else {
         // §6.5 import par LOTS : ouverture du lot (idempotence + verrous) puis chunks + progression.
         const batchId = dryRun ? null : await patients.beginImportBatch(baseId, { status, conflict, fileHash, templateVersionId: versionId, expectedRows: rows.length });
-        const agg: ImportReport = { dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0, error_count: 0, already_imported: 0, errors: [] };
+        if (batchId) setActiveBatchId(batchId);
+        let succeeded = new Set<number>();
+        let serverRowCount = 0;
+        let serverErrorCount = 0;
+        if (batchId) {
+          // Le navigateur peut perdre la reponse apres le commit: la reprise
+          // repart de cet etat serveur, jamais d'un offset local suppose.
+          const state = await patients.getImportBatchState(batchId);
+          succeeded = new Set(state.succeeded_source_rows);
+          serverRowCount = state.row_count;
+          serverErrorCount = state.error_count;
+          setProgress({ done: state.row_count, total: rows.length });
+          if (state.resume_state === 'historical_unsafe') {
+            setError(t('import.historical_cancel_required'));
+            return;
+          }
+        }
+        const agg: ImportReport = {
+          dry_run: dryRun, status, conflict, patients_new: 0, patients_updated: 0,
+          encounters: 0, error_count: serverErrorCount, already_imported: 0,
+          newly_imported: 0, already_processed: succeeded.size, rejected: 0,
+          server_row_count: serverRowCount, server_error_count: serverErrorCount, errors: [],
+        };
         for (let i = 0; i < rows.length; i += CHUNK) {
-          const rep = await patients.importRecords(baseId, rows.slice(i, i + CHUNK), {
+          const chunk = rows.slice(i, i + CHUNK).filter((row) => !succeeded.has(row.source_row_number ?? -1));
+          if (chunk.length === 0) continue;
+          const rep = await patients.importRecords(baseId, chunk, {
             dryRun, status, conflict, fileHash: null, templateVersionId: versionId, batchId,
           });
           agg.patients_new += rep.patients_new; agg.patients_updated += rep.patients_updated;
-          agg.encounters += rep.encounters; agg.error_count += rep.error_count;
+          agg.encounters += rep.encounters;
           agg.already_imported = (agg.already_imported ?? 0) + (rep.already_imported ?? 0); // §7.8
+          agg.newly_imported = (agg.newly_imported ?? 0) + (rep.newly_imported ?? 0);
+          agg.already_processed = (agg.already_processed ?? 0) + (rep.already_processed ?? 0);
+          agg.rejected = (agg.rejected ?? 0) + (rep.rejected ?? rep.error_count);
           agg.errors.push(...rep.errors.map((er) => ({ ...er, row: er.row + i }))); // n° de ligne global
-          setProgress({ done: Math.min(i + CHUNK, rows.length), total: rows.length });
+          if (batchId) {
+            const state = await patients.getImportBatchState(batchId);
+            succeeded = new Set(state.succeeded_source_rows);
+            agg.error_count = state.error_count;
+            agg.server_row_count = state.row_count;
+            agg.server_error_count = state.error_count;
+            setProgress({ done: state.row_count, total: rows.length });
+          } else {
+            agg.error_count += rep.error_count;
+          }
         }
         // §6.2 : cloture du lot -> active l'idempotence du fichier. En cas d'erreur, le lot
         // reste 'processing' et peut etre REPRIS (re-lancer l'import reprend le meme lot).
-        if (batchId) await patients.completeImportBatch(batchId);
-        setReport(agg);
+        if (batchId) {
+          await patients.completeImportBatch(batchId);
+          const state = await patients.getImportBatchState(batchId);
+          agg.error_count = state.error_count;
+          agg.server_row_count = state.row_count;
+          agg.server_error_count = state.error_count;
+          setProgress({ done: state.row_count, total: rows.length });
+          setActiveBatchId(null);
+        }
+        setReport(includeGlobalDuplicateErrors(agg));
       }
       if (!dryRun) setCommitted(true);
     } catch (e) {
       setError(msg(e));
     } finally {
-      setBusy(false); setProgress(null);
+      setBusy(false);
+      runInFlight.current = false;
+    }
+  }
+
+  async function cancelActiveBatch() {
+    if (!activeBatchId || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await patients.cancelImportBatch(activeBatchId);
+      const state = await patients.getImportBatchState(activeBatchId);
+      setProgress({ done: state.row_count, total: state.expected_rows ?? rows.length });
+      setActiveBatchId(null);
+      setReport(null);
+      setCommitted(false);
+      toast(t('import.cancelled'), 'success');
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -238,36 +334,47 @@ export function ImportData() {
   }
 
   return (
-    <section className="max-w-3xl space-y-6">
-      <div>
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
-        <h1 className="page-title mt-2">{t('import.title')}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t('import.hint')}</p>
+    <section className="max-w-4xl space-y-6">
+      <PageHeader title={t('import.title')} description={t('import.hint')} />
+
+      <WorkflowSteps
+        current={headers.length === 0 ? 1 : report ? 3 : 2}
+        steps={[
+          { label: t('import.step_file'), description: t('import.step_file_hint') },
+          { label: t('import.step_mapping'), description: t('import.step_mapping_hint') },
+          { label: t('import.step_review'), description: t('import.step_review_hint') },
+        ]}
+      />
+
+      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden />
+        <span>{t('import.fictional')}</span>
       </div>
+      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{t('import.fictional')}</div>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-
-      <div className="card p-4">
-        <label className="flex flex-col text-sm">
-          <span className="text-slate-700">{t('import.file')}</span>
-          <input type="file" accept=".csv,.xlsx,.xls" onChange={onFile} className="mt-1 text-sm" />
+      <SectionCard title={t('import.file_title')} description={t('import.file_hint')} icon={FileSpreadsheet}>
+        <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-center transition hover:border-teal-400 hover:bg-teal-50/40">
+          <Upload className="mx-auto mb-2 text-slate-400" size={24} aria-hidden />
+          <span className="block text-sm font-semibold text-slate-800">{t('import.file')}</span>
+          <input type="file" accept=".csv,.xlsx,.xls" onChange={onFile} className="mx-auto mt-3 block max-w-full text-sm text-slate-500" />
+          {fileName && <span className="mt-3 block text-sm font-medium text-teal-700">{fileName} — {rawRows.length} {t('import.rows')}</span>}
         </label>
-        {fileName && <p className="mt-2 text-xs text-slate-500">{fileName} — {rawRows.length} {t('import.rows')}</p>}
-      </div>
+      </SectionCard>
 
       {headers.length > 0 && (
         <>
-          <div className="card p-4">
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('import.mapping')}</h2>
-            <div className="space-y-2">
-              {headers.map((h, i) => (
-                <div key={i}>
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className="w-1/3 truncate font-mono text-xs text-slate-600" title={h || `(colonne ${i + 1})`}>
-                      {h || <span className="italic text-slate-400">(colonne {i + 1})</span>}
-                    </span>
-                    <select className="input flex-1" value={mapping[i] ?? 'ignore'} onChange={(e) => setCol(i, e.target.value as ImportTarget)}>
+          <SectionCard title={`2. ${t('import.mapping')}`} description={t('import.mapping_hint')} icon={Columns3}>
+            <div className="space-y-3">
+              {headers.map((header, index) => (
+                <div key={index} className="rounded-xl border border-slate-200 bg-slate-50/40 p-3">
+                  <div className="grid items-center gap-3 sm:grid-cols-[minmax(0,0.75fr)_minmax(0,1.4fr)_auto]">
+                    <div className="min-w-0">
+                      <span className="block text-xs font-medium uppercase tracking-wide text-slate-400">{t('import.file')}</span>
+                      <span className="block truncate font-mono text-sm text-slate-700" title={header || `(colonne ${index + 1})`}>
+                        {header || <span className="italic text-slate-400">(colonne {index + 1})</span>}
+                      </span>
+                    </div>
+                    <select className="input" value={mapping[index] ?? 'ignore'} onChange={(event) => setCol(index, event.target.value as ImportTarget)}>
                       <option value="ignore">— {t('import.ignore')} —</option>
                       <optgroup label={t('import.grp_meta')}>
                         <option value="patient_code">{t('import.patient_code')}</option>
@@ -279,127 +386,101 @@ export function ImportData() {
                         <option value="identity.date_of_birth">{t('import.dob')}</option>
                       </optgroup>
                       <optgroup label={t('import.grp_patient')}>
-                        {fields.filter((f) => f.scope === 'patient').map((f) => (
-                          <option key={f.id} value={`patient:${f.fieldKey}`}>{f.label}</option>
+                        {fields.filter((field) => field.scope === 'patient').map((field) => (
+                          <option key={field.id} value={`patient:${field.fieldKey}`}>{field.label}</option>
                         ))}
                       </optgroup>
                       <optgroup label={t('import.grp_encounter')}>
-                        {fields.filter((f) => f.scope === 'encounter').map((f) => (
-                          <option key={f.id} value={`encounter:${f.fieldKey}`}>{f.label}</option>
+                        {fields.filter((field) => field.scope === 'encounter').map((field) => (
+                          <option key={field.id} value={`encounter:${field.fieldKey}`}>{field.label}</option>
                         ))}
                       </optgroup>
                     </select>
-                    {/* V2 : colonne non reconnue -> le proprietaire peut creer la variable sur place. */}
-                    {isOwner && (mapping[i] ?? 'ignore') === 'ignore' && h.trim() !== '' && draft?.col !== i && (
-                      <button type="button" onClick={() => startCreate(i)} className="shrink-0 text-xs font-medium text-teal-700 hover:underline">
+                    {isOwner && (mapping[index] ?? 'ignore') === 'ignore' && header.trim() !== '' && draft?.col !== index ? (
+                      <button type="button" onClick={() => startCreate(index)} className="btn-secondary whitespace-nowrap">
                         {t('import.create_var')}
                       </button>
-                    )}
+                    ) : <span />}
                   </div>
-                  {draft?.col === i && (
-                    <div className="mt-2 space-y-2 rounded-lg border border-teal-200 bg-teal-50/40 p-3">
-                      <p className="text-xs font-semibold text-slate-700">{t('import.create_var_title').replace('{col}', h.trim())}</p>
-                      <p className="text-xs text-slate-500">{t('import.create_var_hint')}</p>
-                      <div className="flex flex-wrap items-end gap-3">
-                        <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
-                          {t('admin.label')}
-                          <input className="input" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                          {t('admin.type')}
-                          <select className="input" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as FieldType })}>
-                            {TYPES.map((x) => <option key={x} value={x}>{x}</option>)}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                          {t('admin.scope')}
-                          <select className="input" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as FieldScope })}>
-                            <option value="patient">{t('scope.patient')}</option>
-                            <option value="encounter">{t('scope.encounter')}</option>
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                          {t('admin.section')}
-                          <select className="input" value={draft.section} onChange={(e) => setDraft({ ...draft, section: e.target.value as FieldSection })}>
-                            {SECTIONS.map((s) => <option key={s} value={s}>{t(`section.${s}`)}</option>)}
-                          </select>
-                        </label>
-                        <button type="button" onClick={() => void createVariable()} disabled={draftBusy || draft.label.trim() === ''} className="btn-primary">
-                          {t('import.create_var')}
-                        </button>
-                        <button type="button" onClick={() => setDraft(null)} disabled={draftBusy} className="btn-secondary">
-                          {t('common.cancel')}
-                        </button>
+                  {draft?.col === index && (
+                    <div className="mt-3 space-y-3 rounded-xl border border-teal-200 bg-teal-50/50 p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{t('import.create_var_title').replace('{col}', header.trim())}</p>
+                        <p className="helper-text mt-1">{t('import.create_var_hint')}</p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <label className="form-label">{t('admin.label')}<input className="input" value={draft.label} onChange={(event) => setDraft({ ...draft, label: event.target.value })} /></label>
+                        <label className="form-label">{t('admin.type')}<select className="input" value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as FieldType })}>{TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+                        <label className="form-label">{t('admin.scope')}<select className="input" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as FieldScope })}><option value="patient">{t('scope.patient')}</option><option value="encounter">{t('scope.encounter')}</option></select></label>
+                        <label className="form-label">{t('admin.section')}<select className="input" value={draft.section} onChange={(event) => setDraft({ ...draft, section: event.target.value as FieldSection })}>{SECTIONS.map((section) => <option key={section} value={section}>{t(`section.${section}`)}</option>)}</select></label>
                       </div>
                       {(draft.type === 'select' || draft.type === 'multiselect') && draft.allowedValues && draft.allowedValues.length > 0 && (
-                        <p className="text-xs text-slate-500">{t('admin.allowed_values')} : {draft.allowedValues.join(', ')}</p>
+                        <p className="helper-text">{t('admin.allowed_values')} : {draft.allowedValues.join(', ')}</p>
                       )}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button type="button" onClick={() => setDraft(null)} disabled={draftBusy} className="btn-secondary">{t('common.cancel')}</button>
+                        <button type="button" onClick={() => void createVariable()} disabled={draftBusy || draft.label.trim() === ''} className="btn-primary">{t('import.create_var')}</button>
+                      </div>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            {!hasPatientCode && <p className="mt-3 text-xs text-red-600">{t('import.need_code')}</p>}
-            {dups.length > 0 && <p className="mt-2 text-xs text-red-600">{t('import.dup_target')}</p>}
-          </div>
+            {!hasPatientCode && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{t('import.need_code')}</p>}
+            {dups.length > 0 && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{t('import.dup_target')}</p>}
+          </SectionCard>
 
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col text-sm">
-              <span className="text-slate-700">{t('import.status')}</span>
-              <select className="input mt-1" value={status} onChange={(e) => setStatus(e.target.value)}>
-                {STATUSES.map((s) => <option key={s} value={s}>{t(`encstatus.${s}`)}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col text-sm">
-              <span className="text-slate-700">{t('import.conflict')}</span>
-              <select className="input mt-1" value={conflict} onChange={(e) => setConflict(e.target.value as typeof conflict)}>
-                {CONFLICTS.map((c) => <option key={c} value={c}>{t(`import.conflict_${c}`)}</option>)}
-              </select>
-            </label>
-            <button onClick={() => void run(true)} disabled={busy || !canRun} className="btn-secondary">{t('import.preview')}</button>
-            <button onClick={() => void run(false)} disabled={busy || !canRun || !report || committed} className="btn-primary">{t('import.commit')}</button>
-          </div>
-          {progress && (
-            <p className="text-xs text-slate-500">{t('import.progress').replace('{done}', String(progress.done)).replace('{total}', String(progress.total))}</p>
-          )}
+          <SectionCard title={t('import.options_title')} description={t('import.options_hint')} icon={Settings2}>
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="form-label">{t('import.status')}<select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>{STATUSES.map((item) => <option key={item} value={item}>{t(`encstatus.${item}`)}</option>)}</select></label>
+                <label className="form-label">{t('import.conflict')}<select className="input" value={conflict} onChange={(event) => setConflict(event.target.value as typeof conflict)}>{CONFLICTS.map((item) => <option key={item} value={item}>{t(`import.conflict_${item}`)}</option>)}</select></label>
+              </div>
+              {progress && <p className="helper-text">{t('import.progress').replace('{done}', String(progress.done)).replace('{total}', String(progress.total))}</p>}
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">
+                {activeBatchId && !committed && (
+                  <button type="button" onClick={() => void cancelActiveBatch()} disabled={busy} className="btn-secondary mr-auto text-red-700">{t('import.cancel_batch')}</button>
+                )}
+                <button onClick={() => void run(true)} disabled={busy || !canRun} className="btn-secondary">{t('import.preview')}</button>
+                <button onClick={() => void run(false)} disabled={busy || !canRun || !report || committed} className="btn-primary">{t('import.commit')}</button>
+              </div>
+            </div>
+          </SectionCard>
         </>
       )}
 
       {report && (
-        <div className="card space-y-2 p-4 text-sm">
-          <p className="font-medium text-slate-700">{committed ? t('import.done') : t('import.preview_result')}</p>
-          <ul className="text-slate-600">
-            <li>{t('import.patients_new')} : <strong>{report.patients_new}</strong></li>
-            <li>{t('import.patients_updated')} : <strong>{report.patients_updated}</strong></li>
-            <li>{t('import.encounters')} : <strong>{report.encounters}</strong></li>
-            {(report.already_imported ?? 0) > 0 && (
-              <li className="text-slate-500">{t('import.already_imported')} : <strong>{report.already_imported}</strong></li>
-            )}
-            <li className={report.error_count > 0 ? 'text-red-600' : ''}>{t('import.errors')} : <strong>{report.error_count}</strong></li>
-          </ul>
-          {report.errors.length > 0 && (
-            <div className="max-h-48 overflow-auto rounded-lg border border-red-100 bg-red-50 p-2 text-xs text-red-700">
-              {report.errors.map((er, i) => (
-                <div key={i}>{t('import.line')} {er.row}{er.patient_code ? ` (${er.patient_code})` : ''} : {er.message}</div>
-              ))}
-            </div>
-          )}
-          {!committed && warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-              <p className="font-medium">{t('import.duplicates_warning').replace('{n}', String(warnings.length))}</p>
-              <p className="mt-0.5">{t('import.duplicates_hint')}</p>
-              <div className="mt-1 max-h-32 overflow-auto">
-                {warnings.map((w, i) => (
-                  <div key={i}>{t('import.line')} {w.row} ({w.patientCode}) : {w.encounterType} · {w.encounterDate}</div>
-                ))}
+        <SectionCard title={committed ? t('import.done') : t('import.preview_result')} icon={CheckCircle2}>
+          <div className="space-y-4 text-sm">
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="surface-muted p-3"><dt className="text-xs text-slate-500">{t('import.patients_new')}</dt><dd className="mt-1 text-xl font-semibold text-slate-900">{report.patients_new}</dd></div>
+              <div className="surface-muted p-3"><dt className="text-xs text-slate-500">{t('import.patients_updated')}</dt><dd className="mt-1 text-xl font-semibold text-slate-900">{report.patients_updated}</dd></div>
+              <div className="surface-muted p-3"><dt className="text-xs text-slate-500">{t('import.encounters')}</dt><dd className="mt-1 text-xl font-semibold text-slate-900">{report.encounters}</dd></div>
+              <div className={`rounded-xl border p-3 ${report.error_count > 0 ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50/70'}`}><dt className="text-xs text-slate-500">{t('import.errors')}</dt><dd className={`mt-1 text-xl font-semibold ${report.error_count > 0 ? 'text-red-700' : 'text-slate-900'}`}>{report.error_count}</dd></div>
+            </dl>
+            <ul className="space-y-1 text-slate-600">
+              {(report.already_imported ?? 0) > 0 && <li>{t('import.already_imported')} : <strong>{report.already_imported}</strong></li>}
+              {report.newly_imported !== undefined && <li>{t('import.newly_imported')} : <strong>{report.newly_imported}</strong></li>}
+              {report.already_processed !== undefined && <li>{t('import.already_processed')} : <strong>{report.already_processed}</strong></li>}
+              {report.rejected !== undefined && <li className={report.rejected > 0 ? 'text-red-600' : ''}>{t('import.rejected_current')} : <strong>{report.rejected}</strong></li>}
+              {report.server_row_count !== undefined && <li>{t('import.server_state').replace('{processed}', String(report.server_row_count)).replace('{rejected}', String(report.server_error_count ?? report.error_count))}</li>}
+            </ul>
+            {report.errors.length > 0 && (
+              <div className="max-h-48 overflow-auto rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-700">
+                {report.errors.map((item, index) => <div key={index}>{t('import.line')} {item.row}{item.patient_code ? ` (${item.patient_code})` : ''} : {item.message}</div>)}
               </div>
-            </div>
-          )}
-          {!committed && report.error_count === 0 && <p className="text-xs text-slate-500">{t('import.ready')}</p>}
-          {committed && (
-            <button onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary mt-1">{t('base.back_to_dashboard')}</button>
-          )}
-        </div>
+            )}
+            {!committed && warnings.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <p className="font-medium">{t('import.duplicates_warning').replace('{n}', String(warnings.length))}</p>
+                <p className="mt-1">{t('import.duplicates_hint')}</p>
+                <div className="mt-2 max-h-32 overflow-auto">{warnings.map((warning, index) => <div key={index}>{t('import.line')} {warning.row} ({warning.patientCode}) : {warning.encounterType} · {warning.encounterDate}</div>)}</div>
+              </div>
+            )}
+            {!committed && report.error_count === 0 && <p className="text-sm text-teal-700">{t('import.ready')}</p>}
+            {committed && <button onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary">{t('base.back_to_dashboard')}</button>}
+          </div>
+        </SectionCard>
       )}
     </section>
   );

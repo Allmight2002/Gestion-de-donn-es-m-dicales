@@ -32,7 +32,15 @@ const openTask: CurationTaskItem = {
 const bundle = (status: string, taskStatus: string): TaskBundle => ({
   task: { ...openTask, status: taskStatus, assignedTo: 'cur', assignedName: 'Carl' },
   documents: [{ id: 'd1', label: 'CR (deident.)', storagePath: 'b1/s1/cr.pdf', mimeType: 'application/pdf', inspectionStatus: 'accepted' }],
-  draft: { id: 'dr1', taskId: 'tk1', patientData: {}, encounters: [], status },
+  draft: {
+    id: 'dr1',
+    taskId: 'tk1',
+    patientData: {},
+    encounters: [],
+    status,
+    revision: 4,
+    updatedAt: '2026-07-13T12:00:00Z',
+  },
   patientIdentity: null,
   clarifications: [],
 });
@@ -81,6 +89,23 @@ describe('CurationTask (pool)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Finaliser la curation' }));
     await waitFor(() => expect(finalizeTask).toHaveBeenCalledWith('tk1'));
     expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect(saveDraft).toHaveBeenCalledWith('dr1', {}, [], 4);
+  });
+
+  test('un refus d ecriture est visible et aucun message de succes n est affiche', async () => {
+    const saveDraft = vi.fn(async () => {
+      throw new Error('WRITE_FORBIDDEN');
+    });
+    const curation = {
+      async getTaskBundle() {
+        return bundle('draft', 'in_progress');
+      },
+      saveDraft,
+    } as unknown as CurationRepository;
+    renderAt('/curation/tk1', curation);
+    await userEvent.click(await screen.findByRole('button', { name: 'Enregistrer le brouillon' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/droits ou votre affectation/i);
+    expect(screen.queryByText('Brouillon enregistrÃ©.')).not.toBeInTheDocument();
   });
 });
 
@@ -159,12 +184,7 @@ describe('CurationTask (medecin proprietaire : envoi au pool)', () => {
 });
 
 describe('CurationBoard (suivi : suppression d une demande)', () => {
-  function renderBoard(deleteRequest: CurationRepository['deleteRequest']) {
-    let calls = 0;
-    const curation = {
-      async listBaseSubmissions() { calls += 1; return calls === 1 ? [{ ...openTask, status: 'preparing', targetPatientCode: 'P-0001' }] : []; },
-      deleteRequest,
-    } as unknown as CurationRepository;
+  function renderBoardRepo(curation: CurationRepository) {
     return render(
       <I18nProvider>
         <RepositoryProvider curation={curation}>
@@ -174,6 +194,15 @@ describe('CurationBoard (suivi : suppression d une demande)', () => {
         </RepositoryProvider>
       </I18nProvider>,
     );
+  }
+
+  function renderBoard(deleteRequest: CurationRepository['deleteRequest']) {
+    let deleted = false;
+    const curation = {
+      async listBaseSubmissions() { return deleted ? [] : [{ ...openTask, status: 'preparing', targetPatientCode: 'P-0001' }]; },
+      async deleteRequest(...args: Parameters<NonNullable<CurationRepository['deleteRequest']>>) { await deleteRequest!(...args); deleted = true; },
+    } as unknown as CurationRepository;
+    return renderBoardRepo(curation);
   }
 
   test('supprime LA DEMANDE seulement (apres saisie du motif)', async () => {
@@ -196,5 +225,41 @@ describe('CurationBoard (suivi : suppression d une demande)', () => {
     await userEvent.type(screen.getByLabelText('Motif de la suppression'), 'cree par erreur');
     await userEvent.click(screen.getByRole('button', { name: 'Le patient + la demande' }));
     await waitFor(() => expect(deleteRequest).toHaveBeenCalledWith('tk1', 'cree par erreur', true));
+  });
+
+  test('garde le motif et le dialogue ouverts quand la suppression est refusée', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    const deleteRequest = vi.fn(async () => { throw new Error('Accès refusé'); });
+    renderBoard(deleteRequest);
+    await screen.findByText('CASE-AB12');
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer la demande' }));
+    await userEvent.type(screen.getByLabelText('Motif de la suppression'), 'doublon');
+    await userEvent.click(screen.getByRole('button', { name: 'La demande seulement' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Accès refusé');
+    expect(screen.getByLabelText('Motif de la suppression')).toHaveValue('doublon');
+    expect(deleteRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test('réconcilie une réponse perdue : recharge la liste, la ligne disparaît, sans rejouer la RPC', async () => {
+    auth.role = 'medecin'; auth.id = 'doc';
+    let serverHasTask = true;
+    // Le serveur a bien commité la suppression, mais la réponse est perdue (timeout réseau).
+    const deleteRequest = vi.fn(async () => { serverHasTask = false; throw new Error('Network request failed'); });
+    const listBaseSubmissions = vi.fn(async () =>
+      serverHasTask ? [{ ...openTask, status: 'preparing', targetPatientCode: 'P-0001' }] : [],
+    );
+    renderBoardRepo({ listBaseSubmissions, deleteRequest } as unknown as CurationRepository);
+
+    expect(await screen.findByText('CASE-AB12')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer la demande' }));
+    await userEvent.type(screen.getByLabelText('Motif de la suppression'), 'doublon');
+    await userEvent.click(screen.getByRole('button', { name: 'La demande seulement' }));
+
+    // La vérification serveur confirme l'absence -> menu fermé + rechargement -> la ligne disparaît.
+    await waitFor(() => expect(screen.queryByText('CASE-AB12')).not.toBeInTheDocument());
+    expect(screen.queryByLabelText('Motif de la suppression')).not.toBeInTheDocument();
+    expect(deleteRequest).toHaveBeenCalledTimes(1); // aucun rejeu de la suppression
+    // Montée initiale + vérification de réconciliation + rechargement de la liste.
+    expect(listBaseSubmissions.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 });

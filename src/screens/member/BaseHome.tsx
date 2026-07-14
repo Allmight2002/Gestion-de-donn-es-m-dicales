@@ -2,6 +2,7 @@ import { errorMessage } from '../../lib/errorMessage';
 import { recordRecentBase } from '../../lib/recentBases';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Columns3, Download, Plus, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
@@ -9,8 +10,10 @@ import type { PatientListItem } from '../../data/patients';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SkeletonList } from '../../components/Skeleton';
+import { PageHeader } from '../../components/PageHeader';
+import { EmptyState } from '../../components/EmptyState';
 import {
-  downloadBaseSnapshot, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
+  downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
 } from '../../data/offline';
 
@@ -42,6 +45,7 @@ export function BaseHome() {
   const [offlineView, setOfflineView] = useState(false);
   const [rows, setRows] = useState<PatientListItem[]>([]);
   const [fields, setFields] = useState<Column[]>([]);
+  const [visibleFieldKeys, setVisibleFieldKeys] = useState<string[]>([]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -66,7 +70,9 @@ export function BaseHome() {
         }
         setBaseName(snap.baseName);
         recordRecentBase(id, snap.baseName); // UI-1 : navigation laterale « bases recentes »
-        setFields(snap.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
+        const available = snap.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn);
+        setFields(available);
+        setVisibleFieldKeys(available.slice(0, 5).map((field) => field.fieldKey));
         setRows(snap.patients.map(offlineItem));
         setTotal(snap.patients.length);
         setCachedMeta(snapshotMeta(snap));
@@ -89,7 +95,12 @@ export function BaseHome() {
       setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {
         const fields = await getTemplateFields(templates, b.base.currentTemplateVersionId);
-        setFields(fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn));
+        const available = fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn);
+        setFields(available);
+        setVisibleFieldKeys((current) => {
+          const retained = current.filter((key) => available.some((field) => field.fieldKey === key));
+          return retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey);
+        });
       }
       void offlineCache.get(id).then((s) => setCachedMeta(s ? snapshotMeta(s) : null)).catch(() => {});
       setError(null);
@@ -108,6 +119,10 @@ export function BaseHome() {
   // Telecharge l'instantane analytique de la base pour consultation hors-ligne.
   const doDownloadSnapshot = useCallback(async () => {
     if (!id) return;
+    if (!isOfflineEnabled()) {
+      setError('Mode hors-ligne desactive par la politique de securite de cet environnement.');
+      return;
+    }
     setSaving(true);
     try {
       const src: SnapshotSource = {
@@ -147,6 +162,7 @@ export function BaseHome() {
   if (loading) return <SkeletonList rows={6} />;
   if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
+  const visibleFields = fields.filter((field) => visibleFieldKeys.includes(field.fieldKey));
 
   return (
     <section className="space-y-5">
@@ -161,30 +177,27 @@ export function BaseHome() {
       />
       {/* UI-1 : le retour + la navigation (import/cohortes/journal/acces/gabarit/curation) vivent
           desormais dans BaseLayout (fil d'Ariane + onglets). Ici : titre, role et actions patients. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="page-title">{baseName}</h1>
-          {offlineView ? (
-            <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span>
-          ) : (
-            listing && <span className="badge">{t(`baserole.${listing.role}`)}</span>
-          )}
-        </div>
-        {!offlineView && listing && canEdit && (
-          <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">+ {t('patient.new')}</button>
+      <PageHeader
+        title={baseName}
+        description={!offlineView
+          ? `${t('base.gabarit')} : ${listing?.templateName ? `${listing.templateName} v${listing.versionNumber}` : '—'}`
+          : t('offline.identity_unavailable')}
+        badge={offlineView ? (
+          <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span>
+        ) : (
+          listing && <span className="badge">{t(`baserole.${listing.role}`)}</span>
         )}
-      </div>
-
-      {!offlineView && (
-        <div className="text-sm text-slate-500">
-          {t('base.gabarit')} : {listing?.templateName ? `${listing.templateName} v${listing.versionNumber}` : '—'}
-        </div>
-      )}
+        actions={!offlineView && listing && canEdit ? (
+          <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
+            <Plus size={16} aria-hidden /> {t('patient.new')}
+          </button>
+        ) : undefined}
+      />
 
       {/* Copie hors-ligne : bouton d'enregistrement (en ligne) ou bandeau (hors-ligne). */}
       {!offlineView ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 text-sm">
-          <span aria-hidden>⤓</span>
+        <div className="surface-muted flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+          <Download size={16} className="text-slate-400" aria-hidden />
           <button onClick={() => void makeAvailableOffline()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
             {saving ? t('offline.saving') : cachedMeta ? t('offline.update') : t('offline.make_available')}
           </button>
@@ -208,34 +221,72 @@ export function BaseHome() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       {!(offlineView && !cachedMeta) && (
-        <div>
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.list_title')}</h2>
-          {rows.length === 0 ? (
-            <div className="card border-dashed p-10 text-center text-slate-500">{t('patient.no_patients')}</div>
-          ) : (
-            <div className="card overflow-hidden">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-2.5">{t('patient.code')}</th>
-                    {fields.map((f) => (
-                      <th key={f.id} className="px-4 py-2.5">{f.label}</th>
+        <div className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="section-title">{t('patient.list_title')}</h2>
+              <p className="mt-0.5 text-sm text-slate-500">{t('patient.list_count').replace('{n}', String(total))}</p>
+            </div>
+            {fields.length > 0 && (
+              <details className="relative">
+                <summary className="btn-secondary cursor-pointer list-none">
+                  <Columns3 size={16} aria-hidden />
+                  {t('patient.columns')}
+                  <span className="text-xs text-slate-400">
+                    {t('patient.columns_count').replace('{visible}', String(visibleFields.length)).replace('{total}', String(fields.length))}
+                  </span>
+                </summary>
+                <div className="card absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] p-4 shadow-lg">
+                  <p className="helper-text mb-3">{t('patient.columns_hint')}</p>
+                  <div className="max-h-64 space-y-1 overflow-y-auto">
+                    {fields.map((field) => (
+                      <label key={field.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={visibleFieldKeys.includes(field.fieldKey)}
+                          onChange={(event) => setVisibleFieldKeys((current) => (
+                            event.target.checked
+                              ? [...current, field.fieldKey]
+                              : current.filter((key) => key !== field.fieldKey)
+                          ))}
+                        />
+                        {field.label}
+                      </label>
                     ))}
-                    <th className="px-4 py-2.5" />
+                  </div>
+                </div>
+              </details>
+            )}
+          </div>
+          {rows.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title={t('patient.no_patients')}
+            />
+          ) : (
+            <div className="data-table-shell">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-[1] bg-slate-50/95">{t('patient.code')}</th>
+                    {visibleFields.map((f) => (
+                      <th key={f.id}>{f.label}</th>
+                    ))}
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((p) => (
-                    <tr key={p.id} className="border-b border-slate-100 last:border-0 transition hover:bg-slate-50/60">
-                      <td className="px-4 py-2.5 font-mono text-xs">
+                    <tr key={p.id}>
+                      <td className="sticky left-0 z-[1] bg-white font-mono text-xs">
                         <button onClick={() => navigate(`/bases/${id}/patients/${p.id}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">
                           {p.code}
                         </button>
                       </td>
-                      {fields.map((f) => (
-                        <td key={f.id} className="px-4 py-2.5">{formatCell(p.data[f.fieldKey])}</td>
+                      {visibleFields.map((f) => (
+                        <td key={f.id}>{formatCell(p.data[f.fieldKey])}</td>
                       ))}
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="text-right">
                         {canEdit && (
                           <button
                             onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}

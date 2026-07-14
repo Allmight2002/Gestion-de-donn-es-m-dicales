@@ -19,15 +19,15 @@ export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, o
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onCancel(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
+  }, [open, busy, onCancel]);
 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/40" onClick={() => { if (!busy) onCancel(); }} />
       <div className="card relative w-full max-w-sm space-y-3 p-5">
         <h2 className="text-base font-semibold text-slate-900">{title}</h2>
         {body && <p className="text-sm text-slate-600">{body}</p>}

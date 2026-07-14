@@ -28,6 +28,19 @@ export interface BeginImportOptions {
   expectedRows?: number | null;
 }
 
+/** Etat serveur d'un lot: seule source de verite pour reprendre un import chunké. */
+export interface ImportBatchState {
+  batch_id: string;
+  status: string;
+  resume_state?: 'modern' | 'historical_unsafe' | 'historical_cancelled' | 'replacement';
+  replaces_batch_id?: string | null;
+  expected_rows: number | null;
+  row_count: number;
+  error_count: number;
+  succeeded_source_rows: number[];
+  rejected_source_rows: number[];
+}
+
 export interface PatientIdentityInfo {
   fullName: string | null;
   dateOfBirth: string | null;
@@ -42,6 +55,9 @@ export interface PatientListItem {
   templateVersionId: string;
   data: Record<string, unknown>;
   validationStatus: string;
+  /** Version optimiste des donnees permanentes. */
+  version?: number | null;
+  updatedAt?: string | null;
   identity: PatientIdentityInfo | null; // null si pas d'acces identite
 }
 
@@ -138,18 +154,26 @@ export interface PatientRepository {
   createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
   getEncounter(encounterId: string): Promise<Encounter | null>;
-  updateEncounter(encounterId: string, data: Record<string, unknown>, status: string, reason: string, expectedUpdatedAt?: string | null): Promise<{ id: string }>;
+  updateEncounter(
+    encounterId: string,
+    data: Record<string, unknown>,
+    status: string,
+    reason: string,
+    expectedUpdatedAt?: string | null,
+    operationId?: string | null,
+  ): Promise<{ id: string }>;
   listFieldChanges(entity: 'patient' | 'encounter', entityId: string): Promise<FieldChange[]>;
   softDeletePatient(patientId: string, reason: string): Promise<void>;
   softDeleteEncounter(encounterId: string, reason: string): Promise<void>;
   /** Finalise les donnees permanentes d'un patient (draft -> curated). Echoue si incompletes. */
   finalizePatient(patientId: string): Promise<void>;
   /** Corrige / complete les donnees PERMANENTES d'un patient (journalise, re-validees). */
-  updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string): Promise<void>;
+  updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string, expectedVersion: number | null): Promise<{ version: number | null; updatedAt: string | null }>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
   importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
   /** Ouvre un lot d'import (controles globaux + idempotence) ; renvoie l'id du lot pour les chunks. */
   beginImportBatch(baseId: string, opts: BeginImportOptions): Promise<string>;
+  getImportBatchState(batchId: string): Promise<ImportBatchState>;
   /** Cloture un lot d'import (apres tous les chunks) -> active l'idempotence du fichier. */
   completeImportBatch(batchId: string): Promise<void>;
   /** Annule un lot d'import en cours (libere le fichier). */
@@ -161,7 +185,7 @@ export interface PatientRepository {
 }
 
 type PatientRow = {
-  id: string; patient_code: string; template_version_id: string; data: Record<string, unknown>; validation_status: string;
+  id: string; patient_code: string; template_version_id: string; data: Record<string, unknown>; validation_status: string; row_version?: number | null; updated_at?: string | null;
 };
 type IdentityRow = {
   patient_code: string; full_name: string | null; date_of_birth: string | null; phone: string | null;
@@ -194,6 +218,8 @@ const toListItem = (p: PatientRow): PatientListItem => ({
   templateVersionId: p.template_version_id,
   data: p.data ?? {},
   validationStatus: p.validation_status,
+  version: p.row_version ?? null,
+  updatedAt: p.updated_at ?? null,
   identity: null,
 });
 const mapEncounter = (r: EncounterRow): Encounter => ({
@@ -219,7 +245,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
-      completeImportBatch: fail, cancelImportBatch: fail, getCompletionQueue: fail, getCompletionQueuePage: fail,
+      getImportBatchState: fail, completeImportBatch: fail, cancelImportBatch: fail, getCompletionQueue: fail, getCompletionQueuePage: fail,
     };
   }
 
@@ -228,7 +254,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       // §5.8 — LISTE PSEUDONYMISEE : on ne requete QUE la zone analytique, jamais patient_identity.
       const { data: patients, error } = await client
         .from('patient')
-        .select('id, patient_code, template_version_id, data, validation_status')
+        .select('id, patient_code, template_version_id, data, validation_status, row_version, updated_at')
         .eq('base_id', baseId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
@@ -240,7 +266,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       // §5.8 — page PSEUDONYMISEE (zone analytique + effectif total) ; aucune identite chargee.
       const { data: patients, error, count } = await client
         .from('patient')
-        .select('id, patient_code, template_version_id, data, validation_status', { count: 'exact' })
+        .select('id, patient_code, template_version_id, data, validation_status, row_version, updated_at', { count: 'exact' })
         .eq('base_id', baseId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true })
@@ -321,7 +347,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async getPatient(baseId, patientId) {
       const { data: p, error } = await client
         .from('patient')
-        .select('id, patient_code, template_version_id, data, validation_status')
+        .select('id, patient_code, template_version_id, data, validation_status, row_version, updated_at')
         .eq('id', patientId)
         .eq('base_id', baseId)
         .is('deleted_at', null)
@@ -335,11 +361,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (e2) throw e2;
       const i = (((identRows ?? []) as IdentityRow[])[0]) ?? null;
       return {
-        id: row.id,
-        code: row.patient_code,
-        templateVersionId: row.template_version_id,
-        data: row.data ?? {},
-        validationStatus: row.validation_status,
+        ...toListItem(row),
         identity: i ? mapIdentity(i) : null,
       };
     },
@@ -366,14 +388,23 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return data ? mapEncounter(data as EncounterRow) : null;
     },
 
-    async updateEncounter(encounterId, data, status, reason, expectedUpdatedAt) {
-      const { data: row, error } = await client.rpc('update_encounter', {
-        p_encounter_id: encounterId,
-        p_data: data,
-        p_validation_status: status,
-        p_reason: reason,
-        p_expected_updated_at: expectedUpdatedAt ?? null,
-      });
+    async updateEncounter(encounterId, data, status, reason, expectedUpdatedAt, operationId) {
+      const { data: row, error } = operationId
+        ? await client.rpc('replay_encounter_update', {
+          p_operation_id: operationId,
+          p_encounter_id: encounterId,
+          p_data: data,
+          p_validation_status: status,
+          p_reason: reason,
+          p_expected_updated_at: expectedUpdatedAt ?? null,
+        })
+        : await client.rpc('update_encounter', {
+          p_encounter_id: encounterId,
+          p_data: data,
+          p_validation_status: status,
+          p_reason: reason,
+          p_expected_updated_at: expectedUpdatedAt ?? null,
+        });
       if (error) throw error;
       const r = (Array.isArray(row) ? row[0] : row) as { id: string };
       return { id: r.id };
@@ -411,11 +442,14 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
     },
 
-    async updatePatientData(patientId, data, status, reason) {
-      const { error } = await client.rpc('update_patient', {
+    async updatePatientData(patientId, data, status, reason, expectedVersion) {
+      const { data: row, error } = await client.rpc('update_patient', {
         p_patient_id: patientId, p_data: data, p_validation_status: status, p_reason: reason,
+        p_expected_version: expectedVersion,
       });
       if (error) throw error;
+      const r = (Array.isArray(row) ? row[0] : row) as PatientRow;
+      return { version: r.row_version ?? null, updatedAt: r.updated_at ?? null };
     },
 
     async importRecords(baseId, rows, opts) {
@@ -436,6 +470,12 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       });
       if (error) throw error;
       return data as string;
+    },
+
+    async getImportBatchState(batchId) {
+      const { data, error } = await client.rpc('get_import_batch_state', { p_batch_id: batchId });
+      if (error) throw error;
+      return data as ImportBatchState;
     },
 
     async completeImportBatch(batchId) {

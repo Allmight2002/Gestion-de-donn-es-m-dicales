@@ -9,16 +9,8 @@ import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { TemplateLibrary } from './TemplateLibrary';
 import { TEMPLATE_LIBRARY } from '../../domain/templateLibrary';
-import type { TemplateRepository } from '../../data/templates';
+import type { TemplateBundleInput, TemplateRepository } from '../../data/templates';
 import type { BaseRepository, PublishedTemplateOption } from '../../data/bases';
-import type { NewField, TemplateField } from '../../data/types';
-
-const version = { id: 'gv1', templateId: 't1', versionNumber: 1, status: 'published' as const };
-const tf = (fieldKey: string, label: string): TemplateField => ({
-  id: fieldKey, fieldKey, label, scope: 'patient', section: 'clinique', type: 'text',
-  unit: null, allowedValues: null, required: false, minValue: null, maxValue: null,
-  allowMissingCodes: false, displayOrder: 0,
-});
 
 function renderLib(bases: BaseRepository, templates: TemplateRepository) {
   return render(
@@ -42,34 +34,30 @@ describe('TemplateLibrary (F3 v2)', () => {
       { versionId: 'pv1', versionNumber: 1, templateId: 't2', name: 'Mon perso', specialty: null, scope: 'personal' }, // ignore (non global)
     ];
     const bases = { async listTemplateModels() { return models; } } as unknown as BaseRepository;
-    const createPersonalTemplate = vi.fn(async () => version);
-    const addField = vi.fn(async (_v: string, _f: NewField) => ({} as never));
-    const getVersion = vi.fn(async () => ({ version, fields: [tf('sexe', 'Sexe'), tf('poids', 'Poids')], rules: [] }));
-    const templates = { createPersonalTemplate, addField, getVersion } as unknown as TemplateRepository;
+    const createTemplateBundle = vi.fn(async (_input: TemplateBundleInput) => ({ templateId: 'new', versionId: 'vnew', baseId: null }));
+    const templates = { createTemplateBundle } as unknown as TemplateRepository;
 
     renderLib(bases, templates);
     expect(await screen.findByText('Neuro global')).toBeInTheDocument();
     expect(screen.queryByText('Mon perso')).not.toBeInTheDocument(); // personnel exclu
 
     await userEvent.click(screen.getByRole('button', { name: 'Utiliser ce modèle' }));
-    await waitFor(() => expect(createPersonalTemplate).toHaveBeenCalledWith('Neuro global', 'Neurologie'));
-    expect(getVersion).toHaveBeenCalledWith('gv1');
-    expect(addField).toHaveBeenCalledTimes(2); // les 2 champs du modele global
+    await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
+    expect(createTemplateBundle).toHaveBeenCalledWith(expect.objectContaining({ name: 'Neuro global', specialty: 'Neurologie', sourceVersionId: 'gv1' }));
     expect(await screen.findByText('TEMPLATES')).toBeInTheDocument();
   });
 
   test('repli : aucun modele global -> affiche les modeles livres en dur', async () => {
     const bases = { async listTemplateModels() { return []; } } as unknown as BaseRepository;
-    const createPersonalTemplate = vi.fn(async () => version);
-    const addField = vi.fn(async () => ({} as never));
-    const templates = { createPersonalTemplate, addField } as unknown as TemplateRepository;
+    const createTemplateBundle = vi.fn(async (_input: TemplateBundleInput) => ({ templateId: 'new', versionId: 'vnew', baseId: null }));
+    const templates = { createTemplateBundle } as unknown as TemplateRepository;
 
     renderLib(bases, templates);
     const first = TEMPLATE_LIBRARY[0];
     expect(await screen.findByText(first.name)).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Utiliser ce modèle' })[0]);
-    await waitFor(() => expect(createPersonalTemplate).toHaveBeenCalledWith(first.name, first.specialty));
-    expect(addField).toHaveBeenCalledTimes(first.fields.length);
+    await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
+    expect(createTemplateBundle.mock.calls[0][0].fields).toHaveLength(first.fields.length);
   });
 });

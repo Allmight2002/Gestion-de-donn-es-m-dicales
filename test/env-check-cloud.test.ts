@@ -6,14 +6,14 @@ import { spawnSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { startTestDb, type TestDb } from './harness/db';
 
-let db: TestDb;
+let db: TestDb | undefined;
 
 beforeAll(async () => {
   db = await startTestDb();
 }, 180_000);
 
 afterAll(async () => {
-  await db.stop();
+  await db?.stop();
 });
 
 // Environnement STRICT complet et coherent cote variables (les controles statiques
@@ -40,6 +40,7 @@ function runCheck(env: NodeJS.ProcessEnv) {
 
 describe('env:check:cloud (audit v18 §6.2)', () => {
   test('configuration non stricte + base non stricte : concordance -> succes', () => {
+    if (!db) throw new Error('PostgreSQL de test non initialise');
     const res = runCheck({ ...process.env, SUPABASE_DB_URL: db.url,
       VITE_REQUIRE_SERVER_INSPECTION: '', REQUIRE_SERVER_INSPECTION: '', DB_REQUIRE_SERVER_INSPECTION: '' });
     expect(res.stderr).toBe('');
@@ -49,12 +50,14 @@ describe('env:check:cloud (audit v18 §6.2)', () => {
   });
 
   test('variables strictes mais base NON migree : la release est bloquee', () => {
+    if (!db) throw new Error('PostgreSQL de test non initialise');
     const res = runCheck(strictEnv(db.url));
     expect(res.status).toBe(1);
     expect(res.stderr).toContain('require_server_inspection() renvoie false');
   });
 
   test('variables strictes ET base stricte : succes (valeur lue en base, pas declaree)', async () => {
+    if (!db) throw new Error('PostgreSQL de test non initialise');
     await db.admin.query(
       "update public.app_security_setting set value = 'true' where key = 'require_server_inspection'",
     );

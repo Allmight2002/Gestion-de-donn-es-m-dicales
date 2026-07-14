@@ -141,3 +141,69 @@ describe('RLS sur la creation de cohorte', () => {
     await expect(rowsAs(bobId, SNAPSHOT, [baseId, 'Par viewer', fM])).rejects.toThrow();
   });
 });
+
+describe('integrite inter-base des membres de cohorte', () => {
+  test('insert direct et UUID connu ne peuvent melanger patients, rencontres ou bases', async () => {
+    const tv = (await db.admin.query('select current_template_version_id v from public.base where id=$1', [baseId])).rows[0].v;
+    const baseB = (await db.admin.query(
+      "insert into public.base(name,owner_user_id,current_template_version_id) values('Cohorte B',$1,$2) returning id",
+      [aliceId, tv],
+    )).rows[0].id as string;
+    const patientA1 = (await db.admin.query(
+      "insert into public.patient(base_id,patient_code,template_version_id,data,validation_status,created_by) values($1,$2,$3,'{\"sexe\":\"M\",\"birth_year\":1980}'::jsonb,'curated',$4) returning id",
+      [baseId, `COH-A1-${Date.now()}`, tv, aliceId],
+    )).rows[0].id as string;
+    const patientA2 = (await db.admin.query(
+      "insert into public.patient(base_id,patient_code,template_version_id,data,validation_status,created_by) values($1,$2,$3,'{\"sexe\":\"M\",\"birth_year\":1980}'::jsonb,'curated',$4) returning id",
+      [baseId, `COH-A2-${Date.now()}`, tv, aliceId],
+    )).rows[0].id as string;
+    const patientB = (await db.admin.query(
+      "insert into public.patient(base_id,patient_code,template_version_id,data,validation_status,created_by) values($1,$2,$3,'{\"sexe\":\"M\",\"birth_year\":1980}'::jsonb,'curated',$4) returning id",
+      [baseB, `COH-B-${Date.now()}`, tv, aliceId],
+    )).rows[0].id as string;
+    const encounterA1 = (await db.admin.query(
+      "insert into public.encounter(patient_id,template_version_id,encounter_type,encounter_date,data,validation_status,created_by) values($1,$2,'consultation','2026-01-01','{\"diagnosis\":\"test\",\"glasgow_score\":12}'::jsonb,'curated',$3) returning id",
+      [patientA1, tv, aliceId],
+    )).rows[0].id as string;
+    const encounterA2 = (await db.admin.query(
+      "insert into public.encounter(patient_id,template_version_id,encounter_type,encounter_date,data,validation_status,created_by) values($1,$2,'consultation','2026-01-02','{\"diagnosis\":\"test\",\"glasgow_score\":12}'::jsonb,'curated',$3) returning id",
+      [patientA2, tv, aliceId],
+    )).rows[0].id as string;
+    const encounterB = (await db.admin.query(
+      "insert into public.encounter(patient_id,template_version_id,encounter_type,encounter_date,data,validation_status,created_by) values($1,$2,'consultation','2026-01-03','{\"diagnosis\":\"test\",\"glasgow_score\":12}'::jsonb,'curated',$3) returning id",
+      [patientB, tv, aliceId],
+    )).rows[0].id as string;
+    const cohort = (await rowsAs(aliceId,
+      "insert into public.cohort(base_id,name,cohort_type,created_by) values($1,'Scope test','snapshot',$2) returning id",
+      [baseId, aliceId],
+    ))[0].id as string;
+
+    await rowsAs(aliceId, 'insert into public.cohort_member(cohort_id,patient_id) values($1,$2)', [cohort, patientA1]);
+    await rowsAs(aliceId, 'insert into public.cohort_encounter_member(cohort_id,encounter_id) values($1,$2)', [cohort, encounterA1]);
+    await expect(rowsAs(aliceId,
+      'insert into public.cohort_member(cohort_id,patient_id) values($1,$2)', [cohort, patientB],
+    )).rejects.toThrow(/COHORT_SCOPE_MISMATCH/);
+    await expect(rowsAs(aliceId,
+      'insert into public.cohort_encounter_member(cohort_id,encounter_id) values($1,$2)', [cohort, encounterB],
+    )).rejects.toThrow(/COHORT_SCOPE_MISMATCH/);
+    // Une cohorte de rencontres peut legitimement contenir une rencontre curated
+    // dont le patient draft n'est pas membre de la cohorte de patients.
+    await rowsAs(aliceId,
+      'insert into public.cohort_encounter_member(cohort_id,encounter_id) values($1,$2)', [cohort, encounterA2]);
+
+    await expect(rowsAs(aliceId,
+      'update public.cohort set base_id=$1 where id=$2', [baseB, cohort],
+    )).rejects.toThrow(/COHORT_SCOPE_MISMATCH|immuable/i);
+
+    await db.admin.query(
+      `insert into public.base_access(base_id,user_id,access_role,can_edit_structured_data,granted_by)
+       values($1,$2,'editor',true,$3)
+       on conflict(base_id,user_id) do update set can_edit_structured_data=true,revoked_at=null`,
+      [baseId, bobId, aliceId],
+    );
+    await expect(rowsAs(bobId,
+      'insert into public.cohort_member(cohort_id,patient_id) values($1,$2)', [cohort, patientB],
+    )).rejects.toThrow(/COHORT_SCOPE_MISMATCH/);
+    await expect(rowsAs(bobId, SNAPSHOT, [baseB, 'RPC hors base', fM])).rejects.toThrow();
+  });
+});

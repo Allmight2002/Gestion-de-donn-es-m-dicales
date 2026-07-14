@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import { isAllowedInArea, landingPathFor, type AppArea } from '../auth/logic';
+import type { GlobalRole } from '../auth/types';
 import { AppShell } from '../components/AppShell';
 import { Unconfigured } from '../screens/Unconfigured';
 
@@ -12,7 +13,15 @@ function FullScreenLoading() {
 }
 
 /** Route reservee aux personnes connectees ET autorisees dans la zone. */
-export function ProtectedRoute({ area, children }: { area: AppArea; children: ReactNode }) {
+export function ProtectedRoute({
+  area,
+  globalRoles,
+  children,
+}: {
+  area: AppArea;
+  globalRoles?: readonly GlobalRole[];
+  children: ReactNode;
+}) {
   const { status, profile } = useAuth();
 
   if (status === 'loading') return <FullScreenLoading />;
@@ -29,7 +38,7 @@ export function ProtectedRoute({ area, children }: { area: AppArea; children: Re
     );
   }
 
-  if (!isAllowedInArea(profile, area)) {
+  if (!isAllowedInArea(profile, area) || (globalRoles && !globalRoles.includes(profile.globalRole))) {
     return <Navigate to={landingPathFor(profile)} replace />;
   }
 

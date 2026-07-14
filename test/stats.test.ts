@@ -13,7 +13,8 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
 const statsAs = async (uid: string) =>
   (await rowsAs(uid, 'select public.base_inclusion_stats($1) as s', [baseId]))[0].s as {
-    total: number; target: number | null; targetDate: string | null; dateField?: string; monthly: { month: string; count: number }[];
+    total: number; target: number | null; targetDate: string | null; targetRevision: number;
+    dateField?: string; monthly: { month: string; count: number }[];
   };
 
 beforeAll(async () => {
@@ -29,6 +30,25 @@ beforeAll(async () => {
 afterAll(async () => { await db?.stop(); });
 
 describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
+  test('RPC definer : auth explicite, search_path fixe et EXECUTE limite a authenticated', async () => {
+    const metadata = (await db.admin.query(
+      `select p.prosecdef, p.proconfig,
+              has_function_privilege('anon', p.oid, 'execute') as anon_exec,
+              has_function_privilege('authenticated', p.oid, 'execute') as authenticated_exec
+         from pg_proc p
+        where p.oid = 'public.set_base_inclusion_target(uuid,integer,date,bigint)'::regprocedure`,
+    )).rows[0];
+    expect(metadata.prosecdef).toBe(true);
+    expect(metadata.proconfig).toContain('search_path=public, pg_temp');
+    expect(metadata.anon_exec).toBe(false);
+    expect(metadata.authenticated_exec).toBe(true);
+    const unauthenticated = (await db.admin.query(
+      'select * from public.set_base_inclusion_target($1,1,null,0)',
+      [baseId],
+    )).rows[0];
+    expect(unauthenticated.outcome).toBe('forbidden');
+  });
+
   test('le proprietaire recoit total + serie mensuelle coherente ; l objectif se fixe et se lit', async () => {
     const s1 = await statsAs(aliceId);
     expect(s1.total).toBeGreaterThan(0);
@@ -38,11 +58,43 @@ describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
     expect(s1.monthly.reduce((acc, m) => acc + m.count, 0)).toBe(s1.total);
     expect(s1.target).toBeNull();
 
-    // Le proprietaire fixe un objectif (RLS base_update) -> visible dans les stats.
-    await rowsAs(aliceId, "update public.base set inclusion_target=150, inclusion_target_date='2026-12-31' where id=$1", [baseId]);
+    // Le proprietaire fixe un objectif via la RPC gardee -> modification confirmee.
+    const write = await rowsAs(
+      aliceId,
+      "select * from public.set_base_inclusion_target($1,150,'2026-12-31',$2)",
+      [baseId, s1.targetRevision],
+    );
+    expect(write[0].outcome).toBe('updated');
     const s2 = await statsAs(aliceId);
     expect(s2.target).toBe(150);
     expect(s2.targetDate).toBe('2026-12-31');
+    expect(s2.targetRevision).toBe(s1.targetRevision + 1);
+
+    // Une commande acceptee avance le jeton meme si les valeurs metier sont deja identiques.
+    const reaffirmed = await rowsAs(
+      aliceId,
+      "select * from public.set_base_inclusion_target($1,150,'2026-12-31',$2)",
+      [baseId, s2.targetRevision],
+    );
+    expect(reaffirmed[0].outcome).toBe('updated');
+    const s3 = await statsAs(aliceId);
+    expect(s3.targetRevision).toBe(s2.targetRevision + 1);
+
+    // Double soumission du meme payload avec l'ancien jeton : aucun second succes.
+    const replay = await rowsAs(
+      aliceId,
+      "select * from public.set_base_inclusion_target($1,150,'2026-12-31',$2)",
+      [baseId, s2.targetRevision],
+    );
+    expect(replay[0].outcome).toBe('stale');
+    expect((await statsAs(aliceId)).target).toBe(150);
+
+    const absent = await rowsAs(
+      aliceId,
+      'select * from public.set_base_inclusion_target($1,1,null,0)',
+      ['00000000-0000-0000-0000-000000000001'],
+    );
+    expect(absent[0].outcome).toBe('not_found');
   });
 
   test('la serie utilise la date scientifique d inclusion, pas created_at', async () => {
@@ -58,9 +110,49 @@ describe('D2 base_inclusion_stats (courbe d inclusion)', () => {
     expect(s.monthly).toEqual([]);
     expect(s.target).toBeNull(); // la base est invisible pour lui (RLS)
 
-    // Bob ne peut pas fixer l'objectif d'une base qui n'est pas la sienne (0 ligne touchee).
-    await rowsAs(bobId, 'update public.base set inclusion_target=1 where id=$1', [baseId]);
+    // La RPC distingue explicitement le refus de l'ancien UPDATE silencieux a zero ligne.
+    const refused = await rowsAs(
+      bobId,
+      'select * from public.set_base_inclusion_target($1,1,null,0)',
+      [baseId],
+    );
+    expect(refused[0].outcome).toBe('forbidden');
     expect((await db.admin.query('select inclusion_target from public.base where id=$1', [baseId])).rows[0].inclusion_target).toBe(150);
+  });
+
+  test('deux ecritures concurrentes : une seule gagne ; entree invalide sans modification partielle', async () => {
+    const before = (await db.admin.query(
+      'select inclusion_target, inclusion_target_date, inclusion_target_revision from public.base where id=$1',
+      [baseId],
+    )).rows[0];
+    const [a, b] = await Promise.all([
+      rowsAs(aliceId, "select * from public.set_base_inclusion_target($1,151,'2027-01-31',$2)", [
+        baseId,
+        before.inclusion_target_revision,
+      ]),
+      rowsAs(aliceId, "select * from public.set_base_inclusion_target($1,152,'2027-02-28',$2)", [
+        baseId,
+        before.inclusion_target_revision,
+      ]),
+    ]);
+    expect([a[0].outcome, b[0].outcome].sort()).toEqual(['stale', 'updated']);
+    const current = (await db.admin.query(
+      'select inclusion_target, inclusion_target_date, inclusion_target_revision from public.base where id=$1',
+      [baseId],
+    )).rows[0];
+    expect([151, 152]).toContain(current.inclusion_target);
+    expect(Number(current.inclusion_target_revision)).toBe(Number(before.inclusion_target_revision) + 1);
+
+    const invalid = await rowsAs(
+      aliceId,
+      'select * from public.set_base_inclusion_target($1,$2,null,$3)',
+      [baseId, -1, current.inclusion_target_revision],
+    );
+    expect(invalid[0].outcome).toBe('invalid_input');
+    expect((await db.admin.query(
+      'select inclusion_target, inclusion_target_date, inclusion_target_revision from public.base where id=$1',
+      [baseId],
+    )).rows[0]).toEqual(current);
   });
 });
 

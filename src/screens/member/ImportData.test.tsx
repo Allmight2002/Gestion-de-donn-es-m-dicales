@@ -26,7 +26,11 @@ const FIELDS: TemplateField[] = [
   field('glasgow_score', 'Score de Glasgow', 'encounter', 'integer'),
 ];
 
-function renderImport(importRecords: PatientRepository['importRecords'], templatesRepo?: TemplateRepository) {
+function renderImport(
+  importRecords: PatientRepository['importRecords'],
+  templatesRepo?: TemplateRepository,
+  patientOverrides: Partial<PatientRepository> = {},
+) {
   const getVersion = vi.fn(async () => ({ version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const }, fields: FIELDS, rules: [] }));
   const bases = {
     async getBase() {
@@ -34,7 +38,11 @@ function renderImport(importRecords: PatientRepository['importRecords'], templat
     },
   } as unknown as BaseRepository;
   const templates = templatesRepo ?? ({ getVersion } as unknown as TemplateRepository);
-  const patients = { importRecords } as unknown as PatientRepository;
+  const patients = {
+    importRecords,
+    detectImportDuplicates: async () => [],
+    ...patientOverrides,
+  } as unknown as PatientRepository;
   const utils = render(
     <I18nProvider>
       <RepositoryProvider bases={bases} templates={templates} patients={patients}>
@@ -51,6 +59,13 @@ function renderImport(importRecords: PatientRepository['importRecords'], templat
 }
 
 const CSV = 'Code patient,Sexe,Diagnostic,Score de Glasgow,Date\nP1,M,TC,12,2024-01-05\n';
+const largeCsv = (count = 301) => `Code patient,Sexe\n${Array.from(
+  { length: count }, (_, i) => `P${i + 1},${i % 2 ? 'F' : 'M'}`,
+).join('\n')}\n`;
+const crossChunkDuplicateCsv = () => `Code patient,Diagnostic,Date\n${Array.from(
+  { length: 301 },
+  (_, i) => (i === 300 ? 'P1,D0,2024-01-01' : `P${i + 1},D${i},2024-01-${String((i % 28) + 1).padStart(2, '0')}`),
+).join('\n')}\n`;
 
 // jsdom : File.arrayBuffer() n'est pas garanti -> on le fournit explicitement (octets reels).
 function csvFile(content: string, name = 'data.csv') {
@@ -151,5 +166,183 @@ describe('ImportData (ecran d import)', () => {
     expect(await screen.findByText(/associez une colonne/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aperçu' })).toBeDisabled();
     expect(importRecords).not.toHaveBeenCalled();
+  });
+
+  test('apercu de 301 lignes : detecte un doublon exact situe dans deux chunks differents', async () => {
+    const importRecords = vi.fn(async (_b: string, chunk: ImportRow[], opts: ImportOptions): Promise<ImportReport> => ({
+      dry_run: opts.dryRun,
+      status: 'draft',
+      patients_new: chunk.length,
+      patients_updated: 0,
+      encounters: chunk.length,
+      error_count: 0,
+      errors: [],
+    }));
+    const { getVersion } = renderImport(importRecords);
+    await waitFor(() => expect(getVersion).toHaveBeenCalled());
+    upload(crossChunkDuplicateCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('encounter:diagnosis'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+
+    await waitFor(() => expect(importRecords).toHaveBeenCalledTimes(2));
+    expect(importRecords.mock.calls.map((call) => call[1].length)).toEqual([300, 1]);
+    expect(await screen.findByText(/premiere ligne 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ligne 301/i)).toHaveTextContent(/double dans le fichier/i);
+  });
+
+  test('double clic sur Importer : un seul lot est ouvert et complete', async () => {
+    const succeeded = new Set<number>();
+    const importRecords = vi.fn(async (_b: string, chunk: ImportRow[], opts: ImportOptions): Promise<ImportReport> => {
+      if (!opts.dryRun) chunk.forEach((row) => succeeded.add(row.source_row_number!));
+      return {
+        dry_run: opts.dryRun, status: 'draft', patients_new: chunk.length,
+        patients_updated: 0, encounters: 0, error_count: 0, errors: [],
+        newly_imported: opts.dryRun ? undefined : chunk.length,
+        already_processed: 0, rejected: 0,
+      };
+    });
+    const beginImportBatch = vi.fn(async () => 'batch-double-click');
+    const getImportBatchState = vi.fn(async () => ({
+      batch_id: 'batch-double-click', status: 'processing', expected_rows: 301,
+      row_count: succeeded.size, error_count: 0,
+      succeeded_source_rows: [...succeeded], rejected_source_rows: [],
+    }));
+    const completeImportBatch = vi.fn(async () => undefined);
+    const { getVersion } = renderImport(importRecords, undefined, {
+      beginImportBatch, getImportBatchState, completeImportBatch,
+    });
+    await waitFor(() => expect(getVersion).toHaveBeenCalled());
+    upload(largeCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('patient:sexe'));
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+    await screen.findByText(/encore été écrit/i);
+
+    const commit = screen.getByRole('button', { name: 'Importer' });
+    fireEvent.click(commit);
+    fireEvent.click(commit);
+    await waitFor(() => expect(completeImportBatch).toHaveBeenCalledTimes(1));
+    expect(beginImportBatch).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/import terminé/i)).toBeInTheDocument();
+  });
+
+  test('rafraichissement : relit le serveur, saute les succes et fonctionne sans localStorage', async () => {
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key) => {
+      if (String(key).startsWith('import-resume:')) throw new Error('localStorage import interdit');
+    });
+    const succeeded = new Set<number>();
+    let failLastChunkOnce = true;
+    let phase = 1;
+    const retryChunkSizes: number[] = [];
+    const importRecords = vi.fn(async (_b: string, chunk: ImportRow[], opts: ImportOptions): Promise<ImportReport> => {
+      if (opts.dryRun) {
+        return { dry_run: true, status: 'draft', patients_new: chunk.length, patients_updated: 0, encounters: 0, error_count: 0, errors: [] };
+      }
+      if (phase === 2) retryChunkSizes.push(chunk.length);
+      if (chunk.length === 1 && failLastChunkOnce) {
+        failLastChunkOnce = false;
+        throw new Error('réponse réseau perdue');
+      }
+      chunk.forEach((row) => succeeded.add(row.source_row_number!));
+      return {
+        dry_run: false, status: 'draft', patients_new: chunk.length,
+        patients_updated: 0, encounters: 0, error_count: 0, errors: [],
+        newly_imported: chunk.length, already_processed: 0, rejected: 0,
+      };
+    });
+    const beginImportBatch = vi.fn(async () => 'batch-refresh');
+    const getImportBatchState = vi.fn(async () => ({
+      batch_id: 'batch-refresh', status: 'processing', expected_rows: 301,
+      row_count: succeeded.size, error_count: 0,
+      succeeded_source_rows: [...succeeded], rejected_source_rows: [],
+    }));
+    const completeImportBatch = vi.fn(async () => undefined);
+    const repos = { beginImportBatch, getImportBatchState, completeImportBatch };
+
+    const first = renderImport(importRecords, undefined, repos);
+    await waitFor(() => expect(first.getVersion).toHaveBeenCalled());
+    upload(largeCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('patient:sexe'));
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importer' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/réponse réseau perdue/i);
+    expect(succeeded.size).toBe(300);
+    first.unmount();
+
+    phase = 2;
+    const refreshed = renderImport(importRecords, undefined, repos);
+    await waitFor(() => expect(refreshed.getVersion).toHaveBeenCalled());
+    upload(largeCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('patient:sexe'));
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importer' }));
+    await waitFor(() => expect(completeImportBatch).toHaveBeenCalledTimes(1));
+
+    expect(retryChunkSizes).toEqual([1]);
+    expect(screen.getByText(/lignes déjà traitées \(reprise\)/i).parentElement).toHaveTextContent('300');
+    expect(screen.getByText(/état serveur/i)).toHaveTextContent(/301 lignes traitées, dont 0 rejetées/i);
+    expect(storage.mock.calls.some(([key]) => String(key).startsWith('import-resume:'))).toBe(false);
+    storage.mockRestore();
+  });
+
+  test('un lot interrompu peut etre annule seulement apres la fin de l ecriture', async () => {
+    let cancelled = false;
+    const importRecords = vi.fn(async (_b: string, chunk: ImportRow[], opts: ImportOptions): Promise<ImportReport> => {
+      if (!opts.dryRun) throw new Error('écriture interrompue');
+      return { dry_run: true, status: 'draft', patients_new: chunk.length, patients_updated: 0, encounters: 0, error_count: 0, errors: [] };
+    });
+    const cancelImportBatch = vi.fn(async () => { cancelled = true; });
+    const getImportBatchState = vi.fn(async () => ({
+      batch_id: 'batch-cancel', status: cancelled ? 'cancelled' : 'processing', expected_rows: 301,
+      row_count: 0, error_count: 0, succeeded_source_rows: [], rejected_source_rows: [],
+    }));
+    const { getVersion } = renderImport(importRecords, undefined, {
+      beginImportBatch: async () => 'batch-cancel',
+      getImportBatchState,
+      completeImportBatch: async () => undefined,
+      cancelImportBatch,
+    });
+    await waitFor(() => expect(getVersion).toHaveBeenCalled());
+    upload(largeCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('patient:sexe'));
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importer' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/écriture interrompue/i);
+
+    const cancel = screen.getByRole('button', { name: 'Annuler ce lot' });
+    expect(cancel).toBeEnabled();
+    await userEvent.click(cancel);
+    await waitFor(() => expect(cancelImportBatch).toHaveBeenCalledTimes(1));
+    expect(getImportBatchState).toHaveBeenLastCalledWith('batch-cancel');
+    expect(screen.queryByRole('button', { name: 'Annuler ce lot' })).not.toBeInTheDocument();
+  });
+
+  test('un lot historique ambigu expose son identifiant et l action d annulation sans rejouer de chunk', async () => {
+    const importRecords = vi.fn(async (_b: string, chunk: ImportRow[], opts: ImportOptions): Promise<ImportReport> => ({
+      dry_run: opts.dryRun, status: 'draft', patients_new: chunk.length,
+      patients_updated: 0, encounters: 0, error_count: 0, errors: [],
+    }));
+    const completeImportBatch = vi.fn(async () => undefined);
+    const { getVersion } = renderImport(importRecords, undefined, {
+      beginImportBatch: async () => 'batch-historique',
+      getImportBatchState: async () => ({
+        batch_id: 'batch-historique', status: 'processing', resume_state: 'historical_unsafe',
+        expected_rows: 301, row_count: 120, error_count: 0,
+        succeeded_source_rows: [], rejected_source_rows: [],
+      }),
+      completeImportBatch,
+      cancelImportBatch: async () => undefined,
+    });
+    await waitFor(() => expect(getVersion).toHaveBeenCalled());
+    upload(largeCsv());
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('patient:sexe'));
+    await userEvent.click(screen.getByRole('button', { name: /Aper/ }));
+    const previewCallCount = importRecords.mock.calls.length;
+    await userEvent.click(screen.getByRole('button', { name: 'Importer' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/ancien lot|annulez/i);
+    expect(screen.getByRole('button', { name: /Annuler ce lot/ })).toBeEnabled();
+    expect(importRecords).toHaveBeenCalledTimes(previewCallCount); // aucun chunk de commit
+    expect(completeImportBatch).not.toHaveBeenCalled();
   });
 });

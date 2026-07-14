@@ -77,6 +77,9 @@ SUPABASE_SERVICE_ROLE_KEY="eyJ..." \
 3. **Héberger `dist/`** sur votre host statique, en y déclarant les deux variables `VITE_*`.
    - Vérification : `npm run build` puis recherchez la clé service_role dans `dist/` — elle
      ne doit **jamais** y apparaître (elle n'a pas le préfixe `VITE_`).
+   - La PWA télécharge/détecte une nouvelle version mais ne l'active plus silencieusement :
+     l'utilisateur choisit « Mettre à jour maintenant » ou « Plus tard ». Vérifiez ce dialogue
+     après chaque déploiement et rollback, en particulier pendant une saisie en cours.
 
 ---
 
@@ -87,11 +90,12 @@ que **toute consultation d'un fichier soit tracée côté serveur** et non conto
 §9.2/§9.3), déployez la fonction Edge puis activez le drapeau :
 
 ```bash
-supabase functions deploy signed-read
-supabase functions deploy inspect-upload
-supabase functions deploy cleanup-upload
-supabase functions deploy generate-export
-supabase functions deploy reconcile-quarantine
+supabase functions deploy signed-read --import-map deno.json
+supabase functions deploy inspect-upload --import-map deno.json
+supabase functions deploy finalize-upload --import-map deno.json
+supabase functions deploy cleanup-upload --import-map deno.json
+supabase functions deploy generate-export --import-map deno.json
+supabase functions deploy reconcile-quarantine --import-map deno.json
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
@@ -189,11 +193,29 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
 - **Cadre juridique/éthique** 🚩 : base légale, consentement, approbation éthique, **résidence
   des données** (région d'hébergement Supabase), accord de traitement (DPA).
 - **Durcissement serveur** : deploiement et verification des Edge Functions (`signed-read`,
-  `inspect-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
+  `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
   l'inspection stricte et controle `env:check:cloud`. Voir **[docs/edge-functions.md](edge-functions.md)**.
 - **Limite d'anonymat** : la RLS protège l'accès *applicatif*, mais l'administrateur du serveur
   peut techniquement lire la base. Une garantie forte suppose un chiffrement côté client ou des
   identités hors serveur central.
 - **Exploitation** : sauvegardes **testées**, monitoring/alerting, suivi des erreurs, MFA.
+
+### Contrôles opérationnels et cloud à prouver
+
+Une revue du dépôt local ne peut pas attester ces contrôles. Avant toute donnée réelle, conserver
+une preuve datée pour chacun des points suivants :
+
+- scanner ClamAV permanent, joignable par les Edge Functions et supervisé (`/health`, alertes,
+  signatures à jour) ;
+- secret Edge du scanner configuré, sans exposer sa valeur ;
+- secret Edge `REQUIRE_SERVER_INSPECTION=true` ;
+- `app_security_setting.require_server_inspection=true` dans la base cible ;
+- redéploiement vérifié des Edge Functions depuis le commit attendu ;
+- `npm run env:check:cloud` et `npm run e2e:staging` réussis sur la cible ;
+- test réel d'un fichier sain et d'un fichier EICAR, avec lecture refusée pour le fichier mis en
+  quarantaine ;
+- monitoring et alerting applicatifs/Edge/DB avec destinataire et procédure d'escalade ;
+- restauration d'une sauvegarde réellement exécutée dans un environnement isolé, avec date,
+  RPO/RTO observés et contrôle d'intégrité. Une simple mention « backups activés » ne suffit pas.
 
 > Tant que ces points ne sont pas traités : **données entièrement fictives uniquement**.

@@ -73,6 +73,57 @@ describe('ecriture reservee au staff (§7, §8.2)', () => {
   });
 });
 
+describe('creation transactionnelle de jeu de variables', () => {
+  const key = () => crypto.randomUUID();
+  const create = (payload: unknown, operationKey = key()) =>
+    rowsAs(memberId, 'select public.create_template_bundle($1::jsonb, $2::uuid) as result', [JSON.stringify(payload), operationKey]);
+
+  test('la RPC transactionnelle resout pgcrypto dans le schema Supabase extensions', async () => {
+    const config = (await db.admin.query(
+      "select proconfig from pg_proc where oid = 'public.create_template_bundle(jsonb,uuid)'::regprocedure",
+    )).rows[0].proconfig as string[];
+    expect(config).toContain('search_path=public, extensions, pg_temp');
+  });
+
+  test('cree en bulk les champs ordonnes et la base optionnelle', async () => {
+    const out = (await create({ name: 'Bundle nominal', specialty: 'neuro', withBase: true, baseName: 'Base bundle', fields: [
+      { fieldKey: 'age', label: 'Age', scope: 'patient', section: 'clinique', type: 'integer', required: true },
+      { fieldKey: 'sexe', label: 'Sexe', scope: 'patient', section: 'clinique', type: 'select', allowedValues: ['F', 'M'] },
+    ] }))[0].result;
+    expect(out.baseId).toBeTruthy();
+    const fields = (await db.admin.query('select field_key, display_order from public.template_field where template_version_id=$1 order by display_order', [out.versionId])).rows;
+    expect(fields).toEqual([{ field_key: 'age', display_order: 0 }, { field_key: 'sexe', display_order: 1 }]);
+    expect((await db.admin.query('select current_template_version_id from public.base where id=$1', [out.baseId])).rows[0].current_template_version_id).toBe(out.versionId);
+  });
+
+  test('rejette les doublons avant toute creation et laisse zero modele partiel', async () => {
+    const name = `Rejet-${Date.now()}`;
+    await expect(create({ name, fields: [
+      { fieldKey: 'x', label: 'Même', scope: 'patient', section: 'clinique', type: 'text' },
+      { fieldKey: 'x', label: 'Même', scope: 'patient', section: 'clinique', type: 'text' },
+    ] })).rejects.toThrow(/DUPLICATE_FIELD/);
+    expect((await db.admin.query('select id from public.template where name=$1', [name])).rows).toHaveLength(0);
+  });
+
+  test('retry avec la meme cle retourne les memes identifiants, mais refuse un payload different', async () => {
+    const operationKey = key();
+    const payload = { name: `Retry-${Date.now()}`, fields: [{ fieldKey: 'one', label: 'One', scope: 'patient', section: 'clinique', type: 'text' }] };
+    const first = (await create(payload, operationKey))[0].result;
+    const retry = (await create(payload, operationKey))[0].result;
+    expect(retry).toEqual(first);
+    await expect(create({ ...payload, name: `${payload.name} bis` }, operationKey)).rejects.toThrow(/IDEMPOTENCY_KEY_REUSED/);
+  });
+
+  test('clone une version historique dans une entite independante', async () => {
+    const out = (await create({ name: `Clone-${Date.now()}`, sourceVersionId: globalVersionId }))[0].result;
+    const sourceCount = Number((await db.admin.query('select count(*)::int n from public.template_field where template_version_id=$1', [globalVersionId])).rows[0].n);
+    const cloneCount = Number((await db.admin.query('select count(*)::int n from public.template_field where template_version_id=$1', [out.versionId])).rows[0].n);
+    expect(cloneCount).toBe(sourceCount);
+    await rowsAs(memberId, ADD_FIELD, [out.versionId, `independent_${Date.now()}`]);
+    expect(Number((await db.admin.query('select count(*)::int n from public.template_field where template_version_id=$1', [globalVersionId])).rows[0].n)).toBe(sourceCount);
+  });
+});
+
 describe('possession du gabarit (medecin) + edition des drafts (v3.0)', () => {
   test('un medecin edite librement SON gabarit draft (ajout de champ)', async () => {
     const before = (await rowsAs(memberId, 'select id from public.template_field where template_version_id=$1', [aliceVersionId])).length;

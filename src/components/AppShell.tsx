@@ -6,13 +6,14 @@ import {
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
 import type { MessageKey } from '../i18n/messages';
-import { flushOutbox, useOnline, useOutbox, type FlushDeps } from '../data/offline';
+import { flushOutbox, isOfflineEnabled, useOnline, useOutbox, type FlushDeps } from '../data/offline';
 import { usePatientRepository } from '../data/RepositoryProvider';
 import { recentBases } from '../lib/recentBases';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
+import { errorMessage } from '../lib/errorMessage';
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/[\s.@]+/).filter(Boolean);
@@ -32,38 +33,59 @@ interface NavItem {
 // (fini les boutons d'orientation eparpilles dans les pages), bases recentes, recherche Ctrl+K
 // decouvrable, profil/theme/langue ancres en bas. Mobile : barre haute + tiroir.
 export function AppShell({ children }: { children: ReactNode }) {
-  const { profile, user, signOut } = useAuth();
+  const { profile, user, signOut, error: authError } = useAuth();
   const { t } = useI18n();
   const online = useOnline();
   const patients = usePatientRepository();
   const outboxEntries = useOutbox();
+  const unsyncedEntries = outboxEntries.filter((e) => ['pending', 'syncing', 'conflict', 'rejected'].includes(e.state));
   const pendingCount = outboxEntries.filter((e) => e.state === 'pending').length;
   const conflictCount = outboxEntries.filter((e) => e.state === 'conflict').length;
+  const rejectedCount = outboxEntries.filter((e) => e.state === 'rejected').length;
   const syncing = useRef(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Synchronisation automatique : des qu'on est en ligne avec des modifs en attente, on rejoue
   // la file via la RPC validee (verrou optimiste). S'execute au retour du reseau ou a l'ouverture.
   useEffect(() => {
-    if (!online || pendingCount === 0 || syncing.current) return;
+    if (!isOfflineEnabled() || !online || pendingCount === 0 || syncing.current) return;
     const deps: FlushDeps = {
-      updateEncounter: (id, data, status, reason, exp) => patients.updateEncounter(id, data, status, reason, exp),
+      updateEncounter: (id, data, status, reason, exp, operationId) => patients.updateEncounter(id, data, status, reason, exp, operationId),
       getEncounter: (id) => patients.getEncounter(id),
     };
     syncing.current = true;
-    void flushOutbox(deps).catch(() => {}).finally(() => { syncing.current = false; });
-  }, [online, pendingCount, patients]);
+    void flushOutbox(deps)
+      .then((report) => setSyncError(report.errors.length ? report.errors.join('; ') : null))
+      .catch((error) => setSyncError(errorMessage(error, t('common.error'))))
+      .finally(() => { syncing.current = false; });
+  }, [online, pendingCount, patients, t]);
 
   const role = profile?.globalRole;
   const roleLabel = profile ? t(`role.${profile.globalRole}` as MessageKey) : '';
   const displayName = profile?.fullName || user?.email || '';
-  const syncBadge = pendingCount + conflictCount;
+  const syncBadge = unsyncedEntries.length;
+
+  const requestSignOut = () => {
+    if (unsyncedEntries.length === 0) void signOut();
+    else setConfirmSignOut(true);
+  };
+  const exportUnsynced = () => {
+    const blob = new Blob([JSON.stringify(unsyncedEntries, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `meddata-modifications-non-synchronisees-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const nav: NavItem[] =
     role === 'curateur'
       ? [
           { to: '/curation', labelKey: 'curation.pool_title', Icon: Inbox },
-          { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount > 0 },
+          { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount + rejectedCount > 0 },
         ]
       : role === 'system_admin'
         ? [
@@ -74,7 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: '/', labelKey: 'member.dashboard.title', Icon: LayoutDashboard, end: true },
             { to: '/groups', labelKey: 'group.title', Icon: Users },
             { to: '/templates', labelKey: 'mytemplates.title', Icon: FileText },
-            { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount > 0 },
+            { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount + rejectedCount > 0 },
           ];
 
   const recents = role === 'medecin' ? recentBases() : [];
@@ -142,7 +164,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="truncate text-sm font-medium text-slate-800">{displayName}</div>
           <div className="truncate text-xs text-slate-500">{roleLabel}</div>
         </div>
-        <button onClick={() => void signOut()} title={t('shell.signout')} aria-label={t('shell.signout')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+        <button onClick={requestSignOut} title={t('shell.signout')} aria-label={t('shell.signout')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
           <LogOut size={16} aria-hidden />
         </button>
       </div>
@@ -165,7 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="flex items-center gap-2">
             {syncBadge > 0 && (
-              <Link to="/sync" className={`rounded-full px-2 py-0.5 text-xs font-semibold ${conflictCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+              <Link to="/sync" className={`rounded-full px-2 py-0.5 text-xs font-semibold ${conflictCount + rejectedCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
                 {syncBadge}
               </Link>
             )}
@@ -188,17 +210,39 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="lg:pl-60">
+        {authError && (
+          <div role="alert" className="border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-700">{authError}</div>
+        )}
+        {syncError && (
+          <div role="alert" className="border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-700">{syncError}</div>
+        )}
         {!online && (
           <div role="status" className="border-b border-amber-200 bg-amber-50 text-amber-900">
             <div className="mx-auto flex max-w-6xl items-center gap-2 px-6 py-2 text-sm">
               <span aria-hidden className="grid h-5 w-5 place-items-center rounded-full bg-amber-200 text-xs">⚠</span>
-              <span>{t('offline.banner')}</span>
+              <span>{isOfflineEnabled() ? t('offline.banner') : 'Hors connexion : le stockage local de donnees medicales est desactive par la politique de securite.'}</span>
             </div>
           </div>
         )}
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       </div>
       <CommandPalette />
+      {confirmSignOut && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={t('logout.unsynced_title')}>
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmSignOut(false)} />
+          <div className="card relative w-full max-w-md space-y-3 p-5">
+            <h2 className="text-base font-semibold text-slate-900">{t('logout.unsynced_title')}</h2>
+            <p className="text-sm text-slate-600">{t('logout.unsynced_body').replace('{n}', String(unsyncedEntries.length))}</p>
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setConfirmSignOut(false)} className="btn-secondary">{t('common.cancel')}</button>
+              <button type="button" onClick={exportUnsynced} className="btn-secondary">{t('sync.export')}</button>
+              <button type="button" onClick={() => { setConfirmSignOut(false); void signOut(); }} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                {t('logout.destroy_and_signout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

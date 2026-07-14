@@ -1,0 +1,544 @@
+name: Coordinated release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Cible approuvee
+        required: true
+        type: choice
+        options: [staging, production]
+      ref:
+        description: Commit ou tag immuable a promouvoir (laisser vide = SHA declencheur)
+        required: false
+        type: string
+      staging_run_id:
+        description: Identifiant du workflow staging reussi pour ce meme SHA (obligatoire en production)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SUPABASE_CLI_VERSION: '2.109.1'
+  VERCEL_CLI_VERSION: '55.0.0'
+
+concurrency:
+  group: coordinated-release-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - id: ref
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.9.2'
+      - run: npm ci
+      - run: npm run typecheck && npm run lint && npm test && npm run db:verify && npm run release:edge:check
+      - run: npm run edge:fmt && npm run edge:lint && npm run edge:check && npm run edge:test
+      - name: Build artifact (frontend is not deployed here)
+        env:
+          # Ce build de validation n'est jamais deploye. Des valeurs publiques et
+          # deterministes evitent d'ouvrir les secrets d'environnement avant les gates cloud.
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          RELEASE_TARGET: ${{ inputs.target }}
+        run: npm run release:env -- --target=pr && npm run build && npm run manifest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.run_id }}
+          path: deploy-manifest.json
+          retention-days: 30
+
+  backend-staging:
+    if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
+    needs: validate
+    environment: staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Validate secrets and target
+        env: &staging_env
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+          CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+          STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+          REQUIRE_SERVER_INSPECTION: 'true'
+          DB_REQUIRE_SERVER_INSPECTION: 'true'
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          npm run release:env -- --target=staging
+      - name: Migrations then Storage
+        env: *staging_env
+        run: npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
+      - name: Configure strict Edge runtime secrets
+        env: *staging_env
+        run: |
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" secrets set \
+            "CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL" \
+            "CLAMAV_SCAN_TOKEN=$CLAMAV_SCAN_TOKEN" \
+            "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION" \
+            --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Deploy all Edge Functions
+        env: *staging_env
+        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done
+      - name: Verify backend drift before frontend
+        env: *staging_env
+        run: npm run release:drift
+
+  frontend-staging:
+    if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
+    needs: [validate, backend-staging]
+    environment: staging
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - id: deploy
+        name: Promote frontend only after backend gates
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          npm run release:target -- --target=staging --frontend-only
+          npm run release:env -- --target=pr
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=preview --token "$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" build --token "$VERCEL_TOKEN"
+          URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --yes --token "$VERCEL_TOKEN")
+          node -e "const u=new URL(process.argv[1]); if(u.protocol!=='https:' || !u.hostname.endsWith('.vercel.app')) process.exit(1)" "$URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Activate strict DB last, then run cloud and backend E2E gates
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+          CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+          STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+          REQUIRE_SERVER_INSPECTION: 'true'
+          DB_REQUIRE_SERVER_INSPECTION: 'true'
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          npm run inspection:activate -- --target=staging
+          npm run env:check:cloud
+          npm run release:drift
+          npm run e2e:staging
+
+  browser-e2e-staging:
+    if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
+    needs: [validate, frontend-staging]
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Bootstrap scoped Vercel browser cookie
+        env:
+          E2E_BASE_URL: ${{ needs.frontend-staging.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
+          : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
+          : "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID is required}"
+          control_dir="$RUNNER_TEMP/vercel-control"
+          cookie_jar="$RUNNER_TEMP/vercel-bypass.cookies"
+          storage_state="$RUNNER_TEMP/vercel-bypass-storage.json"
+          mkdir -p "$control_dir/.vercel"
+          CONTROL_PROJECT_FILE="$control_dir/.vercel/project.json" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const output = process.env.CONTROL_PROJECT_FILE;
+          const orgId = process.env.VERCEL_ORG_ID;
+          const projectId = process.env.VERCEL_PROJECT_ID;
+          if (!output || !orgId || !projectId) throw new Error('Configuration Vercel staging incomplete.');
+          writeFileSync(output, JSON.stringify({
+            orgId,
+            projectId,
+            projectName: 'gestion-de-donn-es-m-dicales',
+          }), { mode: 0o600 });
+          NODE
+          (
+            cd "$control_dir"
+            # vercel curl v55 lit VERCEL_TOKEN dans l'environnement ; son option globale --token
+            # serait transmise par erreur au binaire curl sous-jacent.
+            npx --yes "vercel@$VERCEL_CLI_VERSION" curl /login \
+              --deployment "$E2E_BASE_URL" --yes -- \
+              --silent --show-error --fail --location \
+              --cookie-jar "$cookie_jar" --output /dev/null \
+              --header "x-vercel-set-bypass-cookie: true"
+          )
+          curl --fail --silent --show-error --cookie "$cookie_jar" "$E2E_BASE_URL/login" \
+            | grep --fixed-strings --quiet '<div id="root"></div>'
+          node "$GITHUB_WORKSPACE/scripts/vercel-cookie-state.mjs" \
+            "$cookie_jar" "$storage_state" "$E2E_BASE_URL"
+          rm -f "$cookie_jar"
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Critical browser journeys (auth/roles + patient + export)
+        env:
+          E2E_TARGET: staging
+          E2E_BASE_URL: ${{ needs.frontend-staging.outputs.url }}
+          E2E_VERCEL_STORAGE_STATE: ${{ runner.temp }}/vercel-bypass-storage.json
+          E2E_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+          E2E_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+          E2E_CURATEUR_EMAIL: ${{ secrets.STAGING_CURATEUR_EMAIL }}
+          E2E_CURATEUR_PASSWORD: ${{ secrets.STAGING_CURATEUR_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+          # Fixtures des parcours metier : nettoyage best-effort + identifiants de donnees semees.
+          # Absents => les parcours patient/export sont marques INDISPONIBLES (jamais un succes silencieux).
+          E2E_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          E2E_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_MEDECIN_BASE_ID: ${{ secrets.STAGING_E2E_BASE_ID }}
+          E2E_EXPORT_BASE_ID: ${{ secrets.STAGING_E2E_EXPORT_BASE_ID }}
+          E2E_EXPORT_COHORT_ID: ${{ secrets.STAGING_E2E_EXPORT_COHORT_ID }}
+        run: npm run e2e:browser:critical
+      - name: Remove ephemeral Vercel browser state
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/vercel-bypass.cookies"
+          rm -f "$RUNNER_TEMP/vercel-bypass-storage.json"
+          rm -f "$RUNNER_TEMP/vercel-control/.vercel/project.json"
+      - name: Browser failure artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # LOT 13 complet, volontairement isole du chemin de deploiement coordonne : ce job
+  # ne pousse aucune migration, ne reapplique pas storage.sql et ne redeploie aucune
+  # Edge Function. Il lit le backend staging partage et deploie uniquement un preview
+  # frontend jetable, afin de ne pas entrer en conflit avec un chantier parallele.
+  lot13-complete-staging:
+    if: inputs.target == 'staging' && github.ref_name == 'codex/lot13-complete-validation'
+    needs: validate
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      LOT13_RUN_PREFIX: LOT13-${{ github.run_id }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_USE_SIGNED_READ: 'true'
+      VITE_REQUIRE_SERVER_INSPECTION: 'true'
+      VITE_OFFLINE_MODE: demo
+      VITE_OFFLINE_ADMIN_ACK: 'true'
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+      CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+      STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+      STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+      STAGING_SECOND_MEDECIN_EMAIL: ${{ secrets.STAGING_SECOND_MEDECIN_EMAIL }}
+      STAGING_SECOND_MEDECIN_PASSWORD: ${{ secrets.STAGING_SECOND_MEDECIN_PASSWORD }}
+      STAGING_CURATEUR_EMAIL: ${{ secrets.STAGING_CURATEUR_EMAIL }}
+      STAGING_CURATEUR_PASSWORD: ${{ secrets.STAGING_CURATEUR_PASSWORD }}
+      STAGING_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+      STAGING_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+      REQUIRE_SERVER_INSPECTION: 'true'
+      DB_REQUIRE_SERVER_INSPECTION: 'true'
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Garde staging et inventaire distant en lecture seule
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
+          test "$SUPABASE_PROJECT_REF" = "gmsxrniiclrheehhoakn"
+          echo "LOT13_STATE_FILE=$RUNNER_TEMP/lot13/state.json" >> "$GITHUB_ENV"
+          echo "LOT13_EVIDENCE_DIR=$RUNNER_TEMP/lot13/evidence" >> "$GITHUB_ENV"
+          LOT13_STATE_FILE="$RUNNER_TEMP/lot13/state.json"
+          LOT13_EVIDENCE_DIR="$RUNNER_TEMP/lot13/evidence"
+          mkdir -p "$LOT13_EVIDENCE_DIR" "$(dirname "$LOT13_STATE_FILE")"
+          npm run release:env -- --target=staging
+          npm run release:drift > "$LOT13_EVIDENCE_DIR/drift.txt"
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" migration list --db-url "$SUPABASE_DB_URL" > "$LOT13_EVIDENCE_DIR/migrations.txt"
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" functions list --project-ref "$SUPABASE_PROJECT_REF" --output json > "$LOT13_EVIDENCE_DIR/functions.json"
+          git show -s --format='commit=%H%nbranch=%D%nauthor_date=%aI%nsubject=%s' HEAD > "$LOT13_EVIDENCE_DIR/revision.txt"
+      - id: deploy
+        name: Deployer le preview LOT 13 isole (offline demo autorise)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=preview --token "$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" build --token "$VERCEL_TOKEN"
+          URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --yes --token "$VERCEL_TOKEN")
+          node -e "const u=new URL(process.argv[1]); if(u.protocol!=='https:' || !u.hostname.endsWith('.vercel.app')) process.exit(1)" "$URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          printf 'frontend_url=%s\nfrontend_commit=%s\nfrontend_offline_mode=demo\n' "$URL" "${{ needs.validate.outputs.sha }}" > "$LOT13_EVIDENCE_DIR/frontend.txt"
+      - name: Bootstrap du cookie navigateur Vercel limite au preview
+        env:
+          E2E_BASE_URL: ${{ steps.deploy.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          control_dir="$RUNNER_TEMP/vercel-control"
+          cookie_jar="$RUNNER_TEMP/vercel-bypass.cookies"
+          storage_state="$RUNNER_TEMP/vercel-bypass-storage.json"
+          mkdir -p "$control_dir/.vercel"
+          CONTROL_PROJECT_FILE="$control_dir/.vercel/project.json" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.CONTROL_PROJECT_FILE, JSON.stringify({
+            orgId: process.env.VERCEL_ORG_ID,
+            projectId: process.env.VERCEL_PROJECT_ID,
+            projectName: 'gestion-de-donn-es-m-dicales',
+          }), { mode: 0o600 });
+          NODE
+          (
+            cd "$control_dir"
+            npx --yes "vercel@$VERCEL_CLI_VERSION" curl /login \
+              --deployment "$E2E_BASE_URL" --yes -- \
+              --silent --show-error --fail --location \
+              --cookie-jar "$cookie_jar" --output /dev/null \
+              --header "x-vercel-set-bypass-cookie: true"
+          )
+          curl --fail --silent --show-error --cookie "$cookie_jar" "$E2E_BASE_URL/login" \
+            | grep --fixed-strings --quiet '<div id="root"></div>'
+          node "$GITHUB_WORKSPACE/scripts/vercel-cookie-state.mjs" \
+            "$cookie_jar" "$storage_state" "$E2E_BASE_URL"
+          rm -f "$cookie_jar"
+      - name: Matrice backend distante LOT 13
+        run: node scripts/lot13-staging-matrix.mjs
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Parcours critiques et matrice navigateur LOT 13
+        env:
+          E2E_TARGET: staging
+          E2E_BASE_URL: ${{ steps.deploy.outputs.url }}
+          E2E_VERCEL_STORAGE_STATE: ${{ runner.temp }}/vercel-bypass-storage.json
+          E2E_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
+          E2E_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
+          E2E_SECOND_MEDECIN_EMAIL: ${{ secrets.STAGING_SECOND_MEDECIN_EMAIL }}
+          E2E_SECOND_MEDECIN_PASSWORD: ${{ secrets.STAGING_SECOND_MEDECIN_PASSWORD }}
+          E2E_CURATEUR_EMAIL: ${{ secrets.STAGING_CURATEUR_EMAIL }}
+          E2E_CURATEUR_PASSWORD: ${{ secrets.STAGING_CURATEUR_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+          E2E_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          E2E_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          LOT13_EXPECTED_COMMIT: ${{ needs.validate.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_ID=$(node -e "const s=require(process.argv[1]); process.stdout.write(s.baseId)" "$LOT13_STATE_FILE")
+          COHORT_ID=$(node -e "const s=require(process.argv[1]); process.stdout.write(s.cohortId)" "$LOT13_STATE_FILE")
+          export E2E_MEDECIN_BASE_ID="$BASE_ID"
+          export E2E_EXPORT_BASE_ID="$BASE_ID"
+          export E2E_EXPORT_COHORT_ID="$COHORT_ID"
+          npx playwright test \
+            e2e/auth-roles.spec.ts \
+            e2e/patient-journey.spec.ts \
+            e2e/export-journey.spec.ts \
+            e2e/lot13-complete.spec.ts
+      - name: Nettoyer toutes les fixtures LOT 13
+        if: always()
+        run: node scripts/lot13-staging-cleanup.mjs
+      - name: Supprimer les etats navigateur ephemeres
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/vercel-bypass.cookies"
+          rm -f "$RUNNER_TEMP/vercel-bypass-storage.json"
+          rm -f "$RUNNER_TEMP/vercel-control/.vercel/project.json"
+      - name: Conserver les preuves sans secrets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lot13-complete-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/lot13/evidence/
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 30
+
+  production:
+    if: inputs.target == 'production'
+    needs: validate
+    environment: production # configure required reviewers and restrict this environment in GitHub.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify successful staging evidence for this SHA
+        uses: actions/github-script@v7
+        env:
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        with:
+          script: |
+            if (!process.env.STAGING_RUN_ID) core.setFailed('staging_run_id est obligatoire pour la production.');
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: Number(process.env.STAGING_RUN_ID),
+            });
+            if (run.path !== '.github/workflows/coordinated-release.yml') {
+              core.setFailed('Le run indique ne provient pas du workflow coordinated-release (provenance).');
+            }
+            if (run.conclusion !== 'success' || run.head_sha !== process.env.RELEASE_SHA) {
+              core.setFailed('Le workflow staging indique doit etre reussi et correspondre exactement au SHA promu.');
+            }
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: Number(process.env.STAGING_RUN_ID),
+            });
+            for (const required of ['backend-staging', 'browser-e2e-staging']) {
+              if (!jobs.jobs.some((job) => job.name === required && job.conclusion === 'success')) {
+                core.setFailed(`Le run indique ne contient pas un job ${required} reussi.`);
+              }
+            }
+      - name: Backend promotion before frontend strict switch
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+          CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          REQUIRE_SERVER_INSPECTION: 'true'
+          DB_REQUIRE_SERVER_INSPECTION: 'true'
+        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done && npm run release:drift
+      - name: Deploy frontend before strict database switch
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token "$VERCEL_TOKEN"
+          URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")
+          curl --fail --silent --show-error --head "$URL"
+      - name: Activate strict database last and verify cloud
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_USE_SIGNED_READ: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+          CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          REQUIRE_SERVER_INSPECTION: 'true'
+          DB_REQUIRE_SERVER_INSPECTION: 'true'
+        run: npm run inspection:activate -- --target=production && npm run env:check:cloud && npm run release:drift

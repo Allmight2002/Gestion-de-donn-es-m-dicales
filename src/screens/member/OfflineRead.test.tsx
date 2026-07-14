@@ -3,7 +3,7 @@
 // Prouve que (1) les donnees analytiques s'affichent sans reseau, (2) l'identite et les
 // actions d'ecriture sont absentes, (3) aucun appel repo (reseau) n'est fait hors-ligne.
 import 'fake-indexeddb/auto';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -12,7 +12,7 @@ import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { BaseHome } from './BaseHome';
 import { PatientDetail } from './PatientDetail';
 import { EditEncounter } from './EditEncounter';
-import { buildSnapshot, offlineCache, outbox } from '../../data/offline';
+import { buildSnapshot, offlineCache, outbox, setOfflineUser } from '../../data/offline';
 import type { BaseRepository } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository } from '../../data/patients';
@@ -39,6 +39,9 @@ function renderAt(path: string, element: React.ReactNode, routePath: string) {
 }
 
 beforeAll(async () => {
+  vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
+  vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
+  setOfflineUser('offline-read-user');
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => false });
   await offlineCache.save(
     buildSnapshot(
@@ -55,6 +58,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await offlineCache.remove('b1');
+  setOfflineUser(null);
+  vi.unstubAllEnvs();
 });
 
 describe('BaseHome hors-ligne', () => {
@@ -62,7 +67,7 @@ describe('BaseHome hors-ligne', () => {
     renderAt('/bases/b1', <BaseHome />, '/bases/:id');
     expect(await screen.findByText('Base hors-ligne')).toBeInTheDocument();
     expect(screen.getByText('P-OFF')).toBeInTheDocument(); // code patient
-    expect(screen.getByText('Sexe')).toBeInTheDocument(); // colonne analytique
+    expect(screen.getByRole('columnheader', { name: 'Sexe' })).toBeInTheDocument(); // colonne analytique
     expect(screen.getByText('M')).toBeInTheDocument(); // valeur analytique
     expect(screen.getByText('Lecture seule (hors-ligne)')).toBeInTheDocument();
     // Pas de colonne identite, pas de bouton de creation.

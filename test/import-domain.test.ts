@@ -1,6 +1,9 @@
 // Tests PURS de la logique d'import (correspondance par INDEX + construction des lignes).
 import { describe, expect, test } from 'vitest';
-import { autoMapColumns, buildImportRows, duplicateTargets, type ColumnMapping } from '../src/domain/import';
+import {
+  autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
+  type ColumnMapping, type ImportRow,
+} from '../src/domain/import';
 import type { TemplateField } from '../src/data/types';
 
 const f = (fieldKey: string, label: string, scope: TemplateField['scope'], type: TemplateField['type'] = 'text'): TemplateField => ({
@@ -60,5 +63,43 @@ describe('duplicateTargets', () => {
   test('signale une cible (hors ignore) utilisee par plusieurs colonnes', () => {
     expect(duplicateTargets({ 0: 'patient_code', 1: 'patient:sexe', 2: 'patient:sexe', 3: 'ignore' })).toEqual(['patient:sexe']);
     expect(duplicateTargets({ 0: 'patient_code', 1: 'patient:sexe' })).toEqual([]);
+  });
+});
+
+describe('findInFileEncounterDuplicates', () => {
+  test('detecte un doublon exact entre la premiere ligne et un second chunk', () => {
+    const rows: ImportRow[] = Array.from({ length: 301 }, (_, index) => ({
+      patient_code: index === 300 ? 'P1' : `P${index + 1}`,
+      source_row_number: index + 1,
+      identity: null,
+      patient_data: {},
+      encounter: {
+        encounter_type: 'consultation',
+        encounter_date: index === 300 ? '2024-01-01' : `2024-01-${String((index % 28) + 1).padStart(2, '0')}`,
+        data: index === 300 ? { diagnosis: 'TC', score: 12 } : { diagnosis: `D${index}`, score: index },
+      },
+    }));
+    rows[0].encounter = {
+      encounter_type: 'consultation', encounter_date: '2024-01-01', data: { score: 12, diagnosis: 'TC' },
+    };
+
+    expect(findInFileEncounterDuplicates(rows)).toEqual([{
+      row: 301,
+      firstRow: 1,
+      patientCode: 'P1',
+      encounterDate: '2024-01-01',
+      encounterType: 'consultation',
+    }]);
+  });
+
+  test('ne confond pas deux rencontres dont les donnees different', () => {
+    const base: ImportRow = {
+      patient_code: 'P1', source_row_number: 1, identity: null, patient_data: {},
+      encounter: { encounter_type: 'consultation', encounter_date: '2024-01-01', data: { score: 10 } },
+    };
+    expect(findInFileEncounterDuplicates([
+      base,
+      { ...base, source_row_number: 2, encounter: { ...base.encounter!, data: { score: 11 } } },
+    ])).toEqual([]);
   });
 });

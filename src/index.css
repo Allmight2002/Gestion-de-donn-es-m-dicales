@@ -73,7 +73,14 @@
   .dark .text-slate-400 { color: #64748b; }
   .dark .bg-white { background-color: #0f172a; }
   .dark .bg-white\/80 { background-color: rgb(15 23 42 / 0.85); }
+  .dark .bg-white\/60 { background-color: rgb(15 23 42 / 0.72); }
   .dark .bg-slate-50 { background-color: #1e293b; }
+  .dark .bg-slate-50\/95 { background-color: rgb(30 41 59 / 0.95); }
+  .dark .bg-slate-50\/80,
+  .dark .bg-slate-50\/70,
+  .dark .bg-slate-50\/60,
+  .dark .bg-slate-50\/50,
+  .dark .bg-slate-50\/40 { background-color: rgb(30 41 59 / 0.55); }
   .dark .bg-slate-100 { background-color: #1e293b; }
   .dark .border-slate-100 { border-color: #1e293b; }
   .dark .border-slate-200 { border-color: #263244; }
@@ -83,11 +90,16 @@
   .dark .hover\:bg-slate-100:hover { background-color: #1e293b; }
   .dark .text-teal-700 { color: #2dd4bf; }
   .dark .text-teal-800 { color: #5eead4; }
+  .dark .text-teal-900 { color: #99f6e4; }
   .dark .bg-teal-50 { background-color: rgb(19 78 74 / 0.35); }
+  .dark .bg-teal-50\/70,
+  .dark .bg-teal-50\/50,
+  .dark .bg-teal-50\/40 { background-color: rgb(19 78 74 / 0.35); }
   .dark .bg-teal-100 { background-color: rgb(19 78 74 / 0.55); }
   .dark .border-teal-100 { border-color: rgb(15 118 110 / 0.4); }
   .dark .text-amber-800, .dark .text-amber-900 { color: #fcd34d; }
   .dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.3); }
+  .dark .bg-amber-50\/50 { background-color: rgb(120 53 15 / 0.3); }
   .dark .bg-amber-100 { background-color: rgb(120 53 15 / 0.45); }
   .dark .border-amber-200, .dark .border-amber-300 { border-color: rgb(180 83 9 / 0.45); }
   .dark .text-red-600, .dark .text-red-700 { color: #f87171; }
@@ -103,6 +115,8 @@
   .dark .border-indigo-100 { border-color: rgb(67 56 202 / 0.4); }
 .dark .text-green-700 { color: #4ade80; }
 .dark .bg-green-50 { background-color: rgb(20 83 45 / 0.3); }
+.dark .hover\:bg-slate-50\/70:hover,
+.dark .hover\:bg-slate-50\/60:hover { background-color: rgb(30 41 59 / 0.65); }
 
 /* Primitives reutilisables : appliquees progressivement dans les ecrans. */
 @layer components {
@@ -125,6 +139,54 @@
     @apply inline-flex items-center rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-900/40 dark:text-teal-300 dark:ring-teal-400/25;
   }
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100;
+    @apply text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[1.7rem];
+  }
+  .page-description {
+    @apply mt-1.5 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.12em] text-teal-700 dark:text-teal-300;
+  }
+  .section-title {
+    @apply text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100;
+  }
+  .section-description {
+    @apply mt-1 max-w-2xl text-sm leading-5 text-slate-500 dark:text-slate-400;
+  }
+  .form-label {
+    @apply flex flex-col gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200;
+  }
+  .helper-text {
+    @apply text-xs leading-5 text-slate-500 dark:text-slate-400;
+  }
+  .surface-muted {
+    @apply rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-950/40;
+  }
+  .data-table-shell {
+    @apply overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+  }
+  .data-table {
+    @apply min-w-full border-collapse text-sm;
+  }
+  .data-table thead {
+    @apply bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400;
+  }
+  .data-table th {
+    @apply whitespace-nowrap border-b border-slate-200 px-4 py-3 dark:border-slate-800;
+  }
+  .data-table td {
+    @apply whitespace-nowrap border-b border-slate-100 px-4 py-3 align-middle dark:border-slate-800/70;
+  }
+  .data-table tbody tr {
+    @apply transition hover:bg-slate-50/70 dark:hover:bg-slate-800/50;
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-500;
+  }
+  .icon-button {
+    @apply inline-grid h-9 w-9 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200;
   }
 }

@@ -5,8 +5,8 @@ export const REQUIRE_SERVER_INSPECTION = import.meta.env.VITE_REQUIRE_SERVER_INS
 export type InspectionStatus = 'pending' | 'scanning' | 'accepted_client' | 'accepted' | 'quarantined';
 
 type InspectEntity = 'attachment' | 'raw_document';
-type CleanupBucket = 'clinical-attachments' | 'raw-documents' | 'scientific-exports';
-export type UploadBucket = CleanupBucket;
+export type UploadBucket = 'clinical-attachments' | 'raw-documents' | 'scientific-exports';
+export type UploadEntity = 'attachment' | 'raw_document';
 type InspectUploadResponse = {
   status?: InspectionStatus;
   error?: string;
@@ -67,28 +67,73 @@ export async function retryUploadedFileInspection(client: SupabaseClient, entity
   await invokeInspection(client, entity, id);
 }
 
-export async function createUploadTicket(
+export type UploadOperation = {
+  ticketId: string;
+  path: string;
+  ticketStatus: string;
+  documentId: string | null;
+};
+
+/**
+ * Creates (or finds) the durable server-side identity of an upload.  The key
+ * is deliberately supplied by the caller: retries must reuse it.
+ */
+export async function createUploadOperation(
   client: SupabaseClient,
-  baseId: string,
-  bucket: UploadBucket,
-  path: string,
-): Promise<string> {
-  const { data, error } = await client.rpc('create_upload_ticket', {
-    p_base_id: baseId,
-    p_bucket: bucket,
-    p_path: path,
+  input: {
+    baseId: string; bucket: UploadBucket; path: string; idempotencyKey: string;
+    fileHash: string; fileSize: number; mimeType: string;
+  },
+): Promise<UploadOperation> {
+  const { data, error } = await client.rpc('create_upload_operation', {
+    p_base_id: input.baseId, p_bucket: input.bucket, p_path: input.path,
+    p_idempotency_key: input.idempotencyKey, p_file_hash: input.fileHash,
+    p_file_size: input.fileSize, p_mime_type: input.mimeType,
   });
   if (error) throw error;
-  if (typeof data !== 'string') throw new Error('Ticket upload absent');
-  return data;
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    ticket_id: string; path: string; ticket_status: string; document_id: string | null;
+  } | null;
+  if (!row?.ticket_id || !row.path) throw new Error('Operation upload absente');
+  return { ticketId: row.ticket_id, path: row.path, ticketStatus: row.ticket_status, documentId: row.document_id };
 }
 
-export async function cleanupUploadedObject(client: SupabaseClient, bucket: CleanupBucket, path: string, ticketId: string): Promise<void> {
-  const { error } = await client.functions.invoke('cleanup-upload', {
-    body: { bucket, path, ticketId },
+export async function finalizeUploadOperation(
+  client: SupabaseClient,
+  ticketId: string,
+  entity: UploadEntity,
+  metadata: Record<string, string | null>,
+): Promise<string> {
+  const { data, error } = await client.functions.invoke('finalize-upload', {
+    body: { ticketId, entity, metadata },
   });
-  if (error) {
-    const detail = await functionErrorMessage(error);
-    throw new Error(`Nettoyage Storage impossible${detail ? ` : ${detail}` : ''}.`);
+  if (error) throw error;
+  const id = (data as { id?: unknown } | null)?.id;
+  if (typeof id !== 'string') throw new Error('Document persiste absent');
+  return id;
+}
+
+const OPERATION_PREFIX = 'upload-operation:';
+
+/**
+ * Cle d'idempotence d'une operation d'upload, persistee dans le navigateur pour qu'un
+ * rafraichissement ou une relance du MEME onglet/appareil retrouve la meme operation serveur.
+ *
+ * Portee volontairement LOCALE (localStorage) : une relance depuis un autre navigateur ou un
+ * autre appareil regenere une cle et cree donc une operation distincte. Aucune garantie
+ * cross-device n'est offerte a ce niveau. La securite ne repose pas dessus : le serveur
+ * (`create_upload_operation`) refuse une meme cle reutilisee avec un fichier/contexte
+ * different et rend deterministes les creations reellement concurrentes.
+ */
+export function stableUploadOperationKey(scope: string, fileHash: string, label: string | null): string {
+  const key = `${OPERATION_PREFIX}${scope}:${fileHash}:${label ?? ''}`;
+  try {
+    const existing = globalThis.localStorage?.getItem(key);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    globalThis.localStorage?.setItem(key, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
   }
 }

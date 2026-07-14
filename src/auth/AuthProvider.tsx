@@ -10,9 +10,83 @@ import {
 } from 'react';
 import type { AuthBackend } from './backend';
 import { supabaseBackend } from '../lib/supabaseBackend';
-import { setOfflineUser, clearOfflineSnapshots, purgeExpiredSnapshots } from '../data/offline';
+import {
+  initializeOfflineForUser,
+  isOfflineEnabled,
+  purgeAllOfflineData,
+  setOfflineUser,
+  type OfflineInitializationReport,
+} from '../data/offline';
 import { clearDraftsForCurrentUser, purgeExpiredDrafts } from '../data/drafts';
 import type { AuthStatus, Profile, SessionUser } from './types';
+
+const OFFLINE_PROFILE_PREFIX = 'meddata:offline-profile:';
+const OFFLINE_PROFILE_TTL_MS = 24 * 3600 * 1000;
+
+interface OfflineProfileMarker {
+  version: 1;
+  userId: string;
+  globalRole: 'medecin';
+  language: string;
+  expiresAt: number;
+}
+
+const offlineProfileKey = (userId: string) => `${OFFLINE_PROFILE_PREFIX}${userId}`;
+
+function removeOfflineProfile(userId: string): void {
+  try { localStorage.removeItem(offlineProfileKey(userId)); } catch { /* fermeture stricte */ }
+}
+
+// Le mode demo ne conserve que l'autorisation minimale necessaire a la lecture analytique
+// hors-ligne. Aucun nom, email, token, profil brut ni donnee clinique n'est ajoute ici.
+function persistOfflineProfile(profile: Profile): void {
+  if (!isOfflineEnabled() || typeof localStorage === 'undefined') return;
+  const key = offlineProfileKey(profile.id);
+  try {
+    if (profile.globalRole !== 'medecin') {
+      removeOfflineProfile(profile.id);
+      return;
+    }
+    const marker: OfflineProfileMarker = {
+      version: 1,
+      userId: profile.id,
+      globalRole: 'medecin',
+      language: profile.language,
+      expiresAt: Date.now() + OFFLINE_PROFILE_TTL_MS,
+    };
+    localStorage.setItem(key, JSON.stringify(marker));
+  } catch { /* stockage local indisponible : aucun fallback, donc fermeture stricte */ }
+}
+
+function readOfflineProfile(userId: string): Profile | null {
+  if (
+    !isOfflineEnabled()
+    || typeof localStorage === 'undefined'
+    || typeof navigator === 'undefined'
+    || navigator.onLine !== false
+  ) return null;
+  const key = offlineProfileKey(userId);
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const marker = JSON.parse(raw) as Partial<OfflineProfileMarker>;
+    if (
+      marker.version !== 1
+      || marker.userId !== userId
+      || marker.globalRole !== 'medecin'
+      || typeof marker.language !== 'string'
+      || typeof marker.expiresAt !== 'number'
+      || marker.expiresAt <= Date.now()
+    ) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return { id: userId, fullName: '', globalRole: 'medecin', language: marker.language };
+  } catch {
+    removeOfflineProfile(userId);
+    return null;
+  }
+}
 
 export interface AuthContextValue {
   status: AuthStatus;
@@ -32,19 +106,23 @@ interface Props {
   children: ReactNode;
   /** Injectable pour les tests ; defaut = backend Supabase reel. */
   backend?: AuthBackend;
+  initializeOffline?: (userId: string) => Promise<OfflineInitializationReport>;
 }
 
-export function AuthProvider({ children, backend = supabaseBackend }: Props) {
+export function AuthProvider({ children, backend = supabaseBackend, initializeOffline = initializeOfflineForUser }: Props) {
   const [status, setStatus] = useState<AuthStatus>(backend.configured ? 'loading' : 'unconfigured');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
+  const currentSessionUser = useRef<SessionUser | null>(null);
   const currentUserId = useRef<string | null>(null);
   const currentProfile = useRef<Profile | null>(null);
+  const profileNeedsRefresh = useRef(false);
   const profileRequest = useRef<{ userId: string; promise: Promise<Profile | null> } | null>(null);
   const authGeneration = useRef(0);
+  const signOutInProgress = useRef(false);
 
   const applyUser = useCallback(
     async (nextUser: SessionUser | null) => {
@@ -55,10 +133,15 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         // §5.9 : on efface les instantanes de l'utilisateur COURANT AVANT de le remettre a null
         // (sinon on effacerait ceux du compte « null », pas les siens).
         clearDraftsForCurrentUser();
-        void clearOfflineSnapshots();
+        if (!signOutInProgress.current) {
+          const purge = await purgeAllOfflineData();
+          if (purge.errors.length) setError(`Purge locale incomplete: ${purge.errors.join('; ')}`);
+        }
         setOfflineUser(null);
+        currentSessionUser.current = null;
         currentUserId.current = null;
         currentProfile.current = null;
+        profileNeedsRefresh.current = false;
         profileRequest.current = null;
         if (!isCurrentGeneration()) return;
         setUser(null);
@@ -66,8 +149,11 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         setStatus('signed_out');
         return;
       }
-      setOfflineUser(nextUser.id); // (re)cible l'utilisateur courant a la connexion / restauration
-      if (currentUserId.current === nextUser.id && currentProfile.current) return;
+      currentSessionUser.current = nextUser;
+      const offlineInit = await initializeOffline(nextUser.id);
+      if (offlineInit.errors.length) setError(`Purge locale incomplete: ${offlineInit.errors.join('; ')}`);
+      else setError(null);
+      if (currentUserId.current === nextUser.id && currentProfile.current && !profileNeedsRefresh.current) return;
       try {
         let req = profileRequest.current;
         if (!req || req.userId !== nextUser.id) {
@@ -79,26 +165,31 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
         if (!isCurrentGeneration()) return;
         currentUserId.current = nextUser.id;
         currentProfile.current = nextProfile;
+        profileNeedsRefresh.current = false;
+        if (nextProfile) persistOfflineProfile(nextProfile);
+        else removeOfflineProfile(nextUser.id);
         setUser(nextUser);
         setProfile(nextProfile);
         setStatus('signed_in');
       } catch {
         profileRequest.current = null;
-        // Session presente mais profil illisible : on reste connecte sans profil.
+        // Hors-ligne explicite : reutilise seulement le marqueur medecin minimal et non expire.
+        // Si navigator se dit en ligne, l'echec reste strictement ferme (profil null).
         if (!isCurrentGeneration()) return;
+        const offlineProfile = offlineInit.errors.length === 0 ? readOfflineProfile(nextUser.id) : null;
         currentUserId.current = nextUser.id;
-        currentProfile.current = null;
+        currentProfile.current = offlineProfile;
+        profileNeedsRefresh.current = offlineProfile !== null;
         setUser(nextUser);
-        setProfile(null);
+        setProfile(offlineProfile);
         setStatus('signed_in');
       }
     },
-    [backend],
+    [backend, initializeOffline],
   );
 
   useEffect(() => {
     mounted.current = true;
-    void purgeExpiredSnapshots(); // §5.6 : menage des instantanes expires au demarrage
     purgeExpiredDrafts(); // Brouillons locaux ephemeres : purge au demarrage
     if (!backend.configured) {
       setStatus('unconfigured');
@@ -111,6 +202,18 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
       unsubscribe();
     };
   }, [backend, applyUser]);
+
+  // Au retour du reseau, remplace immediatement le marqueur local par le profil serveur. La RLS
+  // reste la source de verite pour les ecritures pendant cette courte reconciliation.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const refresh = () => {
+      const activeUser = currentSessionUser.current;
+      if (profileNeedsRefresh.current && activeUser) void applyUser(activeUser);
+    };
+    window.addEventListener('online', refresh);
+    return () => window.removeEventListener('online', refresh);
+  }, [applyUser]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -131,14 +234,22 @@ export function AuthProvider({ children, backend = supabaseBackend }: Props) {
 
   const signOut = useCallback(async () => {
     authGeneration.current += 1;
+    signOutInProgress.current = true;
     clearDraftsForCurrentUser();
-    void clearOfflineSnapshots();
-    await backend.signOut();
+    const purge = await purgeAllOfflineData();
+    if (purge.errors.length) setError(`Purge locale incomplete: ${purge.errors.join('; ')}`);
     setOfflineUser(null);
-    authGeneration.current += 1;
+    currentSessionUser.current = null;
     currentUserId.current = null;
     currentProfile.current = null;
+    profileNeedsRefresh.current = false;
     profileRequest.current = null;
+    try {
+      await backend.signOut();
+    } finally {
+      signOutInProgress.current = false;
+    }
+    authGeneration.current += 1;
     if (!mounted.current) return;
     setUser(null);
     setProfile(null);

@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { createHash } from 'node:crypto';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SQL = readFileSync(join(HERE, '..', 'supabase', 'storage.sql'), 'utf8');
@@ -23,9 +24,16 @@ const client = url
   : new pg.Client({ host: '127.0.0.1', port: 54322, user: 'postgres', password: 'postgres', database: 'postgres' });
 try {
   await client.connect();
+  await client.query('begin');
   await client.query(SQL);
-  console.log('✓ storage.sql applique (buckets raw-documents / clinical-attachments / scientific-exports + RLS).');
+  const { rows } = await client.query("select count(*)::int as buckets from storage.buckets where id = any(array['raw-documents','clinical-attachments','scientific-exports','quarantined-uploads'])");
+  const policies = await client.query("select count(*)::int as policies from pg_policies where schemaname='storage'");
+  if (rows[0].buckets !== 4 || policies.rows[0].policies < 1) throw new Error('post-verification Storage incomplete (buckets ou policies absents)');
+  await client.query('commit');
+  const sha = createHash('sha256').update(SQL).digest('hex');
+  console.log(`✓ storage.sql applique et verifie (4 buckets, ${policies.rows[0].policies} policies, sha256=${sha}).`);
 } catch (e) {
+  await client.query('rollback').catch(() => {});
   console.error('✗ Echec de l\'application de storage.sql :', e.message);
   if (url) {
     // Mode CLOUD (audit v19 §6.2) : ne pas renvoyer vers le Supabase local.

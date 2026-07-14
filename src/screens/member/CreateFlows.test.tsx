@@ -13,7 +13,7 @@ import { EncounterCreateChoice } from './EncounterCreateChoice';
 import { NewPatient } from './NewPatient';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
-import type { PatientRepository, NewPatientInput } from '../../data/patients';
+import type { PatientRepository } from '../../data/patients';
 import type { CurationRepository } from '../../data/curation';
 
 const listing: BaseListing = {
@@ -60,11 +60,12 @@ describe('PatientCreateChoice', () => {
 });
 
 describe('NewPatient mode submit', () => {
-  test('nom + date de naissance requis ; cree le patient puis la demande au pool', async () => {
-    const createPatient = vi.fn(async (_b: string, _i: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
-    const createSubmission = vi.fn(async () => ({ taskId: 'tk9', submissionId: 's9' }));
+  test('nom + date de naissance requis ; cree atomiquement le patient et la demande au pool', async () => {
+    const createPatientCuration = vi.fn(async () => ({ patientId: 'p1', patientCode: 'P-0001', taskId: 'tk9', submissionId: 's9', replayed: false }));
+    const createPatient = vi.fn();
+    const createSubmission = vi.fn();
     const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; }, createPatient } as unknown as PatientRepository;
-    const curation = { createSubmission } as unknown as CurationRepository;
+    const curation = { createPatientCuration, createSubmission } as unknown as CurationRepository;
 
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
@@ -73,8 +74,55 @@ describe('NewPatient mode submit', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
 
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
-    expect(createPatient.mock.calls[0][1]).toMatchObject({ fullName: 'Marie Test', permanentData: {} });
-    expect(createSubmission).toHaveBeenCalledWith('b1', 'p1', null, 'patient');
+    expect(createPatientCuration).toHaveBeenCalledWith('b1', expect.objectContaining({ fullName: 'Marie Test', dateOfBirth: '1990-01-01', idempotencyKey: expect.any(String) }));
+    expect(createPatient).not.toHaveBeenCalled();
+    expect(createSubmission).not.toHaveBeenCalled();
+  });
+
+  test('rejoue la meme operation apres une reponse perdue sans etre bloque par son propre doublon', async () => {
+    const findIdentityMatches = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ patientId: 'p1', code: 'P-0001', fullName: 'Marie Retry', dateOfBirth: '1990-01-01' }]);
+    const createPatientCuration = vi.fn()
+      .mockRejectedValueOnce(new Error('Gateway Timeout'))
+      .mockResolvedValue({ patientId: 'p1', patientCode: 'P-0001', taskId: 'tk9', submissionId: 's9', replayed: true });
+    const patients = { async listPatients() { return []; }, findIdentityMatches } as unknown as PatientRepository;
+    const curation = { createPatientCuration } as unknown as CurationRepository;
+
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
+    const firstKey = createPatientCuration.mock.calls[0][1].idempotencyKey;
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
+    expect(createPatientCuration).toHaveBeenCalledTimes(2);
+    expect(createPatientCuration.mock.calls[1][1].idempotencyKey).toBe(firstKey);
+  });
+
+  test('une saisie modifiee apres echec reste soumise au controle de doublon', async () => {
+    const match = { patientId: 'p1', code: 'P-0001', fullName: 'Marie Retry', dateOfBirth: '1990-01-01' };
+    const findIdentityMatches = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([match]);
+    const createPatientCuration = vi.fn().mockRejectedValue(new Error('Gateway Timeout'));
+    const patients = { async listPatients() { return []; }, findIdentityMatches } as unknown as PatientRepository;
+    const curation = { createPatientCuration } as unknown as CurationRepository;
+
+    renderAt('/bases/b1/patients/new/submit', { patients, curation });
+    await screen.findByText(/confier un patient au staff/i);
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry' } });
+    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+    await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText(/code patient/i), { target: { value: 'P-0099' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
+
+    await waitFor(() => expect(screen.getAllByText(/cochez la confirmation pour cr.er quand m.me/i).length).toBeGreaterThan(1));
+    expect(createPatientCuration).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -103,7 +151,7 @@ describe('NewPatient : detection de doublon', () => {
     const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
     const createPatient = vi.fn(async () => ({ id: 'p1', code: 'P-0001' }));
     const patients = { async listPatients() { return []; }, findIdentityMatches, createPatient } as unknown as PatientRepository;
-    const curation = { async createSubmission() { return { taskId: 't1' }; } } as unknown as CurationRepository;
+    const curation = { async createPatientCuration() { return { taskId: 't1' }; } } as unknown as CurationRepository;
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
@@ -115,11 +163,11 @@ describe('NewPatient : detection de doublon', () => {
   });
 
   test('QA : un code patient deja utilise affiche un message humain (pas le SQL brut)', async () => {
-    const createPatient = vi.fn(async () => {
+    const createPatientCuration = vi.fn(async () => {
       throw Object.assign(new Error('duplicate key value violates unique constraint "uq_identity_base_code"'), { code: '23505' });
     });
-    const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; }, createPatient } as unknown as PatientRepository;
-    const curation = { async createSubmission() { return { taskId: 't1' }; } } as unknown as CurationRepository;
+    const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; } } as unknown as PatientRepository;
+    const curation = { createPatientCuration } as unknown as CurationRepository;
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Autre Nom' } });
@@ -131,9 +179,9 @@ describe('NewPatient : detection de doublon', () => {
 
   test('B5 : un doublon exige une confirmation explicite avant de creer le dossier', async () => {
     const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
-    const createPatient = vi.fn(async () => ({ id: 'p1', code: 'P-0001' }));
-    const patients = { async listPatients() { return []; }, findIdentityMatches, createPatient } as unknown as PatientRepository;
-    const curation = { async createSubmission() { return { taskId: 't1' }; } } as unknown as CurationRepository;
+    const createPatientCuration = vi.fn(async () => ({ patientId: 'p1', taskId: 't1', submissionId: 's1', replayed: false }));
+    const patients = { async listPatients() { return []; }, findIdentityMatches } as unknown as PatientRepository;
+    const curation = { createPatientCuration } as unknown as CurationRepository;
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
@@ -142,13 +190,13 @@ describe('NewPatient : detection de doublon', () => {
 
     // Soumettre SANS confirmer : rien n'est cree, un message demande la confirmation.
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
-    expect(createPatient).not.toHaveBeenCalled();
+    expect(createPatientCuration).not.toHaveBeenCalled();
     expect(screen.getAllByText(/cochez la confirmation pour créer quand même/i).length).toBeGreaterThan(1);
 
     // Cocher « patient différent » puis soumettre : le dossier est cree.
     await userEvent.click(screen.getByLabelText(/patient différent/i));
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
-    await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
   });
 });
 

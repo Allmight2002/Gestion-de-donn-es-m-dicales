@@ -1,5 +1,6 @@
 import { defineWorkspace } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 // Deux projets de test :
 //  * db  : tests de securite RLS sur PostgreSQL embarque (Node, en serie).
@@ -21,7 +22,7 @@ export default defineWorkspace([
     },
   },
   {
-    plugins: [react()],
+    plugins: [react(), VitePWA({ registerType: 'prompt', devOptions: { enabled: false } })],
     // __APP_VERSION__ est injecte au build (vite.config) ; on le definit aussi en test pour que
     // l'ecran « etat du systeme » se rende sans ReferenceError.
     define: {
