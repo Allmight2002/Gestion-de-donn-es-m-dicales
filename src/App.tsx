@@ -5,7 +5,7 @@ import { RepositoryProvider } from './data/RepositoryProvider';
 import { AppRoutes } from './routes/AppRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
-import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
+import { AuthenticatedPwaUpdatePrompt } from './components/PwaUpdatePrompt';
 
 export function App() {
   // ErrorBoundary sous I18nProvider (repli localise) mais AU-DESSUS de l'auth, des donnees et du
@@ -14,8 +14,8 @@ export function App() {
   return (
     <I18nProvider>
       <ErrorBoundary>
-        <PwaUpdatePrompt />
         <AuthProvider>
+          <AuthenticatedPwaUpdatePrompt />
           <RepositoryProvider>
             <ToastProvider>
               <BrowserRouter>

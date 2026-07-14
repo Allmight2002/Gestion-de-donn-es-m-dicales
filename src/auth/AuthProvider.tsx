@@ -19,6 +19,10 @@ import {
 } from '../data/offline';
 import { clearDraftsForCurrentUser, purgeExpiredDrafts } from '../data/drafts';
 import type { AuthStatus, Profile, SessionUser } from './types';
+import {
+  authorizePwaRegistrationAfterCleanup,
+  setPwaRegistrationAllowed,
+} from '../pwa/registrationPolicy';
 
 const OFFLINE_PROFILE_PREFIX = 'meddata:offline-profile:';
 const OFFLINE_PROFILE_TTL_MS = 24 * 3600 * 1000;
@@ -128,6 +132,12 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
     async (nextUser: SessionUser | null) => {
       const generation = ++authGeneration.current;
       const isCurrentGeneration = () => mounted.current && authGeneration.current === generation;
+      const userChanged = currentSessionUser.current?.id !== nextUser?.id;
+      if (!nextUser || userChanged) {
+        // Desarme la registration AVANT toute purge : un callback Workbox tardif sera rejete.
+        setPwaRegistrationAllowed(false);
+        setStatus('loading');
+      }
       // §5.5/§5.6/§5.9 : le cache hors-ligne est cloisonne par compte.
       if (!nextUser) {
         // §5.9 : on efface les instantanes de l'utilisateur COURANT AVANT de le remettre a null
@@ -151,9 +161,22 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
       }
       currentSessionUser.current = nextUser;
       const offlineInit = await initializeOffline(nextUser.id);
-      if (offlineInit.errors.length) setError(`Purge locale incomplete: ${offlineInit.errors.join('; ')}`);
+      if (offlineInit.errors.length) setPwaRegistrationAllowed(false);
+      const pwaCleanupReady = offlineInit.errors.length === 0
+        ? await authorizePwaRegistrationAfterCleanup(isCurrentGeneration)
+        : false;
+      if (!isCurrentGeneration()) return;
+      const canRegisterPwa = offlineInit.errors.length === 0 && pwaCleanupReady;
+      const initializationErrors = [...offlineInit.errors];
+      if (!pwaCleanupReady && offlineInit.errors.length === 0) {
+        initializationErrors.push('Service Worker: nettoyage local incomplet');
+      }
+      if (initializationErrors.length) setError(`Purge locale incomplete: ${initializationErrors.join('; ')}`);
       else setError(null);
-      if (currentUserId.current === nextUser.id && currentProfile.current && !profileNeedsRefresh.current) return;
+      if (currentUserId.current === nextUser.id && currentProfile.current && !profileNeedsRefresh.current) {
+        if (isCurrentGeneration()) setPwaRegistrationAllowed(canRegisterPwa);
+        return;
+      }
       try {
         let req = profileRequest.current;
         if (!req || req.userId !== nextUser.id) {
@@ -168,6 +191,7 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
         profileNeedsRefresh.current = false;
         if (nextProfile) persistOfflineProfile(nextProfile);
         else removeOfflineProfile(nextUser.id);
+        setPwaRegistrationAllowed(canRegisterPwa);
         setUser(nextUser);
         setProfile(nextProfile);
         setStatus('signed_in');
@@ -180,6 +204,7 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
         currentUserId.current = nextUser.id;
         currentProfile.current = offlineProfile;
         profileNeedsRefresh.current = offlineProfile !== null;
+        setPwaRegistrationAllowed(canRegisterPwa);
         setUser(nextUser);
         setProfile(offlineProfile);
         setStatus('signed_in');
@@ -192,12 +217,14 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
     mounted.current = true;
     purgeExpiredDrafts(); // Brouillons locaux ephemeres : purge au demarrage
     if (!backend.configured) {
+      setPwaRegistrationAllowed(false);
       setStatus('unconfigured');
       return;
     }
     void backend.getSession().then(applyUser);
     const unsubscribe = backend.onAuthChange((u) => void applyUser(u));
     return () => {
+      setPwaRegistrationAllowed(false);
       mounted.current = false;
       unsubscribe();
     };
@@ -235,6 +262,8 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
   const signOut = useCallback(async () => {
     authGeneration.current += 1;
     signOutInProgress.current = true;
+    setPwaRegistrationAllowed(false);
+    setStatus('loading');
     clearDraftsForCurrentUser();
     const purge = await purgeAllOfflineData();
     if (purge.errors.length) setError(`Purge locale incomplete: ${purge.errors.join('; ')}`);
