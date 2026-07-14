@@ -3,7 +3,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { NewPatient } from './NewPatient';
@@ -92,6 +92,75 @@ describe('NewPatient', () => {
 });
 
 describe('BaseHome (liste patients)', () => {
+  test('purge les patients precedents si la nouvelle base echoue a charger sa liste', async () => {
+    const baseB: BaseListing = {
+      ...baseListing,
+      base: { ...baseListing.base, id: 'b2', name: 'Registre Cardio' },
+    };
+    const bases = {
+      async getBase(baseId: string) { return baseId === 'b2' ? baseB : baseListing; },
+    } as unknown as BaseRepository;
+    const patientA: PatientListItem = {
+      id: 'p-a', code: 'PATIENT-BASE-A', templateVersionId: 'v1', data: {},
+      validationStatus: 'curated', identity: null,
+    };
+    const patients = {
+      async listPatientsPage(baseId: string) {
+        if (baseId === 'b2') throw new Error('Liste B indisponible');
+        return { rows: [patientA], total: 1 };
+      },
+    } as unknown as PatientRepository;
+    function SwitchableBaseHome() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button onClick={() => navigate('/bases/b2')}>Ouvrir base B</button>
+          <BaseHome />
+        </>
+      );
+    }
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<SwitchableBaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('PATIENT-BASE-A')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir base B' }));
+    expect(await screen.findByText('Registre Cardio')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Liste B indisponible');
+    expect(screen.queryByText('PATIENT-BASE-A')).not.toBeInTheDocument();
+  });
+
+  test('une erreur de liste ne transforme pas une base accessible en Page introuvable', async () => {
+    const patientRepo = {
+      async listPatientsPage() { throw new Error('Liste temporairement indisponible'); },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Liste temporairement indisponible');
+    expect(screen.queryByText('Page introuvable')).not.toBeInTheDocument();
+  });
+
   test('liste PSEUDONYMISEE (§5.8) : affiche le code, JAMAIS le nom (meme si le repo en fournit un)', async () => {
     // Le repo renvoie volontairement une identite : on verifie que la liste ne l'expose PAS
     // (le nom n'est revele que sur la fiche patient, ou la consultation est journalisee).

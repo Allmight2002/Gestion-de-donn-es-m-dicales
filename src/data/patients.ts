@@ -187,6 +187,19 @@ export interface PatientRepository {
 type PatientRow = {
   id: string; patient_code: string; template_version_id: string; data: Record<string, unknown>; validation_status: string; row_version?: number | null; updated_at?: string | null;
 };
+const PATIENT_READ_COLUMNS = 'id, patient_code, template_version_id, data, validation_status, row_version, updated_at';
+const LEGACY_PATIENT_READ_COLUMNS = 'id, patient_code, template_version_id, data, validation_status, updated_at';
+
+// Compatibilite de lecture pendant une promotion coordonnee : un schema plus ancien peut ne
+// pas encore posseder patient.row_version. Le repli est volontairement etroit afin de ne
+// jamais masquer une erreur RLS, reseau ou serveur sous une compatibilite silencieuse.
+function isMissingPatientRowVersion(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === '42703'
+    && typeof candidate.message === 'string'
+    && /\brow_version\b/i.test(candidate.message);
+}
 type IdentityRow = {
   patient_code: string; full_name: string | null; date_of_birth: string | null; phone: string | null;
   address: string | null; external_identifier: string | null;
@@ -252,28 +265,39 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
   return {
     async listPatients(baseId) {
       // §5.8 — LISTE PSEUDONYMISEE : on ne requete QUE la zone analytique, jamais patient_identity.
-      const { data: patients, error } = await client
+      const query = (columns: string) => client
         .from('patient')
-        .select('id, patient_code, template_version_id, data, validation_status, row_version, updated_at')
+        .select(columns)
         .eq('base_id', baseId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
-      if (error) throw error;
-      return ((patients ?? []) as PatientRow[]).map(toListItem);
+      const current = await query(PATIENT_READ_COLUMNS);
+      if (!current.error) return ((current.data ?? []) as unknown as PatientRow[]).map(toListItem);
+      if (!isMissingPatientRowVersion(current.error)) throw current.error;
+      const legacy = await query(LEGACY_PATIENT_READ_COLUMNS);
+      if (legacy.error) throw legacy.error;
+      return ((legacy.data ?? []) as unknown as PatientRow[]).map(toListItem);
     },
 
     async listPatientsPage(baseId, limit, offset) {
       // §5.8 — page PSEUDONYMISEE (zone analytique + effectif total) ; aucune identite chargee.
-      const { data: patients, error, count } = await client
+      const query = (columns: string) => client
         .from('patient')
-        .select('id, patient_code, template_version_id, data, validation_status, row_version, updated_at', { count: 'exact' })
+        .select(columns, { count: 'exact' })
         .eq('base_id', baseId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true })
         .range(offset, offset + limit - 1);
-      if (error) throw error;
-      const rows = (patients ?? []) as PatientRow[];
-      return { rows: rows.map(toListItem), total: count ?? rows.length };
+      const current = await query(PATIENT_READ_COLUMNS);
+      if (!current.error) {
+        const rows = (current.data ?? []) as unknown as PatientRow[];
+        return { rows: rows.map(toListItem), total: current.count ?? rows.length };
+      }
+      if (!isMissingPatientRowVersion(current.error)) throw current.error;
+      const legacy = await query(LEGACY_PATIENT_READ_COLUMNS);
+      if (legacy.error) throw legacy.error;
+      const rows = (legacy.data ?? []) as unknown as PatientRow[];
+      return { rows: rows.map(toListItem), total: legacy.count ?? rows.length };
     },
 
     async fetchBaseSnapshot(baseId) {
@@ -345,16 +369,21 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     },
 
     async getPatient(baseId, patientId) {
-      const { data: p, error } = await client
+      const query = (columns: string) => client
         .from('patient')
-        .select('id, patient_code, template_version_id, data, validation_status, row_version, updated_at')
+        .select(columns)
         .eq('id', patientId)
         .eq('base_id', baseId)
         .is('deleted_at', null)
         .maybeSingle();
-      if (error) throw error;
+      const current = await query(PATIENT_READ_COLUMNS);
+      const resolved = current.error && isMissingPatientRowVersion(current.error)
+        ? await query(LEGACY_PATIENT_READ_COLUMNS)
+        : current;
+      if (resolved.error) throw resolved.error;
+      const p = resolved.data;
       if (!p) return null;
-      const row = p as PatientRow;
+      const row = p as unknown as PatientRow;
       // La zone identite n'est jamais lue en direct : la RPC verifie l'acces et audite
       // avant de renvoyer les champs. Sans acces identite, elle renvoie simplement [].
       const { data: identRows, error: e2 } = await client.rpc('get_patient_identity', { p_patient_id: patientId });
