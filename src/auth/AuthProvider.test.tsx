@@ -152,7 +152,7 @@ describe('gating par role', () => {
       async fetchProfile() { throw new Error('Supabase inaccessible'); },
     };
     renderAuthProbe(backend);
-    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_in:m');
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:m'));
     expect(screen.getByTestId('profile-state')).toHaveTextContent('none');
   });
 
@@ -188,7 +188,7 @@ describe('gating par role', () => {
       async fetchProfile() { throw new Error('offline'); },
     };
     renderAuthProbe(backend);
-    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_in:m');
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:m'));
     expect(screen.getByTestId('profile-state')).toHaveTextContent('none');
     expect(localStorage.getItem('meddata:offline-profile:m')).toBeNull();
   });
@@ -246,7 +246,7 @@ describe('gating par role', () => {
 
     await waitFor(() => expect(resolveProfile).not.toBeNull());
     await userEvent.click(screen.getByRole('button', { name: 'Force sign out' }));
-    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_out:none');
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none'));
 
     await act(async () => {
       resolveProfile?.(memberProfile);
@@ -294,7 +294,7 @@ describe('gating par role', () => {
         </AuthProvider>
       </I18nProvider>,
     );
-    expect(await screen.findByTestId('auth-state')).toHaveTextContent('signed_in:purge-B');
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:purge-B'));
     expect(screen.getByRole('alert')).toHaveTextContent(/Purge locale incomplete.*IndexedDB bloquee/i);
   });
 
