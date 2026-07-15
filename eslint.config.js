@@ -38,7 +38,7 @@ export default tseslint.config(
   },
   {
     // Scripts Node (ESM) + tests + configs : globals Node en plus du navigateur (jsdom).
-    files: ['scripts/**/*.mjs', 'services/**/*.mjs', 'test/**/*.ts', '*.config.js', '*.config.ts', 'vitest.workspace.ts', 'vite.config.ts'],
+    files: ['scripts/**/*.mjs', 'services/**/*.mjs', 'test/**/*.ts', '*.config.js', '*.config.ts', 'vitest.config.ts', 'vite.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
 );

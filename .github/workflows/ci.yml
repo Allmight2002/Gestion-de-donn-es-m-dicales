@@ -15,9 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate GitHub Actions workflows
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -shellcheck= -pyflakes=
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - uses: denoland/setup-deno@v2
@@ -28,10 +33,10 @@ jobs:
         run: npm ci
 
       - name: Verify XLSX and browser test versions
-        run: npm ls xlsx@0.20.3 @playwright/test@1.54.1 --depth=0 && grep -F 'xlsx-0.20.3/package/xlsx.mjs' deno.json deno.lock && ! grep -F 'npm:xlsx@0.18.5' deno.json deno.lock
+        run: npm ls xlsx@0.20.3 @playwright/test@1.61.1 --depth=0 && grep -F 'xlsx-0.20.3/package/xlsx.mjs' deno.json deno.lock && ! grep -F 'npm:xlsx@0.18.5' deno.json deno.lock
 
       - name: Dependency audit (registry)
-        run: npm audit --omit=dev
+        run: npm audit --audit-level=moderate
 
       - name: Typecheck
         run: npm run typecheck
@@ -112,7 +117,7 @@ jobs:
         # Boucle de retry (30 s max) : un sleep fixe etait FLAKY sur les runners (HTTP 000
         # observe a froid alors que le meme commit passait sur l autre branche).
         run: |
-          docker run -d --name scanner-ci -e SCAN_TOKEN=ci-smoke-token -p 8080:8080 clamav-scanner-ci
+          docker run -d --name scanner-ci -e SCAN_TOKEN=ci-smoke-token-with-at-least-32-characters -p 8080:8080 clamav-scanner-ci
           code=000
           for i in $(seq 1 30); do
             sleep 1
