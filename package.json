@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x",
+    "npm": ">=10 <12"
+  },
   "description": "Registre clinique oriente recherche - separation identite/analytique, RLS testee (MVP).",
   "scripts": {
     "dev": "vite",
@@ -14,10 +18,17 @@
     "test:web": "vitest run --project web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "supabase:start": "npx --yes supabase start",
-    "supabase:reset": "npx --yes supabase db reset",
-    "supabase:stop": "npx --yes supabase stop",
+    "supabase:start": "supabase start",
+    "supabase:reset": "supabase db reset",
+    "supabase:stop": "supabase stop",
     "supabase:storage": "node scripts/apply-storage.mjs",
+    "storage:backup": "node scripts/storage-object-backup.mjs backup",
+    "storage:backup:verify": "node scripts/storage-object-backup.mjs verify",
+    "storage:restore": "node scripts/storage-object-backup.mjs restore",
+    "backup:coordinated": "node scripts/coordinated-backup.mjs backup",
+    "backup:coordinated:verify": "node scripts/coordinated-backup.mjs verify",
+    "backup:coordinated:extract": "node scripts/coordinated-backup.mjs extract",
+    "ops:monitor": "node scripts/operations-monitor.mjs",
     "create-account": "node scripts/create-account.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
     "schema": "node scripts/dump-schema.mjs",
@@ -49,7 +60,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "1.54.1",
+    "@playwright/test": "1.61.1",
+    "@supabase/storage-js": "2.108.2",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",
@@ -58,7 +70,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.2",
+    "@vitejs/plugin-react": "6.0.3",
     "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -66,11 +78,12 @@
     "globals": "^17.7.0",
     "jsdom": "^25.0.1",
     "pg": "^8.21.0",
+    "supabase": "2.109.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.62.1",
-    "vite": "^5.4.8",
-    "vite-plugin-pwa": "^0.20.5",
-    "vitest": "^2.1.0"
+    "vite": "8.1.4",
+    "vite-plugin-pwa": "1.3.0",
+    "vitest": "4.1.10"
   }
 }

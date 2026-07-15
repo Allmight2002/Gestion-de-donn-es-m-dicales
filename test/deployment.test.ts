@@ -258,9 +258,9 @@ describe('configuration de deploiement', () => {
   test('la release coordonnee verrouille la cible avant toute ecriture staging', () => {
     const workflow = read('.github/workflows/coordinated-release.yml');
     const targetGate = workflow.indexOf('npm run release:env -- --target=staging');
-    const databaseWrite = workflow.indexOf('supabase@$SUPABASE_CLI_VERSION" db push');
+    const databaseWrite = workflow.indexOf('npm exec -- supabase db push');
     const storageWrite = workflow.indexOf('npm run supabase:storage');
-    const edgeWrite = workflow.indexOf('supabase@$SUPABASE_CLI_VERSION" secrets set');
+    const edgeWrite = workflow.indexOf('npm exec -- supabase secrets set');
 
     expect(targetGate).toBeGreaterThan(-1);
     expect(databaseWrite).toBeGreaterThan(targetGate);
@@ -270,7 +270,10 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('"CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL"');
     expect(workflow).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
     expect(workflow).toContain('--project-ref "$SUPABASE_PROJECT_REF"');
-    expect(workflow).toContain('functions deploy "$fn" --import-map deno.json');
+    expect(workflow).toContain('npm exec -- supabase functions deploy "$fn" --import-map deno.json');
+    expect(workflow).toContain('backend-drift-${{ github.run_id }}');
+    expect(workflow).toContain('EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json"');
+    expect(workflow).toContain('production-backend-drift-${{ github.run_id }}');
     expect(workflow).toContain('Bootstrap scoped Vercel browser cookie');
     expect(workflow).toContain('scripts/vercel-cookie-state.mjs');
     expect(workflow).toContain('E2E_VERCEL_STORAGE_STATE');
@@ -287,5 +290,26 @@ describe('configuration de deploiement', () => {
     expect(frontendDeploy).toBeGreaterThan(edgeDeploy);
     expect(strictActivation).toBeGreaterThan(frontendDeploy);
     expect(cloudGate).toBeGreaterThan(strictActivation);
+  });
+
+  test('la preuve de release compare les empreintes Storage et Edge distantes', () => {
+    const stateMigration = read(
+      'supabase/migrations/20260714215335_record_release_component_state.sql',
+    );
+    const applyStorage = read('scripts/apply-storage.mjs');
+    const drift = read('scripts/release-drift.mjs');
+
+    expect(stateMigration).toContain('create table public.release_component_state');
+    expect(stateMigration).toContain('release_component_state_no_client_access');
+    expect(stateMigration).toContain('revoke all on table public.release_component_state');
+    expect(applyStorage).toContain("values ('storage.sql', $1, now(), current_user)");
+    expect(applyStorage).toContain('state.rows[0]?.sha256 !== SHA256');
+    expect(drift).toContain("where component = 'storage.sql'");
+    expect(drift).toContain('component.rows[0].sha256 !== storageSha');
+    expect(drift).toContain('ezbr_sha256');
+    expect(drift).toContain('EXPECTED_EDGE_INVENTORY_FILE');
+    expect(drift).toContain('expected.ezbrSha256 !== entry.ezbrSha256');
+    expect(drift).toContain("DO_NOT_TRACK: '1'");
+    expect(drift).not.toContain('npx --yes');
   });
 });

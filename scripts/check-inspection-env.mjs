@@ -33,8 +33,8 @@ if (edgeStrict) {
 
   if (!value('CLAMAV_SCAN_URL')) fail('CLAMAV_SCAN_URL est requis quand REQUIRE_SERVER_INSPECTION=true.');
   const token = value('CLAMAV_SCAN_TOKEN').trim().toLowerCase();
-  if (!token || token === 'change-me' || token === 'changeme') {
-    fail('CLAMAV_SCAN_TOKEN doit etre un secret non vide et non par defaut.');
+  if (token.length < 32 || token === 'change-me' || token === 'changeme') {
+    fail('CLAMAV_SCAN_TOKEN doit etre non standard et contenir au moins 32 caracteres.');
   }
 
   const maxInspect = Number(value('MAX_INSPECT_UPLOAD_BYTES') || 20 * 1024 * 1024);

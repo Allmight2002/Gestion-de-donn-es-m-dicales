@@ -22,6 +22,7 @@ services:
       CLAMD_PORT: "3310"
       CLAMD_TIMEOUT_MS: "30000"
       MAX_SCAN_BYTES: "26214400"
+      MAX_CONCURRENT_SCANS: "4"
       SCAN_TOKEN: ${CLAMAV_SCAN_TOKEN:?CLAMAV_SCAN_TOKEN requis}
     depends_on:
       clamav:

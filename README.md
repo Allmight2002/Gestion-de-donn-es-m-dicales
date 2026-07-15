@@ -143,7 +143,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   ├── configurer-supabase.md            # Créer un projet Supabase (cloud)
 │   └── tester-en-local.md                # Lancer le projet en local
 ├── .env.example                          # Variables (service_role = côté serveur uniquement)
-├── vite.config.ts · vitest.workspace.ts  # build PWA + projets de test (db / web)
+├── vite.config.ts · vitest.config.ts     # build PWA + projets de test (db / web)
 ├── package.json · tsconfig.json
 └── README.md
 ```

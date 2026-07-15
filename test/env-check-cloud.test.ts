@@ -26,7 +26,7 @@ function strictEnv(dbUrl: string): NodeJS.ProcessEnv {
     VITE_USE_SIGNED_READ: 'true',
     DB_REQUIRE_SERVER_INSPECTION: 'true',
     CLAMAV_SCAN_URL: 'http://127.0.0.1:8088/scan',
-    CLAMAV_SCAN_TOKEN: 'jeton-de-test-non-defaut',
+    CLAMAV_SCAN_TOKEN: 'jeton-de-test-non-defaut-32-caracteres',
     QUARANTINE_BUCKET: 'quarantined-uploads',
     SUPABASE_DB_URL: dbUrl,
   };

@@ -1,6 +1,6 @@
 export type ScanVerdict =
-  | { status: 'clean'; raw: string }
-  | { status: 'infected'; signature: string; raw: string }
-  | { status: 'error'; raw: string };
+  | { status: 'clean' }
+  | { status: 'infected'; signature: string }
+  | { status: 'error' };
 
 export function parseScan(raw: string): ScanVerdict;

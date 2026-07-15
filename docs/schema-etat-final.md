@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260714040500_offline_replay_lock_order.sql`
-- Tables : 35 · Policies RLS : 58 · Triggers : 54 · Fonctions : 208
+- Dernière migration incluse : `20260714215335_record_release_component_state.sql`
+- Tables : 36 · Policies RLS : 59 · Triggers : 54 · Fonctions : 208
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -616,6 +616,18 @@ Policies :
 
 Triggers :
 - `trg_xbase_submission` — BEFORE INSERT/UPDATE → `guard_xbase_submission()`
+
+### release_component_state · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| component | text | non |  |
+| sha256 | text | non |  |
+| applied_at | timestamp with time zone | non | `now()` |
+| applied_by | name | non | `CURRENT_USER` |
+
+Policies :
+- `release_component_state_no_client_access` (ALL) — USING false · WITH CHECK false
 
 ### research_group · RLS activée
 

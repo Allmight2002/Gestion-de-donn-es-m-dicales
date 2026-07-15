@@ -179,8 +179,8 @@ Authorization: Bearer <CLAMAV_SCAN_TOKEN>
 Content-Type: application/octet-stream
 ```
 
-`CLAMAV_SCAN_TOKEN` est obligatoire : le service refuse de demarrer avec un secret vide ou un
-secret de demonstration (`change-me` / `changeme`). La limite scanner locale par defaut est
+`CLAMAV_SCAN_TOKEN` est obligatoire : le service refuse de demarrer avec un secret de moins de
+32 caracteres, vide ou de demonstration (`change-me` / `changeme`). La limite scanner locale par defaut est
 `MAX_SCAN_BYTES=26214400`; l'Edge doit rester inferieure ou egale a cette valeur.
 
 Reponses attendues :
@@ -201,7 +201,7 @@ Pour un test de bout en bout, le scanner peut tourner localement avec Docker et 
 joignable par Supabase au moyen d'un tunnel Cloudflare temporaire :
 
 ```powershell
-$env:CLAMAV_SCAN_TOKEN = 'un-secret-aleatoire-long'
+$env:CLAMAV_SCAN_TOKEN = 'un-secret-aleatoire-de-32-caracteres-minimum'
 docker compose -f docker-compose.clamav.yml up -d --build
 cloudflared tunnel --url http://127.0.0.1:8088
 ```

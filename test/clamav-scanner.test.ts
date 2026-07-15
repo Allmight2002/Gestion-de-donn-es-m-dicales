@@ -17,5 +17,6 @@ describe('parseScan ClamAV bridge', () => {
     expect(parseScan('stream: OK')).toMatchObject({ status: 'clean' });
     expect(parseScan('stream: Something OK-ish')).toMatchObject({ status: 'error' });
     expect(parseScan('stream: Something ERROR')).toMatchObject({ status: 'error' });
+    expect(parseScan('stream: internal detail ERROR')).not.toHaveProperty('raw');
   });
 });

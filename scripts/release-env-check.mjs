@@ -34,7 +34,7 @@ if (target !== 'pr') {
   if (!/^[a-z0-9]{20}$/i.test(process.env.SUPABASE_PROJECT_REF ?? '')) fail('SUPABASE_PROJECT_REF doit etre une reference Supabase de 20 caracteres.');
   if (!/^postgres(ql)?:\/\//i.test(process.env.SUPABASE_DB_URL ?? '')) fail('SUPABASE_DB_URL doit etre une URL Postgres.');
   try { const url = new URL(process.env.CLAMAV_SCAN_URL); if (!['http:', 'https:'].includes(url.protocol)) throw new Error(); } catch { fail('CLAMAV_SCAN_URL doit etre une URL HTTP(S).'); }
-  if ((process.env.CLAMAV_SCAN_TOKEN ?? '').length < 12) fail('CLAMAV_SCAN_TOKEN est absent ou trop court.');
+  if ((process.env.CLAMAV_SCAN_TOKEN ?? '').length < 32) fail('CLAMAV_SCAN_TOKEN doit contenir au moins 32 caracteres.');
   bool('REQUIRE_SERVER_INSPECTION', true); bool('DB_REQUIRE_SERVER_INSPECTION', true);
   if (process.env.VITE_REQUIRE_SERVER_INSPECTION !== 'true') fail('VITE_REQUIRE_SERVER_INSPECTION=true est requis pour une release clinique.');
   for (const error of validateSupabaseTarget({ target })) fail(error);

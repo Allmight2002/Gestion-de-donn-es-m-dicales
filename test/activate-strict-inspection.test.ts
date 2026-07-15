@@ -20,20 +20,20 @@ describe('activation stricte de staging', () => {
 
     await verifyStrictScanner({
       scanUrl: 'https://scanner.staging.example/scan',
-      token: 'staging-secret-token',
+      token: 'staging-secret-token-at-least-32-characters',
       fetchImpl,
     });
 
     expect(calls).toHaveLength(3);
     expect(calls[0].url).toBe('https://scanner.staging.example/health');
-    expect(calls[1].init?.headers).toMatchObject({ authorization: 'Bearer staging-secret-token' });
+    expect(calls[1].init?.headers).toMatchObject({ authorization: 'Bearer staging-secret-token-at-least-32-characters' });
     expect(Buffer.from(calls[2].init?.body as Uint8Array).toString('utf8')).toContain('EICAR');
   });
 
   test('refuse un transport scanner non chiffre', async () => {
     await expect(verifyStrictScanner({
       scanUrl: 'http://scanner.staging.example/scan',
-      token: 'staging-secret-token',
+      token: 'staging-secret-token-at-least-32-characters',
       fetchImpl: vi.fn(),
     })).rejects.toThrow('URL HTTPS');
   });
