@@ -76,6 +76,109 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Surface RPC : aucun EXECUTE anonyme implicite et helpers privilegies internes
+// inaccessibles aux sessions authentifiees.
+// ---------------------------------------------------------------------------
+describe('surface des fonctions PostgreSQL', () => {
+  test('anon ne peut executer aucune fonction du schema public', async () => {
+    const exposed = await db.admin.query(
+      `select p.oid::regprocedure::text as signature
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.prokind = 'f'
+          and has_function_privilege('anon', p.oid, 'execute')
+        order by 1`,
+    );
+
+    expect(exposed.rows).toEqual([]);
+  });
+
+  test('les RPC requises restent executables par authenticated', async () => {
+    const required = await db.admin.query(
+      `select signature,
+              has_function_privilege('authenticated', signature, 'execute') as allowed
+         from unnest(array[
+           'public.accept_invitation(text)',
+           'public.get_patient_identity(uuid)',
+           'public.has_base_access(uuid)',
+           'public.create_upload_operation(uuid,text,text,uuid,text,bigint,text,integer)'
+         ]::text[]) signature`,
+    );
+
+    expect(required.rows).toEqual([
+      { signature: 'public.accept_invitation(text)', allowed: true },
+      { signature: 'public.get_patient_identity(uuid)', allowed: true },
+      { signature: 'public.has_base_access(uuid)', allowed: true },
+      {
+        signature: 'public.create_upload_operation(uuid,text,text,uuid,text,bigint,text,integer)',
+        allowed: true,
+      },
+    ]);
+  });
+
+  test('les helpers SECURITY DEFINER internes ne sont pas des RPC authenticated', async () => {
+    const internal = await db.admin.query(
+      `select p.proname,
+              has_function_privilege('authenticated', p.oid, 'execute') as allowed
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.proname in (
+            'activity_public_metadata',
+            'complete_file_inspection',
+            'guard_storage_path_scope',
+            'log_audit',
+            'upload_ticket_authorized'
+          )
+        order by p.proname`,
+    );
+
+    expect(internal.rows).toEqual([
+      { proname: 'activity_public_metadata', allowed: false },
+      { proname: 'complete_file_inspection', allowed: false },
+      { proname: 'guard_storage_path_scope', allowed: false },
+      { proname: 'log_audit', allowed: false },
+      { proname: 'upload_ticket_authorized', allowed: false },
+    ]);
+  });
+
+  test('les futures fonctions sont privees par defaut', async () => {
+    await db.admin.query(
+      `create function public.__acl_default_probe()
+       returns boolean language sql immutable as 'select true'`,
+    );
+    try {
+      const privileges = await db.admin.query(
+        `select
+           has_function_privilege('anon', 'public.__acl_default_probe()', 'execute') as anon,
+           has_function_privilege('authenticated', 'public.__acl_default_probe()', 'execute') as authenticated`,
+      );
+      expect(privileges.rows[0]).toEqual({ anon: false, authenticated: false });
+    } finally {
+      await db.admin.query('drop function public.__acl_default_probe()');
+    }
+  });
+
+  test('l etat de release serveur est invisible aux roles Data API', async () => {
+    const privileges = await db.admin.query(
+      `select
+         has_table_privilege('anon', 'public.release_component_state', 'select') as anon,
+         has_table_privilege('authenticated', 'public.release_component_state', 'select') as authenticated,
+         exists(
+           select 1
+             from pg_policies
+            where schemaname = 'public'
+              and tablename = 'release_component_state'
+              and policyname = 'release_component_state_no_client_access'
+         ) as deny_policy`,
+    );
+
+    expect(privileges.rows[0]).toEqual({ anon: false, authenticated: false, deny_policy: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // §16.1 — Un staff ne lit NI les identites NI les donnees analytiques d'une base.
 // ---------------------------------------------------------------------------
 describe('§16.1 staff cloisonne (aucune donnee patient)', () => {
