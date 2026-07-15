@@ -191,7 +191,9 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
 (même pseudonymisées), il faut **en plus** :
 
 - **Cadre juridique/éthique** 🚩 : base légale, consentement, approbation éthique, **résidence
-  des données** (région d'hébergement Supabase), accord de traitement (DPA).
+  des données** (région d'hébergement Supabase), accord de traitement (DPA). Le dossier
+  complet (textes applicables, registre des traitements, AIPD, notice/consentement,
+  procédures, dossier éthique, checklist GO/NO-GO) est dans **[docs/juridique/](juridique/README.md)**.
 - **Durcissement serveur** : deploiement et verification des Edge Functions (`signed-read`,
   `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
   l'inspection stricte et controle `env:check:cloud`. Voir **[docs/edge-functions.md](edge-functions.md)**.
