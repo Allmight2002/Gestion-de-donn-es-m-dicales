@@ -1,0 +1,51 @@
+name: Operations monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operations-monitor-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [staging, production]
+    environment: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MONITOR_TARGET: ${{ matrix.target }}
+      MONITOR_APP_URL: ${{ vars.APP_URL }}
+      MONITOR_REQUIRE_STRICT_INSPECTION: 'true'
+      MONITOR_OUTPUT: monitor-evidence-${{ matrix.target }}.json
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
+      CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Probe application, Supabase and strict antivirus
+        run: node scripts/operations-monitor.mjs
+
+      - name: Preserve redacted monitoring evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operations-monitor-${{ matrix.target }}-${{ github.run_id }}
+          path: monitor-evidence-${{ matrix.target }}.json
+          if-no-files-found: warn
+          retention-days: 30
