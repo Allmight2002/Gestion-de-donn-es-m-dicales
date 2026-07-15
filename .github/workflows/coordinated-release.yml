@@ -24,6 +24,7 @@ permissions:
 env:
   SUPABASE_CLI_VERSION: '2.109.1'
   VERCEL_CLI_VERSION: '55.0.0'
+  DO_NOT_TRACK: '1'
 
 concurrency:
   group: coordinated-release-${{ inputs.target }}
@@ -107,21 +108,28 @@ jobs:
           npm run release:env -- --target=staging
       - name: Migrations then Storage
         env: *staging_env
-        run: npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
+        run: npm exec -- supabase db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
       - name: Configure strict Edge runtime secrets
         env: *staging_env
         run: |
-          npx --yes "supabase@$SUPABASE_CLI_VERSION" secrets set \
+          npm exec -- supabase secrets set \
             "CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL" \
             "CLAMAV_SCAN_TOKEN=$CLAMAV_SCAN_TOKEN" \
             "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION" \
             --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy all Edge Functions
         env: *staging_env
-        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done
+        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npm exec -- supabase functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done
       - name: Verify backend drift before frontend
         env: *staging_env
-        run: npm run release:drift
+        run: RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/backend-drift.json" npm run release:drift
+      - name: Preserve immutable backend evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-drift-${{ github.run_id }}
+          path: ${{ runner.temp }}/backend-drift.json
+          if-no-files-found: error
+          retention-days: 30
 
   frontend-staging:
     if: inputs.target == 'staging' && github.ref_name != 'codex/lot13-complete-validation'
@@ -352,8 +360,8 @@ jobs:
           mkdir -p "$LOT13_EVIDENCE_DIR" "$(dirname "$LOT13_STATE_FILE")"
           npm run release:env -- --target=staging
           npm run release:drift > "$LOT13_EVIDENCE_DIR/drift.txt"
-          npx --yes "supabase@$SUPABASE_CLI_VERSION" migration list --db-url "$SUPABASE_DB_URL" > "$LOT13_EVIDENCE_DIR/migrations.txt"
-          npx --yes "supabase@$SUPABASE_CLI_VERSION" functions list --project-ref "$SUPABASE_PROJECT_REF" --output json > "$LOT13_EVIDENCE_DIR/functions.json"
+          npm exec -- supabase migration list --db-url "$SUPABASE_DB_URL" > "$LOT13_EVIDENCE_DIR/migrations.txt"
+          npm exec -- supabase functions list --project-ref "$SUPABASE_PROJECT_REF" --output json > "$LOT13_EVIDENCE_DIR/functions.json"
           git show -s --format='commit=%H%nbranch=%D%nauthor_date=%aI%nsubject=%s' HEAD > "$LOT13_EVIDENCE_DIR/revision.txt"
       - id: deploy
         name: Deployer le preview LOT 13 isole (offline demo autorise)
@@ -489,11 +497,18 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo,
               run_id: Number(process.env.STAGING_RUN_ID),
             });
-            for (const required of ['backend-staging', 'browser-e2e-staging']) {
-              if (!jobs.jobs.some((job) => job.name === required && job.conclusion === 'success')) {
-                core.setFailed(`Le run indique ne contient pas un job ${required} reussi.`);
-              }
-            }
+             for (const required of ['backend-staging', 'browser-e2e-staging']) {
+               if (!jobs.jobs.some((job) => job.name === required && job.conclusion === 'success')) {
+                 core.setFailed(`Le run indique ne contient pas un job ${required} reussi.`);
+               }
+             }
+      - name: Download immutable staging backend evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-drift-${{ inputs.staging_run_id }}
+          path: ${{ runner.temp }}/staging-backend
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.staging_run_id }}
       - name: Backend promotion before frontend strict switch
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -510,7 +525,25 @@ jobs:
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run release:env -- --target=production && npx --yes "supabase@$SUPABASE_CLI_VERSION" db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage && for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npx --yes "supabase@$SUPABASE_CLI_VERSION" functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done && npm run release:drift
+        run: |
+          npm run release:env -- --target=production
+          npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
+          npm run supabase:storage
+          for dir in supabase/functions/*; do
+            [ -f "$dir/index.ts" ] || continue
+            fn=$(basename "$dir")
+            npm exec -- supabase functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"
+          done
+          EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json" \
+            RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/production-backend-drift.json" \
+            npm run release:drift
+      - name: Preserve production backend evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-backend-drift-${{ github.run_id }}
+          path: ${{ runner.temp }}/production-backend-drift.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Deploy frontend before strict database switch
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -541,4 +574,4 @@ jobs:
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run inspection:activate -- --target=production && npm run env:check:cloud && npm run release:drift
+        run: npm run inspection:activate -- --target=production && npm run env:check:cloud && EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json" npm run release:drift

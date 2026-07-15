@@ -34,7 +34,7 @@ async function jsonResponse(response, label) {
 
 export async function verifyStrictScanner({ scanUrl, token, fetchImpl = fetch }) {
   const normalizedToken = clean(token);
-  if (normalizedToken.length < 12 || ['change-me', 'changeme'].includes(normalizedToken.toLowerCase())) {
+  if (normalizedToken.length < 32 || ['change-me', 'changeme'].includes(normalizedToken.toLowerCase())) {
     throw new SafeActivationError('CLAMAV_SCAN_TOKEN est absent, trop court ou utilise une valeur par defaut.');
   }
 

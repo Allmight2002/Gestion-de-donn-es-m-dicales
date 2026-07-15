@@ -1,27 +1,47 @@
 import http from 'node:http';
 import net from 'node:net';
+import { timingSafeEqual } from 'node:crypto';
 import { parseScan } from './parse-scan.mjs';
 
-const PORT = Number(process.env.PORT ?? '8080');
+function positiveInteger(name, fallback, { minimum = 1, maximum = Number.MAX_SAFE_INTEGER } = {}) {
+  const raw = process.env[name] ?? String(fallback);
+  if (!/^\d+$/.test(raw)) throw new Error(`${name} must be a positive integer`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} is outside the accepted range`);
+  }
+  return value;
+}
+
+const PORT = positiveInteger('PORT', 8080, { maximum: 65_535 });
 const CLAMD_HOST = process.env.CLAMD_HOST ?? '127.0.0.1';
-const CLAMD_PORT = Number(process.env.CLAMD_PORT ?? '3310');
-const CLAMD_TIMEOUT_MS = Number(process.env.CLAMD_TIMEOUT_MS ?? '30000');
-const MAX_SCAN_BYTES = Number(process.env.MAX_SCAN_BYTES ?? String(25 * 1024 * 1024));
+const CLAMD_PORT = positiveInteger('CLAMD_PORT', 3310, { maximum: 65_535 });
+const CLAMD_TIMEOUT_MS = positiveInteger('CLAMD_TIMEOUT_MS', 30_000, { maximum: 120_000 });
+const MAX_SCAN_BYTES = positiveInteger('MAX_SCAN_BYTES', 25 * 1024 * 1024, {
+  maximum: 100 * 1024 * 1024,
+});
+const MAX_CONCURRENT_SCANS = positiveInteger('MAX_CONCURRENT_SCANS', 4, { maximum: 64 });
 const SCAN_TOKEN = process.env.SCAN_TOKEN ?? '';
 const FORBIDDEN_TOKENS = new Set(['', 'change-me', 'changeme']);
 
-if (FORBIDDEN_TOKENS.has(SCAN_TOKEN.trim().toLowerCase())) {
-  console.error('SCAN_TOKEN must be set to a non-default secret');
+if (SCAN_TOKEN.length < 32 || FORBIDDEN_TOKENS.has(SCAN_TOKEN.trim().toLowerCase())) {
+  console.error('SCAN_TOKEN must be a non-default secret of at least 32 characters');
   process.exit(1);
 }
 
 function sendJson(res, status, body) {
-  res.writeHead(status, { 'content-type': 'application/json' });
+  res.writeHead(status, {
+    'cache-control': 'no-store',
+    'content-type': 'application/json',
+    'x-content-type-options': 'nosniff',
+  });
   res.end(JSON.stringify(body));
 }
 
 function isAuthorized(req) {
-  return req.headers.authorization === `Bearer ${SCAN_TOKEN}`;
+  const expected = Buffer.from(`Bearer ${SCAN_TOKEN}`, 'utf8');
+  const actual = Buffer.from(req.headers.authorization ?? '', 'utf8');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function readBody(req) {
@@ -94,15 +114,23 @@ async function scanBuffer(buffer) {
   });
 }
 
+let activeScans = 0;
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
   if (req.method === 'GET' && url.pathname === '/health') {
     try {
       const raw = await pingClamd();
-      sendJson(res, raw.includes('PONG') ? 200 : 503, { status: raw.includes('PONG') ? 'ok' : 'error', raw });
-    } catch (error) {
-      sendJson(res, 503, { status: 'error', error: error instanceof Error ? error.message : 'clamd unavailable' });
+      sendJson(
+        res,
+        raw.includes('PONG') ? 200 : 503,
+        raw.includes('PONG')
+          ? { status: 'ok' }
+          : { status: 'error', code: 'clamd_unhealthy' },
+      );
+    } catch {
+      sendJson(res, 503, { status: 'error', code: 'clamd_unavailable' });
     }
     return;
   }
@@ -115,21 +143,41 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 401, { error: 'unauthorized' });
     return;
   }
+  if (activeScans >= MAX_CONCURRENT_SCANS) {
+    sendJson(res, 429, { status: 'error', code: 'scanner_busy' });
+    return;
+  }
 
+  activeScans += 1;
   try {
     const buffer = await readBody(req);
     const verdict = parseScan(await scanBuffer(buffer));
     if (verdict.status === 'error') {
-      sendJson(res, 502, { status: 'error', raw: verdict.raw });
+      sendJson(res, 502, { status: 'error', code: 'clamd_invalid_response' });
       return;
     }
-    sendJson(res, 200, { ...verdict, engine: 'clamav' });
+    sendJson(
+      res,
+      200,
+      verdict.status === 'infected'
+        ? { status: 'infected', signature: verdict.signature, engine: 'clamav' }
+        : { status: 'clean', engine: 'clamav' },
+    );
   } catch (error) {
     const status = Number(error?.statusCode ?? 503);
-    sendJson(res, status, { status: 'error', error: error instanceof Error ? error.message : 'scan failed' });
+    sendJson(res, status, {
+      status: 'error',
+      code: status === 413 ? 'payload_too_large' : 'scan_unavailable',
+    });
+  } finally {
+    activeScans -= 1;
   }
 });
 
+server.requestTimeout = CLAMD_TIMEOUT_MS + 5_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 50;
 server.listen(PORT, () => {
-  console.log(`clamav-scanner listening on ${PORT}, clamd=${CLAMD_HOST}:${CLAMD_PORT}`);
+  console.log(`clamav-scanner listening on ${PORT}`);
 });

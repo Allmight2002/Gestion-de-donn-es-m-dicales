@@ -20,7 +20,7 @@ const lastMigration = migrations[migrations.length - 1];
 // dans le workflow et scripts/verify-edge-functions.mjs, pour que le manifeste liste les 5 vraies fonctions.
 const edgeFunctions = readdirSync(join(ROOT, 'supabase', 'functions'), { withFileTypes: true })
   .filter((d) => d.isDirectory() && !d.name.startsWith('_')).map((d) => d.name).sort();
-const storageSha = createHash('sha256').update(readFileSync(join(ROOT, 'supabase', 'storage.sql'))).digest('hex').slice(0, 12);
+const storageSha = createHash('sha256').update(readFileSync(join(ROOT, 'supabase', 'storage.sql'))).digest('hex');
 
 // Le snapshot docs/schema-etat-final.md embarque le nom de la derniere migration incluse :
 // s'il differe, le document est EN RETARD -> relancer `npm run schema`.
@@ -53,16 +53,16 @@ const manifest = {
     lastMigration,
     migrations,
     checkOnCloud: "select count(*) as appliquees, max(version) as derniere from supabase_migrations.schema_migrations;",
-    applyCommand: 'npx supabase db push',
+    applyCommand: 'npm exec -- supabase db push',
   },
   storage: {
     file: 'supabase/storage.sql',
-    sha256_12: storageSha,
-    note: 'A re-executer dans le SQL Editor du cloud a chaque modification (les buckets ne sont pas migres par db push).',
+    sha256: storageSha,
+    note: 'Applique par npm run supabase:storage; empreinte distante conservee dans public.release_component_state.',
   },
   edgeFunctions: {
     expected: edgeFunctions,
-    deployCommand: edgeFunctions.map((f) => `npx supabase functions deploy ${f} --import-map deno.json`).join(' && '),
+    deployCommand: edgeFunctions.map((f) => `npm exec -- supabase functions deploy ${f} --import-map deno.json`).join(' && '),
     inspectionPolicyCheckCommand: 'npm run env:check',
     requiredSecrets: [
       'SUPABASE_URL',
@@ -95,7 +95,7 @@ console.log('');
 console.log('  Base de données : ' + manifest.database.migrationCount + ' migrations, dernière = ' + lastMigration);
 console.log('    → appliquer   : ' + manifest.database.applyCommand);
 console.log('    → vérifier    : ' + manifest.database.checkOnCloud);
-console.log('  Storage         : storage.sql sha256[' + storageSha + '] (ré-exécuter dans le SQL Editor si modifié)');
+console.log('  Storage         : storage.sql sha256[' + storageSha.slice(0, 12) + '] (empreinte distante obligatoire)');
 console.log('  Fonctions Edge  : ' + edgeFunctions.join(', '));
 console.log('    → déployer    : ' + manifest.edgeFunctions.deployCommand);
 console.log('    → verifier env: ' + manifest.edgeFunctions.inspectionPolicyCheckCommand);
