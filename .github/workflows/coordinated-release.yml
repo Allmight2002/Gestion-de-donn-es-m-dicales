@@ -36,16 +36,16 @@ jobs:
     outputs:
       sha: ${{ steps.ref.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
       - id: ref
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
           deno-version: '2.9.2'
       - run: npm ci
@@ -61,7 +61,7 @@ jobs:
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
           RELEASE_TARGET: ${{ inputs.target }}
         run: npm run release:env -- --target=pr && npm run build && npm run manifest
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ github.run_id }}
           path: deploy-manifest.json
@@ -73,10 +73,10 @@ jobs:
     environment: staging
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -124,7 +124,7 @@ jobs:
         env: *staging_env
         run: RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/backend-drift.json" npm run release:drift
       - name: Preserve immutable backend evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: backend-drift-${{ github.run_id }}
           path: ${{ runner.temp }}/backend-drift.json
@@ -139,10 +139,10 @@ jobs:
     outputs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -204,10 +204,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -285,7 +285,7 @@ jobs:
           rm -f "$RUNNER_TEMP/vercel-control/.vercel/project.json"
       - name: Browser failure artefacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: browser-e2e-${{ github.run_id }}
           path: |
@@ -339,10 +339,10 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_GIT_COMMIT_SHA: ${{ needs.validate.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -451,7 +451,7 @@ jobs:
           rm -f "$RUNNER_TEMP/vercel-control/.vercel/project.json"
       - name: Conserver les preuves sans secrets
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lot13-complete-${{ github.run_id }}
           path: |
@@ -467,16 +467,16 @@ jobs:
     environment: production # configure required reviewers and restrict this environment in GitHub.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - name: Verify successful staging evidence for this SHA
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           STAGING_RUN_ID: ${{ inputs.staging_run_id }}
           RELEASE_SHA: ${{ needs.validate.outputs.sha }}
@@ -503,7 +503,7 @@ jobs:
                }
              }
       - name: Download immutable staging backend evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: backend-drift-${{ inputs.staging_run_id }}
           path: ${{ runner.temp }}/staging-backend
@@ -538,7 +538,7 @@ jobs:
             RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/production-backend-drift.json" \
             npm run release:drift
       - name: Preserve production backend evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: production-backend-drift-${{ github.run_id }}
           path: ${{ runner.temp }}/production-backend-drift.json

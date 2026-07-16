@@ -17,6 +17,25 @@ const readFn = (name: string): string => {
 };
 
 describe('configuration de deploiement', () => {
+  test('les actions CI tierces sont epinglees a une empreinte immuable', () => {
+    const workflows = readdirSync('.github/workflows')
+      .filter((file) => /\.ya?ml$/.test(file))
+      .map((file) => `.github/workflows/${file}`);
+
+    for (const workflow of workflows) {
+      for (const match of read(workflow).matchAll(/^\s*uses:\s*([^\s#]+)/gm)) {
+        const reference = match[1];
+        if (reference.startsWith('./')) continue;
+
+        if (reference.startsWith('docker://')) {
+          expect(reference, workflow).toMatch(/^docker:\/\/[^\s@]+@sha256:[a-f0-9]{64}$/);
+        } else {
+          expect(reference, workflow).toMatch(/^[^\s@]+@[a-f0-9]{40}$/);
+        }
+      }
+    }
+  });
+
   test('les exports conserves passent par signed-read, pas par une policy Storage SELECT directe', () => {
     const storage = read('supabase/storage.sql');
     const edge = readFn('signed-read');
