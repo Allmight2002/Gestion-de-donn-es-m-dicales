@@ -295,6 +295,7 @@ describe('configuration de deploiement', () => {
     expect(workflow.slice(backendStart, databaseWrite)).toContain(
       'STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}',
     );
+    expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(databaseWrite).toBeGreaterThan(targetGate);
     expect(storageWrite).toBeGreaterThan(targetGate);
     expect(edgeWrite).toBeGreaterThan(targetGate);
@@ -345,6 +346,7 @@ describe('configuration de deploiement', () => {
     expect(storageWrite).toBeGreaterThan(preservedBackup);
     expect(edgeWrite).toBeGreaterThan(preservedBackup);
     expect(production).toContain('STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}');
+    expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });
 

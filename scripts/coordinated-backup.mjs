@@ -27,6 +27,36 @@ import {
 const FORMAT = 'meddata-coordinated-backup/v1';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const supabaseEntrypoint = join(root, 'node_modules', 'supabase', 'dist', 'supabase.js');
+const DUMP_STAGES = new Set(['roles', 'schema', 'data', 'public-data']);
+const DUMP_ENV_NAMES = new Set([
+  'ALL_PROXY',
+  'APPDATA',
+  'CI',
+  'COMSPEC',
+  'DOCKER_CERT_PATH',
+  'DOCKER_CONTEXT',
+  'DOCKER_HOST',
+  'DOCKER_TLS_VERIFY',
+  'HOME',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'LOCALAPPDATA',
+  'NO_PROXY',
+  'PATH',
+  'PATHEXT',
+  'SYSTEMDRIVE',
+  'SYSTEMROOT',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'USERPROFILE',
+  'WINDIR',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_RUNTIME_DIR',
+]);
 
 const clean = (value) => value?.trim() ?? '';
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
@@ -76,12 +106,57 @@ function validatedSource() {
   if (clean(process.env.SUPABASE_SERVICE_ROLE_KEY).length < 20) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY est absente ou manifestement invalide.');
   }
+  if (process.env.BACKUP_REQUIRE_SESSION_POOLER === 'true'
+      && !isSessionPoolerDatabaseUrl(process.env.SUPABASE_DB_URL)) {
+    throw new Error('La sauvegarde CI exige le Session pooler Supabase sur le port 5432.');
+  }
   return { target, projectRef };
 }
 
-function runSupabaseDump(databaseUrl, file, extraArguments) {
+export function isSessionPoolerDatabaseUrl(value) {
   try {
-    execFileSync(
+    const url = new URL(clean(value));
+    return ['postgres:', 'postgresql:'].includes(url.protocol)
+      && url.hostname.endsWith('.pooler.supabase.com')
+      && url.port === '5432';
+  } catch {
+    return false;
+  }
+}
+
+export function dumpSubprocessEnvironment(source = process.env) {
+  const environment = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (value !== undefined && DUMP_ENV_NAMES.has(name.toUpperCase())) environment[name] = value;
+  }
+  environment.DO_NOT_TRACK = '1';
+  return environment;
+}
+
+export function classifyDumpFailure(error) {
+  const diagnostic = [error?.code, error?.message, error?.stderr, error?.stdout]
+    .filter(Boolean)
+    .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : String(value))
+    .join('\n');
+  if (/ETIMEDOUT|timed?\s*out|deadline exceeded/i.test(diagnostic)) return 'timeout';
+  if (/no space left|ENOSPC|disk quota/i.test(diagnostic)) return 'disk';
+  if (/password authentication failed|authentication failed|SASL/i.test(diagnostic)) return 'authentication';
+  if (/permission denied|must be superuser|not permitted|insufficient privilege/i.test(diagnostic)) return 'permission';
+  if (/cannot connect to the Docker daemon|docker daemon|docker\.sock|pull access denied|manifest unknown/i.test(diagnostic)) return 'docker';
+  if (/could not translate host|name or service not known|no such host|network is unreachable|connection refused|failed to connect|server closed the connection/i.test(diagnostic)) return 'connectivity';
+  return 'cli-exit';
+}
+
+export function runSupabaseDump(
+  databaseUrl,
+  file,
+  extraArguments,
+  stage,
+  { execute = execFileSync, sourceEnv = process.env } = {},
+) {
+  const safeStage = DUMP_STAGES.has(stage) ? stage : 'unknown';
+  try {
+    execute(
       process.execPath,
       [
         supabaseEntrypoint,
@@ -95,14 +170,43 @@ function runSupabaseDump(databaseUrl, file, extraArguments) {
       ],
       {
         cwd: root,
-        env: { ...process.env, DO_NOT_TRACK: '1' },
-        stdio: 'ignore',
+        env: dumpSubprocessEnvironment(sourceEnv),
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 10 * 60 * 1000,
         windowsHide: true,
       },
     );
-  } catch {
-    throw new Error('Un export PostgreSQL a echoue; detail masque.');
+  } catch (error) {
+    throw new Error(
+      `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}); detail masque.`,
+      { cause: error },
+    );
+  }
+}
+
+export async function writeAtomicBackupDirectory(
+  destination,
+  build,
+  { suffix = randomUUID() } = {},
+) {
+  await ensureAbsent(destination);
+  const partial = `${destination}.partial-${suffix}`;
+  await ensureAbsent(partial);
+  await mkdir(partial, { recursive: true, mode: 0o700 });
+  try {
+    const result = await build(partial);
+    await rename(partial, destination);
+    return result;
+  } catch (error) {
+    try {
+      await rm(partial, { recursive: true, force: true });
+    } catch {
+      throw new Error('Le nettoyage du repertoire de sauvegarde partiel a echoue; intervention requise.', {
+        cause: error,
+      });
+    }
+    throw error;
   }
 }
 
@@ -129,73 +233,70 @@ async function backup() {
   const { target, projectRef } = validatedSource();
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_SET_DIR);
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
-  await ensureAbsent(destination);
-  const partial = `${destination}.partial-${randomUUID()}`;
-  await ensureAbsent(partial);
-  await mkdir(partial, { recursive: true, mode: 0o700 });
-  const startedAt = new Date().toISOString();
+  const databaseFileCount = await writeAtomicBackupDirectory(destination, async (partial) => {
+    const startedAt = new Date().toISOString();
+    const definitions = [
+      ['roles.sql', ['--role-only'], 'roles'],
+      ['schema.sql', [], 'schema'],
+      ['data.sql', ['--data-only', '--use-copy'], 'data'],
+      ['public-data.sql', ['--data-only', '--use-copy', '--schema', 'public'], 'public-data'],
+    ];
+    const databaseFiles = [];
+    for (const [name, arguments_, stage] of definitions) {
+      const plaintextPath = join(partial, name);
+      runSupabaseDump(process.env.SUPABASE_DB_URL, plaintextPath, arguments_, stage);
+      databaseFiles.push(await encryptGeneratedFile(plaintextPath, key));
+      console.log(`Export PostgreSQL ${databaseFiles.length}/${definitions.length}: OK (contenu masque).`);
+    }
 
-  const definitions = [
-    ['roles.sql', ['--role-only']],
-    ['schema.sql', []],
-    ['data.sql', ['--data-only', '--use-copy']],
-    ['public-data.sql', ['--data-only', '--use-copy', '--schema', 'public']],
-  ];
-  const databaseFiles = [];
-  for (const [name, arguments_] of definitions) {
-    const plaintextPath = join(partial, name);
-    runSupabaseDump(process.env.SUPABASE_DB_URL, plaintextPath, arguments_);
-    databaseFiles.push(await encryptGeneratedFile(plaintextPath, key));
-    console.log(`Export PostgreSQL ${databaseFiles.length}/${definitions.length}: OK (contenu masque).`);
-  }
+    const storageDirectory = join(partial, 'storage-objects');
+    try {
+      execFileSync(
+        process.execPath,
+        [join(root, 'scripts', 'storage-object-backup.mjs'), 'backup', `--output=${storageDirectory}`],
+        {
+          cwd: root,
+          env: process.env,
+          stdio: 'inherit',
+          timeout: 30 * 60 * 1000,
+          windowsHide: true,
+        },
+      );
+    } catch {
+      throw new Error('La sauvegarde des octets Storage a echoue; detail sensible masque.');
+    }
+    const storageHeaderBytes = await readFile(join(storageDirectory, 'backup.json'));
+    const storageHeader = JSON.parse(storageHeaderBytes.toString('utf8'));
 
-  const storageDirectory = join(partial, 'storage-objects');
-  try {
-    execFileSync(
-      process.execPath,
-      [join(root, 'scripts', 'storage-object-backup.mjs'), 'backup', `--output=${storageDirectory}`],
-      {
+    const unsignedManifest = {
+      format: FORMAT,
+      target,
+      projectRef,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      gitSha: execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: root,
-        env: process.env,
-        stdio: 'inherit',
-        timeout: 30 * 60 * 1000,
+        encoding: 'utf8',
         windowsHide: true,
+      }).trim(),
+      supabaseCliVersion: JSON.parse(
+        await readFile(join(root, 'node_modules', 'supabase', 'package.json'), 'utf8'),
+      ).version,
+      databaseFiles,
+      storage: {
+        directory: 'storage-objects',
+        headerSha256: sha256(storageHeaderBytes),
+        encryptedManifestSha256: storageHeader.encryptedManifestSha256,
       },
-    );
-  } catch {
-    throw new Error('La sauvegarde des octets Storage a echoue; detail sensible masque.');
-  }
-  const storageHeaderBytes = await readFile(join(storageDirectory, 'backup.json'));
-  const storageHeader = JSON.parse(storageHeaderBytes.toString('utf8'));
-
-  const unsignedManifest = {
-    format: FORMAT,
-    target,
-    projectRef,
-    startedAt,
-    completedAt: new Date().toISOString(),
-    gitSha: execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: root,
-      encoding: 'utf8',
-      windowsHide: true,
-    }).trim(),
-    supabaseCliVersion: JSON.parse(
-      await readFile(join(root, 'node_modules', 'supabase', 'package.json'), 'utf8'),
-    ).version,
-    databaseFiles,
-    storage: {
-      directory: 'storage-objects',
-      headerSha256: sha256(storageHeaderBytes),
-      encryptedManifestSha256: storageHeader.encryptedManifestSha256,
-    },
-  };
-  const manifest = { ...unsignedManifest, hmacSha256: manifestHmac(unsignedManifest, key) };
-  await writeFile(join(partial, 'backup-set.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
-    flag: 'wx',
-    mode: 0o600,
+    };
+    const manifest = { ...unsignedManifest, hmacSha256: manifestHmac(unsignedManifest, key) };
+    await writeFile(join(partial, 'backup-set.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    return databaseFiles.length;
   });
-  await rename(partial, destination);
-  console.log(`Sauvegarde coordonnee ${target}: OK (${databaseFiles.length} exports DB + Storage chiffre).`);
+  console.log(`Sauvegarde coordonnee ${target}: OK (${databaseFileCount} exports DB + Storage chiffre).`);
 }
 
 async function readAuthenticatedManifest(backupRoot, key) {
