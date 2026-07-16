@@ -78,6 +78,31 @@ describe('sauvegarde coordonnee sure', () => {
     expect(message).not.toContain('server-secret');
   });
 
+  test('passe explicitement le reseau host au CLI sans le transmettre comme secret', () => {
+    let arguments_: string[] = [];
+    const execute = (_command: string, receivedArguments: string[]) => {
+      arguments_ = receivedArguments;
+      return '';
+    };
+
+    runSupabaseDump('postgresql://fictitious', '/tmp/roles.sql', ['--role-only'], 'roles', {
+      execute,
+      sourceEnv: { PATH: '/usr/bin', BACKUP_DOCKER_NETWORK: 'host' },
+    });
+
+    expect(arguments_.slice(1, 4)).toEqual(['--network-id', 'host', 'db']);
+    expect(arguments_).not.toContain('BACKUP_DOCKER_NETWORK');
+  });
+
+  test('refuse tout reseau Docker arbitraire avant d executer le CLI', () => {
+    let executed = false;
+    expect(() => runSupabaseDump('postgresql://fictitious', '/tmp/roles.sql', [], 'roles', {
+      execute: () => { executed = true; },
+      sourceEnv: { BACKUP_DOCKER_NETWORK: 'untrusted-network' },
+    })).toThrow('strictement egal a host');
+    expect(executed).toBe(false);
+  });
+
   test('identifie les categories utiles sans reprendre le diagnostic brut', () => {
     expect(classifyDumpFailure({ code: 'ETIMEDOUT' })).toBe('timeout');
     expect(classifyDumpFailure({ stderr: 'Cannot connect to the Docker daemon' })).toBe('docker');

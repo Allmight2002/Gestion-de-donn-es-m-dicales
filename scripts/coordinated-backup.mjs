@@ -270,11 +270,16 @@ export function runSupabaseDump(
   { execute = execFileSync, sourceEnv = process.env } = {},
 ) {
   const safeStage = DUMP_STAGES.has(stage) ? stage : 'unknown';
+  const dockerNetwork = clean(sourceEnv.BACKUP_DOCKER_NETWORK);
+  if (dockerNetwork && dockerNetwork !== 'host') {
+    throw new Error('Le reseau Docker de dump doit etre vide ou strictement egal a host.');
+  }
   try {
     execute(
       process.execPath,
       [
         supabaseEntrypoint,
+        ...(dockerNetwork ? ['--network-id', dockerNetwork] : []),
         'db',
         'dump',
         '--db-url',
@@ -351,6 +356,17 @@ async function backup() {
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_SET_DIR);
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
   await prepareDumpImage();
+  if (process.env.BACKUP_DIAGNOSTIC_ONLY === 'true') {
+    await writeAtomicBackupDirectory(destination, async (partial) => {
+      runSupabaseDump(
+        process.env.SUPABASE_DB_URL,
+        join(partial, 'roles.sql'),
+        ['--role-only'],
+        'roles',
+      );
+      throw new Error('Diagnostic reseau termine; arret volontaire avant sauvegarde et ecriture distante.');
+    });
+  }
   const databaseFileCount = await writeAtomicBackupDirectory(destination, async (partial) => {
     const startedAt = new Date().toISOString();
     const definitions = [

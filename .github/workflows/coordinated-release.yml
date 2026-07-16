@@ -96,6 +96,8 @@ jobs:
           STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}
           BACKUP_REQUIRE_SESSION_POOLER: 'true'
           BACKUP_PREPARE_DUMP_IMAGE: 'true'
+          BACKUP_DOCKER_NETWORK: 'host'
+          BACKUP_DIAGNOSTIC_ONLY: 'true'
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
