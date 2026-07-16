@@ -28,6 +28,37 @@ const FORMAT = 'meddata-coordinated-backup/v1';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const supabaseEntrypoint = join(root, 'node_modules', 'supabase', 'dist', 'supabase.js');
 const DUMP_STAGES = new Set(['roles', 'schema', 'data', 'public-data']);
+// Source de verite: Dockerfile du tag Supabase CLI v2.109.1, lui-meme epingle dans package-lock.json.
+export const COORDINATED_DUMP_IMAGE = Object.freeze({
+  cliVersion: '2.109.1',
+  repository: 'public.ecr.aws/supabase/postgres',
+  mirrorRepository: 'docker.io/supabase/postgres',
+  tag: '17.6.1.143',
+  digest: 'sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453',
+});
+const DUMP_SIGNAL_PATTERNS = [
+  ['authentication', /authentication|password|SASL/i],
+  ['certificate', /certificate/i],
+  ['connection', /connect|connection/i],
+  ['container', /container/i],
+  ['daemon', /daemon/i],
+  ['disk', /disk|no space|ENOSPC/i],
+  ['dns', /DNS|translate host|no such host/i],
+  ['docker', /docker/i],
+  ['ecr', /ecr/i],
+  ['exit-status', /exit status|exited with|Process exited/i],
+  ['image', /image/i],
+  ['manifest', /manifest/i],
+  ['network', /network/i],
+  ['permission', /permission|not permitted|privilege/i],
+  ['pg-dump', /pg_dump|pg_dumpall/i],
+  ['pull', /pull/i],
+  ['rate-limit', /rate limit|too many requests/i],
+  ['refused', /refused/i],
+  ['timeout', /timeout|timed out|deadline exceeded/i],
+  ['tls', /TLS|SSL/i],
+  ['unreachable', /unreachable/i],
+];
 const DUMP_ENV_NAMES = new Set([
   'ALL_PROXY',
   'APPDATA',
@@ -142,9 +173,93 @@ export function classifyDumpFailure(error) {
   if (/no space left|ENOSPC|disk quota/i.test(diagnostic)) return 'disk';
   if (/password authentication failed|authentication failed|SASL/i.test(diagnostic)) return 'authentication';
   if (/permission denied|must be superuser|not permitted|insufficient privilege/i.test(diagnostic)) return 'permission';
-  if (/cannot connect to the Docker daemon|docker daemon|docker\.sock|pull access denied|manifest unknown/i.test(diagnostic)) return 'docker';
+  if (/docker|container|daemon|pull access denied|manifest unknown|public\.ecr\.aws/i.test(diagnostic)) return 'docker';
   if (/could not translate host|name or service not known|no such host|network is unreachable|connection refused|failed to connect|server closed the connection/i.test(diagnostic)) return 'connectivity';
   return 'cli-exit';
+}
+
+export function dumpFailureSignals(error) {
+  const diagnostic = [error?.code, error?.message, error?.stderr, error?.stdout]
+    .filter(Boolean)
+    .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : String(value))
+    .join('\n');
+  return DUMP_SIGNAL_PATTERNS
+    .filter(([, pattern]) => pattern.test(diagnostic))
+    .map(([name]) => name);
+}
+
+function dockerCommandOptions(sourceEnv, stdio) {
+  return {
+    cwd: root,
+    env: dumpSubprocessEnvironment(sourceEnv),
+    encoding: 'utf8',
+    stdio,
+    timeout: 5 * 60 * 1000,
+    windowsHide: true,
+  };
+}
+
+function expectedDumpImageIsPresent(execute, sourceEnv) {
+  const target = `${COORDINATED_DUMP_IMAGE.repository}:${COORDINATED_DUMP_IMAGE.tag}`;
+  try {
+    const repoDigests = execute(
+      'docker',
+      ['image', 'inspect', '--format', '{{json .RepoDigests}}', target],
+      dockerCommandOptions(sourceEnv, ['ignore', 'pipe', 'pipe']),
+    );
+    return String(repoDigests).includes(`@${COORDINATED_DUMP_IMAGE.digest}`);
+  } catch {
+    return false;
+  }
+}
+
+export async function prepareDumpImage({
+  execute = execFileSync,
+  sourceEnv = process.env,
+  attempts = 2,
+  installedCliVersion,
+} = {}) {
+  if (sourceEnv.BACKUP_PREPARE_DUMP_IMAGE !== 'true') return 'skipped';
+  const cliVersion = installedCliVersion ?? JSON.parse(
+    await readFile(join(root, 'node_modules', 'supabase', 'package.json'), 'utf8'),
+  ).version;
+  if (cliVersion !== COORDINATED_DUMP_IMAGE.cliVersion) {
+    throw new Error('Version Supabase CLI divergente de l image de dump epinglee.');
+  }
+  if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 3) {
+    throw new Error('Nombre de tentatives de preparation du dump invalide.');
+  }
+  if (expectedDumpImageIsPresent(execute, sourceEnv)) return 'cached';
+
+  const target = `${COORDINATED_DUMP_IMAGE.repository}:${COORDINATED_DUMP_IMAGE.tag}`;
+  const candidates = [
+    `${COORDINATED_DUMP_IMAGE.repository}@${COORDINATED_DUMP_IMAGE.digest}`,
+    `${COORDINATED_DUMP_IMAGE.mirrorRepository}@${COORDINATED_DUMP_IMAGE.digest}`,
+  ];
+  for (const [index, candidate] of candidates.entries()) {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        execute(
+          'docker',
+          ['pull', '--platform', 'linux/amd64', candidate],
+          dockerCommandOptions(sourceEnv, ['ignore', 'pipe', 'pipe']),
+        );
+        execute(
+          'docker',
+          ['tag', candidate, target],
+          dockerCommandOptions(sourceEnv, ['ignore', 'pipe', 'pipe']),
+        );
+        if (expectedDumpImageIsPresent(execute, sourceEnv)) {
+          const source = index === 0 ? 'registre primaire' : 'miroir officiel';
+          console.log(`Image de dump PostgreSQL: OK (${source}, digest verifie).`);
+          return index === 0 ? 'primary' : 'mirror';
+        }
+      } catch {
+        console.log(`Preparation image de dump: tentative ${attempt}/${attempts} echouee (${index === 0 ? 'primaire' : 'miroir'}).`);
+      }
+    }
+  }
+  throw new Error('Image de dump PostgreSQL indisponible apres retries primaire et miroir; aucun dump lance.');
 }
 
 export function runSupabaseDump(
@@ -178,8 +293,10 @@ export function runSupabaseDump(
       },
     );
   } catch (error) {
+    const signals = dumpFailureSignals(error);
     throw new Error(
-      `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}); detail masque.`,
+      `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}; `
+        + `signaux: ${signals.join(',') || 'none'}); detail masque.`,
       { cause: error },
     );
   }
@@ -233,6 +350,7 @@ async function backup() {
   const { target, projectRef } = validatedSource();
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_SET_DIR);
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
+  await prepareDumpImage();
   const databaseFileCount = await writeAtomicBackupDirectory(destination, async (partial) => {
     const startedAt = new Date().toISOString();
     const definitions = [

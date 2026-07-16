@@ -3,9 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  COORDINATED_DUMP_IMAGE,
   classifyDumpFailure,
+  dumpFailureSignals,
   dumpSubprocessEnvironment,
   isSessionPoolerDatabaseUrl,
+  prepareDumpImage,
   runSupabaseDump,
   writeAtomicBackupDirectory,
 } from '../scripts/coordinated-backup.mjs';
@@ -81,6 +84,75 @@ describe('sauvegarde coordonnee sure', () => {
     expect(classifyDumpFailure({ stderr: 'could not translate host name' })).toBe('connectivity');
     expect(classifyDumpFailure({ stderr: 'permission denied' })).toBe('permission');
     expect(classifyDumpFailure({ stderr: 'unexpected failure' })).toBe('cli-exit');
+    expect(dumpFailureSignals({
+      stderr: 'docker pull from public.ecr.aws failed: too many requests; container exited with status 1',
+    })).toEqual(['container', 'docker', 'ecr', 'exit-status', 'pull', 'rate-limit']);
+  });
+
+  test('reutilise uniquement l image de dump dont le digest est prouve', async () => {
+    const calls: string[][] = [];
+    const execute = (_command: string, arguments_: string[]) => {
+      calls.push(arguments_);
+      return JSON.stringify([`${COORDINATED_DUMP_IMAGE.repository}@${COORDINATED_DUMP_IMAGE.digest}`]);
+    };
+
+    await expect(prepareDumpImage({
+      execute,
+      sourceEnv: { BACKUP_PREPARE_DUMP_IMAGE: 'true', PATH: '/usr/bin' },
+      attempts: 1,
+      installedCliVersion: COORDINATED_DUMP_IMAGE.cliVersion,
+    })).resolves.toBe('cached');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(`${COORDINATED_DUMP_IMAGE.repository}:${COORDINATED_DUMP_IMAGE.tag}`);
+  });
+
+  test('utilise le miroir par digest lorsque le registre ECR echoue', async () => {
+    const calls: string[][] = [];
+    const environments: Array<Record<string, string>> = [];
+    let tagged = false;
+    const execute = (_command: string, arguments_: string[], options: { env: Record<string, string> }) => {
+      calls.push(arguments_);
+      environments.push(options.env);
+      if (arguments_[0] === 'image') {
+        return tagged
+          ? JSON.stringify([`${COORDINATED_DUMP_IMAGE.mirrorRepository}@${COORDINATED_DUMP_IMAGE.digest}`])
+          : '[]';
+      }
+      if (arguments_[0] === 'pull' && arguments_.at(-1)?.startsWith(COORDINATED_DUMP_IMAGE.repository)) {
+        throw new Error('echec registre primaire');
+      }
+      if (arguments_[0] === 'tag') tagged = true;
+      return '';
+    };
+
+    await expect(prepareDumpImage({
+      execute,
+      sourceEnv: {
+        BACKUP_PREPARE_DUMP_IMAGE: 'true',
+        PATH: '/usr/bin',
+        SUPABASE_SERVICE_ROLE_KEY: 'secret-ne-doit-pas-etre-transmis',
+      },
+      attempts: 1,
+      installedCliVersion: COORDINATED_DUMP_IMAGE.cliVersion,
+    })).resolves.toBe('mirror');
+    expect(calls.some((arguments_) => arguments_.includes(
+      `${COORDINATED_DUMP_IMAGE.mirrorRepository}@${COORDINATED_DUMP_IMAGE.digest}`,
+    ))).toBe(true);
+    expect(environments.every((environment) => !('SUPABASE_SERVICE_ROLE_KEY' in environment))).toBe(true);
+  });
+
+  test('echoue ferme si aucun registre ne fournit le digest attendu', async () => {
+    const execute = (_command: string, arguments_: string[]) => {
+      if (arguments_[0] === 'image') return '[]';
+      throw new Error('registre indisponible');
+    };
+
+    await expect(prepareDumpImage({
+      execute,
+      sourceEnv: { BACKUP_PREPARE_DUMP_IMAGE: 'true', PATH: '/usr/bin' },
+      attempts: 1,
+      installedCliVersion: COORDINATED_DUMP_IMAGE.cliVersion,
+    })).rejects.toThrow('aucun dump lance');
   });
 
   test('exige le Session pooler 5432 pour les sauvegardes CI', () => {

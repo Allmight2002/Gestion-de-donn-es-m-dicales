@@ -20,6 +20,14 @@ export type DumpExecutor = (
   },
 ) => unknown;
 
+export const COORDINATED_DUMP_IMAGE: Readonly<{
+  cliVersion: string;
+  repository: string;
+  mirrorRepository: string;
+  tag: string;
+  digest: string;
+}>;
+
 export function isSessionPoolerDatabaseUrl(value: string | undefined): boolean;
 
 export function dumpSubprocessEnvironment(
@@ -27,6 +35,14 @@ export function dumpSubprocessEnvironment(
 ): Record<string, string>;
 
 export function classifyDumpFailure(error: unknown): DumpFailureCategory;
+export function dumpFailureSignals(error: unknown): string[];
+
+export function prepareDumpImage(options?: {
+  execute?: DumpExecutor;
+  sourceEnv?: Partial<Record<string, string | undefined>>;
+  attempts?: number;
+  installedCliVersion?: string;
+}): Promise<'skipped' | 'cached' | 'primary' | 'mirror'>;
 
 export function runSupabaseDump(
   databaseUrl: string,
