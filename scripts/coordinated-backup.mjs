@@ -18,6 +18,7 @@ import {
   parseEncryptionKey,
 } from './storage-object-backup.mjs';
 import {
+  PRODUCTION_PROJECT_REF,
   STAGING_PROJECT_REF,
   projectRefFromDatabaseUrl,
   projectRefFromSupabaseUrl,
@@ -68,6 +69,9 @@ function validatedSource() {
   }
   if (target === 'staging' && projectRef !== STAGING_PROJECT_REF) {
     throw new Error('La cible ne correspond pas au staging MedData approuve.');
+  }
+  if (target === 'production' && projectRef !== PRODUCTION_PROJECT_REF) {
+    throw new Error('La cible ne correspond pas a la production MedData approuvee.');
   }
   if (clean(process.env.SUPABASE_SERVICE_ROLE_KEY).length < 20) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY est absente ou manifestement invalide.');
