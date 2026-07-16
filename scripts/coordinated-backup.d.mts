@@ -36,6 +36,7 @@ export function dumpSubprocessEnvironment(
 
 export function classifyDumpFailure(error: unknown): DumpFailureCategory;
 export function dumpFailureSignals(error: unknown): string[];
+export function safeDumpDiagnosticSummary(error: unknown, databaseUrl: string): string;
 
 export function prepareDumpImage(options?: {
   execute?: DumpExecutor;

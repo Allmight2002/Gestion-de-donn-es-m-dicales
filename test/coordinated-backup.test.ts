@@ -10,6 +10,7 @@ import {
   isSessionPoolerDatabaseUrl,
   prepareDumpImage,
   runSupabaseDump,
+  safeDumpDiagnosticSummary,
   writeAtomicBackupDirectory,
 } from '../scripts/coordinated-backup.mjs';
 
@@ -101,6 +102,20 @@ describe('sauvegarde coordonnee sure', () => {
       sourceEnv: { BACKUP_DOCKER_NETWORK: 'untrusted-network' },
     })).toThrow('strictement egal a host');
     expect(executed).toBe(false);
+  });
+
+  test('expurge toutes les composantes sensibles du diagnostic temporaire', () => {
+    const databaseUrl = 'postgresql://postgres.projectref12345678:mot-de-passe@pooler.example.test:5432/postgres';
+    const summary = safeDumpDiagnosticSummary({
+      stderr: `failed host=pooler.example.test user=postgres.projectref12345678 `
+        + `password=mot-de-passe ${databaseUrl} eyJhbGciOiJIUzI1NiJ9.opaque.signature`,
+    }, databaseUrl);
+
+    expect(summary).toContain('failed');
+    expect(summary).not.toContain('pooler.example.test');
+    expect(summary).not.toContain('postgres.projectref12345678');
+    expect(summary).not.toContain('mot-de-passe');
+    expect(summary).not.toContain('eyJhbGciOiJIUzI1NiJ9');
   });
 
   test('identifie les categories utiles sans reprendre le diagnostic brut', () => {

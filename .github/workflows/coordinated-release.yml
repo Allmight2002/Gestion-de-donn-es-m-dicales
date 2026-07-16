@@ -98,6 +98,7 @@ jobs:
           BACKUP_PREPARE_DUMP_IMAGE: 'true'
           BACKUP_DOCKER_NETWORK: 'host'
           BACKUP_DIAGNOSTIC_ONLY: 'true'
+          BACKUP_SAFE_DIAGNOSTIC: 'true'
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

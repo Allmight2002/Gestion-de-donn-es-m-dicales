@@ -188,6 +188,35 @@ export function dumpFailureSignals(error) {
     .map(([name]) => name);
 }
 
+export function safeDumpDiagnosticSummary(error, databaseUrl) {
+  let diagnostic = [error?.stderr, error?.stdout]
+    .filter(Boolean)
+    .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : String(value))
+    .join('\n')
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), ' ');
+  const literals = new Set([clean(databaseUrl)]);
+  try {
+    const url = new URL(clean(databaseUrl));
+    for (const value of [url.hostname, url.username, url.password]) {
+      if (!value) continue;
+      literals.add(value);
+      try { literals.add(decodeURIComponent(value)); } catch { /* valeur deja opaque */ }
+    }
+  } catch { /* URL deja refusee par les gates */ }
+  for (const literal of [...literals].filter((value) => value.length >= 4).sort((a, b) => b.length - a.length)) {
+    diagnostic = diagnostic.split(literal).join('[redacted]');
+  }
+  return diagnostic
+    .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, '[db-url]')
+    .replace(/(?:PGPASSWORD|password)\s*[=:]\s*[^\s]+/gi, 'password=[redacted]')
+    .replace(/\b(host|user)=[^\s`]+/gi, (_match, name) => `${name}=[redacted]`)
+    .replace(/\b[a-z0-9]{20}\b/gi, '[project-ref]')
+    .replace(/\b[A-Za-z0-9_+/=-]{24,}\b/g, '[opaque-value]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 600) || 'aucun-detail-disponible';
+}
+
 function dockerCommandOptions(sourceEnv, stdio) {
   return {
     cwd: root,
@@ -299,9 +328,12 @@ export function runSupabaseDump(
     );
   } catch (error) {
     const signals = dumpFailureSignals(error);
+    const safeDiagnostic = sourceEnv.BACKUP_SAFE_DIAGNOSTIC === 'true'
+      ? ` Diagnostic expurge: ${safeDumpDiagnosticSummary(error, databaseUrl)}`
+      : '';
     throw new Error(
       `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}; `
-        + `signaux: ${signals.join(',') || 'none'}); detail masque.`,
+        + `signaux: ${signals.join(',') || 'none'}); detail masque.${safeDiagnostic}`,
       { cause: error },
     );
   }
