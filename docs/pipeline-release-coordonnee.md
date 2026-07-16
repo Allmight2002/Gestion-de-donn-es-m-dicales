@@ -54,9 +54,11 @@ etre prefixe `VITE_`.
    du meme SHA/tag et renseigne son `staging_run_id`; le workflow exige un job
    `backend-staging` reussi pour ce SHA, puis execute les memes controles avant `vercel deploy --prod`.
 
-Tout echec stoppe les jobs dependants et bloque le frontend. Configurer les reviewers obligatoires
-pour `production`, les protections de branche exigeant CI, et desactiver toute auto-promotion
-Vercel de `main`; ces reglages distants ne sont pas verifiables depuis ce depot.
+Tout echec stoppe les jobs dependants et bloque le frontend. `vercel.json` desactive les
+deploiements automatiques issus de Git pour toutes les branches : les previews staging et la
+production doivent passer par la CLI du workflow coordonne. Verifier aussi ce comportement dans
+le projet Vercel apres chaque changement d'integration. Configurer les reviewers obligatoires
+pour `production` et les protections de branche exigeant CI.
 
 Les CLI de release sont figees dans le workflow (`supabase@2.109.1`, `vercel@55.0.0`) afin qu'un
 nouveau `latest` publie entre deux releases ne modifie pas silencieusement la procedure.

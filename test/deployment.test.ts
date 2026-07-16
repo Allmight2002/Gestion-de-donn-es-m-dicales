@@ -238,11 +238,13 @@ describe('configuration de deploiement', () => {
 
   test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
     const config = JSON.parse(read('vercel.json')) as {
+      git: { deploymentEnabled: boolean };
       rewrites: Array<{ source: string; destination: string }>;
       headers: Array<{ headers: Array<{ key: string; value: string }> }>;
     };
     const headers = new Map(config.headers[0].headers.map((h) => [h.key.toLowerCase(), h.value]));
 
+    expect(config.git.deploymentEnabled).toBe(false);
     expect(config.rewrites).toContainEqual({ source: '/(.*)', destination: '/index.html' });
     expect(headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(headers.get('content-security-policy')).toContain("object-src 'none'");
