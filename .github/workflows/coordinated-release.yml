@@ -93,6 +93,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -106,6 +107,18 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
           npm run release:env -- --target=staging
+      - name: Create and verify encrypted pre-release backup
+        env: *staging_env
+        run: |
+          npm run backup:coordinated -- --target=staging --output="$RUNNER_TEMP/pre-release-backup-staging"
+          npm run backup:coordinated:verify -- --backup="$RUNNER_TEMP/pre-release-backup-staging"
+      - name: Preserve encrypted pre-release backup outside the runner
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pre-release-backup-staging-${{ github.run_id }}
+          path: ${{ runner.temp }}/pre-release-backup-staging
+          if-no-files-found: error
+          retention-days: 30
       - name: Migrations then Storage
         env: *staging_env
         run: npm exec -- supabase db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
@@ -509,8 +522,8 @@ jobs:
           path: ${{ runner.temp }}/staging-backend
           github-token: ${{ github.token }}
           run-id: ${{ inputs.staging_run_id }}
-      - name: Backend promotion before frontend strict switch
-        env:
+      - name: Validate production secrets and exact target
+        env: &production_env
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
@@ -521,12 +534,29 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
         run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
           npm run release:env -- --target=production
+      - name: Create and verify encrypted pre-release backup
+        env: *production_env
+        run: |
+          npm run backup:coordinated -- --target=production --output="$RUNNER_TEMP/pre-release-backup-production"
+          npm run backup:coordinated:verify -- --backup="$RUNNER_TEMP/pre-release-backup-production"
+      - name: Preserve encrypted pre-release backup outside the runner
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pre-release-backup-production-${{ github.run_id }}
+          path: ${{ runner.temp }}/pre-release-backup-production
+          if-no-files-found: error
+          retention-days: 30
+      - name: Backend promotion before frontend strict switch
+        env: *production_env
+        run: |
           npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
           for dir in supabase/functions/*; do

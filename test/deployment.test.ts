@@ -278,12 +278,23 @@ describe('configuration de deploiement', () => {
 
   test('la release coordonnee verrouille la cible avant toute ecriture staging', () => {
     const workflow = read('.github/workflows/coordinated-release.yml');
+    const backendStart = workflow.indexOf('\n  backend-staging:');
     const targetGate = workflow.indexOf('npm run release:env -- --target=staging');
+    const encryptedBackup = workflow.indexOf('npm run backup:coordinated -- --target=staging');
+    const verifiedBackup = workflow.indexOf('npm run backup:coordinated:verify', encryptedBackup);
+    const preservedBackup = workflow.indexOf('pre-release-backup-staging-${{ github.run_id }}', verifiedBackup);
     const databaseWrite = workflow.indexOf('npm exec -- supabase db push');
     const storageWrite = workflow.indexOf('npm run supabase:storage');
     const edgeWrite = workflow.indexOf('npm exec -- supabase secrets set');
 
     expect(targetGate).toBeGreaterThan(-1);
+    expect(encryptedBackup).toBeGreaterThan(targetGate);
+    expect(verifiedBackup).toBeGreaterThan(encryptedBackup);
+    expect(preservedBackup).toBeGreaterThan(verifiedBackup);
+    expect(databaseWrite).toBeGreaterThan(preservedBackup);
+    expect(workflow.slice(backendStart, databaseWrite)).toContain(
+      'STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}',
+    );
     expect(databaseWrite).toBeGreaterThan(targetGate);
     expect(storageWrite).toBeGreaterThan(targetGate);
     expect(edgeWrite).toBeGreaterThan(targetGate);
@@ -311,6 +322,30 @@ describe('configuration de deploiement', () => {
     expect(frontendDeploy).toBeGreaterThan(edgeDeploy);
     expect(strictActivation).toBeGreaterThan(frontendDeploy);
     expect(cloudGate).toBeGreaterThan(strictActivation);
+  });
+
+  test('la production exige une sauvegarde chiffree verifiee et conservee avant toute ecriture', () => {
+    const workflow = read('.github/workflows/coordinated-release.yml');
+    const productionStart = workflow.indexOf('\n  production:');
+    const production = workflow.slice(productionStart);
+    const targetGate = production.indexOf('npm run release:env -- --target=production');
+    const encryptedBackup = production.indexOf('npm run backup:coordinated -- --target=production');
+    const verifiedBackup = production.indexOf('npm run backup:coordinated:verify', encryptedBackup);
+    const preservedBackup = production.indexOf('pre-release-backup-production-${{ github.run_id }}', verifiedBackup);
+    const databaseWrite = production.indexOf('npm exec -- supabase db push');
+    const storageWrite = production.indexOf('npm run supabase:storage');
+    const edgeWrite = production.indexOf('npm exec -- supabase functions deploy');
+
+    expect(productionStart).toBeGreaterThan(-1);
+    expect(targetGate).toBeGreaterThan(-1);
+    expect(encryptedBackup).toBeGreaterThan(targetGate);
+    expect(verifiedBackup).toBeGreaterThan(encryptedBackup);
+    expect(preservedBackup).toBeGreaterThan(verifiedBackup);
+    expect(databaseWrite).toBeGreaterThan(preservedBackup);
+    expect(storageWrite).toBeGreaterThan(preservedBackup);
+    expect(edgeWrite).toBeGreaterThan(preservedBackup);
+    expect(production).toContain('STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}');
+    expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });
 
   test('la preuve de release compare les empreintes Storage et Edge distantes', () => {

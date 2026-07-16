@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  PRODUCTION_PROJECT_REF,
   STAGING_PROJECT_REF,
   projectRefFromDatabaseUrl,
   validateSupabaseTarget,
@@ -10,6 +11,13 @@ const baseEnv = {
   VITE_SUPABASE_URL: `https://${STAGING_PROJECT_REF}.supabase.co`,
   SUPABASE_URL: `https://${STAGING_PROJECT_REF}.supabase.co`,
   SUPABASE_DB_URL: `postgresql://postgres:secret@db.${STAGING_PROJECT_REF}.supabase.co:5432/postgres`,
+};
+
+const productionEnv = {
+  SUPABASE_PROJECT_REF: PRODUCTION_PROJECT_REF,
+  VITE_SUPABASE_URL: `https://${PRODUCTION_PROJECT_REF}.supabase.co`,
+  SUPABASE_URL: `https://${PRODUCTION_PROJECT_REF}.supabase.co`,
+  SUPABASE_DB_URL: `postgresql://postgres:secret@db.${PRODUCTION_PROJECT_REF}.supabase.co:5432/postgres`,
 };
 
 describe('garde de cible Supabase', () => {
@@ -42,6 +50,14 @@ describe('garde de cible Supabase', () => {
       },
     });
     expect(errors).toContain('La cible staging ne correspond pas au projet staging MedData approuve.');
+  });
+
+  test('accepte uniquement le projet de production MedData pour une promotion production', () => {
+    expect(validateSupabaseTarget({ target: 'production', env: productionEnv })).toEqual([]);
+
+    const errors = validateSupabaseTarget({ target: 'production', env: baseEnv });
+    expect(errors).toContain('La cible production ne correspond pas au projet production MedData approuve.');
+    expect(errors.join(' ')).not.toContain(STAGING_PROJECT_REF);
   });
 
   test('echoue ferme si la reference du pooler est impossible a extraire', () => {
