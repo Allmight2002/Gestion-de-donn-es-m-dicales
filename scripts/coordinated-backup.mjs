@@ -28,6 +28,29 @@ const FORMAT = 'meddata-coordinated-backup/v1';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const supabaseEntrypoint = join(root, 'node_modules', 'supabase', 'dist', 'supabase.js');
 const DUMP_STAGES = new Set(['roles', 'schema', 'data', 'public-data']);
+const DUMP_SIGNAL_PATTERNS = [
+  ['authentication', /authentication|password|SASL/i],
+  ['certificate', /certificate/i],
+  ['connection', /connect|connection/i],
+  ['container', /container/i],
+  ['daemon', /daemon/i],
+  ['disk', /disk|no space|ENOSPC/i],
+  ['dns', /DNS|translate host|no such host/i],
+  ['docker', /docker/i],
+  ['ecr', /ecr/i],
+  ['exit-status', /exit status|exited with|Process exited/i],
+  ['image', /image/i],
+  ['manifest', /manifest/i],
+  ['network', /network/i],
+  ['permission', /permission|not permitted|privilege/i],
+  ['pg-dump', /pg_dump|pg_dumpall/i],
+  ['pull', /pull/i],
+  ['rate-limit', /rate limit|too many requests/i],
+  ['refused', /refused/i],
+  ['timeout', /timeout|timed out|deadline exceeded/i],
+  ['tls', /TLS|SSL/i],
+  ['unreachable', /unreachable/i],
+];
 const DUMP_ENV_NAMES = new Set([
   'ALL_PROXY',
   'APPDATA',
@@ -142,9 +165,19 @@ export function classifyDumpFailure(error) {
   if (/no space left|ENOSPC|disk quota/i.test(diagnostic)) return 'disk';
   if (/password authentication failed|authentication failed|SASL/i.test(diagnostic)) return 'authentication';
   if (/permission denied|must be superuser|not permitted|insufficient privilege/i.test(diagnostic)) return 'permission';
-  if (/cannot connect to the Docker daemon|docker daemon|docker\.sock|pull access denied|manifest unknown/i.test(diagnostic)) return 'docker';
+  if (/docker|container|daemon|pull access denied|manifest unknown|public\.ecr\.aws/i.test(diagnostic)) return 'docker';
   if (/could not translate host|name or service not known|no such host|network is unreachable|connection refused|failed to connect|server closed the connection/i.test(diagnostic)) return 'connectivity';
   return 'cli-exit';
+}
+
+export function dumpFailureSignals(error) {
+  const diagnostic = [error?.code, error?.message, error?.stderr, error?.stdout]
+    .filter(Boolean)
+    .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : String(value))
+    .join('\n');
+  return DUMP_SIGNAL_PATTERNS
+    .filter(([, pattern]) => pattern.test(diagnostic))
+    .map(([name]) => name);
 }
 
 export function runSupabaseDump(
@@ -178,8 +211,10 @@ export function runSupabaseDump(
       },
     );
   } catch (error) {
+    const signals = dumpFailureSignals(error);
     throw new Error(
-      `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}); detail masque.`,
+      `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}; `
+        + `signaux: ${signals.join(',') || 'none'}); detail masque.`,
       { cause: error },
     );
   }
@@ -233,6 +268,17 @@ async function backup() {
   const { target, projectRef } = validatedSource();
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_SET_DIR);
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
+  if (process.env.BACKUP_DIAGNOSTIC_ONLY === 'true') {
+    await writeAtomicBackupDirectory(destination, async (partial) => {
+      runSupabaseDump(
+        process.env.SUPABASE_DB_URL,
+        join(partial, 'roles.sql'),
+        ['--role-only'],
+        'roles',
+      );
+      throw new Error('Diagnostic runner termine; arret volontaire avant toute sauvegarde ou ecriture distante.');
+    });
+  }
   const databaseFileCount = await writeAtomicBackupDirectory(destination, async (partial) => {
     const startedAt = new Date().toISOString();
     const definitions = [

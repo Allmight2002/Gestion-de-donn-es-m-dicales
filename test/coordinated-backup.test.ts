@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   classifyDumpFailure,
+  dumpFailureSignals,
   dumpSubprocessEnvironment,
   isSessionPoolerDatabaseUrl,
   runSupabaseDump,
@@ -81,6 +82,9 @@ describe('sauvegarde coordonnee sure', () => {
     expect(classifyDumpFailure({ stderr: 'could not translate host name' })).toBe('connectivity');
     expect(classifyDumpFailure({ stderr: 'permission denied' })).toBe('permission');
     expect(classifyDumpFailure({ stderr: 'unexpected failure' })).toBe('cli-exit');
+    expect(dumpFailureSignals({
+      stderr: 'docker pull from public.ecr.aws failed: too many requests; container exited with status 1',
+    })).toEqual(['container', 'docker', 'ecr', 'exit-status', 'pull', 'rate-limit']);
   });
 
   test('exige le Session pooler 5432 pour les sauvegardes CI', () => {

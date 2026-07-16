@@ -27,6 +27,7 @@ export function dumpSubprocessEnvironment(
 ): Record<string, string>;
 
 export function classifyDumpFailure(error: unknown): DumpFailureCategory;
+export function dumpFailureSignals(error: unknown): string[];
 
 export function runSupabaseDump(
   databaseUrl: string,
