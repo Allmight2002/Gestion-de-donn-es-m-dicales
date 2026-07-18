@@ -229,6 +229,7 @@ describe('configuration de deploiement', () => {
     expect(prodEnv).toContain('QUARANTINE_BUCKET=');
     expect(viteConfig).toContain("VITE_REQUIRE_SERVER_INSPECTION === 'true'");
     expect(viteConfig).toContain("VITE_USE_SIGNED_READ !== 'true'");
+    expect(viteConfig).toContain('assertOfflineBuildPolicy(env, mode)');
     expect(viteConfig).toContain('VERCEL_GIT_COMMIT_SHA');
     expect(viteConfig).toContain('VERCEL_GIT_COMMIT_REF');
     expect(viteConfig).toContain('__GIT_COMMIT__');
@@ -317,6 +318,9 @@ describe('configuration de deploiement', () => {
     expect(workflow).not.toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(workflow).toContain("node-version: '22'");
     expect(workflow).not.toContain("node-version: '20'");
+    expect(workflow.match(/VITE_OFFLINE_MODE: disabled/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(workflow.match(/VITE_OFFLINE_ADMIN_ACK: 'false'/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(workflow.match(/ALLOW_OFFLINE_DEMO_BUILD: 'true'/g)).toHaveLength(1);
     const edgeDeploy = workflow.indexOf('Deploy all Edge Functions');
     const frontendDeploy = workflow.indexOf('vercel@$VERCEL_CLI_VERSION" deploy --prebuilt');
     const strictActivation = workflow.indexOf('npm run inspection:activate -- --target=staging');
