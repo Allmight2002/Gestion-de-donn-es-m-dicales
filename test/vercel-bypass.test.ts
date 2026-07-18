@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   createVercelStorageState,
   validatedVercelDeploymentHostname,
+  vercelCookieHeaderFromStorageState,
 } from '../scripts/vercel-cookie-state.mjs';
 
 describe('bypass Vercel limite au staging', () => {
@@ -54,5 +55,18 @@ describe('bypass Vercel limite au staging', () => {
       'HttpOnly, Secure',
     );
     expect(() => createVercelStorageState(cookie(undefined, 'TRUE', 100), deployment, 101)).toThrow('expire');
+  });
+
+  test('produit un header de monitoring uniquement depuis un storage state exact et actuel', () => {
+    const state = createVercelStorageState(cookie(), deployment, 1_900_000_000);
+    expect(vercelCookieHeaderFromStorageState(state, deployment, 1_900_000_000)).toBe(
+      '_vercel_jwt=fictional-cookie',
+    );
+    expect(() => vercelCookieHeaderFromStorageState({
+      ...state,
+      cookies: [{ ...state.cookies[0], value: 'value;injected=true' }],
+    }, deployment, 1_900_000_000)).toThrow('invalide');
+    expect(() => vercelCookieHeaderFromStorageState(state, 'https://other.vercel.app', 1_900_000_000))
+      .toThrow('staging exact');
   });
 });

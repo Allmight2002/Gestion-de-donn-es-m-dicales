@@ -1,6 +1,8 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   healthUrlForScan,
+  monitor,
   validateMonitorConfiguration,
 } from '../scripts/operations-monitor.mjs';
 
@@ -16,6 +18,10 @@ const validEnvironment = () => ({
 });
 
 describe('monitoring operationnel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   test('derive le endpoint de sante sans propager les parametres', () => {
     expect(healthUrlForScan('https://scanner.example.test/scan?probe=1'))
       .toBe('https://scanner.example.test/health');
@@ -42,5 +48,50 @@ describe('monitoring operationnel', () => {
       ...validEnvironment(),
       MONITOR_REQUIRE_STRICT_INSPECTION: 'false',
     })).toThrow(/doit valoir true/);
+  });
+
+  test('accepte le statut Storage officiel a corps vide et transmet le cookie Vercel seulement au frontend', async () => {
+    const config = validateMonitorConfiguration(validEnvironment());
+    const requests: Array<{ url: string; headers: Headers }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      requests.push({ url, headers });
+      if (url === config.appUrl) {
+        return new Response('<!doctype html><div id="root"></div>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+      }
+      if (url.endsWith('/auth/v1/health')) return Response.json({ version: 'synthetic' });
+      if (url.includes('/rest/v1/profiles')) return Response.json([]);
+      if (url.endsWith('/storage/v1/status')) return new Response(null, { status: 200 });
+      if (url.endsWith('/health')) return Response.json({ status: 'ok' });
+      if (init?.body === 'MedData synthetic monitoring fixture') {
+        return Response.json({ status: 'clean', engine: 'clamav' });
+      }
+      return Response.json({ status: 'infected', engine: 'clamav', signature: 'Eicar-Test-Signature' });
+    }));
+
+    const checks = await monitor(config, { frontendCookieHeader: '_vercel_jwt=fictional-cookie' });
+
+    expect(checks.every((check) => check.ok)).toBe(true);
+    expect(checks.find((check) => check.name === 'supabase-storage')).toMatchObject({
+      ok: true,
+      httpStatus: 200,
+    });
+    expect(requests.find((request) => request.url === config.appUrl)?.headers.get('cookie'))
+      .toBe('_vercel_jwt=fictional-cookie');
+    expect(requests.filter((request) => request.url !== config.appUrl)
+      .every((request) => request.headers.get('cookie') === null)).toBe(true);
+  });
+
+  test('le workflow staging cree puis supprime un cookie ephemere borne au deploiement', () => {
+    const workflow = readFileSync('.github/workflows/operations-monitor.yml', 'utf8');
+    expect(workflow).toContain('Bootstrap scoped Vercel monitoring cookie');
+    expect(workflow).toContain('scripts/vercel-cookie-state.mjs');
+    expect(workflow).toContain('MONITOR_FRONTEND_STORAGE_STATE');
+    expect(workflow).toContain('Remove ephemeral Vercel monitoring state');
+    expect(workflow).not.toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
   });
 });

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   STAGING_PROJECT_REF,
   projectRefFromSupabaseUrl,
 } from './check-supabase-target.mjs';
+import { vercelCookieHeaderFromStorageState } from './vercel-cookie-state.mjs';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const RETRIES = 2;
@@ -74,6 +75,7 @@ export function validateMonitorConfiguration(env = process.env) {
     anonKey,
     scanUrl,
     scanToken,
+    frontendStorageStatePath: clean(env.MONITOR_FRONTEND_STORAGE_STATE) || null,
   };
 }
 
@@ -138,14 +140,18 @@ async function expectJsonStatus(url, init, validate) {
   return response.status;
 }
 
-async function monitor(config) {
+export async function monitor(config, { frontendCookieHeader = '' } = {}) {
   const commonHeaders = {
     apikey: config.anonKey,
     Authorization: `Bearer ${config.anonKey}`,
   };
   const checks = [];
   checks.push(await runCheck('frontend', async () => {
-    const response = await boundedFetch(config.appUrl, { headers: { Accept: 'text/html' } });
+    const headers = {
+      Accept: 'text/html',
+      ...(frontendCookieHeader ? { Cookie: frontendCookieHeader } : {}),
+    };
+    const response = await boundedFetch(config.appUrl, { headers });
     if (response.status !== 200) throw new Error(`http-${response.status}`);
     if (!(response.headers.get('content-type') ?? '').includes('text/html')) {
       throw new Error('unexpected-content-type');
@@ -168,11 +174,15 @@ async function monitor(config) {
     if (!Array.isArray(value) || value.length !== 0) throw new Error('unexpected-response');
     return response.status;
   }));
-  checks.push(await runCheck('supabase-storage', () => expectJsonStatus(
-    `${config.supabaseUrl}/storage/v1/status`,
-    { headers: commonHeaders },
-    (value) => value !== null && typeof value === 'object',
-  )));
+  checks.push(await runCheck('supabase-storage', async () => {
+    const response = await boundedFetch(
+      `${config.supabaseUrl}/storage/v1/status`,
+      { headers: commonHeaders },
+    );
+    if (response.status !== 200) throw new Error(`http-${response.status}`);
+    await response.arrayBuffer();
+    return response.status;
+  }));
   checks.push(await runCheck('clamav-health', () => expectJsonStatus(
     healthUrlForScan(config.scanUrl),
     { headers: { Accept: 'application/json' } },
@@ -200,7 +210,21 @@ async function monitor(config) {
 
 async function main() {
   const config = validateMonitorConfiguration();
-  const checks = await monitor(config);
+  let frontendCookieHeader = '';
+  if (config.frontendStorageStatePath) {
+    const serializedState = await readFile(config.frontendStorageStatePath, 'utf8');
+    if (Buffer.byteLength(serializedState, 'utf8') > 64 * 1024) {
+      throw new Error('Etat Vercel de monitoring trop volumineux.');
+    }
+    let storageState;
+    try {
+      storageState = JSON.parse(serializedState);
+    } catch {
+      throw new Error('Etat Vercel de monitoring invalide.');
+    }
+    frontendCookieHeader = vercelCookieHeaderFromStorageState(storageState, config.appUrl);
+  }
+  const checks = await monitor(config, { frontendCookieHeader });
   const evidence = {
     format: 'meddata-operations-monitor/v1',
     observedAt: new Date().toISOString(),

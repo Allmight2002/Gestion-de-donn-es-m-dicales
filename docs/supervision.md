@@ -25,6 +25,12 @@ Créer les environnements GitHub `staging` et `production`. Dans chacun :
 - secrets `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` ;
 - secrets `CLAMAV_SCAN_URL` et `CLAMAV_SCAN_TOKEN`.
 
+L'environnement `staging` exige aussi `VERCEL_TOKEN`, `VERCEL_ORG_ID` et
+`VERCEL_PROJECT_ID`. Le workflow les utilise uniquement pour obtenir un cookie
+éphémère, HttpOnly et limité au déploiement `APP_URL` exact. La valeur du cookie
+n'est ni journalisée ni conservée dans l'artefact ; elle est supprimée même si la
+sonde échoue. `APP_URL` doit alors être une URL HTTPS `*.vercel.app`.
+
 `CLAMAV_SCAN_URL` doit se terminer par `/scan`. Le moniteur exige le mode strict
 et refuse une clé serveur à la place de la clé publique.
 

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  VERCEL_CLI_VERSION: '55.0.0'
+  DO_NOT_TRACK: '1'
+
 concurrency:
   group: operations-monitor-${{ github.ref }}
   cancel-in-progress: false
@@ -38,8 +42,57 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Bootstrap scoped Vercel monitoring cookie
+        if: matrix.target == 'staging'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
+          : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
+          : "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID is required}"
+          control_dir="$RUNNER_TEMP/vercel-monitor-control"
+          cookie_jar="$RUNNER_TEMP/vercel-monitor.cookies"
+          storage_state="$RUNNER_TEMP/vercel-monitor-storage.json"
+          mkdir -p "$control_dir/.vercel"
+          CONTROL_PROJECT_FILE="$control_dir/.vercel/project.json" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const output = process.env.CONTROL_PROJECT_FILE;
+          const orgId = process.env.VERCEL_ORG_ID;
+          const projectId = process.env.VERCEL_PROJECT_ID;
+          if (!output || !orgId || !projectId) throw new Error('Configuration Vercel staging incomplete.');
+          writeFileSync(output, JSON.stringify({
+            orgId,
+            projectId,
+            projectName: 'gestion-de-donn-es-m-dicales',
+          }), { mode: 0o600 });
+          NODE
+          (
+            cd "$control_dir"
+            npx --yes "vercel@$VERCEL_CLI_VERSION" curl /login \
+              --deployment "$MONITOR_APP_URL" --yes -- \
+              --silent --show-error --fail --location \
+              --cookie-jar "$cookie_jar" --output /dev/null \
+              --header "x-vercel-set-bypass-cookie: true"
+          )
+          node "$GITHUB_WORKSPACE/scripts/vercel-cookie-state.mjs" \
+            "$cookie_jar" "$storage_state" "$MONITOR_APP_URL"
+          rm -f "$cookie_jar"
+          echo "MONITOR_FRONTEND_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
+
       - name: Probe application, Supabase and strict antivirus
         run: node scripts/operations-monitor.mjs
+
+      - name: Remove ephemeral Vercel monitoring state
+        if: always() && matrix.target == 'staging'
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/vercel-monitor.cookies"
+          rm -f "$RUNNER_TEMP/vercel-monitor-storage.json"
+          rm -f "$RUNNER_TEMP/vercel-monitor-control/.vercel/project.json"
 
       - name: Preserve redacted monitoring evidence
         if: always()
