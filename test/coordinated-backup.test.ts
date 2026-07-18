@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -10,6 +10,7 @@ import {
   isSessionPoolerDatabaseUrl,
   prepareDumpImage,
   runSupabaseDump,
+  withIsolatedSupabaseWorkdir,
   writeAtomicBackupDirectory,
 } from '../scripts/coordinated-backup.mjs';
 
@@ -20,6 +21,15 @@ afterEach(async () => {
 });
 
 describe('sauvegarde coordonnee sure', () => {
+  test('epingle l image PG17 publiee avec la CLI candidate', () => {
+    expect(COORDINATED_DUMP_IMAGE).toMatchObject({
+      cliVersion: '2.109.1',
+      dbMajorVersion: 17,
+      tag: '17.6.1.143',
+      digest: 'sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453',
+    });
+  });
+
   test('supprime tout repertoire partiel lorsqu une construction echoue', async () => {
     const root = await mkdtemp(join(tmpdir(), 'meddata-coordinated-backup-test-'));
     temporaryRoots.push(root);
@@ -104,6 +114,43 @@ describe('sauvegarde coordonnee sure', () => {
     })).resolves.toBe('cached');
     expect(calls).toHaveLength(1);
     expect(calls[0]).toContain(`${COORDINATED_DUMP_IMAGE.repository}:${COORDINATED_DUMP_IMAGE.tag}`);
+  });
+
+  test('refuse le dump si la version PostgreSQL ne correspond plus a l image epinglee', async () => {
+    let executed = false;
+
+    await expect(prepareDumpImage({
+      execute: () => { executed = true; },
+      sourceEnv: { BACKUP_PREPARE_DUMP_IMAGE: 'true', PATH: '/usr/bin' },
+      attempts: 1,
+      installedCliVersion: COORDINATED_DUMP_IMAGE.cliVersion,
+      configuredDbMajorVersion: COORDINATED_DUMP_IMAGE.dbMajorVersion + 2,
+    })).rejects.toThrow('Version PostgreSQL divergente');
+    expect(executed).toBe(false);
+  });
+
+  test('isole la configuration du dump de tout cache Supabase local', async () => {
+    let workdir = '';
+    await withIsolatedSupabaseWorkdir(async (isolatedWorkdir) => {
+      workdir = isolatedWorkdir;
+      const config = await readFile(join(workdir, 'supabase', 'config.toml'), 'utf8');
+      expect(config).toContain(`major_version = ${COORDINATED_DUMP_IMAGE.dbMajorVersion}`);
+      await expect(access(join(workdir, 'supabase', '.temp', 'postgres-version'))).rejects.toThrow();
+    });
+    await expect(access(workdir)).rejects.toThrow();
+  });
+
+  test('execute le CLI dans le workdir de dump explicitement fourni', () => {
+    let receivedWorkdir = '';
+    runSupabaseDump('postgresql://fictitious', '/tmp/roles.sql', ['--role-only'], 'roles', {
+      execute: (_command, _arguments, options) => {
+        receivedWorkdir = options.cwd;
+        return '';
+      },
+      sourceEnv: { PATH: '/usr/bin' },
+      workdir: '/tmp/isolated-supabase-workdir',
+    });
+    expect(receivedWorkdir).toBe('/tmp/isolated-supabase-workdir');
   });
 
   test('utilise le miroir par digest lorsque le registre ECR echoue', async () => {

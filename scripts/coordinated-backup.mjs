@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import {
   access,
   mkdir,
+  mkdtemp,
   readFile,
   rename,
   rm,
@@ -10,6 +11,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -28,9 +30,12 @@ const FORMAT = 'meddata-coordinated-backup/v1';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const supabaseEntrypoint = join(root, 'node_modules', 'supabase', 'dist', 'supabase.js');
 const DUMP_STAGES = new Set(['roles', 'schema', 'data', 'public-data']);
-// Source de verite: Dockerfile du tag Supabase CLI v2.109.1, lui-meme epingle dans package-lock.json.
+// Source de verite: image PG du Dockerfile du tag Supabase CLI v2.109.1. Le
+// workdir de dump isole ci-dessous garantit que la CLI charge major_version=17
+// sans reutiliser un cache supabase/.temp issu d un autre environnement.
 export const COORDINATED_DUMP_IMAGE = Object.freeze({
   cliVersion: '2.109.1',
+  dbMajorVersion: 17,
   repository: 'public.ecr.aws/supabase/postgres',
   mirrorRepository: 'docker.io/supabase/postgres',
   tag: '17.6.1.143',
@@ -199,6 +204,24 @@ function dockerCommandOptions(sourceEnv, stdio) {
   };
 }
 
+function dbMajorVersionFromConfig(configText) {
+  const dbSection = configText.split(/^\[db\]\s*$/m)[1]?.split(/^\[[^\]]+\]\s*$/m)[0] ?? '';
+  return Number(/^\s*major_version\s*=\s*(\d+)\s*(?:#.*)?$/m.exec(dbSection)?.[1]);
+}
+
+export async function withIsolatedSupabaseWorkdir(action) {
+  const workdir = await mkdtemp(join(tmpdir(), 'meddata-supabase-dump-'));
+  try {
+    const supabaseDirectory = join(workdir, 'supabase');
+    await mkdir(supabaseDirectory, { recursive: true, mode: 0o700 });
+    const config = await readFile(join(root, 'supabase', 'config.toml'));
+    await writeFile(join(supabaseDirectory, 'config.toml'), config, { flag: 'wx', mode: 0o600 });
+    return await action(workdir);
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+}
+
 function expectedDumpImageIsPresent(execute, sourceEnv) {
   const target = `${COORDINATED_DUMP_IMAGE.repository}:${COORDINATED_DUMP_IMAGE.tag}`;
   try {
@@ -218,6 +241,7 @@ export async function prepareDumpImage({
   sourceEnv = process.env,
   attempts = 2,
   installedCliVersion,
+  configuredDbMajorVersion,
 } = {}) {
   if (sourceEnv.BACKUP_PREPARE_DUMP_IMAGE !== 'true') return 'skipped';
   const cliVersion = installedCliVersion ?? JSON.parse(
@@ -225,6 +249,11 @@ export async function prepareDumpImage({
   ).version;
   if (cliVersion !== COORDINATED_DUMP_IMAGE.cliVersion) {
     throw new Error('Version Supabase CLI divergente de l image de dump epinglee.');
+  }
+  const dbMajorVersion = configuredDbMajorVersion
+    ?? dbMajorVersionFromConfig(await readFile(join(root, 'supabase', 'config.toml'), 'utf8'));
+  if (dbMajorVersion !== COORDINATED_DUMP_IMAGE.dbMajorVersion) {
+    throw new Error('Version PostgreSQL divergente de l image de dump epinglee.');
   }
   if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 3) {
     throw new Error('Nombre de tentatives de preparation du dump invalide.');
@@ -267,7 +296,7 @@ export function runSupabaseDump(
   file,
   extraArguments,
   stage,
-  { execute = execFileSync, sourceEnv = process.env } = {},
+  { execute = execFileSync, sourceEnv = process.env, workdir = root } = {},
 ) {
   const safeStage = DUMP_STAGES.has(stage) ? stage : 'unknown';
   try {
@@ -284,7 +313,7 @@ export function runSupabaseDump(
         ...extraArguments,
       ],
       {
-        cwd: root,
+        cwd: workdir,
         env: dumpSubprocessEnvironment(sourceEnv),
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -350,7 +379,6 @@ async function backup() {
   const { target, projectRef } = validatedSource();
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_SET_DIR);
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
-  await prepareDumpImage();
   const databaseFileCount = await writeAtomicBackupDirectory(destination, async (partial) => {
     const startedAt = new Date().toISOString();
     const definitions = [
@@ -359,13 +387,19 @@ async function backup() {
       ['data.sql', ['--data-only', '--use-copy'], 'data'],
       ['public-data.sql', ['--data-only', '--use-copy', '--schema', 'public'], 'public-data'],
     ];
-    const databaseFiles = [];
-    for (const [name, arguments_, stage] of definitions) {
-      const plaintextPath = join(partial, name);
-      runSupabaseDump(process.env.SUPABASE_DB_URL, plaintextPath, arguments_, stage);
-      databaseFiles.push(await encryptGeneratedFile(plaintextPath, key));
-      console.log(`Export PostgreSQL ${databaseFiles.length}/${definitions.length}: OK (contenu masque).`);
-    }
+    const databaseFiles = await withIsolatedSupabaseWorkdir(async (dumpWorkdir) => {
+      await prepareDumpImage();
+      const files = [];
+      for (const [name, arguments_, stage] of definitions) {
+        const plaintextPath = join(partial, name);
+        runSupabaseDump(process.env.SUPABASE_DB_URL, plaintextPath, arguments_, stage, {
+          workdir: dumpWorkdir,
+        });
+        files.push(await encryptGeneratedFile(plaintextPath, key));
+        console.log(`Export PostgreSQL ${files.length}/${definitions.length}: OK (contenu masque).`);
+      }
+      return files;
+    });
 
     const storageDirectory = join(partial, 'storage-objects');
     try {

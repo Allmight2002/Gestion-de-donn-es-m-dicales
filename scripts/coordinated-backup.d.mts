@@ -22,6 +22,7 @@ export type DumpExecutor = (
 
 export const COORDINATED_DUMP_IMAGE: Readonly<{
   cliVersion: string;
+  dbMajorVersion: number;
   repository: string;
   mirrorRepository: string;
   tag: string;
@@ -42,7 +43,12 @@ export function prepareDumpImage(options?: {
   sourceEnv?: Partial<Record<string, string | undefined>>;
   attempts?: number;
   installedCliVersion?: string;
+  configuredDbMajorVersion?: number;
 }): Promise<'skipped' | 'cached' | 'primary' | 'mirror'>;
+
+export function withIsolatedSupabaseWorkdir<T>(
+  action: (workdir: string) => T | Promise<T>,
+): Promise<T>;
 
 export function runSupabaseDump(
   databaseUrl: string,
@@ -52,6 +58,7 @@ export function runSupabaseDump(
   options?: {
     execute?: DumpExecutor;
     sourceEnv?: Partial<Record<string, string | undefined>>;
+    workdir?: string;
   },
 ): void;
 
