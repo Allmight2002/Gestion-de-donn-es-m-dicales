@@ -1,5 +1,6 @@
 // Gate de release : valide presence, format et identite coherente de la cible. Ne jamais afficher une valeur.
 import { validateSupabaseTarget } from './check-supabase-target.mjs';
+import { assertOfflineBuildPolicy } from './offline-build-policy.mjs';
 
 const target = process.argv.find((arg) => arg.startsWith('--target='))?.slice(9) ?? 'pr';
 const fail = (message) => { console.error(`Configuration release invalide: ${message}`); process.exitCode = 1; };
@@ -29,6 +30,9 @@ supabaseUrl('VITE_SUPABASE_URL'); anonKey('VITE_SUPABASE_ANON_KEY');
 bool('VITE_USE_SIGNED_READ', true); bool('VITE_REQUIRE_SERVER_INSPECTION');
 if (process.env.VITE_REQUIRE_SERVER_INSPECTION === 'true' && process.env.VITE_USE_SIGNED_READ !== 'true') fail('VITE_REQUIRE_SERVER_INSPECTION=true exige VITE_USE_SIGNED_READ=true.');
 if (target !== 'pr') {
+  try { assertOfflineBuildPolicy(process.env); } catch (error) {
+    fail(error instanceof Error ? error.message : 'politique hors-ligne invalide.');
+  }
   for (const key of ['SUPABASE_ACCESS_TOKEN', 'SUPABASE_PROJECT_REF', 'SUPABASE_DB_URL', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'CLAMAV_SCAN_URL', 'CLAMAV_SCAN_TOKEN']) required(key);
   supabaseUrl('SUPABASE_URL'); anonKey('SUPABASE_ANON_KEY');
   if (!/^[a-z0-9]{20}$/i.test(process.env.SUPABASE_PROJECT_REF ?? '')) fail('SUPABASE_PROJECT_REF doit etre une reference Supabase de 20 caracteres.');

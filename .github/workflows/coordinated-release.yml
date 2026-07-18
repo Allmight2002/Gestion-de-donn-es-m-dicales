@@ -59,6 +59,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_OFFLINE_MODE: disabled
+          VITE_OFFLINE_ADMIN_ACK: 'false'
           RELEASE_TARGET: ${{ inputs.target }}
         run: npm run release:env -- --target=pr && npm run build && npm run manifest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -169,6 +171,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_OFFLINE_MODE: disabled
+          VITE_OFFLINE_ADMIN_ACK: 'false'
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -327,6 +331,7 @@ jobs:
       VITE_REQUIRE_SERVER_INSPECTION: 'true'
       VITE_OFFLINE_MODE: demo
       VITE_OFFLINE_ADMIN_ACK: 'true'
+      ALLOW_OFFLINE_DEMO_BUILD: 'true'
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -530,6 +535,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_OFFLINE_MODE: disabled
+          VITE_OFFLINE_ADMIN_ACK: 'false'
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -584,6 +591,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_OFFLINE_MODE: disabled
+          VITE_OFFLINE_ADMIN_ACK: 'false'
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

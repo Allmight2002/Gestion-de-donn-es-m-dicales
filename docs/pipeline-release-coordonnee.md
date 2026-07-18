@@ -34,7 +34,10 @@ Configurer les environnements GitHub `staging` et `production` avec :
 - Vercel : `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
 Le pipeline force `VITE_USE_SIGNED_READ`, `VITE_REQUIRE_SERVER_INSPECTION`,
-`REQUIRE_SERVER_INSPECTION` et `DB_REQUIRE_SERVER_INSPECTION` a `true`. Les scripts
+`REQUIRE_SERVER_INSPECTION` et `DB_REQUIRE_SERVER_INSPECTION` a `true`. Il force aussi
+`VITE_OFFLINE_MODE=disabled` et `VITE_OFFLINE_ADMIN_ACK=false`; le build refuse tout
+mode hors-ligne incoherent ou active, sauf le preview LOT 13 isole qui porte son
+acquittement explicite propre. Les scripts
 `release:env` valident presence, formats et coherence sans afficher de valeurs. Seules les
 variables `VITE_*` sont publiques; une cle service-role, URL DB ou token scanner ne doit jamais
 etre prefixe `VITE_`.
