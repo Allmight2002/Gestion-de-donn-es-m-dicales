@@ -7,5 +7,19 @@ export function validateMonitorConfiguration(env?: Record<string, string | undef
   anonKey: string;
   scanUrl: string;
   scanToken: string;
+  frontendStorageStatePath: string | null;
 };
 
+export type MonitorConfiguration = ReturnType<typeof validateMonitorConfiguration>;
+export type MonitorCheck = {
+  name: string;
+  ok: boolean;
+  httpStatus?: number;
+  errorCode?: string;
+  durationMs: number;
+};
+
+export function monitor(
+  config: MonitorConfiguration,
+  options?: { frontendCookieHeader?: string },
+): Promise<MonitorCheck[]>;

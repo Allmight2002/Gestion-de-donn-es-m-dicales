@@ -68,6 +68,36 @@ export function createVercelStorageState(cookieJar, rawDeploymentUrl, nowSeconds
   return { cookies, origins: [] };
 }
 
+export function vercelCookieHeaderFromStorageState(
+  storageState,
+  rawDeploymentUrl,
+  nowSeconds = Math.floor(Date.now() / 1000),
+) {
+  const expectedHostname = validatedVercelDeploymentHostname(rawDeploymentUrl);
+  const cookies = storageState?.cookies;
+  if (!Array.isArray(cookies) || cookies.length !== 1) {
+    throw new Error('Un unique cookie Vercel valide est requis pour le monitoring staging.');
+  }
+
+  const cookie = cookies[0];
+  if (
+    cookie?.name !== VERCEL_COOKIE_NAME ||
+    cookie.domain !== expectedHostname ||
+    cookie.path !== '/' ||
+    cookie.httpOnly !== true ||
+    cookie.secure !== true ||
+    !Number.isInteger(cookie.expires) ||
+    cookie.expires <= nowSeconds
+  ) {
+    throw new Error('Le cookie Vercel de monitoring ne correspond pas au deploiement staging exact.');
+  }
+  if (typeof cookie.value !== 'string' || !/^[A-Za-z0-9._~-]+$/u.test(cookie.value)) {
+    throw new Error('La valeur du cookie Vercel de monitoring est invalide.');
+  }
+
+  return `${VERCEL_COOKIE_NAME}=${cookie.value}`;
+}
+
 export async function writeVercelStorageState(cookieJarPath, outputPath, rawDeploymentUrl) {
   const cookieJar = await readFile(cookieJarPath, 'utf8');
   const storageState = createVercelStorageState(cookieJar, rawDeploymentUrl);
