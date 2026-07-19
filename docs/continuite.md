@@ -59,3 +59,14 @@ empreintes, dates, résultats booléens et références de décisions externes.
 
 Ce contrôle valide la forme et la cohérence de la preuve ; il ne réalise pas la
 restauration et ne signe pas les objectifs à la place des responsables.
+
+Le job `production` exige en plus le secret d'environnement
+`RECOVERY_EVIDENCE_JSON`. Son contenu est vérifié avec la commande ci-dessus
+contre le SHA exact du candidat avant la validation de cible, la sauvegarde
+pré-release et toute écriture Supabase ou Vercel. Une checklist, un exemple JSON
+ou une preuve portant sur un autre commit ne déverrouille pas la release.
+
+La création de cette preuve nécessite un exercice réel et autorisé sur une cible
+staging isolée, avec uniquement des données fictives. Tant que cet exercice n'a
+pas été réalisé et que la preuve n'est pas installée dans l'environnement GitHub
+`production`, B8 reste ouvert.

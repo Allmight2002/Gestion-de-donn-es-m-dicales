@@ -353,6 +353,7 @@ describe('configuration de deploiement', () => {
     const production = workflow.slice(productionStart);
     const githubControlsGate = production.indexOf('npm run github:controls:verify');
     const governanceGate = production.indexOf('npm run governance:evidence:verify --');
+    const recoveryGate = production.indexOf('npm run recovery:evidence:verify --');
     const targetGate = production.indexOf('npm run release:env -- --target=production');
     const encryptedBackup = production.indexOf('npm run backup:coordinated -- --target=production');
     const verifiedBackup = production.indexOf('npm run backup:coordinated:verify', encryptedBackup);
@@ -365,7 +366,9 @@ describe('configuration de deploiement', () => {
     expect(githubControlsGate).toBeGreaterThan(-1);
     expect(governanceGate).toBeGreaterThan(githubControlsGate);
     expect(governanceGate).toBeGreaterThan(-1);
-    expect(targetGate).toBeGreaterThan(governanceGate);
+    expect(recoveryGate).toBeGreaterThan(governanceGate);
+    expect(recoveryGate).toBeGreaterThan(-1);
+    expect(targetGate).toBeGreaterThan(recoveryGate);
     expect(targetGate).toBeGreaterThan(-1);
     expect(encryptedBackup).toBeGreaterThan(targetGate);
     expect(verifiedBackup).toBeGreaterThan(encryptedBackup);
@@ -377,6 +380,7 @@ describe('configuration de deploiement', () => {
     expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(production).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(production).toContain('GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}');
+    expect(production).toContain('RECOVERY_EVIDENCE_JSON: ${{ secrets.RECOVERY_EVIDENCE_JSON }}');
     expect(production).toContain('GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}');
     expect(production).toContain('--commit="$RELEASE_SHA"');
     expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
