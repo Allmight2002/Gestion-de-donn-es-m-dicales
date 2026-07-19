@@ -29,6 +29,7 @@
     "backup:coordinated:verify": "node scripts/coordinated-backup.mjs verify",
     "backup:coordinated:extract": "node scripts/coordinated-backup.mjs extract",
     "recovery:evidence:verify": "node scripts/validate-recovery-evidence.mjs",
+    "governance:evidence:verify": "node scripts/validate-governance-evidence.mjs",
     "ops:monitor": "node scripts/operations-monitor.mjs",
     "create-account": "node scripts/create-account.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
