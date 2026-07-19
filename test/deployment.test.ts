@@ -351,6 +351,7 @@ describe('configuration de deploiement', () => {
     const workflow = read('.github/workflows/coordinated-release.yml');
     const productionStart = workflow.indexOf('\n  production:');
     const production = workflow.slice(productionStart);
+    const githubControlsGate = production.indexOf('npm run github:controls:verify');
     const governanceGate = production.indexOf('npm run governance:evidence:verify --');
     const targetGate = production.indexOf('npm run release:env -- --target=production');
     const encryptedBackup = production.indexOf('npm run backup:coordinated -- --target=production');
@@ -361,6 +362,8 @@ describe('configuration de deploiement', () => {
     const edgeWrite = production.indexOf('npm exec -- supabase functions deploy');
 
     expect(productionStart).toBeGreaterThan(-1);
+    expect(githubControlsGate).toBeGreaterThan(-1);
+    expect(governanceGate).toBeGreaterThan(githubControlsGate);
     expect(governanceGate).toBeGreaterThan(-1);
     expect(targetGate).toBeGreaterThan(governanceGate);
     expect(targetGate).toBeGreaterThan(-1);
@@ -374,6 +377,7 @@ describe('configuration de deploiement', () => {
     expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(production).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(production).toContain('GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}');
+    expect(production).toContain('GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}');
     expect(production).toContain('--commit="$RELEASE_SHA"');
     expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });

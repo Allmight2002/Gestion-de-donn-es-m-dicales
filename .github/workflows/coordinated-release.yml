@@ -529,6 +529,10 @@ jobs:
           path: ${{ runner.temp }}/staging-backend
           github-token: ${{ github.token }}
           run-id: ${{ inputs.staging_run_id }}
+      - name: Verify live GitHub protections in read-only mode
+        env:
+          GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}
+        run: npm run github:controls:verify
       - name: Require current signed governance evidence for the exact release
         env:
           GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}
