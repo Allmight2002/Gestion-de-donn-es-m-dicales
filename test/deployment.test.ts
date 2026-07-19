@@ -239,6 +239,21 @@ describe('configuration de deploiement', () => {
     expect(viteConfig).toContain('__BUILD_TIME__');
   });
 
+  test('la sauvegarde de continuite est periodique, chiffree, verifiee et conservee hors runner', () => {
+    const workflow = read('.github/workflows/continuity-backup.yml');
+    expect(workflow).toContain("cron: '17 2 * * *'");
+    expect(workflow).toContain('["staging","production"]');
+    expect(workflow).toContain('environment: ${{ matrix.target }}');
+    expect(workflow).toContain('CONTINUITY_BACKUP_ENABLED');
+    expect(workflow).toContain('BACKUP_REQUIRE_SESSION_POOLER');
+    expect(workflow).toContain('npm run backup:coordinated --');
+    expect(workflow).toContain('npm run backup:coordinated:verify --');
+    expect(workflow).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
+    expect(workflow).toContain('retention-days: 30');
+    expect(workflow.indexOf('backup:coordinated:verify'))
+      .toBeLessThan(workflow.indexOf('actions/upload-artifact'));
+  });
+
   test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
     const config = JSON.parse(read('vercel.json')) as {
       git: { deploymentEnabled: boolean };
