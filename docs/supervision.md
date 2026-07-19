@@ -25,6 +25,8 @@ Créer les environnements GitHub `staging` et `production`. Dans chacun :
 - variable `APP_URL` : URL HTTPS canonique du frontend ;
 - secrets `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` ;
 - secrets `CLAMAV_SCAN_URL` et `CLAMAV_SCAN_TOKEN`.
+- secret `MONITOR_ALERT_WEBHOOK_URL` : destination HTTPS d'alerte, distincte de
+  GitHub et gérée par l'exploitation.
 
 L'environnement `staging` exige aussi `VERCEL_TOKEN`, `VERCEL_ORG_ID` et
 `VERCEL_PROJECT_ID`. Le workflow les utilise uniquement pour obtenir un cookie
@@ -49,6 +51,13 @@ statut vert.
 Le script effectue deux tentatives bornées. Après deux échecs, le job GitHub est
 rouge et l'artefact identifie le composant, le statut HTTP éventuel et la durée,
 sans détail sensible.
+
+Le workflow envoie alors un événement JSON expurgé au webhook obligatoire. Il
+ne transmet que l'environnement, la date, le run et les noms/codes bornés des
+sondes en échec ; les URL, corps de réponse, clés et détails internes sont exclus.
+La livraison de l'alerte ne transforme jamais la sonde en succès. Pour tester le
+circuit sans provoquer une panne réelle, lancer manuellement le workflow avec
+`alert_test=true` et conserver l'accusé du système destinataire.
 
 | Échec | Réponse immédiate | Condition de reprise |
 |---|---|---|

@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      alert_test:
+        description: Envoyer aussi une alerte synthetique expurgee
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -36,12 +42,16 @@ jobs:
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
       CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+      MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+
+      - name: Require an HTTPS alert destination
+        run: node scripts/send-operations-alert.mjs --check-config
 
       - name: Bootstrap scoped Vercel monitoring cookie
         if: matrix.target == 'staging'
@@ -85,7 +95,23 @@ jobs:
           echo "MONITOR_FRONTEND_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
 
       - name: Probe application, Supabase and strict antivirus
+        id: probe
+        continue-on-error: true
         run: node scripts/operations-monitor.mjs
+
+      - name: Deliver the redacted failure alert
+        if: steps.probe.outcome == 'failure'
+        run: node scripts/send-operations-alert.mjs --file="$MONITOR_OUTPUT"
+
+      - name: Exercise alert delivery on explicit request
+        if: inputs.alert_test == true
+        env:
+          MONITOR_ALERT_DRILL: 'true'
+        run: node scripts/send-operations-alert.mjs --file="$MONITOR_OUTPUT"
+
+      - name: Preserve the monitor failure after alerting
+        if: steps.probe.outcome == 'failure'
+        run: exit 1
 
       - name: Remove ephemeral Vercel monitoring state
         if: always() && matrix.target == 'staging'
