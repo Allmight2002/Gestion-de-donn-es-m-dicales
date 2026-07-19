@@ -219,6 +219,8 @@ describe('configuration de deploiement', () => {
     expect(compose).not.toMatch(/image:\s*clamav\/clamav:stable\s*$/m);
     expect(dockerfile).not.toMatch(/^FROM\s+node:22-alpine\s*$/m);
     expect(scanner).toContain('zINSTREAM');
+    expect(scanner).toContain('zVERSION');
+    expect(dockerfile).toContain('parse-version.mjs');
     expect(scanner).toContain('POST /scan expected');
     expect(scanner).toContain('FORBIDDEN_TOKENS');
     expect(prodEnv).toContain('CLAMAV_SCAN_URL=');

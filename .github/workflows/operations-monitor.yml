@@ -29,6 +29,7 @@ jobs:
       MONITOR_TARGET: ${{ matrix.target }}
       MONITOR_APP_URL: ${{ vars.APP_URL }}
       MONITOR_REQUIRE_STRICT_INSPECTION: 'true'
+      MONITOR_MAX_SIGNATURE_AGE_HOURS: '48'
       MONITOR_OUTPUT: monitor-evidence-${{ matrix.target }}.json
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

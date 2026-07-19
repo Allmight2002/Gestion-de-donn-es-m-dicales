@@ -10,6 +10,7 @@ synthétique toutes les quinze minutes pour `staging` et `production`. Il vérif
 - une lecture REST vide soumise aux grants/RLS, sans lire de ligne ;
 - la santé Supabase Storage ;
 - la santé de `clamd` ;
+- la version du moteur, l'âge de la base de signatures et la capacité disponible ;
 - un scan de texte fictif sain ;
 - la détection de la signature EICAR fictive.
 
@@ -32,7 +33,11 @@ n'est ni journalisée ni conservée dans l'artefact ; elle est supprimée même 
 sonde échoue. `APP_URL` doit alors être une URL HTTPS `*.vercel.app`.
 
 `CLAMAV_SCAN_URL` doit se terminer par `/scan`. Le moniteur exige le mode strict
-et refuse une clé serveur à la place de la clé publique.
+et refuse une clé serveur à la place de la clé publique. Il refuse aussi une base
+de signatures de plus de 48 heures, une date future incohérente, une réponse
+`VERSION` non interprétable ou un scanner sans emplacement disponible. La limite
+est fixée par `MONITOR_MAX_SIGNATURE_AGE_HOURS` dans le workflow et ne doit pas être
+augmentée sans acceptation RSSI documentée.
 
 Avant ouverture à des données réelles, lancer manuellement **Operations monitor**,
 vérifier les deux jobs et conserver les artefacts. Un environnement non configuré
