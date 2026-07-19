@@ -40,3 +40,22 @@ il faut encore prouver :
 
 Tant que ces preuves manquent, B3 et B4 restent ouverts et les données autorisées
 restent entièrement fictives.
+
+## Preuve d'un exercice de restauration et de reprise
+
+Après un exercice réel sur une cible isolée, la preuve JSON doit être contrôlée
+contre le commit exercé :
+
+```text
+npm run recovery:evidence:verify -- --file=<preuve.json> --commit=<SHA40>
+```
+
+Le validateur refuse notamment une cible reliée à la production, une preuve
+périmée ou rattachée à un autre commit, une restauration partielle DB/Auth/Storage,
+un objet manquant, une divergence de hash, un orphelin, un dépassement RPO/RTO,
+un parcours critique absent ou une approbation non référencée. La preuve ne doit
+contenir ni donnée patient, ni nom d'objet, ni secret : uniquement des compteurs,
+empreintes, dates, résultats booléens et références de décisions externes.
+
+Ce contrôle valide la forme et la cohérence de la preuve ; il ne réalise pas la
+restauration et ne signe pas les objectifs à la place des responsables.
