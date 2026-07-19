@@ -23,6 +23,8 @@ Configurer les environnements GitHub `staging` et `production` avec :
 - frontend : `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`;
 - Supabase : `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_URL`,
   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`;
+- sauvegarde : `STORAGE_BACKUP_ENCRYPTION_KEY`, cle AES-256 en base64 propre a chaque
+  environnement, conservee hors du depot et separee des artefacts chiffres;
 - scanner : `CLAMAV_SCAN_URL`, `CLAMAV_SCAN_TOKEN`;
 - préflight API staging : `STAGING_MEDECIN_EMAIL`, `STAGING_MEDECIN_PASSWORD`;
 - E2E navigateur (facultatif) : `STAGING_CURATEUR_EMAIL/PASSWORD`, `STAGING_ADMIN_EMAIL/PASSWORD` ;
@@ -32,7 +34,10 @@ Configurer les environnements GitHub `staging` et `production` avec :
 - Vercel : `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
 Le pipeline force `VITE_USE_SIGNED_READ`, `VITE_REQUIRE_SERVER_INSPECTION`,
-`REQUIRE_SERVER_INSPECTION` et `DB_REQUIRE_SERVER_INSPECTION` a `true`. Les scripts
+`REQUIRE_SERVER_INSPECTION` et `DB_REQUIRE_SERVER_INSPECTION` a `true`. Il force aussi
+`VITE_OFFLINE_MODE=disabled` et `VITE_OFFLINE_ADMIN_ACK=false`; le build refuse tout
+mode hors-ligne incoherent ou active, sauf le preview LOT 13 isole qui porte son
+acquittement explicite propre. Les scripts
 `release:env` valident presence, formats et coherence sans afficher de valeurs. Seules les
 variables `VITE_*` sont publiques; une cle service-role, URL DB ou token scanner ne doit jamais
 etre prefixe `VITE_`.
@@ -42,8 +47,10 @@ etre prefixe `VITE_`.
 1. `validate` execute CI, fige le SHA, construit `dist/` comme simple controle de build (le
    frontend n'est PAS deploye depuis ce job) et archive uniquement `deploy-manifest.json`
    (preuve technique de release conservee 30 jours).
-2. `backend-staging` valide les secrets, pousse les migrations, applique `storage.sql` dans une
-   transaction et verifie buckets/policies.
+2. `backend-staging` valide les secrets et la cible exacte, cree puis verifie une sauvegarde
+   chiffree coordonnee DB + Storage, et conserve cet ensemble hors du runner pendant 30 jours.
+   Une erreur de sauvegarde, verification ou archivage bloque toute ecriture cloud. Il pousse
+   ensuite les migrations, applique `storage.sql` dans une transaction et verifie buckets/policies.
 3. Il découvre et déploie toutes les fonctions déclarées dans `supabase/functions/`
    (dont `finalize-upload`), puis exécute `env:check:cloud`, `release:drift` et E2E.
 4. `frontend-staging` reconstruit le frontend depuis le SHA fige (`npm ci` depuis le lockfile +
@@ -52,11 +59,14 @@ etre prefixe `VITE_`.
    artefact `dist/` n'est promu entre jobs, c'est le meme SHA immuable qui garantit l'egalite.
 5. Pour production, un approbateur de l'environnement GitHub protege confirme le rapport staging
    du meme SHA/tag et renseigne son `staging_run_id`; le workflow exige un job
-   `backend-staging` reussi pour ce SHA, puis execute les memes controles avant `vercel deploy --prod`.
+   `backend-staging` reussi pour ce SHA, puis refait une sauvegarde chiffree verifiee avant la
+   premiere ecriture production et execute les memes controles avant `vercel deploy --prod`.
 
-Tout echec stoppe les jobs dependants et bloque le frontend. Configurer les reviewers obligatoires
-pour `production`, les protections de branche exigeant CI, et desactiver toute auto-promotion
-Vercel de `main`; ces reglages distants ne sont pas verifiables depuis ce depot.
+Tout echec stoppe les jobs dependants et bloque le frontend. `vercel.json` desactive les
+deploiements automatiques issus de Git pour toutes les branches : les previews staging et la
+production doivent passer par la CLI du workflow coordonne. Verifier aussi ce comportement dans
+le projet Vercel apres chaque changement d'integration. Configurer les reviewers obligatoires
+pour `production` et les protections de branche exigeant CI.
 
 Les CLI de release sont figees dans le workflow (`supabase@2.109.1`, `vercel@55.0.0`) afin qu'un
 nouveau `latest` publie entre deux releases ne modifie pas silencieusement la procedure.
@@ -72,6 +82,13 @@ exposes de facon portable par Supabase : joindre la sortie du workflow comme pre
 la validation manuelle explicite; ne pas presenter cette verification comme automatique.
 
 ## Rollback et echec partiel
+
+La sauvegarde logique pre-release est une protection complementaire, pas une preuve de readiness
+production : les exports DB et Storage ne forment pas un snapshot transactionnel commun. Elle ne
+remplace ni les sauvegardes managees/PITR, ni une copie hors site immuable, ni un RPO/RTO approuve,
+ni une restauration periodiquement testee. Toute utilisation avec donnees reelles exige aussi que
+GitHub soit approuve comme sous-traitant pour la conservation temporaire de l'artefact chiffre et
+que la cle reste recuperable depuis un gestionnaire distinct.
 
 - Frontend : redeployer le precedent deployment Vercel, puis smoke tests.
 - Functions : redeployer les six fonctions depuis le tag/SHA precedent, puis verifier drift/E2E.

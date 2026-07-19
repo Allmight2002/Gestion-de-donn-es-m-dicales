@@ -17,6 +17,25 @@ const readFn = (name: string): string => {
 };
 
 describe('configuration de deploiement', () => {
+  test('les actions CI tierces sont epinglees a une empreinte immuable', () => {
+    const workflows = readdirSync('.github/workflows')
+      .filter((file) => /\.ya?ml$/.test(file))
+      .map((file) => `.github/workflows/${file}`);
+
+    for (const workflow of workflows) {
+      for (const match of read(workflow).matchAll(/^\s*uses:\s*([^\s#]+)/gm)) {
+        const reference = match[1];
+        if (reference.startsWith('./')) continue;
+
+        if (reference.startsWith('docker://')) {
+          expect(reference, workflow).toMatch(/^docker:\/\/[^\s@]+@sha256:[a-f0-9]{64}$/);
+        } else {
+          expect(reference, workflow).toMatch(/^[^\s@]+@[a-f0-9]{40}$/);
+        }
+      }
+    }
+  });
+
   test('les exports conserves passent par signed-read, pas par une policy Storage SELECT directe', () => {
     const storage = read('supabase/storage.sql');
     const edge = readFn('signed-read');
@@ -210,6 +229,7 @@ describe('configuration de deploiement', () => {
     expect(prodEnv).toContain('QUARANTINE_BUCKET=');
     expect(viteConfig).toContain("VITE_REQUIRE_SERVER_INSPECTION === 'true'");
     expect(viteConfig).toContain("VITE_USE_SIGNED_READ !== 'true'");
+    expect(viteConfig).toContain('assertOfflineBuildPolicy(env, mode)');
     expect(viteConfig).toContain('VERCEL_GIT_COMMIT_SHA');
     expect(viteConfig).toContain('VERCEL_GIT_COMMIT_REF');
     expect(viteConfig).toContain('__GIT_COMMIT__');
@@ -219,11 +239,13 @@ describe('configuration de deploiement', () => {
 
   test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
     const config = JSON.parse(read('vercel.json')) as {
+      git: { deploymentEnabled: boolean };
       rewrites: Array<{ source: string; destination: string }>;
       headers: Array<{ headers: Array<{ key: string; value: string }> }>;
     };
     const headers = new Map(config.headers[0].headers.map((h) => [h.key.toLowerCase(), h.value]));
 
+    expect(config.git.deploymentEnabled).toBe(false);
     expect(config.rewrites).toContainEqual({ source: '/(.*)', destination: '/index.html' });
     expect(headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(headers.get('content-security-policy')).toContain("object-src 'none'");
@@ -257,12 +279,25 @@ describe('configuration de deploiement', () => {
 
   test('la release coordonnee verrouille la cible avant toute ecriture staging', () => {
     const workflow = read('.github/workflows/coordinated-release.yml');
+    const backendStart = workflow.indexOf('\n  backend-staging:');
     const targetGate = workflow.indexOf('npm run release:env -- --target=staging');
+    const encryptedBackup = workflow.indexOf('npm run backup:coordinated -- --target=staging');
+    const verifiedBackup = workflow.indexOf('npm run backup:coordinated:verify', encryptedBackup);
+    const preservedBackup = workflow.indexOf('pre-release-backup-staging-${{ github.run_id }}', verifiedBackup);
     const databaseWrite = workflow.indexOf('npm exec -- supabase db push');
     const storageWrite = workflow.indexOf('npm run supabase:storage');
     const edgeWrite = workflow.indexOf('npm exec -- supabase secrets set');
 
     expect(targetGate).toBeGreaterThan(-1);
+    expect(encryptedBackup).toBeGreaterThan(targetGate);
+    expect(verifiedBackup).toBeGreaterThan(encryptedBackup);
+    expect(preservedBackup).toBeGreaterThan(verifiedBackup);
+    expect(databaseWrite).toBeGreaterThan(preservedBackup);
+    expect(workflow.slice(backendStart, databaseWrite)).toContain(
+      'STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}',
+    );
+    expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
+    expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(databaseWrite).toBeGreaterThan(targetGate);
     expect(storageWrite).toBeGreaterThan(targetGate);
     expect(edgeWrite).toBeGreaterThan(targetGate);
@@ -283,6 +318,9 @@ describe('configuration de deploiement', () => {
     expect(workflow).not.toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(workflow).toContain("node-version: '22'");
     expect(workflow).not.toContain("node-version: '20'");
+    expect(workflow.match(/VITE_OFFLINE_MODE: disabled/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(workflow.match(/VITE_OFFLINE_ADMIN_ACK: 'false'/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(workflow.match(/ALLOW_OFFLINE_DEMO_BUILD: 'true'/g)).toHaveLength(1);
     const edgeDeploy = workflow.indexOf('Deploy all Edge Functions');
     const frontendDeploy = workflow.indexOf('vercel@$VERCEL_CLI_VERSION" deploy --prebuilt');
     const strictActivation = workflow.indexOf('npm run inspection:activate -- --target=staging');
@@ -290,6 +328,32 @@ describe('configuration de deploiement', () => {
     expect(frontendDeploy).toBeGreaterThan(edgeDeploy);
     expect(strictActivation).toBeGreaterThan(frontendDeploy);
     expect(cloudGate).toBeGreaterThan(strictActivation);
+  });
+
+  test('la production exige une sauvegarde chiffree verifiee et conservee avant toute ecriture', () => {
+    const workflow = read('.github/workflows/coordinated-release.yml');
+    const productionStart = workflow.indexOf('\n  production:');
+    const production = workflow.slice(productionStart);
+    const targetGate = production.indexOf('npm run release:env -- --target=production');
+    const encryptedBackup = production.indexOf('npm run backup:coordinated -- --target=production');
+    const verifiedBackup = production.indexOf('npm run backup:coordinated:verify', encryptedBackup);
+    const preservedBackup = production.indexOf('pre-release-backup-production-${{ github.run_id }}', verifiedBackup);
+    const databaseWrite = production.indexOf('npm exec -- supabase db push');
+    const storageWrite = production.indexOf('npm run supabase:storage');
+    const edgeWrite = production.indexOf('npm exec -- supabase functions deploy');
+
+    expect(productionStart).toBeGreaterThan(-1);
+    expect(targetGate).toBeGreaterThan(-1);
+    expect(encryptedBackup).toBeGreaterThan(targetGate);
+    expect(verifiedBackup).toBeGreaterThan(encryptedBackup);
+    expect(preservedBackup).toBeGreaterThan(verifiedBackup);
+    expect(databaseWrite).toBeGreaterThan(preservedBackup);
+    expect(storageWrite).toBeGreaterThan(preservedBackup);
+    expect(edgeWrite).toBeGreaterThan(preservedBackup);
+    expect(production).toContain('STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}');
+    expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
+    expect(production).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
+    expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });
 
   test('la preuve de release compare les empreintes Storage et Edge distantes', () => {

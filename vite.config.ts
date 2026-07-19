@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { assertOfflineBuildPolicy } from './scripts/offline-build-policy.mjs';
 
 // Version applicative = celle de package.json (source unique) -> injectee comme __APP_VERSION__.
 const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version as string;
@@ -28,6 +29,7 @@ export default defineConfig(({ mode }) => {
   // Si le drapeau n'est pas arme, on REFUSE le build de production -> impossible d'expedier par
   // megarde le repli de signature client (non audite). En dev/test, le repli reste autorise.
   const env = loadEnv(mode, process.cwd(), '');
+  assertOfflineBuildPolicy(env, mode);
   if (mode === 'production' && env.VITE_USE_SIGNED_READ !== 'true') {
     throw new Error(
       "Build de production refuse : VITE_USE_SIGNED_READ doit valoir 'true' (lecture de fichiers " +

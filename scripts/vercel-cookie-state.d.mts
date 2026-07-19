@@ -20,6 +20,11 @@ export function createVercelStorageState(
   rawDeploymentUrl: string,
   nowSeconds?: number,
 ): VercelStorageState;
+export function vercelCookieHeaderFromStorageState(
+  storageState: unknown,
+  rawDeploymentUrl: string,
+  nowSeconds?: number,
+): string;
 export function writeVercelStorageState(
   cookieJarPath: string,
   outputPath: string,

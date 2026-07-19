@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const STAGING_PROJECT_REF = 'gmsxrniiclrheehhoakn';
+export const PRODUCTION_PROJECT_REF = 'lrzmbwdnrjjzwossntun';
 
 const PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/i;
 const clean = (value) => value?.trim() ?? '';
@@ -65,6 +66,9 @@ export function validateSupabaseTarget({ target, env = process.env, frontendOnly
 
   if (target === 'staging' && PROJECT_REF_PATTERN.test(declared) && declared !== STAGING_PROJECT_REF) {
     errors.push('La cible staging ne correspond pas au projet staging MedData approuve.');
+  }
+  if (target === 'production' && PROJECT_REF_PATTERN.test(declared) && declared !== PRODUCTION_PROJECT_REF) {
+    errors.push('La cible production ne correspond pas au projet production MedData approuve.');
   }
 
   return errors;

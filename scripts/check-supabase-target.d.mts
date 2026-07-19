@@ -1,4 +1,5 @@
 export const STAGING_PROJECT_REF: string;
+export const PRODUCTION_PROJECT_REF: string;
 
 export type SupabaseTargetEnvironment = Partial<
   Record<
