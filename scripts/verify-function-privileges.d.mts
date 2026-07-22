@@ -1,0 +1,26 @@
+export interface FunctionPrivilegeRow {
+  signature: string;
+  config: string[] | null;
+  anon_can_execute: boolean;
+  authenticated_can_execute: boolean;
+}
+
+export interface SchemaPrivileges {
+  anon_can_create: boolean;
+  authenticated_can_create: boolean;
+}
+
+export function loadFunctionPrivilegeInventory(): {
+  inventory: {
+    version: number;
+    schema: string;
+    role: string;
+    categories: Array<{ id: string; rationale: string; signatures: string[] }>;
+  };
+  signatures: string[];
+};
+export function inspectFunctionPrivileges(
+  rows: FunctionPrivilegeRow[],
+  schemaPrivileges: SchemaPrivileges,
+): string[];
+export function verifyFunctionPrivileges(dbUrl: string | undefined): Promise<number>;

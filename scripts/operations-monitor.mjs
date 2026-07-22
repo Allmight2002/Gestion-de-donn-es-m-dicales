@@ -10,12 +10,23 @@ import { vercelCookieHeaderFromStorageState } from './vercel-cookie-state.mjs';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const RETRIES = 2;
+const SIGNATURE_FUTURE_TOLERANCE_MS = 60 * 60 * 1_000;
 const clean = (value) => value?.trim() ?? '';
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 function required(env, name) {
   const value = clean(env[name]);
   if (!value) throw new Error(`${name} est requis.`);
+  return value;
+}
+
+function positiveInteger(env, name, { maximum }) {
+  const raw = required(env, name);
+  if (!/^\d+$/.test(raw)) throw new Error(`${name} doit etre un entier positif.`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
+    throw new Error(`${name} est hors limites.`);
+  }
   return value;
 }
 
@@ -75,6 +86,7 @@ export function validateMonitorConfiguration(env = process.env) {
     anonKey,
     scanUrl,
     scanToken,
+    maxSignatureAgeHours: positiveInteger(env, 'MONITOR_MAX_SIGNATURE_AGE_HOURS', { maximum: 168 }),
     frontendStorageStatePath: clean(env.MONITOR_FRONTEND_STORAGE_STATE) || null,
   };
 }
@@ -186,7 +198,26 @@ export async function monitor(config, { frontendCookieHeader = '' } = {}) {
   checks.push(await runCheck('clamav-health', () => expectJsonStatus(
     healthUrlForScan(config.scanUrl),
     { headers: { Accept: 'application/json' } },
-    (value) => value?.status === 'ok',
+    (value) => {
+      const updatedAtMs = Date.parse(value?.signatureDatabaseUpdatedAt ?? '');
+      const ageMs = Date.now() - updatedAtMs;
+      const capacity = value?.capacity;
+      return value?.status === 'ok'
+        && value?.engine === 'clamav'
+        && typeof value?.engineVersion === 'string'
+        && value.engineVersion.length > 0
+        && /^\d+$/.test(value?.signatureDatabaseVersion ?? '')
+        && Number.isFinite(updatedAtMs)
+        && ageMs >= -SIGNATURE_FUTURE_TOLERANCE_MS
+        && ageMs <= config.maxSignatureAgeHours * 60 * 60 * 1_000
+        && Number.isInteger(capacity?.activeScans)
+        && Number.isInteger(capacity?.maxConcurrentScans)
+        && Number.isInteger(capacity?.availableSlots)
+        && capacity.activeScans >= 0
+        && capacity.maxConcurrentScans >= 1
+        && capacity.availableSlots >= 1
+        && capacity.activeScans + capacity.availableSlots === capacity.maxConcurrentScans;
+    },
   )));
   const scannerHeaders = {
     Authorization: `Bearer ${config.scanToken}`,

@@ -2,6 +2,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import { parseScan } from './parse-scan.mjs';
+import { parseClamavVersion } from './parse-version.mjs';
 
 function positiveInteger(name, fallback, { minimum = 1, maximum = Number.MAX_SAFE_INTEGER } = {}) {
   const raw = process.env[name] ?? String(fallback);
@@ -100,6 +101,10 @@ async function pingClamd() {
   return await runClamd((socket) => socket.write('zPING\0'));
 }
 
+async function versionClamd() {
+  return await runClamd((socket) => socket.write('zVERSION\0'));
+}
+
 async function scanBuffer(buffer) {
   return await runClamd((socket) => {
     socket.write(Buffer.from('zINSTREAM\0'));
@@ -121,12 +126,23 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/health') {
     try {
-      const raw = await pingClamd();
+      const [ping, rawVersion] = await Promise.all([pingClamd(), versionClamd()]);
+      const version = parseClamavVersion(rawVersion);
+      const healthy = ping.includes('PONG') && version !== null;
       sendJson(
         res,
-        raw.includes('PONG') ? 200 : 503,
-        raw.includes('PONG')
-          ? { status: 'ok' }
+        healthy ? 200 : 503,
+        healthy
+          ? {
+              status: 'ok',
+              engine: 'clamav',
+              ...version,
+              capacity: {
+                activeScans,
+                maxConcurrentScans: MAX_CONCURRENT_SCANS,
+                availableSlots: Math.max(0, MAX_CONCURRENT_SCANS - activeScans),
+              },
+            }
           : { status: 'error', code: 'clamd_unhealthy' },
       );
     } catch {

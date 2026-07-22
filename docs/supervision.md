@@ -10,6 +10,7 @@ synthétique toutes les quinze minutes pour `staging` et `production`. Il vérif
 - une lecture REST vide soumise aux grants/RLS, sans lire de ligne ;
 - la santé Supabase Storage ;
 - la santé de `clamd` ;
+- la version du moteur, l'âge de la base de signatures et la capacité disponible ;
 - un scan de texte fictif sain ;
 - la détection de la signature EICAR fictive.
 
@@ -24,6 +25,8 @@ Créer les environnements GitHub `staging` et `production`. Dans chacun :
 - variable `APP_URL` : URL HTTPS canonique du frontend ;
 - secrets `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` ;
 - secrets `CLAMAV_SCAN_URL` et `CLAMAV_SCAN_TOKEN`.
+- secret `MONITOR_ALERT_WEBHOOK_URL` : destination HTTPS d'alerte, distincte de
+  GitHub et gérée par l'exploitation.
 
 L'environnement `staging` exige aussi `VERCEL_TOKEN`, `VERCEL_ORG_ID` et
 `VERCEL_PROJECT_ID`. Le workflow les utilise uniquement pour obtenir un cookie
@@ -32,7 +35,11 @@ n'est ni journalisée ni conservée dans l'artefact ; elle est supprimée même 
 sonde échoue. `APP_URL` doit alors être une URL HTTPS `*.vercel.app`.
 
 `CLAMAV_SCAN_URL` doit se terminer par `/scan`. Le moniteur exige le mode strict
-et refuse une clé serveur à la place de la clé publique.
+et refuse une clé serveur à la place de la clé publique. Il refuse aussi une base
+de signatures de plus de 48 heures, une date future incohérente, une réponse
+`VERSION` non interprétable ou un scanner sans emplacement disponible. La limite
+est fixée par `MONITOR_MAX_SIGNATURE_AGE_HOURS` dans le workflow et ne doit pas être
+augmentée sans acceptation RSSI documentée.
 
 Avant ouverture à des données réelles, lancer manuellement **Operations monitor**,
 vérifier les deux jobs et conserver les artefacts. Un environnement non configuré
@@ -44,6 +51,13 @@ statut vert.
 Le script effectue deux tentatives bornées. Après deux échecs, le job GitHub est
 rouge et l'artefact identifie le composant, le statut HTTP éventuel et la durée,
 sans détail sensible.
+
+Le workflow envoie alors un événement JSON expurgé au webhook obligatoire. Il
+ne transmet que l'environnement, la date, le run et les noms/codes bornés des
+sondes en échec ; les URL, corps de réponse, clés et détails internes sont exclus.
+La livraison de l'alerte ne transforme jamais la sonde en succès. Pour tester le
+circuit sans provoquer une panne réelle, lancer manuellement le workflow avec
+`alert_test=true` et conserver l'accusé du système destinataire.
 
 | Échec | Réponse immédiate | Condition de reprise |
 |---|---|---|

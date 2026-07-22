@@ -125,7 +125,10 @@ jobs:
           retention-days: 30
       - name: Migrations then Storage
         env: *staging_env
-        run: npm exec -- supabase db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
+        run: |
+          npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
+          npm run supabase:storage
+          npm run db:function-acl:verify
       - name: Configure strict Edge runtime secrets
         env: *staging_env
         run: |
@@ -529,6 +532,59 @@ jobs:
           path: ${{ runner.temp }}/staging-backend
           github-token: ${{ github.token }}
           run-id: ${{ inputs.staging_run_id }}
+      - name: Verify live GitHub protections in read-only mode
+        env:
+          GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}
+        run: npm run github:controls:verify
+      - name: Require current signed governance evidence for the exact release
+        env:
+          GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_file="$RUNNER_TEMP/governance-evidence.json"
+          trap 'rm -f "$evidence_file"' EXIT
+          test -n "$GOVERNANCE_EVIDENCE_JSON"
+          test "${#GOVERNANCE_EVIDENCE_JSON}" -le 65536
+          printf '%s' "$GOVERNANCE_EVIDENCE_JSON" > "$evidence_file"
+          chmod 600 "$evidence_file"
+          npm run governance:evidence:verify -- \
+            --file="$evidence_file" \
+            --commit="$RELEASE_SHA" \
+            --scope=production-complete
+      - name: Require a current recovery drill for the exact release
+        env:
+          RECOVERY_EVIDENCE_JSON: ${{ secrets.RECOVERY_EVIDENCE_JSON }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_file="$RUNNER_TEMP/recovery-evidence.json"
+          trap 'rm -f "$evidence_file"' EXIT
+          test -n "$RECOVERY_EVIDENCE_JSON"
+          test "${#RECOVERY_EVIDENCE_JSON}" -le 65536
+          printf '%s' "$RECOVERY_EVIDENCE_JSON" > "$evidence_file"
+          chmod 600 "$evidence_file"
+          npm run recovery:evidence:verify -- \
+            --file="$evidence_file" \
+            --commit="$RELEASE_SHA"
+      - name: Require current operational assignments and clinical QA evidence
+        env:
+          OPERATIONS_EVIDENCE_JSON: ${{ secrets.OPERATIONS_EVIDENCE_JSON }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_file="$RUNNER_TEMP/operations-evidence.json"
+          trap 'rm -f "$evidence_file"' EXIT
+          test -n "$OPERATIONS_EVIDENCE_JSON"
+          test "${#OPERATIONS_EVIDENCE_JSON}" -le 65536
+          printf '%s' "$OPERATIONS_EVIDENCE_JSON" > "$evidence_file"
+          chmod 600 "$evidence_file"
+          npm run operations:evidence:verify -- \
+            --file="$evidence_file" \
+            --commit="$RELEASE_SHA"
       - name: Validate production secrets and exact target
         env: &production_env
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -570,6 +626,7 @@ jobs:
         run: |
           npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
+          npm run db:function-acl:verify
           for dir in supabase/functions/*; do
             [ -f "$dir/index.ts" ] || continue
             fn=$(basename "$dir")
