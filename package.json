@@ -31,6 +31,7 @@
     "recovery:evidence:verify": "node scripts/validate-recovery-evidence.mjs",
     "governance:evidence:verify": "node scripts/validate-governance-evidence.mjs",
     "github:controls:verify": "node scripts/verify-github-controls.mjs",
+    "db:function-acl:verify": "node scripts/verify-function-privileges.mjs",
     "ops:monitor": "node scripts/operations-monitor.mjs",
     "create-account": "node scripts/create-account.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",

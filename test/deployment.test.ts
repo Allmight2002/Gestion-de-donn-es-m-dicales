@@ -303,6 +303,7 @@ describe('configuration de deploiement', () => {
     const preservedBackup = workflow.indexOf('pre-release-backup-staging-${{ github.run_id }}', verifiedBackup);
     const databaseWrite = workflow.indexOf('npm exec -- supabase db push');
     const storageWrite = workflow.indexOf('npm run supabase:storage');
+    const functionAclGate = workflow.indexOf('npm run db:function-acl:verify', storageWrite);
     const edgeWrite = workflow.indexOf('npm exec -- supabase secrets set');
 
     expect(targetGate).toBeGreaterThan(-1);
@@ -317,6 +318,8 @@ describe('configuration de deploiement', () => {
     expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(databaseWrite).toBeGreaterThan(targetGate);
     expect(storageWrite).toBeGreaterThan(targetGate);
+    expect(functionAclGate).toBeGreaterThan(storageWrite);
+    expect(edgeWrite).toBeGreaterThan(functionAclGate);
     expect(edgeWrite).toBeGreaterThan(targetGate);
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"');
     expect(workflow).toContain('"CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL"');
@@ -360,6 +363,7 @@ describe('configuration de deploiement', () => {
     const preservedBackup = production.indexOf('pre-release-backup-production-${{ github.run_id }}', verifiedBackup);
     const databaseWrite = production.indexOf('npm exec -- supabase db push');
     const storageWrite = production.indexOf('npm run supabase:storage');
+    const functionAclGate = production.indexOf('npm run db:function-acl:verify', storageWrite);
     const edgeWrite = production.indexOf('npm exec -- supabase functions deploy');
 
     expect(productionStart).toBeGreaterThan(-1);
@@ -375,6 +379,8 @@ describe('configuration de deploiement', () => {
     expect(preservedBackup).toBeGreaterThan(verifiedBackup);
     expect(databaseWrite).toBeGreaterThan(preservedBackup);
     expect(storageWrite).toBeGreaterThan(preservedBackup);
+    expect(functionAclGate).toBeGreaterThan(storageWrite);
+    expect(edgeWrite).toBeGreaterThan(functionAclGate);
     expect(edgeWrite).toBeGreaterThan(preservedBackup);
     expect(production).toContain('STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}');
     expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");

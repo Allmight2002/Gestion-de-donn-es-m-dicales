@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "schema": "public",
+  "role": "authenticated",
+  "reviewRule": "Every signature is explicitly classified; any addition, removal or overload change must fail CI and receive an authorization review.",
+  "categories": [
+    {
+      "id": "authorization-policy-helper",
+      "rationale": "Required by RLS, Storage policies or guarded RPCs to evaluate the authenticated caller without recursive policy evaluation.",
+      "signatures": [
+        "base_of_cohort(p_cohort uuid)",
+        "base_of_patient(p_patient uuid)",
+        "can_curate(p_base uuid)",
+        "can_edit_structured_data(p_base uuid)",
+        "can_export_data(p_base uuid)",
+        "can_manage_access(p_base uuid)",
+        "can_read_template(p_template uuid)",
+        "can_view_identity(p_base uuid)",
+        "can_view_raw_documents(p_base uuid)",
+        "can_write_identity(p_base uuid)",
+        "has_base_access(p_base uuid)",
+        "has_pending_upload_ticket(p_bucket text, p_path text)",
+        "is_active_assigned_curator(p_task_id uuid)",
+        "is_assigned_curator(p_task_id uuid)",
+        "is_assigned_to_submission(p_submission_id uuid)",
+        "is_base_active(p_base uuid)",
+        "is_base_owner(p_base uuid)",
+        "is_curateur()",
+        "is_medecin()",
+        "is_system_admin()",
+        "owns_base_with_member(p_user uuid)",
+        "owns_template(p_template uuid)",
+        "require_server_inspection()",
+        "template_field_in_use(p_field_id uuid)",
+        "template_of_version(p_version uuid)",
+        "template_version_fields_in_use(p_version_id uuid)",
+        "template_version_in_use(p_version_id uuid)"
+      ]
+    },
+    {
+      "id": "audited-sensitive-read",
+      "rationale": "Returns or records a sensitive read through server-side authorization and an append-only audit path instead of direct table access.",
+      "signatures": [
+        "base_activity_log(p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid)",
+        "base_identity_audit(p_base_id uuid)",
+        "find_identity_matches(p_base_id uuid, p_full_name text, p_date_of_birth date)",
+        "get_patient_identity(p_patient_id uuid)",
+        "log_attachment_read(p_attachment_id uuid)",
+        "log_export_read(p_export_id uuid)",
+        "log_identity_read(p_patient_id uuid)",
+        "log_raw_document_read(p_document_id uuid)",
+        "patient_age_at(p_patient_id uuid, p_at date, p_unit text)"
+      ]
+    },
+    {
+      "id": "access-and-base-administration-rpc",
+      "rationale": "Authenticated entry point that enforces owner or administrator permissions, validates transitions and writes an audit trail for access or base lifecycle changes.",
+      "signatures": [
+        "accept_invitation(p_token text)",
+        "create_base_from_model(p_name text, p_specialty text, p_source_version_id uuid)",
+        "create_base_invitation(p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone)",
+        "revoke_base_access(p_access_id uuid)",
+        "revoke_base_invitation(p_invitation_id uuid)",
+        "set_base_inclusion_target(p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint)",
+        "soft_delete_base(p_base_id uuid, p_reason text)",
+        "update_base_access_permissions(p_access_id uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean)"
+      ]
+    },
+    {
+      "id": "clinical-curation-rpc",
+      "rationale": "Authenticated clinical or curation command with server-side role checks, state-transition guards, optimistic concurrency or auditable soft deletion.",
+      "signatures": [
+        "answer_clarification(p_clarification_id uuid, p_answer text)",
+        "claim_curation_task(p_task_id uuid)",
+        "create_curation_submission(p_base_id uuid, p_target_patient_id uuid, p_external_ref text, p_scope text)",
+        "create_encounter(p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text)",
+        "create_patient(p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb)",
+        "create_patient_curation_submission(p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_idempotency_key text)",
+        "curation_pool()",
+        "delete_curation_request(p_task_id uuid, p_reason text, p_delete_patient boolean)",
+        "finalize_curation_task(p_task_id uuid)",
+        "finalize_patient(p_patient_id uuid)",
+        "release_curation_task(p_task_id uuid)",
+        "request_clarification(p_task_id uuid, p_question text)",
+        "save_curation_draft(p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint)",
+        "soft_delete_encounter(p_encounter_id uuid, p_reason text)",
+        "soft_delete_patient(p_patient_id uuid, p_reason text)",
+        "submit_curation_request(p_task_id uuid)",
+        "update_encounter(p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone)",
+        "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text)",
+        "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint)"
+      ]
+    },
+    {
+      "id": "template-administration-rpc",
+      "rationale": "Authenticated template command that centralizes ownership, publication, immutability and compatibility checks which direct table writes must not bypass.",
+      "signatures": [
+        "archive_template_version(p_version_id uuid)",
+        "create_next_personal_template_version(p_template_id uuid)",
+        "create_template_bundle(p_payload jsonb, p_operation_key uuid)",
+        "delete_template(p_template_id uuid)",
+        "delete_template_field(p_field_id uuid)",
+        "duplicate_template_version(p_source_version_id uuid)",
+        "promote_template_to_global(p_template_id uuid)",
+        "publish_template_version(p_version_id uuid)",
+        "reorder_template_fields(p_version_id uuid, p_field_ids uuid[])",
+        "set_base_template_version(p_base_id uuid, p_version_id uuid)",
+        "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean)"
+      ]
+    },
+    {
+      "id": "import-idempotence-concurrency-rpc",
+      "rationale": "Authenticated import or replay command that owns batch atomicity, idempotency, duplicate detection and optimistic concurrency on the server.",
+      "signatures": [
+        "begin_import_batch(p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer)",
+        "cancel_import_batch(p_batch_id uuid)",
+        "complete_import_batch(p_batch_id uuid)",
+        "detect_import_duplicates(p_base_id uuid, p_rows jsonb)",
+        "get_import_batch_state(p_batch_id uuid)",
+        "import_records(p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid)",
+        "replay_encounter_update(p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone)"
+      ]
+    },
+    {
+      "id": "file-inspection-rpc",
+      "rationale": "Authenticated file command that binds upload intent, hash, size, strict inspection state and final metadata before Storage content becomes usable.",
+      "signatures": [
+        "create_upload_operation(p_base_id uuid, p_bucket text, p_path text, p_idempotency_key uuid, p_file_hash text, p_file_size bigint, p_mime_type text, p_ttl_seconds integer)",
+        "create_upload_ticket(p_base_id uuid, p_bucket text, p_path text, p_ttl_seconds integer)",
+        "finalize_upload_operation(p_ticket_id uuid, p_entity text, p_metadata jsonb)",
+        "soft_delete_attachment(p_attachment_id uuid, p_reason text)"
+      ]
+    }
+  ]
+}

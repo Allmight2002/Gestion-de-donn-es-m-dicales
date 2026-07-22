@@ -125,7 +125,10 @@ jobs:
           retention-days: 30
       - name: Migrations then Storage
         env: *staging_env
-        run: npm exec -- supabase db push --db-url "$SUPABASE_DB_URL" && npm run supabase:storage
+        run: |
+          npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
+          npm run supabase:storage
+          npm run db:function-acl:verify
       - name: Configure strict Edge runtime secrets
         env: *staging_env
         run: |
@@ -607,6 +610,7 @@ jobs:
         run: |
           npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
+          npm run db:function-acl:verify
           for dir in supabase/functions/*; do
             [ -f "$dir/index.ts" ] || continue
             fn=$(basename "$dir")
