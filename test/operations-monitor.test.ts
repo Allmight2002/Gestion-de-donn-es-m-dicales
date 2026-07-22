@@ -15,6 +15,7 @@ const validEnvironment = () => ({
   SUPABASE_ANON_KEY: 'public-anon-key-long-enough-for-monitoring',
   CLAMAV_SCAN_URL: 'https://scanner.example.test/scan',
   CLAMAV_SCAN_TOKEN: 'synthetic-secret-long-enough-32-characters',
+  MONITOR_MAX_SIGNATURE_AGE_HOURS: '48',
 });
 
 describe('monitoring operationnel', () => {
@@ -66,7 +67,14 @@ describe('monitoring operationnel', () => {
       if (url.endsWith('/auth/v1/health')) return Response.json({ version: 'synthetic' });
       if (url.includes('/rest/v1/profiles')) return Response.json([]);
       if (url.endsWith('/storage/v1/status')) return new Response(null, { status: 200 });
-      if (url.endsWith('/health')) return Response.json({ status: 'ok' });
+      if (url.endsWith('/health')) return Response.json({
+        status: 'ok',
+        engine: 'clamav',
+        engineVersion: '1.5.1',
+        signatureDatabaseVersion: '27896',
+        signatureDatabaseUpdatedAt: new Date().toISOString(),
+        capacity: { activeScans: 0, maxConcurrentScans: 4, availableSlots: 4 },
+      });
       if (init?.body === 'MedData synthetic monitoring fixture') {
         return Response.json({ status: 'clean', engine: 'clamav' });
       }
@@ -84,6 +92,34 @@ describe('monitoring operationnel', () => {
       .toBe('_vercel_jwt=fictional-cookie');
     expect(requests.filter((request) => request.url !== config.appUrl)
       .every((request) => request.headers.get('cookie') === null)).toBe(true);
+  });
+
+  test('echoue si les signatures sont perimees ou le scanner sature', async () => {
+    const config = validateMonitorConfiguration(validEnvironment());
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === config.appUrl) {
+        return new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      if (url.endsWith('/auth/v1/health')) return Response.json({ version: 'synthetic' });
+      if (url.includes('/rest/v1/profiles')) return Response.json([]);
+      if (url.endsWith('/storage/v1/status')) return new Response(null, { status: 200 });
+      if (url.endsWith('/health')) return Response.json({
+        status: 'ok',
+        engine: 'clamav',
+        engineVersion: '1.5.1',
+        signatureDatabaseVersion: '27000',
+        signatureDatabaseUpdatedAt: '2026-01-01T00:00:00.000Z',
+        capacity: { activeScans: 4, maxConcurrentScans: 4, availableSlots: 0 },
+      });
+      if (init?.body === 'MedData synthetic monitoring fixture') {
+        return Response.json({ status: 'clean', engine: 'clamav' });
+      }
+      return Response.json({ status: 'infected', engine: 'clamav', signature: 'Eicar-Test-Signature' });
+    }));
+
+    const checks = await monitor(config);
+    expect(checks.find((check) => check.name === 'clamav-health')).toMatchObject({ ok: false });
   });
 
   test('le workflow staging cree puis supprime un cookie ephemere borne au deploiement', () => {

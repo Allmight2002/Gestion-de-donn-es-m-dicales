@@ -7,6 +7,7 @@ export function validateMonitorConfiguration(env?: Record<string, string | undef
   anonKey: string;
   scanUrl: string;
   scanToken: string;
+  maxSignatureAgeHours: number;
   frontendStorageStatePath: string | null;
 };
 

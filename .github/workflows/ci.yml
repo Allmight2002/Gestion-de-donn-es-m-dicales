@@ -119,7 +119,7 @@ jobs:
         run: |
           docker run -d --name scanner-ci -e SCAN_TOKEN=ci-smoke-token-with-at-least-32-characters -p 8080:8080 clamav-scanner-ci
           code=000
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             sleep 1
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/health || true)
             if [ "$code" = "503" ] || [ "$code" = "200" ]; then break; fi

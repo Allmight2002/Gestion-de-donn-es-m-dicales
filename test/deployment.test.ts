@@ -219,6 +219,8 @@ describe('configuration de deploiement', () => {
     expect(compose).not.toMatch(/image:\s*clamav\/clamav:stable\s*$/m);
     expect(dockerfile).not.toMatch(/^FROM\s+node:22-alpine\s*$/m);
     expect(scanner).toContain('zINSTREAM');
+    expect(scanner).toContain('zVERSION');
+    expect(dockerfile).toContain('parse-version.mjs');
     expect(scanner).toContain('POST /scan expected');
     expect(scanner).toContain('FORBIDDEN_TOKENS');
     expect(prodEnv).toContain('CLAMAV_SCAN_URL=');
@@ -235,6 +237,21 @@ describe('configuration de deploiement', () => {
     expect(viteConfig).toContain('__GIT_COMMIT__');
     expect(viteConfig).toContain('__GIT_BRANCH__');
     expect(viteConfig).toContain('__BUILD_TIME__');
+  });
+
+  test('la sauvegarde de continuite est periodique, chiffree, verifiee et conservee hors runner', () => {
+    const workflow = read('.github/workflows/continuity-backup.yml');
+    expect(workflow).toContain("cron: '17 2 * * *'");
+    expect(workflow).toContain('["staging","production"]');
+    expect(workflow).toContain('environment: ${{ matrix.target }}');
+    expect(workflow).toContain('CONTINUITY_BACKUP_ENABLED');
+    expect(workflow).toContain('BACKUP_REQUIRE_SESSION_POOLER');
+    expect(workflow).toContain('npm run backup:coordinated --');
+    expect(workflow).toContain('npm run backup:coordinated:verify --');
+    expect(workflow).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
+    expect(workflow).toContain('retention-days: 30');
+    expect(workflow.indexOf('backup:coordinated:verify'))
+      .toBeLessThan(workflow.indexOf('actions/upload-artifact'));
   });
 
   test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
@@ -286,6 +303,7 @@ describe('configuration de deploiement', () => {
     const preservedBackup = workflow.indexOf('pre-release-backup-staging-${{ github.run_id }}', verifiedBackup);
     const databaseWrite = workflow.indexOf('npm exec -- supabase db push');
     const storageWrite = workflow.indexOf('npm run supabase:storage');
+    const functionAclGate = workflow.indexOf('npm run db:function-acl:verify', storageWrite);
     const edgeWrite = workflow.indexOf('npm exec -- supabase secrets set');
 
     expect(targetGate).toBeGreaterThan(-1);
@@ -300,6 +318,8 @@ describe('configuration de deploiement', () => {
     expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(databaseWrite).toBeGreaterThan(targetGate);
     expect(storageWrite).toBeGreaterThan(targetGate);
+    expect(functionAclGate).toBeGreaterThan(storageWrite);
+    expect(edgeWrite).toBeGreaterThan(functionAclGate);
     expect(edgeWrite).toBeGreaterThan(targetGate);
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"');
     expect(workflow).toContain('"CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL"');
@@ -334,25 +354,45 @@ describe('configuration de deploiement', () => {
     const workflow = read('.github/workflows/coordinated-release.yml');
     const productionStart = workflow.indexOf('\n  production:');
     const production = workflow.slice(productionStart);
+    const githubControlsGate = production.indexOf('npm run github:controls:verify');
+    const governanceGate = production.indexOf('npm run governance:evidence:verify --');
+    const recoveryGate = production.indexOf('npm run recovery:evidence:verify --');
+    const operationsGate = production.indexOf('npm run operations:evidence:verify --');
     const targetGate = production.indexOf('npm run release:env -- --target=production');
     const encryptedBackup = production.indexOf('npm run backup:coordinated -- --target=production');
     const verifiedBackup = production.indexOf('npm run backup:coordinated:verify', encryptedBackup);
     const preservedBackup = production.indexOf('pre-release-backup-production-${{ github.run_id }}', verifiedBackup);
     const databaseWrite = production.indexOf('npm exec -- supabase db push');
     const storageWrite = production.indexOf('npm run supabase:storage');
+    const functionAclGate = production.indexOf('npm run db:function-acl:verify', storageWrite);
     const edgeWrite = production.indexOf('npm exec -- supabase functions deploy');
 
     expect(productionStart).toBeGreaterThan(-1);
+    expect(githubControlsGate).toBeGreaterThan(-1);
+    expect(governanceGate).toBeGreaterThan(githubControlsGate);
+    expect(governanceGate).toBeGreaterThan(-1);
+    expect(recoveryGate).toBeGreaterThan(governanceGate);
+    expect(recoveryGate).toBeGreaterThan(-1);
+    expect(operationsGate).toBeGreaterThan(recoveryGate);
+    expect(operationsGate).toBeGreaterThan(-1);
+    expect(targetGate).toBeGreaterThan(operationsGate);
     expect(targetGate).toBeGreaterThan(-1);
     expect(encryptedBackup).toBeGreaterThan(targetGate);
     expect(verifiedBackup).toBeGreaterThan(encryptedBackup);
     expect(preservedBackup).toBeGreaterThan(verifiedBackup);
     expect(databaseWrite).toBeGreaterThan(preservedBackup);
     expect(storageWrite).toBeGreaterThan(preservedBackup);
+    expect(functionAclGate).toBeGreaterThan(storageWrite);
+    expect(edgeWrite).toBeGreaterThan(functionAclGate);
     expect(edgeWrite).toBeGreaterThan(preservedBackup);
     expect(production).toContain('STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}');
     expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(production).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
+    expect(production).toContain('GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}');
+    expect(production).toContain('RECOVERY_EVIDENCE_JSON: ${{ secrets.RECOVERY_EVIDENCE_JSON }}');
+    expect(production).toContain('OPERATIONS_EVIDENCE_JSON: ${{ secrets.OPERATIONS_EVIDENCE_JSON }}');
+    expect(production).toContain('GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}');
+    expect(production).toContain('--commit="$RELEASE_SHA"');
     expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });
 
