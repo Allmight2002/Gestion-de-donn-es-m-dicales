@@ -15,12 +15,14 @@ les conditions bloquantes.
 
 | Élément | État vérifié |
 |---|---|
-| Branche de correction | `codex/b1-b10-remediation` |
+| Branche finale | `main`, via PR #34 |
 | Commit candidat technique | `5239804fd5107b01dff290e9498f8d81ee14398a` |
+| Commit de merge validé | `e63499a1caa736d793d2db542cc0eadf7411b4ea` |
 | Base de comparaison | `121a866ef95ea4134b402c71c9f0bb4d4f869df1` (`origin/main`, merge-base exact au 2026-07-22) |
-| Écart candidat/base | 11 commits techniques avant le présent commit documentaire |
-| État Git contrôlé | seuls le présent rapport et quatre documents utilisateur non suivis étaient hors commit ; les documents utilisateur ont été exclus |
-| GitHub live | dépôt privé, branche par défaut `develop`; aucun PR ouvert avant publication du lot |
+| Écart candidat/base | 11 commits techniques et un commit documentaire fusionnés par PR #34 |
+| État Git contrôlé | `main` et `origin/main` alignés au merge ; quatre documents utilisateur non suivis ont été exclus |
+| GitHub live | PR #34 fusionnée dans `main` le 2026-07-22 ; branche par défaut du dépôt toujours `develop` |
+| CI GitHub | PR run `29950997481` vert ; post-merge `main` run `29951322336` vert, scanner et pipeline complet |
 | Protections GitHub live | API `main` et `develop` : HTTP 403, fonctionnalité indisponible sans changement de plan/publicité ; environnements `staging` et `Production` sans reviewer, règle de protection ni branche autorisée |
 | Dernier staging directement prouvé | SHA `6774c18005cb0b23de7e39e6508e2649f5e0f456`, Supabase 105 migrations et 6 Edge Functions — **preuve périmée pour le candidat actuel** |
 | Dernière production directement prouvée | frontend `e6982ceab6dc1ba8a09b371722c489fdb284482a`, Supabase 86/105 migrations, 5/6 Edge, inspection stricte `false` — **incohérente** |
@@ -45,7 +47,7 @@ nouveau staging du SHA exact.
 | `d2d8088` | B9 | Inventaire exact des 85 signatures `SECURITY DEFINER`, justification, ACL/search_path testés et contrôle distant de drift | Contrôle distant du candidat non exécuté |
 | `818e178` | B10 | Production bloquée sans titulaires/suppléants, astreinte, support, MFA, runbooks et QA clinique/scientifique | Affectations, simulation et procès-verbal QA externes absents |
 | `d5ee798` | B1/B7 | Gate `actionlint` global rendu propre | Ne résout pas la cohérence des composants déployés |
-| `5239804` | B1 | Deux dépendances transitives élevées mises à jour | CI Node 22 distante encore à exécuter sur le commit fusionné |
+| `5239804` | B1 | Deux dépendances transitives élevées mises à jour | CI distante du PR et du merge réussie ; futurs audits restent requis |
 
 Les corrections utilisent `apply-audit-lot`; les changements PostgreSQL, ACL,
 restauration et continuité ont été traités avec `meddata-db-safety`. Aucune
@@ -71,9 +73,10 @@ Function ou configuration cloud n'a été appliquée.
 | Image scanner | **construite** | Base Node 22 épinglée ; smoke `/health` = 503 attendu sans `clamd` |
 
 Limite de reproductibilité : les commandes Node locales ont utilisé Node
-24.16.0 alors que le projet cible Node 22.x. L'image scanner a bien utilisé Node
-22. La CI distante Node 22 doit donc réussir après publication avant que le merge
-soit considéré techniquement validé.
+24.16.0 alors que le projet cible Node 22.x. L'image scanner et les deux runs CI
+ont validé le projet avec la configuration Node 22 du workflow. GitHub signale
+séparément que certaines actions épinglées ciblant encore son runtime Node 20
+sont forcées sous Node 24 ; cet avertissement n'a pas fait échouer les jobs.
 
 ## 4. Matrice unique de readiness
 
@@ -82,7 +85,7 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 
 | Gate | État | Preuve | Date | Environnement | Commit/version | Risque | Bloquant | Responsable | Action suivante |
 |---|---|---|---|---|---|---|---|---|---|
-| Release et versions | prouvé non conforme | Le candidat `5239804` n'est déployé nulle part ; la dernière production connue mélange frontend `e6982ce`, 86 migrations, 5 Edge et strict `false` | 2026-07-22 | Vercel/Supabase | candidat `5239804`; production historique incohérente | Critique : composants incompatibles | Oui | Release manager | Produire un staging exact après fermeture des gates, puis une promotion coordonnée unique |
+| Release et versions | prouvé non conforme | Le candidat est fusionné dans `main` mais non déployé ; la dernière production connue mélange frontend `e6982ce`, 86 migrations, 5 Edge et strict `false` | 2026-07-22 | GitHub/Vercel/Supabase | merge `e63499a`; production historique incohérente | Critique : composants incompatibles | Oui | Release manager | Produire un staging exact après fermeture des gates, puis une promotion coordonnée unique |
 | Sécurité | partiellement prouvé | ACL locales : 0 `SECURITY DEFINER` pour `anon`, 85 signatures authentifiées inventoriées, search_path bornés ; production distante non alignée | 2026-07-22 | Local + production historique | 105 migrations locales | Critique tant que production n'est pas alignée | Oui | RSSI + responsable DB | Exécuter `db:function-acl:verify` sur staging exact, advisors et tests d'accès interdits |
 | Intégrité scientifique | partiellement prouvé | Tests locaux d'export/import et historiques verts ; dernier staging scientifique porte sur un ancien SHA | 2026-07-22 | Local ; staging périmé | `5239804`; ancien `6774c18` | Résultat non revalidé sur artefact candidat | Oui pour clinique | QA scientifique | Rejouer jeux de référence et faire signer l'interprétation scientifique |
 | Données | partiellement prouvé | 630 tests globaux et 105 migrations sans perte/altération observée ; aucune continuité cloud actuelle | 2026-07-22 | Local | `5239804` | Perte possible si backup cloud absent | Oui | Responsable données | Staging exact puis sauvegarde et restauration représentatives |
@@ -90,7 +93,7 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 | Migrations, RLS, RPC et Storage | partiellement prouvé | 105 migrations depuis zéro, 461 tests DB, inventaire ACL exact ; cible distante du candidat non vérifiée | 2026-07-22 | Local | dernière `20260714215335` | Migration/policy non prouvée dans la cible | Oui | Responsable Supabase | Backup, `db push` staging autorisé, Storage, ACL, drift et tests de refus |
 | Fichiers | prouvé non conforme | Scanner et Edge locaux fail-closed ; aucun ClamAV durable distant ni fraîcheur de signatures live | 2026-07-22 | Local/cloud | image locale candidate | Fichier non inspecté ou service indisponible | Oui | Infrastructure + RSSI | Héberger, superviser, puis tester sain/EICAR/panne/capacité sur staging |
 | Hors-ligne | prouvé conforme | Release standard et build candidat imposent `disabled/false` | 2026-07-22 | Local/CI statique | `5239804` | Faible tant que désactivé | Non si maintenu désactivé | RSSI + release manager | Conserver désactivé pour toute donnée pseudonymisée ou réelle |
-| Tests | prouvé conforme | 169 web, 461 DB, 630 globaux, 70 Edge, build et workflows verts | 2026-07-22 | Local | `5239804` | Node local 24 ; QA humaine/charge non couvertes | Non local ; oui clinique | QA | Exiger CI Node 22, E2E staging et QA manuelle signée |
+| Tests | prouvé conforme | 169 web, 461 DB, 630 globaux, 70 Edge, build et workflows verts ; PR et post-merge CI verts | 2026-07-22 | Local/GitHub | `5239804`, merge `e63499a` | QA humaine, staging exact et charge non couverts | Non technique ; oui clinique | QA | Exiger E2E staging, charge adaptée et QA manuelle signée |
 | Edge Functions | partiellement prouvé | 6 fonctions attendues et 70 tests locaux ; version distante candidate non déployée/testée | 2026-07-22 | Local ; cloud non vérifié | `5239804` | Fonction critique absente ou ancienne en production | Oui | Responsable Edge | Déployer uniquement sur staging, vérifier hashes et E2E avant promotion |
 | CI/CD | prouvé non conforme | Workflows locaux valides ; API live confirme protections indisponibles et environnements sans règles | 2026-07-22 | GitHub | plan/configuration live | Bypass de review ou de promotion | Oui | Administrateur GitHub + RSSI | Plan compatible ou contrôle équivalent approuvé ; branches/checks/reviewers/MFA |
 | Staging | preuve périmée | Dernier staging exact `6774c18`; 11 commits techniques supplémentaires | 2026-07-22 | Staging | ancien `6774c18` | Artefact candidat non validé | Oui | Release manager | Nouvelle release staging sur le SHA fusionné, E2E et monitors verts |
@@ -175,8 +178,8 @@ interdit réussit ou si un test critique régresse.
 - Décision LOT 15 : **NO-GO** pour pilote pseudonymisé, données médicales
   réelles limitées et production complète.
 - Périmètre autorisé : démonstration et QA avec données fictives uniquement.
-- Nouvelle réévaluation : après le merge et la CI Node 22, puis obligatoirement
-  après un staging exact ; ensuite à chaque preuve backup/restauration,
+- Nouvelle réévaluation : obligatoirement après un staging exact du merge
+  `e63499a` ; ensuite à chaque preuve backup/restauration,
   monitoring/incident, accès ou gouvernance, ou à toute modification du candidat.
 
 La prochaine réévaluation ne peut conclure `ready for production` que si chaque
@@ -192,8 +195,9 @@ même environnement et à une décision humaine compétente lorsque nécessaire.
 - restauration historique : `docs/validation-restauration-staging-2026-07-14.md` ;
 - supervision, déploiement et continuité : `docs/supervision.md`,
   `docs/deploiement.md`, `docs/continuite.md` ;
-- preuves nouvelles : historique des 11 commits B1–B10, résultats locaux ci-dessus,
-  inventaire `supabase/security-definer-allowlist.json` et validateurs de preuve ;
+- preuves nouvelles : historique des 11 commits techniques B1–B10, PR #34,
+  runs `29950997481` et `29951322336`, résultats locaux ci-dessus, inventaire
+  `supabase/security-definer-allowlist.json` et validateurs de preuve ;
 - état live GitHub lu le 2026-07-22 ; versions Supabase/Vercel et monitor issues
   des dernières preuves directes des 18–19 juillet, explicitement marquées
   périmées lorsqu'elles ne portent pas sur le candidat.
