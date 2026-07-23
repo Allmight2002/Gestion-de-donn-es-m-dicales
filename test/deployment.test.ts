@@ -254,6 +254,14 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('retention-days: 30');
     expect(workflow.indexOf('backup:coordinated:verify'))
       .toBeLessThan(workflow.indexOf('actions/upload-artifact'));
+    expect(workflow).toContain('alert_test:');
+    expect(workflow).toContain('MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}');
+    expect(workflow).toContain("if: failure() && matrix.target == 'staging'");
+    expect(workflow).toContain("checks: [{ name: 'continuity-backup', ok: false, errorCode: 'backup-failed' }]");
+    expect(workflow).toContain("if: inputs.alert_test == true && matrix.target == 'staging'");
+    expect(workflow).toContain("MONITOR_ALERT_DRILL: 'true'");
+    expect(workflow).toContain("errorCode: 'expected-test-alert'");
+    expect(workflow).toContain('node scripts/send-operations-alert.mjs --file="$alert_file"');
   });
 
   test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
