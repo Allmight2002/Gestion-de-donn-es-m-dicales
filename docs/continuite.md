@@ -30,7 +30,48 @@ de panne volontaire.
 
 Cette alerte couvre les échecs d'un run démarré. Elle ne détecte pas à elle seule
 la disparition complète d'un run planifié, par exemple si le workflow est
-désactivé : un contrôle externe de l'absence de sauvegarde reste nécessaire.
+désactivé. Ce deuxième cas est surveillé par un workflow Pipedream indépendant.
+
+### Détecteur externe d'absence
+
+Le workflow Pipedream `MedData staging - Backup watchdog` (`p_QPCkDbn`) est actif
+depuis le 23 juillet 2026 en version 10. Il s'exécute chaque jour à 09 h 30 dans
+le fuseau `Africa/Douala`, soit plus de six heures après le cron GitHub. Son
+unique étape de code reprend
+`scripts/pipedream-backup-watchdog.mjs` et utilise le compte GitHub connecté dans
+Pipedream. Aucun jeton GitHub n'est copié dans le code, les logs ou ce document.
+
+Le détecteur interroge les dix derniers runs de `continuity-backup.yml` sur
+`develop`, puis vérifie le résultat exact du job `backup (staging)`. Il reste
+donc correct si le run global est rouge uniquement parce que le job production
+est désactivé. Une réussite de moins de 30 heures termine silencieusement le
+workflow. Sinon, Pipedream envoie à l'adresse de son propriétaire :
+
+- `backup-missing` si aucune sauvegarde staging récente n'est prouvée ;
+- `github-api-unavailable` si le dépôt privé ne peut pas être interrogé.
+
+L'alerte ne contient ni réponse GitHub brute, ni jeton, ni donnée médicale. Pour
+tester le circuit, régler temporairement `Forcer l'alerte de test` à `true`,
+exécuter l'étape, confirmer l'e-mail `expected-test-alert`, puis remettre
+obligatoirement la valeur à `false` avant de déployer le workflow. Une seconde
+exécution avec `false` doit retourner `ok: true` et ne doit envoyer aucun e-mail.
+
+Le workflow Pipedream doit rester **actif**. Son historique quotidien et la
+réception du test constituent la preuve externe ; le code versionné seul ne
+prouve pas que cette surveillance est déployée.
+
+Preuves initiales du 23 juillet 2026 :
+
+- exécution normale à `17:03:43Z` : `ok: true`, sauvegarde staging
+  `30005845353` reconnue, aucun e-mail produit ;
+- exercice à `17:02:58Z` : `expected-test-alert`, `emailQueued: true` ;
+- réception de l'e-mail de l'exercice confirmée par l'opérateur le 23 juillet
+  2026 ;
+- configuration déployée : `Forcer l'alerte de test = false`, version 10 active.
+
+Le watchdog est donc opérationnellement testé pour la cible staging. Cette preuve
+ne remplace ni l'historique quotidien à accumuler, ni le PITR, ni une copie
+indépendante et immuable.
 
 L'activation distante de ce workflow, sa première exécution et toute sauvegarde
 de production nécessitent une autorisation opérationnelle explicite. Aucun run
