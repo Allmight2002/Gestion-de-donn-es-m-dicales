@@ -10,6 +10,11 @@ on:
         required: true
         type: choice
         options: [staging, production, all]
+      alert_test:
+        description: Envoyer une alerte synthetique de sauvegarde staging
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -56,6 +61,13 @@ jobs:
           test "$CONTINUITY_BACKUP_ENABLED" = "true"
           npm run release:target -- --target="$BACKUP_TARGET"
 
+      - name: Require the staging backup alert destination
+        if: matrix.target == 'staging'
+        env:
+          MONITOR_TARGET: staging
+          MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
+        run: node scripts/send-operations-alert.mjs --check-config
+
       - name: Create and verify the encrypted DB and Storage backup
         shell: bash
         run: |
@@ -77,3 +89,46 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf -- "$RUNNER_TEMP/continuity-backup-$BACKUP_TARGET-$GITHUB_RUN_ID"
+
+      - name: Deliver the redacted staging backup failure alert
+        if: failure() && matrix.target == 'staging'
+        env:
+          MONITOR_TARGET: staging
+          MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          alert_file="$RUNNER_TEMP/continuity-backup-alert.json"
+          ALERT_FILE="$alert_file" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.ALERT_FILE, JSON.stringify({
+            format: 'meddata-operations-monitor/v1',
+            observedAt: new Date().toISOString(),
+            target: 'staging',
+            checks: [{ name: 'continuity-backup', ok: false, errorCode: 'backup-failed' }],
+          }), { mode: 0o600 });
+          NODE
+          node scripts/send-operations-alert.mjs --file="$alert_file"
+          rm -f -- "$alert_file"
+
+      - name: Exercise the staging backup alert on explicit request
+        if: inputs.alert_test == true && matrix.target == 'staging'
+        env:
+          MONITOR_TARGET: staging
+          MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
+          MONITOR_ALERT_DRILL: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          alert_file="$RUNNER_TEMP/continuity-backup-alert.json"
+          ALERT_FILE="$alert_file" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.ALERT_FILE, JSON.stringify({
+            format: 'meddata-operations-monitor/v1',
+            observedAt: new Date().toISOString(),
+            target: 'staging',
+            checks: [{ name: 'continuity-backup', ok: false, errorCode: 'expected-test-alert' }],
+          }), { mode: 0o600 });
+          NODE
+          node scripts/send-operations-alert.mjs --file="$alert_file"
+          rm -f -- "$alert_file"

@@ -18,8 +18,19 @@ de dump et aucune donnée en clair n'est téléversée comme artefact.
 Une exécution manuelle bornée est disponible :
 
 ```text
-gh workflow run continuity-backup.yml --ref <SHA_APPROUVE> -f target=staging
+gh workflow run continuity-backup.yml --ref <BRANCHE_APPROUVEE> -f target=staging -f alert_test=true
 ```
+
+Pour `staging`, le workflow exige aussi le secret d'environnement
+`MONITOR_ALERT_WEBHOOK_URL`. Toute exécution qui échoue après le checkout tente
+d'envoyer une alerte expurgée contenant uniquement la cible, l'identifiant du
+run et le code borné `continuity-backup: backup-failed`. L'option
+`alert_test=true` exerce le même canal après une sauvegarde réussie sans provoquer
+de panne volontaire.
+
+Cette alerte couvre les échecs d'un run démarré. Elle ne détecte pas à elle seule
+la disparition complète d'un run planifié, par exemple si le workflow est
+désactivé : un contrôle externe de l'absence de sauvegarde reste nécessaire.
 
 L'activation distante de ce workflow, sa première exécution et toute sauvegarde
 de production nécessitent une autorisation opérationnelle explicite. Aucun run
