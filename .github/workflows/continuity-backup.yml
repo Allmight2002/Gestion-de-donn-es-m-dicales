@@ -29,6 +29,8 @@ jobs:
     env:
       BACKUP_TARGET: ${{ matrix.target }}
       CONTINUITY_BACKUP_ENABLED: ${{ vars.CONTINUITY_BACKUP_ENABLED }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

@@ -245,6 +245,8 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('["staging","production"]');
     expect(workflow).toContain('environment: ${{ matrix.target }}');
     expect(workflow).toContain('CONTINUITY_BACKUP_ENABLED');
+    expect(workflow).toContain('VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}');
+    expect(workflow).toContain('VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}');
     expect(workflow).toContain('BACKUP_REQUIRE_SESSION_POOLER');
     expect(workflow).toContain('npm run backup:coordinated --');
     expect(workflow).toContain('npm run backup:coordinated:verify --');
