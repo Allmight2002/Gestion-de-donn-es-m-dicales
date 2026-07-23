@@ -38,7 +38,7 @@ nouveau staging du SHA exact.
 | Commit | Lot | Correction locale réalisée | Limite restante |
 |---|---|---|---|
 | `4055f45` | B2 | Santé scanner enrichie : ping, version/signatures, âge maximal et capacité ; monitor fail-closed | Hébergement ClamAV, signatures live et tests staging requis |
-| `d328cad` | B3 | Sauvegarde quotidienne coordonnée DB/Storage, chiffrée, HMAC, vérifiée et conservée | Workflow non activé/exécuté ; PITR, offsite et immutabilité externes |
+| `d328cad`, `d343a1f` | B3 | Sauvegarde quotidienne coordonnée DB/Storage, chiffrée, HMAC, vérifiée et conservée ; alerte staging expurgée en cas d'échec | PITR, offsite et immutabilité externes ; historique quotidien encore court |
 | `997e48c` | B4/B8 | Validateur strict de preuve de restauration, RPO/RTO, rollback et forward recovery | Aucun exercice actuel effectué |
 | `b855cb3` | B5 | Alertes opérationnelles allowlistées, expurgées et testables ; échec du monitor préservé | Destination, astreinte et accusé de réception réels absents |
 | `e121008` | B6 | Production bloquée sans gouvernance signée, actuelle et liée au SHA | Avis, DPA, DPIA/AIPD et autorités non fournis |
@@ -97,7 +97,7 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 | Edge Functions | partiellement prouvé | 6 fonctions attendues et 70 tests locaux ; version distante candidate non déployée/testée | 2026-07-22 | Local ; cloud non vérifié | `5239804` | Fonction critique absente ou ancienne en production | Oui | Responsable Edge | Déployer uniquement sur staging, vérifier hashes et E2E avant promotion |
 | CI/CD | prouvé non conforme | Workflows locaux valides ; API live confirme protections indisponibles et environnements sans règles | 2026-07-22 | GitHub | plan/configuration live | Bypass de review ou de promotion | Oui | Administrateur GitHub + RSSI | Plan compatible ou contrôle équivalent approuvé ; branches/checks/reviewers/MFA |
 | Staging | preuve périmée | Dernier staging exact `6774c18`; 11 commits techniques supplémentaires | 2026-07-22 | Staging | ancien `6774c18` | Artefact candidat non validé | Oui | Release manager | Nouvelle release staging sur le SHA fusionné, E2E et monitors verts |
-| Sauvegardes | prouvé non conforme | Workflow et vérificateurs locaux présents ; aucune exécution actuelle, PITR ou copie objets live prouvée | 2026-07-22 | Local/cloud | `5239804` | Perte de données | Oui | Continuité + infrastructure | Activer, exécuter, vérifier historique, rétention, offsite/immutabilité et alertes |
+| Sauvegardes | partiellement prouvé | Deux sauvegardes staging DB/Storage chiffrées et HMAC vérifiées (`29994395463`, `30005845353`) ; artefacts 30 jours ; alerte d'échec reçue ; watchdog Pipedream `p_QPCkDbn` v10 actif, contrôle réel vert, test envoyé et réception humaine confirmée | 2026-07-23 | GitHub staging + Pipedream | dernier run `024b3f4`, artefact `8563040554` | PITR et copie indépendante absents ; historique quotidien court | Oui | Continuité + infrastructure | Accumuler l'historique, puis traiter PITR et offsite/immutabilité |
 | Restauration | prouvé non conforme | Validateur strict présent ; aucun exercice du backup candidat ni RPO/RTO approuvé | 2026-07-22 | Local seulement | `5239804` | Reprise non garantie | Oui | Continuité + exploitation | Exercice isolé fictif, preuve JSON exacte et approbation RPO/RTO |
 | Monitoring | prouvé non conforme | Alerting local expurgé ; aucune destination/astreinte live ni série de probes vertes | 2026-07-22 | Local/cloud | `5239804` | Incident silencieux | Oui | Exploitation | Configurer destination, tester panne et accusé de réception, mesurer escalade |
 | Accès | prouvé non conforme | RLS local vert ; GitHub live sans protections ; MFA et revue nominative non prouvées | 2026-07-22 | Local/GitHub | état live | Accès privilégié non maîtrisé | Oui | RSSI + propriétaires de services | Revue nominative, MFA, moindre privilège et exports de configuration datés |
@@ -112,7 +112,7 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 |---|---|---|---|
 | B1 | Correctifs locaux réalisés, état distant toujours incohérent | Oui, critique | Même SHA approuvé pour frontend, DB, Storage et 6 Edge après staging exact |
 | B2 | Durcissement local réalisé, service distant absent | Oui, critique | ClamAV durable, strict, signatures/capacité et monitors prouvés |
-| B3 | Automatisation prête, aucune sauvegarde cloud prouvée | Oui, critique | Historique DB/Storage, PITR selon RPO, offsite/immutabilité et alertes |
+| B3 | Deux sauvegardes staging vérifiées ; alerte d'échec et watchdog externe actifs, testés et reçus | Oui, critique | Historique DB/Storage durable, PITR selon RPO et offsite/immutabilité |
 | B4 | Validateur prêt, restauration non exercée | Oui, critique | Exercice exact réussi et RPO/RTO approuvés |
 | B5 | Alerting prêt, supervision opérationnelle absente | Oui, critique | Probes durables, alerte reçue, astreinte et incident exercé |
 | B6 | Gate fail-closed prêt, autorisations absentes | Oui, critique | Documents et décisions signés des autorités compétentes |
