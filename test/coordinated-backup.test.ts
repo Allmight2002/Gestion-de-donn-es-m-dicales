@@ -213,4 +213,29 @@ describe('sauvegarde coordonnee sure', () => {
       'postgresql://postgres:secret@db.project.supabase.co:5432/postgres',
     )).toBe(false);
   });
+
+  test('conserve chaque sauvegarde staging dans une release GitHub immuable', async () => {
+    const workflow = await readFile('.github/workflows/continuity-backup.yml', 'utf8');
+    const backupJob = workflow.slice(
+      workflow.indexOf('  backup:'),
+      workflow.indexOf('  preserve-staging-copy:'),
+    );
+
+    expect(workflow).toContain('preserve-staging-copy:');
+    expect(workflow).toContain('needs: backup');
+    expect(workflow).toContain('actions: read');
+    expect(workflow).toContain('contents: write');
+    expect(workflow).toContain(
+      "matrix.target == 'staging' && secrets.STORAGE_BACKUP_ENCRYPTION_KEY_20260723 || secrets.STORAGE_BACKUP_ENCRYPTION_KEY",
+    );
+    expect(backupJob).not.toContain('contents: write');
+    expect(workflow).toContain('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093');
+    expect(workflow).toContain('Preserve the staging backup as an immutable release');
+    expect(workflow).toContain('repos/$GITHUB_REPOSITORY/immutable-releases');
+    expect(workflow).toContain('X-GitHub-Api-Version: 2026-03-10');
+    expect(workflow).toContain('test "$(jq -r \'.immutable\' <<<"$release_json")" = "true"');
+    expect(workflow).toContain('test "$(jq -r \'.target_commitish\' <<<"$release_json")" = "$GITHUB_SHA"');
+    expect(workflow).toContain('= "sha256:$archive_sha256"');
+    expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION=true');
+  });
 });

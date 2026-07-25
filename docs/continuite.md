@@ -2,11 +2,17 @@
 
 ## Sauvegarde périodique
 
-Le workflow `.github/workflows/continuity-backup.yml` crée chaque jour, séparément
-pour `staging` et `production`, un ensemble coordonné comprenant les rôles, le
-schéma, les données PostgreSQL et tous les octets Storage. Les contenus sont
-chiffrés avant leur sortie du runner, liés par HMAC, vérifiés, puis conservés dans
-un artefact GitHub pendant 30 jours.
+Le workflow `.github/workflows/continuity-backup.yml` crée deux fois par jour pour
+`staging` un ensemble coordonné comprenant les rôles, le schéma, les données
+PostgreSQL et tous les octets Storage. Les contenus sont chiffrés avant leur
+sortie du runner, liés par HMAC, vérifiés, puis conservés dans un artefact GitHub
+pendant 30 jours. La marge de deux passages quotidiens maintient l'intervalle
+nominal sous le RPO approuvé de 24 heures, même si un passage échoue ou démarre
+avec retard.
+
+Le job `production` n'est jamais lancé par le cron. Il reste disponible uniquement
+par déclenchement manuel explicite avec `target=production` ou `target=all`, après
+autorisation production distincte.
 
 Le job refuse de démarrer tant que la variable d'environnement GitHub
 `CONTINUITY_BACKUP_ENABLED` ne vaut pas exactement `true`. Chaque environnement
@@ -45,7 +51,9 @@ Le détecteur interroge les dix derniers runs de `continuity-backup.yml` sur
 `develop`, puis vérifie le résultat exact du job `backup (staging)`. Il reste
 donc correct si le run global est rouge uniquement parce que le job production
 est désactivé. Une réussite de moins de 30 heures termine silencieusement le
-workflow. Sinon, Pipedream envoie à l'adresse de son propriétaire :
+workflow. Ce délai détecte la disparition de plusieurs passages attendus ; chaque
+échec d'un passage effectivement démarré déclenche déjà l'alerte immédiate du
+workflow GitHub. Sinon, Pipedream envoie à l'adresse de son propriétaire :
 
 - `backup-missing` si aucune sauvegarde staging récente n'est prouvée ;
 - `github-api-unavailable` si le dépôt privé ne peut pas être interrogé.
@@ -73,6 +81,48 @@ Le watchdog est donc opérationnellement testé pour la cible staging. Cette pre
 ne remplace ni l'historique quotidien à accumuler, ni le PITR, ni une copie
 indépendante et immuable.
 
+### Copie immuable hors Supabase
+
+L'option GitHub **immutable releases** est activée sur le dépôt privé depuis le
+23 juillet 2026. Après chaque sauvegarde staging réussie, le workflow fabrique une
+archive contenant uniquement l'ensemble déjà chiffré et HMAC-vérifié, crée une
+release en brouillon, attache l'archive, publie la release, puis exige par API :
+
+- `immutable: true` ;
+- le SHA source exact ;
+- le digest SHA-256 exact de l'asset.
+
+La première copie est la release `continuity-staging-30030132468`, issue du run
+`30030132468` et du SHA `6f0c87daee6d15938f8cc0dd2f62203e21dcc15d`.
+L'asset privé `487460922` est confirmé immuable avec le digest
+`sha256:117c0c1474b1e0ba9bf29b9f80d6a66569e5cc25787b3af340245a39ffe18005`.
+Cette copie est hébergée hors Supabase et n'expire pas avec l'artefact Actions de
+30 jours. La suppression volontaire de tout le dépôt GitHub reste un scénario
+catastrophe à couvrir organisationnellement.
+
+### Clé de récupération staging
+
+Les sauvegardes staging créées après la publication de cette procédure utilisent
+le secret versionné `STORAGE_BACKUP_ENCRYPTION_KEY_20260723`. La même clé est
+conservée hors de GitHub dans l'enveloppe Windows DPAPI suivante :
+
+```text
+C:\Users\USER\AppData\Local\MedData\continuity-keys\staging-backup-key-20260723.dpapi
+```
+
+L'enveloppe a l'empreinte
+`sha256:574f3b557abdf9edc6c6049a6cb322ca02b4a58a0d1bac6449568740761841f9`.
+Elle a été rouverte dans un second processus avant l'installation du secret
+staging. La valeur de la clé n'a pas été affichée, inscrite dans le dépôt ou
+envoyée dans un log.
+
+DPAPI lie cette enveloppe au compte Windows courant. Elle sépare bien la clé de
+GitHub pour l'exercice staging, mais elle ne résiste pas à la perte simultanée de
+ce profil Windows. Avant toute donnée réelle, une seconde enveloppe chiffrée doit
+être placée dans un coffre organisationnel hors de cette machine. L'ancien secret
+GitHub n'est pas écrasé afin de ne pas rendre les sauvegardes précédentes
+illisibles.
+
 L'activation distante de ce workflow, sa première exécution et toute sauvegarde
 de production nécessitent une autorisation opérationnelle explicite. Aucun run
 local ou CI ne constitue une preuve de sauvegarde cloud.
@@ -94,6 +144,19 @@ Tant que ces preuves manquent, B3 et B4 restent ouverts et les données autoris�
 restent entièrement fictives.
 
 ## Preuve d'un exercice de restauration et de reprise
+
+L'exercice du 23 juillet 2026 est décrit dans
+`docs/exercice-reprise-staging-2026-07-23.md`. Il a restauré DB, Auth, Storage et
+117/117 objets dans une cible locale PostgreSQL 17 isolée, contrôlé 111 clés
+étrangères sans orphelin, toutes les tables publiques avec RLS, un accès autorisé
+et un refus croisé, puis le rollback/forward frontend, Edge, Storage et migration.
+RPO observé : 211 s ; RTO observé : 517 s.
+
+Les objectifs RPO 24 h et RTO 4 h ont été approuvés le 25 juillet 2026 par le
+porteur du projet, agissant pour cet exercice comme responsable continuité et
+release manager. La décision et ses limites sont archivées dans
+`docs/decision-rpo-rto-staging-2026-07-25.md`. La preuve doit encore être rejouée
+sur le SHA de merge définitif avant de présenter B3/B4/B8 comme fermés.
 
 Après un exercice réel sur une cible isolée, la preuve JSON doit être contrôlée
 contre le commit exercé :

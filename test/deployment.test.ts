@@ -241,7 +241,8 @@ describe('configuration de deploiement', () => {
 
   test('la sauvegarde de continuite est periodique, chiffree, verifiee et conservee hors runner', () => {
     const workflow = read('.github/workflows/continuity-backup.yml');
-    expect(workflow).toContain("cron: '17 2 * * *'");
+    expect(workflow).toContain("cron: '17 2,14 * * *'");
+    expect(workflow).toContain("github.event_name == 'schedule' && '[\"staging\"]'");
     expect(workflow).toContain('["staging","production"]');
     expect(workflow).toContain('environment: ${{ matrix.target }}');
     expect(workflow).toContain('CONTINUITY_BACKUP_ENABLED');
