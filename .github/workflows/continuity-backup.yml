@@ -154,12 +154,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(gh api \
-            -H 'Accept: application/vnd.github+json' \
-            -H 'X-GitHub-Api-Version: 2026-03-10' \
-            "repos/$GITHUB_REPOSITORY/immutable-releases" \
-            --jq '.enabled')" = "true"
-
           tag="continuity-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           archive="$RUNNER_TEMP/${tag}.tar.gz"
           asset_name="${tag}.tar.gz"
@@ -184,6 +178,9 @@ jobs:
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2026-03-10' \
             "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          # The repository-setting endpoint requires administrative access that the
+          # workflow token deliberately does not have. Prove immutability on the
+          # published release itself instead.
           test "$(jq -r '.immutable' <<<"$release_json")" = "true"
           test "$(jq -r '.draft' <<<"$release_json")" = "false"
           test "$(jq -r '.target_commitish' <<<"$release_json")" = "$GITHUB_SHA"

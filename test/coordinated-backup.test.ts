@@ -231,7 +231,8 @@ describe('sauvegarde coordonnee sure', () => {
     expect(backupJob).not.toContain('contents: write');
     expect(workflow).toContain('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093');
     expect(workflow).toContain('Preserve the staging backup as an immutable release');
-    expect(workflow).toContain('repos/$GITHUB_REPOSITORY/immutable-releases');
+    expect(workflow).not.toContain('repos/$GITHUB_REPOSITORY/immutable-releases');
+    expect(workflow).toContain('repos/$GITHUB_REPOSITORY/releases/tags/$tag');
     expect(workflow).toContain('X-GitHub-Api-Version: 2026-03-10');
     expect(workflow).toContain('test "$(jq -r \'.immutable\' <<<"$release_json")" = "true"');
     expect(workflow).toContain('test "$(jq -r \'.target_commitish\' <<<"$release_json")" = "$GITHUB_SHA"');
