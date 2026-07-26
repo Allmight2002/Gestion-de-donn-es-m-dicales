@@ -33,7 +33,13 @@ jobs:
         run: npm ci
 
       - name: Verify XLSX and browser test versions
-        run: npm ls xlsx@0.20.3 @playwright/test@1.61.1 --depth=0 && grep -F 'xlsx-0.20.3/package/xlsx.mjs' deno.json deno.lock && ! grep -F 'npm:xlsx@0.18.5' deno.json deno.lock
+        run: |
+          npm ls xlsx@0.20.3 @playwright/test@1.61.1 --depth=0
+          grep -F './supabase/functions/_shared/vendor/xlsx-0.20.3.mjs' deno.json
+          printf '%s  %s\n' \
+            '1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db' \
+            'supabase/functions/_shared/vendor/xlsx-0.20.3.mjs' | sha256sum --check --strict
+          ! grep -F 'npm:xlsx@0.18.5' deno.json deno.lock
 
       - name: Dependency audit (strict policy)
         run: npm run audit:dependencies -- --scope=staging

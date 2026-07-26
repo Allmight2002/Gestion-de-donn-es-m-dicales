@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 
@@ -73,12 +74,17 @@ describe('configuration de deploiement', () => {
     expect(generateExport).toContain("generated_by: 'edge:generate-export'");
     expect(generateExport).toContain('fileHash');
     // XLSX (audit lot 9 §C1) : l'invariant REEL, pas un import npm en dur. La version vit dans UNE
-    // seule source de verite (l'alias `xlsx` de deno.json), elle est VERROUILLEE dans deno.lock, et
-    // generate-export l'importe par alias sans version flottante ni URL/import npm concurrent.
+    // seule source de verite (l'alias `xlsx` de deno.json), pointe vers la copie locale dont le hash
+    // est verrouille ici, et generate-export l'importe sans URL reseau ni version concurrente.
     const denoImports = (JSON.parse(read('deno.json')) as { imports: Record<string, string> }).imports;
     const xlsxSpecifier = denoImports.xlsx;
-    expect(xlsxSpecifier).toBe('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
-    expect(read('deno.lock')).toContain(xlsxSpecifier); // present + resolution figee du meme specifier
+    expect(xlsxSpecifier).toBe('./supabase/functions/_shared/vendor/xlsx-0.20.3.mjs');
+    const vendoredXlsx = readFileSync(xlsxSpecifier.slice(2));
+    expect(createHash('sha256').update(vendoredXlsx).digest('hex')).toBe(
+      '1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db',
+    );
+    expect(read('supabase/functions/_shared/vendor/LICENSE.sheetjs.txt')).toContain('Apache License');
+    expect(read('deno.lock')).not.toContain('cdn.sheetjs.com');
     expect(generateExport).toContain("from 'xlsx'");
     expect(generateExport).not.toMatch(/from ['"]npm:xlsx/); // aucun import npm direct concurrent
     expect(generateExport).not.toContain('cdn.sheetjs.com'); // aucune URL en dur hors deno.json

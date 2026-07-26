@@ -13,6 +13,8 @@ export default tseslint.config(
       'dist/**',
       'dev-dist/**',
       'coverage/**',
+      // Source tierce integree telle quelle, controlee par version + SHA-256.
+      'supabase/functions/_shared/vendor/**',
     ],
   },
   js.configs.recommended,

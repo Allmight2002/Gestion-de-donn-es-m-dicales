@@ -101,7 +101,7 @@ export function verifyEdgeFunctions(root) {
   const denoConfig = readFileSync(join(root, 'deno.json'), 'utf8');
   if (
     !denoConfig.includes('jsr:@supabase/supabase-js@2.45.4') ||
-    !denoConfig.includes('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs')
+    !denoConfig.includes('./supabase/functions/_shared/vendor/xlsx-0.20.3.mjs')
   ) {
     errors.push('Les imports Edge critiques ne sont pas figes dans deno.json.');
   }
