@@ -789,6 +789,39 @@ précises apparaissent, comme « Paludisme, sans précision ». C'est cohérent 
 l'objectif d'analysabilité, mais cela change la saisie et mérite un retour
 terrain avant d'être considéré comme acquis.
 
+### Correction du contenu importé — le même jour
+
+Le porteur, en essayant la recherche, a signalé des propositions qui n'étaient
+pas des diagnostics. L'audit du fichier lui a donné raison, et a révélé une
+erreur de méthode : **le référentiel avait été importé sans que son contenu soit
+examiné**.
+
+Sur 28 chapitres, un seul — les **codes d'extension** — pesait 17 159 entrées sur
+35 664, soit près de la moitié. Ce ne sont pas des maladies mais des
+qualificatifs que la classification accroche à un diagnostic : substances,
+médicaments, agents. D'où des réponses telles que « Érythrocytes », « Antacides »
+ou « Composés de magnésium » à une recherche de diagnostic.
+
+Chapitres désormais écartés à l'import : codes d'extension, causes externes de
+morbidité, facteurs influant sur l'état de santé, évaluation du fonctionnement,
+codes d'utilisation particulière.
+
+Deux chapitres sont **conservés à la demande explicite du porteur** :
+
+- les **symptômes et signes cliniques**, parce qu'aux urgences un patient est
+  reçu pour une douleur ou une fièvre bien avant qu'un diagnostic soit posé ;
+- les **affections de médecine traditionnelle**, pertinentes dans le contexte de
+  déploiement.
+
+Résultat mesuré après réimport : **14 553 concepts, dont 13 964 proposables**,
+21 791 entrées écartées, et **plus aucun code de substance**. Vérification en
+conditions réelles : « cholera » ne renvoie plus qu'un résultat, `1A00 Choléra`,
+là où le vaccin « Choléra, vaccins vivants atténués » apparaissait auparavant.
+
+Enseignement : importer un référentiel tiers sans en auditer le contenu revient à
+faire confiance à un fichier sur son nom. Le volume seul ne dit rien de la
+pertinence.
+
 ### Conséquence sur les preuves antérieures
 
 Cette mise en service crée un nouvel état de staging. Les preuves B1, B3, B4, B8

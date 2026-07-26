@@ -132,6 +132,53 @@ describe('parseTerminologyRows (T1)', () => {
     expect(concepts[0].code).toBe('1A00');
   });
 
+  // Une classification complete ne contient pas que des diagnostics : les « codes
+  // d'extension » sont des qualificatifs (substances, medicaments) qui noyaient les vraies
+  // maladies sous des reponses comme « Antacides ».
+  test('un chapitre ecarte emporte tout son contenu jusqu au chapitre suivant', () => {
+    const { concepts, skipped } = parseTerminologyRows(tsv(
+      "\tCodes d'extension\tchapter\t1",
+      '\t- Substances\tblock\t1',
+      'XM1349\t- - Antacides\tcategory\t1',
+      '\tMaladies infectieuses\tchapter\t1',
+      '1A00\t- Cholera\tcategory\t1',
+    ));
+    expect(concepts.map((c) => c.label)).toEqual(['Maladies infectieuses', 'Cholera']);
+    expect(skipped.excludedChapter).toBe(3);
+  });
+
+  // Conserves a la demande du porteur : symptomes (urgences) et medecine traditionnelle.
+  test('les chapitres conserves ne sont pas ecartes', () => {
+    const { concepts } = parseTerminologyRows(tsv(
+      '\tSymptomes, signes ou resultats d examen clinique\tchapter\t1',
+      'MD11\t- Fievre\tcategory\t1',
+      '\tChapitre supplementaire Affections de Medecine traditionnelle\tchapter\t1',
+      'SD90\t- Trouble du systeme du foie\tcategory\t1',
+    ));
+    expect(concepts.map((c) => c.code)).toEqual([null, 'MD11', null, 'SD90']);
+  });
+
+  test('la liste des chapitres ecartes peut etre remplacee', () => {
+    const { concepts } = parseTerminologyRows(
+      tsv('\tTumeurs\tchapter\t1', '2A00\t- Leucemie\tcategory\t1'),
+      { excludedChapters: ['tumeurs'] },
+    );
+    expect(concepts).toHaveLength(0);
+  });
+
+  // Le rattachement ne doit pas traverser une frontiere de chapitre.
+  test('un nouveau chapitre referme les branches du precedent', () => {
+    const { concepts } = parseTerminologyRows(tsv(
+      '\tChapitre A\tchapter\t1',
+      '\t- Bloc A\tblock\t1',
+      '\tChapitre B\tchapter\t1',
+      '1A00\t- Feuille B\tcategory\t1',
+    ));
+    const chapitreB = concepts.find((c) => c.label === 'Chapitre B');
+    const feuille = concepts.find((c) => c.label === 'Feuille B');
+    expect(feuille?.parentId).toBe(chapitreB?.id);
+  });
+
   test('chaque concept recoit un identifiant distinct', () => {
     const { concepts } = parseTerminologyRows(tsv(
       '1A00\t- Cholera\tcategory\t1',
