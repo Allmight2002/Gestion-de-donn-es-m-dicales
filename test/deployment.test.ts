@@ -336,7 +336,11 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('"CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL"');
     expect(workflow).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
     expect(workflow).toContain('--project-ref "$SUPABASE_PROJECT_REF"');
-    expect(workflow).toContain('npm exec -- supabase functions deploy "$fn" --import-map deno.json');
+    expect(
+      workflow.match(
+        /npm exec -- supabase functions deploy "\$fn" --import-map deno\.json --use-api --project-ref/g,
+      ),
+    ).toHaveLength(2);
     expect(workflow).toContain('backend-drift-${{ github.run_id }}');
     expect(workflow).toContain('EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json"');
     expect(workflow).toContain('production-backend-drift-${{ github.run_id }}');

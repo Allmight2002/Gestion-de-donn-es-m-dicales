@@ -141,7 +141,7 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy all Edge Functions
         env: *staging_env
-        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npm exec -- supabase functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"; done
+        run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npm exec -- supabase functions deploy "$fn" --import-map deno.json --use-api --project-ref "$SUPABASE_PROJECT_REF"; done
       - name: Verify backend drift before frontend
         env: *staging_env
         run: RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/backend-drift.json" npm run release:drift
@@ -634,7 +634,7 @@ jobs:
           for dir in supabase/functions/*; do
             [ -f "$dir/index.ts" ] || continue
             fn=$(basename "$dir")
-            npm exec -- supabase functions deploy "$fn" --import-map deno.json --project-ref "$SUPABASE_PROJECT_REF"
+            npm exec -- supabase functions deploy "$fn" --import-map deno.json --use-api --project-ref "$SUPABASE_PROJECT_REF"
           done
           EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json" \
             RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/production-backend-drift.json" \
