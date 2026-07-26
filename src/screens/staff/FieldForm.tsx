@@ -6,7 +6,7 @@ import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/t
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
 const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
-const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
+const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'boolean', 'select', 'multiselect', 'terminology'];
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 
 const inputCls = 'input';

@@ -23,7 +23,8 @@ au SHA et à l'environnement indiqués.
 | P1V | Bibliothèque de jeux de valeurs (préalable à P1A) | Terminé et promu | `codex/valueset-library` | PR #56 et #57 ; CI verte | Non requis | Aucun jeu de diagnostics |
 | P1S | Soupape « valeur proposée » | Terminé et promu | `codex/soupape-valeur-proposee` | PR #58 et #59 ; CI verte | Non requis | Champs de rencontre seulement ; propositions non listées |
 | T1 | Référentiel de terminologie — structure | Terminé et promu | `codex/terminologie-referentiel` | PR #60 et #61 ; CI verte | Non requis | Aucun type de champ ni interface |
-| T2 | Champ de terminologie — contrat serveur | Terminé localement | `codex/champ-terminologie` | — | Non requis | Aucune interface ; création en bloc non couverte |
+| T2 | Champ de terminologie — contrat serveur | Terminé et promu | `codex/champ-terminologie` | PR #62 et #63 ; CI verte | Non requis | Aucune interface ; création en bloc non couverte |
+| T3 | Recherche visible (typeahead) | Terminé localement | `codex/typeahead-terminologie` | — | **Requis pour essayer** | Chaque frappe interroge le serveur ; hors ligne non couvert |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
@@ -655,6 +656,67 @@ bruyamment si elle ne trouve pas la contrainte.
   dans l'éditeur — insère directement dans la table et n'est donc pas concerné.
   Réécrire cette fonction de 150 lignes pour une seule ligne de liste aurait fait
   courir un risque de transcription supérieur au bénéfice ;
-- la validation **client** (`src/domain/validation.ts`) ne connaît pas encore ce
-  type : elle le laissera passer, le serveur restant seul juge ;
+- la validation **client** (`src/domain/validation.ts`) ne connaissait pas encore
+  ce type au moment de ce lot ; c'est corrigé par T3 ;
 - rien n'est déployé : ces preuves sont locales.
+
+## T3 — recherche visible
+
+### Périmètre
+
+Premier lot de la série que l'utilisateur peut voir. Le porteur a choisi de
+livrer la recherche **avant** la copie locale, pour juger tôt de l'ergonomie
+quitte à ce que ce soit lent, plutôt que de bâtir un cache sur une interface non
+éprouvée.
+
+### Contenu
+
+- `src/data/terminology.ts` : accès au référentiel, sur le modèle des autres
+  dépôts de données du projet, donc injectable et testable. La recherche n'est
+  même pas tentée en deçà de deux caractères ;
+- `src/screens/member/TerminologyInput.tsx` : zone de recherche, propositions,
+  choix. Une valeur choisie s'affiche par son **libellé** et reste modifiable ;
+- `FieldInput` rend ce composant pour le type `terminology` ; `FieldForm` propose
+  désormais ce type à la création d'une variable ;
+- `src/data/types.ts` : le type `TerminologyValue` et son garde ;
+- `src/domain/validation.ts` : contrôle de **forme** seulement — le serveur reste
+  seul juge de l'existence du concept et de la cohérence du couple. Le contrôle
+  client sert à signaler une saisie incomplète sans aller-retour réseau.
+
+### Deux détails qui décident de l'usage réel
+
+**La dernière frappe gagne.** Sur une connexion lente, une réponse ancienne peut
+arriver après une plus récente ; afficher la première donnerait des propositions
+sans rapport avec ce qui est tapé. Chaque requête porte un numéro d'ordre et
+seule la plus récente peut écrire dans la liste. Un test le vérifie en faisant
+délibérément répondre la première requête après la seconde.
+
+**Une panne se voit.** Une recherche qui échoue affiche l'erreur au lieu de
+rester muette : sans cela, l'utilisateur croirait que le diagnostic n'existe pas
+et saisirait autre chose.
+
+### Correction pendant le lot
+
+Le rôle d'accessibilité `option` était porté par la ligne de liste et non par le
+bouton qu'on active. Conséquence : un clic sur la ligne ne déclenchait rien, et
+une technologie d'assistance aurait annoncé une option impossible à choisir. Le
+rôle porte désormais sur l'élément activable.
+
+### Preuves locales
+
+- `npm run typecheck`, `npm run lint` : réussis ;
+- `npm run test:web` : 42 fichiers, **215/215**, dont 7 nouveaux.
+
+### Limites explicites
+
+- **Rien n'est essayable en ligne.** Les migrations T1 à T3 ne sont pas
+  appliquées sur la base distante et le référentiel n'y est pas importé : le
+  champ s'afficherait, mais toute recherche resterait vide. Il faut une opération
+  de déploiement staging autorisée pour l'éprouver ;
+- **chaque frappe interroge le serveur** : la copie locale est le lot suivant, et
+  sans elle la saisie hors ligne est impossible ;
+- la **soupape** du lot P1S ne s'applique pas à ce type : elle est offerte aux
+  champs à liste contrôlée. Avec des dizaines de milliers de concepts le besoin
+  est moindre, mais le cas « diagnostic absent du référentiel » n'est pas couvert ;
+- l'affichage d'une valeur hors formulaire de saisie — listes, exports,
+  statistiques — n'est pas traité : ces vues montreront l'objet brut.

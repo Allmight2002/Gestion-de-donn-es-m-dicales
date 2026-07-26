@@ -1,0 +1,133 @@
+import { useEffect, useId, useRef, useState } from 'react';
+import { useI18n } from '../../i18n/useI18n';
+import { useTerminologyRepository } from '../../data/RepositoryProvider';
+import { MIN_QUERY_LENGTH, type TerminologyOption } from '../../data/terminology';
+import { errorMessage } from '../../lib/errorMessage';
+import { isTerminologyValue, type TerminologyValue } from '../../data/types';
+
+// F6 — saisie d'un diagnostic par recherche incrementale.
+//
+// Un menu deroulant ne tient pas au-dela de quelques dizaines d'entrees ; le referentiel en
+// compte des dizaines de milliers. L'utilisateur tape, choisit, et c'est le CODE qui part
+// en base avec le libelle affiche — jamais du texte libre.
+const DEBOUNCE_MS = 250;
+
+export function TerminologyInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: { label: string };
+  value: unknown;
+  onChange: (v: TerminologyValue | null) => void;
+}) {
+  const { t } = useI18n();
+  const repo = useTerminologyRepository();
+  const listId = useId();
+  const [query, setQuery] = useState('');
+  const [options, setOptions] = useState<TerminologyOption[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Seule la derniere frappe compte : une reponse lente ne doit pas ecraser une plus recente.
+  const requestRef = useRef(0);
+
+  const selected = isTerminologyValue(value) ? value : null;
+
+  useEffect(() => {
+    const needle = query.trim();
+    if (needle.length < MIN_QUERY_LENGTH) {
+      setOptions([]);
+      setSearching(false);
+      setError(null);
+      return;
+    }
+    setSearching(true);
+    const ticket = ++requestRef.current;
+    const timer = setTimeout(() => {
+      void repo.search(needle)
+        .then((found) => {
+          if (ticket !== requestRef.current) return;
+          setOptions(found);
+          setError(null);
+        })
+        .catch((e) => {
+          if (ticket !== requestRef.current) return;
+          setOptions([]);
+          setError(errorMessage(e, t('common.error')));
+        })
+        .finally(() => {
+          if (ticket === requestRef.current) setSearching(false);
+        });
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query, repo, t]);
+
+  function choose(option: TerminologyOption) {
+    // Le couple part tel quel : le serveur refusera un libelle qui ne correspond pas au code.
+    onChange({ code: option.code, label: option.label });
+    setQuery('');
+    setOptions([]);
+  }
+
+  if (selected) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-sm text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100">
+          {selected.label}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="text-xs font-medium text-slate-500 hover:text-slate-700"
+        >
+          {t('terminology.change')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <input
+        type="search"
+        className="input"
+        role="combobox"
+        aria-expanded={options.length > 0}
+        aria-controls={listId}
+        aria-label={field.label}
+        autoComplete="off"
+        placeholder={t('terminology.search_placeholder')}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {query.trim().length > 0 && query.trim().length < MIN_QUERY_LENGTH && (
+        <p className="text-xs text-slate-500">{t('terminology.min_chars')}</p>
+      )}
+      {searching && <p className="text-xs text-slate-500">{t('terminology.searching')}</p>}
+      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+      {options.length > 0 && (
+        <ul id={listId} role="listbox" className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          {options.map((o) => (
+            <li key={o.id}>
+              {/* Le role `option` porte sur l'element ACTIVABLE : sinon un clic sur la ligne
+                  ne declenche rien, et les technologies d'assistance annoncent une option
+                  qu'elles ne peuvent pas choisir. */}
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                onClick={() => choose(o)}
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                {o.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!searching && !error && options.length === 0 && query.trim().length >= MIN_QUERY_LENGTH && (
+        <p className="text-xs text-slate-500">{t('terminology.no_result')}</p>
+      )}
+    </div>
+  );
+}

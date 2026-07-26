@@ -1,4 +1,5 @@
-import type { TemplateField } from '../../data/types';
+import type { TemplateField, TerminologyValue } from '../../data/types';
+import { TerminologyInput } from './TerminologyInput';
 
 const cls = 'input';
 
@@ -46,6 +47,14 @@ export function FieldInput({
           aria-label={field.label}
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value || null)}
+        />
+      );
+    case 'terminology':
+      return (
+        <TerminologyInput
+          field={field}
+          value={value}
+          onChange={(v: TerminologyValue | null) => onChange(v)}
         />
       );
     case 'select': {

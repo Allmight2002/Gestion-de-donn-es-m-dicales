@@ -4,7 +4,7 @@
 //    du vide (§6) ;
 //  * évaluation des règles de cohérence JSON (opérateurs whitelist, jamais exécutées
 //    comme du code) -> erreurs bloquantes (block) ou avertissements (warn).
-import type { TemplateField } from '../data/types';
+import { isTerminologyValue, type TemplateField } from '../data/types';
 import { COMPARISON_OPERATORS, CONDITION_OPERATORS, type ConditionOperator } from './templateRules';
 
 export const MISSING_CODES = ['non_fait', 'inconnu', 'non_applicable'] as const;
@@ -98,6 +98,12 @@ export function validateField(field: TemplateField, value: unknown, requireCompl
     if (field.type === 'integer' && !Number.isInteger(n)) return 'Entier attendu';
     if (field.minValue != null && n < field.minValue) return `Valeur minimale : ${field.minValue}`;
     if (field.maxValue != null && n > field.maxValue) return `Valeur maximale : ${field.maxValue}`;
+  }
+  // Terminologie : le serveur reste seul juge de l'existence du concept et de la coherence
+  // du couple. Ici on ne verifie que la FORME, pour signaler la saisie incomplete avant
+  // l'aller-retour reseau.
+  if (field.type === 'terminology') {
+    return isTerminologyValue(value) ? null : 'Diagnostic incomplet : choisissez une proposition';
   }
   if (field.type === 'select' && Array.isArray(field.allowedValues)) {
     if (!field.allowedValues.map(String).includes(String(value))) return 'Valeur hors liste';
