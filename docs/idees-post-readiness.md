@@ -31,7 +31,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 2 | **Observabilité des erreurs** — être notifié automatiquement des bugs et de leurs causes, sans exposer de donnée patient | Moyenne (front + base + alerting) | Fait partie du blocage monitoring **B5** | [`spec-observabilite-erreurs.md`](spec-observabilite-erreurs.md) | Spec écrite ; 7 décisions en attente du demandeur |
 | 3 | **Bouton de suppression de base** — surface dans l'interface la suppression déjà existante côté serveur | Petite (surtout UI) | — | *(à spécifier si besoin)* | Noté ; capacité serveur complète, UI absente |
 | 4a | **Registre « Diagnostic urgences » (noyau)** — base à listes contrôlées (diagnostic, motif, issue) pour produire des diagnostics analysables | **Nulle (configuration, pas de code)** | — | *(canevas à préparer)* | Signal terrain fort (directrice des urgences, Tchad) ; faisable dès maintenant en données fictives |
-| 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(à spécifier)* | Phase 2, seulement si le pilote 4a convainc |
+| 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(cadrée en séance le 2026-07-26)* | **Lancée** : structure du référentiel livrée (T1) ; contenu, type de champ et interface à suivre |
 | 5 | **Bibliothèque de jeux de valeurs** — listes prêtes à l'emploi insérables en un clic dans un champ `select`/`multiselect`, au lieu de saisir chaque valeur à la main | Petite (front, contenu pur) | — | *(cadrée en séance le 2026-07-26)* | **Mécanisme livré le 2026-07-26** ; jeux cliniques à enrichir au fil des retours |
 
 ## Notes par idée
@@ -62,6 +62,10 @@ Signalé le 2026-07-22 : la directrice des urgences d'un hôpital tchadien décr
 - **4b — programme, nouvelle ingénierie** : autocomplétion searchable (le `select` est un menu déroulant, inadapté au-delà de ~30 items), référentiel gouverné (ID stable ≠ libellé, synonymes, workflow de validation, historique de fusion, CIM), et plusieurs diagnostics **avec attributs par diagnostic** (principal/associé, certitude, admission/sortie) — impossible dans le modèle plat actuel.
 
 **Corrections MedData au design proposé par un LLM tiers** : l'âge ne se stocke pas via « date de naissance » en zone analytique (calculé depuis l'identité, ou saisi comme âge déclaré si registre sans identité) ; l'ID stable n'existe pas aujourd'hui (le `select` stocke le libellé → un renommage casse l'historique).
+
+**Décision du 2026-07-26 : on passe directement au 4b.** Deux pistes ont été écartées en séance. La liste courte **par service** d'abord : un patient hospitalisé en cardiologie a aussi son diabète et son insuffisance rénale à coder, donc restreindre la liste au service recrée le manque qu'on veut supprimer. Le menu déroulant ensuite, inadapté au-delà de quelques dizaines d'entrées. Reste la recherche incrémentale — le typeahead.
+
+Le porteur a fourni une extraction de 37 152 entrées (35 664 `category`, 1 360 `block`, 28 `chapter`) avec la hiérarchie mais **sans code**, et a accepté de ré-extraire avec les codes. Rôle des codes, puisque la question s'est posée : ils ne sont **ni saisis ni affichés**. Ils sont stockés à la place du libellé, ce qui permet de corriger un libellé sans rendre l'historique incohérent, de regrouper les statistiques sans rapprocher des chaînes de caractères, et de transmettre un jour les données dans un langage commun. La structure du référentiel est livrée par le lot T1 ; le contenu, le type de champ et l'interface suivent.
 
 Voir l'analyse complète et la solution proposée dans l'historique de conversation (2026-07-22).
 
