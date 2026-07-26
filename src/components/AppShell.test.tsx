@@ -116,4 +116,20 @@ describe('AppShell (UI-1, barre laterale)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Detruire et se deconnecter' }));
     await waitFor(() => expect(signedOut).toHaveBeenCalledTimes(1));
   });
+
+  // D2 : le tiroir mobile est une modale (aria-modal). Sans verrou, la page defilait derriere,
+  // la barre d'adresse mobile se repliait et un espace vide apparaissait sous le panneau.
+  test('le tiroir mobile verrouille le defilement de la page puis le restaure', async () => {
+    setOfflineUser('u-med');
+    renderShell({ id: 'u-med', fullName: 'Dr Mbassi', globalRole: 'medecin', language: 'fr' });
+    await screen.findByRole('link', { name: /Tableau de bord/ });
+    expect(document.body.style.overflow).toBe('');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir le menu' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fermer le menu' }));
+    await waitFor(() => expect(document.body.style.overflow).toBe(''));
+  });
 });
