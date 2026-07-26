@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260714215335_record_release_component_state.sql`
-- Tables : 36 · Policies RLS : 59 · Triggers : 54 · Fonctions : 208
+- Dernière migration incluse : `20260726210000_terminology_field_type.sql`
+- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 210
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -755,6 +755,43 @@ Triggers :
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
+### terminology_concept · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| release_id | uuid | non |  |
+| code | text | oui |  |
+| label | text | non |  |
+| kind | text | non |  |
+| depth | integer | non | `0` |
+| parent_id | uuid | oui |  |
+| is_selectable | boolean | non | `true` |
+| search_text | text | oui |  |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `terminology_concept_read` (SELECT) — USING true
+
+### terminology_release · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| slug | text | non |  |
+| title | text | non |  |
+| source | text | non |  |
+| version | text | non |  |
+| license | text | oui |  |
+| attribution | text | oui |  |
+| concept_count | integer | non | `0` |
+| is_active | boolean | non | `false` |
+| imported_at | timestamp with time zone | oui |  |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `terminology_release_read` (SELECT) — USING true
+
 ### upload_ticket · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -980,6 +1017,7 @@ Triggers :
 | rule_holds | rule jsonb, data jsonb | INVOKER | plpgsql |
 | rule_value_present | v jsonb | INVOKER | sql |
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
+| search_terminology | p_query text, p_limit integer | INVOKER | sql |
 | set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |
 | set_base_template_version | p_base_id uuid, p_version_id uuid | DEFINER | plpgsql |
 | set_updated_at | — | INVOKER | plpgsql |
@@ -993,6 +1031,7 @@ Triggers :
 | template_version_fields_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_locked | p_version_id uuid | DEFINER | sql |
+| terminology_normalize | p_text text | INVOKER | sql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |
 | trg_audit_export_fn | — | DEFINER | plpgsql |
 | trg_audit_invitation_fn | — | DEFINER | plpgsql |
