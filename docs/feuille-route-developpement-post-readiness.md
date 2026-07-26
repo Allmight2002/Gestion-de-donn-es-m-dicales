@@ -2,8 +2,9 @@
 
 - Porteur : Dr Mbassi
 - Date de cadrage : 2026-07-26
-- Statut : cadre documentaire intégré ; Phase 0 validée localement et en cours
-  de promotion, aucune nouvelle fonctionnalité encore commencée
+- Statut : cadre documentaire et Phase 0 intégrés ; interphase
+  B3 → B4 → B8 → B1 → B9 terminée sur le candidat staging fictif
+  `ebee17910f6de005ab933ee08978d2e97686d19d` ; Phase 1 suivante
 - Source des idées : [`idees-post-readiness.md`](idees-post-readiness.md)
 - Référence de production : [`readiness-production-2026-07-19.md`](readiness-production-2026-07-19.md)
 - Prompt d'exécution autonome :
@@ -180,6 +181,16 @@ SHA et à staging. Si une capacité distante indispensable manque, tout travail
 indépendant est poursuivi puis le point est classé conformément aux conditions
 d'arrêt du mandat ; aucune Phase 1 ne commence tant que cette interphase n'est
 pas finalisée.
+
+**Résultat du 2026-07-26 :** interphase terminée sur
+`ebee17910f6de005ab933ee08978d2e97686d19d`. Les sauvegarde/restauration,
+rollback/forward recovery, composants staging et contrôles ACL/RLS/RPC portent
+sur ce même candidat ; les preuves immuables et les incidents rencontrés sont
+référencés dans
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md).
+B2 reste ouvert et les parcours fichiers sont exclus : l'échec réel du scanner
+dans le run coordonné n'a pas été transformé en succès. Cette limite ne bloque
+plus la Phase 1, qui ne dépend d'aucun upload.
 
 ### Phase 1 — valeur rapide et défauts visibles
 

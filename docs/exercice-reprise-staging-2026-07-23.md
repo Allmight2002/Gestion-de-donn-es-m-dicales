@@ -15,6 +15,13 @@ Cette preuve ne ferme pas encore à elle seule B3/B4/B8 :
 - le secret de preuve ne doit pas être installé dans l'environnement GitHub
   `production` sans une autorisation production distincte.
 
+**Rejeu du 26 juillet 2026.** La deuxième réserve est levée : le même exercice a
+été rejoué sur le SHA de merge définitif
+`ebee17910f6de005ab933ee08978d2e97686d19d` et est décrit dans
+`docs/exercice-reprise-staging-2026-07-26.md`. Le présent document n'est pas
+modifié pour autant : il reste la preuve de son propre SHA
+`6f0c87daee6d15938f8cc0dd2f62203e21dcc15d`, avec ses propres chiffres.
+
 ## Source et copie immuable
 
 Deux sauvegardes complémentaires portent sur le même SHA :
