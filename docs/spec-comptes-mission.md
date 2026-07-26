@@ -3,7 +3,11 @@
 - Statut : **proposition — non implémentée** (aucune migration créée, étude de conception seulement)
 - Date : 2026-07-19
 - Demandeur : Dr Mbassi (besoin : étudiants en thèse saisissant des données pour un directeur)
-- Précondition de calendrier : **ne pas implémenter avant la fermeture du chantier readiness (B1–B10) et la release coordonnée**, car toute modification du code ou d'une migration invalide les preuves du rapport `docs/readiness-production-2026-07-19.md` (§9).
+- Cadre de calendrier : développement local autorisé par
+  `docs/feuille-route-developpement-post-readiness.md`, avec données fictives
+  uniquement. B2, B6, B7 et B10 restent ouverts pour le pilote clinique et la
+  production. Toute modification crée un nouveau SHA qui devra être revalidé
+  avant staging ou promotion.
 
 ## 1. Besoin
 

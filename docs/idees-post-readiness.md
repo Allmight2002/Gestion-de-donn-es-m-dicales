@@ -1,13 +1,23 @@
 # Idées produit post-readiness — file d'attente
 
 - Tenu à jour à partir des échanges avec le porteur (Dr Mbassi)
-- Dernière mise à jour : 2026-07-22
+- Dernière mise à jour : 2026-07-26
 
 Cette liste rassemble les **chantiers concrets** identifiés mais **volontairement non commencés**. Elle est distincte des études `docs/strategie-produit-post-mvp*.md` (stratégie de marché et positionnement) : ici, ce sont des évolutions techniques précises, prêtes à être spécifiées puis construites.
 
-## Précondition commune — à lire avant toute mise en œuvre
+## Cadre commun — à lire avant toute mise en œuvre
 
-**Rien dans cette liste ne doit être implémenté tant que le chantier readiness (B1–B10) n'est pas fermé et la release coordonnée effectuée.** Toute modification du code ou d'une migration invalide les preuves du rapport `docs/readiness-production-2026-07-19.md` (§9). Les spécifications déjà rédigées sont des documents de conception, sans aucune modification du produit.
+Depuis la décision de cadrage du 2026-07-26, la fermeture de B1–B10 n'est plus
+une précondition au **développement local**. B2, B6, B7 et B10 sont explicitement
+différés : ils restent ouverts et bloquants pour les données réelles, le pilote
+clinique et la production, mais ils n'interdisent plus de construire et tester
+avec des données entièrement fictives.
+
+La mise en œuvre suit
+[`feuille-route-developpement-post-readiness.md`](feuille-route-developpement-post-readiness.md).
+Toute modification produit un nouveau SHA à revalider ; les preuves antérieures
+restent historiques pour leur propre SHA et ne sont pas transférées au nouveau
+candidat.
 
 ## File d'attente
 
@@ -66,4 +76,8 @@ Correction attendue : verrouiller le défilement de la page tant que le menu est
 
 ## Comment utiliser cette liste
 
-Quand la readiness sera levée, chaque idée se traite comme un lot borné : spécification (si absente) → base/Edge avec `meddata-db-safety` si concernée → UI → validation `validate-audit-lots`. Ajouter ici toute nouvelle idée au fil des échanges, avec la même colonne « où c'est bloqué » pour distinguer les dépendances techniques des décisions humaines.
+Chaque idée se traite désormais comme un lot borné selon la feuille de route :
+spécification (si absente) → base/Edge avec `meddata-db-safety` si concernée →
+UI → validation `validate-audit-lots`. Ajouter ici toute nouvelle idée au fil
+des échanges, avec la même colonne « où c'est bloqué » pour distinguer les
+dépendances techniques, les validations de staging et les décisions humaines.
