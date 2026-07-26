@@ -21,7 +21,7 @@ au SHA et à l'environnement indiqués.
 | P0 | React Router et baseline | Terminé et promu | `973f1bc`, merges `c64061e` (`develop`) et `af71477` (`main`) | PR #48 et #49 ; CI verte | Non requis | Aucun serveur ClamAV requis |
 | P0R | Finalisation B3 → B4 → B8 → B1 → B9 | Terminé pour le staging fictif | candidat `ebee17910f6de005ab933ee08978d2e97686d19d` | PR #50 et #51 ; CI verte ; preuves immuables | B3/B4/B8/B1/B9 liés au même SHA | B2 reste ouvert ; aucun parcours fichier ni production accepté |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | Retour métier requis avant 4b |
-| P1B | Corrections UX D1/D2 | À faire | — | — | À évaluer | Vérification mobile réelle/émulée |
+| P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
 | P3 | Observabilité privacy-safe | À faire | — | — | À évaluer | B5 reste requis pour la preuve distante complète |
 | P4 | Comptes de mission | À faire | — | — | Fictif uniquement | Aucun upload en v1 |
@@ -252,7 +252,57 @@ Aucune preuve antérieure n'a été réécrite ou transférée d'un SHA à un au
 décision de readiness reste **production readiness not demonstrated**, B2, B5,
 B6, B7 et B10 étant ouverts.
 
-Au moment de cette rédaction, ces mises à jour ne sont pas encore commitées : le
-commit de branche puis la pull request vers `develop` restent à effectuer.
-`origin/main` est à `af71477`, soit cinq commits derrière `develop` ; leur
-promotion relève d'une décision de release séparée.
+Ces mises à jour ont été portées par la PR #52, fusionnée dans `develop`
+(`af2f477`), puis promues vers `main` par la PR #53 (`2f44f33`). Les runs CI
+`30201193093`, `30201364005`, `30201419728` et `30201549373` sont verts.
+`origin/develop` et `origin/main` sont alignés. Aucun déploiement n'a été
+déclenché : `vercel.json` conserve `git.deploymentEnabled=false`.
+
+## P1B — corrections UX D1 et D2
+
+### Périmètre
+
+Premier lot fonctionnel après l'interphase. Deux défauts signalés le 22 juillet
+2026, tous deux frontend, sans surface base, Edge ou Storage : aucun gate de
+readiness n'est touché et aucune preuve d'interphase n'est invalidée.
+
+### D1 — refus de suppression d'un gabarit invisible
+
+Le serveur refuse correctement de supprimer un gabarit utilisé par une base,
+mais l'interface rendait ce refus invisible : le message tombait en haut de
+page, loin du bouton, et la confirmation « Oui/Non » restait ouverte parce que
+`setConfirmId(null)` était placé après l'appel réseau.
+
+La suppression passe désormais par une fonction dédiée `removeTemplate` :
+succès et échec produisent le même toast visible près de l'action — variante
+`warning` pour l'échec — et la réinitialisation de la confirmation est déplacée
+dans le `finally`, donc elle s'applique dans tous les cas. `src/screens/staff/
+TemplatesAdmin.tsx` partageait le même motif et n'avait aucun toast de succès ;
+il est corrigé de la même manière, avec la clé `admin.template_deleted` ajoutée
+en français et en anglais.
+
+### D2 — espace vide sous le tiroir mobile
+
+Le tiroir mobile est une modale `aria-modal`, mais rien ne bloquait le
+défilement de la page derrière lui : en scrollant, la barre d'adresse du
+navigateur mobile se repliait, la hauteur du viewport changeait et un espace
+apparaissait sous le panneau.
+
+Un `useEffect` pose `overflow: hidden` sur `document.body` à l'ouverture et
+restaure la valeur précédente à la fermeture comme au démontage ; le conteneur
+de la modale passe en `h-[100dvh]`.
+
+### Preuves locales
+
+- `npm run typecheck` : réussi ;
+- `npm run lint` : réussi, 0 warning ;
+- `npm run test:web` : 37 fichiers, **178/178** tests, dont 4 nouveaux — refus
+  serveur et succès sur les deux écrans de gabarits, verrou de défilement et sa
+  restauration.
+
+### Limite explicite
+
+La vérification sur un vrai mobile ou un émulateur **n'a pas été faite**. jsdom
+ne reproduit ni le repli de la barre d'adresse ni les unités de viewport
+dynamiques : le test prouve le verrou de défilement, pas la disparition visuelle
+de l'espace. D2 reste à confirmer visuellement.

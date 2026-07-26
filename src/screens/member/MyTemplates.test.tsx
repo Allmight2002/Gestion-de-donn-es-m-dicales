@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
+import { ToastProvider } from '../../components/Toast';
 import { MyTemplates } from './MyTemplates';
 import type { TemplateRepository } from '../../data/templates';
 
@@ -31,11 +32,13 @@ function baseRepo(over: Partial<TemplateRepository> = {}): TemplateRepository {
 function renderMine(repo: TemplateRepository) {
   return render(
     <I18nProvider>
-      <RepositoryProvider templates={repo}>
-        <MemoryRouter>
-          <MyTemplates />
-        </MemoryRouter>
-      </RepositoryProvider>
+      <ToastProvider>
+        <RepositoryProvider templates={repo}>
+          <MemoryRouter>
+            <MyTemplates />
+          </MemoryRouter>
+        </RepositoryProvider>
+      </ToastProvider>
     </I18nProvider>,
   );
 }
@@ -68,5 +71,32 @@ describe('MyTemplates', () => {
     expect(screen.getByText('Confirmer la suppression ?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Oui' }));
     await waitFor(() => expect(deleteTemplate).toHaveBeenCalledWith('mine'));
+  });
+
+  // D1 : le serveur refuse de supprimer un gabarit utilise par une base. Avant correction, le
+  // clic sur "Oui" ne produisait AUCUN retour visible pres du bouton et la confirmation restait
+  // ouverte -> l'utilisateur croyait que rien ne s'etait passe.
+  test('un refus serveur est annonce au point de clic et referme la confirmation', async () => {
+    const deleteTemplate = vi.fn(async () => {
+      throw new Error('Gabarit utilise par une base');
+    });
+    renderMine(baseRepo({ deleteTemplate }));
+    await screen.findByText('Mon Neuro');
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Oui' }));
+
+    expect(await screen.findByText('Gabarit utilise par une base')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Confirmer la suppression ?')).toBeNull());
+    expect(screen.getByText('Mon Neuro')).toBeInTheDocument();
+  });
+
+  test('une suppression reussie annonce le succes et referme la confirmation', async () => {
+    renderMine(baseRepo({ deleteTemplate: vi.fn(async () => {}) }));
+    await screen.findByText('Mon Neuro');
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Oui' }));
+
+    expect(await screen.findByText('Jeu de variables supprimé')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Confirmer la suppression ?')).toBeNull());
   });
 });

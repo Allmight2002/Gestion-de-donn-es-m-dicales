@@ -47,6 +47,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // D2 — le tiroir mobile est une MODALE (aria-modal) mais rien ne bloquait le defilement de la
+  // page derriere : en scrollant, la barre d'adresse du navigateur mobile se replie, la hauteur
+  // du viewport change et un espace vide apparait sous le panneau. On verrouille le body tant
+  // que le tiroir est ouvert, en restaurant la valeur precedente (y compris au demontage).
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [drawerOpen]);
+
   // Synchronisation automatique : des qu'on est en ligne avec des modifs en attente, on rejoue
   // la file via la RPC validee (verrou optimiste). S'execute au retour du reseau ou a l'ouverture.
   useEffect(() => {
@@ -198,7 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-40 h-[100dvh] lg:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
           <div className="absolute inset-y-0 left-0 flex w-64 flex-col overflow-y-auto bg-white p-3 shadow-xl">
             <button onClick={() => setDrawerOpen(false)} aria-label={t('nav.close_menu')} className="self-end rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
