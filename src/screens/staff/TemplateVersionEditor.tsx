@@ -232,7 +232,20 @@ export function TemplateVersionEditor({
         )}
         {editable && !editing && (
           <div className="mt-3">
-            <FieldForm busy={busy} onSubmit={(f) => void run(() => repo.addField(version.id, f))} />
+            <FieldForm
+              busy={busy}
+              onSubmit={(f, companion) => void (async () => {
+                // La cle du compagnon est unique par version : si elle est deja prise, on cree
+                // le champ source seul plutot que de faire echouer toute la creation.
+                const taken = !!companion && fields.some((x) => x.fieldKey === companion.fieldKey);
+                const ok = await run(async () => {
+                  await repo.addField(version.id, f);
+                  if (companion && !taken) await repo.addField(version.id, companion);
+                });
+                // Pose APRES run, qui remet l'erreur a null en cas de succes.
+                if (ok && taken) setError(t('admin.proposal_exists'));
+              })()}
+            />
           </div>
         )}
       </div>

@@ -20,7 +20,8 @@ au SHA et à l'environnement indiqués.
 | D0 | Intégration du cadre documentaire | Terminé | `main` `70798f65017cbcea6b6f348cc9a24f90d0299dd7` ; `develop` `5468141a33ad6c7c1596e83e753881cb03ff874f` | PR #46 et #47 ; CI verte | Non requis | Production exclue |
 | P0 | React Router et baseline | Terminé et promu | `973f1bc`, merges `c64061e` (`develop`) et `af71477` (`main`) | PR #48 et #49 ; CI verte | Non requis | Aucun serveur ClamAV requis |
 | P0R | Finalisation B3 → B4 → B8 → B1 → B9 | Terminé pour le staging fictif | candidat `ebee17910f6de005ab933ee08978d2e97686d19d` | PR #50 et #51 ; CI verte ; preuves immuables | B3/B4/B8/B1/B9 liés au même SHA | B2 reste ouvert ; aucun parcours fichier ni production accepté |
-| P1V | Bibliothèque de jeux de valeurs (préalable à P1A) | Terminé localement | `codex/valueset-library` | — | Non requis | Aucun jeu de diagnostics ; soupape « Autre » non traitée |
+| P1V | Bibliothèque de jeux de valeurs (préalable à P1A) | Terminé et promu | `codex/valueset-library` | PR #56 et #57 ; CI verte | Non requis | Aucun jeu de diagnostics |
+| P1S | Soupape « valeur proposée » | Terminé localement | `codex/soupape-valeur-proposee` | — | Non requis | Champs de rencontre seulement ; propositions non listées |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
@@ -374,3 +375,65 @@ liste de chaînes, exactement comme avant.
   une liste locale vieillit et redevient du texte libre ;
 - au-delà d'environ 30 items, un menu déroulant reste pénible : la cascade ou le
   typeahead relèvent de l'idée 4b.
+
+### Traçabilité Git
+
+PR #56 fusionnée dans `develop` (`f4b4516`), PR #57 promue vers `main`
+(`b4ca810`), run post-merge `30204624464` vert.
+
+## P1S — soupape « valeur proposée »
+
+### Décision de conception
+
+Le porteur a écarté le « Autre (préciser) » classique : il aurait laissé entrer
+des valeurs hors liste dans la colonne analysable, qu'il aurait fallu dépouiller
+après coup. La règle retenue est plus stricte — **la valeur hors liste n'entre
+jamais dans le champ à liste contrôlée**.
+
+Choisir « Autre » vide le champ source et ouvre un champ texte compagnon
+`<champ>_autre`, créé à côté du champ source, où la proposition est décrite. La
+fiche part alors dans la file de complétion existante tant que le champ source
+reste vide. Au traitement, on lit la proposition et on décide : ajouter la
+valeur à la liste, ou constater qu'elle existait déjà sous un autre nom.
+
+Cette conception a une conséquence importante : **aucune surface serveur n'est
+nécessaire**. `assert_data_valid` refuse toute valeur hors `allowed_values` pour
+un `select`, et n'accepte d'objet balisé que `{__missing__: …}` avec une liste
+blanche stricte ; un champ texte, lui, est accepté tel quel. Aucune migration,
+aucune preuve d'interphase invalidée.
+
+Le champ compagnon n'est **jamais obligatoire** : une fiche bloquée pousserait
+le saisisseur à choisir une valeur fausse pour avancer, c'est-à-dire exactement
+ce que la soupape doit empêcher.
+
+### Contenu
+
+- `src/domain/proposalField.ts` : conventions de clé, construction du champ
+  compagnon et association source/compagnon ;
+- `src/screens/member/ChoiceWithProposal.tsx` : saisie couplée, avec
+  avertissement non bloquant ;
+- `EncounterFields.tsx` : le compagnon n'est plus rendu comme un champ autonome,
+  mais avec son champ source ;
+- `FieldForm.tsx` et `TemplateVersionEditor.tsx` : case à cocher à la création
+  d'un champ à choix, qui demande la création du second champ. Si la clé est
+  déjà prise, le champ source est créé seul et un message l'indique.
+
+### Preuves locales
+
+- `npm run typecheck` : réussi ;
+- `npm run lint` : réussi, 0 warning ;
+- `npm run test:web` : 41 fichiers, **208/208** tests, dont 14 nouveaux — le
+  texte proposé ne part jamais dans le champ à liste, le champ source est vidé,
+  le compagnon n'est jamais obligatoire, et une proposition déjà enregistrée est
+  relue sans redemander la soupape.
+
+### Limites explicites
+
+- la soupape n'est proposée **que pour les champs de rencontre** : la saisie
+  couplée n'est rendue que là. Elle n'est volontairement pas offerte pour les
+  champs patient plutôt que de promettre un comportement absent ;
+- **rien ne liste les propositions en attente** à l'échelle d'une base : le
+  traitement repose sur la file de complétion et la relecture des fiches. C'est
+  la boucle d'amélioration, qui reste à outiller ;
+- l'ajout effectif d'une valeur à la liste reste un geste humain via l'éditeur
+  de gabarit, une version publiée étant figée par conception.
