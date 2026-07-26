@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository } from '../../data/RepositoryProvider';
 import { validateAttachmentFile, ALLOWED_ATTACHMENT_ACCEPT } from '../../domain/imageUpload';

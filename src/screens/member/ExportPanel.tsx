@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuditRepository, useBaseRepository, useExportRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';

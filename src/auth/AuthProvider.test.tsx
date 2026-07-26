@@ -6,7 +6,7 @@ import { useContext } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { AuthContext, AuthProvider } from './AuthProvider';
 import { AppRoutes } from '../routes/AppRoutes';

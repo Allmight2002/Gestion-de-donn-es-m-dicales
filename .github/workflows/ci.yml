@@ -35,10 +35,7 @@ jobs:
       - name: Verify XLSX and browser test versions
         run: npm ls xlsx@0.20.3 @playwright/test@1.61.1 --depth=0 && grep -F 'xlsx-0.20.3/package/xlsx.mjs' deno.json deno.lock && ! grep -F 'npm:xlsx@0.18.5' deno.json deno.lock
 
-      - name: Dependency audit (temporary staging policy)
-        # Cette CI valide un candidat staging, y compris quand le meme SHA est
-        # synchronise sur main. Le workflow de production applique ensuite la
-        # politique stricte et n'accepte aucune exception moderee.
+      - name: Dependency audit (strict policy)
         run: npm run audit:dependencies -- --scope=staging
 
       - name: Typecheck

@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useGroupRepository } from '../../data/RepositoryProvider';

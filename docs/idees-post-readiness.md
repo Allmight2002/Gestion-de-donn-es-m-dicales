@@ -19,6 +19,10 @@ Toute modification produit un nouveau SHA à revalider ; les preuves antérieure
 restent historiques pour leur propre SHA et ne sont pas transférées au nouveau
 candidat.
 
+Ordre obligatoire ajouté le 2026-07-26 : aucune idée ni correction UX de cette
+file ne commence avant la fin de la Phase 0 puis la finalisation du chantier
+antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
+
 ## File d'attente
 
 | # | Idée | Ampleur | Où c'est bloqué aujourd'hui | Spécification | Statut |

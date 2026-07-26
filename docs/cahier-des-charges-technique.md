@@ -38,7 +38,7 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
 
 | Couche | Technologie |
 |---|---|
-| Frontend | **React 18 + TypeScript**, **Vite 5**, **Tailwind CSS v4**, React Router v6 |
+| Frontend | **React 19.2.8 + TypeScript**, **Vite 8**, **Tailwind CSS v4**, React Router 8.3 |
 | PWA | `vite-plugin-pwa` (installable, service worker) |
 | Backend | **Supabase** : **PostgreSQL 18**, Auth (GoTrue), Storage, **Edge Functions** (Deno) |
 | Tableurs | **SheetJS `xlsx` 0.20.3** (CDN officiel ; corrige les CVE de 0.18.5), parsing en **Web Worker** |
