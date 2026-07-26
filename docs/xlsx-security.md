@@ -3,7 +3,7 @@
 ## Versions et exposition
 
 - Vite/Node résout `xlsx` 0.20.3 depuis l'archive officielle SheetJS. Ce chemin lit des CSV/XLSX fournis par l'utilisateur dans un Web Worker.
-- Deno/Edge résout désormais l'ESM officiel SheetJS 0.20.3 par une URL exacte dont le SHA-256 est figé dans `deno.lock`. L'Edge Function écrit seulement des classeurs issus de données serveur validées; elle ne lit pas de classeur utilisateur.
+- Deno/Edge résout l'ESM officiel SheetJS 0.20.3 depuis une copie locale versionnée. Son SHA-256 est vérifié par les tests de déploiement et sa licence Apache 2.0 est conservée avec l'artefact. L'Edge Function écrit seulement des classeurs issus de données serveur validées; elle ne lit pas de classeur utilisateur.
 - L'ancien import Deno `npm:xlsx@0.18.5` était affecté par CVE-2024-22363 (ReDoS). Le scénario direct était surtout le parsing navigateur; l'Edge d'export n'appelait pas le parseur, mais conservait un composant vulnérable et un risque de consommation CPU/mémoire sur un export démesuré.
 
 ## Solution retenue
@@ -16,4 +16,4 @@ Les tests couvrent le nominal, Unicode, formules neutralisées, valeurs codifié
 
 - Le timeout du Worker protège la réactivité, mais ne remplace pas une limite de taille décompressée ZIP avant parsing; les limites d'upload et de cellules réduisent ce risque sans l'annuler.
 - Le contrôle de temps Edge constate un dépassement après l'appel synchrone SheetJS; le timeout dur du runtime reste le dernier coupe-circuit.
-- La ressource CDN est distante, mais l'URL de version et son hash Deno sont figés. Une vendoring locale réduirait encore la dépendance réseau de build, au prix d'un artefact tiers d'environ 1 Mio à maintenir.
+- La copie locale ajoute environ 1 Mio au dépôt et doit être mise à jour explicitement avec son hash, sa provenance et sa licence. Elle supprime toutefois la dépendance au CDN SheetJS pendant le bundling Supabase.

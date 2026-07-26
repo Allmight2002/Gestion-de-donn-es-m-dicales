@@ -19,7 +19,7 @@ const ENTRYPOINT = 'Deno.serve((_req: Request) => new Response("ok"));\n';
 const DENO_JSON = JSON.stringify({
   imports: {
     '@supabase/supabase-js': 'jsr:@supabase/supabase-js@2.45.4',
-    xlsx: 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs',
+    xlsx: './supabase/functions/_shared/vendor/xlsx-0.20.3.mjs',
   },
   tasks: {
     'edge:check': 'deno check --frozen supabase/functions',
@@ -108,7 +108,7 @@ describe('inventaire dynamique des Edge Functions', () => {
       JSON.stringify({
         imports: {
           '@supabase/supabase-js': 'jsr:@supabase/supabase-js@2.45.4',
-          xlsx: 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs',
+          xlsx: './supabase/functions/_shared/vendor/xlsx-0.20.3.mjs',
         },
         tasks: {
           'edge:check': 'deno check supabase/functions/signed-read/index.ts',

@@ -1,10 +1,10 @@
 # Audit final de readiness production — MedData
 
-- Dernière mise à jour : **2026-07-22 — Africa/Douala**
+- Dernière mise à jour : **2026-07-26 — Africa/Douala**
 - Niveau appliqué : **4 — Production readiness**
 - Décision technique unique : **production readiness not demonstrated**
 - Correspondance LOT 15 : **NO-GO**
-- Niveau maximal démontré : **données fictives uniquement, dans un environnement local ou non-production isolé et réinitialisable**
+- Niveau maximal démontré : **données fictives uniquement, dans un environnement local ou non-production isolé et réinitialisable ; depuis le 26 juillet 2026, un staging fictif directement prouvé sur le SHA `ebee179`, parcours de fichiers exclus**
 
 Ce rapport distingue le fonctionnement logiciel de l'aptitude à un usage
 clinique. Il ne constitue ni une autorisation juridique, clinique ou éthique, ni
@@ -12,6 +12,36 @@ une acceptation de risque par l'organisation. Aucune note globale ne remplace
 les conditions bloquantes.
 
 ## 1. Identité du candidat et état déployé
+
+### Candidat courant — interphase du 26 juillet 2026
+
+| Élément | État vérifié |
+|---|---|
+| Branche de travail | `codex/readiness-b3-b4-b8-b1-b9` |
+| Candidat commun | `ebee17910f6de005ab933ee08978d2e97686d19d`, merge de la PR #51 dans `develop` |
+| Arbre applicatif | identique à celui du commit de branche `99c7bf5` |
+| CI GitHub | PR #51 run `30195837590` vert ; post-merge `develop` run `30196032319` vert |
+| Backend staging | run coordonné `30197149574` : 105 migrations, `storage.sql` à l'empreinte `b9e87377…`, six Edge Functions actives, inventaire sans drift |
+| Frontend staging | déploiement Vercel `dpl_3WrrxRjX2WgcitJCWJzvHHu28JTJ`, état `READY`, métadonnée Git `ebee179`, route `/login` HTTP 200 |
+| Production | ignorée par le run coordonné ; aucun déploiement production effectué |
+| Preuves immuables | `continuity-staging-30196157372-1`, `recovery-evidence-staging-ebee17910f6d`, `readiness-evidence-staging-ebee17910f6d`, toutes rattachées à `ebee179` |
+| Limite du run | le job frontend est devenu rouge lors de la vérification du scanner ClamAV, **après** un déploiement réussi ; cet échec appartient à B2 et n'est pas reclassé en succès |
+| `main` | inchangé à `af71477` ; la promotion `develop` vers `main` reste une décision de release séparée |
+
+Deux incidents de déploiement ont précédé ce candidat et ne sont pas masqués :
+
+- run `30194560179` : le bundling Edge local a rencontré la limite anonyme du
+  registre Docker ; la PR #50 (`6338aeb`, merge `44223c0`) a basculé les six
+  déploiements sur le bundler API Supabase ;
+- run `30195079740` : le bundler distant ne pouvait pas joindre
+  `cdn.sheetjs.com` ; la PR #51 (`e1622a9`, `99c7bf5`, merge `ebee179`) a
+  embarqué SheetJS 0.20.3 avec sa licence Apache, une empreinte verrouillée et
+  un test d'inventaire, sans retour au paquet npm vulnérable.
+
+Les preuves B3, B4 et B8 antérieures à `ebee179` ont été rejouées après ces
+incidents, afin qu'aucune ne soit transférée depuis un SHA précédent.
+
+### Candidat du 22 juillet 2026 — conservé comme historique
 
 | Élément | État vérifié |
 |---|---|
@@ -89,23 +119,23 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 
 | Gate | État | Preuve | Date | Environnement | Commit/version | Risque | Bloquant | Responsable | Action suivante |
 |---|---|---|---|---|---|---|---|---|---|
-| Release et versions | prouvé non conforme | Le candidat est fusionné dans `main` mais non déployé ; la dernière production connue mélange frontend `e6982ce`, 86 migrations, 5 Edge et strict `false` | 2026-07-22 | GitHub/Vercel/Supabase | merge `e63499a`; production historique incohérente | Critique : composants incompatibles | Oui | Release manager | Produire un staging exact après fermeture des gates, puis une promotion coordonnée unique |
-| Sécurité | partiellement prouvé | ACL locales : 0 `SECURITY DEFINER` pour `anon`, 85 signatures authentifiées inventoriées, search_path bornés ; production distante non alignée | 2026-07-22 | Local + production historique | 105 migrations locales | Critique tant que production n'est pas alignée | Oui | RSSI + responsable DB | Exécuter `db:function-acl:verify` sur staging exact, advisors et tests d'accès interdits |
+| Release et versions | partiellement prouvé | Le candidat `ebee179` est aligné sur staging pour le frontend, la DB, Storage et les six Edge Functions ; la dernière production connue mélange toujours frontend `e6982ce`, 86 migrations, 5 Edge et strict `false` | 2026-07-26 | GitHub/Vercel/Supabase | `ebee179` sur staging ; production historique incohérente et non touchée | Critique tant que la production reste dans cet état | Oui | Release manager | Conserver la production intacte jusqu'à la fermeture des gates, puis une promotion coordonnée unique du SHA approuvé |
+| Sécurité | prouvé conforme sur staging | `db:function-acl:verify` exécuté sur la base distante du candidat : 132 fonctions `SECURITY DEFINER` conformes à l'inventaire, aucune exécutable par `anon`, `search_path` bornés ; 36/36 tables publiques sous RLS et 59 policies ; lecture autorisée visible, base invisible pour un sujet sans accès ; RPC autorisée au médecin fictif, refusée à l'anonyme et au sujet sans droit ; politique DB d'inspection stricte active | 2026-07-26 | Staging distant | `ebee179` | Critique tant que la production n'est pas alignée sur ce même SHA | Oui pour la production | RSSI + responsable DB | Rejouer ce contrôle sur le SHA finalement promu, et n'accepter aucune preuve issue d'un autre SHA |
 | Intégrité scientifique | partiellement prouvé | Tests locaux d'export/import et historiques verts ; dernier staging scientifique porte sur un ancien SHA | 2026-07-22 | Local ; staging périmé | `5239804`; ancien `6774c18` | Résultat non revalidé sur artefact candidat | Oui pour clinique | QA scientifique | Rejouer jeux de référence et faire signer l'interprétation scientifique |
 | Données | partiellement prouvé | 630 tests globaux et 105 migrations sans perte/altération observée ; aucune continuité cloud actuelle | 2026-07-22 | Local | `5239804` | Perte possible si backup cloud absent | Oui | Responsable données | Staging exact puis sauvegarde et restauration représentatives |
 | Concurrence | partiellement prouvé | Conflits, retries, idempotence, atomicité et verrous passent sur PostgreSQL embarqué | 2026-07-22 | Local | `5239804` | Drift/performance cloud non exclus | Oui pour production | Responsable PostgreSQL | Rejouer la matrice concurrente sur staging exact |
-| Migrations, RLS, RPC et Storage | partiellement prouvé | 105 migrations depuis zéro, 461 tests DB, inventaire ACL exact ; cible distante du candidat non vérifiée | 2026-07-22 | Local | dernière `20260714215335` | Migration/policy non prouvée dans la cible | Oui | Responsable Supabase | Backup, `db push` staging autorisé, Storage, ACL, drift et tests de refus |
+| Migrations, RLS, RPC et Storage | prouvé sur staging | 105 migrations depuis zéro en local, et 105 migrations appliquées sur la cible staging du candidat ; `storage.sql` à l'empreinte `b9e87377…` ; 36/36 tables sous RLS, 59 policies et inventaire sans drift | 2026-07-26 | Local + staging distant | `ebee179`, dernière migration `20260714215335` | Aucune preuve équivalente sur la cible de production | Oui pour la production | Responsable Supabase | Rejouer backup, `db push`, Storage, ACL, drift et tests de refus sur la cible réellement promue |
 | Fichiers | prouvé non conforme | Scanner et Edge locaux fail-closed ; aucun ClamAV durable distant ni fraîcheur de signatures live | 2026-07-22 | Local/cloud | image locale candidate | Fichier non inspecté ou service indisponible | Oui | Infrastructure + RSSI | Héberger, superviser, puis tester sain/EICAR/panne/capacité sur staging |
 | Hors-ligne | prouvé conforme | Release standard et build candidat imposent `disabled/false` | 2026-07-22 | Local/CI statique | `5239804` | Faible tant que désactivé | Non si maintenu désactivé | RSSI + release manager | Conserver désactivé pour toute donnée pseudonymisée ou réelle |
 | Tests | prouvé conforme | 169 web, 461 DB, 630 globaux, 70 Edge, build et workflows verts ; PR et post-merge CI verts | 2026-07-22 | Local/GitHub | `5239804`, merge `e63499a` | QA humaine, staging exact et charge non couverts | Non technique ; oui clinique | QA | Exiger E2E staging, charge adaptée et QA manuelle signée |
-| Edge Functions | partiellement prouvé | 6 fonctions attendues et 70 tests locaux ; version distante candidate non déployée/testée | 2026-07-22 | Local ; cloud non vérifié | `5239804` | Fonction critique absente ou ancienne en production | Oui | Responsable Edge | Déployer uniquement sur staging, vérifier hashes et E2E avant promotion |
+| Edge Functions | prouvé sur staging | Les six fonctions sont déployées sur staging depuis `ebee179` via le bundler API Supabase et actives, inventaire sans drift ; 70/70 tests locaux, rejoués sur le SHA courant et le SHA précédent lors de l'exercice de reprise | 2026-07-26 | Local + staging distant | `ebee179` | Fonction critique absente ou ancienne en production | Oui pour la production | Responsable Edge | Vérifier hashes et E2E sur le SHA promu ; l'E2E des parcours de fichiers reste impossible tant que B2 est ouvert |
 | CI/CD | prouvé non conforme | Workflows locaux valides ; API live confirme protections indisponibles et environnements sans règles | 2026-07-22 | GitHub | plan/configuration live | Bypass de review ou de promotion | Oui | Administrateur GitHub + RSSI | Plan compatible ou contrôle équivalent approuvé ; branches/checks/reviewers/MFA |
-| Staging | preuve périmée | Dernier staging exact `6774c18`; 11 commits techniques supplémentaires | 2026-07-22 | Staging | ancien `6774c18` | Artefact candidat non validé | Oui | Release manager | Nouvelle release staging sur le SHA fusionné, E2E et monitors verts |
-| Sauvegardes | presque entièrement prouvé sur staging | Jobs staging réussis les 23, 24 et 25 juillet (`30030132468`, `30069596186`, `30145707498`) ; artefacts chiffrés/HMAC 30 jours ; première release privée immuable ; alerte d'échec et watchdog Pipedream testés/reçus ; clé staging versionnée avec enveloppe DPAPI hors GitHub | 2026-07-25 | GitHub staging + Pipedream + poste de reprise | SHA exercé `6f0c87d` ; release `continuity-staging-30030132468` | Le nouveau job immuable et la nouvelle clé doivent encore être exercés sur le SHA final ; coffre organisationnel requis avant données réelles | Oui jusqu'au run final | Continuité + infrastructure | Publier, exécuter la sauvegarde staging du SHA final, puis la vérifier avec la clé récupérée hors GitHub |
-| Restauration | prouvé sur un SHA préfinal | DB/Auth/Storage et 117 objets restaurés dans PostgreSQL 17 isolé ; 111 FK contrôlées, 0 orphelin, 0 hash divergent, RLS autorisé/refusé ; RPO observé 211 s et RTO 517 s ; objectifs 24 h/4 h approuvés le 25 juillet | 2026-07-25 | Local isolé, source staging fictive | exercice `6f0c87d` | Le merge final change le SHA et impose un dernier replay | Oui jusqu'au replay exact | Continuité + exploitation | Rejouer la même restauration depuis la sauvegarde immuable du SHA final et valider le JSON exact |
+| Staging | prouvé pour le périmètre sans fichiers | Run coordonné `30197149574` : validation complète réussie, backend staging réussi, frontend Vercel `dpl_3WrrxRjX2WgcitJCWJzvHHu28JTJ` en état `READY` avec métadonnée Git `ebee179` et `/login` HTTP 200 ; production ignorée | 2026-07-26 | Staging | `ebee179` | Le job frontend est ensuite devenu rouge sur la vérification ClamAV, après déploiement réussi : aucun parcours de fichier n'est validé | Oui pour tout parcours de fichier et pour la production | Release manager | Rejouer le run coordonné complet une fois B2 fermé, scanner compris |
+| Sauvegardes | prouvé sur staging pour le SHA candidat | Run `30196157372` réussi : 4 exports DB, 117 objets et 16 969 octets, HMAC et extraction vérifiés, manifeste Storage `sha256:5165598…` ; artefact `continuity-backup-staging-30196157372` retenu jusqu'au 25 août 2026 ; release immuable `continuity-staging-30196157372-1` ciblant `ebee179`, digest `sha256:168c2359…` ; clé rouverte depuis l'enveloppe DPAPI séparée, sans affichage ; historique, alerte d'échec et watchdog Pipedream antérieurs conservés | 2026-07-26 | GitHub staging + Pipedream + poste de reprise | `ebee179` | Ni PITR ni backups managés (`pitr_enabled: false`) ; copie immuable hébergée chez GitHub, donc non indépendante ; coffre organisationnel requis avant données réelles | Oui pour la production | Continuité + infrastructure | Souscrire PITR/backups managés et placer une seconde enveloppe de clé hors de la machine du porteur |
+| Restauration | prouvé sur le SHA candidat | Rejeu dans le projet local isolé `meddata-recovery-30196157372` : 5 comptes Auth, 36 tables publiques toutes sous RLS, 4 buckets et 117/117 objets restaurés ; 111 FK contrôlées, 0 orphelin, 0 divergence sur les 35 tables de données publiques ni sur les hash Storage ; lecture propriétaire autorisée et lecture croisée refusée ; RPO observé 77 s et RTO observé 1 587 s, sous les objectifs 24 h/4 h approuvés le 25 juillet ; preuve JSON `sha256:4ab7a20d…` publiée dans `recovery-evidence-staging-ebee17910f6d` | 2026-07-26 | Local isolé, source staging fictive | exercice `ebee179` | Cible locale, non représentative d'un environnement clinique ; toute modification du candidat impose un nouveau replay | Oui pour la production | Continuité + exploitation | Rejouer l'exercice sur le SHA finalement promu ; n'installer `RECOVERY_EVIDENCE_JSON` en environnement `production` qu'après autorisation production distincte |
 | Monitoring | prouvé non conforme | Alerting local expurgé ; aucune destination/astreinte live ni série de probes vertes | 2026-07-22 | Local/cloud | `5239804` | Incident silencieux | Oui | Exploitation | Configurer destination, tester panne et accusé de réception, mesurer escalade |
 | Accès | prouvé non conforme | RLS local vert ; GitHub live sans protections ; MFA et revue nominative non prouvées | 2026-07-22 | Local/GitHub | état live | Accès privilégié non maîtrisé | Oui | RSSI + propriétaires de services | Revue nominative, MFA, moindre privilège et exports de configuration datés |
-| Rollback et forward recovery | prouvé sur un SHA préfinal | Frontend courant → `024b3f4` → courant en HTTP 200 ; six Edge Functions contrôlées et 70/70 tests sur les deux versions ; Storage reappliqué et dernière migration rejouée en forward recovery | 2026-07-23 | Local isolé, staging fictif | exercice `6f0c87d` | Le SHA final doit porter sa propre preuve chronométrée | Oui jusqu'au replay exact | Release manager + continuité | Rejouer/valider les contrôles sur le SHA final et publier la preuve immuable |
+| Rollback et forward recovery | prouvé sur le SHA candidat | Rollback de la migration `20260714215335`, forward par `supabase db push`, réapplication de `storage.sql`, puis état final identique ; frontend courant → précédent `b5a0369` → courant en HTTP 200/200/200 ; six Edge Functions contrôlées sur les deux versions, 70/70 tests chacune | 2026-07-26 | Local isolé, staging fictif | exercice `ebee179` | Aucun parcours de fichier exercé ; toute modification du candidat impose une nouvelle preuve chronométrée | Oui pour la production | Release manager + continuité | Rejouer les contrôles sur le SHA promu et publier la preuve immuable correspondante |
 | Conformité | vérification externe requise | Gate signé présent ; dossiers Cameroun/Tchad restent des projets, sans DPA/DPIA/AIPD/avis éthique prouvés | 2026-07-22 | Organisation | documents projet | Usage médical non autorisé | Oui | Responsable de traitement + juridique + DPO + éthique | Archiver décisions signées et générer le manifeste de gouvernance |
 | Incident médical | vérification externe requise | Gate opérationnel exige annuaire, autorité, astreinte et simulation ; aucune preuve réelle fournie | 2026-07-22 | Organisation | `5239804` | Notification/prise en charge tardive | Oui | Direction + DPO + RSSI | Nommer titulaires/suppléants, simuler et faire accepter la procédure |
 | Exploitation | vérification externe requise | Gate B10 exige RACI, support, formation, MFA, runbooks et QA ; secret de preuve absent | 2026-07-22 | Organisation | `5239804` | Service dépendant d'une personne/non soutenable | Oui | Direction + responsable exploitation | Produire les affectations et preuves puis valider le manifeste opérationnel |
@@ -114,15 +144,15 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 
 | ID | État après correction | Bloquant production | Condition de fermeture |
 |---|---|---|---|
-| B1 | Correctifs locaux réalisés, état distant toujours incohérent | Oui, critique | Même SHA approuvé pour frontend, DB, Storage et 6 Edge après staging exact |
-| B2 | Durcissement local réalisé, service distant absent | Oui, critique | ClamAV durable, strict, signatures/capacité et monitors prouvés |
-| B3 | Historique staging du 23 au 25 juillet, alerte et watchdog reçus, copie immuable et clé séparée prêts ; run final nouvelle clé en attente | Oui jusqu'à la preuve exacte | Sauvegarde du SHA final vérifiée depuis la clé hors GitHub et copie immuable publiée ; PITR non requis par le RPO staging approuvé de 24 h |
-| B4 | Restauration complète réussie sur `6f0c87d`, RPO/RTO 211 s/517 s sous les objectifs approuvés 24 h/4 h ; replay final requis | Oui jusqu'à la preuve exacte | Même exercice réussi sur le SHA final et JSON validé |
+| B1 | Alignement exact démontré sur staging pour `ebee179` : frontend Vercel `READY`, 105 migrations, `storage.sql` et six Edge Functions sans drift ; production toujours incohérente et volontairement non touchée | Oui, critique pour la production | Même SHA approuvé puis déployé en production après fermeture des autres gates |
+| B2 | Durcissement local réalisé, service distant absent ; le job frontend du run coordonné `30197149574` a réellement échoué sur la vérification du scanner, après le déploiement — échec conservé comme tel, jamais reclassé | Oui, critique | ClamAV durable, strict, signatures/capacité et monitors prouvés |
+| B3 | Sauvegarde du SHA candidat exécutée et vérifiée (run `30196157372`), copie immuable `continuity-staging-30196157372-1` publiée, clé rouverte depuis l'enveloppe DPAPI séparée ; satisfait pour le staging fictif | Oui pour la production | PITR ou backups managés, copie réellement indépendante de GitHub et coffre organisationnel hors de la machine du porteur |
+| B4 | Restauration complète réussie sur `ebee179`, RPO/RTO 77 s/1 587 s sous les objectifs approuvés 24 h/4 h, JSON validé et publié ; satisfait pour le staging fictif | Oui pour la production | Même exercice réussi sur le SHA promu, dans une cible représentative et avec autorisation production |
 | B5 | Alerting prêt, supervision opérationnelle absente | Oui, critique | Probes durables, alerte reçue, astreinte et incident exercé |
 | B6 | Gate fail-closed prêt, autorisations absentes | Oui, critique | Documents et décisions signés des autorités compétentes |
 | B7 | Gate live prêt et échoue comme attendu | Oui, élevé | Protections/reviewers ou contrôle compensatoire formel, MFA et moindre privilège |
-| B8 | Rollback/forward recovery complet réussi sur `6f0c87d` ; replay final requis | Oui jusqu'à la preuve exacte | Rollback/forward recovery staging du SHA final chronométré, intègre et validé |
-| B9 | **Conforme localement** | Oui tant que staging non revalidé | Contrôle distant exact, tests RLS/RPC et acceptation sécurité sur le candidat |
+| B8 | Rollback/forward recovery complet réussi sur `ebee179`, chronométré, intègre et validé ; satisfait pour le staging fictif | Oui pour la production | Rollback/forward recovery du SHA promu, et secret `RECOVERY_EVIDENCE_JSON` installé en environnement `production` sur autorisation distincte |
+| B9 | **Conforme sur la base distante du candidat** : 132 fonctions `SECURITY DEFINER` conformes, aucune exécutable par `anon`, 36/36 tables sous RLS, 59 policies, RPC autorisée/refusée conformes ; acceptation bornée au staging fictif | Oui pour la production | Même contrôle rejoué sur le SHA promu, sans aucun parcours de fichier accepté tant que B2 est ouvert |
 | B10 | Gate fail-closed prêt, organisation absente | Oui, élevé | RACI, suppléances, support, formation, simulation, MFA et QA signés |
 
 Aucun export scientifiquement incorrect, contournement RLS ou perte silencieuse
@@ -182,9 +212,20 @@ interdit réussit ou si un test critique régresse.
 - Décision LOT 15 : **NO-GO** pour pilote pseudonymisé, données médicales
   réelles limitées et production complète.
 - Périmètre autorisé : démonstration et QA avec données fictives uniquement.
-- Nouvelle réévaluation : obligatoirement après un staging exact du merge
-  `e63499a` ; ensuite à chaque preuve backup/restauration,
-  monitoring/incident, accès ou gouvernance, ou à toute modification du candidat.
+- Nouvelle réévaluation : obligatoirement à chaque preuve
+  backup/restauration, monitoring/incident, accès ou gouvernance, et à toute
+  modification du candidat.
+
+Mise à jour du 26 juillet 2026 : le staging exact demandé par la précédente
+réévaluation a été réalisé, non pas sur `e63499a` mais sur le candidat
+`ebee17910f6de005ab933ee08978d2e97686d19d`, qui lui est postérieur. B1, B3, B4,
+B8 et B9 disposent désormais de preuves actuelles rattachées à ce seul SHA, pour
+un staging fictif et sans aucun parcours de fichier.
+
+Cela ne change pas la décision : **B2, B5, B6, B7 et B10 restent ouverts**, et
+chacun suffit à lui seul à interdire la production, le pilote clinique et toute
+donnée réelle ou pseudonymisée. La readiness production demeure **non
+démontrée**.
 
 La prochaine réévaluation ne peut conclure `ready for production` que si chaque
 gate bloquant possède une preuve actuelle, directe, rattachée au même SHA, au
@@ -204,4 +245,12 @@ même environnement et à une décision humaine compétente lorsque nécessaire.
   `supabase/security-definer-allowlist.json` et validateurs de preuve ;
 - état live GitHub lu le 2026-07-22 ; versions Supabase/Vercel et monitor issues
   des dernières preuves directes des 18–19 juillet, explicitement marquées
-  périmées lorsqu'elles ne portent pas sur le candidat.
+  périmées lorsqu'elles ne portent pas sur le candidat ;
+- interphase du 26 juillet 2026 : `docs/suivi-execution-feuille-route.md`
+  (lot P0R), `docs/exercice-reprise-staging-2026-07-23.md` et
+  `docs/exercice-reprise-staging-2026-07-26.md`,
+  `docs/decision-rpo-rto-staging-2026-07-25.md`, runs `30195837590`,
+  `30196032319`, `30196157372` et `30197149574`, et les trois releases
+  immuables `continuity-staging-30196157372-1`,
+  `recovery-evidence-staging-ebee17910f6d` et
+  `readiness-evidence-staging-ebee17910f6d`.
