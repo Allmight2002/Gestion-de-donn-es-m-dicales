@@ -13,7 +13,15 @@ export interface TerminologyConcept {
 
 export interface TerminologyParseResult {
   concepts: TerminologyConcept[];
-  skipped: { noLabel: number; unknownKind: number };
+  skipped: { noLabel: number; unknownKind: number; excludedChapter: number };
+}
+
+/** Chapitres écartés par défaut : ceux qui ne portent pas de diagnostic. */
+export const CHAPITRES_ECARTES: string[];
+
+export interface ParseTerminologyOptions {
+  /** Remplace la liste par défaut ; un chapitre écarté emporte tout son contenu. */
+  excludedChapters?: string[];
 }
 
 /** Client PostgreSQL minimal attendu : seule `query` est utilisee. */
@@ -34,7 +42,10 @@ export interface ImportTerminologyOptions {
 }
 
 export function readTextFile(path: string): string;
-export function parseTerminologyRows(text: string): TerminologyParseResult;
+export function parseTerminologyRows(
+  text: string,
+  options?: ParseTerminologyOptions,
+): TerminologyParseResult;
 export function importTerminology(
   client: TerminologyClient,
   options: ImportTerminologyOptions,

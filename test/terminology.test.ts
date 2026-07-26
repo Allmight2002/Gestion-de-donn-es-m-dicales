@@ -188,8 +188,11 @@ describe('T1 referentiel de terminologie', () => {
     const { concepts, skipped } = parseTerminologyRows(
       readTextFile('supabase/terminology/diagnostics-fr.tsv.gz'),
     );
-    expect(concepts.length).toBeGreaterThan(30_000);
+    expect(concepts.length).toBeGreaterThan(10_000);
     expect(skipped.noLabel).toBeGreaterThan(0); // sections non traduites, ecartees
+    // Le filtre de chapitres agit : sans lui, le referentiel compterait plus du double
+    // d'entrees, dont des substances et des medicaments.
+    expect(skipped.excludedChapter).toBeGreaterThan(10_000);
 
     const imported = await importTerminology(db.admin, {
       slug: 'diagnostics-fr', concepts, title: 'Diagnostics', source: 'fichier fourni',
@@ -208,8 +211,16 @@ describe('T1 referentiel de terminologie', () => {
       )).rows[0];
       expect(counts.total).toBe(concepts.length);
       // Tout ce qui est proposable a la saisie porte un identifiant stable.
-      expect(counts.selectables).toBeGreaterThan(30_000);
+      expect(counts.selectables).toBeGreaterThan(10_000);
       expect(counts.sans_code).toBeGreaterThan(0);
+
+      // Aucun code de substance ou de medicament ne doit rester proposable : c'est
+      // exactement ce que le porteur a vu apparaitre dans la recherche avant le filtre.
+      const substances = (await db.admin.query(
+        `select count(*)::int as n from public.terminology_concept
+         where release_id = $1 and is_selectable and code like 'XM%'`, [imported.releaseId],
+      )).rows[0].n;
+      expect(substances).toBe(0);
 
       // Un concept profond sans parent signale une branche dont TOUS les ancetres ont ete
       // ecartes faute de libelle. Le cas existe mais doit rester marginal ; s'il explosait,
