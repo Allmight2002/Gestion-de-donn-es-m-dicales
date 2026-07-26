@@ -32,6 +32,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 3 | **Bouton de suppression de base** — surface dans l'interface la suppression déjà existante côté serveur | Petite (surtout UI) | — | *(à spécifier si besoin)* | Noté ; capacité serveur complète, UI absente |
 | 4a | **Registre « Diagnostic urgences » (noyau)** — base à listes contrôlées (diagnostic, motif, issue) pour produire des diagnostics analysables | **Nulle (configuration, pas de code)** | — | *(canevas à préparer)* | Signal terrain fort (directrice des urgences, Tchad) ; faisable dès maintenant en données fictives |
 | 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(à spécifier)* | Phase 2, seulement si le pilote 4a convainc |
+| 5 | **Bibliothèque de jeux de valeurs** — listes prêtes à l'emploi insérables en un clic dans un champ `select`/`multiselect`, au lieu de saisir chaque valeur à la main | Petite (front, contenu pur) | — | *(cadrée en séance le 2026-07-26)* | **Mécanisme livré le 2026-07-26** ; jeux cliniques à enrichir au fil des retours |
 
 ## Notes par idée
 
@@ -63,6 +64,24 @@ Signalé le 2026-07-22 : la directrice des urgences d'un hôpital tchadien décr
 **Corrections MedData au design proposé par un LLM tiers** : l'âge ne se stocke pas via « date de naissance » en zone analytique (calculé depuis l'identité, ou saisi comme âge déclaré si registre sans identité) ; l'ID stable n'existe pas aujourd'hui (le `select` stocke le libellé → un renommage casse l'historique).
 
 Voir l'analyse complète et la solution proposée dans l'historique de conversation (2026-07-22).
+
+### 5. Bibliothèque de jeux de valeurs
+
+Née d'une objection du porteur le 2026-07-26, en cadrant le registre urgences : dans MedData, c'est l'**utilisateur** qui crée sa base et ses champs. Lui demander de taper trente ou quarante diagnostics à la main dans un champ de saisie revient à le renvoyer au texte libre — c'est-à-dire au problème que la liste contrôlée devait résoudre.
+
+Le blocage était plus concret encore que prévu : les valeurs autorisées se saisissaient dans un `<input>` d'**une seule ligne**, séparées par des virgules, ce qui rendait impossible toute liste un peu longue et interdisait toute valeur contenant une virgule.
+
+Décisions prises en séance :
+
+- **insertion par copie, jamais par référence** : les valeurs sont recopiées dans le champ. Modifier un jeu de la bibliothèque ne peut donc pas changer rétroactivement le sens de données déjà saisies, ni faire disparaître une valeur présente dans un historique. Le prix assumé : les améliorations ne se propagent pas aux bases existantes ;
+- **une valeur par ligne**, avec repli sur les virgules si la saisie tient sur une seule ligne, pour ne pas casser les champs créés auparavant ;
+- **fusion sans doublon** : insérer un jeu complète la saisie en cours au lieu de l'écraser ;
+- **la CIM sert de source de rédaction, pas de système de codage** : on s'en inspire hors ligne pour écrire des listes conventionnelles et vérifier qu'on n'a rien oublié ; on ne stocke ni code, ni version de référentiel. Les libellés CIM sont écrits pour la classification, pas pour la saisie rapide. **Leur licence reste à vérifier avant toute reprise de contenu** ;
+- **aucun jeu de diagnostics livré pour l'instant** : une nomenclature clinique ne s'invente pas depuis le dépôt. Un test garantit d'ailleurs que la bibliothèque n'en contient pas.
+
+Ce chantier dépasse les urgences : tout service qui recueille des données en texte libre pose le même problème. La bibliothèque est le niveau d'abstraction qui les couvre tous, sans anticiper les spécialités.
+
+Reste ouvert : la **soupape** (« Autre (préciser) ») et la **boucle d'amélioration** (relire les « Autre » et promouvoir les valeurs récurrentes), tous deux nécessaires pour qu'une liste locale reste vivante. Au-delà d'environ 30 items, un menu déroulant redevient pénible : cascade catégorie → diagnostic, ou typeahead (4b).
 
 ## Défauts / UX signalés (à corriger, pas des idées)
 
