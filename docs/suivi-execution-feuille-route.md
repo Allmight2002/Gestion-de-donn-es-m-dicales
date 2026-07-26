@@ -24,7 +24,8 @@ au SHA et à l'environnement indiqués.
 | P1S | Soupape « valeur proposée » | Terminé et promu | `codex/soupape-valeur-proposee` | PR #58 et #59 ; CI verte | Non requis | Champs de rencontre seulement ; propositions non listées |
 | T1 | Référentiel de terminologie — structure | Terminé et promu | `codex/terminologie-referentiel` | PR #60 et #61 ; CI verte | Non requis | Aucun type de champ ni interface |
 | T2 | Champ de terminologie — contrat serveur | Terminé et promu | `codex/champ-terminologie` | PR #62 et #63 ; CI verte | Non requis | Aucune interface ; création en bloc non couverte |
-| T3 | Recherche visible (typeahead) | Terminé localement | `codex/typeahead-terminologie` | — | **Requis pour essayer** | Chaque frappe interroge le serveur ; hors ligne non couvert |
+| T3 | Recherche visible (typeahead) | Terminé et promu | `codex/typeahead-terminologie` | PR #64 et #65 ; CI verte | **Déployé sur staging le 2026-07-26** | Chaque frappe interroge le serveur ; hors ligne non couvert |
+| TS | Mise en service staging de la terminologie | Terminé | `main` `147e2c58ba1afdad329133c8caa0b0bc617b9e64` | Run `30220488673` | Migrations appliquées, référentiel importé | B2 bloque l'inspection stricte ; preuves antérieures caduques |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
@@ -720,3 +721,78 @@ rôle porte désormais sur l'élément activable.
   est moindre, mais le cas « diagnostic absent du référentiel » n'est pas couvert ;
 - l'affichage d'une valeur hors formulaire de saisie — listes, exports,
   statistiques — n'est pas traité : ces vues montreront l'objet brut.
+
+## TS — mise en service de la terminologie sur staging
+
+Première opération distante de la série, autorisée explicitement par le porteur
+le 26 juillet 2026. Elle porte sur `main`
+`147e2c58ba1afdad329133c8caa0b0bc617b9e64`, staging uniquement.
+
+### Faux départ, et ce qu'il a prouvé
+
+Le run `30219877402` a échoué **à la validation**, sur un contrôle de la release
+coordonnée : l'instantané de schéma était resté à `20260714215335` alors que les
+lots T1 et T2 avaient ajouté deux migrations. Conséquence : `backend-staging`
+n'a jamais démarré, **aucune migration n'a été appliquée** et staging est resté
+intact.
+
+Cause de fond : ce contrôle ne tourne **que** dans la release coordonnée, pas
+dans la CI des pull requests. T1 et T2 sont donc passés verts et ont été promus
+jusqu'à `main` en laissant l'instantané en retard. Règle à retenir : un lot qui
+ajoute une migration doit lancer `npm run schema`, puis se vérifier avec
+`npm run build` et `npm run manifest` — `typecheck`, `lint` et les tests ne
+couvrent pas ce point. Correctif : PR #66 puis #67.
+
+### Run de mise en service — `30220488673`
+
+| Étape | Résultat |
+|---|---|
+| Validation complète | réussie |
+| Sauvegarde chiffrée pré-release | créée et vérifiée, artefact `pre-release-backup-staging-30220488673` |
+| Migrations appliquées | réussi |
+| Storage et six Edge Functions | réussi |
+| Contrôle de drift backend | réussi, artefact `backend-drift-30220488673` |
+| Déploiement frontend Vercel | réussi |
+| Activation de l'inspection stricte | **échec** : « Scanner strict injoignable ou réponse inexploitable » |
+| Jobs production | non exécutés (cible `staging`) |
+
+L'échec final appartient à **B2** et n'est pas reclassé : sans scanner joignable,
+l'inspection stricte refuse de s'activer plutôt que de laisser passer des
+fichiers non vérifiés. Ce comportement fail-closed est correct et ne concerne pas
+la terminologie, qui ne touche à aucun fichier.
+
+### Import du référentiel
+
+Exécuté après le run, en contexte privilégié hors API :
+
+- **36 344 concepts** importés, dont **35 015 proposables à la saisie** ;
+- 708 entrées écartées faute de libellé, conformément à la règle du lot T1 ;
+- référentiel activé, donc interrogeable.
+
+### Vérification de bout en bout
+
+Depuis l'API REST de staging, avec un compte fictif et en anonyme :
+
+- **appelant anonyme : aucun résultat** — la politique de lecture visant les
+  comptes authentifiés tient en conditions réelles ;
+- compte médecin : résultats réels, par exemple `1A00 Choléra` ou
+  `5A10 Diabète sucré de type 1` ;
+- une recherche **sans accent trouve les libellés accentués** : la normalisation
+  se comporte comme en test, malgré la locale du serveur distant ;
+- une recherche sans correspondance rend zéro résultat.
+
+### Constat d'ergonomie à arbitrer
+
+Taper « palu » ne propose pas « Paludisme » seul : le terme générique est un
+**regroupement** de la classification, donc non sélectionnable. Seules les formes
+précises apparaissent, comme « Paludisme, sans précision ». C'est cohérent avec
+l'objectif d'analysabilité, mais cela change la saisie et mérite un retour
+terrain avant d'être considéré comme acquis.
+
+### Conséquence sur les preuves antérieures
+
+Cette mise en service crée un nouvel état de staging. Les preuves B1, B3, B4, B8
+et B9 rattachées à `ebee179` **ne décrivent plus l'état courant** : elles restent
+valables pour leur propre SHA, conformément au principe du cadre. Aucune
+nouvelle acceptation de readiness n'est prononcée ici, et la production reste
+hors périmètre — décision inchangée : **production readiness not demonstrated**.
