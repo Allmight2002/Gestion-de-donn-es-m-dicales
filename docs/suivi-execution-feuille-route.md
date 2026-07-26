@@ -822,6 +822,56 @@ Enseignement : importer un référentiel tiers sans en auditer le contenu revien
 faire confiance à un fichier sur son nom. Le volume seul ne dit rien de la
 pertinence.
 
+### Remise à neuf de la production — 2026-07-27
+
+Opération autorisée explicitement par le porteur, qui a confirmé qu'aucun tiers
+n'utilisait la production et que l'ensemble pouvait être supprimé.
+
+**État constaté avant.** 86 migrations appliquées, la dernière datant de juin,
+pour 107 attendues par le code : 31 tables au lieu de 38, 150 fonctions au lieu
+de 173. La base n'était donc pas seulement en retard sur `main`, elle était
+**désaccordée avec son propre frontend**, déployé le 15 juillet. Contenu :
+5 comptes, 8 bases, 17 patients, 4 rencontres, 9 gabarits, 7 fichiers stockés,
+81 entrées d'audit.
+
+**Déroulé.** Sauvegarde complète prise avant toute écriture (1 088 Ko, conservée
+hors dépôt sur le poste du porteur). Puis suppression du schéma applicatif, des
+comptes et des fichiers ; réapplication des 107 migrations ; application de
+`storage.sql` ; import du référentiel.
+
+**État après.** 107 migrations, 38 tables, 61 policies, 132 fonctions
+`SECURITY DEFINER` — le même compte que celui relevé sur staging lors du contrôle
+B9 —, 4 buckets privés, 14 553 concepts dont 13 964 proposables. Les six Edge
+Functions et le frontend ont été déployés par le porteur. Vérification finale :
+le site répond, sert un nouveau bundle, la recherche de diagnostics existe, un
+appelant anonyme n'obtient aucun résultat, et les six fonctions répondent.
+
+**Trois garde-fous ont fonctionné pendant l'opération**, et méritent d'être
+notés :
+
+- le classificateur de sécurité de l'outil a **refusé d'exécuter** la suppression
+  de schéma et l'application des migrations sur une base de production ; ces
+  commandes ont donc été lancées par le porteur lui-même, après relecture ;
+- Supabase **interdit la suppression directe** des tables de stockage en SQL ;
+  les fichiers ont dû être retirés par l'interface ;
+- l'ordre initial de suppression était **faux** — les comptes avant le schéma qui
+  les référence — et la contrainte de clé étrangère l'a bloqué avant tout dégât.
+
+**Limites explicites.**
+
+- L'opération a été menée **hors procédure officielle** : la release coordonnée
+  exige l'identifiant d'un run staging réussi, que B2 empêche d'obtenir. Aucune
+  preuve de conformité B1 n'a donc été produite pour cet état de production ;
+- il **n'existe plus aucun compte** : l'application ne propose pas d'inscription,
+  les comptes se créent depuis l'administration Supabase, le profil et le rôle
+  médecin étant posés par déclencheur ;
+- la readiness reste inchangée : **B2, B5, B6, B7 et B10 sont ouverts**, et la
+  production demeure interdite à toute donnée réelle ou pseudonymisée.
+
+**Suites de sécurité demandées au porteur** : rotation du mot de passe de la base
+et des deux jetons de déploiement, tous exposés en clair pendant l'opération, et
+suppression du fichier d'accès local.
+
 ### Conséquence sur les preuves antérieures
 
 Cette mise en service crée un nouvel état de staging. Les preuves B1, B3, B4, B8
