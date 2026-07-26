@@ -60,6 +60,52 @@ describe('FieldForm — jeux de valeurs (F4)', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ fieldKey: 'issue', type: 'select', allowedValues: ['Oui', 'Non', 'Inconnu'] }),
+      undefined,
+    );
+  });
+});
+
+// F5 — la soupape cree un SECOND champ, transmis a part pour que l'appelant l'ajoute apres.
+describe('FieldForm — soupape (F5)', () => {
+  async function fillChoiceField() {
+    await chooseSelectType();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'diagnostic');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Diagnostic');
+  }
+
+  test('la soupape n est proposee que pour un champ a choix', async () => {
+    renderForm();
+    expect(screen.queryByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' })).toBeNull();
+    await chooseSelectType();
+    expect(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' })).toBeInTheDocument();
+  });
+
+  // La saisie couplee n'est rendue que pour les champs de rencontre : ne pas proposer la
+  // soupape ailleurs, plutot que de promettre un comportement absent.
+  test('la soupape n est pas proposee pour un champ patient', async () => {
+    renderForm();
+    await chooseSelectType();
+    await userEvent.selectOptions(screen.getByLabelText('Portée'), 'patient');
+    expect(screen.queryByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' })).toBeNull();
+  });
+
+  test('sans la case cochee, aucun champ compagnon n est demande', async () => {
+    const onSubmit = renderForm();
+    await fillChoiceField();
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fieldKey: 'diagnostic' }), undefined);
+  });
+
+  test('la case cochee demande un champ texte compagnon jamais obligatoire', async () => {
+    const onSubmit = renderForm();
+    await fillChoiceField();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Obligatoire' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldKey: 'diagnostic', required: true }),
+      expect.objectContaining({ fieldKey: 'diagnostic_autre', type: 'text', required: false }),
     );
   });
 });
