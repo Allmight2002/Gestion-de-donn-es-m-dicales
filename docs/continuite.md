@@ -100,6 +100,19 @@ Cette copie est hébergée hors Supabase et n'expire pas avec l'artefact Actions
 30 jours. La suppression volontaire de tout le dépôt GitHub reste un scénario
 catastrophe à couvrir organisationnellement.
 
+La copie du candidat d'interphase est la release
+`continuity-staging-30196157372-1`, issue du run `30196157372` et ciblant le SHA
+`ebee17910f6de005ab933ee08978d2e97686d19d`. Son archive porte le digest
+`sha256:168c2359efff8af901b9359c8cd077d10c8f13144f56584cffa2c5aa3d398cd3`.
+L'ensemble sauvegardé comprend quatre exports DB, 117 objets Storage et
+16 969 octets ; le HMAC et l'extraction ont été vérifiés, et le manifeste Storage
+a l'empreinte
+`sha256:5165598301022387588fe380d205b0f02509c48abb2bc00c87fea3893c157dbd`.
+L'artefact Actions `continuity-backup-staging-30196157372` est conservé jusqu'au
+25 août 2026. La clé a été rouverte depuis l'enveloppe DPAPI séparée décrite
+ci-dessous, sans affichage de sa valeur. Cette sauvegarde est celle qui a été
+restaurée lors de l'exercice du 26 juillet 2026.
+
 ### Clé de récupération staging
 
 Les sauvegardes staging créées après la publication de cette procédure utilisent
@@ -143,6 +156,15 @@ il faut encore prouver :
 Tant que ces preuves manquent, B3 et B4 restent ouverts et les données autorisées
 restent entièrement fictives.
 
+État au 26 juillet 2026 : la politique RPO/RTO est approuvée, la copie immuable
+existe pour le SHA candidat, la séparation puis la réouverture effective de la
+clé ont été exercées, les alertes d'échec et d'absence ont été reçues, et
+l'exercice de restauration a été rejoué dans une cible isolée. Restent non
+prouvés les backups DB managés et le PITR — `pitr_enabled: false` sur
+`meddata-staging` — ainsi qu'une copie réellement indépendante de GitHub et un
+coffre organisationnel hors de la machine du porteur. Les données autorisées
+demeurent donc entièrement fictives.
+
 ## Preuve d'un exercice de restauration et de reprise
 
 L'exercice du 23 juillet 2026 est décrit dans
@@ -155,8 +177,23 @@ RPO observé : 211 s ; RTO observé : 517 s.
 Les objectifs RPO 24 h et RTO 4 h ont été approuvés le 25 juillet 2026 par le
 porteur du projet, agissant pour cet exercice comme responsable continuité et
 release manager. La décision et ses limites sont archivées dans
-`docs/decision-rpo-rto-staging-2026-07-25.md`. La preuve doit encore être rejouée
-sur le SHA de merge définitif avant de présenter B3/B4/B8 comme fermés.
+`docs/decision-rpo-rto-staging-2026-07-25.md`.
+
+Cet exercice a été rejoué le 26 juillet 2026 sur le SHA de merge définitif de
+l'interphase, `ebee17910f6de005ab933ee08978d2e97686d19d`, à partir de la
+sauvegarde immuable ci-dessus. Le compte rendu est
+`docs/exercice-reprise-staging-2026-07-26.md` : 5 comptes Auth, 36 tables
+publiques toutes sous RLS, 4 buckets et 117/117 objets restaurés, 111 clés
+étrangères contrôlées sans orphelin, aucune divergence sur les 35 tables de
+données publiques ni sur les hash Storage, RPO observé 77 s et RTO observé
+1 587 s. La preuve JSON validée porte l'empreinte
+`sha256:4ab7a20d858d36465ed4588fe798a2ca3770b826d911f891d8f903dc1c0ce228` et est
+publiée dans la release immuable `recovery-evidence-staging-ebee17910f6d`.
+
+B3, B4 et B8 disposent donc de preuves actuelles rattachées au même SHA, **pour
+le staging fictif uniquement**. Cela ne les ferme pas pour la production : les
+limites listées ci-dessus restent applicables, et la cible de reprise est un
+projet local isolé, pas un environnement représentatif d'un usage clinique.
 
 Après un exercice réel sur une cible isolée, la preuve JSON doit être contrôlée
 contre le commit exercé :
