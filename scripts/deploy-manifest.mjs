@@ -62,7 +62,7 @@ const manifest = {
   },
   edgeFunctions: {
     expected: edgeFunctions,
-    deployCommand: edgeFunctions.map((f) => `npm exec -- supabase functions deploy ${f} --import-map deno.json`).join(' && '),
+    deployCommand: edgeFunctions.map((f) => `npm exec -- supabase functions deploy ${f} --import-map deno.json --use-api`).join(' && '),
     inspectionPolicyCheckCommand: 'npm run env:check',
     requiredSecrets: [
       'SUPABASE_URL',
