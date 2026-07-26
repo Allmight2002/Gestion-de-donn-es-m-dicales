@@ -21,7 +21,8 @@ au SHA et à l'environnement indiqués.
 | P0 | React Router et baseline | Terminé et promu | `973f1bc`, merges `c64061e` (`develop`) et `af71477` (`main`) | PR #48 et #49 ; CI verte | Non requis | Aucun serveur ClamAV requis |
 | P0R | Finalisation B3 → B4 → B8 → B1 → B9 | Terminé pour le staging fictif | candidat `ebee17910f6de005ab933ee08978d2e97686d19d` | PR #50 et #51 ; CI verte ; preuves immuables | B3/B4/B8/B1/B9 liés au même SHA | B2 reste ouvert ; aucun parcours fichier ni production accepté |
 | P1V | Bibliothèque de jeux de valeurs (préalable à P1A) | Terminé et promu | `codex/valueset-library` | PR #56 et #57 ; CI verte | Non requis | Aucun jeu de diagnostics |
-| P1S | Soupape « valeur proposée » | Terminé localement | `codex/soupape-valeur-proposee` | — | Non requis | Champs de rencontre seulement ; propositions non listées |
+| P1S | Soupape « valeur proposée » | Terminé et promu | `codex/soupape-valeur-proposee` | PR #58 et #59 ; CI verte | Non requis | Champs de rencontre seulement ; propositions non listées |
+| T1 | Référentiel de terminologie — structure | En cours | `codex/terminologie-referentiel` | — | À évaluer | Référentiel vide ; ni type de champ ni interface |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
@@ -437,3 +438,159 @@ ce que la soupape doit empêcher.
   la boucle d'amélioration, qui reste à outiller ;
 - l'ajout effectif d'une valeur à la liste reste un geste humain via l'éditeur
   de gabarit, une version publiée étant figée par conception.
+
+### Traçabilité Git
+
+PR #58 fusionnée dans `develop` (`56bebcb`), PR #59 promue vers `main`
+(`a9b6478`).
+
+## T1 — référentiel de terminologie, structure
+
+### Pourquoi ce chantier commence
+
+Le porteur a écarté deux pistes en connaissance de cause. D'abord la liste
+courte par service : un patient hospitalisé en cardiologie a aussi son diabète
+et son insuffisance rénale à coder, donc une liste restreinte au service
+recréerait le manque qu'on cherche à supprimer. Ensuite la saisie dans un menu
+déroulant, inadaptée à un référentiel de plusieurs milliers d'entrées. Reste la
+recherche incrémentale (typeahead), c'est-à-dire l'idée 4b de la file.
+
+Le fichier fourni le 26 juillet 2026 contient 37 052 entrées — 35 664
+`category`, 1 360 `block`, 28 `chapter` — organisées en hiérarchie. Après deux
+ré-extractions demandées puis fournies par le porteur, il porte un identifiant
+par entrée :
+
+- les 35 664 catégories ont toutes un code, **sans aucun doublon** ;
+- 788 blocs portent un identifiant technique dans une colonne distincte, repris
+  comme identifiant de repli ;
+- 28 chapitres et 572 blocs n'ont aucun identifiant. Sans conséquence : ce sont
+  des regroupements, jamais proposables à la saisie, donc jamais stockés dans
+  une donnée ;
+- 708 entrées ont un libellé vide, là où une section n'a pas été traduite. Elles
+  sont écartées à l'import : un concept sans libellé serait invisible.
+
+Le porteur a demandé le 26 juillet 2026 qu'aucune mention de la source ne figure
+dans le dépôt, en prenant cette décision à son compte, et indiquera s'il faut y
+revenir. Les colonnes `license` et `attribution` existent et restent vides.
+
+### Contenu du lot
+
+Migration `20260726120000_terminology_reference.sql`, strictement additive :
+
+- `terminology_release` : une publication de référentiel identifiée (source,
+  version, licence, date d'import). Un index unique partiel garantit qu'un seul
+  référentiel est actif à la fois ;
+- `terminology_concept` : les concepts, avec `code` (identifiant stable),
+  `label`, `kind`, `depth`, `parent_id` et `is_selectable`. La colonne
+  `search_text` est **générée** à partir du libellé, donc jamais désynchronisée ;
+- `terminology_normalize(text)` : normalisation immutable partagée par la colonne
+  générée et par la recherche ;
+- `search_terminology(text, integer)` : recherche incrémentale, minimum deux
+  caractères, 50 résultats au maximum, les correspondances par préfixe d'abord.
+
+### Décisions de sûreté
+
+- **Lecture seule côté client.** RLS activée sur les deux tables, politique de
+  `select` pour les comptes authentifiés, et grant limité à `select`. Aucune
+  politique d'écriture n'existe : tout `insert`, `update` ou `delete` client est
+  refusé, y compris pour un propriétaire de base. Le chargement d'un référentiel
+  passe par `service_role`, hors API. À noter : le `grant ... on all tables` de
+  `20260616090400_rls.sql` ne couvre que les tables existant à cette date, d'où
+  des grants explicites.
+- **`SECURITY INVOKER` et non `DEFINER`.** Aucune élévation n'est nécessaire
+  puisque la RLS autorise déjà la lecture. Conséquence directe : l'inventaire des
+  fonctions privilégiées de B9 n'est pas modifié — le contrôle ne retient que les
+  fonctions `prosecdef`.
+- **Aucune extension nouvelle.** Le projet n'active que `pgcrypto` ; la recherche
+  s'appuie sur une colonne normalisée et un index de préfixe, sans `pg_trgm` ni
+  `unaccent`, pour ne rien imposer au PostgreSQL embarqué des tests.
+- **Jokers neutralisés.** `%`, `_` et `\` fournis par l'appelant sont échappés :
+  une recherche reste une recherche de texte, jamais un motif arbitraire.
+
+### Import et contenu versionné
+
+Le référentiel est versionné dans le dépôt sous
+`supabase/terminology/diagnostics-fr.tsv.gz` : converti en UTF-8, fins de ligne
+normalisées, compressé de 2,33 Mo à 436 Ko. Le script
+`scripts/import-terminology.mjs` lit indifféremment ce format compressé ou un
+export brut en UTF-16, reconstruit la hiérarchie et écrit le référentiel **dans
+une seule transaction** — un import partiel rendrait la recherche silencieusement
+incomplète, ce qui est pire qu'un échec visible. Recharger un référentiel
+existant exige `--replace`, pour qu'un référentiel déjà utilisé ne disparaisse
+pas par accident.
+
+### Incidents corrigés pendant le lot
+
+**Recherche dépendante de la locale.** La première version de la normalisation
+ne traduisait que les minuscules accentuées, en s'en remettant à `lower()` pour
+le reste. Le test a montré que « DIABÈTE » ne trouvait pas « Diabète » : la base
+de test tourne en locale `C`, où `lower()` laisse les caractères non ASCII
+intacts. Les majuscules accentuées sont désormais traduites explicitement. La
+migration n'ayant jamais été appliquée, elle a été corrigée sur place plutôt que
+complétée par une seconde.
+
+**Rattachements faux dans la hiérarchie.** Lorsqu'une entrée était écartée faute
+de libellé, la pile des parents conservait l'entrée précédente au même niveau :
+les entrées suivantes risquaient d'être rattachées à une **branche voisine**,
+c'est-à-dire à une hiérarchie inventée — plus grave qu'un rattachement manquant.
+Les enfants remontent désormais au plus proche ancêtre valide. L'effet est
+mesurable sur le fichier réel : **128 concepts orphelins ramenés à 1**, celui
+dont tous les ancêtres ont été écartés. Un test vérifie explicitement qu'une
+entrée ne peut pas être adoptée par le bloc précédent.
+
+**Assertion trop faible corrigée plutôt qu'ajustée.** Le seuil initial
+« moins de 100 racines » était arbitraire et a échoué à 128. Il a été remplacé
+par une invariante vraie et vérifiable sur les 36 000 lignes : *aucun concept
+n'a un parent de profondeur supérieure ou égale à la sienne*, qui vaut zéro.
+
+### Preuves locales
+
+- `npm run db:verify` : **106 migrations appliquées depuis zéro**, 38 tables,
+  210 fonctions, 61 policies — soit exactement les deux tables, deux fonctions et
+  deux policies ajoutées ;
+- `test/terminology.test.ts` et `test/terminology-import.test.ts` : **26/26** —
+  écriture client refusée sur les deux tables, recherche insensible aux accents
+  et à la casse, priorité au préfixe, référentiel inactif ignoré, entrées non
+  sélectionnables exclues, minimum de deux caractères, jokers neutralisés, borne
+  de résultats, unicité du référentiel actif, code obligatoire dès qu'un concept
+  est sélectionnable, stabilité du code lors d'un changement de libellé,
+  reconstruction de la hiérarchie et refus d'adoption par une branche voisine ;
+- import de bout en bout du **fichier réellement versionné**, et non d'un
+  échantillon : plus de 36 000 concepts insérés, hiérarchie cohérente, recherche
+  fonctionnelle sur le référentiel activé.
+
+### Parcours utilisateur cible, validé le 26 juillet 2026
+
+1. Le médecin ajoute un champ et choisit le type « diagnostic (référentiel) » :
+   **aucune valeur à saisir**, contrairement à une liste contrôlée ;
+2. le saisisseur tape deux caractères et choisit dans les propositions ; le
+   libellé s'affiche, le code part en base sans être montré ;
+3. si rien ne correspond, la soupape du lot P1S prend le relais.
+
+Décisions du porteur, prises le 26 juillet 2026 :
+
+- plusieurs diagnostics se traitent par **deux champs distincts** pointant vers
+  le référentiel, le modèle restant plat ;
+- le type référentiel **s'ajoute** à `select` sans le remplacer : les listes
+  courtes restent pertinentes pour une issue, un sexe, une gravité ;
+- **l'activation d'un référentiel reste hors application.** Aucun écran ne
+  permet de basculer de version, pas même pour un administrateur : l'opération
+  se fait avec un accès direct à la base. Un clic ne doit pas pouvoir changer ce
+  que voient tous les saisisseurs, pour une manipulation qui survient tous les
+  deux ou trois ans ;
+- **la donnée stockera le code ET le libellé du moment.** Le code sert au
+  comptage, le libellé garantit qu'une fiche reste lisible même si le
+  référentiel change ou est retiré. Cette redondance est délibérée : elle
+  protège l'historique, qui était précisément la faiblesse du stockage par
+  libellé seul.
+
+### Limites explicites
+
+- il n'existe **ni type de champ** exploitant le référentiel, **ni interface** de
+  recherche : `assert_data_valid` ignore encore ces tables, et l'utilisateur ne
+  voit aucun changement dans l'application ;
+- la **copie locale** nécessaire au fonctionnement hors ligne n'est pas faite :
+  en l'état, une recherche exigerait le réseau ;
+- le stockage conjoint du code et du libellé est **décidé mais pas encore
+  implémenté** : il dépend du type de champ, qui reste à construire ;
+- rien n'est déployé : ces preuves sont locales.
