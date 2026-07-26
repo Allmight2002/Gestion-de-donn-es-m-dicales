@@ -2,7 +2,26 @@
 export type FieldScope = 'patient' | 'encounter';
 export type FieldSection = 'clinique' | 'biologie' | 'paraclinique';
 export type FieldType =
-  | 'number' | 'integer' | 'text' | 'date' | 'datetime' | 'boolean' | 'select' | 'multiselect';
+  | 'number' | 'integer' | 'text' | 'date' | 'datetime' | 'boolean' | 'select' | 'multiselect'
+  // Valeurs resolues dans le referentiel plutot que recopiees dans le gabarit.
+  | 'terminology';
+
+/**
+ * Valeur d'un champ de terminologie : le CODE sert au comptage et survit a une correction
+ * de libelle ; le LIBELLE est l'instantane pris a la saisie, qui garde la fiche lisible si
+ * le referentiel change. Le serveur refuse un couple incoherent.
+ */
+export interface TerminologyValue {
+  code: string;
+  label: string;
+}
+
+export function isTerminologyValue(v: unknown): v is TerminologyValue {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.code === 'string' && o.code.trim() !== ''
+    && typeof o.label === 'string' && o.label.trim() !== '';
+}
 export type VersionStatus = 'draft' | 'published' | 'archived';
 export type RuleSeverity = 'block' | 'warn';
 
