@@ -20,7 +20,8 @@ au SHA et à l'environnement indiqués.
 | D0 | Intégration du cadre documentaire | Terminé | `main` `70798f65017cbcea6b6f348cc9a24f90d0299dd7` ; `develop` `5468141a33ad6c7c1596e83e753881cb03ff874f` | PR #46 et #47 ; CI verte | Non requis | Production exclue |
 | P0 | React Router et baseline | Terminé et promu | `973f1bc`, merges `c64061e` (`develop`) et `af71477` (`main`) | PR #48 et #49 ; CI verte | Non requis | Aucun serveur ClamAV requis |
 | P0R | Finalisation B3 → B4 → B8 → B1 → B9 | Terminé pour le staging fictif | candidat `ebee17910f6de005ab933ee08978d2e97686d19d` | PR #50 et #51 ; CI verte ; preuves immuables | B3/B4/B8/B1/B9 liés au même SHA | B2 reste ouvert ; aucun parcours fichier ni production accepté |
-| P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | Retour métier requis avant 4b |
+| P1V | Bibliothèque de jeux de valeurs (préalable à P1A) | Terminé localement | `codex/valueset-library` | — | Non requis | Aucun jeu de diagnostics ; soupape « Autre » non traitée |
+| P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
 | P3 | Observabilité privacy-safe | À faire | — | — | À évaluer | B5 reste requis pour la preuve distante complète |
@@ -306,3 +307,70 @@ La vérification sur un vrai mobile ou un émulateur **n'a pas été faite**. js
 ne reproduit ni le repli de la barre d'adresse ni les unités de viewport
 dynamiques : le test prouve le verrou de défilement, pas la disparition visuelle
 de l'espace. D2 reste à confirmer visuellement.
+
+### Traçabilité Git
+
+PR #54 fusionnée dans `develop` (`bc0a9fc`), PR #55 promue vers `main`
+(`74bdcb8`), runs CI verts de bout en bout dont `30203580640` après merge.
+
+## P1V — bibliothèque de jeux de valeurs
+
+### Origine
+
+Ce lot ne figurait pas dans la feuille de route. Il naît d'une objection du
+porteur pendant le cadrage du registre urgences : dans MedData, c'est
+l'utilisateur qui crée sa base et ses champs. Lui demander de saisir trente ou
+quarante diagnostics à la main le renvoie au texte libre, donc au problème même
+que la liste contrôlée devait résoudre.
+
+L'examen du code a confirmé un blocage plus concret : les valeurs autorisées se
+saisissaient dans un `<input>` d'une seule ligne, séparées par des virgules.
+Toute liste un peu longue était illisible, et une valeur contenant une virgule
+était impossible à saisir.
+
+Le lot est donc inséré **avant** P1A : livrer un canevas urgences que personne
+ne pourrait adapter n'aurait pas de sens.
+
+### Contenu
+
+- `src/domain/valueSetLibrary.ts` : jeux de valeurs prêts à l'emploi, contenu
+  pur sans I/O, sur le modèle de `templateLibrary.ts`. Les six jeux livrés
+  reprennent des listes **déjà présentes** dans les modèles de gabarits, afin de
+  n'introduire aucune nomenclature qui n'ait pas déjà un usage réel ;
+- `parseAllowedValues` : une valeur par ligne, avec repli sur les virgules quand
+  la saisie tient sur une seule ligne, pour ne pas casser les champs antérieurs ;
+- `mergeValues` : insertion sans doublon, insensible à la casse, qui complète la
+  saisie en cours au lieu de l'écraser ;
+- `FieldForm.tsx` : zone multi-lignes, compteur de valeurs et sélecteur
+  d'insertion, visibles uniquement pour un champ `select`/`multiselect` et
+  masqués lorsque la variable est structurellement verrouillée.
+
+### Décision de conception
+
+L'insertion se fait **par copie, jamais par référence**. Une base reste donc
+autonome : modifier un jeu de la bibliothèque ne peut pas changer
+rétroactivement le sens de données déjà saisies, ni retirer une valeur présente
+dans un historique. Le prix assumé est que les améliorations de la bibliothèque
+ne se propagent pas aux bases existantes.
+
+Aucune surface base, Edge, Storage ou migration : `allowed_values` reste une
+liste de chaînes, exactement comme avant.
+
+### Preuves locales
+
+- `npm run typecheck` : réussi ;
+- `npm run lint` : réussi, 0 warning ;
+- `npm run test:web` : 39 fichiers, **191/191** tests, dont 13 nouveaux —
+  intégrité des jeux, découpage et fusion des valeurs, et quatre tests
+  d'interface sur l'insertion.
+
+### Limites explicites
+
+- **Aucun jeu de diagnostics n'est livré** : une nomenclature clinique ne
+  s'invente pas depuis le dépôt. Un test garantit que la bibliothèque n'en
+  contient pas tant que les valeurs métier ne sont pas fournies ;
+- la **soupape « Autre (préciser) »** et la **boucle d'amélioration** (relire
+  les « Autre », promouvoir les récurrents) ne sont pas traitées ; sans elles,
+  une liste locale vieillit et redevient du texte libre ;
+- au-delà d'environ 30 items, un menu déroulant reste pénible : la cascade ou le
+  typeahead relèvent de l'idée 4b.
