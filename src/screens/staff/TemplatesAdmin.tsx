@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
+import { useToast } from '../../components/Toast';
 import { TemplateVersionEditor } from './TemplateVersionEditor';
 
 type TemplateWithVersions = Template & { versions: TemplateVersion[] };
@@ -12,6 +13,7 @@ export function TemplatesAdmin() {
   const repo = useTemplateRepository();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const { toast } = useToast();
   const [templates, setTemplates] = useState<TemplateWithVersions[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +82,23 @@ export function TemplatesAdmin() {
     } catch (e) {
       setError(msg(e));
     } finally {
+      setBusy(false);
+    }
+  }
+
+  // D1 — meme motif que "Mes gabarits" : le refus serveur doit etre visible au point de clic
+  // et la confirmation se refermer meme en cas d'echec.
+  async function removeTemplate(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await repo.deleteTemplate(id);
+      await reload();
+      toast(t('admin.template_deleted'));
+    } catch (e) {
+      toast(msg(e), 'warning');
+    } finally {
+      setConfirmId(null);
       setBusy(false);
     }
   }
@@ -167,7 +186,7 @@ export function TemplatesAdmin() {
                   {confirmId === tpl.id ? (
                     <span className="inline-flex items-center gap-2 text-xs">
                       <span className="text-slate-600">{t('admin.confirm_delete')}</span>
-                      <button onClick={() => void run(async () => { await repo.deleteTemplate(tpl.id); setConfirmId(null); })} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
+                      <button onClick={() => void removeTemplate(tpl.id)} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
                       <button onClick={() => setConfirmId(null)} className="font-medium text-slate-500 hover:text-slate-700">{t('common.no')}</button>
                     </span>
                   ) : (

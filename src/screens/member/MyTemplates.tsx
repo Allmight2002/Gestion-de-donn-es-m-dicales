@@ -79,6 +79,23 @@ export function MyTemplates() {
     await run(() => repo.renameTemplate(editId, editName.trim(), editSpec.trim() || null));
     setEditId(null);
   }
+  // D1 — le serveur REFUSE de supprimer un gabarit utilise par une base. Ce refus doit se voir
+  // AU POINT DE CLIC : meme toast que le succes (le message d'erreur en haut de page passait
+  // inapercu), et la confirmation se referme dans TOUS les cas, succes comme echec.
+  async function removeTemplate(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await repo.deleteTemplate(id);
+      await reload();
+      toast(t('mytemplates.deleted'));
+    } catch (e) {
+      toast(msg(e), 'warning');
+    } finally {
+      setConfirmId(null);
+      setBusy(false);
+    }
+  }
   // Cree un gabarit personnel vierge puis ouvre directement son editeur pour ajouter les variables.
   async function createTemplate() {
     if (!newName.trim()) return;
@@ -152,7 +169,7 @@ export function MyTemplates() {
                   {confirmId === tpl.id ? (
                     <span className="inline-flex items-center gap-2 text-xs">
                       <span className="text-slate-600">{t('admin.confirm_delete')}</span>
-                      <button onClick={() => void run(async () => { await repo.deleteTemplate(tpl.id); setConfirmId(null); toast(t('mytemplates.deleted')); })} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
+                      <button onClick={() => void removeTemplate(tpl.id)} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
                       <button onClick={() => setConfirmId(null)} className="font-medium text-slate-500 hover:text-slate-700">{t('common.no')}</button>
                     </span>
                   ) : (

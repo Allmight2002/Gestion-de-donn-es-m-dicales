@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
+import { ToastProvider } from '../../components/Toast';
 import { TemplatesAdmin } from './TemplatesAdmin';
 import { TemplateVersionEditor } from './TemplateVersionEditor';
 import type { TemplateRepository } from '../../data/templates';
@@ -74,11 +75,13 @@ function statefulMock(status: VersionStatus): TemplateRepository {
 function renderAdmin(repo: TemplateRepository) {
   return render(
     <I18nProvider>
-      <RepositoryProvider templates={repo}>
-        <MemoryRouter>
-          <TemplatesAdmin />
-        </MemoryRouter>
-      </RepositoryProvider>
+      <ToastProvider>
+        <RepositoryProvider templates={repo}>
+          <MemoryRouter>
+            <TemplatesAdmin />
+          </MemoryRouter>
+        </RepositoryProvider>
+      </ToastProvider>
     </I18nProvider>,
   );
 }
@@ -131,6 +134,21 @@ describe('TemplatesAdmin', () => {
     expect(screen.getByText('Confirmer la suppression ?')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Oui' }));
     await waitFor(() => expect(deleteTemplate).toHaveBeenCalledWith('t1'));
+  });
+
+  // D1 : meme exigence que cote medecin, l'ecran admin partageait le meme motif fautif.
+  test('un refus serveur est annonce au point de clic et referme la confirmation', async () => {
+    const user = userEvent.setup();
+    const deleteTemplate = vi.fn(async () => {
+      throw new Error('Gabarit utilise par une base');
+    });
+    renderAdmin({ ...statefulMock('draft'), deleteTemplate });
+    await screen.findByText('Neurochirurgie');
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }));
+    await user.click(screen.getByRole('button', { name: 'Oui' }));
+
+    expect(await screen.findByText('Gabarit utilise par une base')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Confirmer la suppression ?')).toBeNull());
   });
 });
 
