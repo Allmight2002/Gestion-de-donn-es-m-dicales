@@ -272,6 +272,15 @@ Cette phase ne commence que si le noyau « Diagnostic urgences » démontre un
 besoin réel : listes trop longues, synonymes fréquents, analyses impossibles ou
 besoin d'interopérabilité.
 
+**Décision du 2026-07-26 : la phase est lancée sans attendre le noyau 4a.** Le
+porteur a écarté la liste courte par service, au motif qu'un patient est
+hospitalisé dans le service traitant sa pathologie principale mais porte aussi
+des comorbidités relevant d'autres spécialités : une liste restreinte au service
+recréerait donc le manque qu'elle devait supprimer. Le besoin d'une recherche
+incrémentale est ainsi établi par le raisonnement métier, sans qu'un pilote soit
+nécessaire pour le démontrer. Le lot T1 pose la structure du référentiel ; le
+critère d'arrêt ci-dessous reste applicable aux étapes suivantes.
+
 1. mesurer les limites du noyau ;
 2. spécifier les identifiants stables, synonymes, versions et gouvernance ;
 3. prototyper la recherche/typeahead ;
