@@ -81,7 +81,11 @@ Décisions prises en séance :
 
 Ce chantier dépasse les urgences : tout service qui recueille des données en texte libre pose le même problème. La bibliothèque est le niveau d'abstraction qui les couvre tous, sans anticiper les spécialités.
 
-Reste ouvert : la **soupape** (« Autre (préciser) ») et la **boucle d'amélioration** (relire les « Autre » et promouvoir les valeurs récurrentes), tous deux nécessaires pour qu'une liste locale reste vivante. Au-delà d'environ 30 items, un menu déroulant redevient pénible : cascade catégorie → diagnostic, ou typeahead (4b).
+**Soupape livrée le 2026-07-26.** Le porteur a écarté le « Autre (préciser) » classique, qui aurait laissé entrer des valeurs hors liste dans la colonne analysable : la proposition est désormais recueillie **sans être consignée dans le champ à liste contrôlée**. Choisir « Autre » vide le champ source et ouvre un champ texte compagnon (`<champ>_autre`) créé à côté, où la valeur proposée est décrite. La fiche part alors dans la file de complétion existante, et au traitement on décide d'ajouter la valeur à la liste ou de constater qu'elle existait déjà sous un autre nom.
+
+Conséquence : la colonne analysable ne contient que des valeurs de la liste, et aucune surface serveur n'est nécessaire — `assert_data_valid` refuse toute valeur hors `allowed_values` pour un `select`, mais accepte un champ texte tel quel.
+
+Reste ouvert : la **boucle d'amélioration** (relire les propositions, promouvoir les récurrentes) n'est pas outillée — rien ne liste les propositions en attente à l'échelle d'une base. La soupape n'est proposée que pour les champs de **rencontre**, seul endroit où la saisie couplée est rendue. Au-delà d'environ 30 items, un menu déroulant redevient pénible : cascade catégorie → diagnostic, ou typeahead (4b).
 
 ## Défauts / UX signalés (à corriger, pas des idées)
 

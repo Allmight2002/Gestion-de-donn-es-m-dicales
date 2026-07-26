@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
+import { makeProposalField } from '../../domain/proposalField';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
@@ -18,7 +19,8 @@ export function FieldForm({
   submitLabel,
   onCancel,
 }: {
-  onSubmit: (f: NewField) => void;
+  /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
+  onSubmit: (f: NewField, companion?: NewField) => void;
   busy?: boolean;
   /** Pre-remplissage en mode edition (null/absent = creation). */
   initial?: NewField | null;
@@ -40,6 +42,7 @@ export function FieldForm({
   // une valeur contenant une virgule (cf. parseAllowedValues).
   const [allowedValues, setAllowedValues] = useState((initial?.allowedValues ?? []).join('\n'));
   const [valueSetId, setValueSetId] = useState('');
+  const [withProposal, setWithProposal] = useState(false);
   const [minValue, setMinValue] = useState(initial?.minValue != null ? String(initial.minValue) : '');
   const [maxValue, setMaxValue] = useState(initial?.maxValue != null ? String(initial.maxValue) : '');
   const [unit, setUnit] = useState(initial?.unit ?? '');
@@ -66,7 +69,7 @@ export function FieldForm({
     e.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
     const values = parsedValues;
-    onSubmit({
+    const built: NewField = {
       fieldKey: fieldKey.trim(), label: label.trim(), scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
       encounterTypes: scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
@@ -75,7 +78,9 @@ export function FieldForm({
       maxValue: isNumber ? numOrNull(maxValue) : null,
       unit: isNumber && unit.trim() ? unit.trim() : null,
       allowMissingCodes,
-    });
+    };
+    const wantsProposal = isChoice && withProposal && !editing && scope === 'encounter';
+    onSubmit(built, wantsProposal ? makeProposalField(built, t('admin.proposal_label_suffix')) : undefined);
     if (!editing) {
       setFieldKey('');
       setLabel('');
@@ -85,6 +90,7 @@ export function FieldForm({
       setMaxValue('');
       setUnit('');
       setAllowMissingCodes(false);
+      setWithProposal(false);
     }
   }
 
@@ -180,6 +186,17 @@ export function FieldForm({
                 {t('admin.value_set_insert')}
               </button>
               <p className="text-xs text-slate-500">{t('admin.value_set_hint')}</p>
+            </div>
+          )}
+          {/* F5 — soupape : a la CREATION seulement (elle cree un second champ), et pour les
+              champs de RENCONTRE seulement, seul endroit ou la saisie couplee est rendue. */}
+          {!editing && scope === 'encounter' && (
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                <input type="checkbox" checked={withProposal} onChange={(e) => setWithProposal(e.target.checked)} />
+                {t('admin.proposal_enable')}
+              </label>
+              <p className="text-xs text-slate-500">{t('admin.proposal_hint')}</p>
             </div>
           )}
         </div>
