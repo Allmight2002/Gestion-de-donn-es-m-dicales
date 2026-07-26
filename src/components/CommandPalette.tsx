@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useI18n } from '../i18n/useI18n';
 import type { MessageKey } from '../i18n/messages';
 import { useAuth } from '../auth/useAuth';

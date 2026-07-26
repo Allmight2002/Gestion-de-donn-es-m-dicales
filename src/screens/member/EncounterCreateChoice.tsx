@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useCurationRepository } from '../../data/RepositoryProvider';
 import { ChoiceCard } from './ChoiceCard';

@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAccessRepository } from '../../data/RepositoryProvider';
 

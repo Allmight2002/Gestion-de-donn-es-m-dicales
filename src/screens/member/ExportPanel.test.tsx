@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // Test de rendu de l'export (cahier §9.2/§9.3) avec repos INJECTES.
-import { describe, expect, test, vi, beforeAll } from 'vitest';
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { ExportPanel } from './ExportPanel';
@@ -17,6 +17,10 @@ beforeAll(() => {
   // jsdom n'implemente pas createObjectURL ; le composant le protege deja par try/catch.
   if (!('createObjectURL' in URL)) (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:x';
   if (!('revokeObjectURL' in URL)) (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 const baseListing: BaseListing = {
@@ -73,6 +77,7 @@ describe('ExportPanel', () => {
   });
 
   test('telecharge un export conserve via URL signee (et trace best-effort en local)', async () => {
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     const getExportDownloadUrl = vi.fn(async () => 'https://signed.test/export.csv');
     const logExportRead = vi.fn(async () => {});
     const exportsRepo = {
@@ -110,6 +115,11 @@ describe('ExportPanel', () => {
     const buttons = screen.getAllByRole('button');
     await userEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(getExportDownloadUrl).toHaveBeenCalledWith('x', 'b/c/export.csv'));
+    expect(anchorClick).toHaveBeenCalledOnce();
+    const downloadLink = anchorClick.mock.instances[0] as HTMLAnchorElement;
+    expect(downloadLink.href).toBe('https://signed.test/export.csv');
+    expect(downloadLink.download).toBe('export.csv');
+    expect(downloadLink.rel).toBe('noopener');
     // En local/demo (pas d'Edge), le telechargement laisse une trace via la RPC log_export_read.
     await waitFor(() => expect(logExportRead).toHaveBeenCalledWith('x'));
   });

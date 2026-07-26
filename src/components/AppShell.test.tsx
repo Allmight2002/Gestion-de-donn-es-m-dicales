@@ -5,7 +5,7 @@ import 'fake-indexeddb/auto';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { AuthProvider } from '../auth/AuthProvider';
 import { RepositoryProvider } from '../data/RepositoryProvider';

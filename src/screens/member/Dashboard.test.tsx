@@ -3,7 +3,7 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { Dashboard } from './Dashboard';
@@ -107,8 +107,8 @@ describe('Dashboard', () => {
     await user.type(screen.getByLabelText('Nom de la base'), 'Registre AVC');
     await user.click(screen.getByRole('button', { name: 'Créer la base' }));
     // Navigation vers /bases/:id -> BaseHome affiche la nouvelle base.
-    expect(await screen.findByText('Registre AVC')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /nouveau patient/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /nouveau patient/i })).toBeInTheDocument();
+    expect(screen.getByText('Registre AVC')).toBeInTheDocument();
   });
 
   test('un compte staff (curateur) ne voit PAS le formulaire de creation de base', async () => {

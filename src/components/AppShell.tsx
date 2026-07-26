@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router';
 import {
   Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, Users, X,
 } from 'lucide-react';
