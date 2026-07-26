@@ -22,7 +22,8 @@ au SHA et à l'environnement indiqués.
 | P0R | Finalisation B3 → B4 → B8 → B1 → B9 | Terminé pour le staging fictif | candidat `ebee17910f6de005ab933ee08978d2e97686d19d` | PR #50 et #51 ; CI verte ; preuves immuables | B3/B4/B8/B1/B9 liés au même SHA | B2 reste ouvert ; aucun parcours fichier ni production accepté |
 | P1V | Bibliothèque de jeux de valeurs (préalable à P1A) | Terminé et promu | `codex/valueset-library` | PR #56 et #57 ; CI verte | Non requis | Aucun jeu de diagnostics |
 | P1S | Soupape « valeur proposée » | Terminé et promu | `codex/soupape-valeur-proposee` | PR #58 et #59 ; CI verte | Non requis | Champs de rencontre seulement ; propositions non listées |
-| T1 | Référentiel de terminologie — structure | En cours | `codex/terminologie-referentiel` | — | À évaluer | Référentiel vide ; ni type de champ ni interface |
+| T1 | Référentiel de terminologie — structure | Terminé et promu | `codex/terminologie-referentiel` | PR #60 et #61 ; CI verte | Non requis | Aucun type de champ ni interface |
+| T2 | Champ de terminologie — contrat serveur | Terminé localement | `codex/champ-terminologie` | — | Non requis | Aucune interface ; création en bloc non couverte |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
@@ -303,12 +304,12 @@ de la modale passe en `h-[100dvh]`.
   serveur et succès sur les deux écrans de gabarits, verrou de défilement et sa
   restauration.
 
-### Limite explicite
+### Vérification terrain
 
-La vérification sur un vrai mobile ou un émulateur **n'a pas été faite**. jsdom
-ne reproduit ni le repli de la barre d'adresse ni les unités de viewport
-dynamiques : le test prouve le verrou de défilement, pas la disparition visuelle
-de l'espace. D2 reste à confirmer visuellement.
+Le porteur a confirmé le 26 juillet 2026, sur un vrai mobile, que l'espace vide
+a disparu. D2 est donc clos de bout en bout : le test automatisé prouve le
+verrou de défilement, la vérification manuelle prouve le résultat visuel, que
+jsdom ne peut pas reproduire.
 
 ### Traçabilité Git
 
@@ -593,4 +594,67 @@ Décisions du porteur, prises le 26 juillet 2026 :
   en l'état, une recherche exigerait le réseau ;
 - le stockage conjoint du code et du libellé est **décidé mais pas encore
   implémenté** : il dépend du type de champ, qui reste à construire ;
+- rien n'est déployé : ces preuves sont locales.
+
+## T2 — champ de terminologie, contrat serveur
+
+### Périmètre
+
+Le référentiel posé par T1 n'était relié à rien. Ce lot crée le type de champ
+`terminology` et la règle serveur qui gouverne ce qui peut entrer dans la
+donnée. Il s'arrête volontairement au **contrat** : aucune interface, la
+recherche visible relève du lot suivant.
+
+### Ce qui est stocké, et pourquoi
+
+Un objet `{"code": …, "label": …}`, et rien d'autre :
+
+- le **code** est l'identifiant stable, celui sur lequel les statistiques
+  regroupent. Il survit à une correction de libellé, qui sinon scinderait une
+  maladie en deux dans les analyses ;
+- le **libellé** est un instantané pris à la saisie. Il garantit qu'une fiche
+  reste lisible même si le référentiel change ou est retiré du service.
+
+### Le contrôle qui compte
+
+Le serveur ne vérifie pas seulement que le code existe : il vérifie que **le
+couple est cohérent**. Un code valide accompagné d'un autre libellé est refusé.
+Sans cela, un appelant pourrait stocker un libellé trompeur à côté d'un code
+correct, et la fiche mentirait sur elle-même — le libellé affiché ne
+correspondrait pas au code compté.
+
+Contrepartie assumée : après une correction de libellé dans le référentiel, un
+client dont le cache est périmé se voit refuser l'écriture et doit rafraîchir.
+C'est le comportement voulu ; la base reste la source de vérité.
+
+Sont également refusés : une clé surnuméraire dans l'objet, un code ou un
+libellé vide ou non textuel, un texte simple, un concept non sélectionnable, et
+un concept appartenant à un référentiel devenu inactif.
+
+### Contrainte de type
+
+La liste des types autorisés est élargie. Le nom de la contrainte est **recherché
+dans le catalogue plutôt que supposé** : une contrainte déclarée en ligne porte
+un nom généré, et un `drop constraint if exists` sur un nom erroné échouerait en
+silence, laissant l'ancienne règle refuser le nouveau type. La migration échoue
+bruyamment si elle ne trouve pas la contrainte.
+
+### Preuves locales
+
+- `npm run typecheck`, `npm run lint` : réussis ;
+- `npm run db:verify` : **107 migrations depuis zéro** ;
+- `test/terminology-field.test.ts` : **12/12**, dont neuf chemins de refus.
+
+### Limites explicites
+
+- **Aucune interface.** Le type n'apparaît pas dans le formulaire de création de
+  variable : aucun champ de terminologie ne peut être créé depuis l'application,
+  et la recherche visible reste à construire ;
+- `create_template_bundle`, qui crée un gabarit **en bloc**, ne connaît pas le
+  nouveau type. Le chemin utilisé par le parcours validé — ajouter une variable
+  dans l'éditeur — insère directement dans la table et n'est donc pas concerné.
+  Réécrire cette fonction de 150 lignes pour une seule ligne de liste aurait fait
+  courir un risque de transcription supérieur au bénéfice ;
+- la validation **client** (`src/domain/validation.ts`) ne connaît pas encore ce
+  type : elle le laissera passer, le serveur restant seul juge ;
 - rien n'est déployé : ces preuves sont locales.
