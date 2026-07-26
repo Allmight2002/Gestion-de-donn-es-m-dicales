@@ -10,6 +10,7 @@ import { curationRepository, type CurationRepository } from './curation';
 import { adminRepository, type AdminRepository } from './admin';
 import { auditRepository, type AuditRepository } from './audit';
 import { groupRepository, type GroupRepository } from './groups';
+import { terminologyRepository, type TerminologyRepository } from './terminology';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -23,6 +24,7 @@ interface Repositories {
   admin: AdminRepository;
   audit: AuditRepository;
   groups: GroupRepository;
+  terminology: TerminologyRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -37,6 +39,7 @@ const RepositoryContext = createContext<Repositories>({
   admin: adminRepository,
   audit: auditRepository,
   groups: groupRepository,
+  terminology: terminologyRepository,
 });
 
 export function RepositoryProvider({
@@ -52,6 +55,7 @@ export function RepositoryProvider({
   admin = adminRepository,
   audit = auditRepository,
   groups = groupRepository,
+  terminology = terminologyRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -65,9 +69,10 @@ export function RepositoryProvider({
   admin?: AdminRepository;
   audit?: AuditRepository;
   groups?: GroupRepository;
+  terminology?: TerminologyRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -75,6 +80,10 @@ export function RepositoryProvider({
 
 export function useTemplateRepository(): TemplateRepository {
   return useContext(RepositoryContext).templates;
+}
+
+export function useTerminologyRepository(): TerminologyRepository {
+  return useContext(RepositoryContext).terminology;
 }
 
 export function useBaseRepository(): BaseRepository {
