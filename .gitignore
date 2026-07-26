@@ -35,3 +35,4 @@ deploy-manifest.json
 .codex/
 .agents/
 AGENTS.md
+.vercel
