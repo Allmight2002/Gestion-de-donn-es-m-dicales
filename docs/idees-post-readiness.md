@@ -107,7 +107,7 @@ Correction attendue : uniformiser le retour d'échec sur le même toast visible 
 
 Correction attendue : verrouiller le défilement de la page tant que le menu est ouvert (poser `overflow:hidden` sur `body` à l'ouverture, restaurer à la fermeture) — corrige l'espace et rétablit le comportement modal correct ; en complément, envisager une hauteur en unités de viewport dynamiques (`dvh`). À confirmer sur un vrai mobile/émulateur au moment de corriger.
 
-**Correction appliquée le 2026-07-26.** Un `useEffect` pose `overflow:hidden` sur `body` à l'ouverture du tiroir et restaure la valeur précédente au démontage comme à la fermeture ; le conteneur de la modale passe en `h-[100dvh]`. Un test vérifie le verrou puis sa restauration. **Limite : la vérification sur un vrai mobile ou un émulateur n'a pas été faite** — jsdom ne reproduit ni le repli de la barre d'adresse ni les unités de viewport dynamiques. À confirmer visuellement avant de considérer D2 comme clos côté terrain.
+**Correction appliquée le 2026-07-26.** Un `useEffect` pose `overflow:hidden` sur `body` à l'ouverture du tiroir et restaure la valeur précédente au démontage comme à la fermeture ; le conteneur de la modale passe en `h-[100dvh]`. Un test vérifie le verrou puis sa restauration. **Vérifié sur un vrai mobile par le porteur le 2026-07-26 : le défaut a disparu.** D2 est clos, y compris côté terrain. Le test automatisé prouve le verrou de défilement ; c'est cette vérification manuelle qui prouve la disparition de l'espace vide, que jsdom ne peut pas reproduire.
 
 ## Comment utiliser cette liste
 
