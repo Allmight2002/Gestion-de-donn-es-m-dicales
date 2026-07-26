@@ -49,6 +49,8 @@ jobs:
         with:
           deno-version: '2.9.2'
       - run: npm ci
+      - name: Dependency audit (temporary staging policy)
+        run: npm run audit:dependencies -- --scope=staging
       - run: npm run typecheck && npm run lint && npm test && npm run db:verify && npm run release:edge:check
       - run: npm run edge:fmt && npm run edge:lint && npm run edge:check && npm run edge:test
       - name: Build artifact (frontend is not deployed here)
@@ -498,6 +500,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Dependency audit (strict production policy)
+        run: npm run audit:dependencies -- --scope=production
       - name: Verify successful staging evidence for this SHA
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:

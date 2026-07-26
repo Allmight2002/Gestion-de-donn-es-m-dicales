@@ -56,27 +56,26 @@ Function ou configuration cloud n'a été appliquée.
 
 ## 3. Résultats actuels et reproductibles
 
-| Contrôle | Résultat au 2026-07-22 | Portée |
+| Contrôle | Résultat actuel au 2026-07-26 | Portée |
 |---|---|---|
 | Tests ciblés B2–B10 | **réussis** | Scanner, backup, reprise, alerting, gouvernance, GitHub, ACL et opérations |
 | `npm run typecheck` | **réussi** | TypeScript strict |
 | `npm run lint` | **réussi, 0 warning** | Dépôt complet |
 | `npm run test:web` | **36 fichiers, 169/169** | Frontend et domaine web |
-| `npm run test:rls` | **52 fichiers, 461/461** | PostgreSQL réel embarqué, RLS/RPC/transactions |
-| `npm test` | **88 fichiers, 630/630** | Suite globale exacte |
+| `npm run test:rls` | **couvert dans la suite globale** | PostgreSQL réel embarqué, RLS/RPC/transactions |
+| `npm test` | **90 fichiers, 643/643** | Suite globale exacte sous Node 22.23.1 |
 | `npm run db:verify` | **réussi** | 105 migrations depuis zéro ; 36 tables, 208 fonctions, 59 policies, 55 triggers |
 | `npm run release:edge:check` | **réussi** | Inventaire statique des 6 Edge Functions |
 | Edge fmt/lint/check/test | **réussi, 70/70** | Deno frozen et contrats Edge |
 | `actionlint` épinglé | **réussi** | Tous les workflows GitHub |
-| `npm audit --audit-level=moderate` | **0 vulnérabilité** | Source npm disponible ; `brace-expansion` 5.0.7 et `fast-uri` 3.1.4 |
+| `npm run audit:dependencies -- --scope=staging` | **0 haute/critique ; 3 modérées explicitement exceptées** | `ejs` 6.0.1 et `brace-expansion` 5.0.8 ; exception limitée aux trois GHSA React Router jusqu'au 2 août 2026, staging fictif uniquement |
+| `npm run audit:dependencies -- --scope=production` | **bloquant comme attendu** | Les mêmes avis modérés restent interdits en production ; décision et sortie documentées dans `docs/exception-audit-dependances-staging-2026-07-26.md` |
 | `npm run build` | **réussi** | Vite 8.1.4, 1 925 modules, offline désactivé, inspection stricte |
 | Image scanner | **construite** | Base Node 22 épinglée ; smoke `/health` = 503 attendu sans `clamd` |
 
-Limite de reproductibilité : les commandes Node locales ont utilisé Node
-24.16.0 alors que le projet cible Node 22.x. L'image scanner et les deux runs CI
-ont validé le projet avec la configuration Node 22 du workflow. GitHub signale
-séparément que certaines actions épinglées ciblant encore son runtime Node 20
-sont forcées sous Node 24 ; cet avertissement n'a pas fait échouer les jobs.
+Les contrôles locaux du lot du 26 juillet ont utilisé Node 22.23.1, conforme à
+la version majeure imposée par le projet et par les workflows. La CI du SHA
+final reste nécessaire avant toute promotion de branche.
 
 ## 4. Matrice unique de readiness
 

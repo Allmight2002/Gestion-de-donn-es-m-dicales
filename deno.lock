@@ -140,7 +140,7 @@
       "dependencies": [
         "@babel/compat-data",
         "@babel/helper-validator-option",
-        "browserslist@4.28.6",
+        "browserslist",
         "lru-cache@5.1.1",
         "semver@6.3.1"
       ]
@@ -2037,17 +2037,6 @@
         "balanced-match@4.0.4"
       ]
     },
-    "browserslist@4.28.5": {
-      "integrity": "sha512-Cu2E6QejHWzuDMTkuwgpABFgDfZrXLQq5V13YOACZx4mFAG4IwGTbTfHPMr4WtxlHoXSM8FIuRwYYCz5XiabaQ==",
-      "dependencies": [
-        "baseline-browser-mapping",
-        "caniuse-lite",
-        "electron-to-chromium",
-        "node-releases",
-        "update-browserslist-db@1.2.3_browserslist@4.28.5"
-      ],
-      "bin": true
-    },
     "browserslist@4.28.6": {
       "integrity": "sha512-FQBYNK15VMslhLHpA7+n+n1GOlF1kId2xcCg7/j95f24AOF6VDYMNH4mFxF7KuaTdv627faazpOAjFzMrfJOUw==",
       "dependencies": [
@@ -2055,7 +2044,7 @@
         "caniuse-lite",
         "electron-to-chromium",
         "node-releases",
-        "update-browserslist-db@1.2.3_browserslist@4.28.6"
+        "update-browserslist-db"
       ],
       "bin": true
     },
@@ -2107,10 +2096,7 @@
       "integrity": "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="
     },
     "core-js-compat@3.49.0": {
-      "integrity": "sha512-VQXt1jr9cBz03b331DFDCCP90b3fanciLkgiOoy8SBHy06gNf+vQ1A3WFLqG7I8TipYIKeYK9wxd0tUrvHcOZA==",
-      "dependencies": [
-        "browserslist@4.28.5"
-      ]
+      "integrity": "sha512-VQXt1jr9cBz03b331DFDCCP90b3fanciLkgiOoy8SBHy06gNf+vQ1A3WFLqG7I8TipYIKeYK9wxd0tUrvHcOZA=="
     },
     "cross-spawn@7.0.6": {
       "integrity": "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==",
@@ -4012,19 +3998,10 @@
     "upath@1.2.0": {
       "integrity": "sha512-aZwGpamFO61g3OlfT7OQCHqhGnW43ieH9WZeP7QxN/G/jS4jfqUkZxoryvJgVPEcrl5NL/ggHsSmLMHuH64Lhg=="
     },
-    "update-browserslist-db@1.2.3_browserslist@4.28.5": {
-      "integrity": "sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==",
-      "dependencies": [
-        "browserslist@4.28.5",
-        "escalade",
-        "picocolors"
-      ],
-      "bin": true
-    },
     "update-browserslist-db@1.2.3_browserslist@4.28.6": {
       "integrity": "sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==",
       "dependencies": [
-        "browserslist@4.28.6",
+        "browserslist",
         "escalade",
         "picocolors"
       ],
@@ -4422,7 +4399,11 @@
         "npm:vite-plugin-pwa@1.3.0",
         "npm:vite@8.1.4",
         "npm:vitest@4.1.10"
-      ]
+      ],
+      "overrides": {
+        "brace-expansion": "5.0.8",
+        "ejs": "6.0.1"
+      }
     }
   }
 }
