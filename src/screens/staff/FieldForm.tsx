@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
+import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
@@ -35,7 +36,10 @@ export function FieldForm({
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
   const [encounterTypes, setEncounterTypes] = useState<string[]>(initial?.encounterTypes ?? []);
-  const [allowedValues, setAllowedValues] = useState((initial?.allowedValues ?? []).join(', '));
+  // Une valeur par ligne : lisible au-dela de quelques items, et seul format qui autorise
+  // une valeur contenant une virgule (cf. parseAllowedValues).
+  const [allowedValues, setAllowedValues] = useState((initial?.allowedValues ?? []).join('\n'));
+  const [valueSetId, setValueSetId] = useState('');
   const [minValue, setMinValue] = useState(initial?.minValue != null ? String(initial.minValue) : '');
   const [maxValue, setMaxValue] = useState(initial?.maxValue != null ? String(initial.maxValue) : '');
   const [unit, setUnit] = useState(initial?.unit ?? '');
@@ -46,11 +50,22 @@ export function FieldForm({
   const toggleEncType = (x: string) =>
     setEncounterTypes((prev) => (prev.includes(x) ? prev.filter((y) => y !== x) : [...prev, x]));
   const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
+  const parsedValues = parseAllowedValues(allowedValues);
+
+  // Insertion par COPIE : les valeurs sont recopiees dans le champ, jamais referencees.
+  // Modifier la bibliotheque plus tard ne peut donc pas changer le sens de donnees deja
+  // saisies. Fusion sans doublon pour ne jamais ecraser ce que l'utilisateur a deja tape.
+  function insertValueSet() {
+    const set = VALUE_SET_LIBRARY.find((s) => s.id === valueSetId);
+    if (!set) return;
+    setAllowedValues(mergeValues(parsedValues, set.values).join('\n'));
+    setValueSetId('');
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
-    const values = allowedValues.split(',').map((v) => v.trim()).filter(Boolean);
+    const values = parsedValues;
     onSubmit({
       fieldKey: fieldKey.trim(), label: label.trim(), scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
@@ -135,16 +150,39 @@ export function FieldForm({
       </label>
 
       {isChoice && (
-        <label className="flex w-full flex-col text-xs text-slate-600">
-          {t('admin.allowed_values')}
-          <input
-            className={inputCls}
-            value={allowedValues}
-            onChange={(e) => setAllowedValues(e.target.value)}
-            disabled={lockStructural}
-            placeholder={t('admin.allowed_values_ph')}
-          />
-        </label>
+        <div className="flex w-full flex-col gap-2">
+          <label className="flex flex-col text-xs text-slate-600">
+            {t('admin.allowed_values')}
+            <textarea
+              className={inputCls}
+              rows={4}
+              value={allowedValues}
+              onChange={(e) => setAllowedValues(e.target.value)}
+              disabled={lockStructural}
+              placeholder={t('admin.allowed_values_ph')}
+            />
+          </label>
+          <p className="text-xs text-slate-500">{parsedValues.length} {t('admin.values_count')}</p>
+          {!lockStructural && (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col text-xs text-slate-600">
+                {t('admin.value_set')}
+                <select className={inputCls} value={valueSetId} onChange={(e) => setValueSetId(e.target.value)}>
+                  <option value="">{t('admin.value_set_none')}</option>
+                  {VALUE_SET_LIBRARY.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.domain} · {s.name} ({s.values.length})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" onClick={insertValueSet} disabled={!valueSetId} className="btn-secondary">
+                {t('admin.value_set_insert')}
+              </button>
+              <p className="text-xs text-slate-500">{t('admin.value_set_hint')}</p>
+            </div>
+          )}
+        </div>
       )}
       {isNumber && (
         <>

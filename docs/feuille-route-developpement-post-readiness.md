@@ -194,6 +194,15 @@ plus la Phase 1, qui ne dépend d'aucun upload.
 
 ### Phase 1 — valeur rapide et défauts visibles
 
+**Lot 1V — bibliothèque de jeux de valeurs (idée 5, préalable au lot 1A)**
+
+Ajouté le 2026-07-26 pendant le cadrage du lot 1A. Une liste contrôlée ne vaut
+que si elle peut être garnie : saisir trente valeurs à la main renvoie
+l'utilisateur au texte libre. Ce lot fournit des listes prêtes à l'emploi
+insérables dans un champ `select`, par copie et non par référence, et rend la
+saisie des valeurs réellement utilisable. Il précède le lot 1A, car livrer un
+canevas que personne ne peut adapter n'aurait pas de sens.
+
 **Lot 1A — registre « Diagnostic urgences » noyau (idée 4a)**
 
 - préparer un canevas à listes contrôlées avec données fictives ;
