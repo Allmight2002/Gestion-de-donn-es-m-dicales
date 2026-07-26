@@ -40,6 +40,40 @@ export function readTextFile(path) {
 const KINDS = new Set(['chapter', 'block', 'category']);
 
 /**
+ * Chapitres ECARTES par defaut : une classification complete ne contient pas que des
+ * diagnostics. Les « codes d'extension » a eux seuls pesaient 17 159 entrees sur 35 664 —
+ * ce sont des qualificatifs (substances, medicaments, agents) que la classification
+ * accroche a un diagnostic, jamais un diagnostic en soi. Les proposer a la saisie noyait
+ * les vraies maladies sous des reponses comme « Antacides » ou « Composes de magnesium ».
+ *
+ * Les autres exclusions sont des decisions METIER prises par le porteur le 2026-07-26 :
+ * causes externes et facteurs de recours decrivent le comment ou le pourquoi, pas la
+ * maladie.
+ *
+ * Deux chapitres sont au contraire CONSERVES a sa demande explicite :
+ *  - les symptomes et signes, parce qu'aux urgences un patient est recu pour une douleur
+ *    ou une fievre bien avant qu'un diagnostic soit pose ;
+ *  - les affections de medecine traditionnelle, pertinentes dans le contexte de deploiement.
+ */
+export const CHAPITRES_ECARTES = [
+  "codes d'extension",
+  'causes externes',
+  'facteurs influant',
+  'evaluation du fonctionnement',
+  "codes d'utilisation particuliere",
+];
+
+/** Minuscules, accents et apostrophes ramenes a une forme comparable. */
+function normaliser(texte) {
+  return texte
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[’ʼ]/g, "'")
+    .toLowerCase()
+    .trim();
+}
+
+/**
  * Transforme le TSV en concepts prets a inserer.
  *
  * Regles :
@@ -48,9 +82,11 @@ const KINDS = new Set(['chapter', 'block', 'category']);
  *  - une entree sans libelle est IGNOREE : elle serait invisible a la recherche. Les
  *    referentiels traduits en contiennent, la ou une section n'a pas ete traduite ;
  *  - seules les `category` munies d'un code sont proposables a la saisie : un chapitre ou un
- *    bloc structure le referentiel, il ne se choisit pas, et n'a d'ailleurs pas de code.
+ *    bloc structure le referentiel, il ne se choisit pas, et n'a d'ailleurs pas de code ;
+ *  - un chapitre ECARTE emporte tout son contenu jusqu'au chapitre suivant.
  */
-export function parseTerminologyRows(text) {
+export function parseTerminologyRows(text, options = {}) {
+  const ecartes = (options.excludedChapters ?? CHAPITRES_ECARTES).map(normaliser);
   const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
   const header = (lines.shift() ?? '').split('\t').map((h) => h.trim());
   const idx = {
@@ -64,8 +100,10 @@ export function parseTerminologyRows(text) {
   }
 
   const concepts = [];
-  const skipped = { noLabel: 0, unknownKind: 0 };
+  const skipped = { noLabel: 0, unknownKind: 0, excludedChapter: 0 };
   const parents = []; // dernier concept rencontre, par profondeur
+  // Un chapitre ecarte emporte tout ce qui le suit, jusqu'au chapitre suivant.
+  let dansChapitreEcarte = false;
 
   for (const line of lines) {
     const cells = line.split('\t');
@@ -76,6 +114,14 @@ export function parseTerminologyRows(text) {
       || (idx.blockId >= 0 ? (cells[idx.blockId] ?? '').trim() : '');
 
     if (!KINDS.has(kind)) { skipped.unknownKind++; continue; }
+
+    if (kind === 'chapter') {
+      const titre = normaliser(rawTitle.replace(/^(\s*-\s*)+/, ''));
+      dansChapitreEcarte = ecartes.some((motif) => titre.includes(motif));
+      // Un nouveau chapitre referme les branches du precedent.
+      parents.length = 0;
+    }
+    if (dansChapitreEcarte) { skipped.excludedChapter++; continue; }
 
     const match = rawTitle.match(/^(\s*-\s*)+/);
     const depth = match ? (match[0].match(/-/g) ?? []).length : 0;
@@ -208,6 +254,7 @@ async function main() {
     });
 
     console.log(`Referentiel "${slug}" importe : ${concepts.length} concepts, dont ${selectable} proposables a la saisie.`);
+    if (skipped.excludedChapter > 0) console.log(`  ${skipped.excludedChapter} entree(s) ecartee(s) : chapitres sans valeur diagnostique.`);
     if (skipped.noLabel > 0) console.log(`  ${skipped.noLabel} entree(s) ignoree(s) faute de libelle (sections non traduites).`);
     if (skipped.unknownKind > 0) console.log(`  ${skipped.unknownKind} ligne(s) ignoree(s) : type inconnu.`);
     if (!process.argv.includes('--activate')) console.log('  Referentiel INACTIF : relancer avec --activate pour le rendre interrogeable.');
