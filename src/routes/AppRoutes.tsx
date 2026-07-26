@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { ProtectedRoute, PublicOnly } from './ProtectedRoute';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ResetPassword } from '../screens/ResetPassword';

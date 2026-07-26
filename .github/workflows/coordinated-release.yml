@@ -49,7 +49,7 @@ jobs:
         with:
           deno-version: '2.9.2'
       - run: npm ci
-      - name: Dependency audit (temporary staging policy)
+      - name: Dependency audit (strict policy)
         run: npm run audit:dependencies -- --scope=staging
       - run: npm run typecheck && npm run lint && npm test && npm run db:verify && npm run release:edge:check
       - run: npm run edge:fmt && npm run edge:lint && npm run edge:check && npm run edge:test

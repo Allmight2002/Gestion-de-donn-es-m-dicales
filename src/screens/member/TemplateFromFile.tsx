@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useRef, useState, type ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';

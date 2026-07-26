@@ -59,23 +59,28 @@ Function ou configuration cloud n'a été appliquée.
 | Contrôle | Résultat actuel au 2026-07-26 | Portée |
 |---|---|---|
 | Tests ciblés B2–B10 | **réussis** | Scanner, backup, reprise, alerting, gouvernance, GitHub, ACL et opérations |
+| `npm ci` | **réussi sous Node 22.23.1 ; 0 vulnérabilité** | Installation propre depuis le lockfile du lot React Router |
 | `npm run typecheck` | **réussi** | TypeScript strict |
 | `npm run lint` | **réussi, 0 warning** | Dépôt complet |
-| `npm run test:web` | **36 fichiers, 169/169** | Frontend et domaine web |
+| `npm run test:web` | **37 fichiers, 174/174** | Frontend, domaine web et régressions de navigation React Router |
 | `npm run test:rls` | **couvert dans la suite globale** | PostgreSQL réel embarqué, RLS/RPC/transactions |
-| `npm test` | **90 fichiers, 643/643** | Suite globale exacte sous Node 22.23.1 |
+| `npm test` | **91 fichiers, 652/652** | Suite globale exacte sous Node 22.23.1 |
 | `npm run db:verify` | **réussi** | 105 migrations depuis zéro ; 36 tables, 208 fonctions, 59 policies, 55 triggers |
 | `npm run release:edge:check` | **réussi** | Inventaire statique des 6 Edge Functions |
 | Edge fmt/lint/check/test | **réussi, 70/70** | Deno frozen et contrats Edge |
 | `actionlint` épinglé | **réussi** | Tous les workflows GitHub |
-| `npm run audit:dependencies -- --scope=staging` | **0 haute/critique ; 3 modérées explicitement exceptées** | `ejs` 6.0.1 et `brace-expansion` 5.0.8 ; exception limitée aux trois GHSA React Router jusqu'au 2 août 2026, staging fictif uniquement |
-| `npm run audit:dependencies -- --scope=production` | **bloquant comme attendu** | Les mêmes avis modérés restent interdits en production ; décision et sortie documentées dans `docs/exception-audit-dependances-staging-2026-07-26.md` |
-| `npm run build` | **réussi** | Vite 8.1.4, 1 925 modules, offline désactivé, inspection stricte |
+| `npm run audit:dependencies -- --scope=staging` | **réussi ; 0 modérée/haute/critique** | Aucune allowlist ni date d'expiration ; l'ancienne exception React Router est retirée |
+| `npm run audit:dependencies -- --scope=production` | **réussi ; 0 modérée/haute/critique** | Même politique stricte ; ce résultat de dépendances ne démontre pas la readiness production |
+| `npm run build` | **réussi** | Vite 8.1.4, 1 980 modules, PWA générée avec 68 entrées et lecture signée |
 | Image scanner | **construite** | Base Node 22 épinglée ; smoke `/health` = 503 attendu sans `clamd` |
 
 Les contrôles locaux du lot du 26 juillet ont utilisé Node 22.23.1, conforme à
-la version majeure imposée par le projet et par les workflows. La CI du SHA
-final reste nécessaire avant toute promotion de branche.
+la plage `>=22.22.0 <23` imposée par le projet et par les workflows. Après
+réinstallation propre, les 21 tests ciblés, les 174 tests web, les audits, le
+typecheck, le lint et le build ont été rejoués avec succès. La suite globale de
+652 tests, `db:verify` et les 70 tests Edge ont réussi sur le même code et le
+même lockfile avant cette réinstallation ; la CI du SHA final doit les rejouer
+avant toute promotion de branche.
 
 ## 4. Matrice unique de readiness
 

@@ -2,8 +2,8 @@
 
 - Porteur : Dr Mbassi
 - Date de cadrage : 2026-07-26
-- Statut : exécution lancée le 2026-07-26 ; intégration documentaire en cours,
-  aucune fonctionnalité encore modifiée
+- Statut : cadre documentaire intégré ; Phase 0 validée localement et en cours
+  de promotion, aucune nouvelle fonctionnalité encore commencée
 - Source des idées : [`idees-post-readiness.md`](idees-post-readiness.md)
 - Référence de production : [`readiness-production-2026-07-19.md`](readiness-production-2026-07-19.md)
 - Prompt d'exécution autonome :
@@ -17,6 +17,12 @@ La fermeture de tous les blocages B1–B10 n'est plus une précondition pour
 concevoir, développer et tester de nouvelles fonctionnalités. Les gates de
 readiness servent désormais à décider **jusqu'où un changement peut aller**,
 pas à interdire sa construction.
+
+Une contrainte d'ordre a été ajoutée par le porteur le 2026-07-26 : après la
+Phase 0, le chantier de readiness déjà engagé doit être finalisé dans l'ordre
+**B3 → B4 → B8 → B1 → B9** avant de commencer la Phase 1 ou toute autre
+nouvelle fonctionnalité. B2, B6, B7 et B10 restent différés selon les contrôles
+compensatoires ci-dessous.
 
 Trois niveaux sont séparés :
 
@@ -43,10 +49,11 @@ plus le développement local.
 | **B7 — protections GitHub** | GitHub Pro n'est pas finançable actuellement ; les protections live restent indisponibles | Autorisé | Autorisé après CI verte et contrôle manuel du SHA | Promotion automatique ou non revue vers `main` et production | Flux obligatoire `branche de travail → develop → main`, aucun push direct vers `main`, CI verte et décision humaine explicite à chaque promotion |
 | **B10 — organisation** | Équipe, suppléances, support et QA formelle non encore constitués | Autorisé sous responsabilité directe du porteur | Exercices fictifs autorisés ; le porteur peut assumer les rôles continuité et release manager pour ces exercices | Exploitation clinique ou production sans titulaires, suppléants, support, formation, MFA et QA signée | Un lot à la fois, décisions consignées, runbooks maintenus et acceptation du porteur avant toute promotion |
 
-Les autres gates B1, B3, B4, B5, B8 et B9 deviennent eux aussi des **portes de
-validation du candidat**, et non un gel du travail local. Toute fonctionnalité
-qui touche directement un de ces domaines doit toutefois fournir ses tests et
-ses preuves ciblées avant fusion dans `develop`.
+Les autres gates restent des **portes de validation du candidat**, et non un gel
+général du travail local. B3, B4, B8, B1 et B9 font toutefois l'objet de
+l'interphase obligatoire demandée par le porteur avant toute nouvelle
+fonctionnalité. Toute évolution qui touche directement un gate doit aussi
+fournir ses tests et ses preuves ciblées avant fusion dans `develop`.
 
 ## 3. Mandat d'autonomie pour les futurs lots
 
@@ -136,15 +143,43 @@ utiliser `validate-audit-lots` ; avant staging ou décision de release, utiliser
 
 **Objectif :** repartir d'une base sans exception de dépendance temporaire.
 
-1. Mettre React Router à niveau vers la dernière version corrective compatible
-   de la ligne 7.
+1. Mettre React Router à niveau vers une combinaison réellement corrigée et
+   compatible, sans nouvelle exception d'audit.
 2. Ajouter les tests de navigation et de redirection internes.
 3. Supprimer l'exception CI temporaire React Router après un audit propre.
 4. Produire un nouveau baseline local vert et le documenter.
 
-**Sortie :** audit sans les trois avis React Router, routes critiques testées,
-typecheck/lint/tests/build verts. Cette phase ne nécessite ni serveur ClamAV ni
-GitHub Pro.
+Décision d'exécution du 2026-07-26 : la ligne 7 corrige les trois avis initiaux
+en `7.18.1`, mais l'avis `GHSA-qwww-vcr4-c8h2`, publié ensuite et corrigé
+uniquement en `8.3.0`, rend impossible un audit propre sur cette ligne. Ajouter
+une nouvelle exception étant interdit, le socle passe à React Router 8.3,
+React 19.2.8 et Node 22.22 minimum. Le mode déclaratif existant est conservé et
+la migration n'est acceptée qu'avec la suite complète verte.
+
+**Sortie :** audit sans vulnérabilité modérée, haute ou critique, routes
+critiques testées, typecheck/lint/tests/build verts. Cette phase ne nécessite ni
+serveur ClamAV ni GitHub Pro.
+
+### Interphase readiness — finaliser le chantier antérieur
+
+**Objectif :** terminer les preuves déjà engagées avant tout ajout fonctionnel.
+
+1. **B3** — produire et vérifier la sauvegarde coordonnée du SHA candidat avec
+   la clé séparée et la copie immuable attendues.
+2. **B4** — restaurer cette sauvegarde dans l'environnement isolé, mesurer RPO
+   et RTO et valider le JSON de preuve.
+3. **B8** — exécuter le rollback puis le forward recovery du même SHA et en
+   vérifier l'intégrité.
+4. **B1** — démontrer l'alignement exact frontend, base, Storage et six Edge
+   Functions sur staging fictif.
+5. **B9** — rejouer le contrôle distant des fonctions privilégiées ainsi que
+   les tests RLS/RPC, puis consigner l'acceptation sécurité du candidat.
+
+**Sortie :** B3, B4, B8, B1 et B9 disposent de preuves actuelles liées au même
+SHA et à staging. Si une capacité distante indispensable manque, tout travail
+indépendant est poursuivi puis le point est classé conformément aux conditions
+d'arrêt du mandat ; aucune Phase 1 ne commence tant que cette interphase n'est
+pas finalisée.
 
 ### Phase 1 — valeur rapide et défauts visibles
 
@@ -231,8 +266,9 @@ simple suffit au pilote fictif.
 | Priorité | Chantier | Dépendance principale | Peut commencer sans B2/B6/B7/B10 ? |
 |---|---|---|---|
 | P0 | React Router et baseline | Aucune infrastructure externe | Oui |
-| P1 | Registre urgences 4a | Canevas et retours métier fictifs | Oui |
-| P1 | UX D1/D2 | Tests web/mobile | Oui |
+| P0R | Finalisation B3 → B4 → B8 → B1 → B9 | Staging fictif et preuves exact-SHA | Oui, sous les limites de chaque gate |
+| P1 | Registre urgences 4a | Interphase P0R terminée, puis canevas et retours métier fictifs | Oui |
+| P1 | UX D1/D2 | Interphase P0R terminée, puis tests web/mobile | Oui |
 | P2 | Suppression + restauration | Revue DB/RLS et garde-fous destructifs | Oui |
 | P2 | Observabilité | Règles de minimisation ; B5 seulement pour la preuve distante | Oui |
 | P3 | Comptes de mission | Six décisions métier, DB/RLS et Edge | Oui, sans upload ni données réelles |

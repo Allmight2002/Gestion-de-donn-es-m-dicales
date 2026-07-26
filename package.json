@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "22.x",
+    "node": ">=22.22.0 <23",
     "npm": ">=10 <12"
   },
   "description": "Registre clinique oriente recherche - separation identite/analytique, RLS testee (MVP).",
@@ -59,9 +59,9 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "lucide-react": "^1.23.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "8.3.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
@@ -70,12 +70,12 @@
     "@supabase/storage-js": "2.108.2",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.5.0",
-    "@testing-library/react": "^16.0.1",
+    "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "^14.5.2",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.20.0",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^10.6.0",

@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { ClipboardCheck, Target, TrendingUp, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository } from '../../data/RepositoryProvider';
