@@ -4,7 +4,11 @@
 - Date : 2026-07-22
 - Demandeur : Dr Mbassi (besoin : être informé automatiquement des bugs en production et de leurs causes)
 - Rattachement : chantier **monitoring (B5)** du rapport `docs/readiness-production-2026-07-19.md`
-- Précondition de calendrier : **ne pas implémenter avant la fermeture du chantier readiness et la release coordonnée**. Toute modification du code ou d'une migration invalide les preuves (readiness §9).
+- Cadre de calendrier : développement local autorisé par
+  `docs/feuille-route-developpement-post-readiness.md`, avec données fictives
+  uniquement. B5 reste nécessaire pour déclarer la notification distante
+  opérationnelle ; toute modification crée un nouveau SHA à revalider avant
+  staging ou promotion.
 
 ## 1. Besoin et état actuel
 
