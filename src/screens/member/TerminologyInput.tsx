@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTerminologyRepository } from '../../data/RepositoryProvider';
 import { MIN_QUERY_LENGTH, type TerminologyOption } from '../../data/terminology';
+import { cacheStatus, downloadReference, searchLocal } from '../../data/terminologyCache';
 import { errorMessage } from '../../lib/errorMessage';
 import { isTerminologyValue, type TerminologyValue } from '../../data/types';
 
@@ -30,8 +31,29 @@ export function TerminologyInput({
   const [error, setError] = useState<string | null>(null);
   // Seule la derniere frappe compte : une reponse lente ne doit pas ecraser une plus recente.
   const requestRef = useRef(0);
+  // Une copie locale evite un aller-retour reseau a chaque frappe, et permet de saisir
+  // sans connexion. Tant qu'elle est absente, on interroge le serveur.
+  const [local, setLocal] = useState(false);
+  const [downloading, setDownloading] = useState<number | null>(null);
 
   const selected = isTerminologyValue(value) ? value : null;
+
+  useEffect(() => {
+    void cacheStatus().then((s) => setLocal(!!s && s.count > 0));
+  }, []);
+
+  async function telecharger() {
+    setDownloading(0);
+    setError(null);
+    try {
+      const status = await downloadReference(repo, (recus) => setDownloading(recus));
+      setLocal(status.count > 0);
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   useEffect(() => {
     const needle = query.trim();
@@ -44,7 +66,8 @@ export function TerminologyInput({
     setSearching(true);
     const ticket = ++requestRef.current;
     const timer = setTimeout(() => {
-      void repo.search(needle)
+      // Copie locale quand elle existe : instantanee et disponible sans reseau.
+      void (local ? searchLocal(needle) : repo.search(needle))
         .then((found) => {
           if (ticket !== requestRef.current) return;
           setOptions(found);
@@ -60,7 +83,7 @@ export function TerminologyInput({
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, repo, t]);
+  }, [query, repo, t, local]);
 
   function choose(option: TerminologyOption) {
     // Le couple part tel quel : le serveur refusera un libelle qui ne correspond pas au code.
@@ -127,6 +150,23 @@ export function TerminologyInput({
       )}
       {!searching && !error && options.length === 0 && query.trim().length >= MIN_QUERY_LENGTH && (
         <p className="text-xs text-slate-500">{t('terminology.no_result')}</p>
+      )}
+      {/* La copie locale ne se telecharge qu'a la demande : c'est plusieurs milliers
+          d'entrees, on ne l'impose pas sur une connexion limitee. */}
+      {local ? (
+        <p className="text-xs text-slate-400">{t('terminology.local_ready')}</p>
+      ) : downloading !== null ? (
+        <p role="status" className="text-xs text-slate-500">
+          {t('terminology.downloading')} {downloading > 0 ? downloading : ''}
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void telecharger()}
+          className="text-xs font-medium text-teal-700 hover:underline"
+        >
+          {t('terminology.download')}
+        </button>
       )}
     </div>
   );
