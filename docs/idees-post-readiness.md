@@ -33,6 +33,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 4a | **Registre « Diagnostic urgences » (noyau)** — base à listes contrôlées (diagnostic, motif, issue) pour produire des diagnostics analysables | **Nulle (configuration, pas de code)** | — | *(canevas à préparer)* | Signal terrain fort (directrice des urgences, Tchad) ; faisable dès maintenant en données fictives |
 | 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(cadrée en séance le 2026-07-26)* | **Lancée** : structure du référentiel livrée (T1) ; contenu, type de champ et interface à suivre |
 | 5 | **Bibliothèque de jeux de valeurs** — listes prêtes à l'emploi insérables en un clic dans un champ `select`/`multiselect`, au lieu de saisir chaque valeur à la main | Petite (front, contenu pur) | — | *(cadrée en séance le 2026-07-26)* | **Mécanisme livré le 2026-07-26** ; jeux cliniques à enrichir au fil des retours |
+| 6 | **Soupape sur le champ de terminologie** — étendre au type `terminology` la soupape livrée pour les listes contrôlées | Petite (front) | — | *(demandée le 2026-07-27)* | À faire |
 
 ## Notes par idée
 
@@ -90,6 +91,14 @@ Ce chantier dépasse les urgences : tout service qui recueille des données en t
 Conséquence : la colonne analysable ne contient que des valeurs de la liste, et aucune surface serveur n'est nécessaire — `assert_data_valid` refuse toute valeur hors `allowed_values` pour un `select`, mais accepte un champ texte tel quel.
 
 Reste ouvert : la **boucle d'amélioration** (relire les propositions, promouvoir les récurrentes) n'est pas outillée — rien ne liste les propositions en attente à l'échelle d'une base. La soupape n'est proposée que pour les champs de **rencontre**, seul endroit où la saisie couplée est rendue. Au-delà d'environ 30 items, un menu déroulant redevient pénible : cascade catégorie → diagnostic, ou typeahead (4b).
+
+### 6. Soupape sur le champ de terminologie
+
+Demandée par le porteur le 2026-07-27, après avoir essayé la recherche : la soupape livrée par le lot P1S ne s'applique qu'aux champs à liste contrôlée, jamais au type `terminology`.
+
+**Le raisonnement initial était inversé.** J'avais écarté ce cas en supposant qu'un référentiel de 14 000 entrées rendait la soupape moins utile qu'une liste de 20 valeurs. C'est le contraire : sur une liste courte qu'on a écrite soi-même, on sait ce qu'elle contient. Sur un référentiel que personne n'a lu en entier, un saisisseur qui ne trouve pas son diagnostic ne peut pas distinguer « je cherche mal » de « le terme n'existe pas » — et dans le doute, il retiendra le résultat le plus approchant. C'est précisément ce que la soupape doit empêcher.
+
+Mise en œuvre attendue : même mécanique que P1S — champ compagnon, texte jamais écrit dans la colonne analysable, fiche laissée à compléter.
 
 ## Défauts / UX signalés (à corriger, pas des idées)
 

@@ -25,6 +25,7 @@ au SHA et à l'environnement indiqués.
 | T1 | Référentiel de terminologie — structure | Terminé et promu | `codex/terminologie-referentiel` | PR #60 et #61 ; CI verte | Non requis | Aucun type de champ ni interface |
 | T2 | Champ de terminologie — contrat serveur | Terminé et promu | `codex/champ-terminologie` | PR #62 et #63 ; CI verte | Non requis | Aucune interface ; création en bloc non couverte |
 | T3 | Recherche visible (typeahead) | Terminé et promu | `codex/typeahead-terminologie` | PR #64 et #65 ; CI verte | **Déployé sur staging le 2026-07-26** | Chaque frappe interroge le serveur ; hors ligne non couvert |
+| T4 | Copie locale des diagnostics | Terminé localement | `codex/cache-terminologie` | — | À déployer | Téléchargement à la demande ; pas de mise à jour automatique |
 | TS | Mise en service staging de la terminologie | Terminé | `main` `147e2c58ba1afdad329133c8caa0b0bc617b9e64` | Run `30220488673` | Migrations appliquées, référentiel importé | B2 bloque l'inspection stricte ; preuves antérieures caduques |
 | P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
@@ -721,6 +722,79 @@ rôle porte désormais sur l'élément activable.
   est moindre, mais le cas « diagnostic absent du référentiel » n'est pas couvert ;
 - l'affichage d'une valeur hors formulaire de saisie — listes, exports,
   statistiques — n'est pas traité : ces vues montreront l'objet brut.
+
+## T4 — copie locale des diagnostics
+
+### Périmètre
+
+Le porteur a jugé la vitesse de recherche « moyenne » après essai sur staging.
+Sans copie locale, chaque frappe part au serveur : pénible sur une connexion
+lente, impossible hors connexion. Le référentiel étant figé entre deux
+publications, il se prête naturellement à une copie côté navigateur.
+
+### La décision structurante : une base locale séparée
+
+La copie ne vit **pas** dans la base locale des données patient, et c'est
+délibéré :
+
+- un référentiel de diagnostics n'est pas une donnée médicale, c'est un
+  dictionnaire. L'héberger avec les instantanés patient brouillerait le
+  cloisonnement que le produit protège ;
+- la base patient est **purgée à chaque changement d'utilisateur** et désactivée
+  par la politique hors-ligne. Le référentiel y serait effacé sans aucune raison,
+  et serait indisponible là où il est justement le plus utile.
+
+Aucune donnée de patient n'entre dans cette copie.
+
+### Contenu
+
+- `src/data/terminology.ts` : `activeRelease()` et `listEntries()` — seules les
+  entrées **proposables** sont copiées, les regroupements ne pouvant être choisis ;
+- `src/data/terminologyCache.ts` : base locale dédiée, téléchargement paginé avec
+  progression, recherche locale, et détection d'une copie périmée ;
+- `TerminologyInput` : recherche locale dès qu'une copie existe, sinon serveur ;
+  téléchargement proposé **à la demande**, jamais imposé — plusieurs milliers
+  d'entrées ne se téléchargent pas dans le dos de quelqu'un dont la connexion est
+  limitée.
+
+### Le point délicat : ne pas diverger du serveur
+
+La recherche locale doit rendre **exactement** ce que rendrait le serveur. Deux
+précautions :
+
+- les libellés arrivent avec leur texte de recherche **déjà normalisé par la
+  base** : on ne recalcule pas ce que le serveur a calculé ;
+- le classement local reprend celui du serveur — ce qui commence par la saisie
+  d'abord, puis le libellé le plus court. Un classement différent proposerait
+  autre chose selon qu'on est connecté ou non, ce qui serait pire qu'une absence
+  de copie.
+
+Seule la saisie de l'utilisateur est normalisée côté client, et un test compare
+cette normalisation à celle du serveur.
+
+### Incident corrigé
+
+La normalisation traitait les ligatures **avant** de passer en minuscules : « Œ »
+échappait donc au traitement. C'est exactement le défaut corrigé côté base pour
+les majuscules accentuées, reproduit à l'identique côté client. L'ordre suit
+désormais celui du serveur.
+
+### Preuves locales
+
+- `npm run typecheck`, `npm run lint`, `npm run build` et `npm run manifest` :
+  réussis ;
+- `npm run test:web` : 43 fichiers, **228/228**, dont 13 nouveaux — normalisation
+  conforme au serveur, téléchargement paginé, progression rapportée, classement
+  identique, copie périmée détectée, remplacement complet au rechargement.
+
+### Limites explicites
+
+- le téléchargement est **manuel** : rien ne rafraîchit la copie quand une
+  nouvelle publication est activée. La détection existe (`cacheIsCurrent`) mais
+  n'est pas encore exploitée par l'interface ;
+- la copie est **par navigateur** : un même utilisateur sur deux postes la
+  téléchargera deux fois ;
+- le bouton vit dans le champ de saisie, faute d'écran de réglages dédié.
 
 ## TS — mise en service de la terminologie sur staging
 
