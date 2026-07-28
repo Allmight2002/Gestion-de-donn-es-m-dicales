@@ -16,17 +16,17 @@ la définition de « terminé ».
 
 ## État au 2026-07-28
 
-Trois lots ont avancé pendant la rédaction de ce document. **Vérifier cette liste
-avant de lancer un thread**, pour ne pas faire refaire du travail déjà fait :
+**Vérifier cette liste avant de lancer un thread**, pour ne pas faire refaire du
+travail déjà fait :
 
 | Lot | État |
 |---|---|
-| L1 | **Livré** (PR #88). Le prompt est conservé pour mémoire, barré ci-dessous. |
-| L2 | **En cours** sur `codex/l2-sections-patient`. Ne pas lancer un second thread. |
+| L1 | **Livré** (PR #88). Prompt conservé pour mémoire, barré ci-dessous. |
+| L2 | **Livré** (PR #89). Prompt conservé pour mémoire. |
 | L3 | **Livré** (PR #86). Aucun prompt. |
-| L5 | **En cours** sur `codex/l5-constructeur-regles`, commit `d36d86d`. Ne pas lancer un second thread. |
+| L5 | **Livré** (PR #91). Prompt conservé pour mémoire. |
 
-Les dix autres lots sont libres.
+**Les dix autres lots sont libres** : L4, L6, L7, L8, L9, L10, L11, L12, L13, L14.
 
 ---
 
@@ -87,10 +87,9 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L2 — Formulaires patient : sections
+## ~~L2 — Formulaires patient : sections~~ — livré
 
-> **En cours** sur la branche `codex/l2-sections-patient`. Ne lancer ce prompt
-> que si ce chantier est abandonné.
+> **Livré** le 2026-07-28 (PR #89). **Ne pas relancer ce prompt.**
 
 ```
 Tu reprends un correctif sur le projet MedData (registre-clinique), déjà cloné
@@ -187,10 +186,9 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L5 — Constructeur de règles de cohérence
+## ~~L5 — Constructeur de règles de cohérence~~ — livré
 
-> **En cours** sur la branche `codex/l5-constructeur-regles`, commit `d36d86d`.
-> Ne lancer ce prompt que si ce chantier est abandonné.
+> **Livré** le 2026-07-28 (PR #91). **Ne pas relancer ce prompt.**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
