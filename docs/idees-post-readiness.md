@@ -34,6 +34,10 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(cadrée en séance le 2026-07-26)* | **Lancée** : structure du référentiel livrée (T1) ; contenu, type de champ et interface à suivre |
 | 5 | **Bibliothèque de jeux de valeurs** — listes prêtes à l'emploi insérables en un clic dans un champ `select`/`multiselect`, au lieu de saisir chaque valeur à la main | Petite (front, contenu pur) | — | *(cadrée en séance le 2026-07-26)* | **Mécanisme livré le 2026-07-26** ; jeux cliniques à enrichir au fil des retours |
 | 6 | **Soupape sur le champ de terminologie** — étendre au type `terminology` la soupape livrée pour les listes contrôlées | Petite (front) | — | *(demandée le 2026-07-27)* | À faire |
+| 7 | **Constructeur de règles de cohérence** — remplacer la saisie de JSON brut par un assemblage guidé, compréhensible sans culture technique | Moyenne (front) | — | *(demandée le 2026-07-27)* | À faire |
+| 8 | **Modèle d'observation d'une base** — rendre le suivi longitudinal explicite et optionnel : étude transversale, suivi répété, ou registre d'événements | Grande (front + une colonne) | — | *(cadrée le 2026-07-27)* | À faire |
+| 9 | **Alléger le chargement de l'application** — 1,7 Mo précachés dès la première visite, dont 837 Ko de tableur | Moyenne (configuration du build) | — | *(signalée le 2026-07-27)* | À faire |
+| 10 | **Finition de l'interface** — zone de profil trop discrète, cases à cocher système, absence de retour visuel sur les changements d'état | Moyenne (front, transverse) | — | *(signalée le 2026-07-27)* | À faire |
 
 ## Notes par idée
 
@@ -100,6 +104,105 @@ Demandée par le porteur le 2026-07-27, après avoir essayé la recherche : la s
 
 Mise en œuvre attendue : même mécanique que P1S — champ compagnon, texte jamais écrit dans la colonne analysable, fiche laissée à compléter.
 
+### 7. Constructeur de règles de cohérence
+
+Signalé par le porteur le 2026-07-27 : la zone « règles » de l'onglet variables est **incompréhensible pour quelqu'un du milieu médical**. Le constat est fondé — aujourd'hui, créer une règle exige de taper du JSON à la main dans une zone en police à chasse fixe (`src/screens/staff/RuleForm.tsx`), sur le modèle de l'exemple affiché :
+
+```json
+{"operator":"greater_or_equal","left_field":"discharge_date","right_field":"admission_date"}
+```
+
+Trois obstacles cumulés : la syntaxe JSON, des noms d'opérateurs en anglais, et les clés techniques des variables plutôt que leurs libellés. Un médecin ne peut pas écrire cela, et n'a aucune raison de le pouvoir.
+
+Mise en œuvre attendue : un assemblage guidé — une liste de variables (par leur **libellé**), une liste d'opérateurs en français (« postérieure à », « égale à », « comprise entre »…), puis une variable ou une valeur — qui produit le JSON en coulisse. Le moteur serveur ne change pas : `templateRules.ts` valide déjà une liste blanche d'opérateurs, et c'est elle qui alimenterait les choix proposés. Prévoir la relecture d'une règle existante dans la même forme, et non en JSON.
+
+La saisie experte peut rester accessible en repli, mais elle ne doit plus être le seul chemin.
+
+### 8. Modèle d'observation d'une base
+
+Signalé par le porteur le 2026-07-27 : **le suivi longitudinal est imposé à toute base**, alors que la plupart des études sont transversales — une seule saisie par participant. Le constat est juste.
+
+Trois modes sont visés :
+
+- **une seule saisie par participant** — enquête de prévalence, étude cas-témoins, revue rétrospective d'une hospitalisation ;
+- **suivi répété** — cohorte prospective, mesures à 1, 3 et 6 mois ;
+- **registre d'événements** — passages aux urgences, hospitalisations, accouchements : la même personne revient, mais chaque venue est un événement indépendant, pas une étape d'un suivi.
+
+**Corrections apportées à la proposition d'un LLM tiers**, après lecture du code :
+
+1. **Le nom `collection_mode` est déjà pris.** Il existe sur `patient` et `encounter` avec les valeurs `direct / assisted / mixed` — c'est le mode de *recueil*, pas le modèle d'étude. Réutiliser ce nom créerait une confusion durable ; retenir plutôt `observation_model` ou `study_design` sur `base`.
+2. **Il n'y a rien à refondre.** La séparation participant / observation / valeurs existe déjà : `patient.data`, `encounter.data`, et des variables portant une portée `patient` ou `encounter`. La proposition décrivait cette architecture comme une cible ; c'est l'état actuel.
+3. **Le mode transversal est déjà techniquement possible.** Rien n'oblige un patient à avoir une rencontre : il suffit de placer toutes les variables en portée `patient`. Ce qui manque n'est pas le modèle mais **l'interface**, qui pousse systématiquement vers la création d'une rencontre. Le travail est donc surtout frontal, plus une colonne.
+4. **Point non vu par la proposition : l'âge vit sur la rencontre** (`encounter.age_value` / `age_unit`), par conception — c'est l'âge *au moment de l'observation*. En mode « une seule saisie », il faut décider où il va, sinon une étude transversale perd une variable essentielle.
+5. **L'éditeur de variables devra masquer la notion de portée** en mode transversal : proposer « patient ou rencontre » dans une base qui n'a pas de rencontres serait déroutant.
+6. Le mode **registre d'événements** est proche de l'existant : `encounter_type` distingue déjà consultation, hospitalisation, suivi et autre. Ce mode change surtout le **point d'entrée** — on enregistre un événement puis on rattache une personne, au lieu de partir du patient.
+
+**Ce que le mode « une seule saisie » ne doit pas interdire** : les variables à valeurs multiples ni les groupes répétés dans le même formulaire. Un participant peut avoir cinq diagnostics en une seule observation. La contrainte porte sur le nombre d'**observations**, pas sur la richesse du formulaire.
+
+**Bases existantes** : conserver le suivi répété par défaut. La conversion d'une base **vide** doit être libre ; après saisie de données réelles, elle change le sens de ce qui est enregistré et doit être encadrée — c'est un sujet de sûreté, à traiter avec `meddata-db-safety` le moment venu.
+
+**Parcours simulé par le porteur le 2026-07-27**, qui précise ce que le mode devra produire :
+
+1. clic sur « Nouveau patient » ;
+2. un écran unique portant l'identité **et** les données de l'étude ;
+3. enregistrement — sans étape « ajouter une rencontre ».
+
+Le contournement actuel consiste à déclarer toutes les variables en portée patient pour qu'elles apparaissent dès la création. Il fonctionne, mais révèle deux manques :
+
+- les variables permanentes s'affichent **sans structure par section** (défaut D4 ci-dessous), alors qu'une rencontre les aurait groupées. Corriger D4 est un préalable pratique à ce mode ;
+- le parcours reste celui d'une base longitudinale : rien n'indique à l'utilisateur que ce contournement est la bonne façon de faire, et rien n'empêche la création de rencontres qui n'ont pas de sens pour l'étude.
+
+Le mode « une seule saisie » consisterait donc surtout à rendre ce contournement explicite et guidé : masquer la notion de portée, masquer l'ajout de rencontre, et présenter un formulaire unique correctement sectionné.
+
+### 9. Alléger le chargement de l'application
+
+Signalé par le porteur le 2026-07-27 : Vercel Speed Insights annonce un *Real Experience Score* de **78 sur ordinateur**, sous le seuil de 90, avec moins de 75 % de visites jugées bonnes.
+
+**Ce que la mesure dit et ne dit pas.** Ce score agrège des mesures de navigation réelles, dont nous ne disposons pas ici ; sur un site à faible trafic, il repose de surcroît sur peu d'échantillons et reste bruité. Il n'établit donc pas à lui seul une cause. Ce qui suit est en revanche mesurable dans le dépôt.
+
+**Constat de build**, relevé sur `main` :
+
+| Fichier | Poids |
+|---|---|
+| `index` | 500 Ko |
+| `xlsx` (première copie) | 482 Ko |
+| `xlsx` (seconde copie) | 355 Ko |
+| `useI18n` | 95 Ko |
+| **Total JavaScript** | **1 663 Ko** |
+
+Deux anomalies ressortent :
+
+1. **La bibliothèque de tableur est embarquée deux fois** — 837 Ko à elle seule, soit la moitié du poids total. Une copie sert le worker d'analyse de fichiers, l'autre le fil principal.
+2. **Le service worker précache 70 fichiers, xlsx compris.** Dès la première visite, le navigateur télécharge donc environ 1,7 Mo en arrière-plan, y compris de quoi lire et écrire des classeurs Excel — alors que la plupart des visites ne feront ni import ni export.
+
+Ce préchargement ne retarde pas l'affichage initial, mais il consomme bande passante et processeur pendant que l'utilisateur navigue. Sur une connexion limitée — le contexte de déploiement visé — c'est doublement coûteux : lenteur ressentie, et volume de données facturé pour un usage qui n'aura pas lieu.
+
+**Pistes, de la plus rentable à la plus coûteuse :**
+
+- **exclure le tableur du précache** en le laissant en chargement à la demande, au moment d'un import ou d'un export : environ 837 Ko économisés à chaque première visite, sans rien retirer aux fonctionnalités ;
+- **dédoublonner** la bibliothèque entre le worker et le fil principal, si le format de module le permet ;
+- **découper le fichier principal** de 500 Ko, aujourd'hui au-dessus du seuil d'alerte de l'outil de build ;
+- **ne charger que la langue active** : les traductions française et anglaise voyagent ensemble dans un fichier de 95 Ko.
+
+Avant d'optimiser plus loin, mesurer : sans les mesures réelles par métrique, on ignore si le score tient au poids téléchargé, à la latence réseau depuis le lieu d'usage, ou au temps de réponse de la base.
+
+### 10. Finition de l'interface
+
+Signalé par le porteur le 2026-07-27 : l'interface « est bonne dans l'ensemble » mais manque de présence. Trois points précis, tous vérifiés dans le code.
+
+**La zone de profil passe inaperçue en thème clair.** `src/components/AppShell.tsx:170` : le bloc nom + rôle n'a **ni fond ni bordure**, alors que le bloc thème/langue juste au-dessus porte un trait de séparation. Le rôle est rendu en gris moyen sur fond clair. Or c'est l'élément qui répond à « qui suis-je, et avec quels droits » — une question qui compte dans un produit où le rôle détermine ce qu'on a le droit de voir. Correction attendue : lui donner une assise visuelle (fond léger, séparation), et traiter le rôle comme une information portante plutôt que comme une mention secondaire.
+
+**Quinze cases à cocher système**, réparties sur neuf écrans, sans aucun style. Elles jurent avec le reste de l'interface et sont difficiles à viser au doigt sur mobile. Correction attendue : un composant unique, réutilisé partout, avec une cible tactile suffisante et un état de focus visible.
+
+**Vingt-trois transitions dans toute l'application**, presque toutes sur des survols de boutons. Rien n'accompagne les changements d'état : une liste qui se charge, une valeur enregistrée, un panneau qui s'ouvre apparaissent sans transition. D'où l'impression que « rien ne se passe ».
+
+**Ce qui mérite d'être animé, et ce qui ne le mérite pas.** Le dynamisme utile confirme une action ou explique un changement : bouton qui réagit au clic, apparition en fondu d'une liste chargée, brève confirmation après un enregistrement, ouverture glissée d'un panneau. Le dynamisme décoratif — animations d'entrée sur chaque carte, effets permanents — fatigue et ralentit. Le squelette de chargement existe déjà (`src/components/Skeleton.tsx`) mais n'est presque pas employé : le généraliser donnerait déjà beaucoup, sans la moindre animation supplémentaire.
+
+**Deux garde-fous.**
+
+- **`prefers-reduced-motion` n'est respecté nulle part** aujourd'hui. Toute animation ajoutée doit pouvoir être neutralisée pour les personnes qui en souffrent — c'est une exigence d'accessibilité, pas une option.
+- **Tension avec l'idée 9** : l'application est déjà lourde et le contexte d'usage suppose des connexions limitées. Le dynamisme doit venir de transitions CSS, pas d'une bibliothèque d'animation supplémentaire.
+
 ## Défauts / UX signalés (à corriger, pas des idées)
 
 | # | Défaut | Cause | Ampleur | Statut |
@@ -117,6 +220,22 @@ Correction attendue : uniformiser le retour d'échec sur le même toast visible 
 Correction attendue : verrouiller le défilement de la page tant que le menu est ouvert (poser `overflow:hidden` sur `body` à l'ouverture, restaurer à la fermeture) — corrige l'espace et rétablit le comportement modal correct ; en complément, envisager une hauteur en unités de viewport dynamiques (`dvh`). À confirmer sur un vrai mobile/émulateur au moment de corriger.
 
 **Correction appliquée le 2026-07-26.** Un `useEffect` pose `overflow:hidden` sur `body` à l'ouverture du tiroir et restaure la valeur précédente au démontage comme à la fermeture ; le conteneur de la modale passe en `h-[100dvh]`. Un test vérifie le verrou puis sa restauration. **Vérifié sur un vrai mobile par le porteur le 2026-07-26 : le défaut a disparu.** D2 est clos, y compris côté terrain. Le test automatisé prouve le verrou de défilement ; c'est cette vérification manuelle qui prouve la disparition de l'espace vide, que jsdom ne peut pas reproduire.
+
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D3 | **Le bandeau « Rendre disponible hors-ligne » occupe trop de place** dans l'écran d'une base | `src/screens/member/BaseHome.tsx:218` : bandeau pleine largeur (`surface-muted`, icône, bouton, date, lien « Retirer ») affiché **en permanence** juste sous le titre, alors que l'action n'est faite qu'occasionnellement. Il repousse vers le bas la liste des patients, qui est le contenu utile de l'écran, à chaque visite | Petite (front) | Signalé 2026-07-27 |
+
+Correction attendue : réduire l'emprise permanente de cette action — la replier dans le menu d'actions de la base, ou n'afficher qu'une icône discrète tant que la copie n'existe pas, en réservant le bandeau au seul cas où une copie est présente et mérite d'être signalée (date, expiration, retrait). Le comportement hors-ligne lui-même ne change pas.
+
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D4 | **Les variables permanentes ne sont pas groupées par section** : à la création et à l'édition d'un patient, elles s'affichent en une seule liste à plat, sans distinction clinique / biologie / paraclinique | `src/screens/member/NewPatient.tsx:238` place toutes les variables de portée patient dans un unique `fieldset` « données permanentes », et `EditPatient.tsx` n'a aucun regroupement. `EncounterFields.tsx` fait pourtant exactement l'inverse pour les rencontres : un `fieldset` et une légende par section. La section est une propriété **obligatoire** de chaque variable (`check (section in ('clinique','biologie','paraclinique'))`) : l'information existe et est saisie, elle est simplement ignorée à l'affichage | Petite (front) | Signalé 2026-07-27 |
+
+Correction attendue : reprendre pour les variables patient le regroupement déjà écrit pour les rencontres, en n'affichant que les sections non vides. L'identité garde son encadré propre, distinct des sections cliniques.
+
+**Ce défaut devient central avec l'idée 8.** En étude transversale, la stratégie naturelle est de déclarer *toutes* les variables en portée patient pour qu'elles apparaissent dès la création — c'est ce qu'a constaté le porteur en simulant le parcours. Le formulaire devient alors une longue liste plate, sans aucune structure, là où une rencontre aurait été correctement organisée. Corriger D4 est donc un préalable pratique au mode « une seule saisie ».
+
+À vérifier au passage : le mode hors-ligne est désactivé par la politique de release standard (`VITE_OFFLINE_MODE=disabled`). Si le bandeau reste visible alors que la fonction est inopérante, c'est une raison supplémentaire de ne pas lui donner cette place.
 
 ## Comment utiliser cette liste
 
