@@ -117,7 +117,21 @@ navigateur. Le frontend appelle
    et ordre stable ; les filtres de listes sont decoupes par groupes de 200 identifiants ;
 3. applique la liste blanche analytique et refuse toute colonne identifiante ;
 4. genere le CSV ou le XLSX, calcule `file_hash`, stocke le fichier dans `scientific-exports` ;
-5. insere `export_log` avec `generation_mode='server'`.
+5. insere `export_log` avec `generation_mode='server'` et le nom de telechargement dans
+   `export_options.download_filename`.
+
+Pour un champ de terminologie, l'export produit deux colonnes distinctes : la colonne principale
+contient le libelle lisible et `terminology_code__<colonne>` contient le code stable utilise pour
+l'analyse. Le dictionnaire XLSX decrit egalement cette colonne comme `terminology_code`. Les deux
+colonnes comptent dans les limites de largeur de l'export.
+
+Le nom presente a l'utilisateur suit le contrat :
+`meddata_<base>_<cohorte>_<patients|rencontres>_<AAAA-MM-JJ_HH-mm-ssZ>.<csv|xlsx>`. Les noms de base
+et de cohorte sont normalises (accents, caracteres de chemin et ponctuation retires, segments
+bornes) avant usage. Exemple :
+`meddata_urgences-pediatriques_traumatismes-craniens_rencontres_2026-07-28_06-15-09Z.xlsx`.
+Ce nom metier n'est pas utilise comme cle Storage : `stored_file_path` reste pseudonymise avec les
+identifiants techniques de la base et de la cohorte.
 
 L'export est borne avant materialisation : 10 000 patients, 50 000 rencontres, 25 000 champs de
 dictionnaire, 1 000 000 cellules, 1 000 colonnes CSV ou 256 colonnes XLSX. Un depassement renvoie
@@ -127,7 +141,9 @@ intermediaire incomplete ou un doublon entre pages ferme le chemin avec HTTP 409
 ces situations ne peut produire un export HTTP 200 partiel.
 
 Le telechargement reste separe : l'historique passe par `signed-read`, qui journalise
-`export_read` avant de delivrer l'URL signee.
+`export_read` avant de delivrer l'URL signee avec le nom lisible en `Content-Disposition`. Pour les
+exports anciens qui ne possedent pas `download_filename`, la fonction conserve le comportement de
+telechargement historique et le frontend utilise le nom de la cle Storage en repli.
 
 ### Deploy
 

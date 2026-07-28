@@ -74,7 +74,13 @@ URL a tester : `https://gestion-de-donn-es-m-dicales.vercel.app`
 - Tester les filtres sur variables patient et rencontre.
 - Creer un export CSV et Excel.
 - Verifier que l'export ne contient aucune identite ni document.
+- Pour chaque champ de terminologie, verifier la presence du libelle lisible et d'une colonne de
+  code stable distincte dans le CSV et dans le dictionnaire Excel.
+- Verifier que le fichier telecharge suit le format
+  `meddata_<base>_<cohorte>_<patients|rencontres>_<AAAA-MM-JJ_HH-mm-ssZ>.<csv|xlsx>`, sans accent ni
+  caractere de chemin.
 - Verifier l'historique des exports et le telechargement.
+- Verifier qu'un export cree avant l'ajout du nom lisible reste telechargeable depuis l'historique.
 
 ### 8. Groupes
 

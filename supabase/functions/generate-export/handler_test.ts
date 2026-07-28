@@ -1,5 +1,11 @@
 import { assert, assertEquals, assertStringIncludes } from '@std/assert';
-import { EXPORT_LIMITS, type GenerateExportDeps, handleGenerateExport } from './handler.ts';
+import {
+  buildExportFilename,
+  EXPORT_LIMITS,
+  exportFilenameSegment,
+  type GenerateExportDeps,
+  handleGenerateExport,
+} from './handler.ts';
 import {
   type DbResult,
   errorResult,
@@ -69,6 +75,7 @@ const FIELDS = [
 interface Opts {
   user?: { data: { user: { id: string } | null }; error?: unknown };
   cohort?: unknown;
+  base?: unknown;
   canExport?: unknown;
   uploadError?: unknown;
   insertError?: unknown;
@@ -103,7 +110,10 @@ function queriedRows<T extends Record<string, unknown>>(
 }
 
 function deps(opts: Opts = {}): GenerateExportDeps {
-  const cohort = 'cohort' in opts ? opts.cohort : { id: COHORT, base_id: BASE, cohort_type: 'snapshot' };
+  const cohort = 'cohort' in opts
+    ? opts.cohort
+    : { id: COHORT, base_id: BASE, name: 'Traumatismes craniens', cohort_type: 'snapshot' };
+  const base = 'base' in opts ? opts.base : { name: 'Urgences pediatriques' };
   const userResponder: Responder = (call) =>
     call.kind === 'rpc' && call.rpc === 'can_export_data' ? okResult(opts.canExport ?? true) : okResult(null);
   const adminResponder: Responder = (call) => {
@@ -118,6 +128,8 @@ function deps(opts: Opts = {}): GenerateExportDeps {
       switch (call.table) {
         case 'cohort':
           return okResult(cohort);
+        case 'base':
+          return okResult(base);
         case 'cohort_member':
           return queriedRows(call, opts.memberRows ?? [{ patient_id: 'p1' }], 'patient_id');
         case 'patient':
@@ -166,6 +178,25 @@ function deps(opts: Opts = {}): GenerateExportDeps {
 
 const body = (format: 'csv' | 'xlsx' = 'csv') => ({ cohortId: COHORT, format });
 
+Deno.test('nom export : base, cohorte, mode, horodatage et format sont lisibles', () => {
+  assertEquals(
+    buildExportFilename(
+      'Urgences pediatriques',
+      'Traumatismes craniens',
+      'encounter',
+      '2026-07-28T06:15:09.123Z',
+      'xlsx',
+    ),
+    'meddata_urgences-pediatriques_traumatismes-craniens_rencontres_2026-07-28_06-15-09Z.xlsx',
+  );
+});
+
+Deno.test('nom export : accents, separateurs et contenu hostile sont neutralises', () => {
+  assertEquals(exportFilenameSegment('  Etude / Cœur : ete 2026  ', 'base'), 'etude-coeur-ete-2026');
+  assertEquals(exportFilenameSegment('../..\\CON?.xlsx', 'cohorte'), 'con-xlsx');
+  assertEquals(exportFilenameSegment('***', 'cohorte'), 'cohorte');
+});
+
 Deno.test('generate-export: auth absente -> 401', async () => {
   const { status } = await readResponse(await handleGenerateExport(makeRequest({ auth: null, body: body() }), deps()));
   assertEquals(status, 401);
@@ -184,6 +215,45 @@ Deno.test('generate-export: permission insuffisante -> 403', async () => {
   );
   assertEquals(status, 403);
   assertEquals(b.error, 'Acces export refuse');
+});
+
+Deno.test('generate-export: le chemin conserve un identifiant unique et expose un nom lisible', async () => {
+  let uploadedPath = '';
+  let downloadFilename = '';
+  const { status, body: responseBody } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { ...body('csv'), options: { mode: 'patient' } } }),
+      deps({
+        cohort: {
+          id: COHORT,
+          base_id: BASE,
+          name: 'Diabete / suivi annuel',
+          cohort_type: 'snapshot',
+        },
+        base: { name: 'Hopital Central de Yaounde' },
+        onStorage: (method, args) => {
+          if (method === 'upload') uploadedPath = args[0] as string;
+        },
+        fromResponder: (call) => {
+          if (call.table !== 'export_log') return undefined;
+          const insert = call.ops.find((operation) => operation.m === 'insert');
+          const row = insert?.a[0] as { export_options?: { download_filename?: string } } | undefined;
+          downloadFilename = row?.export_options?.download_filename ?? '';
+          return undefined;
+        },
+      }),
+    ),
+  );
+  assertEquals(status, 200);
+  assertEquals(
+    uploadedPath,
+    `${BASE}/${COHORT}/1700000000000-fixed-uuid.csv`,
+  );
+  assertEquals(
+    downloadFilename,
+    'meddata_hopital-central-de-yaounde_diabete-suivi-annuel_patients_2026-07-12_00-00-00Z.csv',
+  );
+  assertEquals(responseBody.stored_file_path, 'x');
 });
 
 Deno.test('generate-export: cohorte inexistante -> 404', async () => {
@@ -437,7 +507,9 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
     if (call.kind === 'from') {
       switch (call.table) {
         case 'cohort':
-          return okResult({ id: COHORT, base_id: BASE, cohort_type: 'snapshot' });
+          return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte de test', cohort_type: 'snapshot' });
+        case 'base':
+          return okResult({ name: 'Base de test' });
         case 'cohort_member':
           return okResult([{ patient_id: 'p1' }]);
         case 'patient':

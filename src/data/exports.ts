@@ -16,6 +16,7 @@ export interface ExportLogItem {
   encounterCount: number | null;
   fileHash: string | null;
   storedFilePath: string | null;
+  fileName?: string | null;
   generationMode?: 'client' | 'server' | null;
 }
 
@@ -62,7 +63,9 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
     async listExports(cohortId) {
       const { data, error } = await client
         .from('export_log')
-        .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path, generation_mode')
+        .select(
+          'id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path, generation_mode, export_options',
+        )
         .eq('cohort_id', cohortId)
         .order('exported_at', { ascending: false });
       if (error) throw error;
@@ -79,10 +82,12 @@ type LogRow = {
   id: string; format: string; exported_at: string; patient_count: number | null;
   encounter_count: number | null; file_hash: string | null; stored_file_path: string | null;
   generation_mode?: 'client' | 'server' | null;
+  export_options?: { download_filename?: unknown } | null;
 };
 const mapLog = (r: LogRow): ExportLogItem => ({
   id: r.id, format: r.format, exportedAt: r.exported_at, patientCount: r.patient_count,
   encounterCount: r.encounter_count, fileHash: r.file_hash, storedFilePath: r.stored_file_path,
+  fileName: typeof r.export_options?.download_filename === 'string' ? r.export_options.download_filename : null,
   generationMode: r.generation_mode ?? null,
 });
 
