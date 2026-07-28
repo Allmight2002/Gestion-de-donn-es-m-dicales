@@ -65,6 +65,7 @@ export async function handleSignedRead(req: Request, deps: SignedReadDeps): Prom
   const requireInspection = deps.requireInspection();
 
   let bucket: string, action: string, path: string, baseId: string | null;
+  let downloadFilename: string | undefined;
 
   if (entity === 'raw_document') {
     const { data, error } = await asUser
@@ -93,12 +94,19 @@ export async function handleSignedRead(req: Request, deps: SignedReadDeps): Prom
     baseId = pat?.base_id ?? null;
   } else {
     const { data, error } = await asUser
-      .from('export_log').select('id, cohort_id, stored_file_path').eq('id', id).maybeSingle();
+      .from('export_log').select('id, cohort_id, stored_file_path, export_options').eq('id', id).maybeSingle();
     if (error || !data || !data.stored_file_path) return json(403, { error: 'Acces refuse' });
     const { data: cohort } = await admin.from('cohort').select('base_id').eq('id', data.cohort_id).maybeSingle();
     bucket = 'scientific-exports';
     action = 'export_read';
     path = data.stored_file_path;
+    const requestedFilename = (data.export_options as { download_filename?: unknown } | null)?.download_filename;
+    if (
+      typeof requestedFilename === 'string' && requestedFilename.length <= 180 &&
+      /^meddata_[a-z0-9_Z-]+\.(csv|xlsx)$/.test(requestedFilename)
+    ) {
+      downloadFilename = requestedFilename;
+    }
     baseId = cohort?.base_id ?? null;
     if (!baseId) return json(403, { error: 'Acces refuse' });
     const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', { p_base: baseId });
@@ -124,7 +132,8 @@ export async function handleSignedRead(req: Request, deps: SignedReadDeps): Prom
   });
   if (auditErr) return json(500, { error: 'Journalisation impossible : acces refuse' });
 
-  const { data: signed, error: e2 } = await admin.storage.from(bucket).createSignedUrl(path, 120);
+  const signedOptions = entity === 'export' ? { download: downloadFilename ?? true } : undefined;
+  const { data: signed, error: e2 } = await admin.storage.from(bucket).createSignedUrl(path, 120, signedOptions);
   if (e2 || !signed) return json(500, { error: 'Signature impossible' });
   return json(200, { url: signed.signedUrl });
 }

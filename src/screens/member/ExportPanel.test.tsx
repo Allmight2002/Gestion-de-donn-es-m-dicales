@@ -89,6 +89,7 @@ describe('ExportPanel', () => {
       async listExports() {
         return [{
           id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 2, fileHash: 'deadbeef', storedFilePath: 'b/c/export.csv',
+          fileName: 'meddata_base_cohorte_patients_2024-01-01_08-30-00Z.csv',
         }];
       },
       getExportDownloadUrl,
@@ -118,7 +119,7 @@ describe('ExportPanel', () => {
     expect(anchorClick).toHaveBeenCalledOnce();
     const downloadLink = anchorClick.mock.instances[0] as HTMLAnchorElement;
     expect(downloadLink.href).toBe('https://signed.test/export.csv');
-    expect(downloadLink.download).toBe('export.csv');
+    expect(downloadLink.download).toBe('meddata_base_cohorte_patients_2024-01-01_08-30-00Z.csv');
     expect(downloadLink.rel).toBe('noopener');
     // En local/demo (pas d'Edge), le telechargement laisse une trace via la RPC log_export_read.
     await waitFor(() => expect(logExportRead).toHaveBeenCalledWith('x'));

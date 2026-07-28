@@ -151,6 +151,40 @@ Deno.test('signed-read: export sans permission -> 403', async () => {
   assertEquals(body.error, 'Acces refuse');
 });
 
+Deno.test('signed-read: export signe avec le nom lisible journalise', async () => {
+  const filename = 'meddata_base-cohorte_patients_2026-07-28_06-15-09Z.csv';
+  let signedOptions: unknown;
+  const userResponder: Responder = (call) => {
+    if (call.kind === 'from' && call.table === 'export_log') {
+      return okResult({
+        id: ID,
+        cohort_id: ID,
+        stored_file_path: PATH,
+        export_options: { download_filename: filename },
+      });
+    }
+    if (call.kind === 'rpc' && call.rpc === 'can_export_data') return okResult(true);
+    return okResult(null);
+  };
+  const adminResponder: Responder = (call) => {
+    if (call.kind === 'from' && call.table === 'cohort') return okResult({ base_id: BASE });
+    if (call.kind === 'from' && call.table === 'audit_log') return okResult(null);
+    if (call.kind === 'storage' && call.method === 'createSignedUrl') {
+      signedOptions = call.args[2];
+      return okResult({ signedUrl: 'https://signed/url' });
+    }
+    return okResult(null);
+  };
+  const { status } = await readResponse(
+    await handleSignedRead(
+      makeRequest({ body: { entity: 'export', id: ID } }),
+      deps({ userResponder, adminResponder }),
+    ),
+  );
+  assertEquals(status, 200);
+  assertEquals(signedOptions, { download: filename });
+});
+
 Deno.test('signed-read: journalisation echoue -> 500 (pas de signature sans trace)', async () => {
   const adminResponder: Responder = (call) => {
     if (call.kind === 'from' && call.table === 'audit_log') return errorResult({ message: 'db down' });

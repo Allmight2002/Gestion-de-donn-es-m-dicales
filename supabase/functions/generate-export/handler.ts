@@ -196,6 +196,51 @@ const sha256Hex = async (bytes: Uint8Array): Promise<string> =>
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
+const FILENAME_SEGMENT_MAX = 48;
+
+/**
+ * Produit un segment portable (Windows/macOS/Linux) sans laisser un nom de base ou de cohorte
+ * injecter des separateurs de chemin. Les accents sont translitteres pour garder des URLs
+ * Storage previsibles, puis chaque segment est borne afin de limiter la longueur totale.
+ */
+export function exportFilenameSegment(value: unknown, fallback: string): string {
+  const safe = typeof value === 'string'
+    ? value
+      .toLowerCase()
+      .replace(/œ/g, 'oe')
+      .replace(/æ/g, 'ae')
+      .replace(/ß/g, 'ss')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, FILENAME_SEGMENT_MAX)
+      .replace(/-+$/g, '')
+    : '';
+  return safe || fallback;
+}
+
+export function buildExportFilename(
+  baseName: unknown,
+  cohortName: unknown,
+  mode: 'encounter' | 'patient',
+  generatedAt: string,
+  format: 'csv' | 'xlsx',
+): string {
+  const timestamp = generatedAt.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  const readableTimestamp = timestamp
+    ? `${timestamp[1]}_${timestamp[2]}-${timestamp[3]}-${timestamp[4]}Z`
+    : 'date-inconnue';
+  const readableMode = mode === 'patient' ? 'patients' : 'rencontres';
+  return [
+    'meddata',
+    exportFilenameSegment(baseName, 'base'),
+    exportFilenameSegment(cohortName, 'cohorte'),
+    readableMode,
+    readableTimestamp,
+  ].join('_') + `.${format}`;
+}
+
 export async function handleGenerateExport(req: Request, deps: GenerateExportDeps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json(405, { error: 'POST requis' });
@@ -224,7 +269,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
 
   const { data: cohort, error: cohortErr } = await admin
     .from('cohort')
-    .select('id, base_id, cohort_type')
+    .select('id, base_id, name, cohort_type')
     .eq('id', cohortId)
     .maybeSingle();
   if (cohortErr || !cohort) return json(404, { error: 'Cohorte introuvable' });
@@ -232,6 +277,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
 
   const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', { p_base: cohort.base_id });
   if (canExportErr || canExport !== true) return json(403, { error: 'Acces export refuse' });
+
+  const { data: base, error: baseErr } = await admin
+    .from('base')
+    .select('name')
+    .eq('id', cohort.base_id)
+    .maybeSingle();
+  if (baseErr || !base) return collectionFailureResponse(new ExportCollectionError('read', 'base'));
 
   try {
     interface CohortMemberRow {
@@ -510,6 +562,10 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     }
 
     const fileHash = await sha256Hex(bytes);
+    const generatedAt = deps.nowIso();
+    const filename = buildExportFilename(base.name, cohort.name, options.mode, generatedAt, format);
+    // Le chemin Storage reste pseudonymise : le nom metier n'est conserve que dans le journal
+    // autorise et transmis comme Content-Disposition au moment de la lecture signee.
     const path = `${cohort.base_id}/${cohortId}/${deps.now()}-${deps.newId()}.${format}`;
     const { error: uploadErr } = await admin.storage.from(EXPORTS_BUCKET).upload(
       path,
@@ -532,6 +588,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
           ...options,
           generated_by: 'edge:generate-export',
           dictionary_included: format === 'xlsx',
+          download_filename: filename,
         },
         patient_count: patients.length,
         encounter_count: encounters.length,
@@ -539,9 +596,11 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         file_hash: fileHash,
         generation_mode: 'server',
         generated_by_function: 'generate-export',
-        server_generated_at: deps.nowIso(),
+        server_generated_at: generatedAt,
       })
-      .select('id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path, generation_mode')
+      .select(
+        'id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path, generation_mode, export_options',
+      )
       .single();
     if (insertErr) {
       await admin.storage.from(EXPORTS_BUCKET).remove([path]);

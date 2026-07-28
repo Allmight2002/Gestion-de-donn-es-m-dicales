@@ -125,8 +125,8 @@ class FakeStorageBucket {
   private call(method: string, args: unknown[]): Promise<DbResult> {
     return Promise.resolve(this.responder({ role: this.role, kind: 'storage', bucket: this.bucket, method, args }));
   }
-  createSignedUrl(path: string, expiresIn: number): Promise<DbResult> {
-    return this.call('createSignedUrl', [path, expiresIn]);
+  createSignedUrl(path: string, expiresIn: number, options?: { download?: string | boolean }): Promise<DbResult> {
+    return this.call('createSignedUrl', [path, expiresIn, options]);
   }
   download(path: string): Promise<DbResult> {
     return this.call('download', [path]);

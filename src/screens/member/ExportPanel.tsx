@@ -70,7 +70,7 @@ export function ExportPanel() {
       });
       if (item.storedFilePath) {
         const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
-        if (url) downloadUrl(url, item.storedFilePath.split('/').pop() ?? `cohorte.${format}`);
+        if (url) downloadUrl(url, item.fileName ?? item.storedFilePath.split('/').pop() ?? `cohorte.${format}`);
       }
       setDone(true);
       await load();
@@ -88,7 +88,7 @@ export function ExportPanel() {
     try {
       const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
       if (!url) throw new Error(t('export.download_unavailable'));
-      downloadUrl(url, item.storedFilePath.split('/').pop() ?? `export.${item.format}`);
+      downloadUrl(url, item.fileName ?? item.storedFilePath.split('/').pop() ?? `export.${item.format}`);
       // §7.9 : en prod l'Edge a deja journalise AVANT de signer ; en local/demo (pas d'Edge),
       // trace best-effort via la RPC log_export_read (no-op cote client quand l'Edge est actif).
       void audit.logExportRead(item.id);
