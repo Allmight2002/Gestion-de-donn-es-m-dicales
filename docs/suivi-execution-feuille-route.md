@@ -27,7 +27,7 @@ au SHA et à l'environnement indiqués.
 | T3 | Recherche visible (typeahead) | Terminé et promu | `codex/typeahead-terminologie` | PR #64 et #65 ; CI verte | **Déployé sur staging le 2026-07-26** | Chaque frappe interroge le serveur ; hors ligne non couvert |
 | T4 | Copie locale des diagnostics | Terminé localement | `codex/cache-terminologie` | — | À déployer | Téléchargement à la demande ; pas de mise à jour automatique |
 | TS | Mise en service staging de la terminologie | Terminé | `main` `147e2c58ba1afdad329133c8caa0b0bc617b9e64` | Run `30220488673` | Migrations appliquées, référentiel importé | B2 bloque l'inspection stricte ; preuves antérieures caduques |
-| P1A | Registre « Diagnostic urgences » noyau | À faire | — | — | Fictif uniquement | En attente des valeurs métier ; retour terrain requis avant 4b |
+| P1A | Registre « Diagnostic urgences » noyau | **Obsolète** | — | — | — | Remplacé par la terminologie (T1 à T4) : le champ diagnostic ne repose plus sur une liste contrôlée à garnir à la main |
 | P1B | Corrections UX D1/D2 | Terminé localement | `codex/ux-d1-d2` | — | Non requis | Vérification mobile réelle/émulée non faite |
 | P2 | Suppression et restauration sûres | À faire | — | — | À évaluer | Revue DB/RLS obligatoire |
 | P3 | Observabilité privacy-safe | À faire | — | — | À évaluer | B5 reste requis pour la preuve distante complète |

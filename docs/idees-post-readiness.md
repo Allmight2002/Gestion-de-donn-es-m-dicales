@@ -233,6 +233,14 @@ Correction attendue : réduire l'emprise permanente de cette action — la repli
 
 Correction attendue : reprendre pour les variables patient le regroupement déjà écrit pour les rencontres, en n'affichant que les sections non vides. L'identité garde son encadré propre, distinct des sections cliniques.
 
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D5 | **Un diagnostic s'affiche « [object Object] » dans la liste des patients d'une base**, alors qu'il est correct dans la fiche patient | `src/screens/member/BaseHome.tsx:358` termine par `String(v)`. La fonction `displayFieldValue` existe pourtant déjà dans `src/data/types.ts` et est utilisée par `PatientDetail.tsx` — d'où l'écart entre les deux écrans. Une valeur de terminologie est un objet `{code, label}` : `String()` en fait « [object Object] » | Très petite (front) | Signalé 2026-07-27 |
+
+Correction attendue : utiliser `displayFieldValue` dans `BaseHome`, comme la fiche patient le fait déjà. Vérifier au passage les autres écrans qui rendent une valeur : `EditEncounter.tsx` termine lui aussi par `String(v)`.
+
+Ce défaut illustre le risque d'un correctif appliqué à un seul appelant : la fonction partagée existait, mais tous les points d'affichage n'ont pas été repris.
+
 **Ce défaut devient central avec l'idée 8.** En étude transversale, la stratégie naturelle est de déclarer *toutes* les variables en portée patient pour qu'elles apparaissent dès la création — c'est ce qu'a constaté le porteur en simulant le parcours. Le formulaire devient alors une longue liste plate, sans aucune structure, là où une rencontre aurait été correctement organisée. Corriger D4 est donc un préalable pratique au mode « une seule saisie ».
 
 À vérifier au passage : le mode hors-ligne est désactivé par la politique de release standard (`VITE_OFFLINE_MODE=disabled`). Si le bandeau reste visible alors que la fonction est inopérante, c'est une raison supplémentaire de ne pas lui donner cette place.
