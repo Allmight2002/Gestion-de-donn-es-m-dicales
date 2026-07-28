@@ -151,7 +151,7 @@ Conformité : l'e-mail de l'étudiant entre au registre des traitements (volet j
 
 | Question | Recommandation |
 |---|---|
-| L'étudiant peut-il créer des patients minimaux, ou seulement remplir des rencontres de patients créés par le médecin ? | **Oui à la création minimale** (sinon la saisie de thèse est impraticable), identité nominative exclue |
+| ~~L'étudiant peut-il créer des patients minimaux, ou seulement remplir des rencontres de patients créés par le médecin ?~~ | **Tranché le 2026-07-28 : l'étudiant crée des patients.** La recommandation est retenue — création minimale, **identité nominative exclue**. Le compte de mission écrit donc dans `patient` et `encounter`, mais jamais dans `patient_identity` : c'est cette exclusion qui rend la permission acceptable, puisque le saisisseur alimente le registre sans jamais accéder à l'identité des personnes. |
 | Durée maximale d'une mission | **24 mois**, prolongeable |
 | Lecture de l'identité sur option | Maintenir l'option, **désactivée par défaut**, avec justification consignée à l'activation |
 | Upload de documents par le saisisseur | **Non en v1** ; réévaluer avec le scanner pérenne |

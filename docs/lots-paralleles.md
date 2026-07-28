@@ -17,17 +17,18 @@ n'ont aucun rapport.
 |---|---|---|---|
 | **L1** | Liste d'une base : affichage et bandeau | `BaseHome.tsx` | L2, L3, L5, L7 |
 | **L2** | Formulaires patient : sections | `NewPatient.tsx`, `EditPatient.tsx` | L1, L3, L5, L7 |
-| **L3** | Allègement du chargement | `vite.config.ts` | tous |
+| ~~L3~~ | ~~Allègement du chargement~~ | **Livré le 2026-07-28** | — |
 | **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
 | **L5** | Constructeur de règles | `RuleForm.tsx`, `templateRules.ts` | L1, L2, L3, L7 |
 | **L6** | Finition de l'interface | `AppShell.tsx`, composant de case à cocher, **9 écrans** | **seul** |
 | **L7** | Protections de branche (B7) | *aucun fichier* | tous |
 | **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
 | **L9** | Modèle d'observation d'une base | migration, `NewPatient.tsx`, `FieldForm.tsx`, `BaseHome.tsx` | **seul** |
-| **L10** | Comptes de mission (P4) | migration, nouvelle Edge Function, `access.ts`, `AccessManagement.tsx` | L1, L2, L3, L5, L7 |
-| **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L1, L2, L3, L5, L7 |
-| **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L2, L3, L5, L7 |
-| **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L1, L2, L3, L5, L7 |
+| **L10** | Comptes de mission (P4) | migration, nouvelle Edge Function, `access.ts`, `AccessManagement.tsx` | L1, L2, L5, L7 |
+| **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L1, L2, L5, L7 |
+| **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L2, L5, L7 |
+| **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L1, L2, L5, L7 |
+| **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
 
 ## Deux fichiers à surveiller
 
@@ -61,11 +62,17 @@ les rencontres le sont. Reprendre le regroupement écrit dans
 
 Préalable pratique à L9.
 
-### L3 — Allègement du chargement
+### L3 — Allègement du chargement — **livré**
 
-**Idée 9** : sortir la bibliothèque de tableur du préchargement, dédoublonner ses
-deux copies, découper le fichier principal. N'affecte que la configuration de
-build : aucun conflit possible avec les autres lots.
+**Idée 9**, livrée le 2026-07-28 : le tableur est sorti du préchargement et le
+socle applicatif isolé du code métier. Précache **1 728 → 892 Kio**, fichier
+principal **512 → 177 Ko**. Le dédoublonnement est abandonné (deux graphes de
+modules distincts, gain nul une fois les copies hors précache).
+
+**Reste ouvert, dans un lot à part** : ne charger que la langue active — les deux
+traductions voyagent ensemble dans 98 Ko. La correction touche
+`src/i18n/messages.ts`, signalé ci-dessus comme source de conflits : ce lot doit
+tourner **seul**, ou au moins sans aucun lot qui ajoute du texte.
 
 ### L4 — Soupape sur le champ diagnostic
 
@@ -115,10 +122,16 @@ existe déjà — `base_access`, invitations expirables, révocation, audit ; il
 manque un rôle global dédié, une permission de création séparée, une expiration
 d'accès et une Edge Function d'invitation idempotente.
 
-**Six décisions métier restent en attente du porteur**, détaillées dans
-[`spec-comptes-mission.md`](spec-comptes-mission.md). La plus structurante :
-l'étudiant crée-t-il des patients, ou remplit-il seulement des rencontres
-existantes ? Ce lot ne peut pas démarrer avant cet arbitrage.
+**La décision structurante est tranchée** (2026-07-28) : l'étudiant **crée des
+patients**, en création minimale, sans jamais accéder à l'identité nominative.
+C'est cette exclusion qui rend la permission acceptable — le saisisseur alimente
+le registre sans savoir de qui il s'agit.
+
+**Cinq décisions secondaires restent ouvertes** dans
+[`spec-comptes-mission.md`](spec-comptes-mission.md) : durée maximale d'une
+mission, lecture de l'identité sur option, upload de documents, délai de purge
+des comptes échus, nom du rôle. Chacune a une recommandation ; aucune ne bloque
+le démarrage du lot, qui peut donc **commencer**.
 
 L'upload de documents est exclu de la v1, ce qui découple ce chantier de B2.
 Surface base et Edge : appliquer `meddata-db-safety`.
@@ -164,8 +177,8 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-1. **En parallèle immédiat** : L1, L2, L3, L5, L7 — aucun ne partage de fichier.
-2. **Après arbitrage du porteur** : L10 et L11, qui attendent respectivement six
-   et sept décisions métier.
-3. **Ensuite** : L4, L8, L12, L13.
-4. **Seuls, l'un après l'autre** : L6 puis L9.
+1. **En parallèle immédiat** : L1, L2, L5, L7, L10 — aucun ne partage de fichier.
+   L10 est désormais débloqué : sa décision structurante est tranchée.
+2. **Ensuite** : L4, L8, L11, L12, L13. L11 attend encore sept décisions, mais
+   ses étapes locales sont réalisables sans elles.
+3. **Seuls, l'un après l'autre** : L6, L9, L14.
