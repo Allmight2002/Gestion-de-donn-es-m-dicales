@@ -59,6 +59,16 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['icon.svg'],
+        // Le tableur (SheetJS) reste TELECHARGEABLE A LA DEMANDE mais sort du PRECACHE : il pese
+        // ~856 Ko a lui seul (une copie pour le thread principal, une pour le worker de parsing),
+        // soit la moitie de ce que le service worker tirait des la premiere visite. Or il ne sert
+        // qu'a l'import d'un classeur, une action que la plupart des visites ne feront jamais, et
+        // qui exige de toute facon le serveur (validation par `import_records`) : rien a gagner a
+        // le tenir pret hors-ligne. Les deux fichiers restent servis normalement par le reseau au
+        // moment ou l'utilisateur depose un fichier.
+        workbox: {
+          globIgnores: ['**/xlsx-*.js'],
+        },
         manifest: {
           name: 'Registre clinique',
           short_name: 'Registre',
@@ -74,6 +84,23 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          // Le fichier principal depassait 500 Ko, seuil d'alerte de l'outil de build : socle
+          // (React, routeur) et client de base de donnees y voyageaient avec le code applicatif.
+          // Les isoler donne deux gains : ils sont analyses separement, et surtout ils gardent
+          // leur empreinte entre deux versions -> apres une mise a jour, le navigateur ne
+          // retelecharge que le code qui a reellement change, pas le socle.
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return undefined;
+            if (/[\\/]node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/.test(id)) return 'react';
+            if (id.includes('@supabase')) return 'supabase';
+            return undefined;
+          },
+        },
+      },
+    },
     server: { port: 5173 },
   };
 });

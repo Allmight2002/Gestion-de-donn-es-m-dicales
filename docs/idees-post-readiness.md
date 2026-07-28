@@ -36,7 +36,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 6 | **Soupape sur le champ de terminologie** — étendre au type `terminology` la soupape livrée pour les listes contrôlées | Petite (front) | — | *(demandée le 2026-07-27)* | À faire |
 | 7 | **Constructeur de règles de cohérence** — remplacer la saisie de JSON brut par un assemblage guidé, compréhensible sans culture technique | Moyenne (front) | — | *(demandée le 2026-07-27)* | À faire |
 | 8 | **Modèle d'observation d'une base** — rendre le suivi longitudinal explicite et optionnel : étude transversale, suivi répété, ou registre d'événements | Grande (front + une colonne) | — | *(cadrée le 2026-07-27)* | À faire |
-| 9 | **Alléger le chargement de l'application** — 1,7 Mo précachés dès la première visite, dont 837 Ko de tableur | Moyenne (configuration du build) | — | *(signalée le 2026-07-27)* | À faire |
+| 9 | **Alléger le chargement de l'application** — 1,7 Mo précachés dès la première visite, dont 837 Ko de tableur | Moyenne (configuration du build) | — | *(signalée le 2026-07-27)* | **Livrée** le 2026-07-28 — précache 1 728 → 892 Kio |
 | 10 | **Finition de l'interface** — zone de profil trop discrète, cases à cocher système, absence de retour visuel sur les changements d'état | Moyenne (front, transverse) | — | *(signalée le 2026-07-27)* | À faire |
 
 ## Notes par idée
@@ -185,6 +185,8 @@ Ce préchargement ne retarde pas l'affichage initial, mais il consomme bande pas
 - **ne charger que la langue active** : les traductions française et anglaise voyagent ensemble dans un fichier de 95 Ko.
 
 Avant d'optimiser plus loin, mesurer : sans les mesures réelles par métrique, on ignore si le score tient au poids téléchargé, à la latence réseau depuis le lieu d'usage, ou au temps de réponse de la base.
+
+**Livrée le 2026-07-28** (lot L3). Les deux premières pistes sont traitées : le tableur sort du précache, qui passe de **1 728 à 892 Kio**, et le socle applicatif est isolé du code métier, ce qui ramène le fichier principal de 512 à 177 Ko et supprime l'alerte de l'outil de build. Le dédoublonnement est abandonné — les deux copies viennent de graphes de modules distincts, et le gain serait nul maintenant qu'elles sont hors précache. Le chargement de la seule langue active reste à faire, dans un lot séparé : il touche `src/i18n/messages.ts`. Détail et vérifications dans le journal d'exécution.
 
 ### 10. Finition de l'interface
 

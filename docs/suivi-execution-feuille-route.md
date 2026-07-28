@@ -953,3 +953,61 @@ et B9 rattachées à `ebee179` **ne décrivent plus l'état courant** : elles re
 valables pour leur propre SHA, conformément au principe du cadre. Aucune
 nouvelle acceptation de readiness n'est prononcée ici, et la production reste
 hors périmètre — décision inchangée : **production readiness not demonstrated**.
+
+## Lot L3 — Allègement du chargement de l'application (2026-07-28)
+
+Idée n°9 de la file, ouverte le 2026-07-27 après un *Real Experience Score* de
+**78 sur ordinateur** relevé par le porteur. Ce score agrège des navigations
+réelles et reste bruité sur un site à faible trafic : il ne prouve pas une cause.
+Le lot n'a donc traité que ce qui est **mesurable dans le dépôt**.
+
+### Ce qui était mesuré sur `main`
+
+| | Avant | Après |
+|---|---|---|
+| Précache du service worker | **1 727,9 Kio** (70 fichiers) | **892,4 Kio** (70 fichiers) |
+| Fichier principal `index` | 511,8 Ko | 176,5 Ko |
+| Alerte « chunk > 500 Ko » | oui | non |
+
+### Deux corrections
+
+**Le tableur sort du précache.** SheetJS pèse 856 Ko à lui seul — 493 Ko pour le
+thread principal, 363 Ko pour le worker de parsing. Le service worker le tirait
+dès la première visite, alors qu'il ne sert qu'à l'import d'un classeur : une
+action que la plupart des visites ne feront jamais, et qui exige de toute façon
+le serveur pour la validation. Le tenir prêt hors-ligne n'apportait rien. Les
+deux fichiers restent servis par le réseau au moment du dépôt d'un fichier ;
+aucune fonctionnalité n'est retirée. **835 Kio économisés à chaque première
+visite** — pertinent dans le contexte de déploiement visé, où la bande passante
+est comptée.
+
+**Le socle est isolé du code applicatif.** React, le routeur et le client de base
+de données voyageaient dans le fichier principal, au-dessus du seuil d'alerte de
+l'outil de build. Séparés, ils gardent leur empreinte d'une version à l'autre :
+après une mise à jour, le navigateur ne retélécharge que le code qui a réellement
+changé.
+
+### Vérification
+
+`npm run typecheck`, `npm run lint` et `npm run test:web` (**235 tests**) sont
+verts. Le service worker généré ne contient plus aucune référence au tableur.
+L'application construite a été **chargée et manipulée** depuis `dist/` : écran de
+connexion rendu, bascule de langue fonctionnelle, aucune erreur de console — la
+séparation du socle n'a pas cassé l'ordre d'initialisation des modules.
+
+### Ce que ce lot ne fait pas
+
+- **Dédoublonner le tableur** entre le worker et le thread principal. Les deux
+  copies proviennent de deux graphes de modules distincts que l'outil de build
+  compile séparément ; les fusionner supposerait de supprimer le repli sur le
+  thread principal, prévu pour les navigateurs sans *Web Worker*. Le gain serait
+  nul depuis ce lot : les deux copies sont désormais hors précache et chargées à
+  la demande.
+- **Ne charger que la langue active.** Les traductions française et anglaise
+  voyagent ensemble dans un fichier de 98 Ko. La correction touche
+  `src/i18n/messages.ts`, identifié comme source de conflits pour les lots
+  parallèles : elle est laissée à un lot ultérieur, seul.
+- **Établir une cause au score mesuré.** Sans mesures réelles par métrique, on
+  ignore toujours la part du poids téléchargé, de la latence réseau depuis le
+  lieu d'usage et du temps de réponse de la base. Le score devra être relu après
+  déploiement, sur plusieurs jours.
