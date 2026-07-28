@@ -1011,3 +1011,44 @@ séparation du socle n'a pas cassé l'ordre d'initialisation des modules.
   ignore toujours la part du poids téléchargé, de la latence réseau depuis le
   lieu d'usage et du temps de réponse de la base. Le score devra être relu après
   déploiement, sur plusieurs jours.
+
+## Lot L5 — Constructeur de règles de cohérence (2026-07-28)
+
+Idée n°7 de la file. Pour poser une règle de cohérence sur une base, l'utilisateur
+devait taper du JSON à la main — le gabarit affiché en exemple donnait le ton :
+
+    {"operator":"greater_or_equal","left_field":"discharge_date",
+     "right_field":"admission_date"}
+
+Le produit s'adresse à des médecins-chercheurs. Cette zone leur était fermée,
+alors que c'est là que se joue la qualité des données.
+
+### Ce qui est livré
+
+Un mode **guidé** devient le mode par défaut : on choisit un type de règle
+(comparaison entre deux variables, ou règle conditionnelle), puis les variables
+et l'opérateur dans des listes. Les opérateurs sont libellés en langage clinique,
+et adaptés au type de la variable — une date ne se compare pas avec les mêmes
+mots qu'un nombre.
+
+La règle en construction est rendue sous forme de **phrase lisible**
+(`ruleSentence`), ce qui permet de vérifier ce qu'on vient d'assembler sans
+relire du JSON. Le même rendu est réutilisé par l'éditeur de version de gabarit
+pour afficher les règles déjà enregistrées (`RuleSummary`).
+
+Le mode **expert** conserve la saisie JSON directe, pour les cas que l'assemblage
+guidé ne couvre pas.
+
+### Ce qui n'a pas changé
+
+La sortie reste exactement le même JSON qu'avant : les règles déjà enregistrées
+continuent de fonctionner sans reprise. `parseRule` demeure la validation côté
+client, et **le serveur reste la source de vérité** — aucun contrôle n'a été
+déplacé vers l'interface seule.
+
+### Reprise
+
+Le chantier a été mené par Codex, dont le quota s'est épuisé après le push, avant
+l'ouverture de la pull request et avant la consigne au journal. La section
+ci-dessus a été écrite lors de la reprise ; la vérification est celle de la CI
+sur le SHA de la pull request, qui exécute la suite complète.
