@@ -19,10 +19,10 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | Lot | Objet | Fichiers principaux | Lancer en même temps que |
 |---|---|---|---|
 | ~~L1~~ | ~~Liste d'une base : affichage et bandeau~~ | **Livré le 2026-07-28** | — |
-| **L2** | Formulaires patient : sections | `NewPatient.tsx`, `EditPatient.tsx` | L1, L3, L5, L7 |
+| ~~L2~~ | ~~Formulaires patient : sections~~ | **Livré le 2026-07-28** | — |
 | ~~L3~~ | ~~Allègement du chargement~~ | **Livré le 2026-07-28** | — |
 | **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
-| **L5** | Constructeur de règles | `RuleForm.tsx`, `templateRules.ts` | L1, L2, L3, L7 |
+| ~~L5~~ | ~~Constructeur de règles~~ | **Livré le 2026-07-28** | — |
 | **L6** | Finition de l'interface | `AppShell.tsx`, composant de case à cocher, **9 écrans** | **seul** |
 | **L7** | Protections de branche (B7) | *aucun fichier* | tous |
 | **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
@@ -51,13 +51,15 @@ Livré le 2026-07-28. **D5** : `String(v)` remplacé par `displayFieldValue` dan
 diagnostic s'affichait « [object Object] » dans la liste des patients. **D3** :
 bandeau hors-ligne resserré. Tests ajoutés dans `Patients.test.tsx`.
 
-### L2 — Formulaires patient : sections
+### L2 — Formulaires patient : sections — **livré**
 
-**D4** : les variables permanentes ne sont pas groupées par section, alors que
-les rencontres le sont. Reprendre le regroupement écrit dans
-`EncounterFields.tsx`, en n'affichant que les sections non vides.
+**D4**, livré le 2026-07-28. Le regroupement d'`EncounterFields.tsx` est devenu
+un composant commun, utilisé par la création de patient. Ordre **Clinique →
+Biologie → Paraclinique**, sections vides non rendues, et une section **Autre**
+qui recueille toute variable sans section connue — pour qu'aucune donnée ne
+disparaisse silencieusement du formulaire.
 
-Préalable pratique à L9.
+Le préalable de L9 est donc levé.
 
 ### L3 — Allègement du chargement — **livré**
 
@@ -76,10 +78,14 @@ tourner **seul**, ou au moins sans aucun lot qui ajoute du texte.
 **Idée 6** : étendre au type `terminology` la soupape des listes contrôlées.
 Touche `FieldForm.tsx`, que L9 modifie aussi — ne pas lancer les deux ensemble.
 
-### L5 — Constructeur de règles
+### L5 — Constructeur de règles — **livré**
 
-**Idée 7** : remplacer la saisie de JSON par un assemblage guidé. Fichiers
-isolés, aucun recoupement avec les autres lots.
+**Idée 7**, livrée le 2026-07-28. Un mode **guidé** remplace la saisie de JSON :
+on choisit un type de règle, puis les variables et l'opérateur dans des listes,
+libellés en langage clinique et adaptés au type de la variable. La règle en
+construction s'affiche en **phrase lisible**, réutilisée par l'éditeur de version
+pour les règles déjà enregistrées. Un mode **expert** conserve le JSON pour les
+cas non couverts. La sortie reste le même JSON qu'avant.
 
 ### L6 — Finition de l'interface
 
@@ -174,9 +180,24 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-1. **En parallèle immédiat** : L7, L10 — aucun ne partage de fichier. L10 est
-   désormais débloqué : sa décision structurante est tranchée. L2 et L5 sont
-   déjà en cours sur leurs branches respectives.
-2. **Ensuite** : L4, L8, L11, L12, L13. L11 attend encore sept décisions, mais
-   ses étapes locales sont réalisables sans elles.
-3. **Seuls, l'un après l'autre** : L6, L9, L14.
+Quatre lots sont livrés : **L1, L2, L3 et L5**. Il en reste dix.
+
+1. **En parallèle immédiat** : L4, L7, L10, L12 — aucun ne partage de fichier.
+   L10 est débloqué, sa décision structurante étant tranchée.
+2. **Ensuite** : L8, L11, L13. L11 attend encore sept décisions, mais ses étapes
+   locales sont réalisables sans elles.
+3. **Seuls, l'un après l'autre** : L6, L9, L14. Le préalable de L9 est levé
+   depuis la livraison de L2.
+
+### Leçon des trois lots menés en parallèle
+
+L1, L2 et L5 ont tourné en même temps, et **tous trois ont fini en conflit** sur
+`docs/suivi-execution-feuille-route.md`. La consigne « ajouter sa section à la
+fin » ne suffit pas : quand deux lots se terminent le même jour, ils ajoutent au
+même endroit. Les conflits étaient purement additifs et sans risque, mais ils ont
+coûté deux résolutions manuelles et bloqué la CI d'une pull request — GitHub
+n'exécute pas les contrôles tant que la fusion est impossible, ce qui donne
+l'illusion trompeuse d'une PR sans vérification.
+
+Pour la suite : soit consigner au journal **dans un commit séparé, après
+fusion**, soit accepter la résolution comme une étape normale du lot.
