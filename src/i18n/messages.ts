@@ -696,6 +696,7 @@ export const messages = {
     'logout.unsynced_title': 'Modifications locales non synchronisees',
     'logout.unsynced_body': '{n} modification(s) locale(s) seront definitivement supprimees par la deconnexion. Exportez-les si necessaire, annulez ou confirmez leur destruction.',
     'logout.destroy_and_signout': 'Detruire et se deconnecter',
+    'section.other': 'Autre',
   },
   en: {
     'app.title': 'Clinical registry',
@@ -1387,6 +1388,7 @@ export const messages = {
     'logout.unsynced_title': 'Unsynchronized local changes',
     'logout.unsynced_body': '{n} local change(s) will be permanently deleted on sign-out. Export them if needed, cancel, or confirm destruction.',
     'logout.destroy_and_signout': 'Delete and sign out',
+    'section.other': 'Other',
   },
 } as const;
 
