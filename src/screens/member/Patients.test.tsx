@@ -92,6 +92,65 @@ describe('NewPatient', () => {
 });
 
 describe('BaseHome (liste patients)', () => {
+  test('place l action hors-ligne occasionnelle dans l en-tete', async () => {
+    const patientRepo = {
+      async listPatientsPage() { return { rows: [], total: 0 }; },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    const action = await screen.findByRole('button', { name: 'Rendre disponible hors-ligne' });
+    expect(action.closest('header')).not.toBeNull();
+  });
+
+  test('affiche une valeur de terminologie par son libelle dans la liste', async () => {
+    const terminologyTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'patient', type: 'terminology' })],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patient: PatientListItem = {
+      id: 'p-terminology',
+      code: 'P-TERMINOLOGY',
+      templateVersionId: 'v1',
+      data: { diagnostic: { code: 'C71.9', label: 'Glioblastome' } },
+      validationStatus: 'curated',
+      identity: null,
+    };
+    const patientRepo = {
+      async listPatientsPage() { return { rows: [patient], total: 1 }; },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={terminologyTemplateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Glioblastome')).toBeInTheDocument();
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
+  });
+
   test('purge les patients precedents si la nouvelle base echoue a charger sa liste', async () => {
     const baseB: BaseListing = {
       ...baseListing,

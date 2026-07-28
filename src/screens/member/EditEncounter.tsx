@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
-import type { TemplateField, ValidationRule } from '../../data/types';
+import { displayFieldValue, type TemplateField, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import { validateValues, evaluateRules, isMissing, missingCodeOf } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -41,8 +41,7 @@ export function EditEncounter() {
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const fmt = (v: unknown): string => {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
-    if (v === null || v === undefined || v === '') return '—';
-    return String(v);
+    return displayFieldValue(v, '—');
   };
 
   const load = useCallback(async () => {
