@@ -24,6 +24,10 @@ n'ont aucun rapport.
 | **L7** | Protections de branche (B7) | *aucun fichier* | tous |
 | **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
 | **L9** | Modèle d'observation d'une base | migration, `NewPatient.tsx`, `FieldForm.tsx`, `BaseHome.tsx` | **seul** |
+| **L10** | Comptes de mission (P4) | migration, nouvelle Edge Function, `access.ts`, `AccessManagement.tsx` | L1, L2, L3, L5, L7 |
+| **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L1, L2, L3, L5, L7 |
+| **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L2, L3, L5, L7 |
+| **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L1, L2, L3, L5, L7 |
 
 ## Deux fichiers à surveiller
 
@@ -103,8 +107,65 @@ Lot à surface base : appliquer `meddata-db-safety`.
 des lots — migration, création de patient, éditeur de variables, écran de base.
 À traiter **seul**, après L2 qui lui sert de préalable.
 
+### L10 — Comptes de mission
+
+**P4**, et l'idée n°1 de la file. Un médecin confie la saisie d'une seule base à
+un étudiant, pour une durée limitée, en création seule, révocable. Le socle
+existe déjà — `base_access`, invitations expirables, révocation, audit ; il
+manque un rôle global dédié, une permission de création séparée, une expiration
+d'accès et une Edge Function d'invitation idempotente.
+
+**Six décisions métier restent en attente du porteur**, détaillées dans
+[`spec-comptes-mission.md`](spec-comptes-mission.md). La plus structurante :
+l'étudiant crée-t-il des patients, ou remplit-il seulement des rencontres
+existantes ? Ce lot ne peut pas démarrer avant cet arbitrage.
+
+L'upload de documents est exclu de la v1, ce qui découple ce chantier de B2.
+Surface base et Edge : appliquer `meddata-db-safety`.
+
+### L11 — Observabilité des erreurs
+
+**P3**, et l'idée n°2 de la file. Aujourd'hui les plantages d'écran sont captés
+localement mais **rien ne remonte** au porteur, et les erreurs d'arrière-plan ne
+sont pas captées du tout. Voir
+[`spec-observabilite-erreurs.md`](spec-observabilite-erreurs.md) : filet global,
+puits interne respectueux de la vie privée, écran « État du système » réservé à
+l'administration.
+
+Les étapes locales sont réalisables dès maintenant ; seule l'alerte distante
+dépend de **B5**, encore ouvert. **Sept décisions** sont en attente dans la spec.
+
+Surface base : appliquer `meddata-db-safety`.
+
+### L12 — Traitement des propositions
+
+Dette laissée par le lot P1S. La soupape écrit les valeurs proposées dans un
+champ compagnon, mais **rien ne les liste** à l'échelle d'une base : elles dorment
+dans les fiches, et personne ne peut décider de les promouvoir en valeurs de la
+liste. Sans cet écran, la boucle d'amélioration annoncée n'existe pas.
+
+Lot de lecture seule : un écran qui parcourt les propositions non vides et permet
+d'ouvrir la fiche correspondante.
+
+### L13 — Rafraîchissement de la copie locale
+
+Dette laissée par le lot T4. La détection d'une copie périmée existe
+(`cacheIsCurrent`), et une copie périmée est déjà ignorée au profit du serveur —
+mais **rien ne propose de la mettre à jour**. L'utilisateur doit deviner qu'il
+faut retélécharger.
+
+Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
+
+## Ce qui n'a pas besoin de lot
+
+- **P5, terminologie avancée** : couverte par les lots T1 à T4 déjà livrés.
+- **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
+- **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
+
 ## Ordre suggéré
 
 1. **En parallèle immédiat** : L1, L2, L3, L5, L7 — aucun ne partage de fichier.
-2. **Ensuite** : L4 et L8.
-3. **Seuls, l'un après l'autre** : L6 puis L9.
+2. **Après arbitrage du porteur** : L10 et L11, qui attendent respectivement six
+   et sept décisions métier.
+3. **Ensuite** : L4, L8, L12, L13.
+4. **Seuls, l'un après l'autre** : L6 puis L9.
