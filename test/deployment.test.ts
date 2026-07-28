@@ -79,8 +79,11 @@ describe('configuration de deploiement', () => {
     const denoImports = (JSON.parse(read('deno.json')) as { imports: Record<string, string> }).imports;
     const xlsxSpecifier = denoImports.xlsx;
     expect(xlsxSpecifier).toBe('./supabase/functions/_shared/vendor/xlsx-0.20.3.mjs');
-    const vendoredXlsx = readFileSync(xlsxSpecifier.slice(2));
-    expect(createHash('sha256').update(vendoredXlsx).digest('hex')).toBe(
+    // Git peut materialiser les fichiers texte en CRLF dans un worktree Windows. Le
+    // contenu amont SheetJS est verrouille en LF : normaliser uniquement les fins de
+    // ligne evite de confondre cette conversion Git avec une modification du module.
+    const vendoredXlsx = readFileSync(xlsxSpecifier.slice(2), 'utf8').replace(/\r\n/g, '\n');
+    expect(createHash('sha256').update(vendoredXlsx, 'utf8').digest('hex')).toBe(
       '1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db',
     );
     expect(read('supabase/functions/_shared/vendor/LICENSE.sheetjs.txt')).toContain('Apache License');

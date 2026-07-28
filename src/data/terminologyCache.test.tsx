@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   cacheIsCurrent, cacheStatus, clearCache, downloadReference, normalizeQuery, searchLocal,
 } from './terminologyCache';
-import type { TerminologyEntry, TerminologyRepository } from './terminology';
+import { makeTerminologyRepository, type TerminologyEntry, type TerminologyRepository } from './terminology';
+
+const RELEASE_ID = '00000000-0000-4000-8000-000000000001';
 
 const ENTREES: TerminologyEntry[] = [
   { code: '1A00', label: 'Choléra', searchText: 'cholera' },
@@ -20,8 +22,11 @@ const ENTREES: TerminologyEntry[] = [
 function repo(over: Partial<TerminologyRepository> = {}): TerminologyRepository {
   return {
     search: async () => [],
-    activeRelease: async () => ({ slug: 'diagnostics-fr', version: '1', conceptCount: ENTREES.length }),
-    listEntries: async (offset, limit) => ENTREES.slice(offset, offset + limit),
+    activeRelease: async () => ({ id: RELEASE_ID, slug: 'diagnostics-fr', version: '1', conceptCount: ENTREES.length }),
+    listEntries: async (_releaseId, offset, limit) => ({
+      entries: ENTREES.slice(offset, offset + limit),
+      total: ENTREES.length,
+    }),
     ...over,
   };
 }
@@ -48,6 +53,7 @@ describe('copie locale', () => {
   test('le telechargement enregistre les entrees et la publication', async () => {
     const status = await downloadReference(repo());
     expect(status.count).toBe(ENTREES.length);
+    expect(status.releaseId).toBe(RELEASE_ID);
     expect(status.slug).toBe('diagnostics-fr');
     expect((await cacheStatus())?.count).toBe(ENTREES.length);
   });
@@ -86,7 +92,14 @@ describe('copie locale', () => {
   test('une copie d une autre publication est signalee comme perimee', async () => {
     await downloadReference(repo());
     expect(await cacheIsCurrent(repo())).toBe(true);
-    const neuf = repo({ activeRelease: async () => ({ slug: 'diagnostics-fr', version: '2', conceptCount: 5 }) });
+    const neuf = repo({
+      activeRelease: async () => ({
+        id: '00000000-0000-4000-8000-000000000002',
+        slug: 'diagnostics-fr',
+        version: '1',
+        conceptCount: 5,
+      }),
+    });
     expect(await cacheIsCurrent(neuf)).toBe(false);
   });
 
@@ -106,8 +119,16 @@ describe('copie locale', () => {
   test('un nouveau telechargement remplace l ancien contenu', async () => {
     await downloadReference(repo());
     const reduit = repo({
-      listEntries: async (offset, limit) => ENTREES.slice(0, 1).slice(offset, offset + limit),
-      activeRelease: async () => ({ slug: 'diagnostics-fr', version: '2', conceptCount: 1 }),
+      listEntries: async (_releaseId, offset, limit) => ({
+        entries: ENTREES.slice(0, 1).slice(offset, offset + limit),
+        total: 1,
+      }),
+      activeRelease: async () => ({
+        id: '00000000-0000-4000-8000-000000000002',
+        slug: 'diagnostics-fr',
+        version: '2',
+        conceptCount: 1,
+      }),
     });
     await downloadReference(reduit);
     expect((await cacheStatus())?.count).toBe(1);
@@ -115,9 +136,47 @@ describe('copie locale', () => {
   });
 
   test('la pagination recupere toutes les entrees', async () => {
-    const listEntries = vi.fn(async (offset: number, limit: number) => ENTREES.slice(offset, offset + limit));
+    // Simule un plafond PostgREST plus bas que la page demandee : une page courte ne signifie
+    // pas que le referentiel est termine tant que le compte exact annonce encore des lignes.
+    const listEntries = vi.fn(async (releaseId: string, offset: number, limit: number) => ({
+      entries: releaseId === RELEASE_ID ? ENTREES.slice(offset, offset + Math.min(limit, 2)) : [],
+      total: ENTREES.length,
+    }));
     await downloadReference(repo({ listEntries }));
     expect((await cacheStatus())?.count).toBe(ENTREES.length);
-    expect(listEntries).toHaveBeenCalled();
+    expect(listEntries).toHaveBeenCalledTimes(3);
+    expect(listEntries.mock.calls.every(([releaseId]) => releaseId === RELEASE_ID)).toBe(true);
+  });
+
+  test('un changement de publication pendant le telechargement efface la copie partielle', async () => {
+    const activeRelease = vi.fn()
+      .mockResolvedValueOnce({ id: RELEASE_ID, slug: 'diagnostics-fr', version: '1', conceptCount: ENTREES.length })
+      .mockResolvedValueOnce({
+        id: '00000000-0000-4000-8000-000000000002',
+        slug: 'diagnostics-fr',
+        version: '2',
+        conceptCount: ENTREES.length,
+      });
+    await expect(downloadReference(repo({ activeRelease }))).rejects.toThrow(/actif a changé/i);
+    expect(await cacheStatus()).toBeNull();
+    expect(await searchLocal('diabete')).toEqual([]);
+  });
+
+  test('le repository filtre chaque page sur la publication demandee et exige un compte exact', async () => {
+    const builder: Record<string, ReturnType<typeof vi.fn>> = {};
+    builder.select = vi.fn(() => builder);
+    builder.eq = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
+    builder.order = vi.fn(() => builder);
+    builder.range = vi.fn(async () => ({
+      data: [{ code: '1A00', label: 'Choléra', search_text: 'cholera' }],
+      error: null,
+      count: 1,
+    }));
+    const client = { from: vi.fn(() => builder) };
+    const page = await makeTerminologyRepository(client as never).listEntries(RELEASE_ID, 0, 1000);
+    expect(builder.select).toHaveBeenCalledWith('code, label, search_text', { count: 'exact' });
+    expect(builder.eq).toHaveBeenCalledWith('release_id', RELEASE_ID);
+    expect(page).toEqual({ entries: [ENTREES[0]], total: 1 });
   });
 });

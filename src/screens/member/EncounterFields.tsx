@@ -35,7 +35,7 @@ export function EncounterFields({
             {sectionFields.map((f) => {
               const proposal = isChoiceField(f) ? findProposalField(fields, f) : undefined;
               return (
-                <label key={f.id} className="flex flex-col text-sm">
+                <div key={f.id} className="flex flex-col text-sm">
                   <span className="text-slate-700">
                     {f.label}
                     {f.required && <span className="text-red-500"> *</span>}
@@ -54,7 +54,7 @@ export function EncounterFields({
                       <ValueInput field={f} value={values[f.fieldKey]} onChange={(v) => onChange(f.fieldKey, v)} />
                     )}
                   </div>
-                </label>
+                </div>
               );
             })}
           </fieldset>

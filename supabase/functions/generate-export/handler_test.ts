@@ -396,6 +396,32 @@ Deno.test('generate-export: limite produit depassee -> 413 explicite avant charg
   assertEquals(responseBody.observed, EXPORT_LIMITS.patients + 1);
 });
 
+Deno.test('generate-export: les colonnes de code de terminologie comptent dans la limite CSV', async () => {
+  const terminologyFields = Array.from({ length: 498 }, (_, index) => ({
+    id: `terminology-${index.toString().padStart(3, '0')}`,
+    template_version_id: TV,
+    field_key: `diagnostic_${index}`,
+    label: `Diagnostic ${index}`,
+    scope: 'encounter' as const,
+    section: 'clinique',
+    type: 'terminology',
+    unit: null,
+    allowed_values: null,
+    display_order: index,
+  }));
+  const d = deps({
+    fromResponder: (call) => call.table === 'template_field' ? queriedRows(call, terminologyFields, 'id') : undefined,
+  });
+  const { status, body: responseBody } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body('csv') }), d),
+  );
+  assertEquals(status, 413);
+  assertEquals(responseBody.code, 'EXPORT_LIMIT_EXCEEDED');
+  assertEquals(responseBody.resource, 'columns');
+  assertEquals(responseBody.limit, EXPORT_LIMITS.csvColumns);
+  assertEquals(responseBody.observed, 6 + terminologyFields.length * 2);
+});
+
 Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs/manquants', async () => {
   let uploaded: Uint8Array | null = null;
   // On intercepte l'upload via un responder qui capture les octets reellement ecrits.

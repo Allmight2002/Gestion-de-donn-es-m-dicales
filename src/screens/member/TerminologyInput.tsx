@@ -2,9 +2,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTerminologyRepository } from '../../data/RepositoryProvider';
 import { MIN_QUERY_LENGTH, type TerminologyOption } from '../../data/terminology';
-import { cacheStatus, downloadReference, searchLocal } from '../../data/terminologyCache';
+import { cacheIsCurrent, cacheStatus, downloadReference, searchLocal } from '../../data/terminologyCache';
 import { errorMessage } from '../../lib/errorMessage';
 import { isTerminologyValue, type TerminologyValue } from '../../data/types';
+import { useOnline } from '../../data/offline';
 
 // F6 — saisie d'un diagnostic par recherche incrementale.
 //
@@ -24,6 +25,7 @@ export function TerminologyInput({
 }) {
   const { t } = useI18n();
   const repo = useTerminologyRepository();
+  const online = useOnline();
   const listId = useId();
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<TerminologyOption[]>([]);
@@ -31,6 +33,7 @@ export function TerminologyInput({
   const [error, setError] = useState<string | null>(null);
   // Seule la derniere frappe compte : une reponse lente ne doit pas ecraser une plus recente.
   const requestRef = useRef(0);
+  const cacheCheckRef = useRef(0);
   // Une copie locale evite un aller-retour reseau a chaque frappe, et permet de saisir
   // sans connexion. Tant qu'elle est absente, on interroge le serveur.
   const [local, setLocal] = useState(false);
@@ -39,10 +42,21 @@ export function TerminologyInput({
   const selected = isTerminologyValue(value) ? value : null;
 
   useEffect(() => {
-    void cacheStatus().then((s) => setLocal(!!s && s.count > 0));
-  }, []);
+    const ticket = ++cacheCheckRef.current;
+    const availability = online
+      ? cacheIsCurrent(repo)
+      : cacheStatus().then((status) => !!status && status.count > 0);
+    void availability
+      .then((available) => {
+        if (ticket === cacheCheckRef.current) setLocal(available);
+      })
+      .catch(() => {
+        if (ticket === cacheCheckRef.current) setLocal(false);
+      });
+  }, [online, repo]);
 
   async function telecharger() {
+    ++cacheCheckRef.current;
     setDownloading(0);
     setError(null);
     try {

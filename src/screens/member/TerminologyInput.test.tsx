@@ -2,28 +2,43 @@
 // F6 : la saisie d'un diagnostic passe par une recherche, jamais par du texte libre, et
 // c'est le couple code + libelle qui remonte — le code seul serait illisible, le libelle
 // seul casserait les statistiques au premier renommage.
-import { describe, expect, test, vi } from 'vitest';
+import 'fake-indexeddb/auto';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { TerminologyInput } from './TerminologyInput';
 import type { TerminologyOption, TerminologyRepository } from '../../data/terminology';
+import { clearCache, downloadReference } from '../../data/terminologyCache';
 
 const CHOLERA: TerminologyOption = { id: 'c1', code: '1A00', label: 'Cholera', kind: 'category', depth: 3 };
 const DIABETE: TerminologyOption = { id: 'c2', code: '5A11', label: 'Diabete de type 2', kind: 'category', depth: 3 };
+const RELEASE = {
+  id: '00000000-0000-4000-8000-000000000001',
+  slug: 'diagnostics-fr',
+  version: '1',
+  conceptCount: 1,
+};
 
 function renderInput(repo: Partial<TerminologyRepository>, value: unknown = null) {
   const onChange = vi.fn();
   render(
     <I18nProvider>
-      <RepositoryProvider terminology={{ search: async () => [], ...repo } as TerminologyRepository}>
+      <RepositoryProvider terminology={{
+        search: async () => [],
+        activeRelease: async () => RELEASE,
+        listEntries: async () => ({ entries: [], total: 0 }),
+        ...repo,
+      } as TerminologyRepository}>
         <TerminologyInput field={{ label: 'Diagnostic' }} value={value} onChange={onChange} />
       </RepositoryProvider>
     </I18nProvider>,
   );
   return onChange;
 }
+
+beforeEach(async () => { await clearCache(); });
 
 describe('TerminologyInput (F6)', () => {
   test('ne consulte pas le serveur en deca de deux caracteres', async () => {
@@ -87,5 +102,25 @@ describe('TerminologyInput (F6)', () => {
 
     expect(await screen.findByRole('option', { name: 'Diabete de type 2' })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('option', { name: 'Cholera' })).toBeNull());
+  });
+
+  test('une copie perimee en ligne est ignoree au profit de la recherche serveur', async () => {
+    await downloadReference({
+      search: async () => [],
+      activeRelease: async () => RELEASE,
+      listEntries: async () => ({
+        entries: [{ code: CHOLERA.code, label: CHOLERA.label, searchText: 'cholera' }],
+        total: 1,
+      }),
+    });
+    const search = vi.fn(async () => [DIABETE]);
+    renderInput({
+      search,
+      activeRelease: async () => ({ ...RELEASE, id: '00000000-0000-4000-8000-000000000002' }),
+    });
+    await screen.findByRole('button', { name: 'Télécharger pour rechercher hors connexion' });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), 'di');
+    expect(await screen.findByRole('option', { name: DIABETE.label })).toBeInTheDocument();
+    expect(search).toHaveBeenCalledWith('di');
   });
 });

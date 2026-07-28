@@ -21,6 +21,9 @@ describe("détecteur Pipedream d'absence de sauvegarde staging", () => {
   test("accepte le job staging réussi même si le run global échoue", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith('/repos/Allmight2002/Gestion-de-donn-es-m-dicales')) {
+        return jsonResponse({ default_branch: 'develop' });
+      }
       if (url.includes('/actions/workflows/continuity-backup.yml/runs')) {
         return jsonResponse({ workflow_runs: [run] });
       }
@@ -58,13 +61,17 @@ describe("détecteur Pipedream d'absence de sauvegarde staging", () => {
       runId: '30005845353',
       latestSuccessAt: '2026-07-23T12:13:13.000Z',
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(String(fetchImpl.mock.calls[1][0])).toContain('branch=develop');
     expect(JSON.stringify(result)).not.toContain('secret-token');
   });
 
   test("signale une sauvegarde absente après 30 heures", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith('/repos/Allmight2002/Gestion-de-donn-es-m-dicales')) {
+        return jsonResponse({ default_branch: 'develop' });
+      }
       if (url.includes('/actions/workflows/continuity-backup.yml/runs')) {
         return jsonResponse({
           workflow_runs: [{
@@ -85,7 +92,7 @@ describe("détecteur Pipedream d'absence de sauvegarde staging", () => {
       errorCode: 'backup-missing',
       maxAgeHours: 30,
     });
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   test("signale une API GitHub indisponible sans exposer sa réponse", async () => {

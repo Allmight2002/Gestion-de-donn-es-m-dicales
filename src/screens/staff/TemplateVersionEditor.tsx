@@ -234,17 +234,16 @@ export function TemplateVersionEditor({
           <div className="mt-3">
             <FieldForm
               busy={busy}
-              onSubmit={(f, companion) => void (async () => {
-                // La cle du compagnon est unique par version : si elle est deja prise, on cree
-                // le champ source seul plutot que de faire echouer toute la creation.
+              onSubmit={async (f, companion) => {
+                // Ne jamais promettre une soupape qui n'a pas pu etre creee. Un conflit est
+                // signale avant toute ecriture et le formulaire reste rempli pour correction.
                 const taken = !!companion && fields.some((x) => x.fieldKey === companion.fieldKey);
-                const ok = await run(async () => {
-                  await repo.addField(version.id, f);
-                  if (companion && !taken) await repo.addField(version.id, companion);
-                });
-                // Pose APRES run, qui remet l'erreur a null en cas de succes.
-                if (ok && taken) setError(t('admin.proposal_exists'));
-              })()}
+                if (taken) {
+                  setError(t('admin.proposal_exists'));
+                  return false;
+                }
+                return run(() => repo.addField(version.id, f, companion));
+              }}
             />
           </div>
         )}

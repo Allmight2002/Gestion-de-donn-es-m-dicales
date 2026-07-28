@@ -20,7 +20,7 @@ export function FieldForm({
   onCancel,
 }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
-  onSubmit: (f: NewField, companion?: NewField) => void;
+  onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
   busy?: boolean;
   /** Pre-remplissage en mode edition (null/absent = creation). */
   initial?: NewField | null;
@@ -65,7 +65,7 @@ export function FieldForm({
     setValueSetId('');
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
     const values = parsedValues;
@@ -80,7 +80,11 @@ export function FieldForm({
       allowMissingCodes,
     };
     const wantsProposal = isChoice && withProposal && !editing && scope === 'encounter';
-    onSubmit(built, wantsProposal ? makeProposalField(built, t('admin.proposal_label_suffix')) : undefined);
+    const accepted = await onSubmit(
+      built,
+      wantsProposal ? makeProposalField(built, t('admin.proposal_label_suffix')) : undefined,
+    );
+    if (accepted === false) return;
     if (!editing) {
       setFieldKey('');
       setLabel('');
@@ -95,7 +99,7 @@ export function FieldForm({
   }
 
   return (
-    <form onSubmit={submit} className="card flex flex-wrap items-end gap-2 p-4">
+    <form onSubmit={(e) => void submit(e)} className="card flex flex-wrap items-end gap-2 p-4">
       <label className="flex flex-col text-xs text-slate-600">
         {t('admin.field_key')}
         <input

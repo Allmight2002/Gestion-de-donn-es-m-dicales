@@ -19,6 +19,7 @@ export interface TerminologyOption {
 
 /** Publication active du referentiel : sert a savoir si la copie locale est a jour. */
 export interface TerminologyRelease {
+  id: string;
   slug: string;
   version: string;
   conceptCount: number;
@@ -31,13 +32,18 @@ export interface TerminologyEntry {
   searchText: string;
 }
 
+export interface TerminologyPage {
+  entries: TerminologyEntry[];
+  total: number;
+}
+
 export interface TerminologyRepository {
   /** Recherche incrementale ; renvoie une liste vide en deca de deux caracteres. */
   search(query: string, limit?: number): Promise<TerminologyOption[]>;
   /** Publication actuellement active, ou null si aucune. */
   activeRelease(): Promise<TerminologyRelease | null>;
-  /** Page de concepts proposables, pour constituer la copie locale. */
-  listEntries(offset: number, limit: number): Promise<TerminologyEntry[]>;
+  /** Page de concepts proposables d'une publication precise, pour constituer la copie locale. */
+  listEntries(releaseId: string, offset: number, limit: number): Promise<TerminologyPage>;
 }
 
 /** Le serveur exige deux caracteres : inutile de l'appeler avant. */
@@ -65,34 +71,41 @@ export function makeTerminologyRepository(client: SupabaseClient | null): Termin
     async activeRelease() {
       const { data, error } = await client
         .from('terminology_release')
-        .select('slug, version, concept_count')
+        .select('id, slug, version, concept_count')
         .eq('is_active', true)
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
       return {
+        id: data.id as string,
         slug: data.slug as string,
         version: data.version as string,
         conceptCount: (data.concept_count as number) ?? 0,
       };
     },
 
-    async listEntries(offset, limit) {
+    async listEntries(releaseId, offset, limit) {
       // Seuls les concepts proposables sont copies : les regroupements ne peuvent pas
       // etre choisis, les embarquer alourdirait la copie sans rien apporter.
-      const { data, error } = await client
+      const { data, error, count } = await client
         .from('terminology_concept')
-        .select('code, label, search_text')
+        .select('code, label, search_text', { count: 'exact' })
+        .eq('release_id', releaseId)
         .eq('is_selectable', true)
         .not('code', 'is', null)
         .order('code', { ascending: true })
+        .order('id', { ascending: true })
         .range(offset, offset + limit - 1);
       if (error) throw error;
-      return (data ?? []).map((r) => ({
-        code: r.code as string,
-        label: r.label as string,
-        searchText: (r.search_text as string) ?? '',
-      }));
+      if (count === null) throw new Error('Comptage du référentiel indisponible.');
+      return {
+        entries: (data ?? []).map((r) => ({
+          code: r.code as string,
+          label: r.label as string,
+          searchText: (r.search_text as string) ?? '',
+        })),
+        total: count,
+      };
     },
   };
 }

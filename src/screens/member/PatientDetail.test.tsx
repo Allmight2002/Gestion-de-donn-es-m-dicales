@@ -37,6 +37,7 @@ const templateRepo = {
       fields: [
         field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'] }),
         field({ fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', required: true, minValue: 3, maxValue: 15 }),
+        field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'encounter', type: 'terminology' }),
       ],
       rules: [],
     };
@@ -49,7 +50,11 @@ const patientView: PatientListItem = {
   updatedAt: '2026-07-11T10:00:00.123456Z',
   identity: { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null },
 };
-const encounter: Encounter = { id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'complete', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 } };
+const encounter: Encounter = {
+  id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'complete',
+  ageValue: 44, ageUnit: 'years',
+  data: { glasgow_score: 12, diagnostic: { code: '1F40', label: 'Paludisme' } },
+};
 const historyRows: FieldChange[] = [{ fieldKey: 'glasgow_score', oldValue: 10, newValue: 12, reason: 'correction saisie', changedAt: '2024-06-02' }];
 
 function makePatients(over: Partial<PatientRepository> = {}): PatientRepository {
@@ -89,6 +94,8 @@ describe('PatientDetail (fiche)', () => {
     expect(await screen.findByText('Jean Test')).toBeInTheDocument(); // identite
     expect(screen.getByText('Glasgow')).toBeInTheDocument(); // libelle champ rencontre
     expect(screen.getByText('12')).toBeInTheDocument(); // valeur de la rencontre
+    expect(screen.getByText('Paludisme')).toBeInTheDocument(); // libelle lisible de la terminologie
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
   });
 

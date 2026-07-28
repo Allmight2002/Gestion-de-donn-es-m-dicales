@@ -1,6 +1,5 @@
 const REPOSITORY = 'Allmight2002/Gestion-de-donn-es-m-dicales';
 const WORKFLOW = 'continuity-backup.yml';
-const BRANCH = 'develop';
 const STAGING_JOB = 'backup (staging)';
 const MAX_AGE_HOURS = 30;
 const RUN_LOOKBACK_HOURS = 36;
@@ -98,8 +97,14 @@ export async function checkBackupFreshness({
   }
 
   try {
+    // Les crons GitHub partent de la branche par defaut, laquelle peut changer sans
+    // modification du code Pipedream. La resoudre a chaque controle evite qu'un ancien
+    // nom de branche masque toutes les sauvegardes planifiees.
+    const repositoryPayload = await githubJson(`/repos/${REPOSITORY}`, cleanToken, fetchImpl);
+    const branch = clean(repositoryPayload?.default_branch);
+    if (!branch || branch.length > 255) throw new Error('github-api-unavailable');
     const runsPath = `/repos/${REPOSITORY}/actions/workflows/${encodeURIComponent(WORKFLOW)}/runs`
-      + `?branch=${encodeURIComponent(BRANCH)}&per_page=${MAX_RUNS}&exclude_pull_requests=true`;
+      + `?branch=${encodeURIComponent(branch)}&per_page=${MAX_RUNS}&exclude_pull_requests=true`;
     const runsPayload = await githubJson(runsPath, cleanToken, fetchImpl);
     if (!Array.isArray(runsPayload?.workflow_runs)) {
       throw new Error('github-api-unavailable');
@@ -109,7 +114,7 @@ export async function checkBackupFreshness({
     const candidateRuns = runsPayload.workflow_runs.filter((run) => (
       numericRunId(run?.id)
       && run?.status === 'completed'
-      && run?.head_branch === BRANCH
+      && run?.head_branch === branch
       && validDate(run?.created_at)
       && Date.parse(run.created_at) >= lookbackStart
     ));
