@@ -233,6 +233,7 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
     await screen.findByText('Règles');
+    await user.click(screen.getByRole('button', { name: 'Mode expert — JSON' }));
     await user.type(screen.getByLabelText('Règle (JSON)'), 'pas du json');
     await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/invalide/i);
