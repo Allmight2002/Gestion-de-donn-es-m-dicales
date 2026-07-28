@@ -1012,6 +1012,30 @@ séparation du socle n'a pas cassé l'ordre d'initialisation des modules.
   lieu d'usage et du temps de réponse de la base. Le score devra être relu après
   déploiement, sur plusieurs jours.
 
+## Lot L2 — Sections des variables permanentes (2026-07-28)
+
+Le défaut D4 restait visible à la création d'un patient : toutes les variables
+permanentes formaient une liste plate. L'édition utilisait déjà le composant des
+rencontres, mais sans comportement explicite pour une ancienne variable privée
+de section.
+
+Le regroupement de `EncounterFields.tsx` est désormais un composant de rendu
+commun. `NewPatient.tsx` l'utilise sans changer ses contrôles de saisie, et
+`EditPatient.tsx` continue de passer par `EncounterFields`. Les sections suivent
+l'ordre **Clinique → Biologie → Paraclinique**, seules les sections non vides
+sont rendues, puis une section **Autre** recueille toute variable dont la section
+est absente ou inconnue afin qu'aucune donnée ne disparaisse du formulaire.
+L'encadré d'identité reste distinct.
+
+Deux tests web couvrent la création et l'édition : appartenance des variables à
+leur section, ordre d'affichage, absence d'une section vide et repli sous
+« Autre ». Vérifications locales sur le worktree isolé du lot : tests ciblés
+**22/22**, suite web **237/237**, `npm run typecheck`, `npm run lint` et build de
+production avec `VITE_USE_SIGNED_READ=true` — tous verts.
+
+Le lot ne modifie ni schéma, ni RLS, ni RPC, ni données. La livraison et la
+vérification visuelle de production sont consignées séparément après promotion.
+
 ## Lot L1 — Liste d’une base : affichage et bandeau (2026-07-28)
 
 Les constats D5 et D3 ont été reproduits dans `BaseHome`. Une valeur de

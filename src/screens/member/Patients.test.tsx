@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'etape 6 (patient) avec repositories INJECTES.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -88,6 +88,47 @@ describe('NewPatient', () => {
     expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
     expect(createPatient).toHaveBeenCalledTimes(1);
     expect(createPatient.mock.calls[0][1]).toMatchObject({ fullName: 'Marie Test' });
+  });
+
+  test('groupe les variables permanentes, masque les sections vides et conserve les variables sans section', async () => {
+    const patientRepo = { async listPatients() { return []; } } as unknown as PatientRepository;
+    const sectionsTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'symptome', label: 'Symptome', scope: 'patient', type: 'text', section: 'clinique' }),
+            field({ fieldKey: 'imagerie', label: 'Imagerie', scope: 'patient', type: 'text', section: 'paraclinique', displayOrder: 1 }),
+            { ...field({ fieldKey: 'historique', label: 'Variable historique', scope: 'patient', type: 'text', displayOrder: 2 }), section: undefined } as unknown as TemplateField,
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={sectionsTemplateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
+            <Routes>
+              <Route path="/bases/:id/patients/new" element={<NewPatient />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    const clinique = await screen.findByRole('group', { name: 'Clinique' });
+    const paraclinique = screen.getByRole('group', { name: 'Paraclinique' });
+    const other = screen.getByRole('group', { name: 'Autre' });
+    expect(within(clinique).getByText('Symptome')).toBeInTheDocument();
+    expect(within(paraclinique).getByText('Imagerie')).toBeInTheDocument();
+    expect(within(other).getByText('Variable historique')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Biologie' })).not.toBeInTheDocument();
+    expect(
+      Array.from(document.querySelectorAll('legend'), (legend) => legend.textContent)
+        .filter((legend) => ['Clinique', 'Biologie', 'Paraclinique', 'Autre'].includes(legend ?? '')),
+    ).toEqual(['Clinique', 'Paraclinique', 'Autre']);
   });
 });
 

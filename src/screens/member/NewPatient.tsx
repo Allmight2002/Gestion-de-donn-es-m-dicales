@@ -9,6 +9,7 @@ import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
+import { SectionedFields } from './EncounterFields';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -234,22 +235,29 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         )}
 
         {mode === 'manual' && (
-          <fieldset className="card space-y-3 p-4">
-            <legend className="px-1 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</legend>
-            {fields.length === 0 && <p className="text-xs text-slate-400">—</p>}
-            {fields.map((f) => (
-              <label key={f.id} className="flex flex-col text-sm">
-                <span className="text-slate-700">
-                  {f.label}
-                  {f.required && <span className="text-red-500"> *</span>}
-                  {f.unit && <span className="text-slate-400"> ({f.unit})</span>}
-                </span>
-                <div className="mt-1">
-                  <FieldInput field={f} value={permanent[f.fieldKey]} onChange={(v) => setPermanent((p) => ({ ...p, [f.fieldKey]: v }))} />
-                </div>
-              </label>
-            ))}
-          </fieldset>
+          fields.length === 0 ? (
+            <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
+          ) : (
+            <SectionedFields
+              fields={fields}
+              renderField={(field) => (
+                <label className="flex flex-col text-sm">
+                  <span className="text-slate-700">
+                    {field.label}
+                    {field.required && <span className="text-red-500"> *</span>}
+                    {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
+                  </span>
+                  <div className="mt-1">
+                    <FieldInput
+                      field={field}
+                      value={permanent[field.fieldKey]}
+                      onChange={(value) => setPermanent((current) => ({ ...current, [field.fieldKey]: value }))}
+                    />
+                  </div>
+                </label>
+              )}
+            />
+          )
         )}
 
         <div className="flex items-center gap-2">
