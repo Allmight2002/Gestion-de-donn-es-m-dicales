@@ -1011,3 +1011,24 @@ séparation du socle n'a pas cassé l'ordre d'initialisation des modules.
   ignore toujours la part du poids téléchargé, de la latence réseau depuis le
   lieu d'usage et du temps de réponse de la base. Le score devra être relu après
   déploiement, sur plusieurs jours.
+
+## Lot L1 — Liste d’une base : affichage et bandeau (2026-07-28)
+
+Les constats D5 et D3 ont été reproduits dans `BaseHome`. Une valeur de
+terminologie `{code, label}` tombait dans `String(v)` et apparaissait sous la
+forme « [object Object] ». Le bandeau d’enregistrement hors-ligne occupait quant
+à lui toute la largeur sous l’en-tête, même lorsqu’aucune copie n’existait.
+
+La liste des patients et l’historique d’une rencontre utilisent désormais la
+fonction partagée `displayFieldValue` : le libellé lisible est affiché, tandis
+que les formats existants des valeurs vides, booléennes et des codes de valeur
+manquante sont conservés. Sans copie locale, l’action hors-ligne devient un
+bouton secondaire compact dans l’en-tête. Lorsqu’une copie existe, une ligne
+d’état compacte conserve sa date, son actualisation et son retrait. Le message
+de politique de sécurité reste affiché si le mode hors-ligne est désactivé.
+
+La régression a d’abord été exécutée seule sur le code non corrigé : elle
+échouait en montrant « [object Object] » au lieu du libellé fictif
+« Glioblastome ». Après correction, les 7 tests ciblés passent. Les validations
+locales sont vertes : `npm run typecheck`, `npm run lint`, `npm run test:web`
+(237 tests) et `npm run build` avec la lecture signée obligatoire.
