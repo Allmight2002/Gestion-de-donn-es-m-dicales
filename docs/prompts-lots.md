@@ -28,6 +28,28 @@ travail déjà fait :
 
 **Les dix autres lots sont libres** : L4, L6, L7, L8, L9, L10, L11, L12, L13, L14.
 
+## Le déploiement n'est pas automatique
+
+`vercel.json` porte `git.deploymentEnabled: false` — un contrôle de readiness
+volontaire. **Fusionner vers `main` ne déploie rien.** Le seul chemin vers
+l'application déployée est le workflow manuel « Coordinated release » : d'abord
+`staging`, puis `production` en lui fournissant l'identifiant du run staging
+réussi **pour le même commit**.
+
+Deux conséquences pour la parallélisation :
+
+1. **Une release déploie tout ce qui est sur `main`**, pas le lot qui la déclenche.
+   Plusieurs threads qui lanceraient chacun une release de production se
+   marcheraient dessus et déploieraient le travail des autres sans l'avoir
+   vérifié.
+2. **Un seul acteur doit déclencher la production.** Les prompts demandent donc
+   à chaque lot d'aller jusqu'à `main` et de le signaler, puis de demander avant
+   de déclencher une release de production si d'autres lots sont en cours.
+
+Au 2026-07-28, `main` porte L1, L2, L3 et L5 **sans qu'aucun ne soit déployé** :
+la production sert encore une version antérieure. Une release coordonnée les
+mettra tous en ligne d'un coup.
+
 ---
 
 ## ~~L1 — Liste d'une base : affichage et bandeau~~ — livré
@@ -68,15 +90,23 @@ fais d'abord tout ce qui n'en dépend pas, puis demande.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
 
-TERMINÉ SIGNIFIE : le correctif est en production et tu l'as vérifié en
-regardant l'application déployée, pas seulement en lisant un build vert. Tu ne
-t'arrêtes pas avant. Si une commande t'est refusée par ton environnement,
-donne-la-moi telle quelle plutôt que de chercher un contournement.
+TERMINÉ SIGNIFIE : le correctif est sur main, puis DÉPLOYÉ et vérifié sur
+l'application déployée — pas seulement un build vert. Tu ne t'arrêtes pas avant.
+Avant de déclencher la release de production, demande-moi si d'autres lots sont
+en cours : une release déploie tout ce qui est sur main, pas seulement ton lot.
+Si une commande t'est refusée par ton environnement, donne-la-moi telle quelle
+plutôt que de chercher un contournement.
 
 Ne touche à aucun fichier hors de ce périmètre. Si tu ajoutes du texte dans
 src/i18n/messages.ts, ajoute tes clés à la FIN de chaque section : ce fichier est
@@ -117,7 +147,13 @@ dans un composant commun. Ne code rien tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
@@ -168,7 +204,13 @@ rien tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
@@ -223,7 +265,13 @@ JSON brut. Ne code rien tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
@@ -276,7 +324,13 @@ code rien tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
@@ -610,7 +664,13 @@ code rien tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
@@ -654,7 +714,13 @@ tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
@@ -700,7 +766,13 @@ rien tant que tu n'as pas mes réponses.
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
 redemander à chaque étape. Le circuit est : branche de travail -> develop ->
-main. Vercel déploie automatiquement depuis main.
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : `vercel.json` porte
+`git.deploymentEnabled: false`. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur `staging`, puis sur `production` en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
 
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
