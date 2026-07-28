@@ -1011,3 +1011,89 @@ séparation du socle n'a pas cassé l'ordre d'initialisation des modules.
   ignore toujours la part du poids téléchargé, de la latence réseau depuis le
   lieu d'usage et du temps de réponse de la base. Le score devra être relu après
   déploiement, sur plusieurs jours.
+
+## Lot L2 — Sections des variables permanentes (2026-07-28)
+
+Le défaut D4 restait visible à la création d'un patient : toutes les variables
+permanentes formaient une liste plate. L'édition utilisait déjà le composant des
+rencontres, mais sans comportement explicite pour une ancienne variable privée
+de section.
+
+Le regroupement de `EncounterFields.tsx` est désormais un composant de rendu
+commun. `NewPatient.tsx` l'utilise sans changer ses contrôles de saisie, et
+`EditPatient.tsx` continue de passer par `EncounterFields`. Les sections suivent
+l'ordre **Clinique → Biologie → Paraclinique**, seules les sections non vides
+sont rendues, puis une section **Autre** recueille toute variable dont la section
+est absente ou inconnue afin qu'aucune donnée ne disparaisse du formulaire.
+L'encadré d'identité reste distinct.
+
+Deux tests web couvrent la création et l'édition : appartenance des variables à
+leur section, ordre d'affichage, absence d'une section vide et repli sous
+« Autre ». Vérifications locales sur le worktree isolé du lot : tests ciblés
+**22/22**, suite web **237/237**, `npm run typecheck`, `npm run lint` et build de
+production avec `VITE_USE_SIGNED_READ=true` — tous verts.
+
+Le lot ne modifie ni schéma, ni RLS, ni RPC, ni données. La livraison et la
+vérification visuelle de production sont consignées séparément après promotion.
+
+## Lot L1 — Liste d’une base : affichage et bandeau (2026-07-28)
+
+Les constats D5 et D3 ont été reproduits dans `BaseHome`. Une valeur de
+terminologie `{code, label}` tombait dans `String(v)` et apparaissait sous la
+forme « [object Object] ». Le bandeau d’enregistrement hors-ligne occupait quant
+à lui toute la largeur sous l’en-tête, même lorsqu’aucune copie n’existait.
+
+La liste des patients et l’historique d’une rencontre utilisent désormais la
+fonction partagée `displayFieldValue` : le libellé lisible est affiché, tandis
+que les formats existants des valeurs vides, booléennes et des codes de valeur
+manquante sont conservés. Sans copie locale, l’action hors-ligne devient un
+bouton secondaire compact dans l’en-tête. Lorsqu’une copie existe, une ligne
+d’état compacte conserve sa date, son actualisation et son retrait. Le message
+de politique de sécurité reste affiché si le mode hors-ligne est désactivé.
+
+La régression a d’abord été exécutée seule sur le code non corrigé : elle
+échouait en montrant « [object Object] » au lieu du libellé fictif
+« Glioblastome ». Après correction, les 7 tests ciblés passent. Les validations
+locales sont vertes : `npm run typecheck`, `npm run lint`, `npm run test:web`
+(237 tests) et `npm run build` avec la lecture signée obligatoire.
+
+## Lot L5 — Constructeur de règles de cohérence (2026-07-28)
+
+Idée n°7 de la file. Pour poser une règle de cohérence sur une base, l'utilisateur
+devait taper du JSON à la main — le gabarit affiché en exemple donnait le ton :
+
+    {"operator":"greater_or_equal","left_field":"discharge_date",
+     "right_field":"admission_date"}
+
+Le produit s'adresse à des médecins-chercheurs. Cette zone leur était fermée,
+alors que c'est là que se joue la qualité des données.
+
+### Ce qui est livré
+
+Un mode **guidé** devient le mode par défaut : on choisit un type de règle
+(comparaison entre deux variables, ou règle conditionnelle), puis les variables
+et l'opérateur dans des listes. Les opérateurs sont libellés en langage clinique,
+et adaptés au type de la variable — une date ne se compare pas avec les mêmes
+mots qu'un nombre.
+
+La règle en construction est rendue sous forme de **phrase lisible**
+(`ruleSentence`), ce qui permet de vérifier ce qu'on vient d'assembler sans
+relire du JSON. Le même rendu est réutilisé par l'éditeur de version de gabarit
+pour afficher les règles déjà enregistrées (`RuleSummary`).
+
+Le mode **expert** conserve la saisie JSON directe, pour les cas que l'assemblage
+guidé ne couvre pas.
+
+### Ce qui n'a pas changé
+
+La sortie reste exactement le même JSON qu'avant : les règles déjà enregistrées
+continuent de fonctionner sans reprise. `parseRule` demeure la validation côté
+client, et **le serveur reste la source de vérité** — aucun contrôle n'a été
+déplacé vers l'interface seule.
+
+### Reprise
+
+Le chantier a été mené par Codex, dont le quota s'est épuisé après le push, avant
+l'ouverture de la pull request et avant la consigne au journal. La section
+ci-dessus a été écrite lors de la reprise ; la vérification est celle de la CI
+sur le SHA de la pull request, qui exécute la suite complète.

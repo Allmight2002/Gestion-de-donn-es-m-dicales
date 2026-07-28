@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'etape 6 (patient) avec repositories INJECTES.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -89,9 +89,109 @@ describe('NewPatient', () => {
     expect(createPatient).toHaveBeenCalledTimes(1);
     expect(createPatient.mock.calls[0][1]).toMatchObject({ fullName: 'Marie Test' });
   });
+
+  test('groupe les variables permanentes, masque les sections vides et conserve les variables sans section', async () => {
+    const patientRepo = { async listPatients() { return []; } } as unknown as PatientRepository;
+    const sectionsTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'symptome', label: 'Symptome', scope: 'patient', type: 'text', section: 'clinique' }),
+            field({ fieldKey: 'imagerie', label: 'Imagerie', scope: 'patient', type: 'text', section: 'paraclinique', displayOrder: 1 }),
+            { ...field({ fieldKey: 'historique', label: 'Variable historique', scope: 'patient', type: 'text', displayOrder: 2 }), section: undefined } as unknown as TemplateField,
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={sectionsTemplateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
+            <Routes>
+              <Route path="/bases/:id/patients/new" element={<NewPatient />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    const clinique = await screen.findByRole('group', { name: 'Clinique' });
+    const paraclinique = screen.getByRole('group', { name: 'Paraclinique' });
+    const other = screen.getByRole('group', { name: 'Autre' });
+    expect(within(clinique).getByText('Symptome')).toBeInTheDocument();
+    expect(within(paraclinique).getByText('Imagerie')).toBeInTheDocument();
+    expect(within(other).getByText('Variable historique')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Biologie' })).not.toBeInTheDocument();
+    expect(
+      Array.from(document.querySelectorAll('legend'), (legend) => legend.textContent)
+        .filter((legend) => ['Clinique', 'Biologie', 'Paraclinique', 'Autre'].includes(legend ?? '')),
+    ).toEqual(['Clinique', 'Paraclinique', 'Autre']);
+  });
 });
 
 describe('BaseHome (liste patients)', () => {
+  test('place l action hors-ligne occasionnelle dans l en-tete', async () => {
+    const patientRepo = {
+      async listPatientsPage() { return { rows: [], total: 0 }; },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    const action = await screen.findByRole('button', { name: 'Rendre disponible hors-ligne' });
+    expect(action.closest('header')).not.toBeNull();
+  });
+
+  test('affiche une valeur de terminologie par son libelle dans la liste', async () => {
+    const terminologyTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'patient', type: 'terminology' })],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patient: PatientListItem = {
+      id: 'p-terminology',
+      code: 'P-TERMINOLOGY',
+      templateVersionId: 'v1',
+      data: { diagnostic: { code: 'C71.9', label: 'Glioblastome' } },
+      validationStatus: 'curated',
+      identity: null,
+    };
+    const patientRepo = {
+      async listPatientsPage() { return { rows: [patient], total: 1 }; },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={terminologyTemplateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Glioblastome')).toBeInTheDocument();
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
+  });
+
   test('purge les patients precedents si la nouvelle base echoue a charger sa liste', async () => {
     const baseB: BaseListing = {
       ...baseListing,

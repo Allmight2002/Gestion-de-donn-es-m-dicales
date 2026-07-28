@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'etape 8 (fiche patient + correction) avec repos INJECTES.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -204,6 +204,32 @@ describe('EditEncounter (correction)', () => {
 });
 
 describe('EditPatient (verrou optimiste)', () => {
+  test('utilise le regroupement commun pour les sections permanentes non vides', async () => {
+    const sectionsTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'symptome', label: 'Symptome patient', scope: 'patient', type: 'text', section: 'clinique' }),
+            field({ fieldKey: 'biomarqueur', label: 'Biomarqueur', scope: 'patient', type: 'number', section: 'biologie', displayOrder: 1 }),
+            { ...field({ fieldKey: 'historique', label: 'Variable historique', scope: 'patient', type: 'text', displayOrder: 2 }), section: undefined } as unknown as TemplateField,
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+
+    renderAt('/bases/b1/patients/p1/edit', makePatients(), undefined, sectionsTemplateRepo);
+
+    const clinique = await screen.findByRole('group', { name: 'Clinique' });
+    const biologie = screen.getByRole('group', { name: 'Biologie' });
+    const other = screen.getByRole('group', { name: 'Autre' });
+    expect(within(clinique).getByText('Symptome patient')).toBeInTheDocument();
+    expect(within(biologie).getByText('Biomarqueur')).toBeInTheDocument();
+    expect(within(other).getByText('Variable historique')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Paraclinique' })).not.toBeInTheDocument();
+  });
+
   test('transmet la version chargee et distingue un conflit d une erreur reseau avec rechargement explicite', async () => {
     const getPatient = vi.fn(async () => patientView);
     const updatePatientData = vi.fn(async () => {

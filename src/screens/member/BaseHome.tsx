@@ -7,6 +7,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
+import { displayFieldValue } from '../../data/types';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SkeletonList } from '../../components/Skeleton';
@@ -206,36 +207,42 @@ export function BaseHome() {
         ) : (
           listing && <span className="badge">{t(`baserole.${listing.role}`)}</span>
         )}
-        actions={!offlineView && listing && canEdit ? (
-          <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
-            <Plus size={16} aria-hidden /> {t('patient.new')}
-          </button>
+        actions={!offlineView && listing ? (
+          <>
+            {!cachedMeta && (
+              <button onClick={() => void makeAvailableOffline()} disabled={saving} className="btn-secondary">
+                <Download size={16} aria-hidden />
+                {saving ? t('offline.saving') : t('offline.make_available')}
+              </button>
+            )}
+            {canEdit && (
+              <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
+                <Plus size={16} aria-hidden /> {t('patient.new')}
+              </button>
+            )}
+          </>
         ) : undefined}
       />
 
-      {/* Copie hors-ligne : bouton d'enregistrement (en ligne) ou bandeau (hors-ligne). */}
-      {!offlineView ? (
-        <div className="surface-muted flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
-          <Download size={16} className="text-slate-400" aria-hidden />
+      {/* Une copie existante reste signalee, sans bandeau permanent pleine largeur. */}
+      {!offlineView && cachedMeta ? (
+        <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 text-slate-500">
+            <Download size={14} className="shrink-0 text-slate-400" aria-hidden />
+            {t('offline.available')} · {t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)}
+          </span>
           <button onClick={() => void makeAvailableOffline()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
-            {saving ? t('offline.saving') : cachedMeta ? t('offline.update') : t('offline.make_available')}
+            {saving ? t('offline.saving') : t('offline.update')}
           </button>
-          {cachedMeta && (
-            <>
-              <span className="text-slate-500">
-                · {t('offline.available')} ({t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)})
-              </span>
-              <button onClick={() => void removeOffline()} className="text-slate-400 hover:text-red-600 hover:underline">{t('offline.remove')}</button>
-            </>
-          )}
+          <button onClick={() => void removeOffline()} className="text-slate-400 hover:text-red-600 hover:underline">{t('offline.remove')}</button>
         </div>
-      ) : (
+      ) : offlineView ? (
         cachedMeta && (
           <div className="text-xs text-slate-500">
             {t('offline.identity_unavailable')} · {t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)} · {t('offline.expires_at')} {fmtDate(cachedMeta.expiresAt)}
           </div>
         )
-      )}
+      ) : null}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
@@ -352,8 +359,6 @@ export function BaseHome() {
 }
 
 function formatCell(v: unknown): string {
-  if (v === null || v === undefined || v === '') return '—';
-  if (Array.isArray(v)) return v.join(', ');
   if (typeof v === 'boolean') return v ? '✓' : '✗';
-  return String(v);
+  return displayFieldValue(v, '—');
 }
