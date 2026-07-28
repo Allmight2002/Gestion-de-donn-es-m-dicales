@@ -22,7 +22,8 @@ export interface TemplateRepository {
   getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>;
   /** Lecture legere pour les ecrans qui n'ont besoin que d'afficher des champs. */
   getFields?(versionId: string): Promise<TemplateField[]>;
-  addField(versionId: string, field: NewField): Promise<TemplateField>;
+  /** Ajoute un champ et, le cas echeant, son compagnon dans la meme requete atomique. */
+  addField(versionId: string, field: NewField, companion?: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
   updateField(fieldId: string, field: NewField): Promise<TemplateField>;
   deleteField(fieldId: string): Promise<void>;
@@ -195,8 +196,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       return fields;
     },
 
-    async addField(versionId, field) {
-      // Nouvelle variable EN FIN de liste : display_order = max existant + 1 (ordre stable).
+    async addField(versionId, field, companion) {
+      // Nouvelles variables EN FIN de liste. Le tableau est insere par une seule requete
+      // PostgREST : le champ source et son compagnon reussissent ou echouent ensemble.
       const { data: last } = await client
         .from('template_field')
         .select('display_order')
@@ -205,29 +207,31 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .limit(1)
         .maybeSingle();
       const nextOrder = ((last?.display_order as number | undefined) ?? -1) + 1;
+      const fields = companion ? [field, companion] : [field];
       const { data, error } = await client
         .from('template_field')
-        .insert({
+        .insert(fields.map((item, index) => ({
           template_version_id: versionId,
-          field_key: field.fieldKey,
-          label: field.label,
-          scope: field.scope,
-          section: field.section,
-          type: field.type,
-          required: field.required,
-          display_order: nextOrder,
-          encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
-          allowed_values: field.allowedValues ?? null,
-          min_value: field.minValue ?? null,
-          max_value: field.maxValue ?? null,
-          unit: field.unit ?? null,
-          allow_missing_codes: field.allowMissingCodes ?? false,
-        })
-        .select('*')
-        .single();
+          field_key: item.fieldKey,
+          label: item.label,
+          scope: item.scope,
+          section: item.section,
+          type: item.type,
+          required: item.required,
+          display_order: nextOrder + index,
+          encounter_types: item.scope === 'encounter' ? item.encounterTypes ?? null : null,
+          allowed_values: item.allowedValues ?? null,
+          min_value: item.minValue ?? null,
+          max_value: item.maxValue ?? null,
+          unit: item.unit ?? null,
+          allow_missing_codes: item.allowMissingCodes ?? false,
+        })))
+        .select('*');
       if (error) throw error;
+      const inserted = ((data as FieldRow[]) ?? []).find((row) => row.field_key === field.fieldKey);
+      if (!inserted) throw new Error('La variable creee est absente de la reponse serveur.');
       clearVersionCache();
-      return mapField(data as FieldRow);
+      return mapField(inserted);
     },
 
     async updateField(fieldId, field) {

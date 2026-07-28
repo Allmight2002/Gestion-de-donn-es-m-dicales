@@ -176,9 +176,27 @@ describe('T1 referentiel de terminologie', () => {
     expect((await db.admin.query(
       'select count(*)::int as n from public.terminology_concept where release_id = $1', [replaced.releaseId],
     )).rows[0].n).toBe(3);
+    // Le remplacement change la publication active sans detruire celle qui peut encore
+    // justifier les couples code/libelle deja stockes dans des fiches historiques.
+    expect((await db.admin.query(
+      'select count(*)::int as n from public.terminology_concept where release_id = $1', [imported.releaseId],
+    )).rows[0].n).toBe(3);
+    expect((await db.admin.query(
+      `select count(*)::int as n
+       from public.terminology_concept previous
+       join public.terminology_concept current on current.code is not distinct from previous.code
+       where previous.release_id = $1 and current.release_id = $2 and previous.id <> current.id`,
+      [imported.releaseId, replaced.releaseId],
+    )).rows[0].n).toBe(3);
+    expect((await db.admin.query(
+      'select slug from public.terminology_release where id = $1', [imported.releaseId],
+    )).rows[0].slug).toMatch(/^import-essai--archive-/);
 
     // Remettre le referentiel de test en service pour les autres cas.
-    await db.admin.query('delete from public.terminology_release where slug = $1', ['import-essai']);
+    await db.admin.query(
+      `delete from public.terminology_release where slug = $1 or slug like $1 || '--archive-%'`,
+      ['import-essai'],
+    );
     await db.admin.query('update public.terminology_release set is_active = true where id = $1', [releaseId]);
   });
 

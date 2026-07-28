@@ -478,17 +478,12 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         templateVersionIds: [f.template_version_id],
       })),
     );
-    const rowCount = options.mode === 'patient' ? patients.length : encounters.length;
-    const columnCount = options.mode === 'patient'
-      ? 3 + fields.length
-      : 6 + fields.filter((field) => field.scope === 'encounter').length;
-    const dictionaryCells = format === 'xlsx' ? (fields.length + 1) * 9 : 0;
-    assertExportShapeWithinLimits(rowCount, columnCount, format, dictionaryCells);
-
     const main = options.mode === 'patient'
       ? buildPatientExport(patients, encounters, fields, options.rule)
       : buildEncounterExport(encounters, fields);
     const dict = buildDictionary(fields);
+    const dictionaryCells = format === 'xlsx' ? (dict.rows.length + 1) * dict.columns.length : 0;
+    assertExportShapeWithinLimits(main.rows.length, main.columns.length, format, dictionaryCells);
     assertNoIdentity(main.columns);
 
     let bytes: Uint8Array;

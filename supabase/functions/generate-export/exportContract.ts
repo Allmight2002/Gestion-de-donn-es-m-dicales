@@ -66,6 +66,19 @@ export function assertNoIdentity(columns: string[]): void {
 }
 
 export const columnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `${field.scope}__${field.fieldKey}`;
+
+/**
+ * Colonne du CODE d'un champ de terminologie. Le libelle part dans la colonne principale
+ * pour la lecture, le code dans celle-ci pour l'analyse : c'est lui qui reste stable quand
+ * un libelle est corrige, et donc lui qui permet de regrouper sans scinder une maladie.
+ */
+export const codeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `terminology_code__${columnId(field)}`;
+
+const isTerminologyValue = (v: unknown): v is { code: string; label: string } =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) &&
+  typeof (v as { code?: unknown }).code === 'string' &&
+  typeof (v as { label?: unknown }).label === 'string';
+
 const formatValue = (v: unknown): string => {
   if (v === null || v === undefined) return '';
   const missingCode = missingCodeOf(v);
@@ -73,10 +86,19 @@ const formatValue = (v: unknown): string => {
   if (typeof v === 'object' && v !== null && MISSING_KEY in v) {
     throw new Error('Code de valeur manquante invalide');
   }
+  // Un diagnostic est un couple code + libelle : sans ce cas, `String(v)` rendait
+  // « [object Object] » dans toute la colonne, rendant l'export inexploitable.
+  if (isTerminologyValue(v)) return v.label;
   if (Array.isArray(v)) return v.join('; ');
   if (typeof v === 'boolean') return v ? '1' : '0';
   return String(v);
 };
+
+const codeOf = (v: unknown): string => (isTerminologyValue(v) ? v.code : '');
+
+/** Colonnes d'un jeu de champs : un champ de terminologie en occupe deux. */
+export const columnsForFields = (fields: ExportField[]): string[] =>
+  fields.flatMap((f) => (f.type === 'terminology' ? [columnId(f), codeColumnId(f)] : [columnId(f)]));
 
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
 export function mergeExportFields(input: ExportField[]): ExportField[] {
@@ -110,10 +132,23 @@ const belongsToField = (versionId: string | undefined, field: ExportField) =>
 const valueFor = (data: Record<string, unknown>, versionId: string | undefined, field: ExportField) =>
   belongsToField(versionId, field) ? formatValue(data[field.fieldKey]) : '';
 
+/** Renseigne la colonne du champ, et celle du code lorsqu'il s'agit d'une terminologie. */
+function assignField(
+  row: Record<string, unknown>,
+  data: Record<string, unknown> | null,
+  versionId: string | undefined,
+  field: ExportField,
+): void {
+  row[columnId(field)] = data ? valueFor(data, versionId, field) : '';
+  if (field.type !== 'terminology') return;
+  const applicable = data && belongsToField(versionId, field);
+  row[codeColumnId(field)] = applicable ? codeOf(data[field.fieldKey]) : '';
+}
+
 const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_value', 'age_unit'];
 export function buildEncounterExport(encounters: ExportEncounter[], fields: ExportField[]): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
-  const columns = [...ENCOUNTER_META, ...encFields.map(columnId)];
+  const columns = [...ENCOUNTER_META, ...columnsForFields(encFields)];
   const rows = [...encounters].sort((a, b) =>
     a.patientCode.localeCompare(b.patientCode) || a.encounterDate.localeCompare(b.encounterDate) ||
     a.id.localeCompare(b.id)
@@ -126,7 +161,7 @@ export function buildEncounterExport(encounters: ExportEncounter[], fields: Expo
       age_value: formatValue(e.ageValue ?? e.data.age_at_encounter),
       age_unit: e.ageUnit ?? '',
     };
-    for (const f of encFields) row[columnId(f)] = valueFor(e.data, e.templateVersionId, f);
+    for (const f of encFields) assignField(row, e.data, e.templateVersionId, f);
     return row;
   });
   return { columns, rows };
@@ -149,20 +184,20 @@ export function buildPatientExport(
   const encounterFields = all.filter((f) => f.scope === 'encounter');
   const columns = [
     'patient_code',
-    ...patientFields.map(columnId),
+    ...columnsForFields(patientFields),
     'age_value',
     'age_unit',
-    ...encounterFields.map(columnId),
+    ...columnsForFields(encounterFields),
   ];
   const byPatient = new Map<string, ExportEncounter[]>();
   for (const e of encounters) byPatient.set(e.patientCode, [...(byPatient.get(e.patientCode) ?? []), e]);
   const rows = [...patients].sort((a, b) => a.code.localeCompare(b.code)).map((p) => {
     const row: Record<string, unknown> = { patient_code: p.code };
-    for (const f of patientFields) row[columnId(f)] = valueFor(p.data, p.templateVersionId, f);
+    for (const f of patientFields) assignField(row, p.data, p.templateVersionId, f);
     const e = pickEncounter(byPatient.get(p.code) ?? [], rule);
     row.age_value = e ? formatValue(e.ageValue ?? e.data.age_at_encounter) : '';
     row.age_unit = e?.ageUnit ?? '';
-    for (const f of encounterFields) row[columnId(f)] = e ? valueFor(e.data, e.templateVersionId, f) : '';
+    for (const f of encounterFields) assignField(row, e ? e.data : null, e?.templateVersionId, f);
     return row;
   });
   return { columns, rows };
@@ -182,17 +217,29 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
   ];
   return {
     columns,
-    rows: mergeExportFields(fields).map((f) => ({
-      column_id: columnId(f),
-      field_key: f.fieldKey,
-      label: f.label,
-      scope: f.scope,
-      section: f.section,
-      type: f.type,
-      unit: f.unit ?? '',
-      allowed_values: Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
-      template_versions: (f.templateVersionIds ?? []).join('; '),
-    })),
+    rows: mergeExportFields(fields).flatMap((f) => {
+      const common = {
+        field_key: f.fieldKey,
+        scope: f.scope,
+        section: f.section,
+        unit: f.unit ?? '',
+        allowed_values: Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
+        template_versions: (f.templateVersionIds ?? []).join('; '),
+      };
+      const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common };
+      if (f.type !== 'terminology') return [valueRow];
+      return [
+        valueRow,
+        {
+          ...common,
+          column_id: codeColumnId(f),
+          label: `${f.label} — code`,
+          type: 'terminology_code',
+          unit: '',
+          allowed_values: '',
+        },
+      ];
+    }),
   };
 }
 

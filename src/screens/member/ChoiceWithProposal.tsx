@@ -37,9 +37,20 @@ export function ChoiceWithProposal({
     }
   }
 
+  function changeSource(next: unknown) {
+    onChange(field.fieldKey, next);
+    const selected = Array.isArray(next) ? next.length > 0 : next !== null && next !== undefined && next !== '';
+    if (selected) {
+      // Les deux valeurs sont mutuellement exclusives : une ancienne proposition ne doit
+      // pas subsister silencieusement apres le choix d'une valeur controlee.
+      setAsked(false);
+      onChange(proposal.fieldKey, null);
+    }
+  }
+
   return (
     <div className="space-y-2">
-      <ValueInput field={field} value={value} onChange={(v) => onChange(field.fieldKey, v)} />
+      <ValueInput field={field} value={value} onChange={changeSource} />
       <label className="flex items-center gap-1.5 text-xs text-slate-600">
         <input type="checkbox" checked={open} onChange={(e) => toggleProposal(e.target.checked)} />
         {t('field.proposal_option')}

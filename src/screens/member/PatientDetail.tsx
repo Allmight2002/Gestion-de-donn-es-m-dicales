@@ -11,6 +11,7 @@ import { InspectionStatusBadge, RetryInspectionButton } from '../../components/I
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
 import { offlineCache, useOnline } from '../../data/offline';
 import { getTemplateFields } from '../../data/templates';
+import { displayFieldValue } from '../../data/types';
 import { isMissing, missingCodeOf } from '../../domain/validation';
 import { formatDate } from '../../lib/formatDate';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -88,10 +89,8 @@ export function PatientDetail() {
   const fmt = useCallback(
     (v: unknown): string => {
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
-      if (v === null || v === undefined || v === '') return '—';
-      if (Array.isArray(v)) return v.join(', ');
       if (typeof v === 'boolean') return v ? '✓' : '✗';
-      return String(v);
+      return displayFieldValue(v, '—');
     },
     [t],
   );

@@ -99,13 +99,26 @@ describe('T2 champ de terminologie', () => {
     await expect(validate(null)).resolves.toBeDefined();
   });
 
-  // Le referentiel actif est la reference : un concept d'une publication retiree du service
-  // ne doit plus pouvoir entrer dans une donnee.
-  test('un concept d un referentiel inactif est refuse', async () => {
+  // Une publication inactive n'est plus proposee a la saisie, mais ses couples code/libelle
+  // restent la preuve des valeurs historiques deja stockees. Une fiche ancienne doit pouvoir
+  // etre revalidee apres activation d'une nouvelle publication.
+  test('un concept historique reste valide apres activation d une nouvelle publication', async () => {
     await db.admin.query('update public.terminology_release set is_active = false where id = $1', [releaseId]);
+    const nextReleaseId = (await db.admin.query(
+      `insert into public.terminology_release(slug, title, source, version, is_active, imported_at)
+       values('test-t2-v2', 'Referentiel T2 v2', 'test', '2', true, now()) returning id`,
+    )).rows[0].id;
+    await db.admin.query(
+      `insert into public.terminology_concept(release_id, code, label, kind, is_selectable)
+       values($1, '1A00', 'Cholera actualise', 'category', true)`,
+      [nextReleaseId],
+    );
     try {
-      await expect(validate({ code: '1A00', label: 'Cholera' })).rejects.toThrow(/inconnu|conforme/i);
+      await expect(validate({ code: '1A00', label: 'Cholera' })).resolves.toBeDefined();
+      await expect(validate({ code: '1A00', label: 'Cholera actualise' })).resolves.toBeDefined();
+      await expect(validate({ code: '1A00', label: 'Libelle invente' })).rejects.toThrow(/inconnu|conforme/i);
     } finally {
+      await db.admin.query('delete from public.terminology_release where id = $1', [nextReleaseId]);
       await db.admin.query('update public.terminology_release set is_active = true where id = $1', [releaseId]);
     }
   });

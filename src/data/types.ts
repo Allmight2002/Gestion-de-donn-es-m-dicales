@@ -22,6 +22,24 @@ export function isTerminologyValue(v: unknown): v is TerminologyValue {
   return typeof o.code === 'string' && o.code.trim() !== ''
     && typeof o.label === 'string' && o.label.trim() !== '';
 }
+
+/**
+ * Rendu LISIBLE d'une valeur de champ, hors formulaire de saisie : listes, fiches, écrans
+ * de relecture.
+ *
+ * Sans le cas terminologie, un diagnostic tombait dans le `String(v)` final et s'affichait
+ * « [object Object] ». C'est le libellé qui est montré : le code sert au comptage, pas à la
+ * lecture.
+ *
+ * Les codes de valeur manquante restent traités par l'appelant, qui seul dispose des
+ * traductions.
+ */
+export function displayFieldValue(v: unknown, vide = ''): string {
+  if (v === null || v === undefined || v === '') return vide;
+  if (isTerminologyValue(v)) return v.label;
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
 export type VersionStatus = 'draft' | 'published' | 'archived';
 export type RuleSeverity = 'block' | 'warn';
 

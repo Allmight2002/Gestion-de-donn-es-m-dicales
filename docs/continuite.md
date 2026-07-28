@@ -47,8 +47,10 @@ unique étape de code reprend
 `scripts/pipedream-backup-watchdog.mjs` et utilise le compte GitHub connecté dans
 Pipedream. Aucun jeton GitHub n'est copié dans le code, les logs ou ce document.
 
-Le détecteur interroge les dix derniers runs de `continuity-backup.yml` sur
-`develop`, puis vérifie le résultat exact du job `backup (staging)`. Il reste
+Le détecteur résout d'abord la branche par défaut courante auprès de GitHub, puis
+interroge ses dix derniers runs de `continuity-backup.yml` et vérifie le résultat
+exact du job `backup (staging)`. Il reste ainsi aligné sur la branche depuis laquelle
+GitHub exécute le cron, même si son nom change. Il reste
 donc correct si le run global est rouge uniquement parce que le job production
 est désactivé. Une réussite de moins de 30 heures termine silencieusement le
 workflow. Ce délai détecte la disparition de plusieurs passages attendus ; chaque

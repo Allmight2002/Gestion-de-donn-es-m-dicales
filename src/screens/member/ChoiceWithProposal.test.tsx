@@ -77,4 +77,12 @@ describe('EncounterFields — soupape (F5)', () => {
     renderFields({ diagnostic_autre: 'Morsure de serpent' });
     expect(screen.getByDisplayValue('Morsure de serpent')).toBeInTheDocument();
   });
+
+  test('choisir ensuite une valeur controlee efface la proposition precedente', async () => {
+    const onChange = renderFields({ diagnostic_autre: 'Morsure de serpent' });
+    await userEvent.selectOptions(screen.getByLabelText('Diagnostic'), 'Paludisme');
+
+    expect(onChange).toHaveBeenCalledWith('diagnostic', 'Paludisme');
+    expect(onChange).toHaveBeenCalledWith('diagnostic_autre', null);
+  });
 });

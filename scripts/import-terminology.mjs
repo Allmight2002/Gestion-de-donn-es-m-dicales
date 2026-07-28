@@ -171,33 +171,55 @@ const CHUNK = 500;
  * entierement disponible, soit la base reste dans son etat anterieur. Un import partiel
  * rendrait la recherche silencieusement incomplete, ce qui est pire qu'un echec visible.
  *
- * Les identifiants des concepts sont generes AVANT l'insertion, ce qui permet d'ecrire
- * `parent_id` directement au lieu de repasser sur la table.
+ * Chaque publication recoit ses propres identifiants de concepts. Le remappage est fait
+ * AVANT l'insertion, ce qui preserve la hierarchie et permet de conserver une ancienne
+ * publication lors d'un remplacement sans collision de cle primaire.
  */
 export async function importTerminology(client, options) {
   const { slug, concepts, title, source, version, license, attribution, activate = false, replace = false } = options;
   if (!slug) throw new Error('Un identifiant de referentiel (slug) est requis.');
   if (!Array.isArray(concepts) || concepts.length === 0) throw new Error('Aucun concept exploitable dans le fichier.');
 
+  const publicationIds = new Map();
+  for (const concept of concepts) {
+    if (!concept?.id) throw new Error('Chaque concept doit posseder un identifiant source.');
+    if (publicationIds.has(concept.id)) throw new Error(`Identifiant de concept duplique : ${concept.id}.`);
+    publicationIds.set(concept.id, randomUUID());
+  }
+  const publicationConcepts = concepts.map((concept) => {
+    let parentId = null;
+    if (concept.parentId != null) {
+      parentId = publicationIds.get(concept.parentId);
+      if (!parentId) throw new Error(`Parent de concept introuvable : ${concept.parentId}.`);
+    }
+    return { ...concept, id: publicationIds.get(concept.id), parentId };
+  });
+
   await client.query('begin');
   try {
     const existing = await client.query('select id from public.terminology_release where slug = $1', [slug]);
     if (existing.rowCount > 0) {
       if (!replace) throw new Error(`Le referentiel "${slug}" existe deja. Utiliser --replace pour le recharger.`);
-      // `on delete cascade` retire les concepts ; un champ qui referencerait ce referentiel
-      // devra etre traite avant d'autoriser un remplacement.
-      await client.query('delete from public.terminology_release where id = $1', [existing.rows[0].id]);
+      // Une fiche stocke le couple code/libelle comme instantane historique. L'ancienne
+      // publication doit donc rester disponible pour revalider ce couple apres activation de
+      // la nouvelle. Seul son slug technique est archive afin de liberer le slug courant.
+      await client.query(
+        `update public.terminology_release
+         set slug = $2
+         where id = $1`,
+        [existing.rows[0].id, `${slug}--archive-${existing.rows[0].id}`],
+      );
     }
 
     const release = await client.query(
       `insert into public.terminology_release(slug, title, source, version, license, attribution, concept_count, imported_at)
        values($1, $2, $3, $4, $5, $6, $7, now()) returning id`,
-      [slug, title ?? slug, source ?? 'inconnue', version ?? '1', license ?? null, attribution ?? null, concepts.length],
+      [slug, title ?? slug, source ?? 'inconnue', version ?? '1', license ?? null, attribution ?? null, publicationConcepts.length],
     );
     const releaseId = release.rows[0].id;
 
-    for (let i = 0; i < concepts.length; i += CHUNK) {
-      const slice = concepts.slice(i, i + CHUNK);
+    for (let i = 0; i < publicationConcepts.length; i += CHUNK) {
+      const slice = publicationConcepts.slice(i, i + CHUNK);
       const values = [];
       const params = [];
       for (const c of slice) {
@@ -218,7 +240,7 @@ export async function importTerminology(client, options) {
     }
 
     await client.query('commit');
-    return { releaseId, inserted: concepts.length };
+    return { releaseId, inserted: publicationConcepts.length };
   } catch (error) {
     await client.query('rollback').catch(() => {});
     throw error;

@@ -32,13 +32,19 @@ function statefulMock(status: VersionStatus): TemplateRepository {
     async getVersion() {
       return { version, fields: [...fields], rules: [] };
     },
-    async addField(_v, f) {
-      const nf: TemplateField = {
-        id: `f${++n}`, fieldKey: f.fieldKey, label: f.label, scope: f.scope, section: f.section, type: f.type,
-        unit: null, allowedValues: null, required: f.required, minValue: null, maxValue: null,
-        allowMissingCodes: true, displayOrder: n,
+    async addField(_v, f, companion) {
+      const add = (item: typeof f) => {
+        const nf: TemplateField = {
+          id: `f${++n}`, fieldKey: item.fieldKey, label: item.label, scope: item.scope, section: item.section, type: item.type,
+          unit: item.unit ?? null, allowedValues: item.allowedValues ?? null, required: item.required,
+          minValue: item.minValue ?? null, maxValue: item.maxValue ?? null,
+          allowMissingCodes: item.allowMissingCodes ?? false, displayOrder: n,
+        };
+        fields.push(nf);
+        return nf;
       };
-      fields.push(nf);
+      const nf = add(f);
+      if (companion) add(companion);
       return nf;
     },
     async updateField(id, f) {
@@ -161,6 +167,49 @@ describe('TemplateVersionEditor (brouillon)', () => {
     await user.type(screen.getByLabelText('Libellé'), 'Score de Glasgow');
     await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
     expect(await screen.findByText('Score de Glasgow')).toBeInTheDocument();
+  });
+
+  test('ajoute le champ source et sa proposition par un seul appel repository', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft');
+    const addField = vi.spyOn(repo, 'addField');
+    renderEditor(repo);
+    await screen.findByText('Champs');
+    await user.selectOptions(screen.getByLabelText('Type'), 'select');
+    await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
+    await user.type(screen.getByLabelText('Libellé'), 'Diagnostic');
+    await user.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    await waitFor(() => expect(addField).toHaveBeenCalledOnce());
+    expect(addField).toHaveBeenCalledWith(
+      'v1',
+      expect.objectContaining({ fieldKey: 'diagnostic' }),
+      expect.objectContaining({ fieldKey: 'diagnostic_autre', type: 'text' }),
+    );
+    expect(await screen.findByText('Diagnostic — valeur proposée')).toBeInTheDocument();
+  });
+
+  test('un conflit de clé compagnon ne crée rien et conserve le formulaire', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft');
+    const addField = vi.spyOn(repo, 'addField');
+    renderEditor(repo);
+    await screen.findByText('Champs');
+    await user.type(screen.getByLabelText('Clé technique'), 'diagnostic_autre');
+    await user.type(screen.getByLabelText('Libellé'), 'Champ existant');
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(await screen.findByText('Champ existant')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Type'), 'select');
+    await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
+    await user.type(screen.getByLabelText('Libellé'), 'Diagnostic');
+    await user.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/soupape n’a pas été ajoutée/i);
+    expect(addField).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Clé technique')).toHaveValue('diagnostic');
   });
 
   test('modifier un champ pre-remplit le formulaire et enregistre le nouveau libelle', async () => {

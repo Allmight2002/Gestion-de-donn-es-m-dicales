@@ -23,6 +23,7 @@ const META_KEY = 'release';
 const PAGE = 1000;
 
 export interface CacheStatus {
+  releaseId: string;
   slug: string;
   version: string;
   count: number;
@@ -80,7 +81,14 @@ export function normalizeQuery(texte: string): string {
 export async function cacheStatus(): Promise<CacheStatus | null> {
   try {
     const meta = await tx<CacheStatus & { key: string } | undefined>(META, 'readonly', (s) => s.get(META_KEY));
-    return meta ? { slug: meta.slug, version: meta.version, count: meta.count, cachedAt: meta.cachedAt } : null;
+    if (!meta || typeof meta.releaseId !== 'string') return null;
+    return {
+      releaseId: meta.releaseId,
+      slug: meta.slug,
+      version: meta.version,
+      count: meta.count,
+      cachedAt: meta.cachedAt,
+    };
   } catch {
     return null;
   }
@@ -108,36 +116,62 @@ export async function downloadReference(
   if (!release) throw new Error('Aucun référentiel actif à télécharger.');
 
   await clearCache();
-  let offset = 0;
-  let total = 0;
-  for (;;) {
-    const page = await repo.listEntries(offset, PAGE);
-    if (page.length === 0) break;
-    const db = await openDb();
-    await new Promise<void>((resolve, reject) => {
-      const t = db.transaction(ENTRIES, 'readwrite');
-      const store = t.objectStore(ENTRIES);
-      for (const e of page) store.put(e);
-      t.oncomplete = () => { db.close(); resolve(); };
-      t.onerror = () => { db.close(); reject(t.error); };
-    });
-    total += page.length;
-    offset += page.length;
-    onProgress?.(total, release.conceptCount);
-    if (page.length < PAGE) break;
-  }
+  try {
+    let offset = 0;
+    let expectedTotal: number | null = null;
+    const codes = new Set<string>();
+    for (;;) {
+      const page = await repo.listEntries(release.id, offset, PAGE);
+      if (!Number.isInteger(page.total) || page.total < 0) {
+        throw new Error('Comptage du référentiel invalide.');
+      }
+      if (expectedTotal === null) expectedTotal = page.total;
+      if (page.total !== expectedTotal) throw new Error('Le référentiel a changé pendant le téléchargement.');
+      if (page.entries.length === 0) {
+        if (offset !== expectedTotal) throw new Error('Téléchargement incomplet du référentiel.');
+        break;
+      }
+      if (offset + page.entries.length > expectedTotal) throw new Error('Comptage incohérent du référentiel.');
+      for (const entry of page.entries) {
+        if (codes.has(entry.code)) throw new Error('Concept dupliqué pendant le téléchargement.');
+        codes.add(entry.code);
+      }
+      const db = await openDb();
+      await new Promise<void>((resolve, reject) => {
+        const t = db.transaction(ENTRIES, 'readwrite');
+        const store = t.objectStore(ENTRIES);
+        for (const e of page.entries) store.put(e);
+        t.oncomplete = () => { db.close(); resolve(); };
+        t.onerror = () => { db.close(); reject(t.error); };
+      });
+      offset += page.entries.length;
+      onProgress?.(offset, expectedTotal);
+      if (offset === expectedTotal) break;
+    }
 
-  const status: CacheStatus = { slug: release.slug, version: release.version, count: total, cachedAt: Date.now() };
-  await tx(META, 'readwrite', (s) => s.put({ key: META_KEY, ...status }));
-  memoire = null;
-  return status;
+    const current = await repo.activeRelease();
+    if (!current || current.id !== release.id) throw new Error('Le référentiel actif a changé pendant le téléchargement.');
+    const status: CacheStatus = {
+      releaseId: release.id,
+      slug: release.slug,
+      version: release.version,
+      count: offset,
+      cachedAt: Date.now(),
+    };
+    await tx(META, 'readwrite', (s) => s.put({ key: META_KEY, ...status }));
+    memoire = null;
+    return status;
+  } catch (error) {
+    await clearCache();
+    throw error;
+  }
 }
 
 /** La copie est-elle celle du referentiel actuellement actif ? */
 export async function cacheIsCurrent(repo: TerminologyRepository): Promise<boolean> {
   const [local, distant] = await Promise.all([cacheStatus(), repo.activeRelease()]);
   if (!local || !distant) return false;
-  return local.slug === distant.slug && local.version === distant.version;
+  return local.releaseId === distant.id;
 }
 
 // Les entrees sont relues une fois puis gardees en memoire : relire IndexedDB a chaque
