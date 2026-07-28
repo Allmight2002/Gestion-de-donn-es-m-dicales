@@ -11,11 +11,14 @@ Le critère de découpage est le **fichier touché**, pas le thème. Deux lots q
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
 n'ont aucun rapport.
 
+Un prompt prêt à l'emploi existe pour chaque lot dans
+[`prompts-lots.md`](prompts-lots.md).
+
 ## Vue d'ensemble
 
 | Lot | Objet | Fichiers principaux | Lancer en même temps que |
 |---|---|---|---|
-| **L1** | Liste d'une base : affichage et bandeau | `BaseHome.tsx` | L2, L3, L5, L7 |
+| ~~L1~~ | ~~Liste d'une base : affichage et bandeau~~ | **Livré le 2026-07-28** | — |
 | **L2** | Formulaires patient : sections | `NewPatient.tsx`, `EditPatient.tsx` | L1, L3, L5, L7 |
 | ~~L3~~ | ~~Allègement du chargement~~ | **Livré le 2026-07-28** | — |
 | **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
@@ -41,18 +44,12 @@ n'ont aucun rapport.
 
 ## Détail des lots
 
-### L1 — Liste d'une base : affichage et bandeau
+### L1 — Liste d'une base : affichage et bandeau — **livré**
 
-Deux corrections dans le même fichier, donc indissociables en pratique.
-
-- **D5** : un diagnostic s'affiche « [object Object] » dans la liste des
-  patients. La fonction `displayFieldValue` existe déjà et est utilisée par la
-  fiche patient ; il suffit de l'employer ici. Vérifier au passage
-  `EditEncounter.tsx`, qui termine lui aussi par `String(v)`.
-- **D3** : le bandeau « Rendre disponible hors-ligne » occupe toute la largeur en
-  permanence pour une action occasionnelle.
-
-Petit lot, bon candidat pour commencer.
+Livré le 2026-07-28. **D5** : `String(v)` remplacé par `displayFieldValue` dans
+`BaseHome.tsx` et `EditEncounter.tsx`, qui portaient le même défaut — un
+diagnostic s'affichait « [object Object] » dans la liste des patients. **D3** :
+bandeau hors-ligne resserré. Tests ajoutés dans `Patients.test.tsx`.
 
 ### L2 — Formulaires patient : sections
 
@@ -177,8 +174,9 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-1. **En parallèle immédiat** : L1, L2, L5, L7, L10 — aucun ne partage de fichier.
-   L10 est désormais débloqué : sa décision structurante est tranchée.
+1. **En parallèle immédiat** : L7, L10 — aucun ne partage de fichier. L10 est
+   désormais débloqué : sa décision structurante est tranchée. L2 et L5 sont
+   déjà en cours sur leurs branches respectives.
 2. **Ensuite** : L4, L8, L11, L12, L13. L11 attend encore sept décisions, mais
    ses étapes locales sont réalisables sans elles.
 3. **Seuls, l'un après l'autre** : L6, L9, L14.

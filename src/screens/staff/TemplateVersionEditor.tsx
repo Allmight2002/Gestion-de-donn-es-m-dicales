@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
 import { FieldForm } from './FieldForm';
-import { RuleForm } from './RuleForm';
+import { RuleForm, RuleSummary } from './RuleForm';
 
 interface Loaded {
   version: TemplateVersion;
@@ -253,8 +253,8 @@ export function TemplateVersionEditor({
         <h3 className="mb-3 text-sm font-semibold text-slate-700">{t('admin.rules')}</h3>
         <ul className="space-y-2 text-sm">
           {rules.map((r) => (
-            <li key={r.id} className="card flex items-center justify-between px-3 py-2">
-              <code className="text-xs">{JSON.stringify(r.rule)}</code>
+            <li key={r.id} className="card flex items-start justify-between gap-3 px-3 py-2">
+              <RuleSummary rule={r.rule} fields={fields} />
               <span className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">{t(`severity.${r.severity}`)}</span>
                 {editable && (
@@ -272,6 +272,7 @@ export function TemplateVersionEditor({
         {editable && (
           <div className="mt-3">
             <RuleForm
+              fields={fields}
               busy={busy}
               onSubmit={(rule, message, severity) => void run(() => repo.addRule(version.id, rule, message, severity))}
             />
