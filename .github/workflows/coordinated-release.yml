@@ -538,7 +538,9 @@ jobs:
           run-id: ${{ inputs.staging_run_id }}
       - name: Verify live GitHub protections in read-only mode
         env:
-          GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}
+          # Le secret de DEPOT ne peut pas s'appeler GITHUB_* : GitHub reserve ce prefixe, comme
+          # pour les variables. Seule la variable d'ENVIRONNEMENT lue par le script garde ce nom.
+          GITHUB_CONTROLS_TOKEN: ${{ secrets.CONTROLS_ADMIN_TOKEN }}
           # Derogation mono-personne, cf. docs/controles-github.md. Portee par une variable de
           # depot et non ecrite en dur : la retirer suffit a retablir le controle complet.
           # La variable de DEPOT ne peut pas s'appeler GITHUB_* (interdit par GitHub) ; seule la

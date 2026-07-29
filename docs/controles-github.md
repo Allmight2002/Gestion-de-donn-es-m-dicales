@@ -13,7 +13,12 @@ dépôt. Il exige :
 - uniquement `develop` autorisée sur `staging` et uniquement `main` sur
   `production`.
 
-Le workflow production utilise le secret `GITHUB_CONTROLS_TOKEN`. Ce jeton doit
+Le workflow production utilise le secret **`CONTROLS_ADMIN_TOKEN`**, passé au
+script sous le nom d'environnement `GITHUB_CONTROLS_TOKEN`. Les deux noms
+diffèrent pour une raison de plate-forme : GitHub **réserve le préfixe
+`GITHUB_`** et refuse tout secret ou variable qui commence par là. Un secret
+nommé `GITHUB_CONTROLS_TOKEN` ne peut pas exister — c'est pourquoi le job
+recevait une valeur vide. Ce jeton doit
 être finement limité à la lecture des règles d'administration/Actions du dépôt ;
 il ne doit permettre ni écriture de contenu, ni modification des protections.
 Un HTTP 403, une fonctionnalité indisponible sur le plan souscrit ou une règle
