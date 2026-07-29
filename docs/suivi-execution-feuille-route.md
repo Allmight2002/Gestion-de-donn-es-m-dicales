@@ -1154,10 +1154,21 @@ Trois choix pour que la dérogation ne se dissolve pas dans le temps :
 
 ### Reste à faire, hors dépôt
 
-Le porteur doit créer le jeton `GITHUB_CONTROLS_TOKEN` (lecture administration
-seule), poser la variable de dépôt `CONTROLS_SOLO_MODE=true`, et activer les
-protections de branche elles-mêmes. Tant que ces trois actions ne sont pas faites, **la release
-de production reste bloquée** — ce qui est le comportement voulu.
+Les protections de branche et les règles d'environnement ont été **posées et
+vérifiées le 2026-07-29** : `npm run github:controls:verify` passe en mode
+mono-personne. La variable de dépôt `CONTROLS_SOLO_MODE=true` est posée.
+
+Reste **une seule action au porteur** : créer un jeton d'accès personnel à
+portée fine (lecture administration et environnements du seul dépôt) et le poser
+en secret **`CONTROLS_ADMIN_TOKEN`**. Tant qu'il manque, la release de production
+reste bloquée — comportement voulu.
+
+Note de plate-forme découverte au passage : GitHub **réserve le préfixe
+`GITHUB_`** pour les secrets comme pour les variables. Le nom
+`GITHUB_CONTROLS_TOKEN` inscrit dans le workflow n'était donc pas créable, ce qui
+explique la valeur vide reçue par le job. Le secret s'appelle désormais
+`CONTROLS_ADMIN_TOKEN`, et seule la variable d'environnement lue par le script
+garde son nom d'origine.
 
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
 se justifie par la taille de l'équipe, pas par une analyse de risque.
