@@ -1158,10 +1158,35 @@ Les protections de branche et les règles d'environnement ont été **posées et
 vérifiées le 2026-07-29** : `npm run github:controls:verify` passe en mode
 mono-personne. La variable de dépôt `CONTROLS_SOLO_MODE=true` est posée.
 
-Reste **une seule action au porteur** : créer un jeton d'accès personnel à
-portée fine (lecture administration et environnements du seul dépôt) et le poser
-en secret **`CONTROLS_ADMIN_TOKEN`**. Tant qu'il manque, la release de production
-reste bloquée — comportement voulu.
+Reste à poser le secret **`CONTROLS_ADMIN_TOKEN`** : un jeton d'accès personnel à
+portée fine, en lecture seule sur l'administration et les environnements du seul
+dépôt.
+
+**Mais ce n'est pas le seul manque**, contrairement à ce qui était écrit ici dans
+un premier temps. L'inventaire des secrets fait ensuite montre que
+l'environnement `Production` **n'a jamais été approvisionné** : il porte 5
+secrets, contre 30 pour `staging`.
+
+| Manquant en production | Rôle |
+|---|---|
+| `CONTROLS_ADMIN_TOKEN` | contrôle B7 |
+| `GOVERNANCE_EVIDENCE_JSON` | preuve de gouvernance signée pour le SHA promu |
+| `RECOVERY_EVIDENCE_JSON` | exercice de restauration pour ce même SHA |
+| `OPERATIONS_EVIDENCE_JSON` | affectations d'exploitation et QA clinique |
+| `STORAGE_BACKUP_ENCRYPTION_KEY` | sauvegarde chiffrée avant toute écriture |
+| `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_URL`, `SUPABASE_SERVICE_ROLE_KEY` | écriture base |
+| `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | déploiement du frontend |
+
+Les trois preuves de gouvernance, de restauration et d'exploitation ne sont pas
+des identifiants : ce sont des **pièces du dossier de readiness**, qui n'existent
+pas encore. La release coordonnée de production est donc bloquée non par un
+oubli de configuration, mais par le dossier lui-même — ce qui est exactement ce
+que ce garde-fou est censé produire.
+
+**Conséquence pratique** : `main` porte L1, L2, L3, L5 et B7, tous **déployés sur
+staging et vérifiés**, sans chemin vers la production tant que le dossier de
+readiness n'est pas constitué. La production continue de servir sa version
+antérieure.
 
 Note de plate-forme découverte au passage : GitHub **réserve le préfixe
 `GITHUB_`** pour les secrets comme pour les variables. Le nom
