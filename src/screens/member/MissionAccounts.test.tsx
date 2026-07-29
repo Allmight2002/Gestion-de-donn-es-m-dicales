@@ -9,7 +9,10 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { MissionAccounts } from './MissionAccounts';
-import { daysUntil, maxExpiryDate, missionStatus, type MissionAccount, type MissionRepository } from '../../data/mission';
+import {
+  daysUntil, maxExpiryDate, missionStatus,
+  type CreateMissionInput, type MissionAccount, type MissionRepository,
+} from '../../data/mission';
 import type { BaseListing, BaseRepository, BaseRole } from '../../data/bases';
 import { NO_PERMISSIONS } from '../../data/access';
 
@@ -114,7 +117,7 @@ describe('creation d une mission', () => {
   });
 
   test('la demande transmise porte l echeance en fin de journee et le motif saisi', async () => {
-    const create = vi.fn(async () => ({ mailSent: true }));
+    const create = vi.fn(async (_input: CreateMissionInput) => ({ mailSent: true }));
     renderScreen(baseRepoWithRole('owner'), makeMissions({ create }));
 
     await userEvent.type(await screen.findByLabelText(/Adresse e-mail/i), 'nouveau@exemple.test');
@@ -134,7 +137,7 @@ describe('creation d une mission', () => {
   });
 
   test('sans ouverture des noms, aucun motif n est transmis', async () => {
-    const create = vi.fn(async () => ({ mailSent: true }));
+    const create = vi.fn(async (_input: CreateMissionInput) => ({ mailSent: true }));
     renderScreen(baseRepoWithRole('owner'), makeMissions({ create }));
     await userEvent.type(await screen.findByLabelText(/Adresse e-mail/i), 'nouveau@exemple.test');
     await userEvent.click(screen.getByRole('button', { name: /Créer et envoyer/i }));
@@ -158,7 +161,7 @@ describe('creation d une mission', () => {
   });
 
   test('un refus serveur est affiche tel quel, sans creation silencieuse', async () => {
-    const create = vi.fn(async () => {
+    const create = vi.fn(async (_input: CreateMissionInput): Promise<{ mailSent: boolean }> => {
       throw new Error('Cette adresse ne peut pas recevoir un compte de mission');
     });
     renderScreen(baseRepoWithRole('owner'), makeMissions({ create }));
@@ -188,7 +191,7 @@ describe('suivi des missions', () => {
   });
 
   test('la revocation demande confirmation avant d appeler le serveur', async () => {
-    const revoke = vi.fn(async () => {});
+    const revoke = vi.fn(async (_accessId: string) => {});
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderScreen(baseRepoWithRole('owner'), makeMissions({ revoke }));
 
@@ -202,7 +205,7 @@ describe('suivi des missions', () => {
   });
 
   test('la prolongation envoie la nouvelle echeance', async () => {
-    const extend = vi.fn(async () => {});
+    const extend = vi.fn(async (_accessId: string, _expiresAt: string) => {});
     renderScreen(baseRepoWithRole('owner'), makeMissions({ extend }));
     await userEvent.click(await screen.findByRole('button', { name: /^Prolonger$/i }));
     const field = (await screen.findByLabelText(/Nouvelle échéance/i)) as HTMLInputElement;
@@ -215,7 +218,7 @@ describe('suivi des missions', () => {
   });
 
   test('le renvoi d invitation confirme visiblement', async () => {
-    const resend = vi.fn(async () => {});
+    const resend = vi.fn(async (_baseId: string, _email: string) => {});
     renderScreen(baseRepoWithRole('owner'), makeMissions({ resend }));
     await userEvent.click(await screen.findByRole('button', { name: /Renvoyer/i }));
     await waitFor(() => expect(resend).toHaveBeenCalledWith('b1', 'etudiant@exemple.test'));
