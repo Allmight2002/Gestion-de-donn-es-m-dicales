@@ -87,44 +87,81 @@ try {
   if (!bases?.length) throw new Error('Aucune base active sur ce projet : impossible de verifier.');
   baseId = bases[0].id;
   otherBaseId = bases[1]?.id ?? null;
-  const ownerId = bases[0].owner_user_id;
   console.log(`Base de mission : ${bases[0].name}`);
   console.log(`Autre base pour le cloisonnement : ${otherBaseId ? bases[1].name : '(aucune seconde base)'}\n`);
 
-  // --- 1. Creation du compte avec le role porte par app_metadata --------------------
-  const { data: created, error: createError } = await admin.auth.admin.createUser({
-    email: STUDENT_EMAIL,
-    password: STUDENT_PASSWORD,
-    email_confirm: true,
-    app_metadata: { global_role: 'saisisseur' },
+  // --- 1. Creation par le VRAI chemin : l'Edge Function, appelee par un medecin ------
+  // C'est le seul moyen de verifier ce qui compte : que le compte recoit bien le role de
+  // mission. Supabase n'ecrivant pas app_metadata dans la meme instruction que
+  // l'insertion, seule la reconciliation faite par la fonction l'etablit.
+  const medecinEmail = process.env[`${prefix}MEDECIN_EMAIL`] ?? process.env.MEDECIN_EMAIL;
+  const medecinPassword = process.env[`${prefix}MEDECIN_PASSWORD`] ?? process.env.MEDECIN_PASSWORD;
+  if (!medecinEmail || !medecinPassword) {
+    throw new Error(`Identifiants medecin absents (${prefix}MEDECIN_EMAIL / ${prefix}MEDECIN_PASSWORD).`);
+  }
+
+  const medecin = createClient(url, anonKey, { auth: { persistSession: false } });
+  const { data: session, error: medecinError } = await medecin.auth.signInWithPassword({
+    email: medecinEmail,
+    password: medecinPassword,
   });
-  if (createError) throw createError;
-  studentId = created.user.id;
+  if (medecinError) throw medecinError;
+
+  // La base doit etre geree par CE medecin, sinon la fonction refuse (a juste titre).
+  const { data: managed } = await medecin.from('base').select('id, name').eq('owner_user_id', session.user.id).limit(1);
+  if (managed?.length) {
+    baseId = managed[0].id;
+    console.log(`Base geree par le medecin de test : ${managed[0].name}\n`);
+  }
+
+  const { data: invoked, error: invokeError } = await medecin.functions.invoke('create-mission-account', {
+    body: {
+      action: 'create',
+      baseId,
+      email: STUDENT_EMAIL,
+      expiresAt: new Date(Date.now() + 365 * 86400_000).toISOString(),
+      canViewIdentity: false,
+    },
+  });
+  check("l'Edge Function cree le compte de mission", !invokeError && !!invoked?.userId, invokeError?.message ?? '');
+  studentId = invoked?.userId ?? null;
+  if (!studentId) throw new Error("l'Edge Function n'a pas cree de compte");
 
   const { data: profile } = await admin.from('profiles').select('global_role').eq('id', studentId).single();
-  check('le compte recoit le role saisisseur depuis app_metadata', profile?.global_role === 'saisisseur', `role=${profile?.global_role}`);
+  check('le compte recoit le role saisisseur, pas medecin', profile?.global_role === 'saisisseur', `role=${profile?.global_role}`);
+
+  // Rejeu a l'identique : doit etre accepte sans creer de doublon.
+  const { error: replayError } = await medecin.functions.invoke('create-mission-account', {
+    body: {
+      action: 'create', baseId, email: STUDENT_EMAIL,
+      expiresAt: new Date(Date.now() + 365 * 86400_000).toISOString(), canViewIdentity: false,
+    },
+  });
+  const { count: accessCount } = await admin
+    .from('base_access').select('id', { count: 'exact', head: true }).eq('user_id', studentId);
+  check('le rejeu de la meme demande ne cree aucun doublon', !replayError && accessCount === 1, `${accessCount} ligne(s)`);
+
+  // Le mot de passe est normalement choisi par l'etudiant via le courriel recu. Pour la
+  // suite de la verification, on en pose un cote serveur : c'est l'AUTORISATION qu'on
+  // teste ici, pas le parcours de definition du mot de passe.
+  await admin.auth.admin.updateUserById(studentId, { password: STUDENT_PASSWORD, email_confirm: true });
 
   // --- Provisionnement de la mission (12 mois), au nom du proprietaire ---------------
-  const expiresAt = new Date(Date.now() + 365 * 86400_000).toISOString();
-  // provision_mission_access s'appuie sur auth.uid() (le medecin appelant) : hors session
-  // medecin, on pose la ligne en service_role en respectant exactement les invariants que
-  // la garde impose. Si l'un d'eux est violé, le trigger refuse — c'est aussi un test.
-  const { data: access, error: accessError } = await admin.from('base_access').insert({
-    base_id: baseId,
-    user_id: studentId,
-    access_role: 'editor',
-    can_create_structured_data: true,
-    can_view_identity: false,
-    can_view_raw_documents: false,
-    can_edit_structured_data: false,
-    can_export_data: false,
-    can_manage_access: false,
-    expires_at: expiresAt,
-    granted_by: ownerId,
-  }).select('id').single();
-  if (accessError) throw accessError;
+  // L'acces a ete pose par l'Edge Function elle-meme, avec le jeton du medecin.
+  const { data: access, error: accessError } = await admin
+    .from('base_access')
+    .select('id, expires_at, can_create_structured_data, can_edit_structured_data, can_export_data, can_manage_access')
+    .eq('user_id', studentId)
+    .maybeSingle();
+  if (accessError || !access) throw accessError ?? new Error('acces de mission introuvable');
   accessId = access.id;
-  check('la garde accepte une mission conforme (echeance, creation seule)', true, '12 mois');
+  check(
+    'la mission posee est bornee et en creation seule',
+    access.expires_at != null && access.can_create_structured_data === true
+      && access.can_edit_structured_data === false && access.can_export_data === false
+      && access.can_manage_access === false,
+    `echeance ${String(access.expires_at).slice(0, 10)}`,
+  );
 
   // --- Session du compte de mission : tout ce qui suit passe sous SA RLS -------------
   const student = createClient(url, anonKey, { auth: { persistSession: false } });
