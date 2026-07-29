@@ -16,6 +16,9 @@ interface Options {
   lookupFails?: boolean;
   canManage?: boolean;
   provisionFails?: boolean;
+  /** Role renvoye par reconcile_mission_profile (defaut : le role de mission). */
+  reconciledRole?: string;
+  reconcileFails?: boolean;
   createFails?: boolean;
   mailFails?: boolean;
   calls?: string[];
@@ -40,6 +43,10 @@ function deps(options: Options = {}): MissionAccountDeps {
     if (call.rpc === 'mission_account_lookup') {
       if (options.lookupFails) return { data: null, error: { message: 'boom' } };
       return okResult(options.lookup ? [options.lookup] : []);
+    }
+    if (call.rpc === 'reconcile_mission_profile') {
+      if (options.reconcileFails) return { data: null, error: { message: 'boom' } };
+      return okResult(options.reconciledRole ?? 'saisisseur');
     }
     return okResult(null);
   };
@@ -153,6 +160,7 @@ Deno.test('cree le compte puis pose l acces, et envoie le courriel de mot de pas
     'user:can_manage_access',
     'admin:mission_account_lookup',
     'auth:createMissionUser',
+    'admin:reconcile_mission_profile',
     'user:provision_mission_access',
     'auth:sendPasswordSetup',
   ]);
@@ -289,4 +297,39 @@ Deno.test('aucune reponse ne laisse fuir de secret ni d erreur interne brute', a
     assert(!text.toLowerCase().includes('boom'));
     assert(!text.includes('rattache qu a une seule base'), 'pas d erreur base brute renvoyee au client');
   }
+});
+
+// Regression trouvee en verifiant sur un projet Supabase reel : app_metadata n'est pas
+// ecrite dans la meme instruction que l'insertion de l'utilisateur, donc le declencheur
+// cree un profil medecin. Sans reconciliation, le compte de mission naitrait medecin.
+Deno.test('le role de mission est reconcilie avant tout provisionnement', async () => {
+  const calls: string[] = [];
+  await handleCreateMissionAccount(makeRequest({ body: createBody() }), deps({ lookup: null, calls }));
+  const reconcile = calls.indexOf('admin:reconcile_mission_profile');
+  const provision = calls.indexOf('user:provision_mission_access');
+  assert(reconcile > -1, 'la reconciliation doit avoir lieu');
+  assert(reconcile < provision, 'elle doit preceder le provisionnement');
+});
+
+Deno.test('role de mission non etabli : aucun acces n est pose', async () => {
+  const calls: string[] = [];
+  const res = await handleCreateMissionAccount(
+    makeRequest({ body: createBody() }),
+    deps({ lookup: null, reconciledRole: 'medecin', calls }),
+  );
+  const { status, body } = await readResponse(res);
+  assertEquals(status, 409);
+  assert(!calls.includes('user:provision_mission_access'), 'aucun acces sur un compte non-mission');
+  assert(!calls.includes('auth:sendPasswordSetup'));
+  assert(!String(body.error).toLowerCase().includes('medecin'));
+});
+
+Deno.test('reconciliation indisponible : rien n est provisionne', async () => {
+  const calls: string[] = [];
+  const res = await handleCreateMissionAccount(
+    makeRequest({ body: createBody() }),
+    deps({ lookup: null, reconcileFails: true, calls }),
+  );
+  assertEquals(res.status, 409);
+  assert(!calls.includes('user:provision_mission_access'));
 });
