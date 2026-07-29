@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260729104500_mission_accounts.sql`
-- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 216
+- Dernière migration incluse : `20260729153000_mission_profile_reconcile.sql`
+- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 217
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1011,6 +1011,7 @@ Triggers :
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
 | quarantine_reconciliation_candidates | p_limit integer | DEFINER | sql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
+| reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
 | record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |

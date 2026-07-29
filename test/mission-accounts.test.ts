@@ -560,3 +560,77 @@ describe('garde de suppression logique (regression)', () => {
     expect(definition).toMatch(/can_export_data/);
   });
 });
+
+// =============================================================================
+// Regression trouvee en verifiant sur un projet Supabase REEL (staging, 2026-07-29).
+// `createUser` avec app_metadata n'ecrit pas ces cles dans la MEME instruction que
+// l'insertion : le declencheur ne voit rien et cree un profil medecin. Le compte de
+// mission naissait donc medecin, capable de creer ses propres bases.
+describe('reconciliation du role de mission (defaut Supabase reel)', () => {
+  /** Reproduit le comportement de Supabase : insertion NUE, app_metadata posee apres. */
+  async function createUserLikeSupabase(email: string): Promise<string> {
+    const id = await createAuthUser(email, { provider: 'email', providers: ['email'] });
+    await db.admin.query(
+      `update auth.users set raw_app_meta_data = raw_app_meta_data || '{"global_role":"saisisseur"}'::jsonb
+       where id = $1`,
+      [id],
+    );
+    return id;
+  }
+
+  test('sans reconciliation, le profil reste medecin — c est bien le defaut', async () => {
+    const id = await createUserLikeSupabase('tardif@demo.test');
+    expect(await globalRoleOf(id)).toBe('medecin');
+  });
+
+  test('la reconciliation retablit le role de mission', async () => {
+    const id = await createUserLikeSupabase('reconcilie@demo.test');
+    const role = (await db.admin.query('select public.reconcile_mission_profile($1) as role', [id])).rows[0].role;
+    expect(role).toBe('saisisseur');
+    expect(await globalRoleOf(id)).toBe('saisisseur');
+  });
+
+  test('elle est idempotente : rejouer ne change rien', async () => {
+    const id = await createUserLikeSupabase('rejeu@demo.test');
+    await db.admin.query('select public.reconcile_mission_profile($1)', [id]);
+    const again = (await db.admin.query('select public.reconcile_mission_profile($1) as role', [id])).rows[0].role;
+    expect(again).toBe('saisisseur');
+  });
+
+  test('elle ne touche pas un compte qui n a pas demande le role de mission', async () => {
+    const id = await createAuthUser('simple.medecin@demo.test', { provider: 'email' });
+    const role = (await db.admin.query('select public.reconcile_mission_profile($1) as role', [id])).rows[0].role;
+    expect(role).toBe('medecin');
+    expect(await globalRoleOf(id)).toBe('medecin');
+  });
+
+  test('elle REFUSE de retrograder un compte deja etabli (proprietaire ou beneficiaire)', async () => {
+    // Un medecin proprietaire d'une base : la retrograder lui ferait perdre sa base.
+    await db.admin.query(
+      `update auth.users set raw_app_meta_data = raw_app_meta_data || '{"global_role":"saisisseur"}'::jsonb
+       where id = $1`,
+      [aliceId],
+    );
+    await expect(
+      db.admin.query('select public.reconcile_mission_profile($1)', [aliceId]),
+    ).rejects.toThrow(/deja etabli/i);
+    expect(await globalRoleOf(aliceId)).toBe('medecin');
+    await db.admin.query(
+      `update auth.users set raw_app_meta_data = raw_app_meta_data - 'global_role' where id = $1`,
+      [aliceId],
+    );
+  });
+
+  test('elle n est PAS executable par un client authentifie', async () => {
+    const id = await createUserLikeSupabase('interdit@demo.test');
+    await expect(
+      rowsAs(bobId, 'select public.reconcile_mission_profile($1)', [id]),
+    ).rejects.toThrow(/permission|denied|droit/i);
+  });
+
+  test('un compte introuvable est refuse explicitement', async () => {
+    await expect(
+      db.admin.query('select public.reconcile_mission_profile($1)', ['00000000-0000-0000-0000-0000000000ff']),
+    ).rejects.toThrow(/introuvable/i);
+  });
+});

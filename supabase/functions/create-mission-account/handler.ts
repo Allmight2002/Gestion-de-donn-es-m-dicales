@@ -192,6 +192,20 @@ export async function handleCreateMissionAccount(req: Request, deps: MissionAcco
     created = true;
   }
 
+  // Supabase n'ecrit PAS app_metadata dans la meme instruction que l'insertion de
+  // l'utilisateur : le declencheur handle_new_user ne voit donc pas le role et cree un
+  // profil medecin. Sans cette reconciliation, le compte de mission naitrait medecin,
+  // capable de creer ses propres bases — l'escalade meme que le lot doit empecher.
+  // La RPC relit app_metadata cote serveur et refuse de toucher un compte deja etabli.
+  // Idempotente : sans effet sur un rejeu.
+  const { data: role, error: roleError } = await admin.rpc('reconcile_mission_profile', {
+    p_user_id: userId,
+  });
+  if (roleError || role !== 'saisisseur') {
+    console.error('create-mission-account: mission role could not be established');
+    return json(409, { error: 'Role de mission non etabli : aucun acces pose' });
+  }
+
   // Provisionnement AVEC LE JETON DU MEDECIN : l'autorisation, les invariants de mission
   // et l'audit restent portes par la base (auth.uid() = le medecin appelant).
   const { data: access, error: accessError } = await asUser.rpc('provision_mission_access', {
