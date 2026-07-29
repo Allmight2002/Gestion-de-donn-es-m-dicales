@@ -13,7 +13,7 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Squelette minimal mais VALIDE : toutes les fonctions declarees + config.toml + deno.json coherents.
-const BASE_FUNCTIONS = ['cleanup-upload', 'finalize-upload', 'generate-export', 'inspect-upload', 'reconcile-quarantine', 'signed-read'];
+const BASE_FUNCTIONS = ['cleanup-upload', 'create-mission-account', 'finalize-upload', 'generate-export', 'inspect-upload', 'reconcile-quarantine', 'signed-read'];
 const ENTRYPOINT = 'Deno.serve((_req: Request) => new Response("ok"));\n';
 
 const DENO_JSON = JSON.stringify({
@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 describe('inventaire dynamique des Edge Functions', () => {
-  test('le depot reel passe : six fonctions decouvertes, aucune derive', () => {
+  test('le depot reel passe : sept fonctions decouvertes, aucune derive', () => {
     const result = verifyEdgeFunctions(REPO_ROOT);
     expect(result.errors).toEqual([]);
     expect(result.ok).toBe(true);
@@ -69,7 +69,7 @@ describe('inventaire dynamique des Edge Functions', () => {
     expect(verifyEdgeFunctions(root).ok).toBe(true);
   });
 
-  test('une SIXIEME fonction non declaree est detectee (ne peut pas echapper au controle)', () => {
+  test('une fonction SUPPLEMENTAIRE non declaree est detectee (ne peut pas echapper au controle)', () => {
     const root = makeFixtureRoot(BASE_FUNCTIONS, { 'shadow-export': ENTRYPOINT });
     const { functions } = discoverEdgeFunctions(root);
     expect(functions).toContain('shadow-export'); // decouverte, contrairement a l'ancienne liste figee
