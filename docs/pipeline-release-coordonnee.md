@@ -44,6 +44,12 @@ etre prefixe `VITE_`.
 
 ## Staging et production
 
+Pendant la phase de développement actuelle, la cible technique `production` sert
+d'environnement persistant de tests internes sur l'URL principale Vercel. Cette
+qualification, ses limites et ses conditions de fin sont enregistrées dans la
+[`décision du 29 juillet 2026`](decision-environnement-production-tests-2026-07-29.md).
+Elle ne vaut ni readiness clinique ni autorisation de données réelles.
+
 1. `validate` execute CI, fige le SHA, construit `dist/` comme simple controle de build (le
    frontend n'est PAS deploye depuis ce job) et archive uniquement `deploy-manifest.json`
    (preuve technique de release conservee 30 jours).

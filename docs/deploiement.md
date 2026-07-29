@@ -4,6 +4,11 @@ Ce guide met le service **en ligne** pour une **démo / un pilote contrôlé** a
 **données entièrement fictives**. La section §8 liste ce qu'il reste à faire **avant** toute
 donnée réelle (cadre juridique + durcissement serveur).
 
+La cible technique actuellement nommée `production` est une plateforme persistante
+de tests internes, pas une production clinique. Voir la
+[`décision du 29 juillet 2026`](decision-environnement-production-tests-2026-07-29.md)
+pour le périmètre approuvé et les événements qui imposeront une nouvelle revue.
+
 > Backend = **Supabase cloud** (Postgres + Auth + Storage). Frontend = build **Vite/PWA**
 > statique, hébergé séparément. Les migrations s'appliquent **de zéro** (les tests les
 > rejouent à chaque exécution) : un projet vierge se déploie proprement.

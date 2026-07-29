@@ -1198,6 +1198,51 @@ garde son nom d'origine.
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
 se justifie par la taille de l'équipe, pas par une analyse de risque.
 
+## Dérogation pilote sur les trois preuves de readiness (2026-07-29)
+
+Décidée par le porteur après l'inventaire des secrets de production, dans le
+prolongement de la dérogation B7.
+
+**Une différence de nature doit rester consignée.** B7 était une
+**impossibilité** : GitHub interdit d'approuver sa propre pull request, et aucun
+travail n'aurait permis de satisfaire le contrôle sur un dépôt à une personne.
+Les trois preuves suspendues ici — gouvernance, reprise, exploitation — sont au
+contraire **réalisables** ; elles manquent parce qu'elles n'ont pas été faites.
+C'est une dette assumée, pas une adaptation à une contrainte de plate-forme.
+
+### Forme retenue
+
+La dérogation ne s'applique **qu'à l'absence** de preuve. Chaque garde-fou teste
+d'abord si la preuve existe :
+
+- fournie → vérifiée intégralement, y compris la correspondance au SHA exact ;
+- absente et dérogation active → la release continue, après avoir écrit au
+  journal ce qui n'est pas prouvé ;
+- absente et dérogation inactive → échec, comme avant.
+
+Produire **une seule** des trois preuves la remet donc immédiatement sous
+contrôle, sans rien reconfigurer : la dette se rembourse par tiers.
+
+### Ce qui reste bloquant
+
+La sauvegarde **chiffrée, vérifiée et conservée** avant toute écriture n'est pas
+touchée — c'est le filet qui rend une erreur réparable. Ni la preuve de staging
+réussi pour le même SHA, ni la vérification de cible, de dérive de schéma, d'ACL
+de fonctions et d'inventaire Edge.
+
+### Vérification
+
+`test/deployment.test.ts` (**11 tests**) vérifie que la sortie anticipée exige
+les **deux** conditions, que le contrôle d'origine subsiste pour une preuve
+fournie, que la dérogation passe par une variable de dépôt et n'est jamais écrite
+en dur, et que la sauvegarde chiffrée reste inconditionnelle.
+
+Détail et condition de levée : [`derogations-readiness.md`](derogations-readiness.md).
+
+**Limite d'acceptabilité** : cette dérogation ne vaut que pour une production à
+**données fictives**, sans utilisateur tiers. Elle tombe à la première donnée
+réelle, au premier patient, et au premier utilisateur qui n'est pas le porteur.
+
 ## 2026-07-29 — L10, comptes de mission : livré, vérifié sur staging, bloqué en production
 
 Un médecin peut confier la saisie d'**une** base à une personne de terrain, pour une
