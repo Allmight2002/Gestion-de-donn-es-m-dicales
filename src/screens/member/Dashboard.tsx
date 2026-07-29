@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { Database, Plus, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
-import { canCreateBase } from '../../auth/logic';
+import { canCreateBase, isMissionAccount } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, PublishedTemplateOption } from '../../data/bases';
 import { offlineCache, useOnline, type OfflineMeta } from '../../data/offline';
@@ -21,6 +21,7 @@ export function Dashboard() {
   const { t } = useI18n();
   const online = useOnline();
   const mayCreate = canCreateBase(profile);
+  const isMission = isMissionAccount(profile);
   const navigate = useNavigate();
   const [bases, setBases] = useState<BaseListing[]>([]);
   const [offlineBases, setOfflineBases] = useState<OfflineMeta[]>([]);
@@ -160,7 +161,14 @@ export function Dashboard() {
             {!loading && <p className="mt-0.5 text-sm text-slate-500">{t('dashboard.bases_count').replace('{n}', String(bases.length))}</p>}
           </div>
         </div>
-        {!loading && bases.length === 0 ? (
+        {!loading && bases.length === 0 && isMission ? (
+          /* Fin de mission : ni erreur brute, ni ecran vide — on dit ce qui s'est passe
+             et ce que devient la saisie deja faite (docs/spec-comptes-mission.md §8). */
+          <div className="card space-y-2 p-8 text-center">
+            <h3 className="text-base font-semibold text-slate-800">{t('mission.over_title')}</h3>
+            <p className="mx-auto max-w-lg text-sm text-slate-500">{t('mission.over_body')}</p>
+          </div>
+        ) : !loading && bases.length === 0 ? (
           <EmptyState
             icon={Database}
             title={t('dashboard.no_bases')}

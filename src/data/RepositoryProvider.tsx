@@ -11,6 +11,7 @@ import { adminRepository, type AdminRepository } from './admin';
 import { auditRepository, type AuditRepository } from './audit';
 import { groupRepository, type GroupRepository } from './groups';
 import { terminologyRepository, type TerminologyRepository } from './terminology';
+import { missionRepository, type MissionRepository } from './mission';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -25,6 +26,7 @@ interface Repositories {
   audit: AuditRepository;
   groups: GroupRepository;
   terminology: TerminologyRepository;
+  missions: MissionRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -40,6 +42,7 @@ const RepositoryContext = createContext<Repositories>({
   audit: auditRepository,
   groups: groupRepository,
   terminology: terminologyRepository,
+  missions: missionRepository,
 });
 
 export function RepositoryProvider({
@@ -56,6 +59,7 @@ export function RepositoryProvider({
   audit = auditRepository,
   groups = groupRepository,
   terminology = terminologyRepository,
+  missions = missionRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -70,9 +74,10 @@ export function RepositoryProvider({
   audit?: AuditRepository;
   groups?: GroupRepository;
   terminology?: TerminologyRepository;
+  missions?: MissionRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -124,4 +129,8 @@ export function useAuditRepository(): AuditRepository {
 
 export function useGroupRepository(): GroupRepository {
   return useContext(RepositoryContext).groups;
+}
+
+export function useMissionRepository(): MissionRepository {
+  return useContext(RepositoryContext).missions;
 }

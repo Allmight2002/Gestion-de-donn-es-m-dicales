@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router';
-import { ProtectedRoute, PublicOnly } from './ProtectedRoute';
+import { Outlet, Routes, Route } from 'react-router';
+import { ProtectedRoute, PublicOnly, RequireGlobalRole } from './ProtectedRoute';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ResetPassword } from '../screens/ResetPassword';
 import { NotFound } from '../screens/NotFound';
@@ -25,6 +25,7 @@ const AddImage = lazy(() => import('../screens/member/AddImage').then((m) => ({ 
 const CohortBuilder = lazy(() => import('../screens/member/CohortBuilder').then((m) => ({ default: m.CohortBuilder })));
 const ExportPanel = lazy(() => import('../screens/member/ExportPanel').then((m) => ({ default: m.ExportPanel })));
 const AccessManagement = lazy(() => import('../screens/member/AccessManagement').then((m) => ({ default: m.AccessManagement })));
+const MissionAccounts = lazy(() => import('../screens/member/MissionAccounts').then((m) => ({ default: m.MissionAccounts })));
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
 const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
@@ -38,6 +39,12 @@ const CurationTask = lazy(() => import('../screens/member/CurationTask').then((m
 const AcceptInvitation = lazy(() => import('../screens/member/AcceptInvitation').then((m) => ({ default: m.AcceptInvitation })));
 const TemplatesAdmin = lazy(() => import('../screens/staff/TemplatesAdmin').then((m) => ({ default: m.TemplatesAdmin })));
 const RoleAdmin = lazy(() => import('../screens/staff/RoleAdmin').then((m) => ({ default: m.RoleAdmin })));
+
+// Un COMPTE DE MISSION (role `saisisseur`) n'a acces qu'a la saisie de sa base : ni
+// gabarits, ni cohortes, ni statistiques, ni journal, ni curation, ni gestion d'acces.
+// Ce filtre de route n'est qu'un confort d'affichage — chacun de ces ecrans est de toute
+// facon refuse par la base (docs/spec-comptes-mission.md §4).
+const HORS_MISSION = ['medecin', 'curateur'] as const;
 
 export function AppRoutes() {
   return (
@@ -57,7 +64,7 @@ export function AppRoutes() {
       <Route
         path="/accept-invitation"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <AcceptInvitation />
           </ProtectedRoute>
         }
@@ -73,7 +80,7 @@ export function AppRoutes() {
       <Route
         path="/templates"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <MyTemplates />
           </ProtectedRoute>
         }
@@ -81,7 +88,7 @@ export function AppRoutes() {
       <Route
         path="/templates/from-file"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <TemplateFromFile />
           </ProtectedRoute>
         }
@@ -89,7 +96,7 @@ export function AppRoutes() {
       <Route
         path="/templates/library"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <TemplateLibrary />
           </ProtectedRoute>
         }
@@ -97,7 +104,7 @@ export function AppRoutes() {
       <Route
         path="/groups"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <GroupList />
           </ProtectedRoute>
         }
@@ -105,7 +112,7 @@ export function AppRoutes() {
       <Route
         path="/groups/:groupId"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <GroupDetail />
           </ProtectedRoute>
         }
@@ -113,7 +120,7 @@ export function AppRoutes() {
       <Route
         path="/sync"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <SyncCenter />
           </ProtectedRoute>
         }
@@ -130,19 +137,22 @@ export function AppRoutes() {
         }
       >
         <Route index element={<BaseHome />} />
-        <Route path="import" element={<ImportData />} />
-        <Route path="cohorts" element={<CohortBuilder />} />
-        <Route path="stats" element={<BaseStats />} />
-        <Route path="queue" element={<CompletionQueue />} />
-        <Route path="activity" element={<ActivityLog />} />
-        <Route path="access" element={<AccessManagement />} />
-        <Route path="template" element={<BaseTemplateEditor />} />
-        <Route path="curation" element={<CurationBoard />} />
+        <Route element={<RequireGlobalRole globalRoles={HORS_MISSION}><Outlet /></RequireGlobalRole>}>
+          <Route path="import" element={<ImportData />} />
+          <Route path="cohorts" element={<CohortBuilder />} />
+          <Route path="stats" element={<BaseStats />} />
+          <Route path="queue" element={<CompletionQueue />} />
+          <Route path="activity" element={<ActivityLog />} />
+          <Route path="access" element={<AccessManagement />} />
+          <Route path="missions" element={<MissionAccounts />} />
+          <Route path="template" element={<BaseTemplateEditor />} />
+          <Route path="curation" element={<CurationBoard />} />
+        </Route>
       </Route>
       <Route
         path="/curation"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <CurationPool />
           </ProtectedRoute>
         }
@@ -150,7 +160,7 @@ export function AppRoutes() {
       <Route
         path="/curation/:taskId"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <CurationTask />
           </ProtectedRoute>
         }
@@ -182,7 +192,7 @@ export function AppRoutes() {
       <Route
         path="/bases/:id/patients/new/submit"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <NewPatient mode="submit" />
           </ProtectedRoute>
         }
@@ -230,7 +240,7 @@ export function AppRoutes() {
       <Route
         path="/bases/:id/patients/:patientId/images/new"
         element={
-          <ProtectedRoute area="member">
+          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
             <AddImage />
           </ProtectedRoute>
         }

@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260728043556_preserve_historical_terminology.sql`
-- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 210
+- Dernière migration incluse : `20260729153000_mission_profile_reconcile.sql`
+- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 217
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -54,9 +54,9 @@ Policies :
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
-- `base_select` (SELECT) — USING ((deleted_at IS NULL) AND is_medecin() AND ((owner_user_id = auth.uid()) OR (EXISTS ( SELECT 1
+- `base_select` (SELECT) — USING ((deleted_at IS NULL) AND (is_medecin() OR is_saisisseur()) AND ((owner_user_id = auth.uid()) OR (EXISTS ( SELECT 1
    FROM base_access ba
-  WHERE ((ba.base_id = base.id) AND (ba.user_id = auth.uid()) AND (ba.revoked_at IS NULL))))))
+  WHERE ((ba.base_id = base.id) AND (ba.user_id = auth.uid()) AND (ba.revoked_at IS NULL) AND ((ba.expires_at IS NULL) OR (ba.expires_at > now())))))))
 - `base_update` (UPDATE) — USING is_base_owner(id) · WITH CHECK is_base_owner(id)
 
 Triggers :
@@ -80,6 +80,9 @@ Triggers :
 | granted_by | uuid | oui |  |
 | created_at | timestamp with time zone | non | `now()` |
 | revoked_at | timestamp with time zone | oui |  |
+| expires_at | timestamp with time zone | oui |  |
+| can_create_structured_data | boolean | non | `false` |
+| identity_justification | text | oui |  |
 
 Policies :
 - `ba_select` (SELECT) — USING ((user_id = auth.uid()) OR is_base_owner(base_id) OR can_manage_access(base_id))
@@ -175,7 +178,7 @@ Triggers :
 Policies :
 - `c_delete` (DELETE) — USING can_curate(base_id)
 - `c_insert` (INSERT) — WITH CHECK can_curate(base_id)
-- `c_select` (SELECT) — USING has_base_access(base_id)
+- `c_select` (SELECT) — USING (is_medecin() AND has_base_access(base_id))
 - `c_update` (UPDATE) — USING can_curate(base_id) · WITH CHECK can_curate(base_id)
 
 Triggers :
@@ -192,7 +195,7 @@ Triggers :
 Policies :
 - `cem_delete` (DELETE) — USING can_curate(base_of_cohort(cohort_id))
 - `cem_insert` (INSERT) — WITH CHECK can_curate(base_of_cohort(cohort_id))
-- `cem_select` (SELECT) — USING has_base_access(base_of_cohort(cohort_id))
+- `cem_select` (SELECT) — USING (is_medecin() AND has_base_access(base_of_cohort(cohort_id)))
 
 Triggers :
 - `trg_cohort_encounter_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_encounter_membership()`
@@ -208,7 +211,7 @@ Triggers :
 Policies :
 - `cm_delete` (DELETE) — USING can_curate(base_of_cohort(cohort_id))
 - `cm_insert` (INSERT) — WITH CHECK can_curate(base_of_cohort(cohort_id))
-- `cm_select` (SELECT) — USING has_base_access(base_of_cohort(cohort_id))
+- `cm_select` (SELECT) — USING (is_medecin() AND has_base_access(base_of_cohort(cohort_id)))
 
 Triggers :
 - `trg_cohort_patient_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_patient_membership()`
@@ -362,7 +365,7 @@ Triggers :
 | changed_at | timestamp with time zone | non | `now()` |
 
 Policies :
-- `fcl_select` (SELECT) — USING has_base_access(base_id)
+- `fcl_select` (SELECT) — USING (is_medecin() AND has_base_access(base_id))
 
 ### import_batch · RLS activée
 
@@ -390,7 +393,7 @@ Policies :
 | replacement_report | jsonb | oui |  |
 
 Policies :
-- `ib_select` (SELECT) — USING has_base_access(base_id)
+- `ib_select` (SELECT) — USING (is_medecin() AND has_base_access(base_id))
 
 ### import_batch_row · RLS activée
 
@@ -864,6 +867,7 @@ Triggers :
 | begin_import_batch | p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer | DEFINER | plpgsql |
 | bump_curation_draft_revision | — | INVOKER | plpgsql |
 | bump_patient_row_version | — | INVOKER | plpgsql |
+| can_create_structured_data | p_base uuid | DEFINER | sql |
 | can_curate | p_base uuid | DEFINER | sql |
 | can_edit_structured_data | p_base uuid | DEFINER | sql |
 | can_export_data | p_base uuid | DEFINER | sql |
@@ -906,6 +910,7 @@ Triggers :
 | encrypt | bytea, bytea, text | INVOKER | c |
 | encrypt_iv | bytea, bytea, bytea, text | INVOKER | c |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
+| extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | finalize_patient | p_patient_id uuid | DEFINER | plpgsql |
 | finalize_upload_operation | p_ticket_id uuid, p_entity text, p_metadata jsonb | DEFINER | plpgsql |
@@ -965,6 +970,7 @@ Triggers :
 | is_curateur | — | DEFINER | sql |
 | is_curation_staff | — | DEFINER | sql |
 | is_medecin | — | DEFINER | sql |
+| is_saisisseur | — | DEFINER | sql |
 | is_strict_date_text | p_value text | INVOKER | plpgsql |
 | is_strict_datetime_text | p_value text | INVOKER | plpgsql |
 | is_system_admin | — | DEFINER | sql |
@@ -975,6 +981,8 @@ Triggers :
 | log_identity_read | p_patient_id uuid | DEFINER | plpgsql |
 | log_raw_document_read | p_document_id uuid | DEFINER | plpgsql |
 | log_sensitive_read | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid | DEFINER | plpgsql |
+| mission_account_lookup | p_email text | DEFINER | plpgsql |
+| mission_accounts | p_base_id uuid | DEFINER | plpgsql |
 | owns_base_with_member | p_user uuid | DEFINER | sql |
 | owns_template | p_template uuid | DEFINER | sql |
 | patient_age_at | p_patient_id uuid, p_at date, p_unit text | DEFINER | plpgsql |
@@ -999,9 +1007,11 @@ Triggers :
 | pgp_sym_encrypt_bytea | bytea, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
+| provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
 | quarantine_reconciliation_candidates | p_limit integer | DEFINER | sql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
+| reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
 | record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
