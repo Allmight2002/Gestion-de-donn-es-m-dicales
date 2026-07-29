@@ -415,7 +415,11 @@ describe('configuration de deploiement', () => {
     expect(production).toContain('GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}');
     expect(production).toContain('RECOVERY_EVIDENCE_JSON: ${{ secrets.RECOVERY_EVIDENCE_JSON }}');
     expect(production).toContain('OPERATIONS_EVIDENCE_JSON: ${{ secrets.OPERATIONS_EVIDENCE_JSON }}');
-    expect(production).toContain('GITHUB_CONTROLS_TOKEN: ${{ secrets.GITHUB_CONTROLS_TOKEN }}');
+    // Les deux noms diffèrent volontairement : GitHub réserve le préfixe GITHUB_ pour les secrets
+    // comme pour les variables, donc le secret ne peut pas s'appeler GITHUB_CONTROLS_TOKEN. Seule
+    // la variable d'environnement lue par le script garde ce nom.
+    expect(production).toContain('GITHUB_CONTROLS_TOKEN: ${{ secrets.CONTROLS_ADMIN_TOKEN }}');
+    expect(production).not.toContain('secrets.GITHUB_');
     expect(production).toContain('--commit="$RELEASE_SHA"');
     expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });
