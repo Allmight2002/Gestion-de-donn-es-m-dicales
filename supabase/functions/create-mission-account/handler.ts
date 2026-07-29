@@ -86,7 +86,7 @@ function parse(body: Record<string, unknown>): MissionRequest {
   let justification: string | null = null;
   if (canViewIdentity) {
     justification = typeof body.identityJustification === 'string' ? body.identityJustification.trim() : '';
-    if (!justification) throw new RequestValidationError(400, 'Justification requise pour ouvrir l\'identite');
+    if (!justification) throw new RequestValidationError(400, "Justification requise pour ouvrir l'identite");
     if (justification.length > MAX_JUSTIFICATION_LENGTH) {
       throw new RequestValidationError(400, 'Justification trop longue');
     }
@@ -207,9 +207,7 @@ export async function handleCreateMissionAccount(req: Request, deps: MissionAcco
     // de la meme demande le retrouvera et reprendra exactement ici.
     console.error('create-mission-account: access provisioning refused');
     return json(409, {
-      error: created
-        ? 'Compte cree mais acces non pose : relancez la meme demande'
-        : 'Acces de mission refuse',
+      error: created ? 'Compte cree mais acces non pose : relancez la meme demande' : 'Acces de mission refuse',
     });
   }
 
