@@ -1,10 +1,11 @@
 // Tests unitaires de la logique d'auth PURE (cahier §7 : gating par role global).
 import { describe, expect, test } from 'vitest';
-import { mapProfileRow, landingPathFor, isAllowedInArea, canCreateBase, type ProfileRow } from '../src/auth/logic';
+import { mapProfileRow, landingPathFor, isAllowedInArea, canCreateBase, isMissionAccount, type ProfileRow } from '../src/auth/logic';
 
 const adminRow: ProfileRow = { id: 's1', full_name: 'Admin', global_role: 'system_admin', language: 'fr' };
 const medecinRow: ProfileRow = { id: 'm1', full_name: 'Medecin', global_role: 'medecin', language: 'en' };
 const curateurRow: ProfileRow = { id: 'c1', full_name: 'Curateur', global_role: 'curateur', language: 'fr' };
+const missionRow: ProfileRow = { id: 'e1', full_name: 'Etudiant', global_role: 'saisisseur', language: 'fr' };
 
 describe('mapProfileRow', () => {
   test('mappe une ligne system_admin', () => {
@@ -59,5 +60,27 @@ describe('canCreateBase', () => {
     expect(canCreateBase(mapProfileRow(curateurRow))).toBe(false);
     expect(canCreateBase(mapProfileRow(adminRow))).toBe(false);
     expect(canCreateBase(null)).toBe(false);
+  });
+});
+
+// Compte de mission (docs/spec-comptes-mission.md) : reconnu comme tel, jamais confondu
+// avec un medecin, et sans droit de creer une base — la base applique la meme regle.
+describe('compte de mission', () => {
+  test('le role saisisseur est reconnu, pas rabattu sur medecin', () => {
+    expect(mapProfileRow(missionRow)!.globalRole).toBe('saisisseur');
+    expect(isMissionAccount(mapProfileRow(missionRow))).toBe(true);
+    expect(isMissionAccount(mapProfileRow(medecinRow))).toBe(false);
+    expect(isMissionAccount(null)).toBe(false);
+  });
+
+  test('il ne peut pas creer de base', () => {
+    expect(canCreateBase(mapProfileRow(missionRow)!)).toBe(false);
+  });
+
+  test('il reste dans la zone membre, jamais dans l administration', () => {
+    const profile = mapProfileRow(missionRow)!;
+    expect(isAllowedInArea(profile, 'member')).toBe(true);
+    expect(isAllowedInArea(profile, 'admin')).toBe(false);
+    expect(landingPathFor(profile)).toBe('/');
   });
 });

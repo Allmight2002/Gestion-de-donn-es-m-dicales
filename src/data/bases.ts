@@ -30,6 +30,14 @@ export interface BaseListing {
   permissions: BasePermissions;
   templateName: string | null;
   versionNumber: number | null;
+  /**
+   * Echeance de l'acces (compte de mission). `null`/absent = acces permanent.
+   * Facultatif pour rester compatible avec les instantanes deja construits ailleurs ;
+   * l'absence n'affecte que l'affichage du bandeau — la base reste seule juge de l'acces.
+   */
+  expiresAt?: string | null;
+  /** Creer sans pouvoir corriger une saisie soumise (compte de mission). */
+  canCreateStructuredData?: boolean;
 }
 
 export interface PublishedTemplateOption {
@@ -99,11 +107,12 @@ const mapBase = (r: BaseRow): Base => ({
 type BaseEmbedRow = BaseRow & { tv: { version_number: number; tpl: { name: string } | null } | null };
 const TV_EMBED = 'tv:template_version!current_template_version_id(version_number, tpl:template_id(name))';
 const BASE_SELECT = `id, name, specialty, owner_user_id, current_template_version_id, ${TV_EMBED}`;
-const ACCESS_COLS = 'access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access';
+const ACCESS_COLS = 'access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access, can_create_structured_data, expires_at';
 
 type AccessPermRow = {
   access_role: AccessRole; can_view_identity: boolean; can_view_raw_documents: boolean;
   can_edit_structured_data: boolean; can_export_data: boolean; can_manage_access: boolean;
+  can_create_structured_data?: boolean; expires_at?: string | null;
 };
 const permsFromRow = (a: AccessPermRow | undefined): BasePermissions => ({
   canViewIdentity: a?.can_view_identity ?? false,
@@ -158,6 +167,8 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
           permissions: isOwner ? { ...ALL_PERMISSIONS } : permsFromRow(acc),
           templateName: r.tv?.tpl?.name ?? null,
           versionNumber: r.tv?.version_number ?? null,
+          expiresAt: isOwner ? null : (acc?.expires_at ?? null),
+          canCreateStructuredData: isOwner || acc?.can_create_structured_data === true,
         };
       });
     },
@@ -214,6 +225,8 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         permissions: isOwner ? { ...ALL_PERMISSIONS } : permsFromRow(acc),
         templateName: b.tv?.tpl?.name ?? null,
         versionNumber: b.tv?.version_number ?? null,
+        expiresAt: isOwner ? null : (acc?.expires_at ?? null),
+        canCreateStructuredData: isOwner || acc?.can_create_structured_data === true,
       };
     },
 

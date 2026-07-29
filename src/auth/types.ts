@@ -1,6 +1,8 @@
 // Types du domaine d'authentification (cahier §6 profiles, §7 roles).
 
-export type GlobalRole = 'system_admin' | 'medecin' | 'curateur';
+// `saisisseur` = compte de mission : saisit sur UNE base, pour une duree bornee, sans
+// jamais posseder de base ni de gabarit (docs/spec-comptes-mission.md).
+export type GlobalRole = 'system_admin' | 'medecin' | 'curateur' | 'saisisseur';
 
 export interface Profile {
   id: string;
