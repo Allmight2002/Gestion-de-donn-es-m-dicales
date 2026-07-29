@@ -1282,3 +1282,37 @@ Ces valeurs sont des identifiants : leur pose revient au porteur du projet.
 
 L'environnement `production` n'accepte par ailleurs que la branche `main` : le SHA promu
 doit y être fusionné avant toute tentative.
+
+### État à la clôture de la session
+
+`main` porte le lot (`f1211ab`). La production, elle, n'a pas bougé : deux verrous
+tiennent, et aucun ne relève du code.
+
+**Verrou 1 — les secrets.** L'environnement GitHub `production` n'a que 5 des 18 secrets
+requis (liste ci-dessus). Ce sont des identifiants : leur pose revient au porteur.
+
+**Verrou 2 — le scanner antivirus.** La dernière étape du déploiement, staging comme
+production, exige un ClamAV joignable : elle lui fait scanner un fichier sain puis un EICAR
+et vérifie les deux verdicts. Le scanner tourne bien sur le poste (conteneurs actifs, santé
+`ok`, base de signatures à jour), mais il est exposé par un **tunnel `trycloudflare`
+gratuit**, et celui-ci s'est révélé instable au-delà de ce que la documentation annonçait :
+son nom de domaine a **cessé de résoudre en quelques minutes alors que le processus
+`cloudflared` était toujours vivant**. Une URL fraîche, vérifiée joignable et posée dans le
+secret, était déjà morte au passage suivant.
+
+Conséquence : tant que le point d'entrée du scanner n'est pas stable, **aucune exécution
+staging ne peut aboutir complètement**, donc la porte de production — qui exige un staging
+vert sur le SHA exact promu — ne peut pas être franchie, secrets ou pas.
+
+La correction durable est déjà écrite dans [`e2e-staging.md`](e2e-staging.md) : un tunnel
+**nommé** (compte Cloudflare, nom de domaine stable) ou un petit VPS. Le tunnel éphémère
+convient à une démonstration, pas à une chaîne de release.
+
+**Ce qui est acquis malgré cela** : le backend de staging a bien reçu la migration et les
+sept fonctions Edge, et la vérification de bout en bout y est passée **22/22** par le vrai
+chemin. Le lot est donc vérifié sur un Supabase réel ; seule la publication reste bloquée.
+
+**Prochain pas, une fois les deux verrous levés** : relancer un staging sur le SHA de `main`
+— la porte de production compare le SHA exact, et `f1211ab` n'a pas encore le sien — puis
+promouvoir avec ce `staging_run_id`.
+
