@@ -424,6 +424,26 @@ describe('configuration de deploiement', () => {
     expect(workflow).not.toContain('BACKUP_ALLOW_PLAINTEXT_EXTRACTION');
   });
 
+  test('la derogation pilote ne couvre que l ABSENCE de preuve, jamais une preuve fournie', () => {
+    const workflow = read('.github/workflows/coordinated-release.yml');
+    const production = workflow.slice(workflow.indexOf('\n  production:'));
+
+    for (const secret of ['GOVERNANCE_EVIDENCE_JSON', 'RECOVERY_EVIDENCE_JSON', 'OPERATIONS_EVIDENCE_JSON']) {
+      // La sortie anticipee exige les DEUX conditions : preuve vide ET derogation active.
+      expect(production).toContain(`if [ -z "\${${secret}:-}" ] && [ "\${PILOT_EVIDENCE_WAIVER:-}" = "true" ]`);
+      // Le controle d'origine subsiste : une preuve fournie reste verifiee, meme derogation active.
+      expect(production).toContain(`test -n "$${secret}"`);
+    }
+    // La derogation est portee par une variable de depot, jamais ecrite en dur.
+    expect(production).toContain('PILOT_EVIDENCE_WAIVER: ${{ vars.PILOT_EVIDENCE_WAIVER }}');
+    expect(production).not.toContain('PILOT_EVIDENCE_WAIVER: true');
+
+    // Ce qui reste bloquant quoi qu'il arrive : la sauvegarde chiffree avant toute ecriture.
+    const backup = production.indexOf('npm run backup:coordinated -- --target=production');
+    expect(backup).toBeGreaterThan(-1);
+    expect(production.slice(0, backup)).not.toContain('STORAGE_BACKUP_ENCRYPTION_KEY:-');
+  });
+
   test('la preuve de release compare les empreintes Storage et Edge distantes', () => {
     const stateMigration = read(
       'supabase/migrations/20260714215335_record_release_component_state.sql',
