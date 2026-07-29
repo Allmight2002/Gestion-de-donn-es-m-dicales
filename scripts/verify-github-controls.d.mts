@@ -1,4 +1,4 @@
-export type GitHubControlsConfiguration = { repository: string; token: string };
+export type GitHubControlsConfiguration = { repository: string; token: string; solo: boolean };
 export function validateGitHubControlsConfiguration(
   env?: Record<string, string | undefined>,
 ): GitHubControlsConfiguration;

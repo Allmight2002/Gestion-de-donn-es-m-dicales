@@ -22,12 +22,26 @@ const protection = () => ({
   required_conversation_resolution: { enabled: true },
 });
 
-function githubApi(overrides: { unprotectedMain?: boolean; selfReview?: boolean } = {}) {
+// Protection telle qu'un depot mono-personne peut reellement la poser : pull request obligatoire,
+// mais aucune approbation exigee (GitHub interdit d'approuver sa propre pull request).
+const soloProtection = () => ({
+  ...protection(),
+  required_pull_request_reviews: {
+    required_approving_review_count: 0,
+    dismiss_stale_reviews: false,
+    require_last_push_approval: false,
+  },
+});
+
+function githubApi(
+  overrides: { unprotectedMain?: boolean; selfReview?: boolean; solo?: boolean; noPullRequest?: boolean } = {},
+) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('/branches/')) {
-      const value = protection();
+      const value = overrides.solo ? soloProtection() : protection();
       if (overrides.unprotectedMain && url.includes('/branches/main/')) value.enforce_admins.enabled = false;
+      if (overrides.noPullRequest) delete (value as { required_pull_request_reviews?: unknown }).required_pull_request_reviews;
       return Response.json(value);
     }
     if (url.includes('/deployment-branch-policies')) {
@@ -67,5 +81,46 @@ describe('controles GitHub avant production', () => {
     await expect(inspectGitHubControls(config, {
       fetchImpl: vi.fn(async () => Response.json({ message: 'forbidden detail' }, { status: 403 })),
     })).rejects.toThrow('HTTP 403');
+  });
+});
+
+describe('derogation mono-personne', () => {
+  const soloConfig = validateGitHubControlsConfiguration({
+    GITHUB_REPOSITORY: 'owner/repository',
+    GITHUB_CONTROLS_TOKEN: 'github-read-admin-token-long-enough',
+    GITHUB_CONTROLS_SOLO: 'true',
+  });
+
+  test('accepte une protection sans approbation par un tiers', async () => {
+    await expect(
+      inspectGitHubControls(soloConfig, { fetchImpl: githubApi({ solo: true, selfReview: true }) }),
+    ).resolves.toEqual([]);
+  });
+
+  test('cette meme protection reste REFUSEE hors derogation', async () => {
+    const errors = await inspectGitHubControls(config, { fetchImpl: githubApi({ solo: true, selfReview: true }) });
+    expect(errors).toEqual(expect.arrayContaining([
+      'main: review obligatoire absente.',
+      'main: reviews obsoletes non invalidees.',
+      'main: dernier push sans approbation distincte.',
+      'production: auto-approbation non interdite.',
+    ]));
+  });
+
+  test('la derogation ne relache RIEN d autre : bypass admin toujours refuse', async () => {
+    const errors = await inspectGitHubControls(soloConfig, {
+      fetchImpl: githubApi({ solo: true, selfReview: true, unprotectedMain: true }),
+    });
+    expect(errors).toEqual(['main: administrateurs non soumis aux regles.']);
+  });
+
+  test('la pull request reste obligatoire meme en derogation', async () => {
+    const errors = await inspectGitHubControls(soloConfig, {
+      fetchImpl: githubApi({ solo: true, selfReview: true, noPullRequest: true }),
+    });
+    expect(errors).toEqual(expect.arrayContaining([
+      'main: pull request non obligatoire.',
+      'develop: pull request non obligatoire.',
+    ]));
   });
 });
