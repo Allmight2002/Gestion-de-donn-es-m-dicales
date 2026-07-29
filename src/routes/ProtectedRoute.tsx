@@ -45,6 +45,25 @@ export function ProtectedRoute({
   return <AppShell>{children}</AppShell>;
 }
 
+/**
+ * Garde de role pour une route IMBRIQUEE, deja rendue dans une zone protegee : elle
+ * n'ajoute pas de second AppShell, elle se contente de rediriger. Utilisee pour fermer
+ * les onglets d'une base a un compte de mission.
+ */
+export function RequireGlobalRole({
+  globalRoles,
+  children,
+}: {
+  globalRoles: readonly GlobalRole[];
+  children: ReactNode;
+}) {
+  const { status, profile } = useAuth();
+  if (status === 'loading') return <FullScreenLoading />;
+  if (!profile) return <Navigate to="/" replace />;
+  if (!globalRoles.includes(profile.globalRole)) return <Navigate to={landingPathFor(profile)} replace />;
+  return <>{children}</>;
+}
+
 /** Route publique (connexion) : renvoie vers l'accueil si deja connecte. */
 export function PublicOnly({ children }: { children: ReactNode }) {
   const { status, profile } = useAuth();

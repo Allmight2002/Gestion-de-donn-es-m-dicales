@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests des parcours de creation (cahier v3.0) : choix "Entrer moi-meme / Confier au staff"
 // pour patient et rencontre, et le mode "submit" de NewPatient (identite -> demande au pool).
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -15,6 +15,15 @@ import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository } from '../../data/patients';
 import type { CurationRepository } from '../../data/curation';
+import type { GlobalRole } from '../../auth/types';
+
+// useAuth mocke : le role pilote l'offre « confier au pool de curation », fermee aux
+// comptes de mission (docs/spec-comptes-mission.md §4).
+const auth = vi.hoisted(() => ({ role: 'medecin' as GlobalRole }));
+vi.mock('../../auth/useAuth', () => ({
+  useAuth: () => ({ profile: { id: 'u', fullName: 'M', globalRole: auth.role, language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+}));
+beforeEach(() => { auth.role = 'medecin'; });
 
 const listing: BaseListing = {
   base: { id: 'b1', name: 'B', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'v1' },
@@ -208,5 +217,22 @@ describe('EncounterCreateChoice', () => {
     await userEvent.click(screen.getByText('Confier les documents au staff'));
     await waitFor(() => expect(createSubmission).toHaveBeenCalledWith('b1', 'p1', null, 'encounter'));
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
+  });
+});
+
+describe('compte de mission : parcours de creation reduit', () => {
+  test('le renvoi vers le pool de curation ne lui est pas propose', async () => {
+    auth.role = 'saisisseur';
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
+          <Routes>
+            <Route path="/bases/:id/patients/new" element={<PatientCreateChoice />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+    expect(await screen.findByText(/Entrer les données moi/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Confier les documents/i)).toBeNull();
   });
 });

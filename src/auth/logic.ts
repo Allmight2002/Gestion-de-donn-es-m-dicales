@@ -10,7 +10,12 @@ export interface ProfileRow {
   language: string | null;
 }
 
-const GLOBAL_ROLES: GlobalRole[] = ['system_admin', 'medecin', 'curateur'];
+const GLOBAL_ROLES: GlobalRole[] = ['system_admin', 'medecin', 'curateur', 'saisisseur'];
+
+/** Compte de mission : saisie sur une seule base, pour une duree bornee. */
+export function isMissionAccount(profile: Profile | null): boolean {
+  return profile?.globalRole === 'saisisseur';
+}
 
 function asGlobalRole(value: string | null | undefined): GlobalRole {
   // Repli defensif sur 'medecin' (le role par defaut a l'inscription ; jamais admin ni staff

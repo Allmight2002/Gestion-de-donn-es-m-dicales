@@ -13,14 +13,21 @@ import type { BaseRepository, BaseListing } from '../../data/bases';
 
 const NO_PERMS = { canViewIdentity: false, canViewRawDocuments: false, canEditStructuredData: false, canExportData: false, canManageAccess: false };
 
-function listingWith(role: 'owner' | 'viewer', perms: Partial<typeof NO_PERMS> = {}): BaseListing {
+function listingWith(
+  role: 'owner' | 'viewer',
+  perms: Partial<typeof NO_PERMS> = {},
+  extra: Partial<BaseListing> = {},
+): BaseListing {
   return {
     base: { id: 'b1', name: 'Gliomes 2026', specialty: 'Neuro', ownerUserId: 'u', currentTemplateVersionId: 'v1' },
     role,
     permissions: { ...NO_PERMS, ...perms },
     templateName: 'T', versionNumber: 1,
+    ...extra,
   };
 }
+
+const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
 
 function renderLayout(listing: BaseListing) {
   const bases = { async getBase() { return listing; } } as unknown as BaseRepository;
@@ -61,5 +68,34 @@ describe('BaseLayout (UI-1, onglets)', () => {
     for (const label of ['Importer', 'Cohortes', 'Accès', 'Variables', 'Curation']) {
       expect(screen.queryByRole('link', { name: new RegExp(label) })).not.toBeInTheDocument();
     }
+  });
+
+  test('proprietaire : l onglet des comptes de mission est propose', async () => {
+    renderLayout(listingWith('owner'));
+    expect(await screen.findByRole('link', { name: /Comptes de mission/ })).toBeInTheDocument();
+  });
+});
+
+// Compte de mission : parcours reduit a la saisie + bandeau d'echeance permanent
+// (docs/spec-comptes-mission.md §8).
+describe('BaseLayout — compte de mission', () => {
+  test('le bandeau annonce l echeance et le parcours se limite a la saisie', async () => {
+    renderLayout(listingWith('viewer', {}, { expiresAt: inDays(120), canCreateStructuredData: true }));
+    expect(await screen.findByText(/Mission sur cette base jusqu/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Patients/ })).toBeInTheDocument();
+    for (const label of ['Importer', 'Cohortes', 'Journal', 'Statistiques', 'Accès', 'Variables', 'Curation', 'Comptes de mission']) {
+      expect(screen.queryByRole('link', { name: new RegExp(label) })).not.toBeInTheDocument();
+    }
+  });
+
+  test('a l approche de l echeance, le bandeau compte les jours restants', async () => {
+    renderLayout(listingWith('viewer', {}, { expiresAt: inDays(5), canCreateStructuredData: true }));
+    expect(await screen.findByText(/il reste 5 jour/)).toBeInTheDocument();
+  });
+
+  test('un acces permanent n affiche aucun bandeau de mission', async () => {
+    renderLayout(listingWith('viewer'));
+    await screen.findByRole('link', { name: /Patients/ });
+    expect(screen.queryByText(/Mission sur cette base/)).not.toBeInTheDocument();
   });
 });

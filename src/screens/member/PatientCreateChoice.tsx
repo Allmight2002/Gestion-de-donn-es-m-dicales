@@ -1,5 +1,7 @@
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
+import { useAuth } from '../../auth/useAuth';
+import { isMissionAccount } from '../../auth/logic';
 import { ChoiceCard } from './ChoiceCard';
 
 // Point d'entree unique "Nouveau patient" (cahier v3.0, retours UX) : le medecin choisit
@@ -8,6 +10,10 @@ export function PatientCreateChoice() {
   const { id: baseId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const { profile } = useAuth();
+  // Un compte de mission saisit lui-meme ; confier des documents au pool de curation
+  // releve de la curation, qui lui est fermee (la base refuse aussi cette voie).
+  const maySubmitToCuration = !isMissionAccount(profile);
 
   return (
     <section className="max-w-2xl space-y-6">
@@ -26,12 +32,14 @@ export function PatientCreateChoice() {
           hint={t('create.self_hint')}
           onClick={() => navigate(`/bases/${baseId}/patients/new/manual`)}
         />
-        <ChoiceCard
-          icon="📨"
-          title={t('create.submit')}
-          hint={t('create.submit_hint')}
-          onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
-        />
+        {maySubmitToCuration && (
+          <ChoiceCard
+            icon="📨"
+            title={t('create.submit')}
+            hint={t('create.submit_hint')}
+            onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
+          />
+        )}
       </div>
     </section>
   );
