@@ -119,6 +119,31 @@ describe('Dashboard', () => {
     expect(screen.queryByLabelText('Nom de la base')).toBeNull();
     expect(screen.queryByRole('link', { name: /depuis un fichier Excel/ })).toBeNull();
   });
+
+  // Compte de mission (docs/spec-comptes-mission.md §8) : ni creation de base, et a
+  // l'echeance un ecran qui EXPLIQUE au lieu d'un tableau vide ou d'une erreur brute.
+  test('un compte de mission ne voit pas la creation de base', async () => {
+    auth.role = 'saisisseur';
+    renderApp(mockBases());
+    await screen.findByText('Registre Neuro');
+    expect(screen.queryByRole('button', { name: 'Créer la base' })).toBeNull();
+    expect(screen.queryByLabelText('Nom de la base')).toBeNull();
+  });
+
+  test('mission terminee : un ecran explicite remplace la liste vide', async () => {
+    auth.role = 'saisisseur';
+    const empty = { ...mockBases(), async listMyBases() { return []; } } as unknown as BaseRepository;
+    renderApp(empty);
+    expect(await screen.findByText('Mission terminée')).toBeInTheDocument();
+    expect(screen.getByText(/Les données que vous avez saisies restent enregistrées/)).toBeInTheDocument();
+  });
+
+  test('un medecin sans base garde l invitation a en creer une', async () => {
+    const empty = { ...mockBases(), async listMyBases() { return []; } } as unknown as BaseRepository;
+    renderApp(empty);
+    await screen.findByRole('button', { name: /Nouvelle base/ });
+    expect(screen.queryByText('Mission terminée')).toBeNull();
+  });
 });
 
 describe('BaseHome', () => {

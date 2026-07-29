@@ -27,7 +27,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L7** | Protections de branche (B7) | *aucun fichier* | tous |
 | **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
 | **L9** | Modèle d'observation d'une base | migration, `NewPatient.tsx`, `FieldForm.tsx`, `BaseHome.tsx` | **seul** |
-| **L10** | Comptes de mission (P4) | migration, nouvelle Edge Function, `access.ts`, `AccessManagement.tsx` | L1, L2, L5, L7 |
+| ~~L10~~ | ~~Comptes de mission (P4)~~ | **Livré le 2026-07-29** | — |
 | **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L1, L2, L5, L7 |
 | **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L2, L5, L7 |
 | **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L1, L2, L5, L7 |
@@ -117,27 +117,26 @@ Lot à surface base : appliquer `meddata-db-safety`.
 des lots — migration, création de patient, éditeur de variables, écran de base.
 À traiter **seul**, après L2 qui lui sert de préalable.
 
-### L10 — Comptes de mission
+### L10 — Comptes de mission — **livré**
 
-**P4**, et l'idée n°1 de la file. Un médecin confie la saisie d'une seule base à
-un étudiant, pour une durée limitée, en création seule, révocable. Le socle
-existe déjà — `base_access`, invitations expirables, révocation, audit ; il
-manque un rôle global dédié, une permission de création séparée, une expiration
-d'accès et une Edge Function d'invitation idempotente.
+**P4**, livré le 2026-07-29. Un médecin confie la saisie d'une seule base à une
+personne de terrain, pour une durée bornée et révocable.
 
-**La décision structurante est tranchée** (2026-07-28) : l'étudiant **crée des
-patients**, en création minimale, sans jamais accéder à l'identité nominative.
-C'est cette exclusion qui rend la permission acceptable — le saisisseur alimente
-le registre sans savoir de qui il s'agit.
+Ce qui a été ajouté au socle existant (`base_access`, révocation, audit) : un rôle
+global `saisisseur`, une permission de création `can_create_structured_data` distincte
+de la modification, une **expiration d'accès** (`base_access.expires_at`) vérifiée par
+la base à chaque requête, et l'Edge Function idempotente `create-mission-account`.
 
-**Cinq décisions secondaires restent ouvertes** dans
-[`spec-comptes-mission.md`](spec-comptes-mission.md) : durée maximale d'une
-mission, lecture de l'identité sur option, upload de documents, délai de purge
-des comptes échus, nom du rôle. Chacune a une recommandation ; aucune ne bloque
-le démarrage du lot, qui peut donc **commencer**.
+Les cinq décisions restantes ont été tranchées : **24 mois** maximum prolongeables,
+lecture des noms **réglée à la création et décochée par défaut** avec justification
+consignée, **pas de téléversement** en v1, purge à **12 mois** après échéance
+(opération manuelle), rôle `saisisseur` / libellé « compte de mission ».
 
-L'upload de documents est exclu de la v1, ce qui découple ce chantier de B2.
-Surface base et Edge : appliquer `meddata-db-safety`.
+Deux régressions ont été prises au vol par la suite de tests, toutes deux de la même
+famille — **redéfinir un objet à partir d'une migration périmée** : la policy
+`el_select` avait été durcie en `20260616095700` et les fonctions `can_*` en
+`20260616096000` (garde « base non supprimée »). Toujours repartir de la **dernière**
+définition, pas de celle qu'on trouve en premier.
 
 ### L11 — Observabilité des erreurs
 
@@ -180,10 +179,9 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-Quatre lots sont livrés : **L1, L2, L3 et L5**. Il en reste dix.
+Cinq lots sont livrés : **L1, L2, L3, L5 et L10**. Il en reste neuf.
 
-1. **En parallèle immédiat** : L4, L7, L10, L12 — aucun ne partage de fichier.
-   L10 est débloqué, sa décision structurante étant tranchée.
+1. **En parallèle immédiat** : L4, L12 — aucun ne partage de fichier.
 2. **Ensuite** : L8, L11, L13. L11 attend encore sept décisions, mais ses étapes
    locales sont réalisables sans elles.
 3. **Seuls, l'un après l'autre** : L6, L9, L14. Le préalable de L9 est levé

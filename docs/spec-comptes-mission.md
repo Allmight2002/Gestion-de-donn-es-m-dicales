@@ -1,7 +1,8 @@
 # Spécification — Comptes de mission (rôle `saisisseur`)
 
-- Statut : **proposition — non implémentée** (aucune migration créée, étude de conception seulement)
-- Date : 2026-07-19
+- Statut : **implémentée** (lot L10, 2026-07-29) — migration `20260729104500_mission_accounts.sql`,
+  Edge Function `create-mission-account`, écran « Comptes de mission » et parcours saisisseur
+- Date : 2026-07-19 · conception · décisions restantes tranchées le 2026-07-29
 - Demandeur : Dr Mbassi (besoin : étudiants en thèse saisissant des données pour un directeur)
 - Cadre de calendrier : développement local autorisé par
   `docs/feuille-route-developpement-post-readiness.md`, avec données fictives
@@ -147,16 +148,24 @@ Conformité : l'e-mail de l'étudiant entre au registre des traitements (volet j
 3. **Lot C — UI** : écrans médecin et saisisseur, i18n, tests web.
 4. **Lot D — validation** : E2E staging (création → saisie → expiration → révocation), revue `validate-audit-lots`, mise à jour de `docs/architecture.md` et du cahier technique.
 
-## 12. Décisions restant à valider par le demandeur
+## 12. Décisions du demandeur — toutes tranchées
 
-| Question | Recommandation |
+| Question | Décision |
 |---|---|
-| ~~L'étudiant peut-il créer des patients minimaux, ou seulement remplir des rencontres de patients créés par le médecin ?~~ | **Tranché le 2026-07-28 : l'étudiant crée des patients.** La recommandation est retenue — création minimale, **identité nominative exclue**. Le compte de mission écrit donc dans `patient` et `encounter`, mais jamais dans `patient_identity` : c'est cette exclusion qui rend la permission acceptable, puisque le saisisseur alimente le registre sans jamais accéder à l'identité des personnes. |
-| Durée maximale d'une mission | **24 mois**, prolongeable |
-| Lecture de l'identité sur option | Maintenir l'option, **désactivée par défaut**, avec justification consignée à l'activation |
-| Upload de documents par le saisisseur | **Non en v1** ; réévaluer avec le scanner pérenne |
-| Délai de purge des comptes échus | À fixer avec le volet juridique (proposition : 12 mois après échéance) |
-| Nom du rôle | `saisisseur` (slug technique) ; libellé UI « compte de mission » |
+| ~~L'étudiant peut-il créer des patients minimaux ?~~ | **2026-07-28 : oui.** Création minimale, **identité nominative exclue**. Le compte de mission écrit dans `patient` et `encounter`, jamais les champs nominatifs de `patient_identity` : c'est cette exclusion qui rend la permission acceptable. |
+| Durée maximale d'une mission | **2026-07-29 : 24 mois**, prolongeable. Bornée par le trigger de garde et par les RPC de provisionnement/prolongation, pas seulement par l'interface. |
+| Lecture de l'identité sur option | **2026-07-29 : option conservée, réglée À LA CRÉATION du compte, case décochée par défaut**, justification obligatoire consignée dans `base_access.identity_justification` et dans `audit_log`. Le persona visé est une personne de terrain qui peut devoir rapprocher des dossiers papier nominatifs. |
+| Upload de documents par le saisisseur | **2026-07-29 : non en v1.** `can_view_raw_documents` reste refusé et la route de téléversement est fermée au rôle. À réévaluer avec le scanner pérenne (B2). |
+| Délai de purge des comptes échus | **2026-07-29 : 12 mois après l'échéance.** Règle consignée ici et à porter au registre des traitements (`docs/juridique/`, volet Tchad) ; la purge reste une **opération d'entretien déclenchée à la main**, pas un travail automatique qui supprimerait des comptes sans supervision. |
+| Nom du rôle | **2026-07-29 : `saisisseur`** en base ; libellé « compte de mission » dans l'interface. |
+
+### Écart assumé par rapport au §6
+
+`inviteUserByEmail` ne sait écrire que `user_metadata`, modifiable par l'utilisateur lui-même :
+le compte serait donc **médecin le temps de l'invitation**, avec le droit de créer ses propres
+bases. L'Edge Function crée donc le compte par `createUser` **avec `app_metadata`**, puis envoie
+un courriel de définition de mot de passe. La propriété exigée au §2 est conservée — l'étudiant
+reste seul détenteur de son secret — et le rôle est correct dès la première milliseconde.
 
 ## 13. Références
 

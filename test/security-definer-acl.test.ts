@@ -20,7 +20,7 @@ describe('inventaire SECURITY DEFINER', () => {
   test('classe chaque signature autorisee sans doublon', () => {
     const { inventory, signatures } = loadFunctionPrivilegeInventory();
     expect(inventory.categories).toHaveLength(7);
-    expect(signatures).toHaveLength(85);
+    expect(signatures).toHaveLength(90);
     expect(new Set(signatures).size).toBe(signatures.length);
   });
 
