@@ -38,7 +38,12 @@ activer ne renforce rien — elles rendent toute fusion et tout déploiement
 n'est pas un contrôle, c'est une panne.
 
 **Ce qui est suspendu**, et uniquement cela, quand la variable de dépôt
-`GITHUB_CONTROLS_SOLO` vaut `true` :
+`CONTROLS_SOLO_MODE` vaut `true` :
+
+> Deux noms, volontairement : GitHub **interdit** qu'une variable de dépôt
+> commence par `GITHUB_`. La variable de dépôt s'appelle donc
+> `CONTROLS_SOLO_MODE`, et le workflow la passe au script sous le nom
+> d'environnement `GITHUB_CONTROLS_SOLO`.
 
 - `required_approving_review_count >= 1` ;
 - `dismiss_stale_reviews` et `require_last_push_approval` ;
@@ -64,7 +69,7 @@ rouge est intact.
 journal de release que la dérogation est active et ce qu'elle suspend. La preuve
 porte donc la restriction, au lieu de la masquer.
 
-**Condition de levée.** Dès qu'un second relecteur existe, retirer la variable
-`GITHUB_CONTROLS_SOLO` : le contrôle complet reprend sans autre modification.
+**Condition de levée.** Dès qu'un second relecteur existe, retirer la variable de
+dépôt `CONTROLS_SOLO_MODE` : le contrôle complet reprend sans autre modification.
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE — elle
 ne se justifie que par la taille de l'équipe, pas par une analyse de risque.

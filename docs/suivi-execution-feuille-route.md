@@ -1155,8 +1155,8 @@ Trois choix pour que la dérogation ne se dissolve pas dans le temps :
 ### Reste à faire, hors dépôt
 
 Le porteur doit créer le jeton `GITHUB_CONTROLS_TOKEN` (lecture administration
-seule), poser la variable `GITHUB_CONTROLS_SOLO`, et activer les protections de
-branche elles-mêmes. Tant que ces trois actions ne sont pas faites, **la release
+seule), poser la variable de dépôt `CONTROLS_SOLO_MODE=true`, et activer les
+protections de branche elles-mêmes. Tant que ces trois actions ne sont pas faites, **la release
 de production reste bloquée** — ce qui est le comportement voulu.
 
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
