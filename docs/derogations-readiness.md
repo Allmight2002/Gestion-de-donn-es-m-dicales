@@ -8,6 +8,11 @@ pire qu'un contrôle absent, parce qu'elle donne l'illusion d'un contrôle.
 Deux dérogations sont actives au 2026-07-29. Elles ne sont **pas de même
 nature**, et cette distinction est le point important de ce document.
 
+Le contexte qui autorise temporairement ces dérogations est consigné dans la
+[`décision d'utilisation de l'environnement production pour les tests`](decision-environnement-production-tests-2026-07-29.md).
+Le nom technique `production` ne vaut pas readiness clinique : l'environnement
+reste réservé au développement interne et aux données entièrement fictives.
+
 ## 1. Contrôles GitHub en mode mono-personne
 
 **Variable** : `CONTROLS_SOLO_MODE=true` · détail dans
