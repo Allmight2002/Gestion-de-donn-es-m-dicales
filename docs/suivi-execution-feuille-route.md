@@ -1097,3 +1097,67 @@ Le chantier a été mené par Codex, dont le quota s'est épuisé après le push
 l'ouverture de la pull request et avant la consigne au journal. La section
 ci-dessus a été écrite lors de la reprise ; la vérification est celle de la CI
 sur le SHA de la pull request, qui exécute la suite complète.
+
+## Lot B7 — Dérogation mono-personne sur les contrôles GitHub (2026-07-29)
+
+Constaté en tentant la première release de production depuis la remise à neuf :
+le job `production` s'arrête sur *Verify live GitHub protections*, avant toute
+écriture. Deux manques distincts, et un blocage de fond.
+
+### Ce que la tentative a révélé
+
+1. Le secret `GITHUB_CONTROLS_TOKEN` est **absent** — le script refuse de
+   démarrer.
+2. **Aucune protection n'existe** sur `main` ni sur `develop` : l'API répond
+   *Branch not protected* pour les deux.
+3. Surtout : les protections exigées **ne peuvent pas être posées** sur ce dépôt.
+
+Le troisième point est le vrai sujet. Trois exigences du contrôle supposent une
+**seconde personne** — review approuvée, approbation distincte après le dernier
+push, interdiction de s'auto-approuver sur un environnement. GitHub interdit
+d'approuver sa propre pull request. Sur un dépôt tenu par une seule personne, les
+activer n'aurait rien renforcé : elles auraient rendu toute fusion et tout
+déploiement impossibles. Un contrôle qui bloque l'exploitation au lieu de la
+sécuriser n'est pas un contrôle.
+
+### Décision du porteur
+
+Assouplir le script pour un dépôt mono-personne, plutôt que d'ajouter un second
+relecteur ou de laisser B7 — et donc la production — ouvert indéfiniment.
+
+### Ce qui a été fait
+
+`GITHUB_CONTROLS_SOLO=true` suspend exactement trois vérifications, et rien
+d'autre. Restent exigés : **pull request obligatoire** sur les deux branches,
+`build-test` et `scanner-image` verts, règles applicables aux administrateurs, ni
+force-push ni suppression, résolution des conversations, reviewer d'environnement
+présent, et politique de branche stricte par environnement.
+
+La dérogation retire la **relecture par un tiers**, pas la **barrière
+technique**. Le mécanisme qui empêche de livrer du code à CI rouge est intact.
+
+Trois choix pour que la dérogation ne se dissolve pas dans le temps :
+
+- elle est portée par une **variable de dépôt**, pas écrite en dur : la retirer
+  suffit à rétablir le contrôle complet ;
+- en mode dérogé, le script **n'écrit pas « OK »** — il consigne dans le journal
+  de release que la dérogation est active et ce qu'elle suspend, pour que la
+  preuve porte la restriction au lieu de la masquer ;
+- un test vérifie qu'une protection acceptée en mode dérogé est **toujours
+  refusée** hors dérogation, et un autre qu'un contournement administrateur reste
+  refusé **même** en mode dérogé.
+
+### Vérification
+
+`npm run typecheck`, `npm run lint` et les tests de `test/github-controls.test.ts`
+(**7 tests**, dont 4 nouveaux) sont verts.
+
+### Reste à faire, hors dépôt
+
+Le porteur doit créer le jeton `GITHUB_CONTROLS_TOKEN` (lecture administration
+seule), poser la variable `GITHUB_CONTROLS_SOLO`, et activer les protections de
+branche elles-mêmes. Tant que ces trois actions ne sont pas faites, **la release
+de production reste bloquée** — ce qui est le comportement voulu.
+
+Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
+se justifie par la taille de l'équipe, pas par une analyse de risque.
