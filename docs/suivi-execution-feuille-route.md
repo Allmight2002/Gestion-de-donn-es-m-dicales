@@ -1197,3 +1197,88 @@ garde son nom d'origine.
 
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
 se justifie par la taille de l'équipe, pas par une analyse de risque.
+
+## 2026-07-29 — L10, comptes de mission : livré, vérifié sur staging, bloqué en production
+
+Un médecin peut confier la saisie d'**une** base à une personne de terrain, pour une
+durée bornée et révocable. Conception : [`spec-comptes-mission.md`](spec-comptes-mission.md).
+
+### Ce qui a été construit
+
+Le socle existait — `base_access`, révocation, audit. Quatre pièces manquaient, ajoutées
+par la migration additive `20260729104500_mission_accounts.sql` :
+
+- un **rôle global `saisisseur`** : toute policy écrite `is_medecin() and …` l'exclut par
+  défaut, donc il ne peut ni créer de base ni de gabarit — le défaut échoue fermé ;
+- `can_create_structured_data`, qui **sépare créer de modifier**. Les RPC de création
+  acceptent `can_create` **ou** `can_edit` : aucun éditeur existant ne change de
+  comportement, aucun backfill ;
+- `base_access.expires_at`, vérifiée par la base à **chaque requête** — seule façon de
+  couper un jeton déjà émis. `null` pour toutes les lignes existantes = permanent ;
+- un **trigger de garde** : échéance obligatoire, plafond 24 mois, permissions élargies
+  refusées, justification exigée pour ouvrir l'identité, **une seule base** par compte.
+
+`create_patient` n'exige plus `can_write_identity` : elle **refuse explicitement** tout
+champ nominatif venant d'un appelant qui ne l'a pas, et n'écrit que le code. C'est cette
+exclusion qui rend la permission de création acceptable.
+
+Côté serveur : l'Edge Function idempotente `create-mission-account` (septième fonction).
+Côté interface : écran « Comptes de mission », bandeau d'échéance, écran de fin de mission.
+
+### Les cinq décisions restantes, tranchées le jour même
+
+24 mois maximum prolongeables · lecture des noms **réglée à la création, case décochée par
+défaut**, justification consignée à l'activation · pas de téléversement en v1 · purge des
+comptes échus **12 mois** après l'échéance, en opération d'entretien manuelle · rôle
+`saisisseur` en base, « compte de mission » à l'écran.
+
+### Trois défauts trouvés, et ce qu'ils enseignent
+
+**Deux régressions de la même famille**, prises par la suite de tests : *redéfinir un objet
+à partir d'une migration périmée*. La policy `el_select` avait été durcie en
+`20260616095700` ; la recréer depuis `20260616090400` l'aurait rouverte. Les fonctions
+`can_*` avaient été redéfinies en `20260616096000` avec la garde « base non supprimée » ;
+les réécrire depuis `20260616094200` aurait rendu accessible une base mise à la corbeille.
+**Toujours repartir de la dernière définition**, jamais de la première trouvée.
+
+**Un défaut que seul le cloud pouvait révéler.** Supabase n'écrit pas `app_metadata` dans
+la même instruction que l'insertion dans `auth.users` : `handle_new_user` ne voyait donc
+pas le rôle et créait un profil `medecin`. **Le compte de mission naissait médecin**,
+capable de créer ses propres bases — l'escalade même que le lot doit empêcher. Le shim de
+test local écrit tout d'un coup : le défaut était structurellement invisible en local.
+Correctif : `reconcile_mission_profile` (migration `20260729153000`), appelée par l'Edge
+Function avant tout provisionnement, qui relit `app_metadata` côté serveur et refuse de
+toucher un compte déjà établi.
+
+Leçon : **une suite de tests verte ne remplace pas un passage sur un projet réel.** Ici,
+841 tests passaient pendant que la propriété de sécurité centrale était fausse en
+production.
+
+### Vérification sur staging — 22/22, par le vrai chemin
+
+`scripts/verify-mission-account.mjs` crée un compte via l'Edge Function déployée, appelée
+avec le jeton d'un médecin, puis l'exerce **avec son propre jeton** — donc sous RLS réelle,
+jamais en `service_role`. Vérifié : le rôle obtenu, l'idempotence d'un rejeu, la saisie sur
+sa base, l'absence totale d'identité nominative, le cloisonnement inter-bases, le refus
+d'export, de curation, de gestion d'accès et de création de base, et la révocation
+immédiate malgré un jeton encore valide.
+
+### Ce qui reste bloqué
+
+**La production n'a jamais reçu de release coordonnée réussie.** Le site sert un build du
+28 juillet 11h11 UTC, antérieur à L1, L2 et L5 — vérifié en cherchant leurs chaînes dans le
+bundle servi. Les « succès » visibles côté GitHub venaient de `vercel[bot]`, pas du
+pipeline.
+
+Cause : l'environnement GitHub `production` ne contient que **5 des 18 secrets** requis. Il
+manque `CONTROLS_ADMIN_TOKEN`, `STORAGE_BACKUP_ENCRYPTION_KEY` (à générer, distincte de
+staging), `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+`VERCEL_PROJECT_ID`, plus les trois preuves de readiness que la dérogation pilote couvrira.
+La dérogation mono-personne `CONTROLS_SOLO_MODE` **ne dispense pas** du jeton
+d'administration : le script échoue avant.
+
+Ces valeurs sont des identifiants : leur pose revient au porteur du projet.
+
+L'environnement `production` n'accepte par ailleurs que la branche `main` : le SHA promu
+doit y être fusionné avant toute tentative.
