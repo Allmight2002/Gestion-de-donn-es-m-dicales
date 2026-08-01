@@ -1232,6 +1232,20 @@ Le circuit de promotion de la preuve suit `branche de travail → develop → ma
 Les protections ont été vérifiées avant sa mise en œuvre ; aucune fusion directe
 vers `develop` ou `main` n'est utilisée.
 
+### Traçabilité du circuit et test négatif
+
+- PR #111 (`codex/b7-branch-protections` → `develop`) fusionnée le 2026-08-01
+  en `2f96f5c425c99238c5b349905e39aa2c4f54d8f9` ; run CI `30703062832`,
+  `build-test` et `scanner-image` verts ;
+- PR #112 (`develop` → `main`) fusionnée le 2026-08-01 en
+  `f24b91c69c5145854891b3f31fe56ced5ac7d14e` ; runs `30703195018` (PR) et
+  `30703175979` (push sur `develop`), checks verts ;
+- PR négative #113, ouverte contre `main` depuis `codex/b7-red-ci-probe` :
+  run `30703348177` avec `build-test=FAILURE` et `scanner-image=SUCCESS` ;
+  `gh pr merge 113 --merge` a été refusé avec `MERGE_EXIT=1` et le message
+  GitHub `base branch policy prohibits the merge` ; la PR a été fermée sans
+  fusion et la branche temporaire supprimée.
+
 ## Dérogation pilote sur les trois preuves de readiness (2026-07-29)
 
 Décidée par le porteur après l'inventaire des secrets de production, dans le
