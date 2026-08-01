@@ -105,6 +105,11 @@ jobs:
           fi
           echo "dist/ : aucun motif de cle serveur"
 
+      - name: B7 temporary red gate probe
+        run: |
+          echo "Temporary negative test: this PR must remain unmergeable."
+          exit 1
+
   # Audit v18 P0 : l'image du scanner ClamAV doit DEMARRER, pas seulement se construire —
   # un COPY manquant dans le Dockerfile ne casse pas `docker build`, seulement le lancement
   # de node (ERR_MODULE_NOT_FOUND). On construit l'image, on la demarre avec un token de
