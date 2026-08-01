@@ -47,8 +47,12 @@ plus le développement local.
 |---|---|---|---|---|---|
 | **B2 — antivirus** | Aucun serveur ClamAV durable disponible actuellement | Autorisé ; mocks et scanner local possibles | Autorisé pour les parcours sans document ; tout parcours de fichier reste fail-closed si le scanner manque | Document réel, upload non inspecté, pilote et production | Garder l'upload désactivé ou refusé lorsque l'inspection stricte n'est pas disponible ; ne jamais simuler une preuve antivirus distante |
 | **B6 — juridique et gouvernance** | Documents, avis et autorisations externes non encore obtenus | Autorisé avec fixtures purement fictives | Autorisé dans un environnement privé, isolé et réinitialisable, avec données fictives seulement | Donnée réelle ou pseudonymisée, utilisateur externe, recherche, décision clinique, publication et production | Étiquetage explicite « démonstration/QA », purge des fixtures et aucune réutilisation d'un dossier réel |
-| **B7 — protections GitHub** | GitHub Pro n'est pas finançable actuellement ; les protections live restent indisponibles | Autorisé | Autorisé après CI verte et contrôle manuel du SHA | Promotion automatique ou non revue vers `main` et production | Flux obligatoire `branche de travail → develop → main`, aucun push direct vers `main`, CI verte et décision humaine explicite à chaque promotion |
 | **B10 — organisation** | Équipe, suppléances, support et QA formelle non encore constitués | Autorisé sous responsabilité directe du porteur | Exercices fictifs autorisés ; le porteur peut assumer les rôles continuité et release manager pour ces exercices | Exploitation clinique ou production sans titulaires, suppléants, support, formation, MFA et QA signée | Un lot à la fois, décisions consignées, runbooks maintenus et acceptation du porteur avant toute promotion |
+
+**B7 est fermé techniquement depuis le 2026-08-01.** Le flux
+`branche de travail → develop → main`, les checks CI et les protections live sont
+désormais contrôlés par GitHub ; la revue par un tiers reste suspendue par la
+dérogation mono-personne documentée.
 
 Les autres gates restent des **portes de validation du candidat**, et non un gel
 général du travail local. B3, B4, B8, B1 et B9 font toutefois l'objet de
@@ -320,13 +324,13 @@ Un lot est terminé localement lorsque :
 
 ## 8. Réévaluation des blocages
 
-B2, B6, B7 et B10 sont revus à l'occasion d'un changement de capacité externe,
+B2, B6 et B10 sont revus à l'occasion d'un changement de capacité externe,
 pas à chaque fonctionnalité :
 
 - **B2** : lorsqu'un hébergement ClamAV durable devient disponible ;
 - **B6** : lorsqu'un avis, accord, DPA ou DPIA/AIPD signé est obtenu ;
-- **B7** : lorsqu'un plan GitHub compatible est finançable ou qu'un contrôle
-  compensatoire formel est approuvé ;
+- **B7** : le gate technique est fermé ; réévaluer uniquement lorsqu'un second
+  relecteur existe afin de lever la dérogation mono-personne ;
 - **B10** : lorsqu'une équipe réelle, des suppléances, le support, la formation
   et la QA peuvent être nommés et exercés.
 

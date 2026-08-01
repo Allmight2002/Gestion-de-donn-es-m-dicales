@@ -1198,6 +1198,40 @@ garde son nom d'origine.
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
 se justifie par la taille de l'équipe, pas par une analyse de risque.
 
+## B7 — fermeture du gate technique (2026-08-01)
+
+Le dépôt étant public depuis le 2026-07-28, la protection des branches est
+disponible sans plan payant. Le contrôle live a été vérifié sur le dépôt
+`Allmight2002/Gestion-de-donn-es-m-dicales`.
+
+### Configuration vérifiée
+
+- `main` et `develop` exigent une pull request ;
+- `build-test` et `scanner-image` sont des checks obligatoires sur les deux
+  branches ;
+- les règles s'appliquent aux administrateurs ; le force-push et la suppression
+  de branche sont interdits ; les conversations doivent être résolues ;
+- `staging` autorise `develop` et `main`, tandis que `production` autorise
+  uniquement `main` ;
+- `Allmight2002` est reviewer requis sur les deux environnements.
+
+### Vérification et limite explicite
+
+Avec `GITHUB_CONTROLS_SOLO=true`, `npm run github:controls:verify` termine par
+`Controles GitHub: OK en mode MONO-PERSONNE`. La dérogation suspend uniquement la
+relecture par un tiers, l'approbation distincte après le dernier push et
+l'interdiction de l'auto-approbation d'environnement. La barrière technique
+contre une fusion à CI rouge reste active.
+
+B7 est **fermé pour la protection technique**. La variable de dépôt
+`CONTROLS_SOLO_MODE=true` devra être retirée dès qu'un second relecteur existe ;
+la revue complète reprendra alors sans changement de script. La MFA, la revue
+nominative et le moindre privilège restent des preuves RSSI externes.
+
+Le circuit de promotion de la preuve suit `branche de travail → develop → main`.
+Les protections ont été vérifiées avant sa mise en œuvre ; aucune fusion directe
+vers `develop` ou `main` n'est utilisée.
+
 ## Dérogation pilote sur les trois preuves de readiness (2026-07-29)
 
 Décidée par le porteur après l'inventaire des secrets de production, dans le
