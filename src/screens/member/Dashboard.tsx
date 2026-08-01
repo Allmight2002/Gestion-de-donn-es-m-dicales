@@ -6,12 +6,13 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase, isMissionAccount } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
-import type { BaseListing, PublishedTemplateOption } from '../../data/bases';
+import type { BaseListing, DeletedBase, PublishedTemplateOption } from '../../data/bases';
 import { offlineCache, useOnline, type OfflineMeta } from '../../data/offline';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 // Tableau de bord (cahier §8.3) : bases possedees + partagees. La creation de base est
 // reservee au role MEDECIN (le staff voit seulement les bases auxquelles il a acces).
@@ -24,6 +25,7 @@ export function Dashboard() {
   const isMission = isMissionAccount(profile);
   const navigate = useNavigate();
   const [bases, setBases] = useState<BaseListing[]>([]);
+  const [deletedBases, setDeletedBases] = useState<DeletedBase[]>([]);
   const [offlineBases, setOfflineBases] = useState<OfflineMeta[]>([]);
   const [templates, setTemplates] = useState<PublishedTemplateOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,8 @@ export function Dashboard() {
   const [versionId, setVersionId] = useState('');
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<DeletedBase | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -42,11 +46,17 @@ export function Dashboard() {
       if (!online) {
         // HORS-LIGNE : seules les bases enregistrees localement sont consultables.
         setOfflineBases(await offlineCache.list());
+        setDeletedBases([]);
         setError(null);
         return;
       }
-      const [b, tpl] = await Promise.all([repo.listMyBases(), repo.listTemplateModels()]);
+      const [b, tpl, deleted] = await Promise.all([
+        repo.listMyBases(),
+        repo.listTemplateModels(),
+        mayCreate ? repo.listDeletedBases() : Promise.resolve([]),
+      ]);
       setBases(b);
+      setDeletedBases(deleted);
       setTemplates(tpl);
       setVersionId((prev) => prev || tpl[0]?.versionId || '');
       void offlineCache.list().then(setOfflineBases).catch(() => {});
@@ -57,7 +67,7 @@ export function Dashboard() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, online]);
+  }, [repo, online, mayCreate]);
 
   useEffect(() => {
     void reload();
@@ -81,8 +91,31 @@ export function Dashboard() {
     }
   }
 
+  async function restoreBase() {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    try {
+      await repo.restoreDeletedBase(restoreTarget.id);
+      setRestoreTarget(null);
+      await reload();
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   return (
     <section className="space-y-8">
+      <ConfirmDialog
+        open={restoreTarget !== null}
+        title={t('base.restore_title')}
+        body={t('base.restore_body')}
+        confirmLabel={t('base.restore_confirm')}
+        busy={restoring}
+        onCancel={() => setRestoreTarget(null)}
+        onConfirm={() => void restoreBase()}
+      />
       <PageHeader
         title={t('member.dashboard.title')}
         description={t('dashboard.subtitle')}
@@ -208,6 +241,37 @@ export function Dashboard() {
         </ul>
         )}
       </div>
+      )}
+
+      {online && mayCreate && !loading && (
+        <div className="space-y-3">
+          <div>
+            <h2 className="section-title">{t('base.trash_title')}</h2>
+            <p className="mt-0.5 text-sm text-slate-500">{t('base.trash_hint')}</p>
+          </div>
+          {deletedBases.length === 0 ? (
+            <div className="card border-dashed p-5 text-sm text-slate-500">{t('base.trash_empty')}</div>
+          ) : (
+            <ul className="space-y-3">
+              {deletedBases.map((base) => (
+                <li key={base.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{base.name}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{base.deletionReason}</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {t('base.deleted_on').replace('{date}', new Date(base.deletedAt).toLocaleDateString())}
+                      {' · '}
+                      {t('base.purge_eligible').replace('{date}', new Date(base.purgeEligibleAt).toLocaleDateString())}
+                    </p>
+                  </div>
+                  <button type="button" className="btn-secondary" onClick={() => setRestoreTarget(base)}>
+                    {t('base.restore')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {/* Bases disponibles hors-ligne (consultables sans reseau, donnees analytiques uniquement). */}

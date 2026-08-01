@@ -55,6 +55,10 @@ export function BaseHome() {
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false); // UI-2 : modale §5.8 (grosse base)
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletionReason, setDeletionReason] = useState('');
+  const [deletionName, setDeletionName] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -179,6 +183,22 @@ export function BaseHome() {
     setCachedMeta(null);
   }, [id]);
 
+  const deleteBase = useCallback(async () => {
+    if (!id || !listing || listing.role !== 'owner') return;
+    if (!deletionReason.trim() || deletionName.trim() !== listing.base.name) return;
+    setDeleting(true);
+    try {
+      await bases.softDeleteBase(id, deletionReason.trim());
+      // Une base supprimee ne doit jamais rester consultable dans le cache local.
+      await offlineCache.remove(id);
+      navigate('/');
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setDeleting(false);
+    }
+  }, [id, listing, deletionReason, deletionName, bases, navigate, t]);
+
   if (loading) return <SkeletonList rows={6} />;
   if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
@@ -195,6 +215,42 @@ export function BaseHome() {
         onCancel={() => setConfirmLarge(false)}
         onConfirm={() => { setConfirmLarge(false); void doDownloadSnapshot(); }}
       />
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('base.delete_title')}
+        body={t('base.delete_body')}
+        confirmLabel={t('base.delete_confirm')}
+        confirmDisabled={!deletionReason.trim() || deletionName.trim() !== baseName}
+        danger
+        busy={deleting}
+        onCancel={() => {
+          setConfirmDelete(false);
+          setDeletionReason('');
+          setDeletionName('');
+        }}
+        onConfirm={() => void deleteBase()}
+      >
+        <div className="space-y-3 pt-1">
+          <label className="form-label">
+            {t('base.delete_reason')}
+            <textarea
+              className="input mt-1 min-h-20"
+              value={deletionReason}
+              maxLength={500}
+              onChange={(event) => setDeletionReason(event.target.value)}
+            />
+          </label>
+          <label className="form-label">
+            {t('base.delete_name_confirm')}
+            <input
+              className="input mt-1"
+              value={deletionName}
+              placeholder={t('base.delete_name_hint').replace('{name}', baseName)}
+              onChange={(event) => setDeletionName(event.target.value)}
+            />
+          </label>
+        </div>
+      </ConfirmDialog>
       {/* UI-1 : le retour + la navigation (import/cohortes/journal/acces/gabarit/curation) vivent
           desormais dans BaseLayout (fil d'Ariane + onglets). Ici : titre, role et actions patients. */}
       <PageHeader
@@ -218,6 +274,11 @@ export function BaseHome() {
             {canEdit && (
               <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
                 <Plus size={16} aria-hidden /> {t('patient.new')}
+              </button>
+            )}
+            {listing.role === 'owner' && (
+              <button type="button" onClick={() => setConfirmDelete(true)} className="text-sm font-medium text-red-700 hover:underline">
+                {t('base.delete')}
               </button>
             )}
           </>

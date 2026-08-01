@@ -12,6 +12,7 @@ import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, PatientListItem, NewPatientInput } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
+import { offlineCache } from '../../data/offline';
 
 const ALL_PERMS = {
   canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
@@ -133,6 +134,45 @@ describe('NewPatient', () => {
 });
 
 describe('BaseHome (liste patients)', () => {
+  test('exige un motif et le nom de la base avant la suppression proprietaire', async () => {
+    const user = userEvent.setup();
+    const softDeleteBase = vi.fn(async () => undefined);
+    const removeOffline = vi.spyOn(offlineCache, 'remove').mockResolvedValue();
+    const bases = {
+      async getBase() { return baseListing; },
+      softDeleteBase,
+    } as unknown as BaseRepository;
+    const patientRepo = {
+      async listPatientsPage() { return { rows: [], total: 0 }; },
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patientRepo}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseHome />} />
+              <Route path="/" element={<div>TABLEAU DE BORD</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la base' }));
+    const dialog = screen.getByRole('dialog', { name: 'Supprimer cette base ?' });
+    const confirm = within(dialog).getByRole('button', { name: 'Supprimer la base' });
+    expect(confirm).toBeDisabled();
+    await user.type(within(dialog).getByLabelText('Motif de la suppression'), 'Création par erreur');
+    await user.type(within(dialog).getByLabelText('Saisissez le nom de la base pour confirmer'), 'Registre Neuro');
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+
+    expect(softDeleteBase).toHaveBeenCalledWith('b1', 'Création par erreur');
+    expect(await screen.findByText('TABLEAU DE BORD')).toBeInTheDocument();
+    removeOffline.mockRestore();
+  });
+
   test('place l action hors-ligne occasionnelle dans l en-tete', async () => {
     const patientRepo = {
       async listPatientsPage() { return { rows: [], total: 0 }; },

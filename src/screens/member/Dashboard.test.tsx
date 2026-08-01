@@ -46,6 +46,9 @@ function mockBases(): BaseRepository {
     async listMyBases() {
       return [...bases];
     },
+    async listDeletedBases() {
+      return [];
+    },
     async getInclusionStats() {
       return { total: 0, target: null, targetDate: null, targetRevision: 0, monthly: [] };
     },
@@ -70,6 +73,8 @@ function mockBases(): BaseRepository {
     async getBase(id) {
       return bases.find((b) => b.base.id === id) ?? null;
     },
+    async softDeleteBase() {},
+    async restoreDeletedBase() {},
     async setTemplateVersion() {},
   };
 }
@@ -143,6 +148,29 @@ describe('Dashboard', () => {
     renderApp(empty);
     await screen.findByRole('button', { name: /Nouvelle base/ });
     expect(screen.queryByText('Mission terminée')).toBeNull();
+  });
+
+  test('restaure une base depuis la corbeille sans remettre les acces partages', async () => {
+    const user = userEvent.setup();
+    const restoreDeletedBase = vi.fn(async () => undefined);
+    const repo = {
+      ...mockBases(),
+      async listDeletedBases() {
+        return [{
+          id: 'deleted-1', name: 'Registre clos', deletionReason: 'Création par erreur',
+          deletedAt: '2026-08-01T10:00:00.000Z', purgeEligibleAt: '2027-08-01T10:00:00.000Z',
+        }];
+      },
+      restoreDeletedBase,
+    } as BaseRepository;
+
+    renderApp(repo);
+    expect(await screen.findByText('Registre clos')).toBeInTheDocument();
+    expect(screen.getByText(/Les accès et invitations révoqués ne seront pas restaurés/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Restaurer' }));
+    expect(screen.getByRole('dialog', { name: 'Restaurer cette base ?' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Restaurer la base' }));
+    expect(restoreDeletedBase).toHaveBeenCalledWith('deleted-1');
   });
 });
 
