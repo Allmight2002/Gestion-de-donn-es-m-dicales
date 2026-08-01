@@ -1,5 +1,9 @@
 # Stratégie produit post-MVP — Pertinence de MedData et feuille de route
 
+> **Étude datée.** Lire l'état technique courant dans
+> [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md), sans réécrire les conclusions de
+> marché documentées ici.
+
 | Cartouche | |
 |---|---|
 | Date | 2026-07-16 |

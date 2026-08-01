@@ -26,7 +26,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L6** | Finition de l'interface | `AppShell.tsx`, composant de case à cocher, **9 écrans** | **seul** |
 | ~~L7~~ | ~~Protections de branche (B7)~~ | **Livré le 2026-08-01** | — |
 | **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
-| **L9** | Modèle d'observation d'une base | migration, `NewPatient.tsx`, `FieldForm.tsx`, `BaseHome.tsx` | **seul** |
+| ~~L9~~ | ~~Modèle d'observation d'une base~~ | **Livré le 2026-08-01** (migration + UI + release) | — |
 | ~~L10~~ | ~~Comptes de mission (P4)~~ | **Livré le 2026-07-29** | — |
 | **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L1, L2, L5, L7 |
 | **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L2, L5, L7 |
@@ -115,11 +115,14 @@ comme L1 — enchaîner après lui plutôt qu'en parallèle.
 
 Lot à surface base : appliquer `meddata-db-safety`.
 
-### L9 — Modèle d'observation d'une base
+### L9 — Modèle d'observation d'une base — **livré**
 
-**Idée 8** : rendre le suivi longitudinal explicite et optionnel. Le plus large
-des lots — migration, création de patient, éditeur de variables, écran de base.
-À traiter **seul**, après L2 qui lui sert de préalable.
+**Idée 8**, livrée le 2026-08-01. La migration additive ajoute les trois modèles
+d'observation, conserve les bases existantes en suivi répété et verrouille tout changement après
+la première saisie. En transversal, le formulaire patient est unique et sectionné ; la portée et
+l'ajout de rencontre disparaissent aussi bien de l'interface que des voies serveur. Le SHA a été
+validé en staging puis sur la cible technique production. Détail dans
+[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
 
 ### L10 — Comptes de mission — **livré**
 
@@ -183,13 +186,12 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-Six lots sont livrés : **L1, L2, L3, L5, L7 et L10**. Il en reste huit.
+Sept lots sont livrés : **L1, L2, L3, L5, L7, L9 et L10**. Il en reste sept.
 
 1. **En parallèle immédiat** : L4, L12 — aucun ne partage de fichier.
 2. **Ensuite** : L8, L11, L13. L11 attend encore sept décisions, mais ses étapes
    locales sont réalisables sans elles.
-3. **Seuls, l'un après l'autre** : L6, L9, L14. Le préalable de L9 est levé
-   depuis la livraison de L2.
+3. **Seuls, l'un après l'autre** : L6, L14.
 
 ### Leçon des trois lots menés en parallèle
 

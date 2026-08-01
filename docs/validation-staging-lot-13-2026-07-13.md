@@ -1,5 +1,9 @@
 # LOT 13 — Rapport final de validation staging
 
+> **Archive datée.** Ce rapport conserve le verdict du candidat du 13 juillet. Ne pas le
+> confondre avec la preuve staging du 1er août, décrite dans
+> [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 Date : 2026-07-13 (Africa/Douala)
 
 Décision : **staging non validé**

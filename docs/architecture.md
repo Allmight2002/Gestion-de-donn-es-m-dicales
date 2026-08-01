@@ -113,7 +113,9 @@ liste blanche). Un gabarit est **global** (admin) ou **personnel** (médecin pro
 
 **Comptes & bases** (`profiles`, `base`, `base_access`, `base_invitation`)
 `profiles` est lié à `auth.users` (on ne recrée pas de table utilisateur). Une `base`
-référence une version publiée de gabarit (`current_template_version_id`).
+référence une version publiée de gabarit (`current_template_version_id`) et porte un
+`observation_model` : `cross_sectional`, `longitudinal` ou `event_registry`. Les bases
+historiques restent longitudinales. Le modèle ne peut changer que tant que la base est vide.
 
 **Zone identité** (`patient_identity`, `clinical_attachment`) — restreinte, jamais exportée.
 
@@ -121,7 +123,9 @@ référence une version publiée de gabarit (`current_template_version_id`).
 `patient` = données permanentes ; `encounter` = rencontres avec `age_value`/`age_unit`
 en colonnes (jamais la DOB). `validation_status` ∈ `draft | complete | curated`. Toute
 correction est journalisée (ancienne/nouvelle valeur, auteur, motif) dans
-`field_change_log`.
+`field_change_log`. En `cross_sectional`, une observation est portée par le patient : les
+rencontres et toute donnée de portée rencontre sont refusées par les gardes SQL, pas seulement
+masquées par l'interface.
 
 **Zone documents bruts & curation** (`raw_submission`, `raw_document`, `curation_task`,
 `curation_draft`, `curation_clarification`) — voir §4.

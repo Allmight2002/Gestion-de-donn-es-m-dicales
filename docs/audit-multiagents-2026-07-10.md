@@ -1,5 +1,8 @@
 # Audit approfondi MedData — Rapport consolidé (multi-agents)
 
+> **Archive datée.** Les constats ci-dessous sont rattachés aux commits de juillet ; l'état
+> technique actuel est résumé dans [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 **Date :** 10 juillet 2026
 **Branche demandée :** `develop` (d5f8813) — auditée relativement à `main` (29030bc)
 **Méthode :** 7 sous-agents indépendants en lecture seule (sécurité, architecture/qualité, fonctionnel, base de données, tests, performance, production), puis consolidation.

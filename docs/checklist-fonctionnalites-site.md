@@ -197,6 +197,23 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Soft delete demande un motif.
 - Les patients supprimes disparaissent des listes standards.
 
+## 8 bis. Modèle d'observation de la base
+
+### À tester
+
+- Créer une base fictive en **une seule saisie par participant**.
+- Vérifier que le choix est visible et modifiable tant que la base est vide.
+- Ouvrir « Nouveau patient » : un seul formulaire, regroupé par sections, sans ajout de rencontre.
+- Vérifier qu'une base longitudinale existante conserve « Ajouter une rencontre ».
+- Après la première saisie transverse, vérifier que le sélecteur de modèle est verrouillé.
+
+### Attendu
+
+- Les trois choix sont explicites : saisie unique, suivi répété, registre d'événements.
+- Le transversal ne montre ni portée de champ ni parcours de rencontre.
+- Les tentatives de rencontre en URL directe ou import sont refusées côté serveur.
+- Les bases créées avant L9 restent longitudinales.
+
 ## 9. Rencontres
 
 ### A tester

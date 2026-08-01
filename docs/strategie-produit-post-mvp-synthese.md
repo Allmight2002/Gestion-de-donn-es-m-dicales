@@ -1,5 +1,8 @@
 # Synthèse d'arbitrage — confrontation des deux études stratégiques post-MVP
 
+> **Synthèse datée.** Les éléments de marché restent historiques ; l'état de la plateforme au
+> 1er août est consigné dans [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 | Cartouche | |
 |---|---|
 | Date | 2026-07-16 |

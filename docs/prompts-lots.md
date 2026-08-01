@@ -14,7 +14,7 @@ dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État au 2026-07-28
+## État au 2026-08-01
 
 **Vérifier cette liste avant de lancer un thread**, pour ne pas faire refaire du
 travail déjà fait :
@@ -25,8 +25,11 @@ travail déjà fait :
 | L2 | **Livré** (PR #89). Prompt conservé pour mémoire. |
 | L3 | **Livré** (PR #86). Aucun prompt. |
 | L5 | **Livré** (PR #91). Prompt conservé pour mémoire. |
+| L7 | **Livré**. Prompt conservé pour mémoire. |
+| L9 | **Livré** (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
+| L10 | **Livré**. Prompt conservé pour mémoire. |
 
-**Les dix autres lots sont libres** : L4, L6, L7, L8, L9, L10, L11, L12, L13, L14.
+**Les lots restant à traiter sont** : L4, L6, L8, L11, L12, L13 et L14.
 
 ## Le déploiement n'est pas automatique
 
@@ -452,7 +455,10 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L9 — Modèle d'observation d'une base (à lancer SEUL)
+## ~~L9 — Modèle d'observation d'une base~~ — livré le 2026-08-01
+
+Le prompt ci-dessous est conservé pour mémoire. L9 a été validé en staging et sur la cible
+technique production avec une base transverse fictive et une base longitudinale existante.
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
