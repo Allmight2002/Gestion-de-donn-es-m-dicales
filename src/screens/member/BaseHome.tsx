@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Columns3, Download, Plus, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { BaseListing } from '../../data/bases';
+import type { BaseListing, ObservationModel } from '../../data/bases';
 import type { PatientListItem } from '../../data/patients';
 import { displayFieldValue } from '../../data/types';
 import { getTemplateFields } from '../../data/templates';
@@ -58,6 +58,7 @@ export function BaseHome() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletionReason, setDeletionReason] = useState('');
   const [deletionName, setDeletionName] = useState('');
+  const [changingObservationModel, setChangingObservationModel] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
@@ -199,6 +200,21 @@ export function BaseHome() {
     }
   }, [id, listing, deletionReason, deletionName, bases, navigate, t]);
 
+  const observationModel: ObservationModel = listing?.base.observationModel ?? 'longitudinal';
+  const isCrossSectional = observationModel === 'cross_sectional';
+  const changeObservationModel = useCallback(async (next: ObservationModel) => {
+    if (!id || !listing || next === observationModel) return;
+    setChangingObservationModel(true);
+    try {
+      await bases.setObservationModel(id, next);
+      await load(() => false);
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setChangingObservationModel(false);
+    }
+  }, [id, listing, observationModel, bases, load, t]);
+
   if (loading) return <SkeletonList rows={6} />;
   if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
@@ -272,7 +288,7 @@ export function BaseHome() {
               </button>
             )}
             {canEdit && (
-              <button onClick={() => navigate(`/bases/${id}/patients/new`)} className="btn-primary">
+              <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary">
                 <Plus size={16} aria-hidden /> {t('patient.new')}
               </button>
             )}
@@ -284,6 +300,25 @@ export function BaseHome() {
           </>
         ) : undefined}
       />
+
+      {!offlineView && listing?.role === 'owner' && total === 0 && (
+        <div className="card flex flex-col gap-2 p-4 sm:flex-row sm:items-end sm:justify-between">
+          <label className="form-label max-w-md">
+            {t('observation.model_label')}
+            <select
+              className="input mt-1"
+              value={observationModel}
+              disabled={changingObservationModel}
+              onChange={(event) => void changeObservationModel(event.target.value as ObservationModel)}
+            >
+              <option value="cross_sectional">{t('observation.cross_sectional')}</option>
+              <option value="longitudinal">{t('observation.longitudinal')}</option>
+              <option value="event_registry">{t('observation.event_registry')}</option>
+            </select>
+          </label>
+          <p className="helper-text max-w-md">{t('observation.empty_only_hint')}</p>
+        </div>
+      )}
 
       {/* Une copie existante reste signalee, sans bandeau permanent pleine largeur. */}
       {!offlineView && cachedMeta ? (
@@ -374,7 +409,7 @@ export function BaseHome() {
                         <td key={f.id}>{formatCell(p.data[f.fieldKey])}</td>
                       ))}
                       <td className="text-right">
-                        {canEdit && (
+                        {canEdit && !isCrossSectional && (
                           <button
                             onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}
                             className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"

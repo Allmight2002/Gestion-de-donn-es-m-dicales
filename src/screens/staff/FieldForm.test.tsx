@@ -109,3 +109,20 @@ describe('FieldForm — soupape (F5)', () => {
     );
   });
 });
+
+describe('FieldForm — base transversale (L9)', () => {
+  test('masque la portée et enregistre toujours une variable participant', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <FieldForm onSubmit={onSubmit} observationModel="cross_sectional" />
+      </I18nProvider>,
+    );
+    expect(screen.queryByRole('combobox', { name: 'Portée' })).toBeNull();
+    expect(screen.getByText('Données du formulaire unique')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'poids');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Poids');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ scope: 'patient', encounterTypes: null }), undefined);
+  });
+});

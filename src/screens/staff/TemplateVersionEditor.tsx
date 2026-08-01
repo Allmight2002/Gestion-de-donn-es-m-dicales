@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
+import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
 import { RuleForm, RuleSummary } from './RuleForm';
 
@@ -17,12 +18,14 @@ export function TemplateVersionEditor({
   onBack,
   showVersionActions = true,
   onNewVersion,
+  observationModel,
 }: {
   versionId: string;
   onBack: () => void;
   showVersionActions?: boolean;
   // §8.2 : permet au medecin de creer la version SUIVANTE de son gabarit (copie editable).
   onNewVersion?: (newVersionId: string) => void | Promise<void>;
+  observationModel?: ObservationModel;
 }) {
   const repo = useTemplateRepository();
   const { t } = useI18n();
@@ -222,6 +225,7 @@ export function TemplateVersionEditor({
               lockStructural={editing.inUse ?? false}
               submitLabel={t('admin.save')}
               onCancel={() => setEditing(null)}
+              observationModel={observationModel}
               onSubmit={(f) =>
                 void run(() => repo.updateField(editing.id, f)).then((ok) => {
                   if (ok) setEditing(null);
@@ -234,6 +238,7 @@ export function TemplateVersionEditor({
           <div className="mt-3">
             <FieldForm
               busy={busy}
+              observationModel={observationModel}
               onSubmit={async (f, companion) => {
                 // Ne jamais promettre une soupape qui n'a pas pu etre creee. Un conflit est
                 // signale avant toute ecriture et le formulaire reste rempli pour correction.

@@ -28,6 +28,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
+  const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,6 +75,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         return;
       }
       const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
+      setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       setFields(fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
       setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
       setError(null);
@@ -223,7 +225,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                   <span className="font-mono text-xs">{m.code}</span>
                   <span>{m.fullName ?? '—'}{m.dateOfBirth ? ` · ${m.dateOfBirth}` : ''}</span>
                   <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('patient.duplicate_open')}</button>
-                  <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}/encounters/new`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('patient.duplicate_add_encounter')}</button>
+                  {!isCrossSectional && <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}/encounters/new`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('patient.duplicate_add_encounter')}</button>}
                 </li>
               ))}
             </ul>
