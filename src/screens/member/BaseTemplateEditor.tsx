@@ -54,6 +54,7 @@ export function BaseTemplateEditor() {
         versionId={listing.base.currentTemplateVersionId}
         onBack={back}
         showVersionActions={false}
+        observationModel={listing.base.observationModel}
         onNewVersion={async (id) => { await bases.setTemplateVersion(baseId!, id); await load(); }}
       />
     </section>
