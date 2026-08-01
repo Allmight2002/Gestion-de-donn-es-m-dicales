@@ -10,8 +10,10 @@ dépôt. Il exige :
 - règles applicables aux administrateurs, sans force-push ni suppression ;
 - résolution des conversations ;
 - reviewers d'environnement avec auto-approbation interdite ;
-- uniquement `develop` autorisée sur `staging` et uniquement `main` sur
-  `production`.
+- exactement `develop` et `main` autorisées sur `staging`, et uniquement `main`
+  sur `production`. L'autorisation de `main` sur staging permet de rejouer la
+  validation sur le SHA exact ensuite promu en production ; aucune autre branche
+  n'est acceptée.
 
 Le workflow production utilise le secret **`CONTROLS_ADMIN_TOKEN`**, passé au
 script sous le nom d'environnement `GITHUB_CONTROLS_TOKEN`. Les deux noms
@@ -64,7 +66,7 @@ n'est pas un contrôle, c'est une panne.
 - résolution des conversations ;
 - reviewer d'environnement **présent** — l'approbation de déploiement reste un
   geste délibéré ;
-- seule `develop` sur `staging`, seule `main` sur `production`.
+- exactement `develop` et `main` sur `staging`, seule `main` sur `production`.
 
 Autrement dit, la dérogation retire la **relecture par un tiers**, pas la
 **barrière technique**. Le mécanisme qui empêche de livrer du code dont la CI est

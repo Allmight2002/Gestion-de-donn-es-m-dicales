@@ -67,6 +67,9 @@ Elle ne vaut ni readiness clinique ni autorisation de données réelles.
    du meme SHA/tag et renseigne son `staging_run_id`; le workflow exige un job
    `backend-staging` reussi pour ce SHA, puis refait une sauvegarde chiffree verifiee avant la
    premiere ecriture production et execute les memes controles avant `vercel deploy --prod`.
+   L'environnement `staging` autorise donc exactement `develop` et `main` : `develop` pour la
+   validation courante, puis `main` pour produire la preuve sur le SHA immuable exigé par la
+   promotion. L'environnement `production` reste limité à `main`.
 
 Tout echec stoppe les jobs dependants et bloque le frontend. `vercel.json` desactive les
 deploiements automatiques issus de Git pour toutes les branches : les previews staging et la
