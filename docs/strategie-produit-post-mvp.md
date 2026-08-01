@@ -1,5 +1,10 @@
 # MedData après le MVP — pertinence stratégique et feuille de route
 
+> **Étude datée.** L'analyse marché conserve ses hypothèses et preuves du 16 juillet. Son état
+> technique est contextualisé depuis le 1er août dans
+> [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md) ; cela ne transforme pas les limites
+> cliniques et commerciales de cette étude.
+
 **Date de l’étude :** 16 juillet 2026
 
 **Périmètre :** Cameroun et Tchad, avec extension éventuelle à l’Afrique francophone subsaharienne
@@ -629,7 +634,7 @@ Arrêter le produit — et non seulement un pays ou un segment — si deux cycle
 - [README du projet](../README.md) — présentation fonctionnelle ; les rapports de validation plus récents prévalent en cas de conflit.
 - [Cahier des charges métier](cahier-des-charges-metier.md), [cahier des charges technique](cahier-des-charges-technique.md) et [architecture](architecture.md) — produit envisagé et modèle documenté.
 - [Checklist fonctionnelle](checklist-fonctionnalites-site.md) — plan de test, non preuve d’exécution.
-- [Readiness production du 16 juillet 2026](readiness-production-2026-07-16.md), [validation staging LOT 13](validation-staging-lot-13-2026-07-13.md) et [validation de restauration staging](validation-restauration-staging-2026-07-14.md) — état de preuve le plus récent.
+- [Readiness production](readiness-production-2026-07-19.md), [état courant vérifié](etat-actuel-2026-08-01.md), [validation staging LOT 13](validation-staging-lot-13-2026-07-13.md) et [validation de restauration staging](validation-restauration-staging-2026-07-14.md) — preuves techniques et leurs dates respectives.
 - [Déploiement](deploiement.md), documents juridiques et checklists GO/NO-GO Cameroun/Tchad — procédures projet, non avis validés.
 - [Réserve d’idées fonctionnelles](idees-fonctionnalites-futures.md) — utilisée pour distinguer ce qui existe, ce qui est partiel et ce qui reste une idée.
 - Les deux autres versions de travail, [étude Claude](strategie-produit-post-mvp-claude.md) et [synthèse d’arbitrage](strategie-produit-post-mvp-synthese.md), ont été lues intégralement. Le présent document reprend leurs convergences, corrige leurs divergences avec le nouveau signal terrain et ne conserve pas leurs affirmations externes non suffisamment vérifiées.

@@ -35,7 +35,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 5 | **Bibliothèque de jeux de valeurs** — listes prêtes à l'emploi insérables en un clic dans un champ `select`/`multiselect`, au lieu de saisir chaque valeur à la main | Petite (front, contenu pur) | — | *(cadrée en séance le 2026-07-26)* | **Mécanisme livré le 2026-07-26** ; jeux cliniques à enrichir au fil des retours |
 | 6 | **Soupape sur le champ de terminologie** — étendre au type `terminology` la soupape livrée pour les listes contrôlées | Petite (front) | — | *(demandée le 2026-07-27)* | À faire |
 | 7 | **Constructeur de règles de cohérence** — remplacer la saisie de JSON brut par un assemblage guidé, compréhensible sans culture technique | Moyenne (front) | — | *(demandée le 2026-07-27)* | À faire |
-| 8 | **Modèle d'observation d'une base** — rendre le suivi longitudinal explicite et optionnel : étude transversale, suivi répété, ou registre d'événements | Grande (front + une colonne) | — | *(cadrée le 2026-07-27)* | À faire |
+| 8 | **Modèle d'observation d'une base** — rendre le suivi longitudinal explicite et optionnel : étude transversale, suivi répété, ou registre d'événements | Grande (front + une colonne) | — | *(cadrée le 2026-07-27)* | **Livrée le 2026-08-01** (L9, staging et cible technique production validés) |
 | 9 | **Alléger le chargement de l'application** — 1,7 Mo précachés dès la première visite, dont 837 Ko de tableur | Moyenne (configuration du build) | — | *(signalée le 2026-07-27)* | **Livrée** le 2026-07-28 — précache 1 728 → 892 Kio |
 | 10 | **Finition de l'interface** — zone de profil trop discrète, cases à cocher système, absence de retour visuel sur les changements d'état | Moyenne (front, transverse) | — | *(signalée le 2026-07-27)* | À faire |
 
@@ -153,6 +153,14 @@ Le contournement actuel consiste à déclarer toutes les variables en portée pa
 - le parcours reste celui d'une base longitudinale : rien n'indique à l'utilisateur que ce contournement est la bonne façon de faire, et rien n'empêche la création de rencontres qui n'ont pas de sens pour l'étude.
 
 Le mode « une seule saisie » consisterait donc surtout à rendre ce contournement explicite et guidé : masquer la notion de portée, masquer l'ajout de rencontre, et présenter un formulaire unique correctement sectionné.
+
+**Livrée le 2026-08-01 (L9).** La base porte `observation_model` avec les trois valeurs
+prévues ; les bases existantes restent longitudinales. Le choix est modifiable par le propriétaire
+tant que la base est vide, puis verrouillé. Le porteur a retenu l'absence de champ âge spécifique
+au transversal : l'âge reste une variable du formulaire si l'étude le requiert. Les contraintes
+serveur refusent rencontres et données de portée rencontre en transversal ; l'interface ouvre le
+formulaire patient unique sectionné et retire les entrées de rencontre. Voir
+[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
 
 ### 9. Alléger le chargement de l'application
 

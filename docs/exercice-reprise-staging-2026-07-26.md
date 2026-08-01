@@ -1,5 +1,8 @@
 # Exercice de sauvegarde, restauration et reprise staging — 26 juillet 2026
 
+> **Exercice daté.** Il ne prouve que le candidat indiqué. Consulter
+> [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md) pour les preuves ultérieures.
+
 ## Verdict actuel
 
 L'exercice technique sur cible locale éphémère et isolée est **réussi** pour le

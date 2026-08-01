@@ -1358,10 +1358,10 @@ immédiate malgré un jeton encore valide.
 
 ### Ce qui reste bloqué
 
-**La production n'a jamais reçu de release coordonnée réussie.** Le site sert un build du
-28 juillet 11h11 UTC, antérieur à L1, L2 et L5 — vérifié en cherchant leurs chaînes dans le
-bundle servi. Les « succès » visibles côté GitHub venaient de `vercel[bot]`, pas du
-pipeline.
+**Constat historique au moment de cette section.** Une release coordonnée réussie était alors
+absente et le site servait un build antérieur. Ce constat a été dépassé le 1er août 2026 : voir la
+clôture L9 ajoutée à la fin de ce journal et
+[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
 
 Cause : l'environnement GitHub `production` ne contient que **5 des 18 secrets** requis. Il
 manque `CONTROLS_ADMIN_TOKEN`, `STORAGE_BACKUP_ENCRYPTION_KEY` (à générer, distincte de
@@ -1424,3 +1424,11 @@ l'action « Ajouter une rencontre », qui ouvre le parcours « Nouvelle rencontr
 
 Cette preuve concerne la production technique du pilote et n'autorise ni usage clinique ni
 données réelles.
+
+## Remise en cohérence documentaire — 2026-08-01
+
+La documentation vivante a été relue et mise à jour au-delà de L9 : README, architecture,
+cahiers métier et technique, QA, checklists, E2E, feuille de route, lots et procédures de release.
+Les rapports datés restent des archives de leurs candidats respectifs et renvoient désormais vers
+[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md), qui distingue la release technique
+réussie des conditions encore requises pour toute donnée réelle.

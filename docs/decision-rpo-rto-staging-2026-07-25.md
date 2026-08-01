@@ -1,5 +1,8 @@
 # Décision de continuité staging — 25 juillet 2026
 
+> **Décision datée.** Son périmètre et ses limites restent inchangés ; les preuves techniques
+> ultérieures sont centralisées dans [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 ## Décision
 
 Pour l'environnement **staging** et uniquement avec des données fictives :

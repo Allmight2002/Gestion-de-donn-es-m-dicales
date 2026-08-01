@@ -7,6 +7,11 @@ déployées, les URL signées ni le scanner ClamAV. Ce preflight comble ce trou 
 la prod). C'est la validation réclamée par les audits externes (v18→v20) avant tout pilote avec
 documents.
 
+> **État vérifié le 1er août 2026.** La release coordonnée `30718950416` a exercé ce préflight
+> sur le SHA `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce` avec inspection stricte, fichier sain et
+> EICAR. Le tunnel scanner reste temporaire : cette preuve ne vaut pas hébergement pérenne ni
+> autorisation de données réelles.
+
 > **Jamais sur la prod.** Le script `scripts/e2e-staging.mjs` refuse de démarrer si
 > `STAGING_SUPABASE_URL` ne pointe pas vers le projet staging. On ne relinke jamais le CLI :
 > on cible toujours via `--db-url` / `--project-ref` explicites.

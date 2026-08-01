@@ -65,6 +65,13 @@ l'état effectif des services cloud doivent être vérifiés séparément. Le pr
 document enregistre la décision et son périmètre ; il ne constitue pas une preuve
 qu'un déploiement a déjà réussi.
 
+## État ultérieur vérifié le 1er août 2026
+
+Cette décision a ensuite été exercée pour le SHA `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce` :
+la release staging `30718950416` et la release de la cible technique production `30720194028` ont
+réussi. Cette preuve est technique, limitée aux données fictives, et ne change aucune des limites
+de la présente décision. Voir [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 ## Fin automatique de la décision
 
 Cette décision cesse d'être applicable **avant** le premier des événements

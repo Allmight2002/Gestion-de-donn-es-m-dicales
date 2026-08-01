@@ -203,8 +203,9 @@ la connexion est active.
 **Ce qui est implémenté :** connexion e-mail/mot de passe + réinitialisation, sélecteur de
 langue (fr/en), routage par rôle global. Côté `system_admin` : admin des gabarits (versions
 immuables, règles JSON validées, publication, duplication). Côté `medecin` : tableau de bord
-des bases, création de base, gabarits personnels, table et fiche patient (identité si
-autorisée / permanent / rencontres), saisie de rencontre (bornes/requis/listes, valeurs
+des bases, création de base avec modèle d'observation (saisie unique, suivi répété ou registre
+d'événements), gabarits personnels, table et fiche patient (identité si autorisée / permanent /
+rencontres selon le modèle), saisie de rencontre (bornes/requis/listes, valeurs
 manquantes codifiées, aperçu de l'âge calculé, règles de cohérence), correction journalisée
 (motif obligatoire), images en zone restreinte (masquage obligatoire, URL signées),
 constitution de cohortes (filtres en ET, effectifs, dynamique/figée), export CSV/XLSX

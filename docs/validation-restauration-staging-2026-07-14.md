@@ -1,5 +1,8 @@
 # Validation de sauvegarde et restauration staging — 14 juillet 2026
 
+> **Validation datée.** Elle conserve sa valeur pour le candidat de juillet ; l'état courant est
+> distingué dans [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 ## Verdict
 
 **Sauvegarde et restauration logique complètes du staging : validées sur le jeu

@@ -34,6 +34,7 @@ jamais en cas de succès. Les retries sont désactivés (`retries: 0`) : une err
 | Garde anti-production | cible `staging`/`local` seulement, allowlist projet Supabase | oui |
 | Exécution staging | job dédié dans le workflow de release coordonnée | oui |
 | **Parcours patient** | création → présence → modification → refresh → persistance → suppression logique | oui (correction lot 10) |
+| **Modèle d'observation** | création transverse, formulaire unique sans rencontre ; régression longitudinale | contrôle manuel déployé le 2026-08-01 ; E2E dédié à ajouter |
 | **Parcours export** | UI → Edge `generate-export` → historique → téléchargement (CSV) | oui (correction lot 10) |
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 
@@ -86,8 +87,9 @@ n'est pas un succès silencieux : elle est tracée ici.
 ### Upload navigateur (correction recommandée 5)
 
 Parcours cible : dépôt d'un petit fichier fictif autorisé → état `pending` → progression → lecture
-refusée tant que non accepté → lecture autorisée après acceptation. **Reporté** tant que le scanner
-ClamAV du staging n'est pas confirmé fiable et joignable par l'Edge. Le préflight API
+refusée tant que non accepté → lecture autorisée après acceptation. **Reporté** : le scanner
+ClamAV staging est désormais vérifié joignable par l'Edge, mais ce parcours navigateur n'est pas
+encore automatisé. Le préflight API
 `npm run e2e:staging` (`scripts/e2e-staging.mjs`) exerce déjà **de bout en bout** la chaîne
 inspection / quarantaine / scanner sur du vrai cloud ; il ne remplace pas un parcours navigateur, qui
 reste à ajouter lorsque les prérequis seront réunis (condition explicite `E2E_UPLOAD_ENABLED`).
