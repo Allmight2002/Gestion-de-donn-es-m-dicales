@@ -8,7 +8,7 @@ Cette liste rassemble les **chantiers concrets** identifiés mais **volontaireme
 ## Cadre commun — à lire avant toute mise en œuvre
 
 Depuis la décision de cadrage du 2026-07-26, la fermeture de B1–B10 n'est plus
-une précondition au **développement local**. B2, B6, B7 et B10 sont explicitement
+une précondition au **développement local**. B2, B6 et B10 sont explicitement
 différés : ils restent ouverts et bloquants pour les données réelles, le pilote
 clinique et la production, mais ils n'interdisent plus de construire et tester
 avec des données entièrement fictives.

@@ -24,7 +24,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
 | ~~L5~~ | ~~Constructeur de règles~~ | **Livré le 2026-07-28** | — |
 | **L6** | Finition de l'interface | `AppShell.tsx`, composant de case à cocher, **9 écrans** | **seul** |
-| **L7** | Protections de branche (B7) | *aucun fichier* | tous |
+| ~~L7~~ | ~~Protections de branche (B7)~~ | **Livré le 2026-08-01** | — |
 | **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
 | **L9** | Modèle d'observation d'une base | migration, `NewPatient.tsx`, `FieldForm.tsx`, `BaseHome.tsx` | **seul** |
 | ~~L10~~ | ~~Comptes de mission (P4)~~ | **Livré le 2026-07-29** | — |
@@ -94,14 +94,18 @@ cas non couverts. La sortie reste le même JSON qu'avant.
 commun. Il entrera en conflit avec presque tout : à traiter **seul**, de
 préférence quand les autres lots d'interface sont fusionnés.
 
-### L7 — Protections de branche
+### L7 — Protections de branche — **livré**
 
-**B7**, désormais déblocable : le dépôt étant public, les règles de protection
-sont gratuites. Exiger la CI verte avant fusion remplacerait par un mécanisme
-technique la discipline tenue à la main depuis le 26 juillet.
+**B7**, livré le 2026-08-01 : le dépôt étant public, les règles de protection
+sont actives sur `main` et `develop`. La pull request et `build-test`/
+`scanner-image` sont obligatoires, les règles s'appliquent aux administrateurs,
+le force-push et la suppression sont interdits, et le script de contrôle live est
+vert en mode mono-personne. Le circuit `branche de travail → develop → main`
+reste obligatoire ; la revue par un tiers demeure suspendue jusqu'à l'arrivée
+d'un second relecteur.
 
-Aucun fichier du dépôt n'est modifié : ce lot peut être mené à tout moment, en
-parallèle de n'importe quel autre.
+Aucun fichier de code n'est modifié : ce lot documentaire et de configuration
+peut être mené à tout moment, en parallèle de n'importe quel autre.
 
 ### L8 — Suppression et restauration de bases
 
@@ -179,7 +183,7 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-Cinq lots sont livrés : **L1, L2, L3, L5 et L10**. Il en reste neuf.
+Six lots sont livrés : **L1, L2, L3, L5, L7 et L10**. Il en reste huit.
 
 1. **En parallèle immédiat** : L4, L12 — aucun ne partage de fichier.
 2. **Ensuite** : L8, L11, L13. L11 attend encore sept décisions, mais ses étapes
