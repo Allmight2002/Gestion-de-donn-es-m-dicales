@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260729153000_mission_profile_reconcile.sql`
-- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 217
+- Dernière migration incluse : `20260801140238_restore_deleted_base.sql`
+- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 219
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -51,6 +51,7 @@ Policies :
 | inclusion_target | integer | oui |  |
 | inclusion_target_date | date | oui |  |
 | inclusion_target_revision | bigint | non | `0` |
+| deletion_snapshot | jsonb | oui |  |
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
@@ -975,6 +976,7 @@ Triggers :
 | is_strict_datetime_text | p_value text | INVOKER | plpgsql |
 | is_system_admin | — | DEFINER | sql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
+| list_deleted_bases | — | DEFINER | plpgsql |
 | log_attachment_read | p_attachment_id uuid | DEFINER | plpgsql |
 | log_audit | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid, p_metadata jsonb | DEFINER | plpgsql |
 | log_export_read | p_export_id uuid | DEFINER | plpgsql |
@@ -1019,6 +1021,7 @@ Triggers :
 | replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |
 | require_server_inspection | — | DEFINER | sql |
+| restore_deleted_base | p_base_id uuid | DEFINER | plpgsql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
 | rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |

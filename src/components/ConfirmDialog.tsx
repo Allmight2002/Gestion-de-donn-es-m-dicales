@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useI18n } from '../i18n/useI18n';
 
 // UI-2 — modale de confirmation (remplace window.confirm : themable, lisible, accessible).
@@ -6,15 +6,17 @@ import { useI18n } from '../i18n/useI18n';
 interface Props {
   open: boolean;
   title: string;
-  body?: string;
+  body?: ReactNode;
+  children?: ReactNode;
   confirmLabel?: string;
+  confirmDisabled?: boolean;
   danger?: boolean;
   busy?: boolean;
   onConfirm(): void;
   onCancel(): void;
 }
 
-export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ open, title, body, children, confirmLabel, confirmDisabled, danger, busy, onConfirm, onCancel }: Props) {
   const { t } = useI18n();
 
   useEffect(() => {
@@ -30,12 +32,13 @@ export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, o
       <div className="absolute inset-0 bg-black/40" onClick={() => { if (!busy) onCancel(); }} />
       <div className="card relative w-full max-w-sm space-y-3 p-5">
         <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        {body && <p className="text-sm text-slate-600">{body}</p>}
+        {body && (typeof body === 'string' ? <p className="text-sm text-slate-600">{body}</p> : body)}
+        {children}
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onCancel} disabled={busy} className="btn-secondary">{t('common.cancel')}</button>
           <button
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             className={danger
               ? 'inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60'
               : 'btn-primary'}
