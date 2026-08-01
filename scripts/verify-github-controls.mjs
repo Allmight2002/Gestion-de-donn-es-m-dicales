@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const API_ROOT = 'https://api.github.com';
 const REQUIRED_CHECKS = ['build-test', 'scanner-image'];
 const BRANCHES = ['main', 'develop'];
-const ENVIRONMENTS = { staging: 'develop', production: 'main' };
+const ENVIRONMENTS = { staging: ['develop', 'main'], production: ['main'] };
 const clean = (value) => value?.trim() ?? '';
 
 // DEROGATION MONO-PERSONNE (GITHUB_CONTROLS_SOLO=true).
@@ -73,7 +73,7 @@ function inspectBranch(branch, protection, solo = false) {
   return errors;
 }
 
-function inspectEnvironment(name, expectedBranch, environment, policies, solo = false) {
+function inspectEnvironment(name, expectedBranches, environment, policies, solo = false) {
   const errors = [];
   const reviewerRule = environment?.protection_rules?.find((rule) => rule.type === 'required_reviewers');
   // Le reviewer d'environnement reste EXIGE meme en mode mono-personne : il impose une action
@@ -90,8 +90,10 @@ function inspectEnvironment(name, expectedBranch, environment, policies, solo = 
   const names = Array.isArray(policies?.branch_policies)
     ? policies.branch_policies.map((policy) => policy?.name).filter(Boolean).sort()
     : [];
-  if (names.length !== 1 || names[0] !== expectedBranch) {
-    errors.push(`${name}: seule la branche ${expectedBranch} doit etre autorisee.`);
+  const expected = [...expectedBranches].sort();
+  if (names.length !== expected.length || names.some((branch, index) => branch !== expected[index])) {
+    const qualifier = expected.length === 1 ? 'seule la branche' : 'seules les branches';
+    errors.push(`${name}: ${qualifier} ${expected.join(' et ')} doivent etre autorisees.`);
   }
   return errors;
 }
@@ -106,7 +108,7 @@ export async function inspectGitHubControls(config, { fetchImpl = fetch } = {}) 
     );
     errors.push(...inspectBranch(branch, protection, config.solo));
   }
-  for (const [environmentName, expectedBranch] of Object.entries(ENVIRONMENTS)) {
+  for (const [environmentName, expectedBranches] of Object.entries(ENVIRONMENTS)) {
     const encoded = encodeURIComponent(environmentName);
     const environment = await fetchJson(
       `/repos/${config.repository}/environments/${encoded}`,
@@ -118,7 +120,7 @@ export async function inspectGitHubControls(config, { fetchImpl = fetch } = {}) 
       config,
       fetchImpl,
     );
-    errors.push(...inspectEnvironment(environmentName, expectedBranch, environment, policies, config.solo));
+    errors.push(...inspectEnvironment(environmentName, expectedBranches, environment, policies, config.solo));
   }
   return errors;
 }
