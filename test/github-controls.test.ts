@@ -34,7 +34,13 @@ const soloProtection = () => ({
 });
 
 function githubApi(
-  overrides: { unprotectedMain?: boolean; selfReview?: boolean; solo?: boolean; noPullRequest?: boolean } = {},
+  overrides: {
+    unprotectedMain?: boolean;
+    selfReview?: boolean;
+    solo?: boolean;
+    noPullRequest?: boolean;
+    stagingBranches?: string[];
+  } = {},
 ) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -45,7 +51,10 @@ function githubApi(
       return Response.json(value);
     }
     if (url.includes('/deployment-branch-policies')) {
-      return Response.json({ branch_policies: [{ name: url.includes('/production/') ? 'main' : 'develop' }] });
+      const branches = url.includes('/production/')
+        ? ['main']
+        : (overrides.stagingBranches ?? ['develop', 'main']);
+      return Response.json({ branch_policies: branches.map((name) => ({ name })) });
     }
     if (url.includes('/environments/')) {
       return Response.json({
@@ -75,6 +84,18 @@ describe('controles GitHub avant production', () => {
       'staging: auto-approbation non interdite.',
       'production: auto-approbation non interdite.',
     ]));
+  });
+
+  test('refuse une politique staging qui ne permet pas le SHA main exact ou autorise une branche en trop', async () => {
+    const missingMain = await inspectGitHubControls(config, {
+      fetchImpl: githubApi({ stagingBranches: ['develop'] }),
+    });
+    const extraBranch = await inspectGitHubControls(config, {
+      fetchImpl: githubApi({ stagingBranches: ['develop', 'main', 'feature'] }),
+    });
+
+    expect(missingMain).toContain('staging: seules les branches develop et main doivent etre autorisees.');
+    expect(extraBranch).toContain('staging: seules les branches develop et main doivent etre autorisees.');
   });
 
   test('echoue ferme si le plan ou le jeton refuse la protection', async () => {
