@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
 import { makeProposalField } from '../../domain/proposalField';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
+import type { ObservationModel } from '../../data/bases';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
 const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
@@ -18,6 +19,7 @@ export function FieldForm({
   lockStructural = false,
   submitLabel,
   onCancel,
+  observationModel = 'longitudinal',
 }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
@@ -28,12 +30,14 @@ export function FieldForm({
   lockStructural?: boolean;
   submitLabel?: string;
   onCancel?: () => void;
+  observationModel?: ObservationModel;
 }) {
   const { t } = useI18n();
   const editing = !!initial;
+  const isCrossSectional = observationModel === 'cross_sectional';
   const [fieldKey, setFieldKey] = useState(initial?.fieldKey ?? '');
   const [label, setLabel] = useState(initial?.label ?? '');
-  const [scope, setScope] = useState<FieldScope>(initial?.scope ?? 'encounter');
+  const [scope, setScope] = useState<FieldScope>(isCrossSectional ? 'patient' : (initial?.scope ?? 'encounter'));
   const [section, setSection] = useState<FieldSection>(initial?.section ?? 'clinique');
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
@@ -70,9 +74,9 @@ export function FieldForm({
     if (!fieldKey.trim() || !label.trim()) return;
     const values = parsedValues;
     const built: NewField = {
-      fieldKey: fieldKey.trim(), label: label.trim(), scope, section, type, required,
+      fieldKey: fieldKey.trim(), label: label.trim(), scope: isCrossSectional ? 'patient' : scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
-      encounterTypes: scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
+      encounterTypes: !isCrossSectional && scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
       allowedValues: isChoice && values.length > 0 ? values : null,
       minValue: isNumber ? numOrNull(minValue) : null,
       maxValue: isNumber ? numOrNull(maxValue) : null,
@@ -115,19 +119,23 @@ export function FieldForm({
         <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
       </label>
       <label className="flex flex-col text-xs text-slate-600">
-        {t('admin.scope')}
-        <select
-          className={inputCls}
-          value={scope}
-          onChange={(e) => setScope(e.target.value as FieldScope)}
-          disabled={lockStructural}
-        >
-          {SCOPES.map((s) => (
-            <option key={s} value={s}>
-              {t(`scope.${s}`)}
-            </option>
-          ))}
-        </select>
+        {isCrossSectional ? t('observation.single_form_scope') : t('admin.scope')}
+        {isCrossSectional ? (
+          <span className="input mt-1 flex items-center text-slate-600">{t('scope.patient')}</span>
+        ) : (
+          <select
+            className={inputCls}
+            value={scope}
+            onChange={(e) => setScope(e.target.value as FieldScope)}
+            disabled={lockStructural}
+          >
+            {SCOPES.map((s) => (
+              <option key={s} value={s}>
+                {t(`scope.${s}`)}
+              </option>
+            ))}
+          </select>
+        )}
       </label>
       <label className="flex flex-col text-xs text-slate-600">
         {t('admin.section')}
@@ -226,7 +234,7 @@ export function FieldForm({
         {t('admin.allow_missing')}
       </label>
 
-      {scope === 'encounter' && (
+      {!isCrossSectional && scope === 'encounter' && (
         <div className="flex w-full flex-col gap-1 text-xs text-slate-600">
           <span>{t('admin.encounter_types')}</span>
           <div className="flex flex-wrap gap-3">

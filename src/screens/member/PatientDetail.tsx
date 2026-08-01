@@ -82,6 +82,7 @@ export function PatientDetail() {
   const [encounterFields, setEncounterFields] = useState<Column[]>([]);
   const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
+  const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +106,7 @@ export function PatientDetail() {
         const op = snap?.patients.find((pp) => pp.id === patientId) ?? null;
         setOfflineView(true);
         setCanEdit(false);
+        setIsCrossSectional(false);
         setAttachments([]);
         if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
         setPatient({ id: op.id, code: op.code, templateVersionId: op.templateVersionId, data: op.data, validationStatus: op.validationStatus, identity: null });
@@ -132,6 +134,7 @@ export function PatientDetail() {
       setEncounters(encs);
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
+      setIsCrossSectional((base?.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       if (base?.base.currentTemplateVersionId) {
         const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
         const sorted: Column[] = fields
@@ -190,12 +193,14 @@ export function PatientDetail() {
               onSuccess={() => navigate(`/bases/${baseId}`)}
               verifyDeletedAfterError={async () => !!baseId && !!patientId && (await patients.getPatient(baseId, patientId)) === null}
             />
-            <button
-              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
-              className="btn-primary"
-            >
-              <Plus size={16} aria-hidden /> {t('encounter.add')}
-            </button>
+            {!isCrossSectional && (
+              <button
+                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
+                className="btn-primary"
+              >
+                <Plus size={16} aria-hidden /> {t('encounter.add')}
+              </button>
+            )}
           </>
         ) : undefined}
       />

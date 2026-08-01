@@ -1375,3 +1375,32 @@ Ces valeurs sont des identifiants : leur pose revient au porteur du projet.
 
 L'environnement `production` n'accepte par ailleurs que la branche `main` : le SHA promu
 doit y être fusionné avant toute tentative.
+
+## Lot L9 — Modèle d'observation d'une base (2026-08-01, validation locale)
+
+Décisions métier : trois modèles — `cross_sectional`, `longitudinal` et
+`event_registry` ; le choix est fait à la création, modifiable seulement tant que la
+base ne contient aucune saisie. Les bases existantes restent `longitudinal`. Le mode
+transversal ne crée pas de champ âge dédié : l'âge reste une variable de la base si
+l'étude en a besoin.
+
+La migration additive `20260801185149_observation_model_base.sql` ajoute la colonne
+`base.observation_model` avec défaut longitudinal, une RPC atomique de création et une
+RPC réservée au propriétaire pour changer le modèle d'une base vide. Les gardes SQL
+empêchent les rencontres et soumissions de portée rencontre dans une base transversale,
+y compris par import, URL directe ou RPC ; elles empêchent aussi un retour à une portée
+rencontre dans son jeu de variables. Lors du passage au transversal, les variables du
+jeu de variables deviennent des variables participant, sans toucher à des données.
+
+L'interface propose le modèle à la création ; une base vide peut encore le changer.
+Pour le transversal, « Nouveau patient » ouvre directement le formulaire unique
+sectionné, la portée est masquée dans l'éditeur de variables et tous les accès visibles
+à l'ajout de rencontre sont retirés.
+
+Vérifications locales vertes : `npm run typecheck`, `npm run lint`, `npm run build`
+avec `VITE_USE_SIGNED_READ=true`, `npm run schema`, `npm run manifest`,
+`npm run db:verify` (112 migrations appliquées depuis zéro), les 39 tests ciblés L9 et
+`npm run test:web` (46 fichiers, 274 tests). La suite RLS exhaustive a dépassé la
+limite locale de 124 s sans résultat final ; la CI devra donc fournir cette preuve.
+Le contrôle ACL distant requiert `SUPABASE_DB_URL` et reste à effectuer après le retour
+du réseau, avant staging puis production.

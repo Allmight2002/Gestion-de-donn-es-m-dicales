@@ -6,6 +6,13 @@ export type Language = (typeof LANGUAGES)[number];
 
 export const messages = {
   fr: {
+    'observation.model_label': 'Modèle d’observation',
+    'observation.cross_sectional': 'Une seule saisie par participant',
+    'observation.longitudinal': 'Suivi répété',
+    'observation.event_registry': 'Registre d’événements',
+    'observation.creation_hint': 'Choisissez la forme des observations de cette base. Le choix reste modifiable tant qu’aucune donnée n’a été saisie.',
+    'observation.empty_only_hint': 'Vous pouvez encore modifier ce choix car aucune donnée n’a été saisie. Il sera verrouillé dès la première saisie.',
+    'observation.single_form_scope': 'Données du formulaire unique',
     'app.title': 'Registre clinique',
     'app.tagline': 'Données structurées, prêtes pour la recherche',
     'pwa.update_title': 'Une nouvelle version est disponible',
@@ -788,6 +795,13 @@ export const messages = {
     'base.restore_confirm': 'Restaurer la base',
   },
   en: {
+    'observation.model_label': 'Observation model',
+    'observation.cross_sectional': 'One entry per participant',
+    'observation.longitudinal': 'Repeated follow-up',
+    'observation.event_registry': 'Event registry',
+    'observation.creation_hint': 'Choose how this registry records observations. You can change it while no data has been entered.',
+    'observation.empty_only_hint': 'You can still change this choice because no data has been entered. It will lock after the first entry.',
+    'observation.single_form_scope': 'Single-form data',
     'app.title': 'Clinical registry',
     'app.tagline': 'Structured data, research-ready',
     'pwa.update_title': 'A new version is available',

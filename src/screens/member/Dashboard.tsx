@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase, isMissionAccount } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
-import type { BaseListing, DeletedBase, PublishedTemplateOption } from '../../data/bases';
+import type { BaseListing, DeletedBase, ObservationModel, PublishedTemplateOption } from '../../data/bases';
 import { offlineCache, useOnline, type OfflineMeta } from '../../data/offline';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
@@ -33,6 +33,7 @@ export function Dashboard() {
   const [name, setName] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [versionId, setVersionId] = useState('');
+  const [observationModel, setObservationModel] = useState<ObservationModel>('longitudinal');
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<DeletedBase | null>(null);
@@ -78,7 +79,7 @@ export function Dashboard() {
     if (!name.trim() || !versionId) return;
     setBusy(true);
     try {
-      const base = await repo.createBase(name.trim(), specialty.trim() || null, versionId);
+      const base = await repo.createBase(name.trim(), specialty.trim() || null, versionId, observationModel);
       setName('');
       setSpecialty('');
       setCreateOpen(false);
@@ -167,6 +168,15 @@ export function Dashboard() {
                   </optgroup>
                 )}
               </select>
+            </label>
+            <label className="form-label">
+              {t('observation.model_label')}
+              <select className="input" value={observationModel} onChange={(e) => setObservationModel(e.target.value as ObservationModel)}>
+                <option value="cross_sectional">{t('observation.cross_sectional')}</option>
+                <option value="longitudinal">{t('observation.longitudinal')}</option>
+                <option value="event_registry">{t('observation.event_registry')}</option>
+              </select>
+              <span className="helper-text">{t('observation.creation_hint')}</span>
             </label>
           </div>
           <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">

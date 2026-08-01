@@ -73,6 +73,63 @@ describe('creation et propriete d une base', () => {
   });
 });
 
+describe('L9 : modele d observation de la base', () => {
+  test('une creation transversale convertit les variables de rencontre en variables participant', async () => {
+    const created = await rowsAs(
+      bobId,
+      'select * from public.create_base_from_model_observation($1,$2,$3,$4)',
+      ['Etude transversale', 'neuro', publishedVersionId, 'cross_sectional'],
+    );
+    const base = created[0];
+    expect(base.observation_model).toBe('cross_sectional');
+
+    const fields = (await db.admin.query(
+      'select scope, encounter_types from public.template_field where template_version_id=$1',
+      [base.current_template_version_id],
+    )).rows;
+    expect(fields).not.toHaveLength(0);
+    expect(fields.every((field) => field.scope === 'patient' && field.encounter_types === null)).toBe(true);
+  });
+
+  test('la base refuse une rencontre et une soumission de rencontre en transversal, quel que soit l appelant', async () => {
+    const base = (await rowsAs(
+      bobId,
+      'select * from public.create_base_from_model_observation($1,$2,$3,$4)',
+      ['Etude transversale protege', 'neuro', publishedVersionId, 'cross_sectional'],
+    ))[0];
+    const patientId = (await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'TRANS-1',$2,'{}'::jsonb) returning id",
+      [base.id, base.current_template_version_id],
+    )).rows[0].id;
+
+    await expect(rowsAs(
+      bobId,
+      "select * from public.create_encounter($1,'consultation','2026-08-01','draft','{}'::jsonb,'years')",
+      [patientId],
+    )).rejects.toThrow(/transversale.*rencontre/i);
+    await expect(db.admin.query(
+      "insert into public.raw_submission(base_id, target_patient_id, scope, case_code, status) values($1,$2,'encounter','CASE-TRANS-1','received')",
+      [base.id, patientId],
+    )).rejects.toThrow(/transversale.*rencontre/i);
+  });
+
+  test('le proprietaire peut changer une base vide, mais jamais apres la premiere saisie', async () => {
+    const baseId = await bobCreatesBase();
+    const changed = await rowsAs(bobId, 'select * from public.set_base_observation_model($1,$2)', [baseId, 'event_registry']);
+    expect(changed[0].observation_model).toBe('event_registry');
+
+    const templateVersionId = (await db.admin.query('select current_template_version_id from public.base where id=$1', [baseId])).rows[0].current_template_version_id;
+    await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'LOCK-OBS-1',$2,'{}'::jsonb)",
+      [baseId, templateVersionId],
+    );
+    await expect(rowsAs(bobId, 'select * from public.set_base_observation_model($1,$2)', [baseId, 'cross_sectional']))
+      .rejects.toThrow(/apres la premiere saisie/i);
+    expect((await db.admin.query('select observation_model from public.base where id=$1', [baseId])).rows[0].observation_model)
+      .toBe('event_registry');
+  });
+});
+
 describe('visibilite : privee par defaut, partage explicite', () => {
   test('une autre medecin ne voit pas la base, puis la voit apres partage', async () => {
     const baseId = await bobCreatesBase();

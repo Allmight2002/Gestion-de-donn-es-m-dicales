@@ -59,16 +59,16 @@ function mockBases(): BaseRepository {
     async listTemplateModels() {
       return [{ versionId: 'v1', versionNumber: 1, templateId: 't1', name: 'Neurochirurgie', specialty: 'neuro', scope: 'global' as const }];
     },
-    async createBase(name, specialty, versionId) {
+    async createBase(name, specialty, versionId, observationModel = 'longitudinal') {
       const id = `bnew${++n}`;
       bases.push({
-        base: { id, name, specialty, ownerUserId: 'u', currentTemplateVersionId: versionId },
+        base: { id, name, specialty, ownerUserId: 'u', currentTemplateVersionId: versionId, observationModel },
         role: 'owner',
         permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canExportData: true, canManageAccess: true },
         templateName: 'Neurochirurgie',
         versionNumber: 1,
       });
-      return { id, name, specialty, ownerUserId: 'u', currentTemplateVersionId: versionId };
+      return { id, name, specialty, ownerUserId: 'u', currentTemplateVersionId: versionId, observationModel };
     },
     async getBase(id) {
       return bases.find((b) => b.base.id === id) ?? null;
@@ -76,6 +76,9 @@ function mockBases(): BaseRepository {
     async softDeleteBase() {},
     async restoreDeletedBase() {},
     async setTemplateVersion() {},
+    async setObservationModel() {
+      return { id: 'b1', name: 'Registre Neuro', specialty: 'neuro', ownerUserId: 'u', currentTemplateVersionId: 'v1', observationModel: 'longitudinal' as const };
+    },
   };
 }
 
@@ -114,6 +117,19 @@ describe('Dashboard', () => {
     // Navigation vers /bases/:id -> BaseHome affiche la nouvelle base.
     expect(await screen.findByRole('button', { name: /nouveau patient/i })).toBeInTheDocument();
     expect(screen.getByText('Registre AVC')).toBeInTheDocument();
+  });
+
+  test('choisit le modele transversal a la creation', async () => {
+    const user = userEvent.setup();
+    const repo = mockBases();
+    const createBase = vi.spyOn(repo, 'createBase');
+    renderApp(repo);
+    await screen.findByText('Registre Neuro');
+    await user.click(screen.getByRole('button', { name: 'Nouvelle base' }));
+    await user.type(screen.getByLabelText('Nom de la base'), 'Enquete prevalence');
+    await user.selectOptions(screen.getByLabelText(/Modèle d’observation/), 'cross_sectional');
+    await user.click(screen.getByRole('button', { name: 'Créer la base' }));
+    expect(createBase).toHaveBeenCalledWith('Enquete prevalence', null, 'v1', 'cross_sectional');
   });
 
   test('un compte staff (curateur) ne voit PAS le formulaire de creation de base', async () => {
