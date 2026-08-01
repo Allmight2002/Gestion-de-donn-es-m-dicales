@@ -64,8 +64,10 @@
         "extend_mission_access(p_access_id uuid, p_expires_at timestamp with time zone)",
         "provision_mission_access(p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text)",
         "create_base_invitation(p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone)",
+        "list_deleted_bases()",
         "revoke_base_access(p_access_id uuid)",
         "revoke_base_invitation(p_invitation_id uuid)",
+        "restore_deleted_base(p_base_id uuid)",
         "set_base_inclusion_target(p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint)",
         "soft_delete_base(p_base_id uuid, p_reason text)",
         "update_base_access_permissions(p_access_id uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean)"

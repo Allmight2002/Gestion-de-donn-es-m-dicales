@@ -40,6 +40,15 @@ export interface BaseListing {
   canCreateStructuredData?: boolean;
 }
 
+/** Metadonnees minimales exposees dans la corbeille du seul proprietaire. */
+export interface DeletedBase {
+  id: string;
+  name: string;
+  deletedAt: string;
+  deletionReason: string;
+  purgeEligibleAt: string;
+}
+
 export interface PublishedTemplateOption {
   versionId: string;
   versionNumber: number;
@@ -75,11 +84,15 @@ export interface CompletenessRow {
 
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
+  listDeletedBases(): Promise<DeletedBase[]>;
   /** Modeles proposes au medecin : officiels (global) + ses propres gabarits (personal). */
   listTemplateModels(): Promise<PublishedTemplateOption[]>;
   /** Cree une base en COPIANT un modele source en gabarit personnel editable. */
   createBase(name: string, specialty: string | null, sourceVersionId: string): Promise<Base>;
   getBase(id: string): Promise<BaseListing | null>;
+  /** Commandes de cycle de vie executees et autorisees exclusivement par la base. */
+  softDeleteBase(baseId: string, reason: string): Promise<void>;
+  restoreDeletedBase(baseId: string): Promise<void>;
   /** Rattache la base a une (nouvelle) version de son gabarit. Reserve au proprietaire (RLS). */
   setTemplateVersion(baseId: string, versionId: string): Promise<void>;
   /** D2 : inclusions par mois + objectif (RLS : sans acces -> serie vide). */
@@ -130,7 +143,11 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail, getInclusionStats: fail, setInclusionTarget: fail, getCompletenessStats: fail };
+    return {
+      listMyBases: fail, listDeletedBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail,
+      softDeleteBase: fail, restoreDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
+      setInclusionTarget: fail, getCompletenessStats: fail,
+    };
   }
 
   async function currentUserId(): Promise<string> {
@@ -171,6 +188,20 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
           canCreateStructuredData: isOwner || acc?.can_create_structured_data === true,
         };
       });
+    },
+
+    async listDeletedBases() {
+      const { data, error } = await client.rpc('list_deleted_bases');
+      if (error) throw error;
+      return ((data ?? []) as {
+        id: string; name: string; deleted_at: string; deletion_reason: string; purge_eligible_at: string;
+      }[]).map((row) => ({
+        id: row.id,
+        name: row.name,
+        deletedAt: row.deleted_at,
+        deletionReason: row.deletion_reason,
+        purgeEligibleAt: row.purge_eligible_at,
+      }));
     },
 
     async listTemplateModels() {
@@ -228,6 +259,16 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         expiresAt: isOwner ? null : (acc?.expires_at ?? null),
         canCreateStructuredData: isOwner || acc?.can_create_structured_data === true,
       };
+    },
+
+    async softDeleteBase(baseId, reason) {
+      const { error } = await client.rpc('soft_delete_base', { p_base_id: baseId, p_reason: reason });
+      if (error) throw error;
+    },
+
+    async restoreDeletedBase(baseId) {
+      const { error } = await client.rpc('restore_deleted_base', { p_base_id: baseId });
+      if (error) throw error;
     },
 
     async setTemplateVersion(baseId, versionId) {
