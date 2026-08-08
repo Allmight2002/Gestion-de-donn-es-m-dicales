@@ -16,7 +16,7 @@ export function PatientCreateChoice() {
   const maySubmitToCuration = !isMissionAccount(profile);
 
   return (
-    <section className="max-w-2xl space-y-6">
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div>
         <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}

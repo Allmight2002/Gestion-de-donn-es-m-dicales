@@ -9,6 +9,7 @@ import type { ActivityEvent } from '../../data/audit';
 import { formatDateTime } from '../../lib/formatDate';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { SkeletonList } from '../../components/Skeleton';
 
 // C3 — Journal d'activite d'une base : timeline HUMAINE construite sur audit_log (imports, acces,
 // suppressions, exports, publications). Les lectures sensibles (identite/documents) en sont exclues
@@ -91,7 +92,7 @@ export function ActivityLog() {
     return null;
   };
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
     <section className="max-w-4xl space-y-5">

@@ -1,7 +1,7 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Database, Plus, X } from 'lucide-react';
+import { ChevronDown, Database, Plus, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase, isMissionAccount } from '../../auth/logic';
@@ -107,7 +107,7 @@ export function Dashboard() {
   }
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-6 sm:space-y-8">
       <ConfirmDialog
         open={restoreTarget !== null}
         title={t('base.restore_title')}
@@ -195,7 +195,7 @@ export function Dashboard() {
         <p className="text-sm text-amber-700">{t('dashboard.no_templates_hint')}</p>
       )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {loading && <SkeletonList rows={3} />}
+      {loading && <SkeletonList rows={3} label={t('common.loading')} />}
       {online && (
       <div className="space-y-4">
         <div className="flex items-end justify-between gap-3">
@@ -222,12 +222,12 @@ export function Dashboard() {
             ) : undefined}
           />
         ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {bases.map((b) => (
-          <li key={b.base.id}>
+          <li key={b.base.id} className="h-full">
             <button
               onClick={() => navigate(`/bases/${b.base.id}`)}
-              className="card group flex w-full flex-col gap-3 p-5 text-left transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+              className="card group flex h-full min-h-44 w-full flex-col gap-3 p-5 text-left transition motion-safe:hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md motion-reduce:transition-none"
             >
               <div className="flex items-start justify-between gap-2">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-600/15">
@@ -241,8 +241,8 @@ export function Dashboard() {
               </div>
               {b.templateName && (
                 <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-400">
-                  <span>{t('dashboard.gabarit')} : {b.templateName} v{b.versionNumber}</span>
-                  <span className="font-medium text-teal-700 transition group-hover:translate-x-0.5">{t('dashboard.open')} →</span>
+                  <span>{b.templateName} · v{b.versionNumber}</span>
+                  <span className="font-medium text-teal-700 transition motion-safe:group-hover:translate-x-0.5 motion-reduce:transition-none">{t('dashboard.open')} →</span>
                 </div>
               )}
             </button>
@@ -254,34 +254,42 @@ export function Dashboard() {
       )}
 
       {online && mayCreate && !loading && (
-        <div className="space-y-3">
-          <div>
-            <h2 className="section-title">{t('base.trash_title')}</h2>
-            <p className="mt-0.5 text-sm text-slate-500">{t('base.trash_hint')}</p>
+        <details className="group surface-muted overflow-hidden">
+          <summary role="button" className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 sm:px-5">
+            <span className="min-w-0">
+              <span className="section-title block">{t('base.trash_title')}</span>
+              <span className="mt-0.5 block text-sm text-slate-500">{t('base.trash_hint')}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="badge" aria-label={t('dashboard.bases_count').replace('{n}', String(deletedBases.length))}>{deletedBases.length}</span>
+              <ChevronDown size={18} className="text-slate-500 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+            </span>
+          </summary>
+          <div className="border-t border-slate-200 p-4 dark:border-slate-800 sm:p-5">
+            {deletedBases.length === 0 ? (
+              <p className="text-sm text-slate-500">{t('base.trash_empty')}</p>
+            ) : (
+              <ul className="space-y-3">
+                {deletedBases.map((base) => (
+                  <li key={base.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{base.name}</h3>
+                      <p className="mt-1 text-sm text-slate-500">{base.deletionReason}</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {t('base.deleted_on').replace('{date}', new Date(base.deletedAt).toLocaleDateString())}
+                        {' · '}
+                        {t('base.purge_eligible').replace('{date}', new Date(base.purgeEligibleAt).toLocaleDateString())}
+                      </p>
+                    </div>
+                    <button type="button" className="btn-secondary" onClick={() => setRestoreTarget(base)}>
+                      {t('base.restore')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {deletedBases.length === 0 ? (
-            <div className="card border-dashed p-5 text-sm text-slate-500">{t('base.trash_empty')}</div>
-          ) : (
-            <ul className="space-y-3">
-              {deletedBases.map((base) => (
-                <li key={base.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">{base.name}</h3>
-                    <p className="mt-1 text-sm text-slate-500">{base.deletionReason}</p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {t('base.deleted_on').replace('{date}', new Date(base.deletedAt).toLocaleDateString())}
-                      {' · '}
-                      {t('base.purge_eligible').replace('{date}', new Date(base.purgeEligibleAt).toLocaleDateString())}
-                    </p>
-                  </div>
-                  <button type="button" className="btn-secondary" onClick={() => setRestoreTarget(base)}>
-                    {t('base.restore')}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        </details>
       )}
 
       {/* Bases disponibles hors-ligne (consultables sans reseau, donnees analytiques uniquement). */}
@@ -291,12 +299,12 @@ export function Dashboard() {
           {offlineBases.length === 0 ? (
             <div className="card border-dashed p-8 text-center text-slate-500">{t('offline.no_bases')}</div>
           ) : (
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {offlineBases.map((m) => (
-                <li key={m.baseId}>
+                <li key={m.baseId} className="h-full">
                   <button
                     onClick={() => navigate(`/bases/${m.baseId}`)}
-                    className="card group flex w-full flex-col gap-3 p-5 text-left transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md"
+                    className="card group flex h-full min-h-44 w-full flex-col gap-3 p-5 text-left transition motion-safe:hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md motion-reduce:transition-none"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/15" aria-hidden>⤓</span>
@@ -305,7 +313,7 @@ export function Dashboard() {
                     <div className="font-semibold text-slate-900">{m.baseName}</div>
                     <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-400">
                       <span>{m.patientCount} {t('offline.patients')} · {t('offline.cached_at')} {new Date(m.cachedAt).toLocaleDateString()}</span>
-                      <span className="text-amber-600 transition group-hover:translate-x-0.5">→</span>
+                      <span className="text-amber-600 transition motion-safe:group-hover:translate-x-0.5 motion-reduce:transition-none">→</span>
                     </div>
                   </button>
                 </li>

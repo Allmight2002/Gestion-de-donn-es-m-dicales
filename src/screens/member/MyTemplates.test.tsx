@@ -43,6 +43,10 @@ function renderMine(repo: TemplateRepository) {
   );
 }
 
+async function openTemplateActions() {
+  await userEvent.click(screen.getByRole('button', { name: /Actions.*Mon Neuro/ }));
+}
+
 describe('MyTemplates', () => {
   test('ne liste QUE les gabarits personnels du medecin (ni global, ni ceux d un autre)', async () => {
     renderMine(baseRepo());
@@ -55,6 +59,7 @@ describe('MyTemplates', () => {
     const renameTemplate = vi.fn(async () => {});
     renderMine(baseRepo({ renameTemplate }));
     await screen.findByText('Mon Neuro');
+    await openTemplateActions();
     await userEvent.click(screen.getByRole('button', { name: 'Renommer' }));
     const input = screen.getByDisplayValue('Mon Neuro');
     await userEvent.clear(input);
@@ -67,6 +72,7 @@ describe('MyTemplates', () => {
     const deleteTemplate = vi.fn(async () => {});
     renderMine(baseRepo({ deleteTemplate }));
     await screen.findByText('Mon Neuro');
+    await openTemplateActions();
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     expect(screen.getByText('Confirmer la suppression ?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Oui' }));
@@ -82,6 +88,7 @@ describe('MyTemplates', () => {
     });
     renderMine(baseRepo({ deleteTemplate }));
     await screen.findByText('Mon Neuro');
+    await openTemplateActions();
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     await userEvent.click(screen.getByRole('button', { name: 'Oui' }));
 
@@ -93,6 +100,7 @@ describe('MyTemplates', () => {
   test('une suppression reussie annonce le succes et referme la confirmation', async () => {
     renderMine(baseRepo({ deleteTemplate: vi.fn(async () => {}) }));
     await screen.findByText('Mon Neuro');
+    await openTemplateActions();
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     await userEvent.click(screen.getByRole('button', { name: 'Oui' }));
 

@@ -94,7 +94,7 @@ export function BaseStats() {
   const pct = stats.target ? Math.min(100, Math.round((stats.total / stats.target) * 100)) : null;
 
   return (
-    <section className="max-w-4xl space-y-6">
+    <section className="max-w-4xl space-y-5 sm:space-y-6">
       <PageHeader title={t('stats.page_title')} description={t('stats.page_subtitle')} />
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 

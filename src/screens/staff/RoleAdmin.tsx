@@ -6,6 +6,7 @@ import type { MessageKey } from '../../i18n/messages';
 import { useAdminRepository } from '../../data/RepositoryProvider';
 import { ASSIGNABLE_ROLES, type AdminProfile } from '../../data/admin';
 import type { GlobalRole } from '../../auth/types';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Administration des roles globaux (cahier v3.0) : l'admin systeme attribue medecin ou
 // curateur. Les roles staff (curation) sont definis ICI, jamais par un medecin. Le
@@ -64,12 +65,12 @@ export function RoleAdmin() {
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading ? (
-        <p className="text-slate-500">{t('common.loading')}</p>
+        <SkeletonList rows={5} label={t('common.loading')} />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full border-collapse text-sm">
+        <div className="data-table-shell">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr>
                 <th className="px-4 py-2.5">{t('roleadmin.user')}</th>
                 <th className="px-4 py-2.5">{t('roleadmin.role')}</th>
               </tr>

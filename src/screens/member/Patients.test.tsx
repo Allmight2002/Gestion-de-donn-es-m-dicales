@@ -159,7 +159,8 @@ describe('BaseHome (liste patients)', () => {
       </I18nProvider>,
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Supprimer la base' }));
+    await user.click(await screen.findByRole('button', { name: 'Actions' }));
+    await user.click(screen.getByRole('button', { name: 'Supprimer la base' }));
     const dialog = screen.getByRole('dialog', { name: 'Supprimer cette base ?' });
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer la base' });
     expect(confirm).toBeDisabled();
@@ -173,7 +174,7 @@ describe('BaseHome (liste patients)', () => {
     removeOffline.mockRestore();
   });
 
-  test('place l action hors-ligne occasionnelle dans l en-tete', async () => {
+  test('place les actions occasionnelles dans un menu compact de l en-tete', async () => {
     const patientRepo = {
       async listPatientsPage() { return { rows: [], total: 0 }; },
     } as unknown as PatientRepository;
@@ -190,7 +191,10 @@ describe('BaseHome (liste patients)', () => {
       </I18nProvider>,
     );
 
-    const action = await screen.findByRole('button', { name: 'Rendre disponible hors-ligne' });
+    const menu = await screen.findByRole('button', { name: 'Actions' });
+    expect(menu.closest('header')).not.toBeNull();
+    await userEvent.click(menu);
+    const action = screen.getByRole('button', { name: 'Rendre disponible hors-ligne' });
     expect(action.closest('header')).not.toBeNull();
   });
 
