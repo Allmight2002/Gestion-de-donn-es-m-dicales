@@ -22,6 +22,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { WorkflowSteps } from '../../components/WorkflowSteps';
+import { Checkbox } from '../../components/Checkbox';
 
 const ALL_OPS: FilterOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'between'];
 const SIMPLE_OPS: FilterOp[] = ['eq', 'neq'];
@@ -229,7 +230,7 @@ export function CohortBuilder() {
   }
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-5 sm:space-y-6">
       <PageHeader
         title={t('cohort.build')}
         description={t('cohort.subtitle')}
@@ -255,20 +256,19 @@ export function CohortBuilder() {
 
           <SectionCard title={t('cohort.conditions')} description={t('cohort.conditions_hint')} icon={Filter}>
             <div className="space-y-5">
-              <label className="surface-muted flex cursor-pointer items-start gap-3 p-4">
-                <input
-                  type="checkbox"
+              <div className="surface-muted p-2">
+                <Checkbox
                   checked={validatedOnly}
                   onChange={(event) => { setValidatedOnly(event.target.checked); setCounts(null); }}
-                  className="mt-1"
+                  label={(
+                    <span className="flex items-center gap-2 font-semibold text-slate-800">
+                      <ShieldCheck size={16} className="text-teal-700" aria-hidden /> {t('cohort.validated_only')}
+                    </span>
+                  )}
+                  description={t('cohort.validated_hint')}
+                  containerClassName="w-full items-start"
                 />
-                <span>
-                  <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                    <ShieldCheck size={16} className="text-teal-700" aria-hidden /> {t('cohort.validated_only')}
-                  </span>
-                  <span className="mt-1 block text-sm text-slate-500">{t('cohort.validated_hint')}</span>
-                </span>
-              </label>
+              </div>
 
               {conditions.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500">{t('cohort.no_conditions')}</p>

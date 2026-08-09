@@ -14,6 +14,7 @@ import { getTemplateFields } from '../../data/templates';
 import { displayFieldValue } from '../../data/types';
 import { isMissing, missingCodeOf } from '../../domain/validation';
 import { formatDate } from '../../lib/formatDate';
+import { SkeletonList } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { DeleteWithReason } from './DeleteWithReason';
 import { useSignedFile } from '../../lib/useSignedFile';
@@ -169,11 +170,11 @@ export function PatientDetail() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
   if (!patient) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
   return (
-    <section className="max-w-4xl space-y-6">
+    <section className="max-w-4xl space-y-5 sm:space-y-6">
       <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
         ← {t('admin.back')}
       </button>

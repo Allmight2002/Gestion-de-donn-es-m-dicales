@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu du tableau de bord (cahier §8.3) avec repository INJECTE.
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -98,10 +98,29 @@ function renderApp(repo: BaseRepository, initialEntry = '/') {
 }
 
 describe('Dashboard', () => {
+  test('affiche un chargement structure et compatible avec la reduction des mouvements', async () => {
+    const source = mockBases();
+    const listings = await source.listMyBases();
+    let finishLoad: ((value: BaseListing[]) => void) | undefined;
+    const repo = {
+      ...source,
+      async listMyBases() { return new Promise<BaseListing[]>((resolve) => { finishLoad = resolve; }); },
+    } as BaseRepository;
+
+    const { container } = renderApp(repo);
+    const status = screen.getByRole('status', { name: /Chargement/ });
+    expect(status).toBeInTheDocument();
+    expect(container.querySelectorAll('.motion-reduce\\:animate-none')).toHaveLength(3);
+
+    await act(async () => { finishLoad?.(listings); });
+    expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
+  });
+
   test('liste les bases avec leur role', async () => {
     renderApp(mockBases());
     expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
     expect(screen.getByText('Propriétaire')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Registre Neuro/ })).toHaveClass('h-full', 'motion-reduce:transition-none');
     // La creation est progressive : le formulaire ne concurrence pas la liste au chargement.
     await userEvent.click(screen.getByRole('button', { name: 'Nouvelle base' }));
     expect(screen.getByRole('link', { name: /depuis un fichier Excel/ })).toBeInTheDocument();
@@ -181,10 +200,15 @@ describe('Dashboard', () => {
     } as BaseRepository;
 
     renderApp(repo);
+    const trashTitle = await screen.findByText(/Corbeille/);
+    expect(screen.getByText('Retrouvez ici vos bases supprimées.')).toBeInTheDocument();
+    expect(trashTitle.closest('details')).not.toHaveAttribute('open');
+    await user.click(trashTitle);
+    expect(trashTitle.closest('details')).toHaveAttribute('open');
     expect(await screen.findByText('Registre clos')).toBeInTheDocument();
-    expect(screen.getByText(/Les accès et invitations révoqués ne seront pas restaurés/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Restaurer' }));
     expect(screen.getByRole('dialog', { name: 'Restaurer cette base ?' })).toBeInTheDocument();
+    expect(screen.getByText(/Les personnes précédemment invitées devront être invitées à nouveau/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Restaurer la base' }));
     expect(restoreDeletedBase).toHaveBeenCalledWith('deleted-1');
   });
@@ -194,6 +218,6 @@ describe('BaseHome', () => {
   test('affiche les infos de la base', async () => {
     renderApp(mockBases(), '/bases/b1');
     expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
-    expect(screen.getByText(/Neurochirurgie v1/)).toBeInTheDocument();
+    expect(screen.getByText('Neurochirurgie · v1')).toBeInTheDocument();
   });
 });

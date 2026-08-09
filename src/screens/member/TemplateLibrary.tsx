@@ -6,6 +6,7 @@ import { useBaseRepository, useTemplateRepository } from '../../data/RepositoryP
 import type { NewField } from '../../data/types';
 import type { PublishedTemplateOption } from '../../data/bases';
 import { TEMPLATE_LIBRARY } from '../../domain/templateLibrary';
+import { SkeletonList } from '../../components/Skeleton';
 
 // F3 v2 — Bibliotheque de gabarits par specialite, alimentee par les GABARITS GLOBAUX (cures par
 // l'admin systeme dans /admin, stockes en base). « Utiliser » clone les champs du modele dans un
@@ -46,7 +47,7 @@ export function TemplateLibrary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templates]);
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
 
   const useBuiltin = globals.length === 0;
 

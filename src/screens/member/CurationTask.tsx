@@ -13,6 +13,7 @@ import type { TemplateField } from '../../data/types';
 import { FieldInput } from './FieldInput';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 import { useSignedFile } from '../../lib/useSignedFile';
+import { SkeletonList } from '../../components/Skeleton';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 const newEncounter = (): DraftEncounter => ({ encounter_type: 'consultation', encounter_date: '', age_unit: 'years', data: {} });
@@ -92,7 +93,7 @@ export function CurationTask() {
     void load();
   }, [load]);
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
   if (!bundle) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
   const { task, documents, draft, patientIdentity, clarifications } = bundle;
@@ -138,7 +139,7 @@ export function CurationTask() {
     setEncounters((list) => list.map((e, j) => (j === i ? { ...e, ...patch } : e)));
 
   return (
-    <section className="max-w-2xl space-y-6">
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
         <h1 className="page-title">{t('curation.task_title')}</h1>

@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository } from '../../data/RepositoryProvider';
 import { validateAttachmentFile, ALLOWED_ATTACHMENT_ACCEPT } from '../../domain/imageUpload';
+import { Checkbox } from '../../components/Checkbox';
 
 // Ecran "Ajouter un document" (cahier §8.8, §14) : images (jpg/png/webp), PDF et Office.
 // Un fichier a la fois, LIBELLE obligatoire, case de deidentification OBLIGATOIRE. Les
@@ -123,10 +124,14 @@ export function AddImage() {
           />
         </label>
 
-        <label className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
-          <input type="checkbox" checked={masking} onChange={(e) => setMasking(e.target.checked)} className="mt-0.5" />
-          <span className="font-medium text-amber-900">{t('image.masking_confirm')}</span>
-        </label>
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-2">
+          <Checkbox
+            checked={masking}
+            onChange={(e) => setMasking(e.target.checked)}
+            label={<span className="font-medium text-amber-900">{t('image.masking_confirm')}</span>}
+            containerClassName="w-full hover:bg-amber-100/70 focus-within:bg-amber-100/70"
+          />
+        </div>
 
         <div className="flex gap-2">
           <button type="submit" disabled={busy || !canSend} className="btn-primary">

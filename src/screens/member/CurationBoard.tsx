@@ -8,6 +8,7 @@ import { useCurationRepository } from '../../data/RepositoryProvider';
 import type { CurationTaskItem } from '../../data/curation';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { SkeletonList } from '../../components/Skeleton';
 
 // "Suivi des demandes" cote MEDECIN (cahier v3.0) : liste, EN LECTURE SEULE, les cas
 // confies au staff (pool) et leur avancement. La soumission se fait desormais depuis les
@@ -53,10 +54,10 @@ export function CurationBoard() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-5xl space-y-6">
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
       <PageHeader title={t('curation.board')} description={t('curation.board_hint')} />
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 

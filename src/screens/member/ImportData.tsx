@@ -334,7 +334,7 @@ export function ImportData() {
   }
 
   return (
-    <section className="max-w-4xl space-y-6">
+    <section className="max-w-4xl space-y-5 sm:space-y-6">
       <PageHeader title={t('import.title')} description={t('import.hint')} />
 
       <WorkflowSteps

@@ -74,7 +74,10 @@ describe('AppShell (UI-1, barre laterale)', () => {
     // Base recente de CE compte.
     expect(screen.getByRole('link', { name: /Gliomes 2026/ })).toBeInTheDocument();
     // Profil + deconnexion + contenu de la page.
-    expect(screen.getByText('Dr Mbassi')).toBeInTheDocument();
+    const profileName = screen.getByText('Dr Mbassi');
+    expect(profileName).toBeInTheDocument();
+    expect(profileName.closest('.surface-muted')).toBeInTheDocument();
+    expect(screen.getByText('Médecin')).toHaveClass('font-medium', 'text-slate-600');
     expect(screen.getByRole('button', { name: 'Se déconnecter' })).toBeInTheDocument();
     expect(screen.getByText('CONTENU')).toBeInTheDocument();
   });

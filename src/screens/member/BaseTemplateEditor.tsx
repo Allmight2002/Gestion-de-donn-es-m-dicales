@@ -6,6 +6,7 @@ import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
 import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 import { PageHeader } from '../../components/PageHeader';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Edition LIBRE du gabarit d'une base par son medecin proprietaire (cahier v3.0) :
 // ajouter / modifier / supprimer des variables. Reutilise l'editeur de version (sans les
@@ -38,7 +39,7 @@ export function BaseTemplateEditor() {
     void load();
   }, [load]);
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
   if (error) return <p role="alert" className="text-sm text-red-600">{error}</p>;
   if (!listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
 

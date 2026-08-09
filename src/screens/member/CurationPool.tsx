@@ -6,6 +6,7 @@ import type { MessageKey } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
 import { useCurationRepository } from '../../data/RepositoryProvider';
 import type { CurationTaskItem } from '../../data/curation';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Pool de curation GLOBAL (cahier v3.0) : reserve aux CURATEURS. Les cas sont designes par
 // un CODE OPAQUE (jamais le patient). Le curateur reserve un cas ouvert puis le finalise
@@ -55,11 +56,11 @@ export function CurationPool() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
   if (!isStaff) return <p className="text-slate-500">{t('curation.pool_staff_only')}</p>;
 
   return (
-    <section className="max-w-3xl space-y-6">
+    <section className="max-w-3xl space-y-5 sm:space-y-6">
       <div>
         <h1 className="page-title">{t('curation.pool_title')}</h1>
         <p className="mt-1 text-sm text-slate-500">{t('curation.pool_hint')}</p>
@@ -69,10 +70,10 @@ export function CurationPool() {
       {tasks.length === 0 ? (
         <div className="card border-dashed p-10 text-center text-slate-500">{t('curation.no_tasks')}</div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full border-collapse text-sm">
+        <div className="data-table-shell">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr>
                 <th className="px-4 py-2.5">{t('curation.case_code')}</th>
                 <th className="px-4 py-2.5">{t('admin.specialty')}</th>
                 <th className="px-4 py-2.5">{t('curation.documents')}</th>

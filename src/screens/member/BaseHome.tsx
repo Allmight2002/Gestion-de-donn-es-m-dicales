@@ -2,7 +2,7 @@ import { errorMessage } from '../../lib/errorMessage';
 import { recordRecentBase } from '../../lib/recentBases';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Columns3, Download, Plus, Users } from 'lucide-react';
+import { Columns3, Download, MoreHorizontal, Plus, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
@@ -13,6 +13,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { Checkbox } from '../../components/Checkbox';
 import {
   downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
@@ -272,7 +273,7 @@ export function BaseHome() {
       <PageHeader
         title={baseName}
         description={!offlineView
-          ? `${t('base.gabarit')} : ${listing?.templateName ? `${listing.templateName} v${listing.versionNumber}` : '—'}`
+          ? (listing?.templateName ? `${listing.templateName} · v${listing.versionNumber}` : undefined)
           : t('offline.identity_unavailable')}
         badge={offlineView ? (
           <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span>
@@ -280,24 +281,42 @@ export function BaseHome() {
           listing && <span className="badge">{t(`baserole.${listing.role}`)}</span>
         )}
         actions={!offlineView && listing ? (
-          <>
-            {!cachedMeta && (
-              <button onClick={() => void makeAvailableOffline()} disabled={saving} className="btn-secondary">
-                <Download size={16} aria-hidden />
-                {saving ? t('offline.saving') : t('offline.make_available')}
-              </button>
-            )}
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             {canEdit && (
-              <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary">
+              <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary flex-1 sm:flex-none">
                 <Plus size={16} aria-hidden /> {t('patient.new')}
               </button>
             )}
-            {listing.role === 'owner' && (
-              <button type="button" onClick={() => setConfirmDelete(true)} className="text-sm font-medium text-red-700 hover:underline">
-                {t('base.delete')}
-              </button>
+            {(!cachedMeta || listing.role === 'owner') && (
+              <details className="relative shrink-0">
+                <summary role="button" className="icon-button h-11 w-11 cursor-pointer list-none border border-slate-300 bg-white" aria-label={t('common.actions')}>
+                  <MoreHorizontal size={20} aria-hidden />
+                </summary>
+                <div className="card absolute right-0 z-10 mt-2 w-64 space-y-1 p-2 shadow-lg">
+                  {!cachedMeta && (
+                    <button
+                      type="button"
+                      onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); void makeAvailableOffline(); }}
+                      disabled={saving}
+                      className="btn-ghost min-h-11 w-full justify-start"
+                    >
+                      <Download size={16} aria-hidden />
+                      {saving ? t('offline.saving') : t('offline.make_available')}
+                    </button>
+                  )}
+                  {listing.role === 'owner' && (
+                    <button
+                      type="button"
+                      onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); setConfirmDelete(true); }}
+                      className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      {t('base.delete')}
+                    </button>
+                  )}
+                </div>
+              </details>
             )}
-          </>
+          </div>
         ) : undefined}
       />
 
@@ -362,18 +381,17 @@ export function BaseHome() {
                   <p className="helper-text mb-3">{t('patient.columns_hint')}</p>
                   <div className="max-h-64 space-y-1 overflow-y-auto">
                     {fields.map((field) => (
-                      <label key={field.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
-                        <input
-                          type="checkbox"
+                      <Checkbox
+                          key={field.id}
+                          label={field.label}
+                          containerClassName="rounded-lg px-2 hover:bg-slate-50"
                           checked={visibleFieldKeys.includes(field.fieldKey)}
                           onChange={(event) => setVisibleFieldKeys((current) => (
                             event.target.checked
                               ? [...current, field.fieldKey]
                               : current.filter((key) => key !== field.fieldKey)
                           ))}
-                        />
-                        {field.label}
-                      </label>
+                      />
                     ))}
                   </div>
                 </div>

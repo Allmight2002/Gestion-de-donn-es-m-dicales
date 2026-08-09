@@ -4,6 +4,7 @@ import { ProtectedRoute, PublicOnly, RequireGlobalRole } from './ProtectedRoute'
 import { LoginScreen } from '../screens/LoginScreen';
 import { ResetPassword } from '../screens/ResetPassword';
 import { NotFound } from '../screens/NotFound';
+import { SkeletonList } from '../components/Skeleton';
 
 // Ecrans charges A LA DEMANDE (code splitting par route) : ils sortent du bundle initial,
 // reduisant fortement le temps de premier chargement. Exports nommes -> on remappe en default.
@@ -48,7 +49,7 @@ const HORS_MISSION = ['medecin', 'curateur'] as const;
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-sm text-slate-400">…</div>}>
+    <Suspense fallback={<div className="mx-auto w-full max-w-6xl p-4 sm:p-6"><SkeletonList rows={5} /></div>}>
     <Routes>
       <Route
         path="/login"
