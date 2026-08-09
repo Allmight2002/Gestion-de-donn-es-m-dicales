@@ -10,10 +10,8 @@ import {
   type TemplateRule,
 } from '../../domain/templateRules';
 import type { RuleSeverity, TemplateField } from '../../data/types';
+import { Checkbox } from '../../components/Checkbox';
 
-const PLACEHOLDER = '{"operator":"greater_or_equal","left_field":"discharge_date","right_field":"admission_date"}';
-
-type RuleMode = 'guided' | 'expert';
 type GuidedRuleKind = 'comparison' | 'conditional';
 type Translate = (key: MessageKey) => string;
 
@@ -82,27 +80,13 @@ function serializeRule(rule: unknown) {
 
 export function RuleSummary({ rule, fields }: { rule: unknown; fields: TemplateField[] }) {
   const { t } = useI18n();
-  const json = serializeRule(rule);
-  const parsed = parseRule(json);
+  const parsed = parseRule(serializeRule(rule));
 
   if (!parsed.ok || !parsed.value) {
-    return (
-      <div className="min-w-0">
-        <p className="text-xs text-amber-700">{t('rule.unreadable')}</p>
-        <code className="break-all text-xs">{json || String(rule)}</code>
-      </div>
-    );
+    return <p className="text-xs text-amber-700">{t('rule.unreadable')}</p>;
   }
 
-  return (
-    <div className="min-w-0">
-      <p className="text-sm text-slate-700">{ruleSentence(t, parsed.value, fields)}</p>
-      <details className="mt-1 text-xs text-slate-500">
-        <summary className="cursor-pointer hover:text-slate-700">{t('rule.view_json')}</summary>
-        <code className="mt-1 block break-all">{json}</code>
-      </details>
-    </div>
-  );
+  return <p className="min-w-0 text-sm text-slate-700">{ruleSentence(t, parsed.value, fields)}</p>;
 }
 
 function coerceValue(field: TemplateField | undefined, raw: string): unknown {
@@ -125,7 +109,6 @@ export function RuleForm({
   busy?: boolean;
 }) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<RuleMode>('guided');
   const [kind, setKind] = useState<GuidedRuleKind>('comparison');
   const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>('');
   const [leftField, setLeftField] = useState('');
@@ -135,7 +118,6 @@ export function RuleForm({
   const [conditionValue, setConditionValue] = useState('');
   const [conditionChoices, setConditionChoices] = useState<string[]>([]);
   const [requiredField, setRequiredField] = useState('');
-  const [json, setJson] = useState('');
   const [message, setMessage] = useState('');
   const [severity, setSeverity] = useState<RuleSeverity>('block');
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +152,6 @@ export function RuleForm({
     setConditionValue('');
     setConditionChoices([]);
     setRequiredField('');
-    setJson('');
   }
 
   function guidedJson() {
@@ -195,9 +176,9 @@ export function RuleForm({
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    // Les deux chemins convergent vers la validation cliente historique. Le serveur
-    // reste la source de verite et revalide la regle lors de l'enregistrement.
-    const res = parseRule(mode === 'expert' ? json : guidedJson());
+    // Le constructeur guide produit le format historique. Le serveur reste la source
+    // de verite et revalide la regle lors de l'enregistrement.
+    const res = parseRule(guidedJson());
     if (!res.ok) {
       setError(`${t('admin.rule_invalid')} : ${res.error}`);
       return;
@@ -224,16 +205,14 @@ export function RuleForm({
             <legend className="px-1 text-xs text-slate-600">{t('rule.condition_values')}</legend>
             <div className="flex flex-wrap gap-3">
               {conditionOptions.map((option) => (
-                <label key={option} className="flex items-center gap-1.5 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
+                <Checkbox
+                    key={option}
+                    label={option === 'true' ? t('rule.value_true') : option === 'false' ? t('rule.value_false') : option}
                     checked={conditionChoices.includes(option)}
                     onChange={(e) => setConditionChoices((current) => (
                       e.target.checked ? [...current, option] : current.filter((value) => value !== option)
                     ))}
-                  />
-                  {option === 'true' ? t('rule.value_true') : option === 'false' ? t('rule.value_false') : option}
-                </label>
+                />
               ))}
             </div>
           </fieldset>
@@ -283,8 +262,7 @@ export function RuleForm({
     );
   }
 
-  const previewJson = mode === 'guided' ? guidedJson() : json;
-  const preview = parseRule(previewJson);
+  const preview = parseRule(guidedJson());
   const hasConditionValue = conditionOperator === 'in'
     ? (conditionOptions.length > 0 ? conditionChoices.length > 0 : conditionValue.trim() !== '')
     : conditionValue !== '';
@@ -294,21 +272,9 @@ export function RuleForm({
 
   return (
     <form onSubmit={submit} className="card space-y-4 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="max-w-2xl text-sm text-slate-600">{t('rule.builder_intro')}</p>
-        {mode === 'guided' ? (
-          <button type="button" className="btn-secondary text-xs" onClick={() => { setMode('expert'); setError(null); }}>
-            {t('rule.mode_expert')}
-          </button>
-        ) : (
-          <button type="button" className="btn-secondary text-xs" onClick={() => { setMode('guided'); setError(null); }}>
-            {t('rule.back_guided')}
-          </button>
-        )}
-      </div>
+      <p className="max-w-2xl text-sm text-slate-600">{t('rule.builder_intro')}</p>
 
-      {mode === 'guided' ? (
-        <div className="space-y-3">
+      <div className="space-y-3">
           <label className="flex flex-col text-xs text-slate-600">
             {t('rule.kind')}
             <select className="input mt-1" value={kind} onChange={(e) => { setKind(e.target.value as GuidedRuleKind); setError(null); }}>
@@ -388,19 +354,7 @@ export function RuleForm({
               <p className="text-sm text-teal-900">{ruleSentence(t, preview.value, fields)}</p>
             </div>
           )}
-        </div>
-      ) : (
-        <label className="block text-xs text-slate-600">
-          {t('admin.rule_json')}
-          <textarea
-            className="input mt-1 font-mono text-xs"
-            rows={4}
-            placeholder={PLACEHOLDER}
-            value={json}
-            onChange={(e) => setJson(e.target.value)}
-          />
-        </label>
-      )}
+      </div>
 
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-1 flex-col text-xs text-slate-600">

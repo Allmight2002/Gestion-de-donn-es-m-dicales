@@ -6,6 +6,7 @@ import { useBaseRepository, useGroupRepository } from '../../data/RepositoryProv
 import type { GroupBase } from '../../data/groups';
 import type { BaseListing } from '../../data/bases';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { SkeletonList } from '../../components/Skeleton';
 
 // C2 v1 — detail d'un groupe : renommer/supprimer, rattacher/detacher des bases (dont on est
 // proprietaire). Organisation seulement : ne touche pas a l'acces.
@@ -51,13 +52,13 @@ export function GroupDetail() {
   // Bases rattachables : celles dont JE suis proprietaire et qui ne sont pas deja dans CE groupe.
   const attachable = myBases.filter((b) => b.role === 'owner' && !groupBases.some((gb) => gb.id === b.base.id));
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={4} label={t('common.loading')} />;
 
   return (
     <section className="max-w-2xl space-y-5">
       <div>
         <button onClick={() => navigate('/groups')} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('group.title')}</button>
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             className="input flex-1 text-lg font-semibold"
             value={name}
@@ -65,7 +66,7 @@ export function GroupDetail() {
             onBlur={() => { if (groupId && name.trim()) void run(() => groups.renameGroup(groupId, name.trim())); }}
             aria-label={t('group.name')}
           />
-          <button onClick={() => setConfirmDelete(true)} className="btn-secondary text-red-600">
+          <button onClick={() => setConfirmDelete(true)} className="btn-secondary w-full text-red-600 sm:w-auto">
             {t('group.delete')}
           </button>
           <ConfirmDialog
@@ -82,7 +83,7 @@ export function GroupDetail() {
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      <div className="card flex flex-wrap items-end gap-2 p-4">
+      <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
         <label className="flex flex-1 flex-col text-xs text-slate-600">
           {t('group.attach')}
           <select className="input mt-1" value={attachId} onChange={(e) => setAttachId(e.target.value)}>
@@ -95,7 +96,7 @@ export function GroupDetail() {
         <button
           disabled={busy || !attachId || !groupId}
           onClick={() => { if (groupId && attachId) void run(async () => { await groups.attachBase(groupId, attachId); setAttachId(''); }); }}
-          className="btn-primary"
+          className="btn-primary w-full sm:w-auto"
         >
           {t('group.attach_action')}
         </button>
@@ -108,8 +109,8 @@ export function GroupDetail() {
         ) : (
           <ul className="space-y-2 text-sm">
             {groupBases.map((b) => (
-              <li key={b.id} className="card flex items-center justify-between px-3 py-2">
-                <button onClick={() => navigate(`/bases/${b.id}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">
+              <li key={b.id} className="card flex min-h-14 items-center justify-between gap-3 px-4 py-3">
+                <button onClick={() => navigate(`/bases/${b.id}`)} className="min-w-0 break-words text-left font-medium text-teal-700 hover:text-teal-800 hover:underline">
                   {b.name}{b.specialty ? <span className="ml-1 text-xs text-slate-400">{b.specialty}</span> : null}
                 </button>
                 <button disabled={busy} onClick={() => void run(() => groups.detachBase(b.id))} className="text-xs text-red-600 hover:underline">

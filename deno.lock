@@ -4375,7 +4375,7 @@
         "npm:vitest@4.1.10"
       ],
       "overrides": {
-        "brace-expansion": "5.0.8",
+        "brace-expansion": "5.0.9",
         "ejs": "6.0.1"
       }
     }

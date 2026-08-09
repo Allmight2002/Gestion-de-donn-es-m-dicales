@@ -8,6 +8,7 @@ import type { ResearchGroup } from '../../data/groups';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
+import { SkeletonList } from '../../components/Skeleton';
 
 // C2 v1 — Groupes de recherche (etiquette d'organisation) : regrouper ses bases par equipe/projet.
 // Cette version n'affecte PAS l'acces (toujours gere par base) ; c'est une vue d'organisation.
@@ -41,7 +42,7 @@ export function GroupList() {
     finally { setBusy(false); }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={4} label={t('common.loading')} />;
 
   return (
     <section className="max-w-4xl space-y-5">
@@ -55,7 +56,7 @@ export function GroupList() {
             {t('group.name')}
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
           </label>
-          <button type="submit" disabled={busy} className="btn-primary">{t('group.create')}</button>
+          <button type="submit" disabled={busy} className="btn-primary w-full sm:w-auto">{t('group.create')}</button>
         </form>
       </SectionCard>
 
@@ -64,8 +65,8 @@ export function GroupList() {
       ) : (
         <ul className="space-y-2 text-sm">
           {items.map((g) => (
-            <li key={g.id} className="card flex items-center justify-between px-3 py-2">
-              <button onClick={() => navigate(`/groups/${g.id}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{g.name}</button>
+            <li key={g.id} className="card flex min-h-14 items-center justify-between gap-3 px-4 py-3">
+              <button onClick={() => navigate(`/groups/${g.id}`)} className="min-w-0 break-words text-left font-medium text-teal-700 hover:text-teal-800 hover:underline">{g.name}</button>
               <span className="text-xs text-slate-400">{g.baseCount} {t('group.bases')}</span>
             </li>
           ))}

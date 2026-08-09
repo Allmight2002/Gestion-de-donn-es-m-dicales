@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import type { TemplateField } from '../../data/types';
@@ -118,27 +118,11 @@ describe('RuleForm', () => {
     );
   });
 
-  test('conserve le JSON brut comme porte de sortie et le valide avec parseRule', async () => {
-    const user = userEvent.setup();
-    const onSubmit = renderForm();
+  test('reste entierement guide sans exposer le mode expert ni le JSON', () => {
+    renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Mode expert — JSON' }));
-    const textarea = screen.getByLabelText('Règle (JSON)');
-    await user.type(textarea, 'pas du json');
-    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/JSON invalide/i);
-    expect(onSubmit).not.toHaveBeenCalled();
-
-    await user.clear(textarea);
-    fireEvent.change(textarea, {
-      target: { value: '{"operator":"equals","left_field":"admission_date","right_field":"discharge_date"}' },
-    });
-    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
-    expect(onSubmit).toHaveBeenCalledWith(
-      { operator: 'equals', left_field: 'admission_date', right_field: 'discharge_date' },
-      '',
-      'block',
-    );
+    expect(screen.queryByText(/Mode expert/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/JSON/i)).not.toBeInTheDocument();
   });
 
   test('affiche la portée et réserve la clé technique aux libellés en doublon', () => {
@@ -159,7 +143,7 @@ describe('RuleForm', () => {
 });
 
 describe('RuleSummary', () => {
-  test('relit une règle enregistrée comme une phrase clinique tout en exposant son JSON', () => {
+  test('relit une règle enregistrée comme une phrase clinique sans exposer son JSON', () => {
     render(
       <I18nProvider>
         <RuleSummary
@@ -170,7 +154,7 @@ describe('RuleSummary', () => {
     );
 
     expect(screen.getByText('Date de sortie est postérieure ou égale à Date d’admission.')).toBeInTheDocument();
-    expect(screen.getByText('Voir le JSON')).toBeInTheDocument();
-    expect(screen.getByText('{"operator":"greater_or_equal","left_field":"discharge_date","right_field":"admission_date"}')).toBeInTheDocument();
+    expect(screen.queryByText('Voir le JSON')).not.toBeInTheDocument();
+    expect(screen.queryByText(/left_field/)).not.toBeInTheDocument();
   });
 });

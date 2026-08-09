@@ -10,6 +10,8 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
 import { SectionedFields } from './EncounterFields';
+import { Checkbox } from '../../components/Checkbox';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -165,10 +167,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-2xl space-y-6">
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div>
         <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
@@ -229,10 +231,14 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                 </li>
               ))}
             </ul>
-            <label className="mt-3 flex items-center gap-2 border-t border-amber-200 pt-2 font-medium">
-              <input type="checkbox" checked={ackDuplicate} onChange={(e) => setAckDuplicate(e.target.checked)} />
-              {t('patient.duplicate_ack')}
-            </label>
+            <div className="mt-3 border-t border-amber-200 pt-2">
+              <Checkbox
+                checked={ackDuplicate}
+                onChange={(e) => setAckDuplicate(e.target.checked)}
+                label={<span className="font-medium">{t('patient.duplicate_ack')}</span>}
+                containerClassName="w-full"
+              />
+            </div>
           </div>
         )}
 

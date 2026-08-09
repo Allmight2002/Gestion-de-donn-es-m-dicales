@@ -35,13 +35,13 @@ export function AcceptInvitation() {
   }, [token, accessRepo, t]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-[60vh] items-center justify-center p-4">
       <div className="card w-full max-w-md p-7 text-center">
         <h1 className="mb-3 text-lg font-semibold tracking-tight text-slate-900">{t('access.accept_title')}</h1>
         {status === 'pending' && <p className="text-slate-500">{t('access.accepting')}</p>}
         {status === 'ok' && <p className="text-teal-700">{t('access.accept_ok')}</p>}
         {status === 'error' && <p role="alert" className="text-red-600">{error}</p>}
-        <button onClick={() => navigate('/')} className="btn-primary mt-4">
+        <button onClick={() => navigate('/')} className="btn-primary mt-4 w-full sm:w-auto">
           {t('access.go_dashboard')}
         </button>
       </div>
