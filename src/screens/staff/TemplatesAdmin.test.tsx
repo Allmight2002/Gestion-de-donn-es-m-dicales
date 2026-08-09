@@ -263,6 +263,29 @@ describe('TemplateVersionEditor (brouillon)', () => {
     expect(screen.queryByText(/Mode expert/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/JSON/i)).not.toBeInTheDocument();
   });
+
+  test('nomme les colonnes d actions et rend la suppression verrouillee explicite', async () => {
+    const repo = statefulMock('draft');
+    const lockedField: TemplateField = {
+      id: 'locked', fieldKey: 'patient_code', label: 'Code patient', scope: 'patient', section: 'clinique', type: 'text',
+      unit: null, allowedValues: null, required: true, minValue: null, maxValue: null,
+      allowMissingCodes: false, displayOrder: 1, inUse: true,
+    };
+    renderEditor({
+      ...repo,
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' },
+          fields: [lockedField],
+          rules: [],
+        };
+      },
+    });
+
+    expect(await screen.findByRole('columnheader', { name: 'Glisser pour réordonner' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Supprimer' })).toBeDisabled();
+  });
 });
 
 describe('TemplateVersionEditor (publiee)', () => {

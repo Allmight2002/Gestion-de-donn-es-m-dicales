@@ -159,14 +159,14 @@ export function TemplateVersionEditor({
             role="row"
             className={`hidden border-b border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500 xl:grid xl:gap-2 ${fieldGridClass}`}
           >
-            {editable && <span role="columnheader" />}
+            {editable && <span role="columnheader"><span className="sr-only">{t('admin.drag_hint')}</span></span>}
             <span role="columnheader">{t('admin.field_key')}</span>
             <span role="columnheader">{t('admin.label')}</span>
             <span role="columnheader">{t('admin.scope')}</span>
             <span role="columnheader">{t('admin.section')}</span>
             <span role="columnheader">{t('admin.type')}</span>
             <span role="columnheader">{t('admin.required')}</span>
-            {editable && <span role="columnheader" />}
+            {editable && <span role="columnheader"><span className="sr-only">{t('common.actions')}</span></span>}
           </div>
           <div role="rowgroup" className="divide-y divide-slate-100">
               {fields.map((f, index) => {
@@ -240,7 +240,14 @@ export function TemplateVersionEditor({
                           {t('admin.edit')}
                         </button>
                         {f.inUse ? (
-                          <span className="text-xs text-slate-300" title={t('admin.field_locked_hint')}>{t('admin.delete')}</span>
+                          <button
+                            type="button"
+                            disabled
+                            className="min-h-11 cursor-not-allowed px-2 text-xs font-medium text-slate-500"
+                            title={t('admin.field_locked_hint')}
+                          >
+                            {t('admin.delete')}
+                          </button>
                         ) : (
                           <button onClick={() => void run(() => repo.deleteField(f.id))} className="min-h-11 px-2 text-xs font-medium text-red-600 hover:underline">
                             {t('admin.delete')}

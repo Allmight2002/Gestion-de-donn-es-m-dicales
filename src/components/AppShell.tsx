@@ -54,8 +54,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!drawerOpen) return;
     const previous = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerOpen(false);
+    };
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
   }, [drawerOpen]);
 
   // Synchronisation automatique : des qu'on est en ligne avec des modifs en attente, on rejoue
@@ -130,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="mb-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
       >
         <span className="flex items-center gap-1.5"><Search size={13} aria-hidden /> {t('search.button')}</span>
-        <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px]">Ctrl K</kbd>
+        <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-700">Ctrl K</kbd>
       </button>
 
       <nav className="flex flex-col gap-0.5" aria-label={t('search.title')}>
@@ -149,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {recents.length > 0 && (
         <div className="mt-4">
-          <p className="px-2.5 pb-1 text-[11px] font-medium text-slate-400">{t('nav.recent_bases')}</p>
+          <p className="px-2.5 pb-1 text-[11px] font-medium text-slate-500">{t('nav.recent_bases')}</p>
           <div className="flex flex-col gap-0.5">
             {recents.map((b) => (
               <NavLink key={b.id} to={`/bases/${b.id}`} className={navLinkClass} onClick={() => setDrawerOpen(false)}>
@@ -209,7 +216,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 h-[100dvh] lg:hidden" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-40 h-[100dvh] lg:hidden" role="dialog" aria-modal="true" aria-label={t('nav.open_menu')}>
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
           <div className="absolute inset-y-0 left-0 flex w-64 flex-col overflow-y-auto bg-white p-3 shadow-xl">
             <button onClick={() => setDrawerOpen(false)} aria-label={t('nav.close_menu')} className="self-end rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">

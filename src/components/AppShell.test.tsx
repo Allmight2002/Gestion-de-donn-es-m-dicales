@@ -80,6 +80,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.getByText('Médecin')).toHaveClass('font-medium', 'text-slate-600');
     expect(screen.getByRole('button', { name: 'Se déconnecter' })).toBeInTheDocument();
     expect(screen.getByText('CONTENU')).toBeInTheDocument();
+    expect(screen.getByText('Ctrl K')).toHaveClass('text-slate-700');
   });
 
   test('curateur : navigation reduite (pool + synchro), pas de gabarits/groupes', async () => {
@@ -129,10 +130,11 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(document.body.style.overflow).toBe('');
 
     await userEvent.click(screen.getByRole('button', { name: 'Ouvrir le menu' }));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Ouvrir le menu' })).toBeInTheDocument();
     expect(document.body.style.overflow).toBe('hidden');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Fermer le menu' }));
+    await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(document.body.style.overflow).toBe(''));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
