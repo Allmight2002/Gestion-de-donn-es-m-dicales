@@ -34,8 +34,12 @@ git push
 ```
 
 À chaque `push` sur `develop` :
-- la **CI** se lance (typecheck + **292 tests** + build) → coche verte = tout va bien ;
+- la **CI** se lance (typecheck + lint + **toute la suite de tests** : projet `db` pour la
+  sécurité RLS et projet `web` pour le rendu + build) → coche verte = tout va bien ;
 - **Vercel** crée une **prévisualisation** (URL dédiée) pour tester avant la production.
+
+> Les compteurs de tests évoluent à chaque lot : ne pas les figer ici. La sortie de Vitest et
+> `npm run manifest` font foi.
 
 ---
 
@@ -75,10 +79,16 @@ Le merge sur `main` déclenche le **déploiement de production** Vercel.
 ## 5. Vérifier avant de pousser (recommandé)
 
 ```bash
-npm test       # toute la suite (RLS + UI) — ~3 min
+npm test       # toute la suite (RLS + UI) — long : plusieurs dizaines de minutes sur un poste modeste
 ```
-La CI revérifie de toute façon (typecheck + tests + build) à chaque push et PR. Pour reproduire le
-build de production en local : `VITE_USE_SIGNED_READ=true npm run build`.
+Plus rapide si vous ne touchez qu'un côté : `npm run test:rls` (sécurité) ou `npm run test:web`
+(rendu). Après une migration, `npm run db:verify` rejoue le schéma depuis zéro en ~13 s, et
+`npm run schema` régénère [docs/schema-etat-final.md](docs/schema-etat-final.md).
+
+La CI revérifie de toute façon (typecheck + lint + tests + build) à chaque push et PR. Pour
+reproduire le build de production en local : `VITE_USE_SIGNED_READ=true npm run build`.
+
+> **Prérequis :** Node.js `>=22.22.0 <23` et npm `>=10 <12` (champ `engines` de `package.json`).
 
 ---
 
@@ -99,7 +109,15 @@ build de production en local : `VITE_USE_SIGNED_READ=true npm run build`.
 
 ## 7. Documentation
 
+- **[docs/README.md](docs/README.md)** — 📚 **index de toute la documentation** (distingue les
+  documents vivants des preuves datées).
+- Relecteur extérieur : [docs/guide-relecture-externe.md](docs/guide-relecture-externe.md)
+- Vue d'ensemble : [docs/architecture.md](docs/architecture.md)
 - Spécifications : [docs/cahier-des-charges-metier.md](docs/cahier-des-charges-metier.md) ·
   [docs/cahier-des-charges-technique.md](docs/cahier-des-charges-technique.md)
-- Vue d'ensemble : [docs/architecture.md](docs/architecture.md)
 - Mise en route / déploiement : [README.md](README.md) · [docs/deploiement.md](docs/deploiement.md)
+
+> **Quand vous modifiez le code, mettez à jour la doc dans le même commit** : après une migration,
+> régénérer `docs/schema-etat-final.md` (`npm run schema`) ; après un changement de rôle, de
+> permission ou de sous-système, corriger `README.md` et `docs/architecture.md`. Un document faux
+> coûte plus cher qu'un document absent.
