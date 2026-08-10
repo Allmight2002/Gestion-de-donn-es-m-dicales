@@ -36,9 +36,9 @@ travail déjà fait :
 **L15, L16, L17, L18 et L19** (campagne de vérification des flux multi-comptes, cf.
 [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)).
 
-> **L16 est prioritaire parmi les nouveaux** : il porte une décision produit déjà tranchée par
-> le porteur et un travail à demi écrit qui dort dans un worktree. Plus il attend, plus ce
-> travail diverge de `main`.
+> **L16 est prioritaire parmi les nouveaux** : il porte une décision produit déjà tranchée par le
+> porteur, que rien ne traduit encore en base. Tant que la migration n'existe pas, la
+> spécification et le code se contredisent.
 
 ## Le déploiement n'est pas automatique
 
@@ -1020,10 +1020,11 @@ ATTENTION : ce lot touche une migration, des tests de base, la spécification et
 quatre écrans. Il doit tourner SEUL. Vérifie avec moi qu'aucun autre chantier
 n'est en cours avant de commencer.
 
-TRAVAIL DÉJÀ COMMENCÉ, à reprendre plutôt qu'à réécrire : quatre fichiers sont
-modifiés, non committés et non testés, dans le worktree
-.claude/worktrees/mystifying-shirley-9cf201 — AppShell.tsx, BaseHome.tsx,
-PatientDetail.tsx et messages.ts. Commence par les lire.
+RIEN N'EXISTE EN CODE. Une premiere implementation des points d'ecran avait ete
+ecrite le 2026-08-09 puis EFFACEE le 2026-08-10 : elle datait d'avant que le
+renversement ci-dessous ne soit tranche, et ne comportait aucun test. Ne va pas
+la chercher. La specification de chaque correction est dans le registre, §3.1 a
+§3.6 — c'est de la que tu pars.
 
 DÉCISION DÉJÀ PRISE PAR LE PORTEUR, à mettre en oeuvre et non à rouvrir : le
 compte de mission (rôle saisisseur) DOIT pouvoir écrire l'identité nominative
@@ -1069,11 +1070,12 @@ PHASE 2 — INTERFACE, seulement après la phase 1. L'ordre est impératif : sin
 l'écran proposerait une saisie que la base refuse encore.
 - NewPatient.tsx : la section « Identité (zone restreinte) » devient conditionnée
   à canViewIdentity — masquée sans l'option, visible avec.
-- Finis et vérifie les quatre corrections déjà écrites dans le worktree : bouton
-  « Nouveau patient » piloté par la permission de CRÉATION et non de modification,
-  suppression de patient réservée à canEdit, « Rendre disponible hors-ligne »
-  masqué pour un accès à échéance (mais la copie résiduelle reste RETIRABLE), et
-  barre latérale réduite pour le rôle saisisseur.
+- Applique les quatre corrections d'écran décidées (registre §3.1, §3.3, §3.4,
+  §3.5) : bouton « Nouveau patient » piloté par la permission de CRÉATION et non
+  de modification, suppression de patient réservée à canEdit — elle est
+  aujourd'hui offerte à TOUT LE MONDE, y compris un simple lecteur —,
+  « Rendre disponible hors-ligne » masqué pour un accès à échéance (mais la copie
+  résiduelle reste RETIRABLE), et barre latérale réduite pour le rôle saisisseur.
 - Tests web pour ces cinq points dans src/screens/member/*.test.tsx.
 
 HORS PÉRIMÈTRE, décidé et clos : le nom du gabarit qui s'affiche « Modèle : — ».

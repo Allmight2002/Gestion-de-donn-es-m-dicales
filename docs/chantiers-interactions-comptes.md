@@ -19,7 +19,7 @@
 | # | Chantier | Nature | Décision | État | Où vit le travail |
 |---|---|---|---|---|---|
 | **A** | Redirection du mot de passe des comptes de mission | Configuration + Edge Function | 1 point encore ouvert (§2.4) | **Rien d'implémenté** — séance interrompue | worktree `vigilant-curran-fe8b58`, **propre** |
-| **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **4 points modifiés, non committés, non testés** | worktree `mystifying-shirley-9cf201`, 4 fichiers |
+| **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
 | **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
 | **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | Non tranchée | Signalé, non traité | — |
 | **E** | Cohortes : suppression, carte dynamique, figeage inexportable | Base + frontend | Recommandation posée, non tranchée | Documenté dans la file d'attente | [idees-post-readiness.md](idees-post-readiness.md) |
@@ -133,7 +133,7 @@ refuse dans tous les cas — mais le premier rendait le rôle inutilisable depui
 
 Chaque point a été soumis au porteur et tranché individuellement.
 
-### 3.1 Point 1 — pas de bouton « Nouveau patient » · **corrigé**
+### 3.1 Point 1 — pas de bouton « Nouveau patient » · **décidé : corriger**
 
 L'état vide affichait « Aucun patient. Cliquez sur "Nouveau patient". » alors qu'aucun bouton
 n'était rendu. La route `/bases/:id/patients/new` fonctionnait pourtant.
@@ -161,7 +161,7 @@ envoie un nom, une date de naissance, un téléphone, une adresse **ou un numér
 ([`20260729104500_mission_accounts.sql`](../supabase/migrations/20260729104500_mission_accounts.sql), RPC `create_patient`).
 Aujourd'hui, si le saisisseur remplit cette section, l'enregistrement échoue.
 
-### 3.3 Point 3 — bouton « Supprimer ce patient » · **corrigé, portée plus large que prévu**
+### 3.3 Point 3 — bouton « Supprimer ce patient » · **décidé : corriger, portée plus large que prévu**
 
 **Découverte au passage** : le bouton n'était pas seulement offert au compte de mission, il était
 offert à **tout le monde**, y compris à un simple lecteur. Le point d'audit visait le rôle
@@ -172,7 +172,7 @@ offert à **tout le monde**, y compris à un simple lecteur. Le point d'audit vi
 suppression relève de `can_edit_structured_data`. La base refusait déjà ; l'interface ne doit pas
 conduire à ce refus.
 
-### 3.4 Point 4 — « Rendre disponible hors-ligne » · **corrigé, avec une nuance**
+### 3.4 Point 4 — « Rendre disponible hors-ligne » · **décidé : corriger, avec une nuance**
 
 [spec §4](spec-comptes-mission.md) exclut le mode hors-ligne du rôle en v1. Le bouton était
 proposé.
@@ -182,7 +182,7 @@ copie résiduelle déjà présente sur le poste reste **retirable** — seule sa
 fermée. Retirer le bouton de suppression aurait enfermé une copie locale sur la machine de
 l'étudiant, ce qui est l'inverse de l'intention.
 
-### 3.5 Point 5 — barre latérale · **corrigé**
+### 3.5 Point 5 — barre latérale · **décidé : corriger**
 
 « Groupes de recherche » (`/groups`) et « Mes jeux de variables » (`/templates`) restaient proposés
 au compte de mission. Ce sont des zones médecin : les routes sont déjà fermées et la RLS refuse les
@@ -214,23 +214,27 @@ cette policy pour un gain purement informatif.
 > et l'en-tête affichera « Modèle : — » pour ces deux profils. C'est un choix, pas un oubli : ne
 > pas rouvrir le point sans raison nouvelle.
 
-### 3.7 État du chantier B
+### 3.7 État du chantier B — première tentative effacée
 
-Modifications présentes dans le worktree `.claude/worktrees/mystifying-shirley-9cf201`
-(branche `claude/mystifying-shirley-9cf201`, basée sur `9cd3e04`), **non committées** :
+Une première implémentation des points 1, 3, 4 et 5 avait été écrite dans le worktree
+`.claude/worktrees/mystifying-shirley-9cf201`, sans test et sans vérification. **Elle a été
+effacée le 2026-08-10, délibérément.**
 
-| Fichier | Contenu |
-|---|---|
-| `src/screens/member/BaseHome.tsx` | points 1 et 4 |
-| `src/screens/member/PatientDetail.tsx` | point 3 |
-| `src/components/AppShell.tsx` | point 5 |
-| `src/i18n/messages.ts` | clé `patient.no_patients_readonly` (fr + en) |
+Deux raisons :
 
-**Rien n'a été vérifié** : aucun test web écrit, `typecheck`, `lint`, `test:web` et `test:rls`
-**non exécutés**. Tout est annulable par un `git checkout` si l'on préfère repartir de zéro.
+- ce code a été écrit **avant** que les points 2 et 6 ne soient tranchés — il ne tient donc aucun
+  compte du renversement du §4, qui change ce que l'écran de création doit proposer ;
+- le découpage en lots étant fait, le travail est confié à une instance fraîche munie du prompt
+  **L16** de [prompts-lots.md](prompts-lots.md), qui couvre les deux phases dans le bon ordre et
+  exige les tests. Finir un demi-travail antérieur à la décision aurait coûté plus que le
+  réécrire.
 
-**Reste à faire** : le point 2 via le chantier C, puis les tests web des points 1, 3, 4, 5 dans
-`src/screens/member/*.test.tsx`, puis la batterie de validation.
+**Rien de tout cela n'est perdu** : les §3.1 à §3.6 ci-dessus décrivent chaque correction, sa
+cause et sa décision. C'est la spécification du lot.
+
+**Tout est à écrire** : les cinq corrections d'écran (points 1, 3, 4, 5 et le point 2 issu du
+chantier C), leurs tests web dans `src/screens/member/*.test.tsx`, puis la batterie de
+validation.
 
 ---
 
@@ -490,29 +494,26 @@ des arbitrages d'usage.
 
 ## 8. État du dépôt au 2026-08-10 — où vit chaque chose
 
-À lire avant de committer quoi que ce soit : trois chantiers différents cohabitent dans l'arbre de
-travail principal, plus deux worktrees.
+Instantané daté, à relire plutôt qu'à croire une fois ce document fusionné.
 
-**Arbre principal** (`C:\Users\USER\Desktop\Claude MedData`, branche `codex/derogation-pilote`) —
-modifications **non committées**, d'origines distinctes à ne pas mélanger dans un même commit :
+**Cette documentation est committée** sur la branche `docs/chantiers-multicomptes`, quatre commits
+posés directement sur `main` (`9cd3e04`), **non poussée**. Elle emporte : ce registre,
+`tests-multicomptes.md`, les renvois dans `tester-en-local.md` et `spec-comptes-mission.md`, les
+défauts D7 et D8 de `idees-post-readiness.md`, la remise à jour de `lots-paralleles.md` et
+`prompts-lots.md`, les deux rapports d'audit, et `supabase/config.toml`
+(`import_map = "../deno.json"` sur les 7 Edge Functions — additif, sans effet sur le déploiement).
 
-| Fichier | Origine |
-|---|---|
-| `docs/tests-multicomptes.md` *(nouveau)* | campagne de test multi-comptes |
-| `docs/tester-en-local.md`, `docs/spec-comptes-mission.md` | renvois vers le précédent |
-| `supabase/config.toml` | `import_map = "../deno.json"` sur les 7 Edge Functions — additif, sans effet sur le déploiement |
-| `.claude/launch.json` *(nouveau, hors suivi Git)* | serveur de développement avec bind IPv4 |
-| `docs/idees-post-readiness.md` | idée 11 et défaut D6 (chantier E) |
-| `docs/audits/` *(nouveau)* | audit technique du 2026-08-09 |
-| `docs/edge-functions.md`, `docs/prompts-lots.md`, `vercel.json`, `test/deployment.test.ts` | **sans rapport** — travaux Codex sur `codex/derogation-pilote` |
-| `stdout`, `tsc_output.txt` | fichiers parasites, signalés par l'audit `AUD-2026-08-HYG-01` |
+**Restent non committés dans l'arbre principal**, et sans rapport avec ces chantiers : des travaux
+Codex sur `docs/edge-functions.md` (procédure de tunnel ClamAV), `vercel.json` et
+`test/deployment.test.ts` (le repli SPA avalait `/_vercel/…`, la télémétrie ne démarrait jamais).
+Ne pas les mélanger à un commit de documentation. S'y ajoutent `stdout` et `tsc_output.txt`,
+fichiers parasites signalés par l'audit `AUD-2026-08-HYG-01`, qui gagneraient à passer au
+`.gitignore`.
 
-**Worktrees** :
-
-- `.claude/worktrees/mystifying-shirley-9cf201` (branche `claude/mystifying-shirley-9cf201`, base
-  `9cd3e04`) — chantier B : 4 fichiers modifiés, non committés, non testés.
-- `.claude/worktrees/vigilant-curran-fe8b58` (branche `claude/vigilant-curran-fe8b58`, base
-  `9cd3e04`) — chantier A : **propre**, rien.
+**Aucun code applicatif n'est en attente nulle part.** Les deux worktrees
+(`mystifying-shirley-9cf201`, `vigilant-curran-fe8b58`) sont **propres** : le chantier A n'a jamais
+rien écrit, et la première tentative du chantier B a été effacée (§3.7). Tout part donc des prompts
+**L15** à **L19** de [prompts-lots.md](prompts-lots.md).
 
 Aucune migration, aucune donnée en ligne, aucun paramètre cloud n'a été touché par ces séances.
 

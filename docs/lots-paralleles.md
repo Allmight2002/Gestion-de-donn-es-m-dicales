@@ -231,9 +231,10 @@ Phase interface — la section « Identité (zone restreinte) » de `NewPatient.
 conditionnée à `canViewIdentity`, et les quatre corrections d'écran déjà écrites sont finies et
 testées.
 
-> **Travail déjà commencé** : quatre fichiers modifiés, non committés, non testés, dans le
-> worktree `.claude/worktrees/mystifying-shirley-9cf201`. Reprendre depuis là plutôt que de
-> réécrire.
+> **Rien n'existe en code.** Une première implémentation des points d'écran avait été écrite puis
+> **effacée le 2026-08-10** : elle datait d'avant que le renversement du §4 ne soit tranché, et ne
+> comportait aucun test. La spécification de chaque correction reste intégralement dans le
+> registre. Le lot part de zéro, avec ses tests.
 
 Surface base : appliquer `meddata-db-safety`. Touche `AppShell.tsx`, `BaseHome.tsx`,
 `PatientDetail.tsx`, `NewPatient.tsx` et `messages.ts` : à lancer **seul**.
@@ -287,8 +288,8 @@ L4, L11, L12, L13, L14, et les cinq nouveaux L15 à L19.
    test manuel exploitables, au lieu d'obliger à ouvrir les outils de développement à chaque
    refus.
 2. **Ensuite, seul** : **L16** — c'est le seul lot porteur d'une décision produit déjà tranchée
-   et d'un travail à demi écrit qui dort dans un worktree. Plus il attend, plus ce travail
-   diverge.
+   qui n'a pas encore de traduction en base. Tant qu'elle n'est pas portée par une migration, la
+   spécification et le code disent le contraire l'un de l'autre.
 3. **Puis en parallèle** : L4, L12, **L18**.
 4. **Ensuite** : L11, L13, **L19**. L11 attend encore sept décisions, mais ses étapes locales
    sont réalisables sans elles. L19 ne doit pas suivre L18 de trop près : mêmes fichiers.
