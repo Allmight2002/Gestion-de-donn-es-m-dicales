@@ -1,7 +1,7 @@
 # Idées produit post-readiness — file d'attente
 
 - Tenu à jour à partir des échanges avec le porteur (Dr Mbassi)
-- Dernière mise à jour : 2026-07-26
+- Dernière mise à jour : 2026-08-10
 
 Cette liste rassemble les **chantiers concrets** identifiés mais **volontairement non commencés**. Elle est distincte des études `docs/strategie-produit-post-mvp*.md` (stratégie de marché et positionnement) : ici, ce sont des évolutions techniques précises, prêtes à être spécifiées puis construites.
 
@@ -38,6 +38,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 8 | **Modèle d'observation d'une base** — rendre le suivi longitudinal explicite et optionnel : étude transversale, suivi répété, ou registre d'événements | Grande (front + une colonne) | — | *(cadrée le 2026-07-27)* | **Livrée le 2026-08-01** (L9, staging et cible technique production validés) |
 | 9 | **Alléger le chargement de l'application** — 1,7 Mo précachés dès la première visite, dont 837 Ko de tableur | Moyenne (configuration du build) | — | *(signalée le 2026-07-27)* | **Livrée** le 2026-07-28 — précache 1 728 → 892 Kio |
 | 10 | **Finition de l'interface** — zone de profil trop discrète, cases à cocher système, absence de retour visuel sur les changements d'état | Moyenne (front, transverse) | — | *(signalée le 2026-07-27)* | À faire |
+| 11 | **Suppression d'une cohorte** — retirer une cohorte devenue inutile, sans effacer le journal de ses exports | Moyenne (base + front) | — | *(signalée le 2026-08-09)* | À faire |
 
 ## Notes par idée
 
@@ -213,6 +214,21 @@ Signalé par le porteur le 2026-07-27 : l'interface « est bonne dans l'ensemble
 - **`prefers-reduced-motion` n'est respecté nulle part** aujourd'hui. Toute animation ajoutée doit pouvoir être neutralisée pour les personnes qui en souffrent — c'est une exigence d'accessibilité, pas une option.
 - **Tension avec l'idée 9** : l'application est déjà lourde et le contexte d'usage suppose des connexions limitées. Le dynamisme doit venir de transitions CSS, pas d'une bibliothèque d'animation supplémentaire.
 
+### 11. Suppression d'une cohorte
+
+Signalé par le porteur le 2026-08-09 : une cohorte créée ne peut plus être retirée de la liste, quelle qu'en soit la raison (essai, doublon, erreur de nom).
+
+**La capacité serveur existe déjà** : les politiques `c_delete` sur `cohort`, `cm_delete` et `cem_delete` sur les membres sont en place (`20260616090400_rls.sql:119`), ouvertes à `can_curate`. Ce qui manque est côté application : `CohortRepository` n'expose que `listCohorts`, `preview`, `createDynamic` et `createSnapshot` (`src/data/cohorts.ts:27`). Aucun bouton n'a donc jamais pu être câblé. Même situation que l'idée 3 pour les bases.
+
+**Piège à ne pas manquer.** `export_log.cohort_id` référence `cohort(id)` **`on delete cascade`** (`20260616090200_tables.sql:262`). Un `DELETE` direct effacerait donc en cascade le journal des exports de la cohorte — qui a exporté, quand, avec quelle empreinte. C'est la traçabilité sur laquelle s'appuie le volet juridique (registre des traitements, charte utilisateurs). Un bouton naïf transformerait « ranger ma liste » en effacement de preuve.
+
+Deux issues propres :
+
+- **archivage** (recommandé) : `deleted_at` sur `cohort`, cohorte retirée de la liste, journal intact, restauration possible — même motif que la corbeille des bases (`soft_delete_base`, idée 3) ;
+- **suppression dure conditionnelle** : une RPC qui supprime seulement si `export_log` est vide pour cette cohorte, et refuse explicitement sinon.
+
+À traiter avec `meddata-db-safety` (migration + RPC). Décider dans le même mouvement du sort des fichiers conservés dans le bucket `scientific-exports` : maintenus lisibles, ou purgés explicitement.
+
 ## Défauts / UX signalés (à corriger, pas des idées)
 
 | # | Défaut | Cause | Ampleur | Statut |
@@ -254,6 +270,28 @@ Ce défaut illustre le risque d'un correctif appliqué à un seul appelant : la 
 **Ce défaut devient central avec l'idée 8.** En étude transversale, la stratégie naturelle est de déclarer *toutes* les variables en portée patient pour qu'elles apparaissent dès la création — c'est ce qu'a constaté le porteur en simulant le parcours. Le formulaire devient alors une longue liste plate, sans aucune structure, là où une rencontre aurait été correctement organisée. Corriger D4 est donc un préalable pratique au mode « une seule saisie ».
 
 À vérifier au passage : le mode hors-ligne est désactivé par la politique de release standard (`VITE_OFFLINE_MODE=disabled`). Si le bandeau reste visible alors que la fonction est inopérante, c'est une raison supplémentaire de ne pas lui donner cette place.
+
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D6 | **La carte d'une cohorte à mise à jour automatique n'offre rien** : un nom, une phrase, ni compteur ni action — « un cadre qui est là et qui ne sert à rien » | `listCohorts` lit le compte depuis `cohort_member(count)` (`src/data/cohorts.ts:48`), table **vide par construction** pour une cohorte dynamique, dont la population n'est jamais matérialisée ; et le bloc « compteur + bouton Exporter » est conditionné à `cohortType === 'snapshot'` (`src/screens/member/CohortBuilder.tsx:430`). La carte n'a donc littéralement rien à rendre | Petite (front) | Signalé 2026-08-09 |
+
+**Le refus d'export, lui, est délibéré et doit le rester.** `generate-export` renvoie `409 « Seule une cohorte figée est exportable »` (`supabase/functions/generate-export/handler.ts:276`) : un export inscrit dans `export_log` une empreinte et des décomptes figés. Sur une population qui bouge, le fichier produit ne serait rattachable à rien de reproductible. Le défaut n'est pas la règle, c'est que l'interface la subit sans jamais l'énoncer ni proposer la suite.
+
+Correction attendue : donner à la carte dynamique ce qu'elle devrait porter —
+
+- **le compte vivant**, via `cohort_preview` sur son filtre enregistré, comme le fait déjà l'aperçu du constructeur ;
+- **« Figer maintenant »**, qui crée une cohorte figée à partir du même filtre : c'est le geste manquant entre « je suis ma population » et « j'exporte ».
+
+Prérequis technique : `listCohorts` ne remonte aujourd'hui ni `filter_definition` ni `validated_only` (`src/data/cohorts.ts:48`) — les ajouter au `select`. À défaut de l'action, énoncer au moins sur la carte pourquoi l'export n'y est pas proposé.
+
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D7 | **Un refus légitime d'une Edge Function est indiscernable d'une panne** : l'interface affiche toujours « Edge Function returned a non-2xx status code » au lieu du message renvoyé par le serveur (`Base invalide`, `EXPORT_INCOMPLETE`, `Seule une cohorte figée est exportable`…) | `functions.invoke` lève un `FunctionsHttpError` dont `.message` est cette phrase de transport ; le vrai corps `{code, error, resource}` est dans `error.context`, que `src/data/exports.ts:59` ne lit pas. Même symptôme sur `src/data/mission.ts`, cause du repli à confirmer | Moyenne (front, **transverse** à tous les appelants) | Signalé 2026-08-09 |
+| D8 | **On peut figer une cohorte qui ne sera jamais exportable** : rien n'avertit au moment du figeage | Le figeage accepte les brouillons quand « patients validés uniquement » est décochée (`20260616091100_cohorts.sql:100`), alors que l'export refuse en bloc dès qu'un membre n'est pas `curated` (`generate-export/handler.ts:358`) | Petite à moyenne (front, ou garde au figeage) | Signalé 2026-08-09 |
+
+D7 a coûté deux diagnostics complets pendant la campagne de test manuel, chaque fois en obligeant à sortir de l'application. À corriger **une fois, dans un utilitaire partagé** — un correctif appliqué à un seul appelant avait déjà, lors d'un lot antérieur, laissé les autres afficher `[object Object]`. Contrainte à préserver : les Edge Functions renvoient volontairement des messages courts et génériques ; le but est d'afficher ce que le serveur a **déjà choisi de dire**, pas davantage.
+
+D6, D7, D8 et les chantiers liés aux comptes de mission sont repris avec leurs options et décisions dans [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md).
 
 ## Comment utiliser cette liste
 

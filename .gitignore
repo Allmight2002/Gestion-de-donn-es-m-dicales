@@ -36,3 +36,10 @@ deploy-manifest.json
 .agents/
 AGENTS.md
 .vercel
+
+# Sorties de commandes redirigees a la racine (AUD-2026-08-HYG-01) : elles ont
+# deja contenu un dump de fichier source. Les ignorer evite qu'un `git add -A`
+# les committe par accident.
+/stdout
+/stderr
+/tsc_output.txt

@@ -7,6 +7,11 @@ et vous vous connectez avec les comptes de démonstration (données **fictives**
 > Pas besoin de Docker pour les **tests automatisés** : `npm test` démarre
 > un PostgreSQL embarqué. Docker ne sert qu'au test **manuel** ci-dessous.
 
+> **Pour tester les flux entre plusieurs comptes** (comptes de mission, collaboration entre
+> médecins), lire d'abord [tests-multicomptes.md](tests-multicomptes.md) : ce guide-ci ne suffit
+> pas, et cinq pièges de poste y sont documentés — dont un `.env.local` qui fait pointer
+> `npm run dev` sur la **production** (voir l'étape 5 ci-dessous).
+
 ## Prérequis
 - **Docker Desktop** lancé (vous l'avez installé ✅).
 - **Node.js** (déjà utilisé pour `npm test`).
@@ -55,6 +60,17 @@ npm run supabase:storage
 npm run dev
 ```
 Ouvrez **http://127.0.0.1:5173**.
+
+> ⚠️ **Vérifiez d'abord qu'aucun `.env.local` ne détourne le frontend.** Dans Vite, `.env.local`
+> **écrase** le `.env` de l'étape 3 : si ce fichier existe et pointe sur le projet Supabase en
+> ligne, `npm run dev` s'adresse à la **production** et les comptes de démonstration ci-dessous
+> seront refusés. Symptôme typique : `Invalid login credentials` alors que la base locale contient
+> bien les comptes. Détail et contournement dans
+> [tests-multicomptes.md](tests-multicomptes.md) §5.1.
+>
+> Si le serveur n'écoute que sur `localhost` et pas sur `127.0.0.1`, ajoutez `-- --host 127.0.0.1` :
+> les liens des courriels (activation, mot de passe) visent `127.0.0.1` et tomberaient sinon sur une
+> page morte.
 
 ## Se connecter (comptes de démonstration)
 Mot de passe commun : **`Password123!`**

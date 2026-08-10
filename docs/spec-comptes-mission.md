@@ -64,6 +64,20 @@ Aucune migration existante n'est modifiée. Une nouvelle migration horodatée aj
 | Accéder à une autre base | **Non** | Une seule ligne `base_access` |
 | Mode hors-ligne | **Non** (v1) | Exclu du rôle même si le mode est réactivé un jour ; si levé plus tard : les replays d'outbox postérieurs à l'expiration doivent être refusés par RLS avec un rejet propre côté UI, sans perte silencieuse |
 
+> ⚠️ **Renversement décidé le 2026-08-10, pas encore implémenté.** La ligne « Écrire l'identité
+> nominative — **Non** » ci-dessus **décrit le code actuel** mais ne reflète plus la décision du
+> porteur : le compte de mission **doit** pouvoir écrire l'identité, lorsque le médecin lui a
+> accordé l'option `can_view_identity` à la création de la mission. Motif : sans support papier
+> stable, l'étudiant est la seule source de l'identité au moment de l'inclusion, et l'exclusion
+> détruit l'information au lieu de la protéger. Ce tableau, le §9 et le §12 sont à réécrire **par
+> la migration qui redéfinit `can_write_identity()`**, pas avant. Contexte complet, options
+> écartées et plan d'exécution :
+> [chantiers-interactions-comptes.md §4](chantiers-interactions-comptes.md).
+>
+> Note de la même campagne : le point « voir la base attribuée et son dictionnaire/gabarit » est
+> partiellement tenu — les **champs** du gabarit sont lisibles, son **nom** ne l'est pas, et il
+> a été décidé de ne pas corriger (chantier B, point 6).
+
 ## 5. Cycle de vie du compte
 
 1. **Création** — le médecin (propriétaire ou `can_manage_access` sur la base) saisit : e-mail, date de fin, option identité. L'Edge Function (§6) crée le compte par invitation et pose l'accès.
@@ -141,6 +155,11 @@ Conformité : l'e-mail de l'étudiant entre au registre des traitements (volet j
 - **Edge** (handlers testables + injection, pattern lot 9) : appelant non autorisé, e-mail existant, durée hors bornes, idempotence des rejeux, compensation après échec partiel.
 - **Web** : parcours saisisseur (saisie → brouillon → soumission → immuabilité), bandeau d'échéance, écran de fin de mission, écran médecin (création/prolongation/révocation).
 
+> **Vérification manuelle bout-en-bout du 2026-08-09** (création réelle du compte, courriel,
+> activation, saisie) : résultats, obstacles d'environnement et écarts constatés par rapport au §4
+> et au §8 dans [tests-multicomptes.md](tests-multicomptes.md). La chaîne fonctionne ; les écarts
+> relevés sont d'interface et de configuration, pas de cloisonnement.
+
 ## 11. Découpage en lots d'implémentation
 
 1. **Lot A — base** : migration additive, fonctions d'autorisation, gardes, RPC, tests DB/RLS, allowlist. (Skill `meddata-db-safety` obligatoire.)
@@ -152,7 +171,7 @@ Conformité : l'e-mail de l'étudiant entre au registre des traitements (volet j
 
 | Question | Décision |
 |---|---|
-| ~~L'étudiant peut-il créer des patients minimaux ?~~ | **2026-07-28 : oui.** Création minimale, **identité nominative exclue**. Le compte de mission écrit dans `patient` et `encounter`, jamais les champs nominatifs de `patient_identity` : c'est cette exclusion qui rend la permission acceptable. |
+| ~~L'étudiant peut-il créer des patients minimaux ?~~ | **2026-07-28 : oui.** Création minimale, **identité nominative exclue**. Le compte de mission écrit dans `patient` et `encounter`, jamais les champs nominatifs de `patient_identity` : c'est cette exclusion qui rend la permission acceptable. — **⚠️ Renversée le 2026-08-10** : cette décision reposait sur une hypothèse de terrain fausse (le médecin crée les patients, l'étudiant remplit l'analytique). Dans l'usage réel, l'étudiant est le seul point de contact au moment de l'inclusion et il n'existe pas de support papier stable. L'écriture de l'identité lui est **accordée sous l'option `can_view_identity`**, justifiée et journalisée. À implémenter : [chantiers-interactions-comptes.md §4](chantiers-interactions-comptes.md). |
 | Durée maximale d'une mission | **2026-07-29 : 24 mois**, prolongeable. Bornée par le trigger de garde et par les RPC de provisionnement/prolongation, pas seulement par l'interface. |
 | Lecture de l'identité sur option | **2026-07-29 : option conservée, réglée À LA CRÉATION du compte, case décochée par défaut**, justification obligatoire consignée dans `base_access.identity_justification` et dans `audit_log`. Le persona visé est une personne de terrain qui peut devoir rapprocher des dossiers papier nominatifs. |
 | Upload de documents par le saisisseur | **2026-07-29 : non en v1.** `can_view_raw_documents` reste refusé et la route de téléversement est fermée au rôle. À réévaluer avec le scanner pérenne (B2). |

@@ -2,7 +2,7 @@
 
 ## Contexte essentiel
 
-MedData (`registre-clinique`) est une PWA React 18 + TypeScript strict + Vite, adossée à Supabase (PostgreSQL, Auth, RLS, Storage et Edge Functions). Le cloisonnement entre identité, données analytiques et documents bruts est une propriété de sécurité du produit. Utiliser uniquement des données fictives tant que le cadre juridique et éthique n’est pas validé. Pour l’architecture, lire `docs/architecture.md`.
+MedData (`registre-clinique`) est une PWA React 19 + TypeScript strict + Vite, adossée à Supabase (PostgreSQL, Auth, RLS, Storage et Edge Functions). Le cloisonnement entre identité, données analytiques et documents bruts est une propriété de sécurité du produit. Utiliser uniquement des données fictives tant que le cadre juridique et éthique n’est pas validé. Pour l’architecture, lire `docs/architecture.md`.
 
 ## Chemins principaux
 
@@ -12,7 +12,7 @@ MedData (`registre-clinique`) est une PWA React 18 + TypeScript strict + Vite, a
 - `supabase/functions/` : Edge Functions ; `supabase/storage.sql` : buckets et politiques Storage.
 - `services/` : services annexes, notamment le scanner ClamAV.
 - `scripts/` : validations et opérations explicites.
-- `docs/` : architecture, déploiement et procédures spécialisées.
+- `docs/` : architecture, déploiement et procédures spécialisées ; `docs/README.md` en est l’index et distingue les documents vivants des preuves datées.
 
 ## Règles toujours applicables
 

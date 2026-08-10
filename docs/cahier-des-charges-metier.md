@@ -61,21 +61,33 @@ par le serveur** entre en zone analytique.
 | **Administrateur système** (`system_admin`) | Gère les gabarits globaux et les rôles des comptes | **Aucun** |
 | **Médecin** (`medecin`) | Crée et possède des bases, saisit, importe, exporte, soumet à la curation | Ses bases + bases partagées avec lui |
 | **Curateur** (`curateur`) | Structure **et finalise** les cas du pool de curation | Documents bruts des cas **qu'il a réservés** ; **jamais l'identité** |
+| **Saisisseur** (`saisisseur`) | **Compte de mission** : saisit sur **une seule** base, pour une durée bornée décidée par le médecin | Saisie seule ; **jamais** d'export ni de documents bruts |
 
 **RG-6.** Tout nouveau compte est **médecin** par défaut ; seul un administrateur système peut le
 promouvoir curateur. Nul ne peut modifier son propre rôle.
 
-> Les anciens rôles `analyste` et `validateur` ont été **supprimés** : le curateur structure ET
-> finalise seul (plus d'étape de validation séparée).
+**RG-6bis.** Un compte `saisisseur` n'est **pas** créé par inscription libre : il est provisionné
+par un médecin propriétaire depuis l'écran « Comptes de mission ». Le médecin déclenche
+l'invitation, mais **seul l'étudiant définit son mot de passe** — sans quoi toute saisie
+deviendrait contestable. L'accès porte une **échéance obligatoire** (24 mois maximum),
+prolongeable ou révocable par le médecin. Voir [spec-comptes-mission.md](spec-comptes-mission.md).
 
-### 3.2 Partage d'une base entre médecins — 5 permissions granulaires
+> Les anciens rôles `analyste` et `validateur` ont été **supprimés** : le curateur structure ET
+> finalise seul (plus d'étape de validation séparée). Le rôle `saisisseur` a été **ajouté** le
+> 2026-07-29 (besoin : un thésard saisit pour son directeur).
+
+### 3.2 Partage d'une base entre médecins — 6 permissions granulaires
 
 **EF-1.** Le propriétaire d'une base peut la **partager** avec d'autres médecins via une
 **invitation par lien** (jeton à usage unique, montré une seule fois). Il choisit un profil de
-départ (`viewer` lecture seule / `editor`) puis ajuste **5 permissions indépendantes** :
+départ (`viewer` lecture seule / `editor`) puis ajuste **6 permissions indépendantes** :
 
-`voir l'identité` · `voir les documents bruts` · `éditer les données structurées` ·
-`exporter` · `gérer les accès`.
+`voir l'identité` · `voir les documents bruts` · `créer des données structurées` ·
+`éditer les données structurées` · `exporter` · `gérer les accès`.
+
+**RG-7bis.** `créer` et `éditer` sont deux permissions distinctes : un compte de mission crée et
+soumet, mais ne peut plus corriger une donnée soumise. La correction reste réservée au médecin,
+avec motif obligatoire et journalisation (`field_change_log`).
 
 **RG-7.** Le propriétaire possède toutes les permissions. Un collaborateur n'a que celles qui lui
 sont explicitement accordées. Exemple type : un statisticien reçoit `viewer + exporter` → il

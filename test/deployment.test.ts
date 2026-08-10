@@ -283,7 +283,16 @@ describe('configuration de deploiement', () => {
     const headers = new Map(config.headers[0].headers.map((h) => [h.key.toLowerCase(), h.value]));
 
     expect(config.git.deploymentEnabled).toBe(false);
-    expect(config.rewrites).toContainEqual({ source: '/(.*)', destination: '/index.html' });
+
+    // Le repli SPA ne doit PAS avaler les routes internes de la plateforme : servies en `text/html`
+    // sous `nosniff`, `/_vercel/speed-insights/script.js` et `/_vercel/insights/script.js` sont
+    // refusees par le navigateur et la telemetrie (Speed Insights, Web Analytics) ne demarre jamais.
+    const spaFallback = config.rewrites.find((rewrite) => rewrite.destination === '/index.html');
+    expect(spaFallback?.source).toBe('/((?!_vercel/).*)');
+    const capturedBySpa = (pathname: string) => new RegExp(`^${spaFallback!.source}$`).test(pathname);
+    expect(capturedBySpa('/patients/42')).toBe(true);
+    expect(capturedBySpa('/_vercel/speed-insights/script.js')).toBe(false);
+    expect(capturedBySpa('/_vercel/insights/script.js')).toBe(false);
     expect(headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(headers.get('content-security-policy')).toContain("object-src 'none'");
     expect(headers.get('x-frame-options')).toBe('DENY');

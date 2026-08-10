@@ -1,11 +1,23 @@
 # Inventaire des fonctions `SECURITY DEFINER`
 
 La liste normative se trouve dans
-`supabase/security-definer-allowlist.json`. Elle rattache chacune des 85
-signatures exécutables par le rôle `authenticated` à une justification bornée :
-helper d'autorisation/RLS, lecture sensible auditée, administration des accès,
-commande clinique ou de curation, administration des modèles, import/concurrence
-ou inspection des fichiers.
+[`supabase/security-definer-allowlist.json`](../supabase/security-definer-allowlist.json). Elle
+rattache chacune des **94** signatures exécutables par le rôle `authenticated` à une justification
+bornée, en sept catégories (état vérifié le 2026-08-10) :
+
+| Catégorie | Signatures | Objet |
+|---|---:|---|
+| `authorization-policy-helper` | 29 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
+| `clinical-curation-rpc` | 19 | Commandes cliniques et de curation |
+| `access-and-base-administration-rpc` | 14 | Administration des accès et des bases |
+| `template-administration-rpc` | 11 | Administration des gabarits |
+| `audited-sensitive-read` | 10 | Lectures sensibles tracées |
+| `import-idempotence-concurrency-rpc` | 7 | Import, idempotence, concurrence |
+| `file-inspection-rpc` | 4 | Inspection des fichiers déposés |
+
+Les fonctions réservées à `service_role` (par exemple `mission_account_lookup`,
+`reconcile_mission_profile`) sont **volontairement absentes** de l'inventaire : n'y figurent que
+les signatures exécutables par un utilisateur authentifié.
 
 Ce nombre n'est pas une cible à conserver. Toute nouvelle fonction, surcharge,
 suppression ou modification de signature fait échouer le contrôle jusqu'à une

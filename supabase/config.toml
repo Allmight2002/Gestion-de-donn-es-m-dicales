@@ -34,34 +34,48 @@ enabled = true
 # URL de redirection du frontend (etape 3+).
 site_url = "http://127.0.0.1:5173"
 
+# import_map : la carte d'imports des fonctions est le deno.json de la RACINE du depot (imports
+# figes, verifies par `npm run release:edge:check`). Le deploiement la passe explicitement
+# (`--import-map deno.json`, cf. docs/edge-functions.md et coordinated-release.yml) ; le service
+# LOCAL de `supabase start` ne la devine pas et echouait au demarrage du worker
+# (« Relative import path "@supabase/supabase-js" not prefixed with / or ./ or ../ »). Le chemin
+# est relatif au repertoire `supabase/`. Aucun effet sur le deploiement.
+
 # Fonction Edge signed-read (URL signee AUDITEE). verify_jwt = false car la fonction VERIFIE
 # elle-meme l'autorisation (header Authorization + getUser + RLS) ET gere le preflight CORS
 # (requete OPTIONS sans auth) : sinon la verification JWT de la plateforme bloquerait le preflight.
 [functions.signed-read]
 verify_jwt = false
+import_map = "../deno.json"
 
 # Fonction Edge inspect-upload (inspection antivirus). verify_jwt = false pour laisser passer le
 # preflight CORS ; la fonction verifie elle-meme le header Authorization + RLS.
 [functions.inspect-upload]
 verify_jwt = false
+import_map = "../deno.json"
 
 # Finalisation serveur apres preuve de l'objet Storage exact.
 [functions.finalize-upload]
 verify_jwt = false
+import_map = "../deno.json"
 
 # Nettoyage serveur des uploads orphelins apres echec d'insertion metier.
 [functions.cleanup-upload]
 verify_jwt = false
+import_map = "../deno.json"
 
 # Generation serveur des exports scientifiques conserves.
 [functions.generate-export]
 verify_jwt = false
+import_map = "../deno.json"
 
 # Reconciliation operationnelle des mouvements de quarantaine incomplets.
 [functions.reconcile-quarantine]
 verify_jwt = false
+import_map = "../deno.json"
 
 # Comptes de mission : creation du compte Auth (role saisisseur) + envoi du courriel de
 # definition de mot de passe. Le JWT du medecin est verifie DANS la fonction.
 [functions.create-mission-account]
 verify_jwt = false
+import_map = "../deno.json"
