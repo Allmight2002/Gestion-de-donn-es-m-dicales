@@ -258,13 +258,16 @@ npm run db:verify # applique toutes les migrations depuis zéro
 | Couche | Emplacement |
 |---|---|
 | Migrations SQL (source de vérité) | `supabase/migrations/` ; état résultant : `docs/schema-etat-final.md` |
-| Edge Functions | `supabase/functions/` (`signed-read`, `inspect-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`) |
-| Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `signedRead`) |
-| Domaine pur | `src/domain/` (validation, règles, import, inspection de fichiers, tableur) |
+| Edge Functions (7) | `supabase/functions/` (`signed-read`, `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`, `create-mission-account`) |
+| Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `signedRead`, `groups`, `mission`, `inspection`, `terminology`, `drafts`) |
+| Domaine pur | `src/domain/` (validation, règles, import/export, inspection de fichiers, tableur + worker, bibliothèques de gabarits et de listes de valeurs) |
 | Écrans | `src/screens/member/`, `src/screens/staff/` |
-| Auth & rôles | `src/auth/` |
+| Auth & rôles | `src/auth/` · routage et gating : `src/routes/` |
+| Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts` |
+| Antivirus | `services/clamav-scanner/` (service HTTP appelé par `inspect-upload`) |
+| Opérations & vérifications | `scripts/` (~40 : `db:verify`, `schema`, `manifest`, sauvegarde coordonnée, preuves de gouvernance, dérive cloud) |
 | i18n | `src/i18n/` |
-| Tests | `test/` (db) + `src/**/*.test.tsx` (web) |
+| Tests | `test/` (db) + `src/**/*.test.tsx` (web) + `e2e/` (Playwright) |
 
 Liste ordonnée des migrations : voir le dossier `supabase/migrations/` et le snapshot
 `docs/schema-etat-final.md`. Les commentaires `§X.Y` dans le SQL renvoient aux exigences du

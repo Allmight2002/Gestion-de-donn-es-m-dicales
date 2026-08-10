@@ -1,9 +1,18 @@
-# Architecture — Registre clinique (v3.0)
+# Architecture — Registre clinique (v4.0)
 
 > Vue d'ensemble pour un nouveau développeur. Décrit le **modèle de données**, les
-> **rôles**, le **cloisonnement de sécurité (RLS)** et le **cycle de curation** tels
-> qu'ils sont réellement implémentés aujourd'hui. Pour la mise en route locale, voir
-> [tester-en-local.md](tester-en-local.md) et [configurer-supabase.md](configurer-supabase.md).
+> **rôles**, le **cloisonnement de sécurité (RLS)**, le **cycle de curation** et les
+> **sous-systèmes serveur** tels qu'ils sont réellement implémentés aujourd'hui. Pour la mise en
+> route locale, voir [tester-en-local.md](tester-en-local.md) et
+> [configurer-supabase.md](configurer-supabase.md).
+>
+> **Relecteur extérieur ?** [guide-relecture-externe.md](guide-relecture-externe.md) propose un
+> parcours développeur et un parcours sécurité. L'index de toute la documentation est dans
+> [README.md](README.md).
+
+**Instantané vérifié le 10 août 2026** (`npm run db:verify`, 112 migrations rejouées depuis zéro) :
+38 tables · 225 fonctions · 61 politiques RLS · 59 triggers · 7 Edge Functions · ~18 000 lignes de
+TypeScript applicatif (hors tests) · ~15 500 lignes de SQL de migration.
 
 Spécifications de référence (reconstituées à partir du code réel, versionnées) :
 **[cahier-des-charges-metier.md](cahier-des-charges-metier.md)** (fonctionnel : EF / RG) et
@@ -39,16 +48,33 @@ données** par Row-Level Security (RLS) — pas seulement dans l'interface.
 
 ## 2. Rôles & permissions
 
-### 2.1 Rôle global (`profiles.global_role`) — 3 valeurs
+### 2.1 Rôle global (`profiles.global_role`) — 4 valeurs
 
 | Rôle | Description | Accès aux données patient |
 |---|---|---|
 | `system_admin` | Gère les gabarits globaux et les comptes | **Aucun** |
 | `medecin` | Crée et possède des bases, saisit, exporte | Ses bases + bases partagées |
 | `curateur` | Structure et **finalise** les cas du pool de curation | Documents bruts des cas réservés ; **jamais l'identité** |
+| `saisisseur` | **Compte de mission** : saisit sur une seule base, pour une durée bornée | Saisie seule ; jamais d'export ni de documents bruts |
 
 > Les anciens rôles `analyste` et `validateur` ont été supprimés. Le **curateur**
 > structure ET finalise seul (il n'y a plus d'étape de validation séparée).
+
+**Pourquoi `saisisseur` est un rôle global et non une simple permission de base** — la question
+revient toujours en revue. Le rôle `medecin` porte des droits **hors de toute base** : créer une
+base ([`20260616090400_rls.sql:68`](../supabase/migrations/20260616090400_rls.sql)), créer un
+gabarit, accepter une invitation. Aucune permission de `base_access` ne peut les retirer : un
+étudiant déclaré `medecin` pourrait créer sa propre base et y recopier les données hors du
+contrôle de son directeur. En faisant du saisisseur un rôle distinct, toute policy écrite
+`is_medecin() and …` — y compris celles écrites **plus tard** — l'exclut automatiquement : le
+défaut échoue fermé. Spécification : [spec-comptes-mission.md](spec-comptes-mission.md).
+
+Invariants d'une mission, portés **par trigger** (`guard_base_access_medecin`, donc valables quelle
+que soit la voie d'écriture) : échéance obligatoire ≤ 24 mois, `can_create_structured_data`
+obligatoire, `can_edit_structured_data` / `can_export_data` / `can_manage_access` /
+`can_view_raw_documents` interdites, justification écrite exigée si l'identité est ouverte.
+L'échéance est revérifiée par RLS **à chaque requête** : un jeton de session déjà émis ne survit
+pas à la révocation.
 
 ### 2.2 Rôle d'accès par base (`base_access.access_role`) — 2 valeurs
 
@@ -59,15 +85,25 @@ Le partage de base se fait entre médecins :
 | `viewer` | Lecture seule (aucune permission cochée par défaut) |
 | `editor` | `can_view_identity` + `can_view_raw_documents` + `can_edit_structured_data` |
 
-### 2.3 Les 5 permissions granulaires (`base_access` / `base_invitation`)
+### 2.3 Les 6 permissions granulaires (`base_access` / `base_invitation`)
 
-`can_view_identity`, `can_view_raw_documents`, `can_edit_structured_data`,
-`can_export_data`, `can_manage_access`.
+`can_view_identity`, `can_view_raw_documents`, `can_create_structured_data`,
+`can_edit_structured_data`, `can_export_data`, `can_manage_access`.
+
+`can_create_structured_data` (ajoutée par les comptes de mission) sépare **créer** de
+**modifier** : les RPC de création acceptent `can_create` **ou** `can_edit` — aucun backfill,
+aucun changement pour les éditeurs existants — tandis que les RPC de modification exigent
+`can_edit` seul. Un saisisseur crée et soumet, mais ne corrige jamais une donnée soumise.
 
 Le **propriétaire** d'une base les possède toutes. Pour un collaborateur, chaque
 permission est un booléen indépendant, vérifié côté base par une fonction d'aide
 (`can_view_identity(base)`, `can_export_data(base)`, …). Une invitation ne stocke que le
 **hash** du jeton (`token_hash`) ; le jeton en clair n'est montré qu'une fois.
+
+Noter que `can_write_identity(base)` n'est **pas** une colonne mais une fonction dérivée :
+elle exige `is_medecin()` **et** (propriétaire **ou** `can_view_identity` **et**
+`can_edit_structured_data` sur un accès non révoqué et non expiré). Un compte de mission ne peut
+donc jamais écrire l'identité, quelle que soit la configuration de ses permissions.
 
 ---
 
@@ -101,6 +137,29 @@ erDiagram
     cohort ||--o{ cohort_encounter_member : rencontres
     base ||--o{ export_log : exports
     base ||--o{ audit_log : audit
+```
+
+Les tables ci-dessus forment le **cœur** (zones cloisonnées + curation + export). Les
+sous-systèmes ajoutés après le MVP s'y rattachent sans le modifier :
+
+```mermaid
+erDiagram
+    base ||--o{ import_batch : "import CSV/XLSX"
+    import_batch ||--o{ import_batch_row : lignes
+    import_batch ||--o{ import_row_hash : "idempotence inter-lots"
+
+    base ||--o{ upload_ticket : "depot de fichier"
+    upload_ticket ||--o| quarantine_move_log : "si verdict negatif"
+
+    base ||--o{ offline_encounter_operation : "file d'attente hors-ligne"
+
+    research_group ||--o{ research_group_base : rattache
+    research_group_base }o--|| base : base
+
+    terminology_release ||--o{ terminology_concept : versionne
+    template_field }o--o| terminology_release : "listes de valeurs"
+
+    profiles ||--o{ base_access : "acces (mission = expires_at non nul)"
 ```
 
 ### Inventaire par domaine
@@ -189,9 +248,29 @@ seule, ou le patient **et** la demande.
   (pas de récursion) et ne renvoient qu'un booléen sur `auth.uid()`.
 - **Âge calculé côté serveur.** Un `editor` sans accès identité peut saisir des rencontres
   avec âge **sans jamais voir la date de naissance** (§4.1).
+- **Écritures cliniques par RPC uniquement.** Les `INSERT`/`UPDATE` directs sur les tables
+  cliniques sont fermés ; tout passe par des fonctions qui portent l'autorisation, la validation
+  et la journalisation. Contourner l'interface ne contourne donc pas les règles.
+- **Validation imposée par trigger.** Au passage en `curated`, `assert_curated_complete`
+  enchaîne bornes/types (`assert_data_valid`), clés inconnues (`assert_no_unknown_fields`),
+  champs requis (`assert_required_complete`) **et règles de cohérence inter-champs**
+  (`assert_validation_rules`, opérateurs en liste blanche — pas d'expression arbitraire évaluée).
+  La validation React n'est qu'un confort d'usage, pas la garantie.
 - **Anti-fuite à l'export.** Liste blanche analytique ; tout champ identifiant est rejeté.
+- **Fichiers déposés : inspectés avant d'être lisibles** (§9.1). Aucune URL signée n'est
+  délivrée tant que le statut d'inspection n'est pas `accepted`.
+- **Audit écrit avant livraison.** Pour une lecture de fichier, la trace `audit_log` est
+  insérée **avant** que l'URL signée soit produite : une lecture non tracée n'est pas possible
+  par abandon de la requête. Les journaux sont protégés en modification/suppression.
 - **`service_role` jamais dans le frontend** : le client navigateur n'utilise que la clé
-  ANON.
+  ANON ; la clé de service ne vit que dans les Edge Functions et les scripts serveur.
+- **En-têtes de sécurité** ([`vercel.json`](../vercel.json)) : CSP stricte (`default-src 'self'`),
+  `frame-ancestors 'none'`, HSTS, `Referrer-Policy: no-referrer`.
+- **Inventaire normatif des fonctions privilégiées**
+  ([`security-definer-allowlist.json`](../supabase/security-definer-allowlist.json)) : chaque
+  fonction `SECURITY DEFINER` exécutable par `authenticated` est justifiée ; toute création,
+  suppression ou modification de signature **fait échouer le contrôle** jusqu'à revue explicite
+  (`test/security-definer-acl.test.ts`). Voir [security-definer.md](security-definer.md).
 - **Limite honnête** : la RLS empêche l'accès *applicatif* aux identités ; l'administrateur
   du serveur peut techniquement lire la base. Une garantie forte supposerait un chiffrement
   côté client (hors périmètre MVP). **Aucune donnée réelle** tant que le cadre juridique
@@ -203,15 +282,21 @@ seule, ou le patient **et** la demande.
 
 | Couche | Emplacement | Rôle |
 |---|---|---|
-| **Migrations SQL** | `supabase/migrations/` | Schéma, RLS, fonctions, RPC — source de vérité |
+| **Migrations SQL** | `supabase/migrations/` (112) | Schéma, RLS, fonctions, RPC — **source de vérité** |
+| **Edge Functions** | `supabase/functions/` (7) | Code **serveur** Deno : chemins non pilotables par le navigateur seul (§9) |
+| Inventaire privilèges | `supabase/security-definer-allowlist.json` | Fonctions `SECURITY DEFINER` justifiées une à une |
 | Données de démo | `supabase/seed.sql` | Comptes + 10 patients **fictifs** |
-| Storage | `supabase/storage.sql` | Buckets privés + RLS |
+| Storage | `supabase/storage.sql` | Buckets privés + RLS (dont `quarantined-uploads`) |
+| Antivirus | `services/clamav-scanner/` | Service HTTP de scan appelé par `inspect-upload` |
 | **Repositories** | `src/data/` | Accès aux données, injectables (`RepositoryProvider`) |
-| **Domaine pur** | `src/domain/` | Validation de saisie, règles JSON, inspection de fichier |
+| **Domaine pur** | `src/domain/` | Validation de saisie, règles JSON, import/export, tableur |
 | **Écrans** | `src/screens/member`, `src/screens/staff` | UI React |
 | Auth & rôles | `src/auth/` | `AuthProvider`, gating par rôle (logique pure testée) |
+| Routage | `src/routes/` | 13 routes + `ProtectedRoute` (gating par rôle) |
+| Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts` | Service worker, file d'attente d'écritures |
 | i18n | `src/i18n/` | Messages fr/en |
-| **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) | RLS + domaine + rendu |
+| **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) + `e2e/` | RLS + domaine + rendu + bout-en-bout |
+| Opérations | `scripts/` (~40) | Vérifications de schéma, sauvegarde, preuves de gouvernance, contrôles de release |
 
 ### Liste des migrations (ordre d'application)
 
@@ -238,7 +323,13 @@ seule, ou le patient **et** la demande.
 093500_offline_snapshot_rpc      093600_import_duplicate_warnings
 
 # … suite : inspection serveur, gouvernance des accès, édition historique, exports audités,
-# idempotence d'import inter-lots … voir le dossier et schema-etat-final.md
+# idempotence d'import inter-lots, privilèges d'exécution des fonctions …
+
+# Sous-systèmes récents (juillet–août 2026)
+20260726120000_terminology_reference      20260726210000_terminology_field_type
+20260728043556_preserve_historical_terminology
+20260729104500_mission_accounts           20260729153000_mission_profile_reconcile
+20260801140238_restore_deleted_base       20260801185149_observation_model_base
 ```
 
 ---
@@ -254,12 +345,23 @@ recrée ce que Supabase fournit déjà (`auth.uid()`, rôles) ; il n'est jamais 
 npm test            # tout : RLS (projet db) + frontend (projet web)
 npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
+npm run db:verify   # rejoue les 112 migrations depuis zéro (~13 s) et résume le schéma
+npm run test:web -- --coverage   # couverture du projet web
 ```
 
-État actuel : les compteurs exacts de tests et migrations sont fournis par `npm run manifest`,
-`npm run schema` et les sorties Vitest. Chaque refus RLS est doublé d'un
-**contrôle positif** prouvant qu'un utilisateur légitime voit bien la donnée (pas de faux
-positif par table vide).
+Deux projets Vitest cohabitent (voir [vitest.config.ts](../vitest.config.ts)) : **`db`** (tests
+SQL/RLS sur PostgreSQL réel) et **`web`** (rendu et gating de rôle sous jsdom). Les parcours
+bout-en-bout Playwright (`e2e/`) tournent séparément, contre un environnement de staging
+(`npm run e2e:staging`, `npm run e2e:browser`) — voir [e2e-staging.md](e2e-staging.md) et
+[e2e-browser.md](e2e-browser.md).
+
+Les compteurs exacts sont fournis par `npm run manifest`, `npm run schema` et les sorties Vitest.
+Chaque refus RLS est doublé d'un **contrôle positif** prouvant qu'un utilisateur légitime voit bien
+la donnée (pas de faux positif par table vide).
+
+> **Comment lire un run RLS.** Les lignes `ERROR:` dans le journal sont **attendues** : ce sont
+> les tests négatifs (une écriture interdite *doit* lever une exception). Seul le décompte final
+> de Vitest fait foi.
 
 ---
 
@@ -276,3 +378,89 @@ positif par table vide).
 | `curator2@demo.test` | `curateur` | Pool de curation |
 | `validator@demo.test` | `curateur` | Compte hérité (le rôle `validateur` est supprimé) |
 | `anna.analyst@demo.test` | `medecin` | `viewer` + `can_export_data` sur la base d'Alice (export **sans** identité) |
+
+Le seed ne crée **pas** de compte `saisisseur` : une mission se provisionne depuis l'écran
+« Comptes de mission » d'un médecin propriétaire (voir [tests-multicomptes.md](tests-multicomptes.md)).
+
+---
+
+## 9. Sous-systèmes serveur (au-delà du MVP)
+
+Les sept **Edge Functions** (`supabase/functions/`, runtime Deno) portent les chemins qui ne
+doivent pas être pilotables par le navigateur seul. Détail complet :
+[edge-functions.md](edge-functions.md).
+
+| Fonction | Rôle | Pourquoi côté serveur |
+|---|---|---|
+| `signed-read` | Délivre une URL signée vers un fichier privé | L'audit est écrit **avant** la signature ; le frontend ne peut pas signer puis journaliser « au mieux » |
+| `inspect-upload` | Inspection antivirus + cohérence du fichier | Le verdict ne peut pas dépendre du client qui dépose |
+| `finalize-upload` | Valide hash/taille/MIME **après** commit | La preuve est recalculée côté serveur, avec compensation en cas d'échec partiel |
+| `cleanup-upload` | Reprend les tickets d'upload abandonnés | Idempotence et nettoyage hors session utilisateur |
+| `reconcile-quarantine` | Réconcilie les objets mis en quarantaine | Accès `service_role` au bucket isolé |
+| `generate-export` | Produit l'export d'une cohorte figée | Restreint aux lignes `curated`, hash enregistré, rollback si la journalisation échoue |
+| `create-mission-account` | Provisionne un compte `saisisseur` | Nécessite l'admin Auth ; le médecin déclenche, l'étudiant définit son secret |
+
+> Une modification locale sous `supabase/functions/` **ne change pas le cloud** : chaque fonction
+> doit être redéployée explicitement. Les validations locales ne prouvent jamais la version
+> déployée — d'où `npm run release:edge:check` et `npm run release:drift`.
+
+### 9.1 Chaîne de dépôt de fichier
+
+```
+ upload_ticket (pending) ──► objet déposé ──► finalize-upload (hash/taille/MIME revérifiés)
+                                                        │
+                                                        ▼
+                                          inspect-upload : extension vs magic bytes,
+                                          marqueurs OOXML, taille max, puis ClamAV (HTTP)
+                                                        │
+                        ┌───────────────────────────────┴───────────────────────────────┐
+                        ▼                                                               ▼
+              verdict propre                                              infecté / incohérent / trop gros
+        inspection_status = 'accepted'                        copie dans le bucket privé `quarantined-uploads`,
+                        │                                     puis suppression de l'objet d'origine ;
+                        ▼                                     inspection_status = 'quarantined'
+        signed-read peut délivrer une URL                                     │
+                                                                              ▼
+                                                              signed-read refuse (et refuse aussi
+                                                              `pending` / `scanning`)
+```
+
+Le verdict est écrit par la RPC `complete_file_inspection` : statut, métadonnées et trace
+`file_inspected` dans **une seule transaction**. Quand le secret Edge
+`REQUIRE_SERVER_INSPECTION=true` est posé, le repli de démonstration `accepted_client` est refusé
+et seul `accepted` ouvre la lecture. Voir [upload-inspection-operations.md](upload-inspection-operations.md)
+et [xlsx-security.md](xlsx-security.md).
+
+### 9.2 Import CSV/XLSX
+
+Le client **propose** un mappage colonnes → champs de gabarit ; le serveur **valide et décide**
+(`import_records`). L'analyse du tableur tourne dans un **Web Worker** (`src/domain/spreadsheet.worker.ts`)
+pour ne pas bloquer l'interface. `import_row_hash` assure l'**idempotence inter-lots** : rejouer
+un fichier déjà importé ne duplique pas les enregistrements. Les doublons probables sont signalés
+plutôt que fusionnés silencieusement.
+
+### 9.3 Mode hors-ligne
+
+Trois phases livrées : **lecture** (instantané local), **écritures** (file d'attente
+`offline_encounter_operation` rejouée à la reconnexion) et **conflits** (verrou optimiste sur la
+rencontre : une modification concurrente est détectée et présentée, jamais écrasée en silence).
+Contraintes de sécurité associées : [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md).
+
+### 9.4 Autres sous-systèmes
+
+- **Groupes de recherche** (`research_group`, `research_group_base`) : rattachement de bases à un
+  groupe, avec ses propres politiques de visibilité.
+- **Référentiel de terminologie** (`terminology_release`, `terminology_concept`) : listes de
+  valeurs versionnées ; les données historiques conservent la version sous laquelle elles ont été
+  saisies (`20260728043556_preserve_historical_terminology.sql`).
+- **Corbeille et restauration de base** (`restore_deleted_base`) : suppression logique réversible.
+  ⚠️ Comportement acté : une base restaurée **perd son rattachement au groupe de recherche**
+  (le snapshot ne capture que les statuts `raw_submission`/`curation_task`).
+- **Modèles d'observation** (`base.observation_model`) : `cross_sectional` (une saisie par
+  participant), `longitudinal` (suivi répété), `event_registry` (registre d'événements). Le choix
+  se verrouille à la première saisie ; en transversal, les rencontres sont **refusées par les
+  gardes SQL**, pas seulement masquées par l'interface.
+- **Observabilité et exploitation** : `scripts/` porte la sauvegarde coordonnée chiffrée, les
+  preuves de reprise/gouvernance et les contrôles de dérive cloud — voir
+  [supervision.md](supervision.md), [continuite.md](continuite.md) et
+  [operations-readiness.md](operations-readiness.md).
