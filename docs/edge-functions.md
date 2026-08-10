@@ -226,10 +226,135 @@ Le tunnel affiche une URL `https://...trycloudflare.com`. Configurez alors seule
 session de test :
 
 ```powershell
+npx supabase projects list --output json
+$projectRef = '<reference-du-projet-verifiee>'
 npx supabase secrets set `
   "CLAMAV_SCAN_URL=https://...trycloudflare.com/scan" `
-  "CLAMAV_SCAN_TOKEN=$env:CLAMAV_SCAN_TOKEN"
+  "CLAMAV_SCAN_TOKEN=$env:CLAMAV_SCAN_TOKEN" `
+  --project-ref $projectRef `
+  --yes
 ```
+
+#### Renouveler l'URL temporaire sans interrompre le scanner
+
+Une URL `trycloudflare.com` change a chaque relance. Ne pas arreter l'ancien tunnel avant que le
+nouveau soit joignable et que le secret Edge ait ete mis a jour. Ne jamais se fier implicitement au
+projet Supabase lie au depot : relever le nom et la reference du projet cible, puis toujours passer
+`--project-ref`.
+
+1. Verifier le scanner local et relever les processus Cloudflare existants :
+
+   ```powershell
+   docker compose -f docker-compose.clamav.yml ps
+   Invoke-RestMethod http://127.0.0.1:8088/health
+   $oldTunnelIds = @(Get-Process cloudflared -ErrorAction SilentlyContinue).Id
+   ```
+
+2. Demarrer un nouveau tunnel en arriere-plan et conserver son journal hors du depot :
+
+   ```powershell
+   $tunnelDir = Join-Path $env:LOCALAPPDATA 'MedData\cloudflared-clamav'
+   New-Item -ItemType Directory -Force -Path $tunnelDir | Out-Null
+   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+   $stdoutLog = Join-Path $tunnelDir "tunnel-$stamp.out.log"
+   $stderrLog = Join-Path $tunnelDir "tunnel-$stamp.err.log"
+
+   $newTunnel = Start-Process `
+     -FilePath (Get-Command cloudflared).Source `
+     -ArgumentList @('tunnel', '--url', 'http://127.0.0.1:8088', '--no-autoupdate') `
+     -WindowStyle Hidden `
+     -RedirectStandardOutput $stdoutLog `
+     -RedirectStandardError $stderrLog `
+     -PassThru
+
+   $tunnelBase = $null
+   for ($attempt = 0; $attempt -lt 40 -and -not $tunnelBase; $attempt++) {
+     Start-Sleep -Milliseconds 500
+     if ($newTunnel.HasExited) { throw 'cloudflared s''est arrete avant de fournir une URL.' }
+     if (Test-Path -LiteralPath $stderrLog) {
+       $logText = Get-Content -LiteralPath $stderrLog -Raw
+       $tunnelBase = [regex]::Match(
+         $logText,
+         'https://[a-z0-9-]+\.trycloudflare\.com'
+       ).Value
+     }
+   }
+   if (-not $tunnelBase) { throw 'URL trycloudflare introuvable dans le journal.' }
+   Invoke-RestMethod "$tunnelBase/health"
+   ```
+
+   Le resultat `/health` doit etre HTTP 200 avec `status: ok` et `engine: clamav`. En cas d'echec,
+   arreter seulement `$newTunnel` et conserver l'ancien tunnel et le secret Edge inchanges.
+
+3. Identifier explicitement la cible puis mettre a jour l'URL dans l'environnement GitHub Actions
+   et dans les secrets Edge du meme staging. Ne faire tourner `CLAMAV_SCAN_TOKEN` que lors d'une
+   rotation planifiee :
+
+   ```powershell
+   $repository = 'Allmight2002/Gestion-de-donn-es-m-dicales'
+   $githubEnvironment = 'staging'
+   gh secret set CLAMAV_SCAN_URL `
+     --repo $repository `
+     --env $githubEnvironment `
+     --app actions `
+     --body "$tunnelBase/scan"
+
+   npx supabase projects list --output json
+   $projectRef = '<reference-du-projet-verifiee>'
+
+   npx supabase secrets set `
+     "CLAMAV_SCAN_URL=$tunnelBase/scan" `
+     --project-ref $projectRef `
+     --yes
+
+   npx supabase secrets list --project-ref $projectRef --output json
+   ```
+
+   Un job qui declare `environment: staging` lit d'abord les secrets de cet environnement : ceux-ci
+   remplacent les secrets de niveau depot portant le meme nom. Mettre a jour seulement le secret du
+   depot ne suffit donc pas. `gh secret list --env staging` et la liste Supabase doivent tous deux
+   montrer un `updated_at` recent pour `CLAMAV_SCAN_URL`. La valeur retournee par la CLI Supabase est
+   une empreinte : elle ne permet pas de relire l'URL en clair. Ne jamais afficher le jeton ClamAV ni
+   le copier dans l'historique du terminal.
+
+4. Effectuer un scan synthetique authentifie, sans fichier utilisateur ni donnee medicale :
+
+   ```powershell
+   $containerEnv = docker inspect claudemeddata-clamav-scanner-1 `
+     --format '{{range .Config.Env}}{{println .}}{{end}}'
+   $tokenLine = $containerEnv |
+     Where-Object { $_ -like 'SCAN_TOKEN=*' } |
+     Select-Object -First 1
+   if (-not $tokenLine) { throw 'Jeton scanner introuvable.' }
+   $scanToken = $tokenLine.Substring('SCAN_TOKEN='.Length)
+   $body = [Text.Encoding]::UTF8.GetBytes('MedData synthetic scanner connectivity check')
+
+   Invoke-RestMethod `
+     -Uri "$tunnelBase/scan" `
+     -Method Post `
+     -Headers @{ Authorization = "Bearer $scanToken" } `
+     -ContentType 'application/octet-stream' `
+     -Body $body
+   ```
+
+   Le verdict attendu est `status: clean` et `engine: clamav`.
+
+5. Seulement apres ces controles, arreter les anciens processus sans toucher au nouveau, puis
+   verifier une derniere fois la sante publique :
+
+   ```powershell
+   $oldTunnelIds | ForEach-Object { Stop-Process -Id $_ -Force }
+   Get-Process -Id $newTunnel.Id
+   Invoke-RestMethod "$tunnelBase/health"
+   ```
+
+Cette procedure actualise le tunnel et les secrets GitHub/Edge ; elle ne prouve pas a elle seule le
+parcours `inspect-upload` complet, la quarantaine, le mode strict ni l'aptitude a la production.
+
+Apres une extinction, une veille prolongee ou une perte reseau, un processus `cloudflared` peut
+rester visible alors que son hostname ne se resout plus. Un PID actif n'est donc jamais une preuve
+de disponibilite : exiger une nouvelle reponse publique `/health` et, si elle echoue, creer une
+nouvelle URL avant de relancer la CI.
 
 Cette URL est ephemere : elle cesse de fonctionner quand le processus `cloudflared`, Docker ou le
 PC s'arrete. Ne pas activer `REQUIRE_SERVER_INSPECTION=true`, la politique SQL stricte ou le build
