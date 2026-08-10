@@ -1,35 +1,44 @@
 # Prompts prêts à l'emploi, un par lot
 
 - Établi le 2026-07-28, en complément de [`lots-paralleles.md`](lots-paralleles.md)
+- **Révisé le 2026-08-10** : état des lots remis à jour, et cinq prompts ajoutés (L15 à L19)
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
 **Avant de lancer deux lots en même temps**, vérifier le tableau de
 [`lots-paralleles.md`](lots-paralleles.md) : deux lots qui touchent le même
 fichier produiront un conflit de fusion, même si leurs sujets n'ont aucun
-rapport. L6, L9 et L14 doivent tourner **seuls**.
+rapport. **L14 et L16 doivent tourner seuls.**
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État au 2026-08-01
+## État au 2026-08-10
 
 **Vérifier cette liste avant de lancer un thread**, pour ne pas faire refaire du
 travail déjà fait :
 
 | Lot | État |
 |---|---|
-| L1 | **Livré** (PR #88). Prompt conservé pour mémoire, barré ci-dessous. |
-| L2 | **Livré** (PR #89). Prompt conservé pour mémoire. |
-| L3 | **Livré** (PR #86). Aucun prompt. |
-| L5 | **Livré** (PR #91). Prompt conservé pour mémoire. |
-| L7 | **Livré**. Prompt conservé pour mémoire. |
-| L9 | **Livré** (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
-| L10 | **Livré**. Prompt conservé pour mémoire. |
+| L1 | **Livré** le 2026-07-28 (PR #88). Prompt conservé pour mémoire, barré ci-dessous. |
+| L2 | **Livré** le 2026-07-28 (PR #89). Prompt conservé pour mémoire. |
+| L3 | **Livré** le 2026-07-28 (PR #86). Aucun prompt. |
+| L5 | **Livré** le 2026-07-28 (PR #91). Prompt conservé pour mémoire. |
+| L6 | **Livré** le 2026-08-09 (PR #122 puis #125). Prompt conservé — c'est celui qui a produit le lot. |
+| L7 | **Livré** le 2026-08-01. Prompt conservé pour mémoire. |
+| L8 | **Livré** le 2026-08-01 (PR #116). Prompt conservé pour mémoire. |
+| L9 | **Livré** le 2026-08-01 (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
+| L10 | **Livré** le 2026-07-29. Prompt conservé pour mémoire. |
 
-**Les lots restant à traiter sont** : L4, L6, L8, L11, L12, L13 et L14.
+**Les lots restant à traiter sont** : L4, L11, L12, L13, L14, et les cinq nouveaux
+**L15, L16, L17, L18 et L19** (campagne de vérification des flux multi-comptes, cf.
+[`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)).
+
+> **L16 est prioritaire parmi les nouveaux** : il porte une décision produit déjà tranchée par le
+> porteur, que rien ne traduit encore en base. Tant que la migration n'existe pas, la
+> spécification et le code se contredisent.
 
 ## Le déploiement n'est pas automatique
 
@@ -49,9 +58,30 @@ Deux conséquences pour la parallélisation :
    à chaque lot d'aller jusqu'à `main` et de le signaler, puis de demander avant
    de déclencher une release de production si d'autres lots sont en cours.
 
-Au 2026-07-28, `main` porte L1, L2, L3 et L5 **sans qu'aucun ne soit déployé** :
-la production sert encore une version antérieure. Une release coordonnée les
-mettra tous en ligne d'un coup.
+**Au 2026-08-10 : tous les lots livrés sont en ligne.** La dernière release technique prouvée
+porte le SHA `9cd3e04` du 2026-08-09 — staging (run GitHub `31289463078`) puis cible technique
+`production` (run `31289908319`), le second consommant la preuve du premier sur le même SHA. Elle
+a mis en ligne L1, L2, L3, L5, **L6**, L7, L8, L9 et L10.
+
+> Attention en lisant [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md) : ce document
+> nomme `f0bf2af` comme dernière release prouvée. C'était vrai à sa date, ça ne l'est plus.
+>
+> Et surtout, **ne pas conclure d'un échec de « Coordinated release » que rien n'est parti.** La
+> release du 2026-08-09 a échoué **deux fois** avant de passer (runs `31288508289` et
+> `31289034926`, à 01h33 et 01h48), sur l'activation stricte : « Scanner strict injoignable ».
+> Le tunnel Cloudflare a été renouvelé et les deux exécutions suivantes ont réussi. Chercher les
+> exécutions **réussies** du workflow, pas seulement les rouges :
+>
+> ```bash
+> gh run list --workflow="Coordinated release" --limit 30
+> ```
+
+**Le point de fragilité réel n'est pas la publication, c'est le scanner.** Il est exposé par un
+tunnel `trycloudflare` **temporaire**, monté à la main pour faire passer cette release. Son nom
+de domaine cesse de résoudre alors que le processus vit encore — c'est ce qui a provoqué les deux
+échecs ci-dessus. Toute release future butera dessus tant qu'un tunnel nommé ou un petit VPS n'aura
+pas remplacé le montage éphémère. Procédure de renouvellement d'urgence dans
+[`edge-functions.md`](edge-functions.md).
 
 ---
 
@@ -291,38 +321,150 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L6 — Finition de l'interface (à lancer SEUL)
+## ~~L6 — Finition de l'interface : présence, rythme et densité~~ — livré le 2026-08-09
+
+Livré en deux temps : « Améliore et harmonise tous les écrans » (PR #122) puis « Finalise
+l'accessibilité mobile » (PR #125). Composant `Checkbox` commun créé, zone de profil refondue,
+squelettes généralisés, densité et gabarits repris sur une trentaine d'écrans. **Ne pas
+relancer ce prompt** — il est conservé parce que c'est lui qui a produit le lot, et qu'il sert
+de modèle pour un chantier d'interface transversal.
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
 dans le répertoire de travail. Lis d'abord CLAUDE.md, puis docs/lots-paralleles.md
 (section L6) et docs/idees-post-readiness.md (idée 10).
 
-ATTENTION : ce lot touche neuf écrans. Il doit tourner SEUL. Vérifie avec moi
-qu'aucun autre chantier n'est en cours avant de commencer.
+MISSION. La base fonctionnelle est bonne, mais l'interface manque de présence et
+reste trop chargée, sur mobile comme sur ordinateur. L'objectif n'est pas de
+« refaire le design » : rends les informations importantes immédiatement lisibles,
+allège les écrans les plus denses et installe des règles visuelles cohérentes.
+Préserve les parcours, les droits, les données, les libellés métier et les
+comportements existants.
 
-PÉRIMÈTRE — trois points, tous constatés dans le code :
+ATTENTION : ce lot est transversal et touche des composants partagés ainsi que
+plusieurs écrans. Il doit tourner SEUL. Avant toute écriture, inspecte `git
+status`, les worktrees et les fichiers déjà modifiés ; vérifie avec moi qu'aucun
+autre chantier ne risque de toucher les mêmes surfaces.
 
-1. src/components/AppShell.tsx, autour de la ligne 170 : le bloc nom + rôle n'a
-   ni fond ni bordure, alors que le bloc thème/langue juste au-dessus porte une
-   séparation. Le rôle est rendu en gris moyen sur fond clair et passe inaperçu.
-   C'est pourtant l'élément qui répond à « qui suis-je, avec quels droits » —
-   une question qui compte dans un produit où le rôle détermine ce qu'on voit.
+PÉRIMÈTRE — quatre axes cohérents, à vérifier dans le code courant avant de les
+modifier.
 
-2. Les cases à cocher sont celles du système, disséminées dans neuf écrans.
-   Remplace-les par un composant commun.
+1. PROFIL ET HIÉRARCHIE DANS LE MENU
 
-3. Manque de retour visuel sur les changements d'état. Le squelette de chargement
-   existe (src/components/Skeleton.tsx) mais n'est presque pas employé : le
-   généraliser donnerait déjà beaucoup sans ajouter la moindre animation.
+   Dans `src/components/AppShell.tsx`, autour de la ligne 170, le bloc nom + rôle
+   n'a ni fond ni bordure, alors que le bloc thème/langue juste au-dessus porte
+   une séparation. En thème clair, le rôle gris se perd. C'est pourtant la
+   réponse à « qui suis-je, avec quels droits ? », essentielle dans une
+   application où le rôle détermine ce qui est visible.
 
-Principe directeur : le dynamisme utile confirme une action ou explique un
-changement. Le dynamisme décoratif fatigue et ralentit. Le porteur a demandé
-« un peu de dynamisme, pas surcharger » — tiens-t'en là.
+   Donne à ce bloc une assise visuelle légère et cohérente avec les primitives
+   existantes : fond discret, séparation ou bordure, contraste suffisant et rôle
+   lisible comme une information portante. Le résultat doit rester sobre en
+   clair comme en sombre, sans faire croire à une action cliquable s'il n'en est
+   pas une.
 
-AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin, et
-montre-moi ce que tu comptes faire avant de le généraliser aux neuf écrans. Ne
-code rien tant que tu n'as pas mes réponses.
+2. CASES À COCHER COHÉRENTES ET ACCESSIBLES
+
+   Les cases à cocher natives du système sont aujourd'hui disséminées dans les
+   écrans. Recense leur nombre et leurs contextes dans l'état courant — les
+   comptes historiques ne remplacent pas cet inventaire — puis crée un composant
+   réutilisable et remplace les occurrences dans le périmètre vérifié.
+
+   Le composant doit préserver les labels associés, la sémantique native, le
+   clavier, lecteur d'écran, états coché/non coché/indéterminé si un appelant en
+   a besoin, état désactivé et validation existante. Il doit fournir une cible
+   tactile confortable (au moins 44 × 44 px pour la zone interactive ou son
+   label), un focus visible et un rendu cohérent en clair et sombre. Ne simule
+   pas une case par un `div` et ne déplace pas la logique métier ou les droits
+   dans ce composant de présentation.
+
+3. RETOURS D'ÉTAT UTILES, SANS DÉCORATION
+
+   L'application utilise peu ses composants de chargement : `Skeleton` et
+   `SkeletonList` existent déjà dans `src/components/Skeleton.tsx`. Repère les
+   écrans du périmètre qui affichent encore un texte de chargement ou une zone
+   vide, puis applique les squelettes là où ils expliquent réellement l'attente,
+   en particulier dans un pilote représentatif avant généralisation.
+
+   Ajoute seulement les transitions CSS qui confirment une action ou expliquent
+   un changement d'état : retour pressé/focus d'un bouton, apparition discrète
+   d'une liste une fois chargée, confirmation brève après un enregistrement,
+   ouverture et fermeture d'un panneau. Réutilise les mécanismes de notification
+   et les classes existants avant d'en créer de nouveaux. Aucune bibliothèque
+   d'animation, aucune animation d'entrée systématique des cartes, aucun effet
+   permanent, aucune animation qui ralentit la saisie. Toutes les animations
+   ajoutées doivent être neutralisées par `prefers-reduced-motion`.
+
+4. DENSITÉ, GABARITS ET COHÉRENCE DES ÉCRANS
+
+   Les écrans paraissent surchargés et leurs éléments n'ont pas de gabarit
+   homogène : tailles de cartes et de statistiques du tableau de bord, boutons,
+   tableaux de bases, blocs d'actions, espacements et titres varient sans règle
+   visible. Examine les composants et écrans réellement concernés, en vue mobile
+   et bureau, puis établis un petit système de règles réutilisables à partir des
+   primitives déjà présentes (`card`, `surface-muted`, boutons, échelles Tailwind
+   ou CSS du projet). N'introduis pas un nouveau design system ni une couche de
+   composants abstraits sans besoin démontré.
+
+   Applique ce système seulement aux surfaces représentatives et chargées du
+   périmètre L6, notamment le tableau de bord et les vues de base si elles sont
+   confirmées par l'inspection. Les priorités sont :
+   - une hiérarchie claire entre information principale, informations secondaires
+     et actions ;
+   - des tailles, hauteurs, alignements et espacements cohérents pour les cartes,
+     statistiques, boutons, tableaux et en-têtes comparables ;
+   - moins de bruit permanent : actions secondaires regroupées ou visuellement
+     reculées, sans les cacher ni en dégrader la découvrabilité ;
+   - des tableaux utilisables sur petit écran (lecture, défilement et actions
+     accessibles) sans réduire le texte à une taille illisible ;
+   - aucun contenu clinique important masqué, tronqué sans moyen de le lire, ni
+     action critique reléguée hors du flux.
+
+   Ne fais pas une correction cosmétique écran par écran. Corrige d'abord les
+   primitives ou règles communes qui causent les incohérences, puis applique-les
+   aux écrans pilotes. Si une uniformisation exige de modifier un écran hors du
+   périmètre inspecté ou de changer un parcours métier, arrête-toi et demande mon
+   accord avant de l'élargir.
+
+MÉTHODE ET PREUVE ATTENDUE.
+
+1. Commence par un diagnostic bref et concret : inventaire des cases à cocher,
+   écrans denses, chargements, primitives réutilisables et éventuels conflits de
+   travail. Ne présume pas que les décomptes ou lignes documentés sont encore à
+   jour.
+2. Propose un pilote visuel limité mais représentatif (profil/menu, un écran de
+   permissions avec cases actives et désactivées, un chargement, et un écran
+   dense tel que le tableau de bord ou une base). Montre précisément les fichiers
+   et règles que tu comptes modifier, ainsi que ce qui restera explicitement hors
+   périmètre.
+3. AVANT DE COMMENCER À CODER, pose-moi toutes les questions réellement
+   bloquantes et attends mes réponses. Ne crée ni branche, ni fichier, ni
+   modification, ni commit avant cet accord. Après accord sur le pilote, réalise
+   le pilote, démontre-le, puis demande l'accord avant toute généralisation aux
+   autres écrans.
+4. Ajoute des tests web ciblés là où le comportement est automatisable :
+   association label/case, navigation clavier et état désactivé ; présence des
+   structures de chargement ; états ou classes qui garantissent la réduction des
+   animations. Les appréciations de densité et de rendu ne se déduisent pas de
+   jsdom : vérifie-les visuellement sur les largeurs mobile et bureau, dans les
+   thèmes clair et sombre, avec des données fictives représentatives.
+
+CRITÈRES D'ACCEPTATION.
+
+- Le profil est repérable, contrasté et sobre dans les deux thèmes ; son rôle est
+  lisible et ne ressemble pas à une action.
+- Toutes les cases natives recensées dans le périmètre utilisent le composant
+  partagé, sans régression de formulaire, de clavier, d'accessibilité ou d'état
+  désactivé.
+- Les chargements et changements d'état importants donnent un retour perceptible
+  mais non décoratif ; `prefers-reduced-motion` est couvert et aucune dépendance
+  d'animation n'est ajoutée.
+- Les écrans pilotes sont sensiblement moins denses et plus cohérents à 320–375
+  px comme sur bureau : gabarits comparables, actions hiérarchisées, tableaux
+  lisibles et aucune information ou action clinique critique perdue.
+- Les captures ou observations de vérification montrent chaque état pertinent :
+  clair/sombre, mobile/bureau, focus clavier, case désactivée, chargement et
+  panneau ouvert si modifié.
 
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
@@ -348,7 +490,9 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L7 — Protections de branche (B7)
+## ~~L7 — Protections de branche (B7)~~ — livré le 2026-08-01
+
+Prompt conservé pour mémoire. **Ne pas le relancer.**
 
 ```
 Tu reprends le dernier bloquant de gouvernance du projet MedData
@@ -394,7 +538,12 @@ chercher un contournement.
 
 ---
 
-## L8 — Suppression et restauration de bases (P2)
+## ~~L8 — Suppression et restauration de bases (P2)~~ — livré le 2026-08-01
+
+Livré par la PR #116 : RPC de restauration (`20260801140238_restore_deleted_base.sql`),
+corbeille et geste de restauration dans `Dashboard.tsx` et `BaseHome.tsx`, entrée ajoutée à
+`security-definer-allowlist.json`, tests base et web. Prompt conservé pour mémoire. **Ne pas le
+relancer.**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -459,6 +608,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 Le prompt ci-dessous est conservé pour mémoire. L9 a été validé en staging et sur la cible
 technique production avec une base transverse fictive et une base longitudinale existante.
+**Ne pas le relancer.**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -516,7 +666,12 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L10 — Comptes de mission (P4)
+## ~~L10 — Comptes de mission (P4)~~ — livré le 2026-07-29
+
+Prompt conservé pour mémoire. **Ne pas le relancer.** Le rôle a depuis été vérifié à la main de
+bout en bout (2026-08-09) : la chaîne fonctionne, mais quatre écarts ont été trouvés et sont
+traités par **L15** et **L16** ci-dessous — cf.
+[`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md).
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -788,6 +943,393 @@ sur l'application déployée pour vérifier qu'aucune traduction ne manque. Un
 découpage de traductions casse silencieusement : vérifie plusieurs écrans, pas
 seulement l'écran de connexion. Tu ne t'arrêtes pas avant. Si une commande t'est
 refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L15 — Redirection du mot de passe des comptes de mission
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/chantiers-interactions-comptes.md (chantier A, §2) et docs/edge-functions.md.
+
+CONTEXTE, constaté en test manuel bout-en-bout le 2026-08-09 sur la pile locale.
+L'Edge Function create-mission-account lit MISSION_PASSWORD_REDIRECT_URL et, si
+la variable est absente, appelle resetPasswordForEmail SANS redirectTo
+(supabase/functions/create-mission-account/index.ts, ligne 39). GoTrue retombe
+alors sur site_url : le lien du courriel ouvre une session valide sur le TABLEAU
+DE BORD, et l'écran de définition du mot de passe (/reset-password) n'est jamais
+atteint. La personne invitée n'a donc jamais de mot de passe ; elle est bloquée
+dès l'expiration de sa session, sans autre recours que « Mot de passe oublié ».
+
+PÉRIMÈTRE — quatre points.
+
+1. Documenter la variable dans docs/edge-functions.md, avec la valeur attendue
+   <origine du site>/reset-password, pour la production ET pour le staging.
+   Elle n'y figure aujourd'hui nulle part.
+2. Ajouter la variable à la configuration locale (supabase/functions/.env, qui
+   n'existe pas encore) pour que le parcours soit testable de bout en bout.
+3. Vérifier — EN LECTURE SEULE — la valeur réellement configurée sur le projet
+   Supabase de production. Ne modifie RIEN dans le cloud sans me le demander.
+4. Trancher avec moi la question ouverte ci-dessous, puis l'implémenter si je
+   choisis la garde.
+
+LA QUESTION OUVERTE, à ne pas décider seul : un repli silencieux qui produit un
+compte inutilisable doit-il rester silencieux ? L'absence de la variable pourrait
+légitimement devenir une erreur explicite au démarrage de la fonction. Contre :
+la fonction cesserait de démarrer sur un environnement mal configuré. Pour : le
+service dégradé actuel crée des comptes que personne ne peut récupérer, sans
+aucun signal, et la panne n'apparaît que côté étudiant, des heures plus tard.
+
+DEUX VÉRIFICATIONS À NE PAS OUBLIER, elles n'ont jamais été faites :
+- supabase/config.toml ne déclare que site_url et AUCUNE additional_redirect_urls.
+  Confirme que GoTrue accepte un redirectTo pointant sur un chemin sous site_url ;
+  sinon ajoute l'entrée d'allowlist.
+- En local le lien vise 127.0.0.1 alors que Vite n'écoute par défaut que sur
+  localhost en IPv6 sur ce poste. Sans --host 127.0.0.1, ton correctif semblera
+  ne pas fonctionner pour une raison sans rapport (cf. docs/tests-multicomptes.md
+  §5.3).
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main. En revanche tu ne modifies AUCUN secret ni paramètre cloud sans mon accord
+explicite.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : sur la pile locale, tu as créé un compte de mission, ouvert le
+courriel dans Mailpit, suivi le lien, et ATTERRI sur l'écran de définition du mot
+de passe — pas sur le tableau de bord. Tu ne t'arrêtes pas avant. Si une commande
+t'est refusée, donne-la-moi telle quelle.
+
+Ce lot ne touche aucun écran : il peut tourner en parallèle de n'importe quel
+autre.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/chantiers-interactions-comptes.md §3 et §4 IN EXTENSO — l'analyse et la
+décision sont déjà faites, ne les refais pas — et docs/spec-comptes-mission.md.
+
+ATTENTION : ce lot touche une migration, des tests de base, la spécification et
+quatre écrans. Il doit tourner SEUL. Vérifie avec moi qu'aucun autre chantier
+n'est en cours avant de commencer.
+
+RIEN N'EXISTE EN CODE. Une premiere implementation des points d'ecran avait ete
+ecrite le 2026-08-09 puis EFFACEE le 2026-08-10 : elle datait d'avant que le
+renversement ci-dessous ne soit tranche, et ne comportait aucun test. Ne va pas
+la chercher. La specification de chaque correction est dans le registre, §3.1 a
+§3.6 — c'est de la que tu pars.
+
+DÉCISION DÉJÀ PRISE PAR LE PORTEUR, à mettre en oeuvre et non à rouvrir : le
+compte de mission (rôle saisisseur) DOIT pouvoir écrire l'identité nominative
+lorsque le médecin lui a accordé l'option can_view_identity à la création de la
+mission. Motif : sans support papier stable, l'étudiant est la seule source de
+l'identité au moment de l'inclusion ; l'exclusion détruit l'information au lieu
+de la protéger. C'est un RENVERSEMENT assumé de la décision du 2026-07-28
+consignée au §12 de la spec. L'option retenue est A (étendre la formule), pas B
+(créer une écriture sans lecture) : les raisons sont au §4.5 du document.
+
+PHASE 1 — BASE. Charge le skill meddata-db-safety, il est obligatoire ici.
+Nouvelle migration horodatée, additive, qui redéfinit can_write_identity() :
+branche médecin REPRISE À L'IDENTIQUE, branche saisisseur AJOUTÉE — accès actif,
+non révoqué, non expiré, can_view_identity accordée et can_create_structured_data.
+Ne modifie aucune migration existante. La RPC create_patient se débloque d'elle-
+même puisqu'elle appelle déjà cette fonction.
+
+PIÈGE À NE PAS MANQUER : is_medecin() exige profiles.global_role = 'medecin', ce
+qu'un saisisseur ne satisfera JAMAIS. La branche saisisseur doit donc s'ajouter au
+niveau supérieur, HORS de la conjonction « is_medecin() and ... ». Surtout, ne
+relâche pas is_medecin() pour la branche médecin.
+
+Puis : contrôle de l'allowlist SECURITY DEFINER. La signature est inchangée, donc
+a priori rien à ajouter — CONFIRME-LE par npm run db:function-acl:verify, ne le
+suppose pas.
+
+Puis : test/mission-accounts.test.ts. Le cas « il ne peut JAMAIS écrire l'identité »
+devient « il ne peut écrire que si l'option lui a été accordée ». CONSERVE le cas
+négatif sans option et le cas après échéance. Reprends aussi les assertions de
+nullité des champs nominatifs après création et l'assertion can_write_identity =
+false avec option. Écris dans le commit qu'il s'agit d'un retournement délibéré,
+pas d'une régression.
+
+Puis : réécris §4, §9 et §12 de docs/spec-comptes-mission.md, en consignant la
+raison du renversement. Ne te contente pas de retourner la ligne du tableau §4 :
+la phrase du §12 « c'est cette exclusion qui rend la permission acceptable » doit
+être remplacée par ce qui rend DÉSORMAIS la permission acceptable — option
+décochée par défaut, justification obligatoire, journalisation, périmètre d'une
+seule base, échéance. Retire l'encadré d'avertissement qui annonce le renversement,
+il n'aura plus lieu d'être.
+
+PHASE 2 — INTERFACE, seulement après la phase 1. L'ordre est impératif : sinon
+l'écran proposerait une saisie que la base refuse encore.
+- NewPatient.tsx : la section « Identité (zone restreinte) » devient conditionnée
+  à canViewIdentity — masquée sans l'option, visible avec.
+- Applique les quatre corrections d'écran décidées (registre §3.1, §3.3, §3.4,
+  §3.5) : bouton « Nouveau patient » piloté par la permission de CRÉATION et non
+  de modification, suppression de patient réservée à canEdit — elle est
+  aujourd'hui offerte à TOUT LE MONDE, y compris un simple lecteur —,
+  « Rendre disponible hors-ligne » masqué pour un accès à échéance (mais la copie
+  résiduelle reste RETIRABLE), et barre latérale réduite pour le rôle saisisseur.
+- Tests web pour ces cinq points dans src/screens/member/*.test.tsx.
+
+HORS PÉRIMÈTRE, décidé et clos : le nom du gabarit qui s'affiche « Modèle : — ».
+La cause est la policy template_read, le porteur a décidé de ne pas y toucher. Ne
+le corrige pas, ne le rouvre pas.
+
+À FAIRE SIGNALER, pas à faire toi-même : ce renversement élargit ce qu'un compte
+de mission peut connaître d'un patient. Rappelle-moi à la fin qu'il doit être
+répercuté au registre des traitements (docs/juridique/, volet Tchad) et à la
+charte utilisateurs.
+
+VALIDATION : npm run typecheck, npm run lint, npm run test:web, npm run test:rls.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as rejoué le parcours
+complet du compte de mission sur la pile locale — création, activation, saisie
+d'un patient AVEC son identité, puis vérification en base que l'identité est bien
+enregistrée. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi
+telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L17 — Messages d'erreur des Edge Functions
+
+```
+Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
+répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/chantiers-interactions-comptes.md §5.
+
+CONTEXTE. Quand une Edge Function refuse une demande, l'interface affiche
+« Edge Function returned a non-2xx status code » — le message de TRANSPORT de la
+bibliothèque cliente — au lieu du message court et générique que la fonction a
+elle-même renvoyé (« Base invalide », « Authentification requise », « Seule une
+cohorte figée est exportable », EXPORT_INCOMPLETE...).
+
+CAUSE, vérifiée sur le chemin export : functions.invoke lève un FunctionsHttpError
+dont .message est littéralement cette phrase ; le vrai corps { code, error,
+resource } se trouve dans error.context, que src/data/exports.ts ligne 59 ne lit
+pas. src/data/mission.ts tente, lui, de lire le message de la fonction et retombe
+malgré tout sur le message de transport : la cause exacte du repli reste à
+confirmer sur ce chemin-là.
+
+POURQUOI CE N'EST PAS COSMÉTIQUE. Un refus légitime est aujourd'hui indiscernable
+d'une panne. Ce défaut a coûté deux diagnostics complets pendant la campagne de
+test manuel du 2026-08-09, chaque fois en obligeant à sortir de l'application pour
+lire la vraie réponse.
+
+PÉRIMÈTRE. Corrige UNE FOIS, dans un utilitaire partagé, et non appelant par
+appelant : tous les chemins qui passent par functions.invoke sont concernés —
+exports, comptes de mission, signed-read, inspect-upload, finalize-upload,
+cleanup-upload, reconcile-quarantine. Lis error.context, extrais-en le message
+court et le code, et ne retombe sur le message de transport qu'en dernier recours.
+
+DEUX CONTRAINTES À NE PAS PERDRE DE VUE :
+- Les Edge Functions renvoient volontairement des messages COURTS et GÉNÉRIQUES et
+  ne doivent JAMAIS exposer d'erreur interne brute au frontend. Le but n'est pas
+  d'afficher davantage, c'est d'afficher ce que le serveur a déjà choisi de dire.
+- Un correctif de ce type appliqué à un seul appelant, lors d'un lot antérieur,
+  avait laissé les autres afficher « [object Object] ». Corrige partout ou nulle
+  part, et couvre chaque appelant par un test.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le correctif est en production, et tu as provoqué au moins un
+refus réel par chemin corrigé pour lire le message affiché. Tu ne t'arrêtes pas
+avant. Si une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L18 — Cohorte dynamique : compteur vivant et « Figer maintenant »
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/idees-post-readiness.md (défauts D6 et D8) et
+docs/chantiers-interactions-comptes.md §6.
+
+CONTEXTE, signalé par le porteur le 2026-08-09 : « j'ai juste un cadre qui est là
+et qui ne sert à rien ». La carte d'une cohorte à mise à jour automatique
+n'affiche ni compteur ni action.
+
+CAUSE. listCohorts lit le compte depuis cohort_member(count)
+(src/data/cohorts.ts:48), table VIDE PAR CONSTRUCTION pour une cohorte dynamique,
+dont la population n'est jamais matérialisée ; et le bloc « compteur + bouton
+Exporter » est conditionné à cohortType === 'snapshot'
+(src/screens/member/CohortBuilder.tsx:430). La carte n'a littéralement rien à
+rendre.
+
+CE QUI EST DÉLIBÉRÉ ET DOIT LE RESTER : le refus d'exporter une cohorte dynamique
+(409 « Seule une cohorte figée est exportable »). Un export inscrit dans export_log
+une empreinte et des décomptes figés ; sur une population qui bouge, le fichier ne
+serait rattachable à rien de reproductible. Ce lot donne à la carte ce qui lui
+manque, il NE LÈVE PAS la règle.
+
+PÉRIMÈTRE — deux points, front seul, aucune migration.
+
+1. Donner à la carte dynamique le COMPTE VIVANT, via cohort_preview sur son filtre
+   enregistré, comme le fait déjà l'aperçu du constructeur. Prérequis technique :
+   listCohorts ne remonte aujourd'hui ni filter_definition ni validated_only — les
+   ajouter au select. Et une action « FIGER MAINTENANT », qui crée une cohorte
+   figée à partir du même filtre : c'est le geste manquant entre « je suis ma
+   population » et « j'exporte ». À défaut de l'action, énoncer au moins sur la
+   carte pourquoi l'export n'y est pas proposé.
+
+2. Défaut D8 : on peut aujourd'hui figer une cohorte qui ne sera JAMAIS exportable.
+   Le figeage accepte les brouillons quand « patients validés uniquement » est
+   décochée (20260616091100_cohorts.sql:100), alors que l'export refuse en bloc dès
+   qu'un membre n'est pas curated (generate-export/handler.ts:358). Rien n'avertit
+   au moment du figeage. Avertir — « cette cohorte contient N fiches non validées
+   et ne sera pas exportable en l'état » — ou proposer la réparation depuis l'écran
+   d'export. Discute-en avec moi avant de choisir.
+
+NE PAS LANCER EN MÊME TEMPS QUE L19 : mêmes fichiers.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as créé une cohorte
+dynamique sur l'application déployée pour vérifier que sa carte porte un compte et
+une action. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi
+telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L19 — Archivage d'une cohorte
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/idees-post-readiness.md (idée 11) et
+docs/chantiers-interactions-comptes.md §6.2. Charge le skill meddata-db-safety,
+il est obligatoire ici.
+
+CONTEXTE, signalé par le porteur le 2026-08-09 : une cohorte créée ne peut plus
+être retirée de la liste, quelle qu'en soit la raison — essai, doublon, erreur de
+nom.
+
+LA CAPACITÉ SERVEUR EXISTE DÉJÀ : les policies c_delete sur cohort, cm_delete et
+cem_delete sur les membres sont en place (20260616090400_rls.sql:119), ouvertes à
+can_curate. Ce qui manque est côté application : CohortRepository n'expose que
+listCohorts, preview, createDynamic et createSnapshot (src/data/cohorts.ts:27).
+
+LE PIÈGE QUI INTERDIT LE RACCOURCI « ajouter un bouton Supprimer » :
+export_log.cohort_id référence cohort(id) ON DELETE CASCADE
+(20260616090200_tables.sql:262). Un DELETE direct effacerait donc EN CASCADE le
+journal des exports de la cohorte — qui a exporté, quand, avec quelle empreinte.
+C'est la traçabilité sur laquelle repose le volet juridique. Un bouton naïf
+transformerait « ranger ma liste » en effacement de preuve.
+
+DEUX ISSUES PROPRES, à trancher avec moi avant de coder :
+- ARCHIVAGE (recommandé) : deleted_at sur cohort, cohorte retirée de la liste,
+  journal intact, restauration possible — même motif que la corbeille des bases
+  déjà livrée par L8 ;
+- SUPPRESSION DURE CONDITIONNELLE : une RPC qui ne supprime que si export_log est
+  vide pour cette cohorte, et refuse explicitement sinon.
+
+À DÉCIDER DANS LE MÊME MOUVEMENT : le sort des fichiers conservés dans le bucket
+scientific-exports — maintenus lisibles, ou purgés explicitement.
+
+PÉRIMÈTRE : migration additive, RPC, src/data/cohorts.ts, écran des cohortes,
+tests base et web. Ne modifie aucune migration existante.
+
+NE PAS LANCER EN MÊME TEMPS QUE L18 : mêmes fichiers. Traiter L18 d'abord.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as prouvé sur la pile
+locale qu'une cohorte retirée laisse son journal d'exports INTACT. Tu ne t'arrêtes
+pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
