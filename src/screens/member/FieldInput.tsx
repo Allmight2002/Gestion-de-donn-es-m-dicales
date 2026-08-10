@@ -1,5 +1,6 @@
 import type { TemplateField, TerminologyValue } from '../../data/types';
 import { TerminologyInput } from './TerminologyInput';
+import { Checkbox } from '../../components/Checkbox';
 
 const cls = 'input';
 
@@ -17,8 +18,7 @@ export function FieldInput({
   switch (field.type) {
     case 'boolean':
       return (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={value === true}
           onChange={(e) => onChange(e.target.checked)}
           aria-label={field.label}
@@ -78,14 +78,13 @@ export function FieldInput({
           {opts.map((o) => {
             const s = String(o);
             return (
-              <label key={s} className="flex items-center gap-1 text-xs">
-                <input
-                  type="checkbox"
+              <Checkbox
+                  key={s}
                   checked={arr.includes(s)}
                   onChange={(e) => onChange(e.target.checked ? [...arr, s] : arr.filter((x) => x !== s))}
+                  label={s}
+                  containerClassName="text-xs"
                 />
-                {s}
-              </label>
             );
           })}
         </div>

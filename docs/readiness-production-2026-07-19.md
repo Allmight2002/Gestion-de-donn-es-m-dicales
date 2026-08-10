@@ -1,6 +1,6 @@
 # Audit final de readiness production — MedData
 
-- Dernière mise à jour : **2026-07-26 — Africa/Douala**
+- Dernière mise à jour : **2026-08-01 — Africa/Douala**
 - Niveau appliqué : **4 — Production readiness**
 - Décision technique unique : **production readiness not demonstrated**
 - Correspondance LOT 15 : **NO-GO**
@@ -129,12 +129,12 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 | Hors-ligne | prouvé conforme | Release standard et build candidat imposent `disabled/false` | 2026-07-22 | Local/CI statique | `5239804` | Faible tant que désactivé | Non si maintenu désactivé | RSSI + release manager | Conserver désactivé pour toute donnée pseudonymisée ou réelle |
 | Tests | prouvé conforme | 169 web, 461 DB, 630 globaux, 70 Edge, build et workflows verts ; PR et post-merge CI verts | 2026-07-22 | Local/GitHub | `5239804`, merge `e63499a` | QA humaine, staging exact et charge non couverts | Non technique ; oui clinique | QA | Exiger E2E staging, charge adaptée et QA manuelle signée |
 | Edge Functions | prouvé sur staging | Les six fonctions sont déployées sur staging depuis `ebee179` via le bundler API Supabase et actives, inventaire sans drift ; 70/70 tests locaux, rejoués sur le SHA courant et le SHA précédent lors de l'exercice de reprise | 2026-07-26 | Local + staging distant | `ebee179` | Fonction critique absente ou ancienne en production | Oui pour la production | Responsable Edge | Vérifier hashes et E2E sur le SHA promu ; l'E2E des parcours de fichiers reste impossible tant que B2 est ouvert |
-| CI/CD | prouvé non conforme | Workflows locaux valides ; API live confirme protections indisponibles et environnements sans règles | 2026-07-22 | GitHub | plan/configuration live | Bypass de review ou de promotion | Oui | Administrateur GitHub + RSSI | Plan compatible ou contrôle équivalent approuvé ; branches/checks/reviewers/MFA |
+| CI/CD | **prouvé conforme pour le gate B7** | L'API live confirme `main` et `develop` protégées : pull request obligatoire, `build-test` et `scanner-image` exigés, règles applicables aux administrateurs, force-push et suppression interdits, conversations résolues ; `staging` autorise `develop` et `main`, `production` autorise `main` | 2026-08-01 | GitHub | `main=f24b91c` ; `CONTROLS_SOLO_MODE=true` ; `npm run github:controls:verify` vert | La revue tierce et la MFA nominative restent des preuves externes non couvertes par ce script | Non pour B7 ; oui pour la production au titre des autres gates et des contrôles externes | Administrateur GitHub + RSSI | Lever le mode mono-personne lorsqu'un second relecteur existe ; conserver la revue MFA externe |
 | Staging | prouvé pour le périmètre sans fichiers | Run coordonné `30197149574` : validation complète réussie, backend staging réussi, frontend Vercel `dpl_3WrrxRjX2WgcitJCWJzvHHu28JTJ` en état `READY` avec métadonnée Git `ebee179` et `/login` HTTP 200 ; production ignorée | 2026-07-26 | Staging | `ebee179` | Le job frontend est ensuite devenu rouge sur la vérification ClamAV, après déploiement réussi : aucun parcours de fichier n'est validé | Oui pour tout parcours de fichier et pour la production | Release manager | Rejouer le run coordonné complet une fois B2 fermé, scanner compris |
 | Sauvegardes | prouvé sur staging pour le SHA candidat | Run `30196157372` réussi : 4 exports DB, 117 objets et 16 969 octets, HMAC et extraction vérifiés, manifeste Storage `sha256:5165598…` ; artefact `continuity-backup-staging-30196157372` retenu jusqu'au 25 août 2026 ; release immuable `continuity-staging-30196157372-1` ciblant `ebee179`, digest `sha256:168c2359…` ; clé rouverte depuis l'enveloppe DPAPI séparée, sans affichage ; historique, alerte d'échec et watchdog Pipedream antérieurs conservés | 2026-07-26 | GitHub staging + Pipedream + poste de reprise | `ebee179` | Ni PITR ni backups managés (`pitr_enabled: false`) ; copie immuable hébergée chez GitHub, donc non indépendante ; coffre organisationnel requis avant données réelles | Oui pour la production | Continuité + infrastructure | Souscrire PITR/backups managés et placer une seconde enveloppe de clé hors de la machine du porteur |
 | Restauration | prouvé sur le SHA candidat | Rejeu dans le projet local isolé `meddata-recovery-30196157372` : 5 comptes Auth, 36 tables publiques toutes sous RLS, 4 buckets et 117/117 objets restaurés ; 111 FK contrôlées, 0 orphelin, 0 divergence sur les 35 tables de données publiques ni sur les hash Storage ; lecture propriétaire autorisée et lecture croisée refusée ; RPO observé 77 s et RTO observé 1 587 s, sous les objectifs 24 h/4 h approuvés le 25 juillet ; preuve JSON `sha256:4ab7a20d…` publiée dans `recovery-evidence-staging-ebee17910f6d` | 2026-07-26 | Local isolé, source staging fictive | exercice `ebee179` | Cible locale, non représentative d'un environnement clinique ; toute modification du candidat impose un nouveau replay | Oui pour la production | Continuité + exploitation | Rejouer l'exercice sur le SHA finalement promu ; n'installer `RECOVERY_EVIDENCE_JSON` en environnement `production` qu'après autorisation production distincte |
 | Monitoring | prouvé non conforme | Alerting local expurgé ; aucune destination/astreinte live ni série de probes vertes | 2026-07-22 | Local/cloud | `5239804` | Incident silencieux | Oui | Exploitation | Configurer destination, tester panne et accusé de réception, mesurer escalade |
-| Accès | prouvé non conforme | RLS local vert ; GitHub live sans protections ; MFA et revue nominative non prouvées | 2026-07-22 | Local/GitHub | état live | Accès privilégié non maîtrisé | Oui | RSSI + propriétaires de services | Revue nominative, MFA, moindre privilège et exports de configuration datés |
+| Accès | **partiellement prouvé** | RLS local vert et protections GitHub live conformes ; MFA et revue nominative des accès privilégiés non prouvées | 2026-08-01 | Local/GitHub | état live | Accès privilégié non maîtrisé si la revue externe manque | Oui pour la production | RSSI + propriétaires de services | Revue nominative, MFA, moindre privilège et exports de configuration datés |
 | Rollback et forward recovery | prouvé sur le SHA candidat | Rollback de la migration `20260714215335`, forward par `supabase db push`, réapplication de `storage.sql`, puis état final identique ; frontend courant → précédent `b5a0369` → courant en HTTP 200/200/200 ; six Edge Functions contrôlées sur les deux versions, 70/70 tests chacune | 2026-07-26 | Local isolé, staging fictif | exercice `ebee179` | Aucun parcours de fichier exercé ; toute modification du candidat impose une nouvelle preuve chronométrée | Oui pour la production | Release manager + continuité | Rejouer les contrôles sur le SHA promu et publier la preuve immuable correspondante |
 | Conformité | vérification externe requise | Gate signé présent ; dossiers Cameroun/Tchad restent des projets, sans DPA/DPIA/AIPD/avis éthique prouvés | 2026-07-22 | Organisation | documents projet | Usage médical non autorisé | Oui | Responsable de traitement + juridique + DPO + éthique | Archiver décisions signées et générer le manifeste de gouvernance |
 | Incident médical | vérification externe requise | Gate opérationnel exige annuaire, autorité, astreinte et simulation ; aucune preuve réelle fournie | 2026-07-22 | Organisation | `5239804` | Notification/prise en charge tardive | Oui | Direction + DPO + RSSI | Nommer titulaires/suppléants, simuler et faire accepter la procédure |
@@ -150,7 +150,7 @@ prouvé**, **non vérifié**, **preuve périmée**, **vérification externe requ
 | B4 | Restauration complète réussie sur `ebee179`, RPO/RTO 77 s/1 587 s sous les objectifs approuvés 24 h/4 h, JSON validé et publié ; satisfait pour le staging fictif | Oui pour la production | Même exercice réussi sur le SHA promu, dans une cible représentative et avec autorisation production |
 | B5 | Alerting prêt, supervision opérationnelle absente | Oui, critique | Probes durables, alerte reçue, astreinte et incident exercé |
 | B6 | Gate fail-closed prêt, autorisations absentes | Oui, critique | Documents et décisions signés des autorités compétentes |
-| B7 | Gate live prêt et échoue comme attendu | Oui, élevé | Protections/reviewers ou contrôle compensatoire formel, MFA et moindre privilège |
+| B7 | **Fermé le 2026-08-01 pour la barrière technique** : protections live conformes sur `main` et `develop`, environnements `staging`/`production` bornés aux branches attendues, reviewer `Allmight2002` présent, et `npm run github:controls:verify` vert en mode mono-personne | Non pour le gate B7 ; la revue MFA/nominative reste une exigence externe d'accès et non une protection de branche manquante | Le gate technique est fermé. Retirer `CONTROLS_SOLO_MODE` dès qu'un second relecteur existe pour rétablir la revue complète |
 | B8 | Rollback/forward recovery complet réussi sur `ebee179`, chronométré, intègre et validé ; satisfait pour le staging fictif | Oui pour la production | Rollback/forward recovery du SHA promu, et secret `RECOVERY_EVIDENCE_JSON` installé en environnement `production` sur autorisation distincte |
 | B9 | **Conforme sur la base distante du candidat** : 132 fonctions `SECURITY DEFINER` conformes, aucune exécutable par `anon`, 36/36 tables sous RLS, 59 policies, RPC autorisée/refusée conformes ; acceptation bornée au staging fictif | Oui pour la production | Même contrôle rejoué sur le SHA promu, sans aucun parcours de fichier accepté tant que B2 est ouvert |
 | B10 | Gate fail-closed prêt, organisation absente | Oui, élevé | RACI, suppléances, support, formation, simulation, MFA et QA signés |
@@ -196,7 +196,7 @@ interdit réussit ou si un test critique régresse.
 
 | Action | Responsable attendu | Procédure exploitable | Preuve acceptable | Niveau interdit tant qu'ouverte |
 |---|---|---|---|---|
-| Protéger GitHub et les environnements | Administrateur GitHub + RSSI | Passer à un plan permettant les règles privées ou faire approuver un contrôle compensatoire ; configurer checks/reviews/admins et reviewers/branches d'environnement | Export API daté, run de `npm run github:controls:verify`, revue MFA nominative | Production |
+| Protéger GitHub et les environnements | Administrateur GitHub + RSSI | Contrôler les protections live, les checks, les reviewers et les branches d'environnement ; lever le mode mono-personne lorsqu'un second relecteur existe | Export API daté, run de `npm run github:controls:verify`, revue MFA nominative | — pour B7 ; la revue MFA nominative reste externe |
 | Héberger ClamAV | Infrastructure + RSSI | Déployer HTTPS authentifié ; secrets staging ; probes `/health`, sain, EICAR, panne et âge des signatures | Inventaire/SLA, logs expurgés, tests et plusieurs monitors verts | Pseudonymisé, réel, production |
 | Exécuter les sauvegardes | Infrastructure + continuité | Activer `CONTINUITY_BACKUP_ENABLED`, lancer staging, vérifier HMAC/chiffrement ; activer backups managés/PITR et copie objets indépendante | Runs et artefacts chiffrés, historique live, rétention, alertes | Pseudonymisé, réel, production |
 | Exercer la restauration et la reprise | Continuité + release manager | Cible vide isolée, données fictives, restore DB/Auth/Storage, rollback/forward, puis `npm run recovery:evidence:verify -- --file=<preuve> --commit=<SHA>` | Preuve exacte, hashes/comptes, zéro orphelin, RPO/RTO et signatures | Pseudonymisé, réel, production |
@@ -226,6 +226,35 @@ Cela ne change pas la décision : **B2, B5, B6, B7 et B10 restent ouverts**, et
 chacun suffit à lui seul à interdire la production, le pilote clinique et toute
 donnée réelle ou pseudonymisée. La readiness production demeure **non
 démontrée**.
+
+### Mise à jour du 1er août 2026 — fermeture de B7
+
+Le dépôt étant public, les protections de branche sont disponibles. Le contrôle
+live a été rejoué sur `Allmight2002/Gestion-de-donn-es-m-dicales` avec :
+
+- `main` et `develop` protégées avec pull request obligatoire ;
+- `build-test` et `scanner-image` obligatoires avant fusion ;
+- règles applicables aux administrateurs, force-push et suppression de branche
+  interdits, conversations obligatoirement résolues ;
+- reviewer `Allmight2002` présent sur `staging` et `production` ;
+- `develop` et `main` autorisées sur `staging`, uniquement `main` sur
+  `production` ;
+- `npm run github:controls:verify` réussi en mode mono-personne.
+
+Le circuit réel a ensuite été exercé sous ces protections : PR #111 vers
+`develop`, fusionnée en `2f96f5c`, puis PR #112 vers `main`, fusionnée en
+`f24b91c`. Les deux PR ont obtenu `build-test` et `scanner-image` verts. La PR
+négative #113 a produit `build-test=FAILURE` avec `scanner-image=SUCCESS` ; la
+tentative de fusion normale a été refusée par la politique de branche, puis la
+PR et sa branche temporaire ont été supprimées sans fusion.
+
+Le mode mono-personne suspend uniquement l'approbation par un tiers,
+l'approbation distincte après le dernier push et l'interdiction de
+l'auto-approbation d'environnement. Il ne suspend pas la pull request, la CI,
+les règles administrateur, l'interdiction du force-push ou le bornage des
+environnements. B7 est donc fermé pour sa barrière technique ; la readiness
+production reste **non démontrée** en raison de B2, B5, B6 et B10, ainsi que des
+preuves externes de MFA et de gouvernance.
 
 La prochaine réévaluation ne peut conclure `ready for production` que si chaque
 gate bloquant possède une preuve actuelle, directe, rattachée au même SHA, au

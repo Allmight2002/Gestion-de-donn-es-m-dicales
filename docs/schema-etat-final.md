@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260729153000_mission_profile_reconcile.sql`
-- Tables : 38 · Policies RLS : 61 · Triggers : 54 · Fonctions : 217
+- Dernière migration incluse : `20260801185149_observation_model_base.sql`
+- Tables : 38 · Policies RLS : 61 · Triggers : 58 · Fonctions : 225
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -51,6 +51,8 @@ Policies :
 | inclusion_target | integer | oui |  |
 | inclusion_target_date | date | oui |  |
 | inclusion_target_revision | bigint | non | `0` |
+| deletion_snapshot | jsonb | oui |  |
+| observation_model | text | non | `'longitudinal'::text` |
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
@@ -60,6 +62,7 @@ Policies :
 - `base_update` (UPDATE) — USING is_base_owner(id) · WITH CHECK is_base_owner(id)
 
 Triggers :
+- `trg_base_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_base()`
 - `trg_base_owner_immutable` — BEFORE UPDATE → `guard_base_owner_immutable()`
 - `trg_base_template_version` — BEFORE UPDATE → `guard_base_template_version()`
 - `trg_guard_base_inclusion_target_revision` — BEFORE UPDATE → `guard_base_inclusion_target_revision()`
@@ -313,6 +316,7 @@ Policies :
 - `e_select` (SELECT) — USING (has_base_access(base_of_patient(patient_id)) AND (deleted_at IS NULL))
 
 Triggers :
+- `trg_encounter_cross_sectional_rejected` — BEFORE INSERT → `reject_cross_sectional_encounter()`
 - `trg_encounter_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
 - `trg_encounter_no_downgrade` — BEFORE UPDATE → `guard_no_curated_downgrade()`
 - `trg_encounter_recompute_age` — BEFORE UPDATE → `recompute_encounter_age()`
@@ -618,6 +622,7 @@ Policies :
 - `rs_select` (SELECT) — USING ((deleted_at IS NULL) AND is_base_active(base_id) AND (is_base_owner(base_id) OR is_assigned_to_submission(id)))
 
 Triggers :
+- `trg_raw_submission_cross_sectional_rejected` — BEFORE INSERT/UPDATE → `reject_cross_sectional_encounter_submission()`
 - `trg_xbase_submission` — BEFORE INSERT/UPDATE → `guard_xbase_submission()`
 
 ### release_component_state · RLS activée
@@ -707,6 +712,7 @@ Policies :
 - `tf_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
 
 Triggers :
+- `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
@@ -884,6 +890,7 @@ Triggers :
 | complete_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_entity text, p_metadata jsonb, p_verified_file_hash text, p_verified_file_size bigint, p_verified_mime_type text | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
+| create_base_from_model_observation | p_name text, p_specialty text, p_source_version_id uuid, p_observation_model text | DEFINER | plpgsql |
 | create_base_invitation | p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | create_cohort_snapshot | p_base_id uuid, p_name text, p_filter jsonb, p_validated_only boolean | INVOKER | plpgsql |
 | create_curation_submission | p_base_id uuid, p_target_patient_id uuid, p_external_ref text, p_scope text | DEFINER | plpgsql |
@@ -909,6 +916,8 @@ Triggers :
 | duplicate_template_version | p_source_version_id uuid | DEFINER | plpgsql |
 | encrypt | bytea, bytea, text | INVOKER | c |
 | encrypt_iv | bytea, bytea, bytea, text | INVOKER | c |
+| enforce_observation_model_on_base | — | DEFINER | plpgsql |
+| enforce_observation_model_on_template_field | — | DEFINER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
@@ -975,6 +984,7 @@ Triggers :
 | is_strict_datetime_text | p_value text | INVOKER | plpgsql |
 | is_system_admin | — | DEFINER | sql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
+| list_deleted_bases | — | DEFINER | plpgsql |
 | log_attachment_read | p_attachment_id uuid | DEFINER | plpgsql |
 | log_audit | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid, p_metadata jsonb | DEFINER | plpgsql |
 | log_export_read | p_export_id uuid | DEFINER | plpgsql |
@@ -1014,11 +1024,14 @@ Triggers :
 | reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
 | record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
+| reject_cross_sectional_encounter | — | DEFINER | plpgsql |
+| reject_cross_sectional_encounter_submission | — | DEFINER | plpgsql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
 | replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |
 | require_server_inspection | — | DEFINER | sql |
+| restore_deleted_base | p_base_id uuid | DEFINER | plpgsql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
 | rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |
@@ -1029,6 +1042,7 @@ Triggers :
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
 | search_terminology | p_query text, p_limit integer | INVOKER | sql |
 | set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |
+| set_base_observation_model | p_base_id uuid, p_observation_model text | DEFINER | plpgsql |
 | set_base_template_version | p_base_id uuid, p_version_id uuid | DEFINER | plpgsql |
 | set_updated_at | — | INVOKER | plpgsql |
 | soft_delete_attachment | p_attachment_id uuid, p_reason text | DEFINER | plpgsql |

@@ -44,6 +44,12 @@ etre prefixe `VITE_`.
 
 ## Staging et production
 
+Pendant la phase de développement actuelle, la cible technique `production` sert
+d'environnement persistant de tests internes sur l'URL principale Vercel. Cette
+qualification, ses limites et ses conditions de fin sont enregistrées dans la
+[`décision du 29 juillet 2026`](decision-environnement-production-tests-2026-07-29.md).
+Elle ne vaut ni readiness clinique ni autorisation de données réelles.
+
 1. `validate` execute CI, fige le SHA, construit `dist/` comme simple controle de build (le
    frontend n'est PAS deploye depuis ce job) et archive uniquement `deploy-manifest.json`
    (preuve technique de release conservee 30 jours).
@@ -61,6 +67,9 @@ etre prefixe `VITE_`.
    du meme SHA/tag et renseigne son `staging_run_id`; le workflow exige un job
    `backend-staging` reussi pour ce SHA, puis refait une sauvegarde chiffree verifiee avant la
    premiere ecriture production et execute les memes controles avant `vercel deploy --prod`.
+   L'environnement `staging` autorise donc exactement `develop` et `main` : `develop` pour la
+   validation courante, puis `main` pour produire la preuve sur le SHA immuable exigé par la
+   promotion. L'environnement `production` reste limité à `main`.
 
 Tout echec stoppe les jobs dependants et bloque le frontend. `vercel.json` desactive les
 deploiements automatiques issus de Git pour toutes les branches : les previews staging et la

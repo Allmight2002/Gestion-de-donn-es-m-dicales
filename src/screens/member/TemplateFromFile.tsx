@@ -7,6 +7,7 @@ import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/t
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { proposeFieldsFromSheet, type ProposedField } from '../../domain/templateFromSheet';
 import { useToast } from '../../components/Toast';
+import { Checkbox } from '../../components/Checkbox';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 Mo : on ne lit qu'une STRUCTURE, pas un gros jeu de donnees
 const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
@@ -118,8 +119,8 @@ export function TemplateFromFile() {
 
       {fields.length > 0 && (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="data-table-shell">
+            <table className="data-table text-xs">
               <thead className="text-slate-500">
                 <tr>
                   <th className="px-2 py-1">{t('tfile.include')}</th>
@@ -133,7 +134,7 @@ export function TemplateFromFile() {
               <tbody>
                 {fields.map((f, i) => (
                   <tr key={i} className={`border-t border-slate-100 ${f.include ? '' : 'opacity-40'}`}>
-                    <td className="px-2 py-1"><input type="checkbox" checked={f.include} onChange={(e) => patch(i, { include: e.target.checked })} /></td>
+                    <td className="px-2 py-1"><Checkbox aria-label={`${t('tfile.include')} · ${f.label}`} checked={f.include} onChange={(e) => patch(i, { include: e.target.checked })} /></td>
                     <td className="px-2 py-1"><input className="input w-40 py-1" value={f.label} onChange={(e) => patch(i, { label: e.target.value })} /></td>
                     <td className="px-2 py-1">
                       <select className="input py-1" value={f.type} onChange={(e) => patch(i, { type: e.target.value as FieldType })}>
@@ -158,10 +159,7 @@ export function TemplateFromFile() {
           </div>
 
           <div className="card space-y-3 p-4">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={withBase} onChange={(e) => setWithBase(e.target.checked)} />
-              {t('tfile.also_base')}
-            </label>
+            <Checkbox checked={withBase} onChange={(e) => setWithBase(e.target.checked)} label={t('tfile.also_base')} />
             {withBase && (
               <label className="flex flex-col text-sm">
                 <span className="text-slate-700">{t('tfile.base_name')}</span>

@@ -52,6 +52,18 @@ function renderAccess(baseRepo: BaseRepository, access: AccessRepository) {
 }
 
 describe('AccessManagement', () => {
+  test('affiche une structure de chargement utile avant les permissions', () => {
+    const pendingRepo = {
+      ...baseRepoWithRole('owner'),
+      async getBase() { return new Promise<BaseListing | null>(() => {}); },
+    } as unknown as BaseRepository;
+    const { container, unmount } = renderAccess(pendingRepo, makeAccess());
+
+    expect(screen.getByRole('status', { name: /Chargement/ })).toBeInTheDocument();
+    expect(container.querySelectorAll('[aria-hidden="true"]')).toHaveLength(5);
+    unmount();
+  });
+
   test('le proprietaire invite (lien genere) et voit les acces actuels', async () => {
     const createInvitation = vi.fn(async (_b: string, _e: string, _r: AccessRole, _p: BasePermissions) => ({ token: 'tok-123' }));
     renderAccess(baseRepoWithRole('owner'), makeAccess({ createInvitation }));
@@ -84,6 +96,21 @@ describe('AccessManagement', () => {
     expect(perms).toMatchObject({ canManageAccess: true, canViewIdentity: true, canExportData: true, canEditStructuredData: true });
   });
 
+  test('desactive les permissions existantes pendant leur enregistrement', async () => {
+    let finishSave: (() => void) | undefined;
+    const setPermissions = vi.fn(() => new Promise<void>((resolve) => { finishSave = resolve; }));
+    renderAccess(baseRepoWithRole('owner'), makeAccess({ setPermissions }));
+    await screen.findByText(/Anna Analyste/);
+
+    const currentExport = screen.getAllByRole('checkbox', { name: 'Export' })[1];
+    await userEvent.click(currentExport);
+    await waitFor(() => expect(currentExport).toBeDisabled());
+    expect(setPermissions).toHaveBeenCalledTimes(1);
+
+    finishSave?.();
+    await waitFor(() => expect(currentExport).not.toBeDisabled());
+  });
+
   test('E1 affiche l activite de consultation d identite (qui a lu quel patient)', async () => {
     const getIdentityAudit = vi.fn(async () => ({
       byReader: [{ readerName: 'Dr Ngo', count: 3, lastAt: '2026-07-01T10:00:00.000Z' }],
@@ -91,8 +118,28 @@ describe('AccessManagement', () => {
     }));
     renderAccess(baseRepoWithRole('owner'), makeAccess({ getIdentityAudit }));
     expect(await screen.findByText(/Consultations d.identité/)).toBeInTheDocument();
+    expect(screen.getByText(/3 consultations/)).toBeInTheDocument(); // synthèse visible d'abord
+    await userEvent.click(screen.getByText(/Voir le détail/));
     expect(screen.getByText('P-0042')).toBeInTheDocument(); // patient pseudonymisé consulté
-    expect(screen.getByText(/3 consultations/)).toBeInTheDocument(); // compteur par lecteur (signal)
+  });
+
+  test('limite le journal detaille a 20 lignes puis affiche la suite sur demande', async () => {
+    const reads = Array.from({ length: 25 }, (_, index) => ({
+      at: `2026-07-01T10:${String(index).padStart(2, '0')}:00.000Z`,
+      readerName: 'Dr Ngo',
+      patientCode: `P-${String(index + 1).padStart(4, '0')}`,
+    }));
+    renderAccess(baseRepoWithRole('owner'), makeAccess({
+      async getIdentityAudit() {
+        return { byReader: [{ readerName: 'Dr Ngo', count: 25, lastAt: reads[24].at }], reads };
+      },
+    }));
+
+    await userEvent.click(await screen.findByText(/Voir le détail/));
+    expect(screen.getByText('P-0020')).toBeInTheDocument();
+    expect(screen.queryByText('P-0021')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Afficher la suite' }));
+    expect(screen.getByText('P-0025')).toBeInTheDocument();
   });
 
   test('un non-proprietaire ne voit pas la gestion des acces', async () => {

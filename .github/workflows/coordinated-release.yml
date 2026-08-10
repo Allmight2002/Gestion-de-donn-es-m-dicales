@@ -551,11 +551,20 @@ jobs:
         env:
           GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}
           RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          # Derogation pilote, cf. docs/derogations-readiness.md. Ne s'applique QUE si la preuve
+          # est absente : une preuve fournie reste integralement verifiee.
+          PILOT_EVIDENCE_WAIVER: ${{ vars.PILOT_EVIDENCE_WAIVER }}
         shell: bash
         run: |
           set -euo pipefail
           evidence_file="$RUNNER_TEMP/governance-evidence.json"
           trap 'rm -f "$evidence_file"' EXIT
+          if [ -z "${GOVERNANCE_EVIDENCE_JSON:-}" ] && [ "${PILOT_EVIDENCE_WAIVER:-}" = "true" ]; then
+            echo "DEROGATION PILOTE — gouvernance : aucune preuve signee n a ete produite pour $RELEASE_SHA."
+            echo "  Cette release n atteste NI decision de gouvernance, NI validation par un tiers."
+            echo "  A LEVER avant tout usage clinique ou toute donnee reelle."
+            exit 0
+          fi
           test -n "$GOVERNANCE_EVIDENCE_JSON"
           test "${#GOVERNANCE_EVIDENCE_JSON}" -le 65536
           printf '%s' "$GOVERNANCE_EVIDENCE_JSON" > "$evidence_file"
@@ -568,11 +577,19 @@ jobs:
         env:
           RECOVERY_EVIDENCE_JSON: ${{ secrets.RECOVERY_EVIDENCE_JSON }}
           RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          PILOT_EVIDENCE_WAIVER: ${{ vars.PILOT_EVIDENCE_WAIVER }}
         shell: bash
         run: |
           set -euo pipefail
           evidence_file="$RUNNER_TEMP/recovery-evidence.json"
           trap 'rm -f "$evidence_file"' EXIT
+          if [ -z "${RECOVERY_EVIDENCE_JSON:-}" ] && [ "${PILOT_EVIDENCE_WAIVER:-}" = "true" ]; then
+            echo "DEROGATION PILOTE — reprise : aucun exercice de restauration n a ete produit pour $RELEASE_SHA."
+            echo "  La capacite a REMONTER cette production apres sinistre n est donc PAS demontree."
+            echo "  C est la derogation la plus couteuse des trois, et la plus facile a lever."
+            echo "  A LEVER avant tout usage clinique ou toute donnee reelle."
+            exit 0
+          fi
           test -n "$RECOVERY_EVIDENCE_JSON"
           test "${#RECOVERY_EVIDENCE_JSON}" -le 65536
           printf '%s' "$RECOVERY_EVIDENCE_JSON" > "$evidence_file"
@@ -584,11 +601,19 @@ jobs:
         env:
           OPERATIONS_EVIDENCE_JSON: ${{ secrets.OPERATIONS_EVIDENCE_JSON }}
           RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          PILOT_EVIDENCE_WAIVER: ${{ vars.PILOT_EVIDENCE_WAIVER }}
         shell: bash
         run: |
           set -euo pipefail
           evidence_file="$RUNNER_TEMP/operations-evidence.json"
           trap 'rm -f "$evidence_file"' EXIT
+          if [ -z "${OPERATIONS_EVIDENCE_JSON:-}" ] && [ "${PILOT_EVIDENCE_WAIVER:-}" = "true" ]; then
+            echo "DEROGATION PILOTE — exploitation : ni affectations d exploitation, ni QA clinique pour $RELEASE_SHA."
+            echo "  Aucune personne nommee n est designee pour surveiller cette production,"
+            echo "  et aucune relecture clinique n atteste que les donnees saisies ont un sens."
+            echo "  A LEVER avant tout usage clinique ou toute donnee reelle."
+            exit 0
+          fi
           test -n "$OPERATIONS_EVIDENCE_JSON"
           test "${#OPERATIONS_EVIDENCE_JSON}" -le 65536
           printf '%s' "$OPERATIONS_EVIDENCE_JSON" > "$evidence_file"

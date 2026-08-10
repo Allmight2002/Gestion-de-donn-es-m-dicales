@@ -5,11 +5,22 @@ import { useI18n } from '../i18n/useI18n';
 import { isAllowedInArea, landingPathFor, type AppArea } from '../auth/logic';
 import type { GlobalRole } from '../auth/types';
 import { AppShell } from '../components/AppShell';
+import { Skeleton, SkeletonList } from '../components/Skeleton';
 import { Unconfigured } from '../screens/Unconfigured';
 
 function FullScreenLoading() {
   const { t } = useI18n();
-  return <div className="flex min-h-screen items-center justify-center text-slate-500">{t('common.loading')}</div>;
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-8 dark:bg-slate-950">
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <div className="card p-5 sm:p-6">
+          <Skeleton className="mb-5 h-8 w-2/5" />
+          <SkeletonList rows={5} label={t('common.loading')} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Route reservee aux personnes connectees ET autorisees dans la zone. */

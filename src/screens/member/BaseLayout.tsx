@@ -68,7 +68,7 @@ export function BaseLayout() {
   return (
     <section className="space-y-4">
       <p className="text-sm text-slate-400">
-        <Link to="/" className="hover:text-teal-700">{t('member.dashboard.title')}</Link>
+          <Link to="/" className="underline decoration-slate-300 underline-offset-4 hover:text-teal-700">{t('member.dashboard.title')}</Link>
         <span aria-hidden> › </span>
         <span className="text-slate-600">{name || '…'}</span>
       </p>

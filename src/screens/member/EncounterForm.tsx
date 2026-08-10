@@ -9,6 +9,7 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
+import { SkeletonList } from '../../components/Skeleton';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
 interface EncounterDraft {
@@ -162,10 +163,10 @@ export function EncounterForm() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-2xl space-y-6">
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div>
         <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}

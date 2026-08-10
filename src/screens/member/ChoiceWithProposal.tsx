@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { ValueInput } from './ValueInput';
 import type { TemplateField } from '../../data/types';
+import { Checkbox } from '../../components/Checkbox';
 
 // F5 — rendu couple d'un champ a liste controlee et de son champ compagnon « valeur proposee ».
 //
@@ -51,10 +52,12 @@ export function ChoiceWithProposal({
   return (
     <div className="space-y-2">
       <ValueInput field={field} value={value} onChange={changeSource} />
-      <label className="flex items-center gap-1.5 text-xs text-slate-600">
-        <input type="checkbox" checked={open} onChange={(e) => toggleProposal(e.target.checked)} />
-        {t('field.proposal_option')}
-      </label>
+      <Checkbox
+        checked={open}
+        onChange={(e) => toggleProposal(e.target.checked)}
+        label={t('field.proposal_option')}
+        containerClassName="px-1 text-xs"
+      />
       {open && (
         <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950">
           <label className="flex flex-col text-xs text-amber-900 dark:text-amber-100">

@@ -10,6 +10,8 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
 import { SectionedFields } from './EncounterFields';
+import { Checkbox } from '../../components/Checkbox';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -28,6 +30,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
+  const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,6 +77,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         return;
       }
       const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
+      setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       setFields(fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
       setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
       setError(null);
@@ -163,10 +167,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-2xl space-y-6">
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div>
         <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
@@ -223,14 +227,18 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                   <span className="font-mono text-xs">{m.code}</span>
                   <span>{m.fullName ?? '—'}{m.dateOfBirth ? ` · ${m.dateOfBirth}` : ''}</span>
                   <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('patient.duplicate_open')}</button>
-                  <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}/encounters/new`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('patient.duplicate_add_encounter')}</button>
+                  {!isCrossSectional && <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${m.patientId}/encounters/new`)} className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{t('patient.duplicate_add_encounter')}</button>}
                 </li>
               ))}
             </ul>
-            <label className="mt-3 flex items-center gap-2 border-t border-amber-200 pt-2 font-medium">
-              <input type="checkbox" checked={ackDuplicate} onChange={(e) => setAckDuplicate(e.target.checked)} />
-              {t('patient.duplicate_ack')}
-            </label>
+            <div className="mt-3 border-t border-amber-200 pt-2">
+              <Checkbox
+                checked={ackDuplicate}
+                onChange={(e) => setAckDuplicate(e.target.checked)}
+                label={<span className="font-medium">{t('patient.duplicate_ack')}</span>}
+                containerClassName="w-full"
+              />
+            </div>
           </div>
         )}
 

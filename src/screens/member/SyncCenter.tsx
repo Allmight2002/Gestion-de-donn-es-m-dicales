@@ -57,7 +57,7 @@ export function SyncCenter() {
   const unresolvedCount = pending.length + syncing.length + conflicts.length + rejected.length;
 
   return (
-    <section className="max-w-3xl space-y-6">
+    <section className="max-w-3xl space-y-5 sm:space-y-6">
       {/* E3 : etat du systeme en un coup d'oeil. */}
       <div className="space-y-3">
         <h1 className="page-title">{t('status.title')}</h1>

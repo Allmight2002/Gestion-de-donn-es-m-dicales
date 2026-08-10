@@ -1,10 +1,13 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
+import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
 import { RuleForm, RuleSummary } from './RuleForm';
+import { SkeletonList } from '../../components/Skeleton';
 
 interface Loaded {
   version: TemplateVersion;
@@ -17,12 +20,14 @@ export function TemplateVersionEditor({
   onBack,
   showVersionActions = true,
   onNewVersion,
+  observationModel,
 }: {
   versionId: string;
   onBack: () => void;
   showVersionActions?: boolean;
   // §8.2 : permet au medecin de creer la version SUIVANTE de son gabarit (copie editable).
   onNewVersion?: (newVersionId: string) => void | Promise<void>;
+  observationModel?: ObservationModel;
 }) {
   const repo = useTemplateRepository();
   const { t } = useI18n();
@@ -67,11 +72,14 @@ export function TemplateVersionEditor({
     }
   }
 
-  if (loading && !data) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading && !data) return <SkeletonList rows={5} label={t('common.loading')} />;
   if (!data) return <p className="text-red-600">{error}</p>;
 
   const { version, fields, rules } = data;
   const editable = version.status === 'draft';
+  const fieldGridClass = editable
+    ? 'xl:grid-cols-[3rem_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,.7fr)_5rem_minmax(7rem,auto)]'
+    : 'xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,.7fr)_5rem]';
 
   // Drag & drop : depose la variable saisie a la place de la variable cible, persiste
   // le nouvel ordre (display_order), avec mise a jour optimiste de la liste.
@@ -89,11 +97,22 @@ export function TemplateVersionEditor({
     void run(() => repo.reorderFields(version.id, reordered.map((f) => f.id)));
   }
 
+  function moveField(fieldId: string, delta: -1 | 1) {
+    if (!data || editing) return;
+    const reordered = [...data.fields];
+    const from = reordered.findIndex((field) => field.id === fieldId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= reordered.length) return;
+    [reordered[from], reordered[to]] = [reordered[to], reordered[from]];
+    setData({ ...data, fields: reordered });
+    void run(() => repo.reorderFields(version.id, reordered.map((field) => field.id)));
+  }
+
   return (
-    <section className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+    <section className="space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <button onClick={onBack} className="btn-ghost min-h-11 px-2">
             ← {t('admin.back')}
           </button>
           <h2 className="text-xl font-semibold tracking-tight">
@@ -102,7 +121,7 @@ export function TemplateVersionEditor({
           <span className="badge">{t(`status.${version.status}`)}</span>
         </div>
         {showVersionActions ? (
-          <div className="flex gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             {editable && (
               <button onClick={() => void run(() => repo.publishVersion(version.id))} disabled={busy} className="btn-primary">
                 {t('admin.publish')}
@@ -122,7 +141,7 @@ export function TemplateVersionEditor({
                 finally { setBusy(false); }
               }}
               disabled={busy}
-              className="btn-secondary"
+              className="btn-secondary w-full sm:w-auto"
             >
               {t('admin.new_version')}
             </button>
@@ -135,70 +154,112 @@ export function TemplateVersionEditor({
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-slate-700">{t('admin.fields')}</h3>
-        <div className="card overflow-hidden">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                {editable && <th className="w-8 px-2 py-2.5" />}
-                <th className="px-4 py-2.5">{t('admin.field_key')}</th>
-                <th className="px-4 py-2.5">{t('admin.label')}</th>
-                <th className="px-4 py-2.5">{t('admin.scope')}</th>
-                <th className="px-4 py-2.5">{t('admin.section')}</th>
-                <th className="px-4 py-2.5">{t('admin.type')}</th>
-                <th className="px-4 py-2.5">{t('admin.required')}</th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {fields.map((f) => {
+        <div className="card overflow-hidden" role="table" aria-label={t('admin.fields')}>
+          <div
+            role="row"
+            className={`hidden border-b border-slate-200 bg-slate-50/70 px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500 xl:grid xl:gap-2 ${fieldGridClass}`}
+          >
+            {editable && <span role="columnheader"><span className="sr-only">{t('admin.drag_hint')}</span></span>}
+            <span role="columnheader">{t('admin.field_key')}</span>
+            <span role="columnheader">{t('admin.label')}</span>
+            <span role="columnheader">{t('admin.scope')}</span>
+            <span role="columnheader">{t('admin.section')}</span>
+            <span role="columnheader">{t('admin.type')}</span>
+            <span role="columnheader">{t('admin.required')}</span>
+            {editable && <span role="columnheader"><span className="sr-only">{t('common.actions')}</span></span>}
+          </div>
+          <div role="rowgroup" className="divide-y divide-slate-100">
+              {fields.map((f, index) => {
                 const canDrag = editable && !editing;
                 return (
-                <tr
+                <div
                   key={f.id}
+                  role="row"
                   draggable={canDrag}
                   onDragStart={canDrag ? () => setDragId(f.id) : undefined}
                   onDragOver={canDrag ? (e) => e.preventDefault() : undefined}
                   onDrop={canDrag ? () => dropOn(f.id) : undefined}
                   className={
-                    'border-b border-slate-100 last:border-0' +
+                    `grid gap-2 p-4 xl:items-center xl:gap-2 xl:px-3 xl:py-2.5 ${fieldGridClass}` +
                     (dragId === f.id ? ' opacity-50' : '')
                   }
                 >
                   {editable && (
-                    <td
-                      className={'px-2 py-2.5 text-center text-slate-400' + (canDrag ? ' cursor-grab select-none' : '')}
-                      title={t('admin.drag_hint')}
-                    >
-                      ⠿
-                    </td>
+                    <div role="cell" className="flex items-center gap-1 xl:justify-center">
+                      <>
+                        <span className={'hidden text-slate-400 xl:inline' + (canDrag ? ' cursor-grab select-none' : '')} title={t('admin.drag_hint')} aria-hidden>⠿</span>
+                        <button
+                          type="button"
+                          className="icon-button h-11 w-11 xl:hidden"
+                          aria-label={`${t('admin.move_up')} · ${f.label}`}
+                          disabled={busy || !!editing || index === 0}
+                          onClick={() => moveField(f.id, -1)}
+                        >
+                          <ArrowUp size={18} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button h-11 w-11 xl:hidden"
+                          aria-label={`${t('admin.move_down')} · ${f.label}`}
+                          disabled={busy || !!editing || index === fields.length - 1}
+                          onClick={() => moveField(f.id, 1)}
+                        >
+                          <ArrowDown size={18} aria-hidden />
+                        </button>
+                      </>
+                    </div>
                   )}
-                  <td className="px-4 py-2.5 font-mono text-xs">{f.fieldKey}</td>
-                  <td className="px-4 py-2.5">{f.label}</td>
-                  <td className="px-4 py-2.5">{t(`scope.${f.scope}`)}</td>
-                  <td className="px-4 py-2.5">{t(`section.${f.section}`)}</td>
-                  <td className="px-4 py-2.5">{f.type}</td>
-                  <td className="px-4 py-2.5">{f.required ? '✓' : ''}</td>
-                  <td className="px-4 py-2.5 text-right">
-                    {editable && (
-                      <span className="flex items-center justify-end gap-3">
-                        <button onClick={() => setEditing(f)} className="text-xs font-medium text-teal-700 hover:underline">
+                  <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-xs xl:block">
+                    <span className="font-medium text-slate-500 xl:hidden">{t('admin.field_key')}</span>
+                    <span className="min-w-0 break-words font-mono">{f.fieldKey}</span>
+                  </div>
+                  <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 xl:block">
+                    <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.label')}</span>
+                    <span className="min-w-0 break-words font-medium text-slate-900">{f.label}</span>
+                  </div>
+                  <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm xl:block">
+                    <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.scope')}</span>
+                    <span>{t(`scope.${f.scope}`)}</span>
+                  </div>
+                  <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm xl:block">
+                    <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.section')}</span>
+                    <span>{t(`section.${f.section}`)}</span>
+                  </div>
+                  <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm xl:block">
+                    <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.type')}</span>
+                    <span>{f.type}</span>
+                  </div>
+                  <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm xl:block">
+                    <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.required')}</span>
+                    <span>{f.required ? '✓' : '—'}</span>
+                  </div>
+                  {editable && (
+                    <div role="cell" className="mt-2 flex items-center justify-end gap-2 border-t border-slate-100 pt-3 xl:mt-0 xl:border-0 xl:pt-0">
+                      <>
+                        <button onClick={() => setEditing(f)} className="btn-ghost min-h-11 px-3 text-xs">
                           {t('admin.edit')}
                         </button>
                         {f.inUse ? (
-                          <span className="text-xs text-slate-300" title={t('admin.field_locked_hint')}>{t('admin.delete')}</span>
+                          <button
+                            type="button"
+                            disabled
+                            className="min-h-11 cursor-not-allowed px-2 text-xs font-medium text-slate-500"
+                            title={t('admin.field_locked_hint')}
+                          >
+                            {t('admin.delete')}
+                          </button>
                         ) : (
-                          <button onClick={() => void run(() => repo.deleteField(f.id))} className="text-xs font-medium text-red-600 hover:underline">
+                          <button onClick={() => void run(() => repo.deleteField(f.id))} className="min-h-11 px-2 text-xs font-medium text-red-600 hover:underline">
                             {t('admin.delete')}
                           </button>
                         )}
-                      </span>
-                    )}
-                  </td>
-                </tr>
+                      </>
+                    </div>
+                  )}
+                </div>
                 );
               })}
-            </tbody>
-          </table>
+          </div>
         </div>
         {editable && editing && (
           <div className="mt-3">
@@ -222,6 +283,7 @@ export function TemplateVersionEditor({
               lockStructural={editing.inUse ?? false}
               submitLabel={t('admin.save')}
               onCancel={() => setEditing(null)}
+              observationModel={observationModel}
               onSubmit={(f) =>
                 void run(() => repo.updateField(editing.id, f)).then((ok) => {
                   if (ok) setEditing(null);
@@ -234,6 +296,7 @@ export function TemplateVersionEditor({
           <div className="mt-3">
             <FieldForm
               busy={busy}
+              observationModel={observationModel}
               onSubmit={async (f, companion) => {
                 // Ne jamais promettre une soupape qui n'a pas pu etre creee. Un conflit est
                 // signale avant toute ecriture et le formulaire reste rempli pour correction.

@@ -1,6 +1,7 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
+import { ChevronDown } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useAccessRepository, useBaseRepository } from '../../data/RepositoryProvider';
@@ -9,12 +10,16 @@ import {
   type AccessItem, type BasePermissions, type IdentityAudit, type InvitationItem, type RolePreset,
 } from '../../data/access';
 import { PageHeader } from '../../components/PageHeader';
+import { SectionCard } from '../../components/SectionCard';
+import { SkeletonList } from '../../components/Skeleton';
+import { Checkbox } from '../../components/Checkbox';
 
 // Partage de base ENTRE MEDECINS uniquement (v3.0). Le role curateur est un role GLOBAL
 // (admin) qui travaille le pool de curation, jamais invite ici.
 const PERMISSION_KEYS: (keyof BasePermissions)[] = [
   'canViewIdentity', 'canViewRawDocuments', 'canEditStructuredData', 'canExportData', 'canManageAccess',
 ];
+const AUDIT_PAGE_SIZE = 20;
 
 // C1 : le profil affiche = celui qui correspond aux cases cochees, sinon « Personnalise ».
 const presetLabel = (p: BasePermissions, t: (k: MessageKey) => string): string =>
@@ -34,6 +39,7 @@ export function AccessManagement() {
   const [invitations, setInvitations] = useState<InvitationItem[]>([]);
   const [accessList, setAccessList] = useState<AccessItem[]>([]);
   const [idAudit, setIdAudit] = useState<IdentityAudit | null>(null); // E1
+  const [auditVisibleCount, setAuditVisibleCount] = useState(AUDIT_PAGE_SIZE);
   const [email, setEmail] = useState('');
   // C1 : on part du profil le moins privilegie (Moniteur = lecture seule) ; l'invitant elargit
   // volontairement. Le role de partage (viewer/editor) est deduit des permissions a l'envoi.
@@ -48,6 +54,7 @@ export function AccessManagement() {
   const load = useCallback(async () => {
     if (!baseId) return;
     setLoading(true);
+    setAuditVisibleCount(AUDIT_PAGE_SIZE);
     try {
       const base = await bases.getBase(baseId);
       const manage = base?.role === 'owner' || base?.permissions.canManageAccess === true;
@@ -105,10 +112,17 @@ export function AccessManagement() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) {
+    return (
+      <section className="max-w-4xl space-y-6">
+        <PageHeader title={t('access.title')} description={t('access.subtitle')} />
+        <SkeletonList rows={5} label={t('common.loading')} />
+      </section>
+    );
+  }
 
   return (
-    <section className="max-w-4xl space-y-6">
+    <section className="max-w-4xl space-y-5 sm:space-y-6">
       <PageHeader title={t('access.title')} description={t('access.subtitle')} />
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -117,9 +131,9 @@ export function AccessManagement() {
         <p className="text-slate-500">{t('access.owner_only')}</p>
       ) : (
         <>
-          <form onSubmit={invite} className="card space-y-3 p-4">
-            <h2 className="text-sm font-semibold text-slate-700">{t('access.invite')}</h2>
-            <div className="flex flex-wrap items-end gap-2">
+          <SectionCard title={t('access.invite')} description={t(`access.preset_desc.${presetOf(perms) ?? 'custom'}` as MessageKey)}>
+          <form onSubmit={invite} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
               <label className="flex flex-col text-xs text-slate-600">
                 {t('access.email')}
                 <input type="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -139,87 +153,84 @@ export function AccessManagement() {
                 {t('access.send_invite')}
               </button>
             </div>
-            <p className="text-xs text-slate-500">{t(`access.preset_desc.${presetOf(perms) ?? 'custom'}` as MessageKey)}</p>
-            <fieldset className="grid grid-cols-2 gap-1 text-xs text-slate-600 sm:grid-cols-3">
-              <legend className="mb-1 text-xs font-medium text-slate-500">{t('access.fine_tune')}</legend>
+            <fieldset className="grid grid-cols-2 gap-1 lg:grid-cols-3">
+              <legend className="mb-2 text-xs font-medium text-slate-500">{t('access.fine_tune')}</legend>
               {PERMISSION_KEYS.map((k) => (
-                <label key={k} className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    checked={perms[k]}
-                    onChange={(e) => setPerms((p) => ({ ...p, [k]: e.target.checked }))}
-                  />
-                  {t(`access.perm.${k}` as MessageKey)}
-                </label>
+                <Checkbox
+                  key={k}
+                  label={t(`access.perm.${k}` as MessageKey)}
+                  checked={perms[k]}
+                  onChange={(e) => setPerms((p) => ({ ...p, [k]: e.target.checked }))}
+                  containerClassName="w-full"
+                />
               ))}
             </fieldset>
             {link && (
-              <div className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-xs">
-                <span className="text-teal-800">{t('access.link_created')}</span>
-                <code className="ml-1 break-all">{link}</code>
+              <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs dark:border-teal-800 dark:bg-teal-950/50" role="status" aria-live="polite">
+                <span className="font-medium text-teal-800 dark:text-teal-200">{t('access.link_created')}</span>
+                <code className="ml-1 break-all text-slate-700 dark:text-slate-200">{link}</code>
               </div>
             )}
           </form>
+          </SectionCard>
 
-          <div>
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('access.pending')}</h2>
+          <SectionCard title={t('access.pending')} bodyClassName="p-4 sm:p-5">
             {invitations.length === 0 ? (
               <p className="text-sm text-slate-500">{t('access.no_pending')}</p>
             ) : (
               <ul className="space-y-2 text-sm">
                 {invitations.map((inv) => (
-                  <li key={inv.id} className="card flex items-center justify-between px-3 py-2">
+                  <li key={inv.id} className="surface-muted flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                     <span>
                       {inv.email} · <span className="font-medium">{presetLabel(inv.permissions, t)}</span>
                     </span>
-                    <button onClick={() => void run(() => accessRepo.revokeInvitation(inv.id))} className="text-xs text-red-600 hover:underline">
+                    <button type="button" onClick={() => void run(() => accessRepo.revokeInvitation(inv.id))} className="btn-ghost min-h-11 text-red-700 dark:text-red-300">
                       {t('access.revoke')}
                     </button>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </SectionCard>
 
-          <div>
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('access.current')}</h2>
+          <SectionCard title={t('access.current')} bodyClassName="p-4 sm:p-5">
             {accessList.length === 0 ? (
               <p className="text-sm text-slate-500">{t('access.no_access')}</p>
             ) : (
               <ul className="space-y-2 text-sm">
                 {accessList.map((a) => (
-                  <li key={a.id} className="card px-3 py-2">
-                    <div className="flex items-center justify-between">
+                  <li key={a.id} className="surface-muted p-3 sm:p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <span className="font-medium">
                         {a.fullName ?? a.userId.slice(0, 8)} · {presetLabel(a.permissions, t)}
                       </span>
-                      <button onClick={() => void run(() => accessRepo.revokeAccess(a.id))} className="text-xs text-red-600 hover:underline">
+                      <button type="button" onClick={() => void run(() => accessRepo.revokeAccess(a.id))} className="btn-ghost min-h-11 self-start text-red-700 dark:text-red-300 sm:self-auto">
                         {t('access.revoke')}
                       </button>
                     </div>
-                    <fieldset className="mt-1 grid grid-cols-2 gap-1 text-xs text-slate-500 sm:grid-cols-3">
+                    <fieldset
+                      className="mt-2 grid grid-cols-2 gap-1 lg:grid-cols-3"
+                      aria-label={a.fullName ?? a.userId.slice(0, 8)}
+                    >
                       {PERMISSION_KEYS.map((k) => (
-                        <label key={k} className="flex items-center gap-1">
-                          <input
-                            type="checkbox"
-                            disabled={busy}
-                            checked={a.permissions[k]}
-                            onChange={(e) => void run(() => accessRepo.setPermissions(a.id, { ...a.permissions, [k]: e.target.checked }))}
-                          />
-                          {t(`access.perm.${k}` as MessageKey)}
-                        </label>
+                        <Checkbox
+                          key={k}
+                          label={t(`access.perm.${k}` as MessageKey)}
+                          disabled={busy}
+                          checked={a.permissions[k]}
+                          onChange={(e) => void run(() => accessRepo.setPermissions(a.id, { ...a.permissions, [k]: e.target.checked }))}
+                          containerClassName="w-full"
+                        />
                       ))}
                     </fieldset>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </SectionCard>
 
           {idAudit && (
-            <div>
-              <h2 className="mb-1 text-sm font-semibold text-slate-700">{t('access.identity_activity')}</h2>
-              <p className="mb-3 text-xs text-slate-500">{t('access.identity_activity_hint')}</p>
+            <SectionCard title={t('access.identity_activity')} description={t('access.identity_activity_hint')} bodyClassName="p-4 sm:p-5">
               {idAudit.reads.length === 0 ? (
                 <p className="text-sm text-slate-500">{t('access.identity_none')}</p>
               ) : (
@@ -232,21 +243,38 @@ export function AccessManagement() {
                       </li>
                     ))}
                   </ul>
-                  <ul className="space-y-1 text-xs">
-                    {idAudit.reads.map((r, i) => (
-                      <li key={i} className="flex items-center justify-between border-b border-slate-100 pb-1">
-                        <span>
-                          <span className="font-medium text-slate-700">{r.readerName}</span>
-                          <span className="text-slate-400"> → </span>
-                          <span className="font-mono">{r.patientCode ?? '—'}</span>
-                        </span>
-                        <span className="text-slate-400">{new Date(r.at).toLocaleString()}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <details className="surface-muted group overflow-hidden">
+                    <summary role="button" className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 py-2 text-sm font-medium text-slate-700">
+                      <span className="mr-auto">{t('access.identity_details').replace('{n}', String(idAudit.reads.length))}</span>
+                      <ChevronDown size={18} className="text-slate-500 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+                    </summary>
+                    <div className="border-t border-slate-200 p-3">
+                      <ul className="space-y-1 text-xs">
+                        {idAudit.reads.slice(0, auditVisibleCount).map((r, i) => (
+                          <li key={`${r.at}-${i}`} className="flex flex-col gap-0.5 border-b border-slate-100 py-2 last:border-0 sm:flex-row sm:items-center sm:justify-between">
+                            <span>
+                              <span className="font-medium text-slate-700">{r.readerName}</span>
+                              <span className="text-slate-400"> → </span>
+                              <span className="font-mono">{r.patientCode ?? '—'}</span>
+                            </span>
+                            <time className="text-slate-400" dateTime={r.at}>{new Date(r.at).toLocaleString()}</time>
+                          </li>
+                        ))}
+                      </ul>
+                      {auditVisibleCount < idAudit.reads.length && (
+                        <button
+                          type="button"
+                          className="btn-secondary mt-3 w-full sm:w-auto"
+                          onClick={() => setAuditVisibleCount((count) => count + AUDIT_PAGE_SIZE)}
+                        >
+                          {t('common.show_more')}
+                        </button>
+                      )}
+                    </div>
+                  </details>
                 </div>
               )}
-            </div>
+            </SectionCard>
           )}
         </>
       )}

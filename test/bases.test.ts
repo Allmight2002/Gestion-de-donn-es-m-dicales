@@ -73,6 +73,63 @@ describe('creation et propriete d une base', () => {
   });
 });
 
+describe('L9 : modele d observation de la base', () => {
+  test('une creation transversale convertit les variables de rencontre en variables participant', async () => {
+    const created = await rowsAs(
+      bobId,
+      'select * from public.create_base_from_model_observation($1,$2,$3,$4)',
+      ['Etude transversale', 'neuro', publishedVersionId, 'cross_sectional'],
+    );
+    const base = created[0];
+    expect(base.observation_model).toBe('cross_sectional');
+
+    const fields = (await db.admin.query(
+      'select scope, encounter_types from public.template_field where template_version_id=$1',
+      [base.current_template_version_id],
+    )).rows;
+    expect(fields).not.toHaveLength(0);
+    expect(fields.every((field) => field.scope === 'patient' && field.encounter_types === null)).toBe(true);
+  });
+
+  test('la base refuse une rencontre et une soumission de rencontre en transversal, quel que soit l appelant', async () => {
+    const base = (await rowsAs(
+      bobId,
+      'select * from public.create_base_from_model_observation($1,$2,$3,$4)',
+      ['Etude transversale protege', 'neuro', publishedVersionId, 'cross_sectional'],
+    ))[0];
+    const patientId = (await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'TRANS-1',$2,'{}'::jsonb) returning id",
+      [base.id, base.current_template_version_id],
+    )).rows[0].id;
+
+    await expect(rowsAs(
+      bobId,
+      "select * from public.create_encounter($1,'consultation','2026-08-01','draft','{}'::jsonb,'years')",
+      [patientId],
+    )).rejects.toThrow(/transversale.*rencontre/i);
+    await expect(db.admin.query(
+      "insert into public.raw_submission(base_id, target_patient_id, scope, case_code, status) values($1,$2,'encounter','CASE-TRANS-1','received')",
+      [base.id, patientId],
+    )).rejects.toThrow(/transversale.*rencontre/i);
+  });
+
+  test('le proprietaire peut changer une base vide, mais jamais apres la premiere saisie', async () => {
+    const baseId = await bobCreatesBase();
+    const changed = await rowsAs(bobId, 'select * from public.set_base_observation_model($1,$2)', [baseId, 'event_registry']);
+    expect(changed[0].observation_model).toBe('event_registry');
+
+    const templateVersionId = (await db.admin.query('select current_template_version_id from public.base where id=$1', [baseId])).rows[0].current_template_version_id;
+    await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'LOCK-OBS-1',$2,'{}'::jsonb)",
+      [baseId, templateVersionId],
+    );
+    await expect(rowsAs(bobId, 'select * from public.set_base_observation_model($1,$2)', [baseId, 'cross_sectional']))
+      .rejects.toThrow(/apres la premiere saisie/i);
+    expect((await db.admin.query('select observation_model from public.base where id=$1', [baseId])).rows[0].observation_model)
+      .toBe('event_registry');
+  });
+});
+
 describe('visibilite : privee par defaut, partage explicite', () => {
   test('une autre medecin ne voit pas la base, puis la voit apres partage', async () => {
     const baseId = await bobCreatesBase();
@@ -134,5 +191,66 @@ describe('suppression de base : soft delete audite uniquement', () => {
     expect(await rowsAs(bobId, 'select id from public.patient where base_id=$1', [baseId])).toHaveLength(0);
     expect((await db.admin.query('select deleted_at, deletion_reason from public.base where id=$1', [baseId])).rows[0])
       .toMatchObject({ deletion_reason: 'fin etude' });
+  });
+});
+
+describe('restauration de base : proprietaire, transaction et acces revoques', () => {
+  test('le proprietaire restaure les donnees et les etats, sans rouvrir le partage', async () => {
+    const baseId = await bobCreatesBase();
+    const tv = (await db.admin.query('select current_template_version_id from public.base where id=$1', [baseId])).rows[0].current_template_version_id;
+    const patientId = (await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'BASE-RESTORE-1',$2,'{}'::jsonb) returning id",
+      [baseId, tv],
+    )).rows[0].id;
+    const submissionId = (await db.admin.query(
+      "insert into public.raw_submission(base_id, target_patient_id, case_code, status) values($1,$2,'CASE-BASE-RESTORE','received') returning id",
+      [baseId, patientId],
+    )).rows[0].id;
+    const taskId = (await db.admin.query(
+      "insert into public.curation_task(base_id, submission_id, status) values($1,$2,'preparing') returning id",
+      [baseId, submissionId],
+    )).rows[0].id;
+    await db.admin.query(
+      "insert into public.base_access(base_id, user_id, access_role, granted_by) values($1,$2,'viewer',$3)",
+      [baseId, aliceId, bobId],
+    );
+
+    await rowsAs(bobId, 'select public.soft_delete_base($1,$2)', [baseId, 'creation par erreur']);
+    // Retry apres reponse perdue : l'etat deja atteint est un succes sans second audit.
+    await rowsAs(bobId, 'select public.soft_delete_base($1,$2)', [baseId, null]);
+
+    const trash = (await rowsAs(bobId, 'select * from public.list_deleted_bases()')).filter((row) => row.id === baseId);
+    expect(trash).toHaveLength(1);
+    expect(trash[0]).toMatchObject({ id: baseId, name: 'Base de Bob', deletion_reason: 'creation par erreur' });
+    expect(new Date(trash[0].purge_eligible_at).getTime()).toBeGreaterThan(new Date(trash[0].deleted_at).getTime());
+    expect(await rowsAs(aliceId, 'select * from public.list_deleted_bases()')).toHaveLength(0);
+    await expect(rowsAs(aliceId, 'select public.restore_deleted_base($1)', [baseId]))
+      .rejects.toThrow(/proprietaire/i);
+
+    // Deux clics ou retries concurrents se serialisent sur la base et convergent vers active.
+    await Promise.all([
+      rowsAs(bobId, 'select public.restore_deleted_base($1)', [baseId]),
+      rowsAs(bobId, 'select public.restore_deleted_base($1)', [baseId]),
+    ]);
+
+    expect(await rowsAs(bobId, 'select id from public.base where id=$1', [baseId])).toHaveLength(1);
+    // Le collaborateur reste exclu : seul une nouvelle invitation peut recreer l'acces.
+    expect(await rowsAs(aliceId, 'select id from public.base where id=$1', [baseId])).toHaveLength(0);
+    expect((await db.admin.query('select revoked_at from public.base_access where base_id=$1 and user_id=$2', [baseId, aliceId])).rows[0].revoked_at)
+      .not.toBeNull();
+
+    expect((await db.admin.query('select deleted_at from public.patient where id=$1', [patientId])).rows[0].deleted_at).toBeNull();
+    expect((await db.admin.query('select deleted_at, status from public.raw_submission where id=$1', [submissionId])).rows[0])
+      .toMatchObject({ deleted_at: null, status: 'received' });
+    expect((await db.admin.query('select deleted_at, status from public.curation_task where id=$1', [taskId])).rows[0])
+      .toMatchObject({ deleted_at: null, status: 'preparing' });
+    expect((await db.admin.query('select deleted_at, deletion_snapshot from public.base where id=$1', [baseId])).rows[0])
+      .toMatchObject({ deleted_at: null, deletion_snapshot: null });
+
+    const audit = await db.admin.query(
+      "select action from public.audit_log where base_id=$1 and action in ('base_deleted','base_restored') order by created_at",
+      [baseId],
+    );
+    expect(audit.rows.map((row) => row.action)).toEqual(['base_deleted', 'base_restored']);
   });
 });

@@ -8,6 +8,8 @@ import { useBaseRepository, useMissionRepository } from '../../data/RepositoryPr
 import { daysUntil, maxExpiryDate, missionStatus, type MissionAccount } from '../../data/mission';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
+import { Checkbox } from '../../components/Checkbox';
+import { SkeletonList } from '../../components/Skeleton';
 
 // Ecran « Comptes de mission » (docs/spec-comptes-mission.md §8, cote medecin).
 // Toutes les regles sont appliquees par le serveur : cet ecran ne fait que proposer les
@@ -115,10 +117,10 @@ export function MissionAccounts() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-4xl space-y-6">
+    <section className="max-w-4xl space-y-5 sm:space-y-6">
       <PageHeader title={t('mission.title')} description={t('mission.subtitle')} />
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -156,19 +158,14 @@ export function MissionAccounts() {
               </div>
 
               {/* Case DECOCHEE au depart : le cloisonnement est la regle, l'ouverture l'exception. */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <label className="flex items-start gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canViewIdentity}
-                    onChange={(e) => setCanViewIdentity(e.target.checked)}
-                  />
-                  <span>
-                    {t('mission.identity_label')}
-                    <span className="mt-0.5 block text-xs text-slate-500">{t('mission.identity_hint')}</span>
-                  </span>
-                </label>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <Checkbox
+                  checked={canViewIdentity}
+                  onChange={(e) => setCanViewIdentity(e.target.checked)}
+                  label={t('mission.identity_label')}
+                  description={t('mission.identity_hint')}
+                  containerClassName="w-full items-start"
+                />
                 {canViewIdentity && (
                   <label className="form-label mt-3">
                     {t('mission.identity_reason')}

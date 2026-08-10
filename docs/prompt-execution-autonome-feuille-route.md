@@ -23,8 +23,8 @@ en commençant par l'intégration de la documentation actuelle puis par la
 Phase 0 React Router. Travaille lot par lot et termine complètement un lot
 avant de commencer le suivant.
 
-La fermeture de B1–B10 n'est plus une précondition au développement. B2, B6,
-B7 et B10 restent ouverts pour la production, mais ne doivent plus interrompre
+La fermeture de B1–B10 n'est plus une précondition au développement. B2, B6 et
+B10 restent ouverts pour la production, mais ne doivent plus interrompre
 le développement, les tests, les opérations Git/GitHub ou un staging isolé
 utilisant exclusivement des données fictives, sauf lorsqu'un lot dépend
 directement de la capacité absente.

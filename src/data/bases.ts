@@ -7,6 +7,7 @@ import type { AccessRole, BasePermissions } from './access';
 import { requireUpdatedRow } from '../lib/guardedWrite';
 
 export type BaseRole = 'owner' | AccessRole;
+export type ObservationModel = 'cross_sectional' | 'longitudinal' | 'event_registry';
 
 const ALL_PERMISSIONS: BasePermissions = {
   canViewIdentity: true,
@@ -22,6 +23,8 @@ export interface Base {
   specialty: string | null;
   ownerUserId: string;
   currentTemplateVersionId: string | null;
+  /** Absent seulement dans d'anciens instantanes hors-ligne ; la base reste longitudinale par defaut. */
+  observationModel?: ObservationModel;
 }
 
 export interface BaseListing {
@@ -38,6 +41,15 @@ export interface BaseListing {
   expiresAt?: string | null;
   /** Creer sans pouvoir corriger une saisie soumise (compte de mission). */
   canCreateStructuredData?: boolean;
+}
+
+/** Metadonnees minimales exposees dans la corbeille du seul proprietaire. */
+export interface DeletedBase {
+  id: string;
+  name: string;
+  deletedAt: string;
+  deletionReason: string;
+  purgeEligibleAt: string;
 }
 
 export interface PublishedTemplateOption {
@@ -75,13 +87,19 @@ export interface CompletenessRow {
 
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
+  listDeletedBases(): Promise<DeletedBase[]>;
   /** Modeles proposes au medecin : officiels (global) + ses propres gabarits (personal). */
   listTemplateModels(): Promise<PublishedTemplateOption[]>;
   /** Cree une base en COPIANT un modele source en gabarit personnel editable. */
-  createBase(name: string, specialty: string | null, sourceVersionId: string): Promise<Base>;
+  createBase(name: string, specialty: string | null, sourceVersionId: string, observationModel?: ObservationModel): Promise<Base>;
   getBase(id: string): Promise<BaseListing | null>;
+  /** Commandes de cycle de vie executees et autorisees exclusivement par la base. */
+  softDeleteBase(baseId: string, reason: string): Promise<void>;
+  restoreDeletedBase(baseId: string): Promise<void>;
   /** Rattache la base a une (nouvelle) version de son gabarit. Reserve au proprietaire (RLS). */
   setTemplateVersion(baseId: string, versionId: string): Promise<void>;
+  /** Le serveur refuse tout changement des qu'une donnee existe dans la base. */
+  setObservationModel(baseId: string, observationModel: ObservationModel): Promise<Base>;
   /** D2 : inclusions par mois + objectif (RLS : sans acces -> serie vide). */
   getInclusionStats(baseId: string): Promise<InclusionStats>;
   /** D2 : fixe/retire l'objectif d'inclusion (proprietaire seulement, RLS base_update). */
@@ -98,15 +116,16 @@ export interface BaseRepository {
 type BaseRow = {
   id: string; name: string; specialty: string | null; owner_user_id: string;
   current_template_version_id: string | null;
+  observation_model: ObservationModel;
 };
 const mapBase = (r: BaseRow): Base => ({
   id: r.id, name: r.name, specialty: r.specialty, ownerUserId: r.owner_user_id,
-  currentTemplateVersionId: r.current_template_version_id,
+  currentTemplateVersionId: r.current_template_version_id, observationModel: r.observation_model,
 });
 // Base + libelle de gabarit JOINT en une requete (PostgREST embedding) -> evite 2 aller-retours.
 type BaseEmbedRow = BaseRow & { tv: { version_number: number; tpl: { name: string } | null } | null };
 const TV_EMBED = 'tv:template_version!current_template_version_id(version_number, tpl:template_id(name))';
-const BASE_SELECT = `id, name, specialty, owner_user_id, current_template_version_id, ${TV_EMBED}`;
+const BASE_SELECT = `id, name, specialty, owner_user_id, current_template_version_id, observation_model, ${TV_EMBED}`;
 const ACCESS_COLS = 'access_role, can_view_identity, can_view_raw_documents, can_edit_structured_data, can_export_data, can_manage_access, can_create_structured_data, expires_at';
 
 type AccessPermRow = {
@@ -130,7 +149,11 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listMyBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail, setTemplateVersion: fail, getInclusionStats: fail, setInclusionTarget: fail, getCompletenessStats: fail };
+    return {
+      listMyBases: fail, listDeletedBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail,
+      softDeleteBase: fail, restoreDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
+      setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail,
+    };
   }
 
   async function currentUserId(): Promise<string> {
@@ -173,6 +196,20 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       });
     },
 
+    async listDeletedBases() {
+      const { data, error } = await client.rpc('list_deleted_bases');
+      if (error) throw error;
+      return ((data ?? []) as {
+        id: string; name: string; deleted_at: string; deletion_reason: string; purge_eligible_at: string;
+      }[]).map((row) => ({
+        id: row.id,
+        name: row.name,
+        deletedAt: row.deleted_at,
+        deletionReason: row.deletion_reason,
+        purgeEligibleAt: row.purge_eligible_at,
+      }));
+    },
+
     async listTemplateModels() {
       // La RLS ne renvoie que les modeles lisibles (global + ses propres gabarits).
       const { data, error } = await client
@@ -195,11 +232,12 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       });
     },
 
-    async createBase(name, specialty, sourceVersionId) {
-      const { data, error } = await client.rpc('create_base_from_model', {
+    async createBase(name, specialty, sourceVersionId, observationModel = 'longitudinal') {
+      const { data, error } = await client.rpc('create_base_from_model_observation', {
         p_name: name,
         p_specialty: specialty ?? '',
         p_source_version_id: sourceVersionId,
+        p_observation_model: observationModel,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as BaseRow;
@@ -230,9 +268,29 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       };
     },
 
+    async softDeleteBase(baseId, reason) {
+      const { error } = await client.rpc('soft_delete_base', { p_base_id: baseId, p_reason: reason });
+      if (error) throw error;
+    },
+
+    async restoreDeletedBase(baseId) {
+      const { error } = await client.rpc('restore_deleted_base', { p_base_id: baseId });
+      if (error) throw error;
+    },
+
     async setTemplateVersion(baseId, versionId) {
       const { error } = await client.rpc('set_base_template_version', { p_base_id: baseId, p_version_id: versionId });
       if (error) throw error;
+    },
+
+    async setObservationModel(baseId, observationModel) {
+      const { data, error } = await client.rpc('set_base_observation_model', {
+        p_base_id: baseId,
+        p_observation_model: observationModel,
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as BaseRow;
+      return mapBase(row);
     },
 
     async getInclusionStats(baseId) {

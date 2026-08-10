@@ -102,6 +102,10 @@ function renderEditor(repo: TemplateRepository) {
   );
 }
 
+async function openTemplateActions() {
+  await userEvent.click(screen.getByRole('button', { name: /Actions.*Neurochirurgie/ }));
+}
+
 describe('TemplatesAdmin', () => {
   test('liste les gabarits existants', async () => {
     renderAdmin(statefulMock('draft'));
@@ -123,6 +127,7 @@ describe('TemplatesAdmin', () => {
     const renameTemplate = vi.fn(async () => {});
     renderAdmin({ ...statefulMock('draft'), renameTemplate });
     await screen.findByText('Neurochirurgie');
+    await openTemplateActions();
     await user.click(screen.getByRole('button', { name: 'Renommer' }));
     const nameInput = screen.getByDisplayValue('Neurochirurgie');
     await user.clear(nameInput);
@@ -136,6 +141,7 @@ describe('TemplatesAdmin', () => {
     const deleteTemplate = vi.fn(async () => {});
     renderAdmin({ ...statefulMock('draft'), deleteTemplate });
     await screen.findByText('Neurochirurgie');
+    await openTemplateActions();
     await user.click(screen.getByRole('button', { name: 'Supprimer' }));
     expect(screen.getByText('Confirmer la suppression ?')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Oui' }));
@@ -150,6 +156,7 @@ describe('TemplatesAdmin', () => {
     });
     renderAdmin({ ...statefulMock('draft'), deleteTemplate });
     await screen.findByText('Neurochirurgie');
+    await openTemplateActions();
     await user.click(screen.getByRole('button', { name: 'Supprimer' }));
     await user.click(screen.getByRole('button', { name: 'Oui' }));
 
@@ -229,14 +236,55 @@ describe('TemplateVersionEditor (brouillon)', () => {
     expect(await screen.findByText('Glasgow modifié')).toBeInTheDocument();
   });
 
-  test('une regle JSON invalide affiche une erreur', async () => {
+  test('permet de reordonner les champs sur mobile avec des boutons explicites', async () => {
     const user = userEvent.setup();
+    const repo = statefulMock('draft');
+    const reorderFields = vi.spyOn(repo, 'reorderFields');
+    renderEditor(repo);
+    await screen.findByText('Champs');
+
+    await user.type(screen.getByLabelText('Clé technique'), 'premier');
+    await user.type(screen.getByLabelText('Libellé'), 'Premier');
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await screen.findByText('Premier');
+    await user.type(screen.getByLabelText('Clé technique'), 'second');
+    await user.type(screen.getByLabelText('Libellé'), 'Second');
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await screen.findByText('Second');
+
+    await user.click(screen.getByRole('button', { name: 'Monter · Second' }));
+    await waitFor(() => expect(reorderFields).toHaveBeenLastCalledWith('v1', ['f2', 'f1']));
+  });
+
+  test('propose uniquement le constructeur de regles guide', async () => {
     renderEditor(statefulMock('draft'));
     await screen.findByText('Règles');
-    await user.click(screen.getByRole('button', { name: 'Mode expert — JSON' }));
-    await user.type(screen.getByLabelText('Règle (JSON)'), 'pas du json');
-    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/invalide/i);
+    expect(screen.getByLabelText('Type de règle')).toBeInTheDocument();
+    expect(screen.queryByText(/Mode expert/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/JSON/i)).not.toBeInTheDocument();
+  });
+
+  test('nomme les colonnes d actions et rend la suppression verrouillee explicite', async () => {
+    const repo = statefulMock('draft');
+    const lockedField: TemplateField = {
+      id: 'locked', fieldKey: 'patient_code', label: 'Code patient', scope: 'patient', section: 'clinique', type: 'text',
+      unit: null, allowedValues: null, required: true, minValue: null, maxValue: null,
+      allowMissingCodes: false, displayOrder: 1, inUse: true,
+    };
+    renderEditor({
+      ...repo,
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' },
+          fields: [lockedField],
+          rules: [],
+        };
+      },
+    });
+
+    expect(await screen.findByRole('columnheader', { name: 'Glisser pour réordonner' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Supprimer' })).toBeDisabled();
   });
 });
 

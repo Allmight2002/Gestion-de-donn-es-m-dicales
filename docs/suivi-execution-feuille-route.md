@@ -1198,6 +1198,99 @@ garde son nom d'origine.
 Cette dérogation devra être déclarée telle quelle dans le dossier ANSICE : elle
 se justifie par la taille de l'équipe, pas par une analyse de risque.
 
+## B7 — fermeture du gate technique (2026-08-01)
+
+Le dépôt étant public depuis le 2026-07-28, la protection des branches est
+disponible sans plan payant. Le contrôle live a été vérifié sur le dépôt
+`Allmight2002/Gestion-de-donn-es-m-dicales`.
+
+### Configuration vérifiée
+
+- `main` et `develop` exigent une pull request ;
+- `build-test` et `scanner-image` sont des checks obligatoires sur les deux
+  branches ;
+- les règles s'appliquent aux administrateurs ; le force-push et la suppression
+  de branche sont interdits ; les conversations doivent être résolues ;
+- `staging` autorise `develop` et `main`, tandis que `production` autorise
+  uniquement `main` ;
+- `Allmight2002` est reviewer requis sur les deux environnements.
+
+### Vérification et limite explicite
+
+Avec `GITHUB_CONTROLS_SOLO=true`, `npm run github:controls:verify` termine par
+`Controles GitHub: OK en mode MONO-PERSONNE`. La dérogation suspend uniquement la
+relecture par un tiers, l'approbation distincte après le dernier push et
+l'interdiction de l'auto-approbation d'environnement. La barrière technique
+contre une fusion à CI rouge reste active.
+
+B7 est **fermé pour la protection technique**. La variable de dépôt
+`CONTROLS_SOLO_MODE=true` devra être retirée dès qu'un second relecteur existe ;
+la revue complète reprendra alors sans changement de script. La MFA, la revue
+nominative et le moindre privilège restent des preuves RSSI externes.
+
+Le circuit de promotion de la preuve suit `branche de travail → develop → main`.
+Les protections ont été vérifiées avant sa mise en œuvre ; aucune fusion directe
+vers `develop` ou `main` n'est utilisée.
+
+### Traçabilité du circuit et test négatif
+
+- PR #111 (`codex/b7-branch-protections` → `develop`) fusionnée le 2026-08-01
+  en `2f96f5c425c99238c5b349905e39aa2c4f54d8f9` ; run CI `30703062832`,
+  `build-test` et `scanner-image` verts ;
+- PR #112 (`develop` → `main`) fusionnée le 2026-08-01 en
+  `f24b91c69c5145854891b3f31fe56ced5ac7d14e` ; runs `30703195018` (PR) et
+  `30703175979` (push sur `develop`), checks verts ;
+- PR négative #113, ouverte contre `main` depuis `codex/b7-red-ci-probe` :
+  run `30703348177` avec `build-test=FAILURE` et `scanner-image=SUCCESS` ;
+  `gh pr merge 113 --merge` a été refusé avec `MERGE_EXIT=1` et le message
+  GitHub `base branch policy prohibits the merge` ; la PR a été fermée sans
+  fusion et la branche temporaire supprimée.
+
+## Dérogation pilote sur les trois preuves de readiness (2026-07-29)
+
+Décidée par le porteur après l'inventaire des secrets de production, dans le
+prolongement de la dérogation B7.
+
+**Une différence de nature doit rester consignée.** B7 était une
+**impossibilité** : GitHub interdit d'approuver sa propre pull request, et aucun
+travail n'aurait permis de satisfaire le contrôle sur un dépôt à une personne.
+Les trois preuves suspendues ici — gouvernance, reprise, exploitation — sont au
+contraire **réalisables** ; elles manquent parce qu'elles n'ont pas été faites.
+C'est une dette assumée, pas une adaptation à une contrainte de plate-forme.
+
+### Forme retenue
+
+La dérogation ne s'applique **qu'à l'absence** de preuve. Chaque garde-fou teste
+d'abord si la preuve existe :
+
+- fournie → vérifiée intégralement, y compris la correspondance au SHA exact ;
+- absente et dérogation active → la release continue, après avoir écrit au
+  journal ce qui n'est pas prouvé ;
+- absente et dérogation inactive → échec, comme avant.
+
+Produire **une seule** des trois preuves la remet donc immédiatement sous
+contrôle, sans rien reconfigurer : la dette se rembourse par tiers.
+
+### Ce qui reste bloquant
+
+La sauvegarde **chiffrée, vérifiée et conservée** avant toute écriture n'est pas
+touchée — c'est le filet qui rend une erreur réparable. Ni la preuve de staging
+réussi pour le même SHA, ni la vérification de cible, de dérive de schéma, d'ACL
+de fonctions et d'inventaire Edge.
+
+### Vérification
+
+`test/deployment.test.ts` (**11 tests**) vérifie que la sortie anticipée exige
+les **deux** conditions, que le contrôle d'origine subsiste pour une preuve
+fournie, que la dérogation passe par une variable de dépôt et n'est jamais écrite
+en dur, et que la sauvegarde chiffrée reste inconditionnelle.
+
+Détail et condition de levée : [`derogations-readiness.md`](derogations-readiness.md).
+
+**Limite d'acceptabilité** : cette dérogation ne vaut que pour une production à
+**données fictives**, sans utilisateur tiers. Elle tombe à la première donnée
+réelle, au premier patient, et au premier utilisateur qui n'est pas le porteur.
+
 ## 2026-07-29 — L10, comptes de mission : livré, vérifié sur staging, bloqué en production
 
 Un médecin peut confier la saisie d'**une** base à une personne de terrain, pour une
@@ -1316,3 +1409,31 @@ chemin. Le lot est donc vérifié sur un Supabase réel ; seule la publication r
 — la porte de production compare le SHA exact, et `f1211ab` n'a pas encore le sien — puis
 promouvoir avec ce `staging_run_id`.
 
+## Lot L9 — Modèle d'observation d'une base (2026-08-01, validation locale)
+
+Décisions métier : trois modèles — `cross_sectional`, `longitudinal` et
+`event_registry` ; le choix est fait à la création, modifiable seulement tant que la
+base ne contient aucune saisie. Les bases existantes restent `longitudinal`. Le mode
+transversal ne crée pas de champ âge dédié : l'âge reste une variable de la base si
+l'étude en a besoin.
+
+La migration additive `20260801185149_observation_model_base.sql` ajoute la colonne
+`base.observation_model` avec défaut longitudinal, une RPC atomique de création et une
+RPC réservée au propriétaire pour changer le modèle d'une base vide. Les gardes SQL
+empêchent les rencontres et soumissions de portée rencontre dans une base transversale,
+y compris par import, URL directe ou RPC ; elles empêchent aussi un retour à une portée
+rencontre dans son jeu de variables. Lors du passage au transversal, les variables du
+jeu de variables deviennent des variables participant, sans toucher à des données.
+
+L'interface propose le modèle à la création ; une base vide peut encore le changer.
+Pour le transversal, « Nouveau patient » ouvre directement le formulaire unique
+sectionné, la portée est masquée dans l'éditeur de variables et tous les accès visibles
+à l'ajout de rencontre sont retirés.
+
+Vérifications locales vertes : `npm run typecheck`, `npm run lint`, `npm run build`
+avec `VITE_USE_SIGNED_READ=true`, `npm run schema`, `npm run manifest`,
+`npm run db:verify` (112 migrations appliquées depuis zéro), les 39 tests ciblés L9 et
+`npm run test:web` (46 fichiers, 274 tests). La suite RLS exhaustive a dépassé la
+limite locale de 124 s sans résultat final ; la CI devra donc fournir cette preuve.
+Le contrôle ACL distant requiert `SUPABASE_DB_URL` et reste à effectuer après le retour
+du réseau, avant staging puis production.

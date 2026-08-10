@@ -3,6 +3,8 @@ import { useI18n } from '../../i18n/useI18n';
 import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
 import { makeProposalField } from '../../domain/proposalField';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
+import type { ObservationModel } from '../../data/bases';
+import { Checkbox } from '../../components/Checkbox';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
 const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
@@ -18,6 +20,7 @@ export function FieldForm({
   lockStructural = false,
   submitLabel,
   onCancel,
+  observationModel = 'longitudinal',
 }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
@@ -28,12 +31,14 @@ export function FieldForm({
   lockStructural?: boolean;
   submitLabel?: string;
   onCancel?: () => void;
+  observationModel?: ObservationModel;
 }) {
   const { t } = useI18n();
   const editing = !!initial;
+  const isCrossSectional = observationModel === 'cross_sectional';
   const [fieldKey, setFieldKey] = useState(initial?.fieldKey ?? '');
   const [label, setLabel] = useState(initial?.label ?? '');
-  const [scope, setScope] = useState<FieldScope>(initial?.scope ?? 'encounter');
+  const [scope, setScope] = useState<FieldScope>(isCrossSectional ? 'patient' : (initial?.scope ?? 'encounter'));
   const [section, setSection] = useState<FieldSection>(initial?.section ?? 'clinique');
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
@@ -70,9 +75,9 @@ export function FieldForm({
     if (!fieldKey.trim() || !label.trim()) return;
     const values = parsedValues;
     const built: NewField = {
-      fieldKey: fieldKey.trim(), label: label.trim(), scope, section, type, required,
+      fieldKey: fieldKey.trim(), label: label.trim(), scope: isCrossSectional ? 'patient' : scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
-      encounterTypes: scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
+      encounterTypes: !isCrossSectional && scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
       allowedValues: isChoice && values.length > 0 ? values : null,
       minValue: isNumber ? numOrNull(minValue) : null,
       maxValue: isNumber ? numOrNull(maxValue) : null,
@@ -99,8 +104,8 @@ export function FieldForm({
   }
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="card flex flex-wrap items-end gap-2 p-4">
-      <label className="flex flex-col text-xs text-slate-600">
+    <form onSubmit={(e) => void submit(e)} className="card grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+      <label className="form-label">
         {t('admin.field_key')}
         <input
           className={inputCls}
@@ -110,26 +115,30 @@ export function FieldForm({
           required
         />
       </label>
-      <label className="flex flex-col text-xs text-slate-600">
+      <label className="form-label">
         {t('admin.label')}
         <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
       </label>
-      <label className="flex flex-col text-xs text-slate-600">
-        {t('admin.scope')}
-        <select
-          className={inputCls}
-          value={scope}
-          onChange={(e) => setScope(e.target.value as FieldScope)}
-          disabled={lockStructural}
-        >
-          {SCOPES.map((s) => (
-            <option key={s} value={s}>
-              {t(`scope.${s}`)}
-            </option>
-          ))}
-        </select>
+      <label className="form-label">
+        {isCrossSectional ? t('observation.single_form_scope') : t('admin.scope')}
+        {isCrossSectional ? (
+          <span className="input mt-1 flex items-center text-slate-600">{t('scope.patient')}</span>
+        ) : (
+          <select
+            className={inputCls}
+            value={scope}
+            onChange={(e) => setScope(e.target.value as FieldScope)}
+            disabled={lockStructural}
+          >
+            {SCOPES.map((s) => (
+              <option key={s} value={s}>
+                {t(`scope.${s}`)}
+              </option>
+            ))}
+          </select>
+        )}
       </label>
-      <label className="flex flex-col text-xs text-slate-600">
+      <label className="form-label">
         {t('admin.section')}
         <select className={inputCls} value={section} onChange={(e) => setSection(e.target.value as FieldSection)}>
           {SECTIONS.map((s) => (
@@ -139,7 +148,7 @@ export function FieldForm({
           ))}
         </select>
       </label>
-      <label className="flex flex-col text-xs text-slate-600">
+      <label className="form-label">
         {t('admin.type')}
         <select
           className={inputCls}
@@ -154,14 +163,17 @@ export function FieldForm({
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-1 text-xs text-slate-600">
-        <input type="checkbox" checked={required} disabled={lockStructural} onChange={(e) => setRequired(e.target.checked)} />
-        {t('admin.required')}
-      </label>
+      <Checkbox
+        label={t('admin.required')}
+        checked={required}
+        disabled={lockStructural}
+        onChange={(e) => setRequired(e.target.checked)}
+        containerClassName="sm:self-end"
+      />
 
       {isChoice && (
-        <div className="flex w-full flex-col gap-2">
-          <label className="flex flex-col text-xs text-slate-600">
+        <div className="flex flex-col gap-3 sm:col-span-2 lg:col-span-3">
+          <label className="form-label">
             {t('admin.allowed_values')}
             <textarea
               className={inputCls}
@@ -175,7 +187,7 @@ export function FieldForm({
           <p className="text-xs text-slate-500">{parsedValues.length} {t('admin.values_count')}</p>
           {!lockStructural && (
             <div className="flex flex-wrap items-end gap-2">
-              <label className="flex flex-col text-xs text-slate-600">
+              <label className="form-label">
                 {t('admin.value_set')}
                 <select className={inputCls} value={valueSetId} onChange={(e) => setValueSetId(e.target.value)}>
                   <option value="">{t('admin.value_set_none')}</option>
@@ -195,11 +207,8 @@ export function FieldForm({
           {/* F5 — soupape : a la CREATION seulement (elle cree un second champ), et pour les
               champs de RENCONTRE seulement, seul endroit ou la saisie couplee est rendue. */}
           {!editing && scope === 'encounter' && (
-            <div className="flex flex-col gap-1">
-              <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                <input type="checkbox" checked={withProposal} onChange={(e) => setWithProposal(e.target.checked)} />
-                {t('admin.proposal_enable')}
-              </label>
+            <div className="surface-muted p-3">
+              <Checkbox label={t('admin.proposal_enable')} checked={withProposal} onChange={(e) => setWithProposal(e.target.checked)} />
               <p className="text-xs text-slate-500">{t('admin.proposal_hint')}</p>
             </div>
           )}
@@ -207,48 +216,57 @@ export function FieldForm({
       )}
       {isNumber && (
         <>
-          <label className="flex flex-col text-xs text-slate-600">
+          <label className="form-label">
             {t('admin.min')}
             <input className={inputCls + ' w-24'} type="number" value={minValue} disabled={lockStructural} onChange={(e) => setMinValue(e.target.value)} />
           </label>
-          <label className="flex flex-col text-xs text-slate-600">
+          <label className="form-label">
             {t('admin.max')}
             <input className={inputCls + ' w-24'} type="number" value={maxValue} disabled={lockStructural} onChange={(e) => setMaxValue(e.target.value)} />
           </label>
-          <label className="flex flex-col text-xs text-slate-600">
+          <label className="form-label">
             {t('admin.unit')}
             <input className={inputCls + ' w-24'} value={unit} onChange={(e) => setUnit(e.target.value)} />
           </label>
         </>
       )}
-      <label className="flex items-center gap-1 text-xs text-slate-600">
-        <input type="checkbox" checked={allowMissingCodes} disabled={lockStructural} onChange={(e) => setAllowMissingCodes(e.target.checked)} />
-        {t('admin.allow_missing')}
-      </label>
+      <Checkbox
+        label={t('admin.allow_missing')}
+        checked={allowMissingCodes}
+        disabled={lockStructural}
+        onChange={(e) => setAllowMissingCodes(e.target.checked)}
+      />
 
-      {scope === 'encounter' && (
-        <div className="flex w-full flex-col gap-1 text-xs text-slate-600">
-          <span>{t('admin.encounter_types')}</span>
-          <div className="flex flex-wrap gap-3">
+      {!isCrossSectional && scope === 'encounter' && (
+        <fieldset className="surface-muted p-3 sm:col-span-2 lg:col-span-3">
+          <legend className="px-1 text-xs font-medium text-slate-600">
+            {t('admin.encounter_types')}
+          </legend>
+          <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
             {ENCOUNTER_TYPES.map((x) => (
-              <label key={x} className="flex items-center gap-1">
-                <input type="checkbox" checked={encounterTypes.includes(x)} disabled={lockStructural} onChange={() => toggleEncType(x)} />
-                {t(`encountertype.${x}`)}
-              </label>
+              <Checkbox
+                key={x}
+                label={t(`encountertype.${x}`)}
+                checked={encounterTypes.includes(x)}
+                disabled={lockStructural}
+                onChange={() => toggleEncType(x)}
+              />
             ))}
           </div>
-        </div>
+        </fieldset>
       )}
-      <button type="submit" disabled={busy} className="btn-primary">
-        {submitLabel ?? t('admin.add_field')}
-      </button>
-      {onCancel && (
-        <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary">
-          {t('admin.cancel')}
+      <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-3">
+        <button type="submit" disabled={busy} className="btn-primary">
+          {submitLabel ?? t('admin.add_field')}
         </button>
-      )}
+        {onCancel && (
+          <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary">
+            {t('admin.cancel')}
+          </button>
+        )}
+      </div>
       {editing && lockStructural && (
-        <p className="w-full text-xs text-amber-700">{t('admin.field_locked_hint')}</p>
+        <p className="text-xs text-amber-700 sm:col-span-2 lg:col-span-3">{t('admin.field_locked_hint')}</p>
       )}
     </form>
   );
