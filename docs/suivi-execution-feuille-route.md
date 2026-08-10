@@ -1358,10 +1358,10 @@ immédiate malgré un jeton encore valide.
 
 ### Ce qui reste bloqué
 
-**La production n'a jamais reçu de release coordonnée réussie.** Le site sert un build du
-28 juillet 11h11 UTC, antérieur à L1, L2 et L5 — vérifié en cherchant leurs chaînes dans le
-bundle servi. Les « succès » visibles côté GitHub venaient de `vercel[bot]`, pas du
-pipeline.
+**Constat historique au moment de cette section.** Une release coordonnée réussie était alors
+absente et le site servait un build antérieur. Ce constat a été dépassé le 1er août 2026 : voir la
+clôture L9 ajoutée à la fin de ce journal et
+[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
 
 Cause : l'environnement GitHub `production` ne contient que **5 des 18 secrets** requis. Il
 manque `CONTROLS_ADMIN_TOKEN`, `STORAGE_BACKUP_ENCRYPTION_KEY` (à générer, distincte de
@@ -1437,3 +1437,31 @@ avec `VITE_USE_SIGNED_READ=true`, `npm run schema`, `npm run manifest`,
 limite locale de 124 s sans résultat final ; la CI devra donc fournir cette preuve.
 Le contrôle ACL distant requiert `SUPABASE_DB_URL` et reste à effectuer après le retour
 du réseau, avant staging puis production.
+
+### Clôture staging et production (2026-08-01)
+
+La CI du correctif a été verte, puis le SHA `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce`
+a été validé par la release staging `30718950416`. La release coordonnée de production
+`30720194028`, liée à cette même preuve staging, a réussi : sauvegarde chiffrée pré-release,
+migrations, Storage, inventaire des fonctions Edge, déploiement frontend, activation stricte de
+l'inspection et vérification cloud. Le scanner ClamAV utilise l'URL HTTPS terminée par `/scan` ;
+son URL et son jeton ont été synchronisés vers les cibles staging et production avec
+l'autorisation explicite du porteur.
+
+Contrôle manuel sur l'application de production déployée, avec un compte médecin et des
+données fictives : création de la base transverse « L9 contrôle transverse 2026-08-01 »,
+sélection de « Une seule saisie par participant », et ouverture directe du formulaire
+patient unique, sectionné, sans ajout de rencontre ni choix de portée. Une base longitudinale
+antérieure « Urgences pédiatriques » reste opérationnelle : son patient existant conserve
+l'action « Ajouter une rencontre », qui ouvre le parcours « Nouvelle rencontre ».
+
+Cette preuve concerne la production technique du pilote et n'autorise ni usage clinique ni
+données réelles.
+
+## Remise en cohérence documentaire — 2026-08-01
+
+La documentation vivante a été relue et mise à jour au-delà de L9 : README, architecture,
+cahiers métier et technique, QA, checklists, E2E, feuille de route, lots et procédures de release.
+Les rapports datés restent des archives de leurs candidats respectifs et renvoient désormais vers
+[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md), qui distingue la release technique
+réussie des conditions encore requises pour toute donnée réelle.

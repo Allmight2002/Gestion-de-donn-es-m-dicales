@@ -82,7 +82,7 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
 | **Analytique** | `patient`, `encounter`, `field_change_log` | `age_value`/`age_unit` en colonnes ; **jamais la DOB** |
 | **Documents bruts** | `raw_submission`, `raw_document`, `curation_task`, `curation_draft`, `curation_clarification` | Restreinte ; accès curateur **réservé** |
 | Gabarits | `template`, `template_version`, `template_field`, `validation_rule` | Version publiée **immuable** |
-| Comptes & bases | `profiles`, `base`, `base_access`, `base_invitation` | `profiles` ↔ `auth.users` |
+| Comptes & bases | `profiles`, `base`, `base_access`, `base_invitation` | `profiles` ↔ `auth.users` ; `base.observation_model` |
 | Cohortes & export | `cohort`, `cohort_member`, `cohort_encounter_member`, `export_log` | Cohorte figée = instantané |
 | Audit & import | `audit_log`, `import_batch`, `import_row_hash` | Journal infalsifiable ; cycle de vie d'import |
 
@@ -92,6 +92,12 @@ analytique par construction.
 
 **ET-8.** `validation_status ∈ {draft, complete, curated}`, ordonné par un rang
 (`validation_rank`) qui **interdit la rétrogradation** d'une donnée `curated`.
+
+**ET-8 bis. Modèle d'observation.** `base.observation_model` est contraint à
+`cross_sectional | longitudinal | event_registry` et vaut `longitudinal` par défaut pour la
+compatibilité des bases existantes. Des triggers et RPC serveur interdisent une rencontre, une
+soumission de portée rencontre ou un retour de champ à cette portée dans une base transverse ; le
+changement de modèle est atomique et refusé dès qu'une donnée existe.
 
 ### 4.2 Diagramme
 

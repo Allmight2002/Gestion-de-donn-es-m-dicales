@@ -15,14 +15,15 @@
 
 MedData est une **plateforme de données de recherche clinique centrée sur le patient**. Elle
 permet à des médecins-chercheurs de constituer des **registres structurés** (« bases ») de
-patients et de rencontres cliniques, exploitables pour la recherche, **sans jamais exposer
+patients, avec une ou plusieurs observations selon le modèle de la base, exploitables pour la
+recherche, **sans jamais exposer
 l'identité des patients** au-delà du strict nécessaire.
 
 - **Objectif** : produire des données analytiques **pseudonymisées, validées et reproductibles**,
   prêtes pour l'analyse, à partir de saisies directes, d'imports de fichiers, ou de documents
   source structurés par un pôle de curation.
-- **Pari central** : le **patient** est l'objet central, **pas l'étude**. Un même patient peut
-  porter plusieurs rencontres dans le temps.
+- **Pari central** : le **patient** est l'objet central, **pas l'étude**. Selon la base, il porte
+  une saisie unique, des rencontres répétées ou des événements indépendants.
 - **Statut** : MVP avancé, **déployé** (Supabase cloud + Vercel). **Données entièrement fictives**
   tant qu'un cadre juridique et éthique n'est pas établi.
 
@@ -115,7 +116,13 @@ exporte des données **sans identité**.
 
 ### 4.3 Bases (registres)
 - **EF-8.** Un médecin **crée une base** rattachée à une version publiée de gabarit, lui donne un
-  nom et une spécialité.
+  nom, une spécialité et un modèle d'observation : **une seule saisie par participant**,
+  **suivi répété** ou **registre d'événements**.
+- **RG-8 ter.** Une base existante reste en suivi répété. Le propriétaire peut modifier le modèle
+  d'une base vide ; dès la première saisie, la base verrouille ce choix.
+- **RG-8 quater.** En saisie unique, aucune rencontre ne peut être créée, importée ou soumise ;
+  le formulaire patient regroupe les variables par section et l'éditeur de variables ne propose
+  pas de portée rencontre.
 - **EF-9.** Tableau de bord listant ses bases et celles partagées avec lui.
 - **EF-10.** Vue d'une base : liste **pseudonymisée** des patients (code + variables analytiques),
   pagination, recherche, accès aux fiches.
@@ -133,6 +140,8 @@ exporte des données **sans identité**.
   complet n'est révélé que sur la **fiche** (consultation tracée).
 
 ### 4.5 Rencontres
+- **Portée.** Cette section s'applique aux bases de suivi répété et de registre d'événements. Elle
+  n'est pas disponible dans une base à saisie unique.
 - **EF-15.** Une rencontre est typée : **consultation, hospitalisation, suivi, autre**. Les
   variables requises dépendent du **type** (ex. `date d'admission` requise en hospitalisation
   seulement).

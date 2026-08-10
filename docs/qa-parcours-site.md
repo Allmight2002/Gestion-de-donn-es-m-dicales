@@ -68,6 +68,14 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 13. Éditer la rencontre créée : le **motif est requis** (essayer sans motif → blocage) ; avec motif → toast ; l'historique de correction s'affiche.
 14. Fiche patient : pastilles de statut **colorées** (ambre/bleu/vert), dates lisibles (« 7 juil. 2026 »), « Finaliser » passe le patient en Finalisé (vert).
 
+### 4.3 bis Modèle d'observation (L9)
+15. Tableau de bord → créer une base fictive en choisissant **« Une seule saisie par participant »**.
+16. Vérifier que, base vide, le choix peut encore être changé ; ouvrir ensuite « Nouveau patient » :
+    le formulaire unique est sectionné et aucune action « Ajouter une rencontre » n'est proposée.
+17. Ouvrir une base longitudinale existante : l'action « Ajouter une rencontre » doit rester
+    présente et ouvrir le choix de saisie de rencontre.
+18. Après une première saisie transverse, vérifier que le modèle est verrouillé.
+
 ### 4.4 Jeux de variables (F1, F3)
 15. Mes jeux de variables → « **Depuis un fichier Excel** » : téléverser un petit CSV créé par toi (colonnes : `Age,Sexe,Date visite,Poids (kg),Commentaire` + 3-4 lignes) → vérifier les **types détectés** (entier/liste M-F/date/nombre/texte), modifier un libellé, décocher une colonne, créer → le jeu de variables `QA-…` apparaît dans Mes jeux de variables.
 15bis. **Créer une base depuis le fichier (V3)** : refaire « Depuis un fichier Excel » avec un CSV

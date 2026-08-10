@@ -2,9 +2,9 @@
 
 - Porteur : Dr Mbassi
 - Date de cadrage : 2026-07-26
-- Statut : cadre documentaire et Phase 0 intégrés ; interphase
-  B3 → B4 → B8 → B1 → B9 terminée sur le candidat staging fictif
-  `ebee17910f6de005ab933ee08978d2e97686d19d` ; Phase 1 suivante
+- Statut : développement et releases techniques internes possibles avec données fictives ; dernier
+  candidat intégralement promu : `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce` (staging
+  `30718950416`, cible technique production `30720194028`). Les gates cliniques restent ouverts.
 - Source des idées : [`idees-post-readiness.md`](idees-post-readiness.md)
 - Référence de production : [`readiness-production-2026-07-19.md`](readiness-production-2026-07-19.md)
 - Prompt d'exécution autonome :
@@ -45,7 +45,7 @@ plus le développement local.
 
 | Gate | Motif du report | Développement local | Staging fictif isolé | Ce qui reste interdit | Contrôle compensatoire |
 |---|---|---|---|---|---|
-| **B2 — antivirus** | Aucun serveur ClamAV durable disponible actuellement | Autorisé ; mocks et scanner local possibles | Autorisé pour les parcours sans document ; tout parcours de fichier reste fail-closed si le scanner manque | Document réel, upload non inspecté, pilote et production | Garder l'upload désactivé ou refusé lorsque l'inspection stricte n'est pas disponible ; ne jamais simuler une preuve antivirus distante |
+| **B2 — antivirus** | Inspection stricte prouvée sur staging et cible technique production, mais scanner encore sur tunnel temporaire | Autorisé ; mocks et scanner local possibles | Autorisé avec documents fictifs quand le scanner est sain ; fail-closed sinon | Donnée réelle, hébergement non supervisé, pilote clinique | Héberger ClamAV durablement, superviser `/health` et refaire sain/EICAR après tout changement d'URL |
 | **B6 — juridique et gouvernance** | Documents, avis et autorisations externes non encore obtenus | Autorisé avec fixtures purement fictives | Autorisé dans un environnement privé, isolé et réinitialisable, avec données fictives seulement | Donnée réelle ou pseudonymisée, utilisateur externe, recherche, décision clinique, publication et production | Étiquetage explicite « démonstration/QA », purge des fixtures et aucune réutilisation d'un dossier réel |
 | **B10 — organisation** | Équipe, suppléances, support et QA formelle non encore constitués | Autorisé sous responsabilité directe du porteur | Exercices fictifs autorisés ; le porteur peut assumer les rôles continuité et release manager pour ces exercices | Exploitation clinique ou production sans titulaires, suppléants, support, formation, MFA et QA signée | Un lot à la fois, décisions consignées, runbooks maintenus et acceptation du porteur avant toute promotion |
 

@@ -11,6 +11,14 @@ clinique. Il ne constitue ni une autorisation juridique, clinique ou éthique, n
 une acceptation de risque par l'organisation. Aucune note globale ne remplace
 les conditions bloquantes.
 
+> **Actualisation technique du 1er août 2026.** Le tableau qui suit conserve le candidat de
+> juillet comme preuve historique. Un candidat ultérieur, le SHA
+> `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce`, a ensuite réussi en staging (`30718950416`) puis
+> sur la cible technique production (`30720194028`) avec sauvegarde, migrations, Storage, Edge,
+> frontend, inspection stricte et contrôle cloud. Cette preuve ne ferme pas le NO-GO clinique :
+> le scanner reste temporaire et les preuves juridiques, de gouvernance et d'exploitation restent
+> requises. Voir [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 ## 1. Identité du candidat et état déployé
 
 ### Candidat courant — interphase du 26 juillet 2026

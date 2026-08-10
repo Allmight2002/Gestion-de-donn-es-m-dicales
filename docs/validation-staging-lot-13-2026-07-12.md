@@ -1,5 +1,9 @@
 # LOT 13 — Rapport de validation staging
 
+> **Archive datée.** Le verdict du 12 juillet reste une preuve de ce candidat ; il est dépassé
+> pour le SHA actuel par les releases du 1er août, référencées dans
+> [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 Date : 2026-07-12 (Africa/Douala)  
 Décision : **staging non validé**
 

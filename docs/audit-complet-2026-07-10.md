@@ -1,5 +1,8 @@
 # Rapport d’audit consolidé — MedData
 
+> **Archive datée.** Ce rapport décrit le commit audité le 10 juillet. Pour l'état technique
+> courant et les limites toujours actives, voir [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md).
+
 **Date :** 10 juillet 2026  
 **Référence auditée :** branche `main`, commit `29030bc`  
 **Décision finale : non prêt pour la production clinique.**

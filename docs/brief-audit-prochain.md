@@ -15,7 +15,8 @@ present dans le depot.
 ## Reference a auditer
 
 - Branche : `main`
-- Commit de reference : `b98a0e8cf06a` (`Fix Edge export bundling`)
+- Commit de référence vérifié : `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce` (release
+  technique du 1er août 2026). Vérifier un SHA plus récent s'il a été promu depuis.
 - Application de production : deploiement Vercel associe a `main`
 - Backend de production : projet Supabase `registre-clinique`
 - Environnement de preproduction : projet Supabase `meddata-staging`
@@ -43,10 +44,11 @@ remarque :
 Le code et les fonctions Edge pour ClamAV sont livres. Le flux strict a ete teste en local : un
 document de test passe de `pending` a `accepted` apres l'appel a `inspect-upload`.
 
-En revanche, le scanner est actuellement expose par un tunnel temporaire depuis une machine locale.
-La production ne force donc pas encore `require_server_inspection=true`. C'est un **prealable
-d'exploitation** (hebergement durable du scanner + tunnel stable), pas une regression du code. Il
-doit etre mentionne comme tel, avec le risque associe, mais pas duplique en plusieurs P0.
+Le scanner est actuellement exposé par un tunnel temporaire depuis une machine locale. L'inspection
+stricte a été activée et vérifiée sur le staging puis sur la cible technique production le 1er août
+2026, avec fichier sain et EICAR. Cela reste un **préalable d'exploitation** pour toute donnée
+réelle : hébergement durable, URL stable et supervision restent requis. Le mentionner une fois,
+avec son risque, mais ne pas le dupliquer en plusieurs P0.
 
 Ne jamais publier dans le rapport : token d'invitation, URL signee, secret Edge, cle API, adresse
 e-mail de patient ou donnee de sante.
