@@ -1,11 +1,17 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27
+- Établi le 2026-07-27 · **révisé le 2026-08-10**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
-  [`idees-post-readiness.md`](idees-post-readiness.md) et
+  [`idees-post-readiness.md`](idees-post-readiness.md),
   [`feuille-route-developpement-post-readiness.md`](feuille-route-developpement-post-readiness.md)
+  et, pour les lots L15 à L19,
+  [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)
+
+> **Révision du 2026-08-10** : trois lots étaient livrés sans être marqués comme tels —
+> **L6** (2026-08-09), **L8** (2026-08-01) et **L9** (2026-08-01). Cinq lots sont ajoutés,
+> **L15 à L19**, issus de la campagne de vérification manuelle des flux multi-comptes.
 
 Le critère de découpage est le **fichier touché**, pas le thème. Deux lots qui
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
@@ -23,15 +29,23 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L3~~ | ~~Allègement du chargement~~ | **Livré le 2026-07-28** | — |
 | **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
 | ~~L5~~ | ~~Constructeur de règles~~ | **Livré le 2026-07-28** | — |
-| **L6** | Finition de l'interface | `AppShell.tsx`, composant de case à cocher, **9 écrans** | **seul** |
+| ~~L6~~ | ~~Finition de l'interface~~ | **Livré le 2026-08-09** | — |
 | ~~L7~~ | ~~Protections de branche (B7)~~ | **Livré le 2026-08-01** | — |
-| **L8** | Suppression et restauration de bases (P2) | migration, `BaseHome.tsx`, nouveaux écrans | L3, L5, L7 |
+| ~~L8~~ | ~~Suppression et restauration de bases (P2)~~ | **Livré le 2026-08-01** | — |
 | ~~L9~~ | ~~Modèle d'observation d'une base~~ | **Livré le 2026-08-01** (migration + UI + release) | — |
 | ~~L10~~ | ~~Comptes de mission (P4)~~ | **Livré le 2026-07-29** | — |
-| **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L1, L2, L5, L7 |
-| **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L2, L5, L7 |
-| **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L1, L2, L5, L7 |
+| **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L4, L12, L13, L15 |
+| **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L4, L11, L13, L15 |
+| **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L11, L12, L15, L18 |
 | **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
+| **L15** | Redirection du mot de passe des comptes de mission | `create-mission-account/index.ts`, `edge-functions.md`, `supabase/functions/.env` | **tous** (aucun écran) |
+| **L16** | Compte de mission : écriture de l'identité **et** écarts d'interface | migration, `test/mission-accounts.test.ts`, `spec-comptes-mission.md`, `NewPatient.tsx`, `BaseHome.tsx`, `PatientDetail.tsx`, `AppShell.tsx` | **seul** |
+| **L17** | Messages d'erreur des Edge Functions | `src/data/exports.ts`, `src/data/mission.ts`, utilitaire partagé | L11, L14, L18, L19 |
+| **L18** | Cohorte dynamique : compteur vivant et « Figer maintenant » | `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
+| **L19** | Archivage d'une cohorte | migration, `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
+
+> **L18 et L19 touchent les deux mêmes fichiers** : ne jamais les lancer ensemble. Traiter L18
+> d'abord (front seul, gain immédiat), L19 ensuite (surface base).
 
 ## Deux fichiers à surveiller
 
@@ -87,12 +101,21 @@ construction s'affiche en **phrase lisible**, réutilisée par l'éditeur de ver
 pour les règles déjà enregistrées. Un mode **expert** conserve le JSON pour les
 cas non couverts. La sortie reste le même JSON qu'avant.
 
-### L6 — Finition de l'interface
+### L6 — Finition de l'interface — **livré**
 
-**Idée 10** : zone de profil, cases à cocher, retours visuels. Ce lot touche
-**neuf écrans** pour remplacer les cases à cocher système par un composant
-commun. Il entrera en conflit avec presque tout : à traiter **seul**, de
-préférence quand les autres lots d'interface sont fusionnés.
+**Idée 10**, livrée le 2026-08-09 en deux temps : « Améliore et harmonise tous les écrans »
+(PR #122) puis « Finalise l'accessibilité mobile » (PR #125). Le lot a débordé des neuf écrans
+annoncés — une trentaine de fichiers d'écran ont été touchés.
+
+Livré : un composant `Checkbox` commun (`src/components/Checkbox.tsx`, avec ses tests) qui
+remplace les cases à cocher système, la zone de profil de `AppShell.tsx` refondue, les
+squelettes de chargement généralisés (`Skeleton.tsx`), et un travail de densité et de gabarits
+sur le tableau de bord et les vues de base. L'accessibilité mobile (cibles tactiles, focus
+visible) a été reprise dans un second passage.
+
+> Le prompt qui a produit ce lot a été réécrit avant lancement et est conservé dans
+> [`prompts-lots.md`](prompts-lots.md) : il est plus détaillé que la version d'origine et sert
+> de modèle pour les lots transversaux d'interface.
 
 ### L7 — Protections de branche — **livré**
 
@@ -107,13 +130,13 @@ d'un second relecteur.
 Aucun fichier de code n'est modifié : ce lot documentaire et de configuration
 peut être mené à tout moment, en parallèle de n'importe quel autre.
 
-### L8 — Suppression et restauration de bases
+### L8 — Suppression et restauration de bases — **livré**
 
-**P2**. La fonction serveur `soft_delete_base` existe déjà, complète et
-sécurisée ; il manque la RPC de restauration et l'interface. Touche `BaseHome.tsx`
-comme L1 — enchaîner après lui plutôt qu'en parallèle.
-
-Lot à surface base : appliquer `meddata-db-safety`.
+**P2**, livré le 2026-08-01 (PR #116, commit `dc1ce9a`). `soft_delete_base` existait déjà ;
+le lot a ajouté la RPC de restauration (migration `20260801140238_restore_deleted_base.sql`),
+la corbeille et le geste de restauration dans `Dashboard.tsx` et `BaseHome.tsx`, l'entrée
+correspondante dans `security-definer-allowlist.json`, et les tests
+(`test/bases.test.ts`, `Dashboard.test.tsx`, `Patients.test.tsx`).
 
 ### L9 — Modèle d'observation d'une base — **livré**
 
@@ -178,6 +201,76 @@ faut retélécharger.
 
 Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
+### L15 — Redirection du mot de passe des comptes de mission
+
+**Chantier A** de [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md) §2.
+Sans `MISSION_PASSWORD_REDIRECT_URL`, l'Edge Function envoie le courriel d'activation **sans**
+`redirectTo` : le lien ouvre une session sur le tableau de bord, l'écran de définition du mot de
+passe n'est jamais atteint, et l'étudiant se retrouve sans mot de passe à l'expiration de sa
+session.
+
+Le lot documente la variable, l'ajoute à la configuration locale, vérifie (**en lecture seule**)
+la valeur configurée en production, et tranche une question ouverte : le repli silencieux
+doit-il devenir une erreur explicite au démarrage de la fonction ?
+
+Ne touche **aucun écran** : parallélisable avec n'importe quel autre lot.
+
+### L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)
+
+**Chantiers B et C** de [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)
+§3 et §4. Les deux sont réunis en un seul lot parce que **l'ordre les lie** : la migration doit
+précéder l'écran, sinon l'interface proposerait une saisie que la base refuse encore.
+
+Phase base — une migration additive redéfinit `can_write_identity()` pour y ajouter une branche
+`saisisseur` (accès actif, `can_view_identity` accordée, `can_create_structured_data`), retourne
+délibérément les tests correspondants et réécrit §4, §9 et §12 de
+[`spec-comptes-mission.md`](spec-comptes-mission.md). **Décision déjà prise par le porteur
+(option A)** : ne pas la rouvrir, la mettre en œuvre.
+
+Phase interface — la section « Identité (zone restreinte) » de `NewPatient.tsx` devient
+conditionnée à `canViewIdentity`, et les quatre corrections d'écran déjà écrites sont finies et
+testées.
+
+> **Travail déjà commencé** : quatre fichiers modifiés, non committés, non testés, dans le
+> worktree `.claude/worktrees/mystifying-shirley-9cf201`. Reprendre depuis là plutôt que de
+> réécrire.
+
+Surface base : appliquer `meddata-db-safety`. Touche `AppShell.tsx`, `BaseHome.tsx`,
+`PatientDetail.tsx`, `NewPatient.tsx` et `messages.ts` : à lancer **seul**.
+
+### L17 — Messages d'erreur des Edge Functions
+
+**Chantier D** de [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md) §5.
+Tout refus d'une Edge Function s'affiche « Edge Function returned a non-2xx status code » : le
+vrai motif est dans `error.context`, que les appelants ne lisent pas. **Un refus légitime est
+donc indiscernable d'une panne** — ce défaut a coûté deux diagnostics complets pendant la
+campagne de test manuel.
+
+À corriger **une fois, dans un utilitaire partagé**, et non appelant par appelant : un correctif
+partiel du même genre avait déjà laissé d'autres chemins afficher `[object Object]`. Contrainte à
+préserver : ne jamais exposer d'erreur interne brute — n'afficher que ce que le serveur a déjà
+choisi de dire.
+
+### L18 — Cohorte dynamique : compteur vivant et « Figer maintenant »
+
+**Défauts D6 et D8** de [`idees-post-readiness.md`](idees-post-readiness.md), chantier E §6.3 et
+§6.4. La carte d'une cohorte à mise à jour automatique n'affiche ni compteur ni action, parce que
+son compte est lu depuis `cohort_member`, table vide par construction pour ce type de cohorte. Et
+rien n'avertit qu'une cohorte figée en incluant des brouillons ne sera **jamais** exportable.
+
+Front seul, sans migration. Le refus d'export d'une cohorte dynamique est **délibéré et doit le
+rester** : le lot donne à la carte ce qui lui manque, il ne lève pas la règle.
+
+### L19 — Archivage d'une cohorte
+
+**Idée 11** de [`idees-post-readiness.md`](idees-post-readiness.md), chantier E §6.2. Une cohorte
+créée ne peut plus être retirée. Les policies de suppression existent, mais
+`export_log.cohort_id` est en `on delete cascade` : un `DELETE` direct **effacerait le journal
+des exports**. Archivage recommandé (`deleted_at`) plutôt que suppression dure.
+
+Surface base : appliquer `meddata-db-safety`. Décider dans le même mouvement du sort des fichiers
+du bucket `scientific-exports`. **Ne pas lancer avec L18** : mêmes fichiers.
+
 ## Ce qui n'a pas besoin de lot
 
 - **P5, terminologie avancée** : couverte par les lots T1 à T4 déjà livrés.
@@ -186,12 +279,20 @@ Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
 ## Ordre suggéré
 
-Sept lots sont livrés : **L1, L2, L3, L5, L7, L9 et L10**. Il en reste sept.
+Neuf lots sont livrés : **L1, L2, L3, L5, L6, L7, L8, L9 et L10**. Il en reste **dix** :
+L4, L11, L12, L13, L14, et les cinq nouveaux L15 à L19.
 
-1. **En parallèle immédiat** : L4, L12 — aucun ne partage de fichier.
-2. **Ensuite** : L8, L11, L13. L11 attend encore sept décisions, mais ses étapes
-   locales sont réalisables sans elles.
-3. **Seuls, l'un après l'autre** : L6, L14.
+1. **D'abord, et en parallèle** : **L15** (aucun écran, donc compatible avec tout) et **L17**
+   (messages d'erreur). L17 mérite de passer tôt : c'est lui qui rend les prochaines séances de
+   test manuel exploitables, au lieu d'obliger à ouvrir les outils de développement à chaque
+   refus.
+2. **Ensuite, seul** : **L16** — c'est le seul lot porteur d'une décision produit déjà tranchée
+   et d'un travail à demi écrit qui dort dans un worktree. Plus il attend, plus ce travail
+   diverge.
+3. **Puis en parallèle** : L4, L12, **L18**.
+4. **Ensuite** : L11, L13, **L19**. L11 attend encore sept décisions, mais ses étapes locales
+   sont réalisables sans elles. L19 ne doit pas suivre L18 de trop près : mêmes fichiers.
+5. **Seul, en dernier** : L14.
 
 ### Leçon des trois lots menés en parallèle
 
