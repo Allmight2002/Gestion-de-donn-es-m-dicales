@@ -58,14 +58,30 @@ Deux conséquences pour la parallélisation :
    à chaque lot d'aller jusqu'à `main` et de le signaler, puis de demander avant
    de déclencher une release de production si d'autres lots sont en cours.
 
-**Au 2026-08-10.** La dernière release technique prouvée porte le SHA `f0bf2af` du 2026-08-01
-(staging puis cible technique `production`, cf.
-[`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md)) : elle a mis en ligne L1, L2, L3, L5,
-L7, L8, L9 et L10. **L6 est fusionné dans `main` depuis le 2026-08-09 mais aucune preuve de
-release postérieure n'est consignée** — l'application déployée ne porte donc probablement pas
-encore la refonte d'interface. À vérifier avant d'annoncer quoi que ce soit au porteur, et à
-prendre en compte : la prochaine release coordonnée mettra L6 en ligne *en plus* du lot qui la
-déclenche.
+**Au 2026-08-10 : tous les lots livrés sont en ligne.** La dernière release technique prouvée
+porte le SHA `9cd3e04` du 2026-08-09 — staging (run GitHub `31289463078`) puis cible technique
+`production` (run `31289908319`), le second consommant la preuve du premier sur le même SHA. Elle
+a mis en ligne L1, L2, L3, L5, **L6**, L7, L8, L9 et L10.
+
+> Attention en lisant [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md) : ce document
+> nomme `f0bf2af` comme dernière release prouvée. C'était vrai à sa date, ça ne l'est plus.
+>
+> Et surtout, **ne pas conclure d'un échec de « Coordinated release » que rien n'est parti.** La
+> release du 2026-08-09 a échoué **deux fois** avant de passer (runs `31288508289` et
+> `31289034926`, à 01h33 et 01h48), sur l'activation stricte : « Scanner strict injoignable ».
+> Le tunnel Cloudflare a été renouvelé et les deux exécutions suivantes ont réussi. Chercher les
+> exécutions **réussies** du workflow, pas seulement les rouges :
+>
+> ```bash
+> gh run list --workflow="Coordinated release" --limit 30
+> ```
+
+**Le point de fragilité réel n'est pas la publication, c'est le scanner.** Il est exposé par un
+tunnel `trycloudflare` **temporaire**, monté à la main pour faire passer cette release. Son nom
+de domaine cesse de résoudre alors que le processus vit encore — c'est ce qui a provoqué les deux
+échecs ci-dessus. Toute release future butera dessus tant qu'un tunnel nommé ou un petit VPS n'aura
+pas remplacé le montage éphémère. Procédure de renouvellement d'urgence dans
+[`edge-functions.md`](edge-functions.md).
 
 ---
 
