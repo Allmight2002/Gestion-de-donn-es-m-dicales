@@ -14,6 +14,11 @@ import type { PatientRepository, PatientListItem, NewPatientInput } from '../../
 import type { TemplateField } from '../../data/types';
 import { offlineCache, type OfflineSnapshot } from '../../data/offline';
 
+// NewPatient lit le role global (la voie curation est fermee aux comptes de mission).
+vi.mock('../../auth/useAuth', () => ({
+  useAuth: () => ({ profile: { id: 'u', fullName: 'M', globalRole: 'medecin', language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+}));
+
 const ALL_PERMS = {
   canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
   canExportData: true, canManageAccess: true,

@@ -287,7 +287,7 @@ export function BaseHome() {
         actions={!offlineView && listing ? (
           <div className="flex w-full items-center gap-2 sm:w-auto">
             {canCreate && (
-              <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary flex-1 sm:flex-none">
+              <button onClick={() => navigate(`/bases/${id}/patients/new/manual`)} className="btn-primary flex-1 sm:flex-none">
                 <Plus size={16} aria-hidden /> {t('patient.new')}
               </button>
             )}
@@ -409,7 +409,7 @@ export function BaseHome() {
               icon={Users}
               title={t(canCreate ? 'patient.no_patients' : 'patient.no_patients_readonly')}
               action={canCreate ? (
-                <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary">
+                <button onClick={() => navigate(`/bases/${id}/patients/new/manual`)} className="btn-primary">
                   <Plus size={16} aria-hidden /> {t('patient.new')}
                 </button>
               ) : undefined}

@@ -13,6 +13,12 @@ import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, NewEncounterInput } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
 
+// L'en-tete propose « confier au staff », fermee aux comptes de mission : le formulaire lit
+// donc le role global. Profil de medecin par defaut pour ces tests de saisie.
+vi.mock('../../auth/useAuth', () => ({
+  useAuth: () => ({ profile: { id: 'u', fullName: 'M', globalRole: 'medecin', language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+}));
+
 const baseListing: BaseListing = {
   base: { id: 'b1', name: 'Base', specialty: null, ownerUserId: 'u', currentTemplateVersionId: 'v1' },
   role: 'owner', permissions: { canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true, canExportData: true, canManageAccess: true }, templateName: 'Neuro', versionNumber: 1,

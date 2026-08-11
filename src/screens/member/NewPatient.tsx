@@ -1,7 +1,10 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { Send } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import { useAuth } from '../../auth/useAuth';
+import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { getTemplateFields } from '../../data/templates';
 import type { TemplateField } from '../../data/types';
@@ -28,6 +31,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const curation = useCurationRepository();
   const submitAttempt = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
   const { toast } = useToast();
+  const { profile } = useAuth();
+  // Confier au pool de curation releve de la curation, fermee aux comptes de mission
+  // (docs/spec-comptes-mission.md §4) : la base refuse aussi cette voie.
+  const maySubmitToCuration = !isMissionAccount(profile);
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
@@ -177,7 +184,20 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="page-title mt-2">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="page-title">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
+          {/* La saisie s'ouvre directement : confier au staff n'est plus une page intercalaire,
+              mais une sortie de secours a un clic depuis le formulaire. */}
+          {mode === 'manual' && maySubmitToCuration && (
+            <button
+              type="button"
+              onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
+              className="btn-secondary"
+            >
+              <Send size={16} aria-hidden /> {t('create.submit')}
+            </button>
+          )}
+        </div>
       </div>
 
       {mode === 'submit' && <p className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">{t('patient.submit_hint')}</p>}

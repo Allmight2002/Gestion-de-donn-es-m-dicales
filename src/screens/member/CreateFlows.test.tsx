@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-// Tests des parcours de creation (cahier v3.0) : choix "Entrer moi-meme / Confier au staff"
-// pour patient et rencontre, et le mode "submit" de NewPatient (identite -> demande au pool).
+// Tests des parcours de creation (cahier v3.0). La page de choix "Entrer moi-meme / Confier
+// au staff" a ete retiree : la saisie s'ouvre directement et la voie curation est une action
+// de l'en-tete du formulaire (patient et rencontre). Couvre aussi le mode "submit" de
+// NewPatient (identite -> demande au pool).
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,9 +10,8 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { ToastProvider } from '../../components/Toast';
-import { PatientCreateChoice } from './PatientCreateChoice';
-import { EncounterCreateChoice } from './EncounterCreateChoice';
 import { NewPatient } from './NewPatient';
+import { EncounterForm } from './EncounterForm';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository } from '../../data/patients';
@@ -43,11 +44,9 @@ function renderAt(path: string, providers: { patients?: PatientRepository; curat
         <ToastProvider>
           <MemoryRouter initialEntries={[path]}>
             <Routes>
-              <Route path="/bases/:id/patients/new" element={<PatientCreateChoice />} />
-              <Route path="/bases/:id/patients/new/manual" element={<div>MANUAL</div>} />
+              <Route path="/bases/:id/patients/new/manual" element={<NewPatient mode="manual" />} />
               <Route path="/bases/:id/patients/new/submit" element={<NewPatient mode="submit" />} />
-              <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterCreateChoice />} />
-              <Route path="/bases/:id/patients/:patientId/encounters/new/manual" element={<div>ENC MANUAL</div>} />
+              <Route path="/bases/:id/patients/:patientId/encounters/new/manual" element={<EncounterForm />} />
               <Route path="/bases/:id/patients/:patientId" element={<div>FICHE</div>} />
               <Route path="/curation/:taskId" element={<div>CASE PAGE</div>} />
             </Routes>
@@ -58,13 +57,26 @@ function renderAt(path: string, providers: { patients?: PatientRepository; curat
   );
 }
 
-describe('PatientCreateChoice', () => {
-  test('propose les 2 options et redirige vers le formulaire manuel', async () => {
-    renderAt('/bases/b1/patients/new', {});
-    expect(screen.getByText('Entrer les données moi-même')).toBeInTheDocument();
-    expect(screen.getByText('Confier les documents au staff')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Entrer les données moi-même'));
-    expect(await screen.findByText('MANUAL')).toBeInTheDocument();
+const emptyPatients = () => ({
+  async listPatients() { return []; },
+  async findIdentityMatches() { return []; },
+  async computeAge() { return 44; },
+} as unknown as PatientRepository);
+
+const submitAction = /confier les documents au staff/i;
+
+describe('nouveau patient : plus de page de choix', () => {
+  test('la saisie s\'ouvre directement et la voie curation reste a un clic', async () => {
+    renderAt('/bases/b1/patients/new/manual', { patients: emptyPatients() });
+    await userEvent.click(await screen.findByRole('button', { name: submitAction }));
+    expect(await screen.findByText(/confier un patient au staff/i)).toBeInTheDocument();
+  });
+
+  test('un compte de mission ne se voit pas proposer la voie curation', async () => {
+    auth.role = 'saisisseur';
+    renderAt('/bases/b1/patients/new/manual', { patients: emptyPatients() });
+    await screen.findByLabelText(/code patient/i);
+    expect(screen.queryByRole('button', { name: submitAction })).toBeNull();
   });
 });
 
@@ -209,30 +221,20 @@ describe('NewPatient : detection de doublon', () => {
   });
 });
 
-describe('EncounterCreateChoice', () => {
-  test('"Confier au staff" cree une demande de portee encounter et ouvre le cas', async () => {
+describe('nouvelle rencontre : plus de page de choix', () => {
+  test('"confier au staff" cree une demande de portee encounter et ouvre le cas', async () => {
     const createSubmission = vi.fn(async () => ({ taskId: 'tk9', submissionId: 's9' }));
     const curation = { createSubmission } as unknown as CurationRepository;
-    renderAt('/bases/b1/patients/p1/encounters/new', { curation });
-    await userEvent.click(screen.getByText('Confier les documents au staff'));
+    renderAt('/bases/b1/patients/p1/encounters/new/manual', { patients: emptyPatients(), curation });
+    await userEvent.click(await screen.findByRole('button', { name: submitAction }));
     await waitFor(() => expect(createSubmission).toHaveBeenCalledWith('b1', 'p1', null, 'encounter'));
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
   });
-});
 
-describe('compte de mission : parcours de creation reduit', () => {
-  test('le renvoi vers le pool de curation ne lui est pas propose', async () => {
+  test('un compte de mission ne se voit pas proposer la voie curation', async () => {
     auth.role = 'saisisseur';
-    render(
-      <I18nProvider>
-        <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
-          <Routes>
-            <Route path="/bases/:id/patients/new" element={<PatientCreateChoice />} />
-          </Routes>
-        </MemoryRouter>
-      </I18nProvider>,
-    );
-    expect(await screen.findByText(/Entrer les données moi/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Confier les documents/i)).toBeNull();
+    renderAt('/bases/b1/patients/p1/encounters/new/manual', { patients: emptyPatients() });
+    await screen.findByLabelText(/type/i);
+    expect(screen.queryByRole('button', { name: submitAction })).toBeNull();
   });
 });
