@@ -219,6 +219,10 @@ export function BaseHome() {
   if (loading) return <SkeletonList rows={6} />;
   if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
+  const canCreate = !offlineView && !!listing && (
+    listing.role === 'owner' || listing.canCreateStructuredData === true || listing.permissions.canEditStructuredData
+  );
+  const canManageOffline = !offlineView && !!listing && listing.expiresAt == null;
   const visibleFields = fields.filter((field) => visibleFieldKeys.includes(field.fieldKey));
 
   return (
@@ -282,18 +286,18 @@ export function BaseHome() {
         )}
         actions={!offlineView && listing ? (
           <div className="flex w-full items-center gap-2 sm:w-auto">
-            {canEdit && (
+            {canCreate && (
               <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary flex-1 sm:flex-none">
                 <Plus size={16} aria-hidden /> {t('patient.new')}
               </button>
             )}
-            {(!cachedMeta || listing.role === 'owner') && (
+            {((canManageOffline && !cachedMeta) || listing.role === 'owner') && (
               <details className="relative shrink-0">
                 <summary role="button" className="icon-button h-11 w-11 cursor-pointer list-none border border-slate-300 bg-white" aria-label={t('common.actions')}>
                   <MoreHorizontal size={20} aria-hidden />
                 </summary>
                 <div className="card absolute right-0 z-10 mt-2 w-64 space-y-1 p-2 shadow-lg">
-                  {!cachedMeta && (
+                  {canManageOffline && !cachedMeta && (
                     <button
                       type="button"
                       onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); void makeAvailableOffline(); }}
@@ -346,9 +350,11 @@ export function BaseHome() {
             <Download size={14} className="shrink-0 text-slate-400" aria-hidden />
             {t('offline.available')} · {t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)}
           </span>
-          <button onClick={() => void makeAvailableOffline()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
-            {saving ? t('offline.saving') : t('offline.update')}
-          </button>
+          {canManageOffline && (
+            <button onClick={() => void makeAvailableOffline()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
+              {saving ? t('offline.saving') : t('offline.update')}
+            </button>
+          )}
           <button onClick={() => void removeOffline()} className="text-slate-400 hover:text-red-600 hover:underline">{t('offline.remove')}</button>
         </div>
       ) : offlineView ? (
@@ -401,7 +407,12 @@ export function BaseHome() {
           {rows.length === 0 ? (
             <EmptyState
               icon={Users}
-              title={t('patient.no_patients')}
+              title={t(canCreate ? 'patient.no_patients' : 'patient.no_patients_readonly')}
+              action={canCreate ? (
+                <button onClick={() => navigate(`/bases/${id}/patients/new${isCrossSectional ? '/manual' : ''}`)} className="btn-primary">
+                  <Plus size={16} aria-hidden /> {t('patient.new')}
+                </button>
+              ) : undefined}
             />
           ) : (
             <div className="data-table-shell">

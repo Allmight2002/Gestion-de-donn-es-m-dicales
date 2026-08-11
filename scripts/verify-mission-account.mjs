@@ -8,6 +8,7 @@
 // Aucun identifiant de connexion ni mot de passe de mission n'est imprime.
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
+import pg from 'pg';
 
 const args = new Map(
   process.argv.slice(2).map((argument) => {
@@ -37,11 +38,13 @@ const need = (name) => {
 const url = need('SUPABASE_URL');
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
 const anonKey = need('SUPABASE_ANON_KEY');
+const databaseUrl = need('SUPABASE_DB_URL');
 const medecinEmail = need('MEDECIN_EMAIL');
 const medecinPassword = need('MEDECIN_PASSWORD');
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 const medecin = createClient(url, anonKey, { auth: { persistSession: false } });
+const database = new pg.Client({ connectionString: databaseUrl });
 
 const results = [];
 const check = (label, ok, detail = '') => {
@@ -53,13 +56,45 @@ const describeError = (error) => {
   if (error && typeof error === 'object' && typeof error.message === 'string') return error.message;
   return 'erreur inconnue';
 };
+const describeEdgeError = async (error) => {
+  try {
+    const response = error?.context;
+    if (response instanceof Response) {
+      const body = await response.clone().json();
+      if (typeof body?.error === 'string') return body.error;
+    }
+  } catch { /* Repli sur le message generique du client. */ }
+  return describeError(error);
+};
 
 const stamp = Date.now();
 const strictUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const localTarget = /^http:\/\/(127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/i.test(url);
 const loginIdentifier = `qa-mission-${stamp}`;
 const technicalEmail = `${loginIdentifier}@mission.meddata.invalid`;
 const accountLabel = `QA mission ${stamp}`;
 const patientCode = `MIS-VERIF-${stamp}`;
+const initialIdentity = {
+  fullName: `Patient Fictif Initial ${stamp}`,
+  dateOfBirth: '1990-01-02',
+  phone: '+235 60 00 00 01',
+  address: 'Adresse fictive initiale, N Djamena',
+  externalIdentifier: `EXT-FICTIF-A-${stamp}`,
+};
+const correctedIdentity = {
+  fullName: `Patient Fictif Corrige ${stamp}`,
+  dateOfBirth: '1991-02-03',
+  phone: '+235 60 00 00 02',
+  address: 'Adresse fictive corrigee, N Djamena',
+  externalIdentifier: `EXT-FICTIF-B-${stamp}`,
+};
+const doctorIdentity = {
+  fullName: `Patient Fictif Medecin ${stamp}`,
+  dateOfBirth: '1992-03-04',
+  phone: '+235 60 00 00 03',
+  address: 'Adresse fictive medecin, N Djamena',
+  externalIdentifier: `EXT-FICTIF-C-${stamp}`,
+};
 const expiresAt = new Date(Date.now() + 365 * 86_400_000).toISOString();
 const createOperationId = crypto.randomUUID();
 const duplicateCreateOperationId = crypto.randomUUID();
@@ -68,10 +103,12 @@ const regenerateOperationId = crypto.randomUUID();
 let studentId = null;
 let baseId = null;
 let otherBaseId = null;
+let temporaryBaseId = null;
 let accessId = null;
 let createdPatientId = null;
 let firstPassword;
 let secondPassword;
+let databaseConnected = false;
 
 const missionBody = {
   action: 'create',
@@ -80,9 +117,16 @@ const missionBody = {
   accountLabel,
   loginIdentifier,
   expiresAt,
-  canViewIdentity: false,
-  identityJustification: null,
+  canViewIdentity: true,
+  identityJustification: 'Inclusion directe sans support papier stable (verification synthetique)',
 };
+
+const identityMatches = (row, expected) => !!row
+  && row.full_name === expected.fullName
+  && row.date_of_birth === expected.dateOfBirth
+  && row.phone === expected.phone
+  && row.address === expected.address
+  && row.external_identifier === expected.externalIdentifier;
 
 /** Attendu : l'appel echoue, ou sa RLS ne retourne aucune ligne. */
 const mustFail = async (label, fn) => {
@@ -99,6 +143,8 @@ const mustFail = async (label, fn) => {
 const invokeMission = (client, body) => client.functions.invoke('create-mission-account', { body });
 
 try {
+  await database.connect();
+  databaseConnected = true;
   console.log(`\nProjet : ${url}\n`);
 
   const { data: doctorSession, error: doctorError } = await medecin.auth.signInWithPassword({
@@ -117,7 +163,27 @@ try {
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
     .limit(100);
-  const ownedBase = ownedBases?.find((base) => strictUuid.test(base.id) && base.current_template_version_id);
+  let ownedBase = ownedBases?.find((base) => strictUuid.test(base.id) && base.current_template_version_id);
+  if (!ownedBase && localTarget) {
+    const localSource = ownedBases?.find((base) => base.current_template_version_id);
+    if (localSource) {
+      const { data: temporaryBase, error: temporaryBaseError } = await medecin.rpc('create_base_from_model_observation', {
+        p_name: `QA mission locale ${stamp}`,
+        p_specialty: 'verification-synthetique',
+        p_source_version_id: localSource.current_template_version_id,
+        p_observation_model: 'longitudinal',
+      });
+      if (temporaryBaseError) throw temporaryBaseError;
+      temporaryBaseId = temporaryBase?.id ?? null;
+      if (temporaryBaseId) {
+        ownedBase = {
+          id: temporaryBaseId,
+          name: temporaryBase.name,
+          current_template_version_id: temporaryBase.current_template_version_id,
+        };
+      }
+    }
+  }
   if (ownedError || !ownedBase) {
     throw ownedError ?? new Error('Le medecin de verification ne possede aucune base active');
   }
@@ -135,7 +201,11 @@ try {
     && typeof created?.accessId === 'string'
     && createdCredential?.loginIdentifier === loginIdentifier
     && typeof createdCredential?.password === 'string';
-  check("l'Edge cree le compte sans e-mail utilisateur", creationOk, createError ? 'appel refuse' : '');
+  check(
+    "l'Edge cree le compte sans e-mail utilisateur",
+    creationOk,
+    createError ? await describeEdgeError(createError) : '',
+  );
   if (!creationOk) throw new Error('Creation Edge incomplete');
 
   studentId = created.userId;
@@ -245,15 +315,121 @@ try {
   const { data: newPatient, error: patientError } = await oldStudentSession.rpc('create_patient', {
     p_base_id: baseId,
     p_patient_code: patientCode,
-    p_full_name: null,
-    p_date_of_birth: null,
-    p_phone: null,
-    p_address: null,
-    p_external_identifier: null,
+    p_full_name: initialIdentity.fullName,
+    p_date_of_birth: initialIdentity.dateOfBirth,
+    p_phone: initialIdentity.phone,
+    p_address: initialIdentity.address,
+    p_external_identifier: initialIdentity.externalIdentifier,
     p_permanent_data: {},
   });
-  check('il cree un patient sur sa base', !patientError && !!newPatient, patientError ? 'refuse' : '');
+  check("il cree un patient avec toute l'identite sur sa base", !patientError && !!newPatient, patientError ? 'refuse' : '');
   createdPatientId = newPatient?.id ?? null;
+
+  const createdIdentity = (
+    await database.query(
+      `select full_name, date_of_birth::text as date_of_birth, phone, address, external_identifier
+       from public.patient_identity where base_id=$1 and patient_code=$2 and deleted_at is null`,
+      [baseId, patientCode],
+    )
+  ).rows[0];
+  check(
+    "la base enregistre les cinq champs d'identite a la creation",
+    identityMatches(createdIdentity, initialIdentity),
+  );
+
+  const { data: correctedPatient, error: correctionError } = await oldStudentSession.rpc('update_patient_identity', {
+    p_patient_id: createdPatientId,
+    p_full_name: correctedIdentity.fullName,
+    p_date_of_birth: correctedIdentity.dateOfBirth,
+    p_phone: correctedIdentity.phone,
+    p_address: correctedIdentity.address,
+    p_external_identifier: correctedIdentity.externalIdentifier,
+    p_reason: 'Correction synthetique des cinq champs identite',
+    p_expected_version: newPatient?.row_version,
+  });
+  check(
+    "le saisisseur corrige les cinq champs d'identite sur son brouillon",
+    !correctionError && Number(correctedPatient?.row_version) === Number(newPatient?.row_version) + 1,
+    correctionError ? 'refuse' : '',
+  );
+
+  const correctedStored = (
+    await database.query(
+      `select full_name, date_of_birth::text as date_of_birth, phone, address, external_identifier
+       from public.patient_identity where base_id=$1 and patient_code=$2 and deleted_at is null`,
+      [baseId, patientCode],
+    )
+  ).rows[0];
+  check(
+    'la correction complete est verifiee directement en base',
+    identityMatches(correctedStored, correctedIdentity),
+  );
+
+  const identityAudit = (
+    await database.query(
+      `select metadata from public.audit_log
+       where action='patient_identity_corrected' and entity_id=$1
+       order by created_at desc limit 1`,
+      [createdPatientId],
+    )
+  ).rows[0];
+  const identityAuditEvidence = JSON.stringify(identityAudit?.metadata ?? {});
+  check(
+    "l'audit garde motif, champs et versions sans valeurs nominatives",
+    Array.isArray(identityAudit?.metadata?.changed_fields)
+      && identityAudit.metadata.changed_fields.length === 5
+      && !Object.values(initialIdentity).some((value) => identityAuditEvidence.includes(value))
+      && !Object.values(correctedIdentity).some((value) => identityAuditEvidence.includes(value)),
+  );
+
+  const { data: submittedPatient, error: submitPatientError } = await oldStudentSession.rpc('update_patient', {
+    p_patient_id: createdPatientId,
+    p_data: {},
+    p_validation_status: 'complete',
+    p_reason: 'Soumission synthetique du patient',
+    p_expected_version: correctedPatient?.row_version,
+  });
+  check('le saisisseur soumet son brouillon', !submitPatientError && submittedPatient?.validation_status === 'complete');
+
+  await mustFail("apres soumission le saisisseur ne corrige plus l'identite", () =>
+    oldStudentSession.rpc('update_patient_identity', {
+      p_patient_id: createdPatientId,
+      p_full_name: initialIdentity.fullName,
+      p_date_of_birth: initialIdentity.dateOfBirth,
+      p_phone: initialIdentity.phone,
+      p_address: initialIdentity.address,
+      p_external_identifier: initialIdentity.externalIdentifier,
+      p_reason: 'Tentative synthetique apres soumission',
+      p_expected_version: submittedPatient?.row_version,
+    }));
+
+  const { data: doctorCorrected, error: doctorCorrectionError } = await medecin.rpc('update_patient_identity', {
+    p_patient_id: createdPatientId,
+    p_full_name: doctorIdentity.fullName,
+    p_date_of_birth: doctorIdentity.dateOfBirth,
+    p_phone: doctorIdentity.phone,
+    p_address: doctorIdentity.address,
+    p_external_identifier: doctorIdentity.externalIdentifier,
+    p_reason: 'Correction synthetique par le medecin proprietaire',
+    p_expected_version: submittedPatient?.row_version,
+  });
+  check(
+    "le medecin proprietaire corrige la meme identite apres soumission",
+    !doctorCorrectionError && Number(doctorCorrected?.row_version) === Number(submittedPatient?.row_version) + 1,
+    doctorCorrectionError ? 'refuse' : '',
+  );
+
+  const doctorStored = (
+    await database.query(
+      `select full_name, date_of_birth::text as date_of_birth, phone, address, external_identifier
+       from public.patient_identity where base_id=$1 and patient_code=$2 and deleted_at is null`,
+      [baseId, patientCode],
+    )
+  ).rows[0];
+  check(
+    "la correction du medecin est verifiee directement en base",
+    identityMatches(doctorStored, doctorIdentity),
+  );
 
   if (createdPatientId) {
     const { error: encounterError } = await oldStudentSession.rpc('create_encounter', {
@@ -270,9 +446,16 @@ try {
   const { data: canSeeIdentity, error: identityPermissionError } = await oldStudentSession
     .rpc('can_view_identity', { p_base: baseId });
   if (identityPermissionError) throw identityPermissionError;
-  check("la mission refuse la lecture de l'identite", canSeeIdentity === false);
-  await mustFail("le saisisseur ne peut pas lire l'identite du patient", () =>
-    oldStudentSession.rpc('get_patient_identity', { p_patient_id: createdPatientId }));
+  const { data: canWriteIdentity, error: identityWritePermissionError } = await oldStudentSession
+    .rpc('can_write_identity', { p_base: baseId });
+  if (identityWritePermissionError) throw identityWritePermissionError;
+  check("la mission accordee peut lire et ecrire l'identite", canSeeIdentity === true && canWriteIdentity === true);
+  const { data: visibleIdentity, error: visibleIdentityError } = await oldStudentSession
+    .rpc('get_patient_identity', { p_patient_id: createdPatientId });
+  check(
+    "le saisisseur relit l'identite corrigee par le medecin",
+    !visibleIdentityError && identityMatches(visibleIdentity?.[0], doctorIdentity),
+  );
 
   await mustFail("le saisisseur ne peut pas reveler les justificatifs", () =>
     invokeMission(oldStudentSession, { action: 'reveal', accessId }));
@@ -409,11 +592,19 @@ try {
         await admin.from('mission_account_credential').delete().eq('user_id', studentId);
         await admin.auth.admin.deleteUser(studentId);
       }
+      if (temporaryBaseId) {
+        await medecin.rpc('soft_delete_base', {
+          p_base_id: temporaryBaseId,
+          p_reason: 'Nettoyage de la verification synthetique MedData',
+        });
+      }
     }
     console.log(keepAccount ? '\nCompte de test conserve (--keep=true).' : '\nCompte supprime et donnees QA neutralisees.');
   } catch (error) {
     console.error(`\nNettoyage incomplet : ${describeError(error)}`);
   }
+
+  if (databaseConnected) await database.end().catch(() => {});
 
   const failed = results.filter((result) => !result.ok);
   console.log(`\n${results.length - failed.length}/${results.length} verifications passees.`);

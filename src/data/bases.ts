@@ -41,6 +41,8 @@ export interface BaseListing {
   expiresAt?: string | null;
   /** Creer sans pouvoir corriger une saisie soumise (compte de mission). */
   canCreateStructuredData?: boolean;
+  /** Utilisateur courant, utile aux gardes d'affichage qui comparent l'auteur d'un brouillon. */
+  currentUserId?: string;
 }
 
 /** Metadonnees minimales exposees dans la corbeille du seul proprietaire. */
@@ -192,6 +194,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
           versionNumber: r.tv?.version_number ?? null,
           expiresAt: isOwner ? null : (acc?.expires_at ?? null),
           canCreateStructuredData: isOwner || acc?.can_create_structured_data === true,
+          currentUserId: uid,
         };
       });
     },
@@ -265,6 +268,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         versionNumber: b.tv?.version_number ?? null,
         expiresAt: isOwner ? null : (acc?.expires_at ?? null),
         canCreateStructuredData: isOwner || acc?.can_create_structured_data === true,
+        currentUserId: uid,
       };
     },
 

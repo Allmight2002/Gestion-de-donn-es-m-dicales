@@ -120,6 +120,7 @@ drop policy if exists "clinical_attachments_delete" on storage.objects;
 create policy "clinical_attachments_insert" on storage.objects for insert to authenticated
 with check (
   bucket_id = 'clinical-attachments'
+  and public.is_medecin()
   and public.can_write_identity(((storage.foldername(name))[1])::uuid)
   and public.has_pending_upload_ticket(bucket_id, name)
 );

@@ -3,7 +3,8 @@
 - Statut : **déployée sur staging et en production technique le 2026-08-11**
 - Migrations : `20260729104500_mission_accounts.sql`,
   `20260729153000_mission_profile_reconcile.sql` et
-  `20260811120000_managed_mission_credentials.sql`
+  `20260811120000_managed_mission_credentials.sql`, puis
+  `20260811130000_mission_identity_write_correction.sql`
 - Surface serveur : Edge Function `create-mission-account`
 - Surface web : connexion commune, écran global `/missions` et écran par base
 - Périmètre autorisé : données fictives uniquement tant que les prérequis juridiques et cliniques
@@ -63,7 +64,32 @@ enveloppe chiffrée, nonce, génération et statut. La table :
 empreinte de demande, une génération résultante et un état `pending`/`completed`. Il ne contient
 ni identifiant Auth secret, ni mot de passe, ni enveloppe.
 
-## 4. Contrat Edge
+## 4. Droits métier et contrat Edge
+
+### 4.1 Périmètre du compte de mission
+
+Le compte voit une seule base pendant la période accordée. Il peut créer des patients et des
+rencontres, corriger ses propres brouillons puis les soumettre. Après soumission, sa fiche devient
+immuable pour lui. Il ne peut ni supprimer un patient, ni exporter, ni curer, ni gérer les accès,
+les jeux de variables ou les documents bruts, ni rendre une base disponible hors ligne.
+
+L'option « Accès à l'identité » est décochée par défaut. Lorsqu'elle est accordée par le médecin
+avec une justification obligatoire, elle autorise le compte de mission à lire et écrire toute la
+section « Identité (zone restreinte) » : nom complet, date de naissance, téléphone, adresse et
+identifiant externe. Sans cette option, la section est masquée et la base refuse toute valeur
+nominative envoyée à `create_patient`.
+
+La correction après création passe exclusivement par `update_patient_identity`. Elle exige un
+motif et la version courante du patient. Le saisisseur ne peut corriger que son propre patient
+encore `draft`, pendant une mission active, non révoquée et non expirée. Un médecin propriétaire
+peut corriger les patients de sa base ; un médecin collaborateur doit cumuler les droits identité
+et édition. Les écritures directes sur `patient_identity` restent fermées.
+
+La détection de doublon par nom et date de naissance est rejouée avant création ou correction. Un
+rapprochement probable doit être présenté à l'utilisateur avant qu'il confirme qu'il s'agit d'une
+personne différente.
+
+### 4.2 Contrat Edge des justificatifs de mission
 
 L'Edge Function accepte uniquement `POST` authentifié et les actions suivantes :
 
@@ -155,10 +181,16 @@ régénérer et révoquer. La route, l'onglet de base et les RPC sont réservés
 
 ## 9. Audit et absence de fuite
 
-Les événements enregistrés sont : demande/création, demande/régénération, révélation,
-prolongation et révocation. Les métadonnées contiennent uniquement les UUID utiles, l'échéance,
-les flags et la génération. Elles ne contiennent jamais : mot de passe, enveloppe, nonce, clé de
-chiffrement ou identité Auth technique.
+Les événements de mission enregistrés sont : demande/création, demande/régénération, révélation,
+prolongation, révocation et octroi justifié de l'option identité. Toute lecture d'identité est
+journalisée. Une correction par `update_patient_identity` ajoute l'événement
+`patient_identity_corrected` avec l'acteur, le patient, la base, le motif, les noms des champs
+modifiés et les versions avant/après.
+
+Cette trace de correction ne contient jamais les anciennes ou nouvelles valeurs nominatives. Les
+métadonnées de mission contiennent uniquement les UUID utiles, l'échéance, les flags et la
+génération. Elles ne contiennent jamais : nom, date de naissance, téléphone, adresse, identifiant
+externe, mot de passe, enveloppe, nonce, clé de chiffrement ou identité Auth technique.
 
 Les erreurs HTTP et logs Edge sont génériques. Le frontend n'écrit les justificatifs ni dans
 `localStorage`, ni dans IndexedDB, ni dans les notifications. Le presse-papiers n'est utilisé
@@ -166,11 +198,14 @@ qu'après une action explicite « Copier ».
 
 ## 10. Couverture exigée
 
-- PostgreSQL/RLS : droits directs absents, unicité, reprise et conflit, refus inter-propriétaires,
-  génération courante, anciennes sessions, expiration, révocation et audit sans secret ;
+- PostgreSQL/RLS : droits directs absents, identité avec et sans option, correction des cinq champs
+  sur son propre brouillon, refus après soumission/sur le brouillon d'autrui/après expiration ou
+  révocation, verrou de version, droits médecin et audit sans valeurs nominatives ;
 - Edge : validation du nouveau contrat, propriété avant Auth, identité technique, reprise exacte,
   régénération, révélation, révocation et erreurs/logs sans fuite ;
-- Web : écran global et par base, propriétaire uniquement, identifiant choisi, masque/révélation,
+- Web : écran global et par base, propriétaire uniquement, identité conditionnée à l'option,
+  correction complète avec motif et contrôle de doublon, création distincte de l'édition,
+  suppression selon permission, hors-ligne borné, navigation saisisseur réduite, masque/révélation,
   copie, confirmation de régénération/révocation et connexion identifiant ou e-mail ;
 - parcours réel : création par le médecin, connexion du saisisseur, rotation pendant une session
   ouverte, refus de l'ancien jeton et des anciens mots de passe, acceptation du nouveau.
@@ -193,3 +228,31 @@ Sur Supabase local remis à zéro et une base fictive à UUID v4 :
 
 Cette preuve locale n'est pas une preuve de déploiement. La validation staging puis production
 doit porter le même SHA via le workflow manuel « Coordinated release ».
+
+## 12. Décision sur l'identité nominative — renversement du 2026-08-10
+
+La décision du 2026-07-28 excluait l'identité nominative du périmètre de création du compte de
+mission. Elle reposait sur l'hypothèse que le médecin créait d'abord le patient et que l'étudiant
+ne complétait ensuite que les données analytiques.
+
+Le scénario de terrain retenu est différent : au moment de l'inclusion, l'étudiant est la seule
+source de l'identité et il n'existe pas de support papier stable portant la correspondance entre
+le patient et son code. Pour les études transversales visées, exclure l'identité ne la protège pas :
+cela détruit l'unique information disponible. La décision est donc renversée délibérément.
+
+Le compte de mission peut désormais lire, créer et corriger les cinq champs de la zone identité
+si, et seulement si, le médecin lui a accordé l'option `can_view_identity`. L'option A est retenue :
+`can_write_identity()` est étendue au saisisseur autorisé ; aucune permission d'écriture sans
+lecture n'est créée. Cette lecture est nécessaire au contrôle des doublons et à la correction des
+erreurs de saisie.
+
+Ce qui rend désormais cette permission acceptable n'est plus l'exclusion de l'identité, mais le
+cumul de garanties suivant :
+
+- option identité décochée par défaut et accordée mission par mission ;
+- justification obligatoire du médecin et journalisation de l'octroi ;
+- accès limité à une seule base, avec échéance obligatoire et révocation immédiate ;
+- création et correction par RPC avec autorisation, auteur, statut et version vérifiés côté base ;
+- correction du saisisseur limitée à son propre brouillon, jamais après soumission ;
+- lecture et correction d'identité journalisées sans anciennes ou nouvelles valeurs nominatives ;
+- données fictives uniquement tant que les prérequis juridiques et cliniques ne sont pas levés.

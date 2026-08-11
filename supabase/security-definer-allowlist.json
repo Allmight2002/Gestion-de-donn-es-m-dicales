@@ -117,7 +117,8 @@
         "submit_curation_request(p_task_id uuid)",
         "update_encounter(p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone)",
         "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text)",
-        "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint)"
+        "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint)",
+        "update_patient_identity(p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint)"
       ]
     },
     {

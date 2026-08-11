@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'etape 6 (patient) avec repositories INJECTES.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -12,7 +12,7 @@ import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, PatientListItem, NewPatientInput } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
-import { offlineCache } from '../../data/offline';
+import { offlineCache, type OfflineSnapshot } from '../../data/offline';
 
 const ALL_PERMS = {
   canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
@@ -62,7 +62,11 @@ describe('NewPatient', () => {
   test('affiche identite + champs permanents (scope=patient seulement) et cree le patient', async () => {
     const user = userEvent.setup();
     const createPatient = vi.fn(async (_baseId: string, _input: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
-    const patientRepo = { async listPatients() { return []; }, createPatient } as unknown as PatientRepository;
+    const patientRepo = {
+      async listPatients() { return []; },
+      async findIdentityMatches() { return []; },
+      createPatient,
+    } as unknown as PatientRepository;
 
     render(
       <I18nProvider>
@@ -84,11 +88,60 @@ describe('NewPatient', () => {
     expect(screen.queryByText('Glasgow')).toBeNull();
 
     await user.type(screen.getByLabelText('Nom complet'), 'Marie Test');
+    await user.type(screen.getByLabelText('Date de naissance'), '1995-04-03');
+    await user.type(screen.getByLabelText('Téléphone'), '+235 61 00 00 00');
+    await user.type(screen.getByLabelText('Adresse'), 'Adresse fictive');
+    await user.type(screen.getByLabelText('Identifiant externe'), 'EXT-FICTIF-1');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
 
     expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
     expect(createPatient).toHaveBeenCalledTimes(1);
-    expect(createPatient.mock.calls[0][1]).toMatchObject({ fullName: 'Marie Test' });
+    expect(createPatient.mock.calls[0][1]).toMatchObject({
+      fullName: 'Marie Test',
+      dateOfBirth: '1995-04-03',
+      phone: '+235 61 00 00 00',
+      address: 'Adresse fictive',
+      externalIdentifier: 'EXT-FICTIF-1',
+    });
+  });
+
+  test('masque toute la zone identite sans option et envoie des valeurs nominatives nulles', async () => {
+    const withoutIdentity: BaseListing = {
+      ...baseListing,
+      role: 'editor',
+      permissions: { ...ALL_PERMS, canViewIdentity: false, canEditStructuredData: false },
+      canCreateStructuredData: true,
+      expiresAt: '2099-01-01T00:00:00Z',
+    };
+    const bases = { async getBase() { return withoutIdentity; } } as unknown as BaseRepository;
+    const createPatient = vi.fn(async (_baseId: string, _input: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
+    const patients = { async listPatients() { return []; }, createPatient } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
+            <Routes>
+              <Route path="/bases/:id/patients/new" element={<NewPatient />} />
+              <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByText('Sexe');
+    expect(screen.queryByRole('group', { name: 'Identité (zone restreinte)' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nom complet')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
+    await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
+    expect(createPatient.mock.calls[0][1]).toMatchObject({
+      fullName: null,
+      dateOfBirth: null,
+      phone: null,
+      address: null,
+      externalIdentifier: null,
+    });
   });
 
   test('groupe les variables permanentes, masque les sections vides et conserve les variables sans section', async () => {
@@ -196,6 +249,93 @@ describe('BaseHome (liste patients)', () => {
     await userEvent.click(menu);
     const action = screen.getByRole('button', { name: 'Rendre disponible hors-ligne' });
     expect(action.closest('header')).not.toBeNull();
+  });
+
+  test('pilote Nouveau patient par la permission de creation, y compris dans l etat vide', async () => {
+    const creatorListing: BaseListing = {
+      ...baseListing,
+      role: 'editor',
+      permissions: { ...ALL_PERMS, canEditStructuredData: false, canManageAccess: false },
+      canCreateStructuredData: true,
+      expiresAt: '2099-01-01T00:00:00Z',
+    };
+    const bases = { async getBase() { return creatorListing; } } as unknown as BaseRepository;
+    const patients = { async listPatientsPage() { return { rows: [], total: 0 }; } } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect((await screen.findAllByRole('button', { name: 'Nouveau patient' })).length).toBe(2);
+    expect(screen.getByText('Aucun patient. Cliquez sur « Nouveau patient ».')).toBeInTheDocument();
+  });
+
+  test('ne promet pas Nouveau patient a un lecteur sans permission de creation', async () => {
+    const readerListing: BaseListing = {
+      ...baseListing,
+      role: 'viewer',
+      permissions: { ...ALL_PERMS, canEditStructuredData: false, canManageAccess: false },
+      canCreateStructuredData: false,
+    };
+    const bases = { async getBase() { return readerListing; } } as unknown as BaseRepository;
+    const patients = { async listPatientsPage() { return { rows: [], total: 0 }; } } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Aucun patient dans cette base.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nouveau patient' })).not.toBeInTheDocument();
+  });
+
+  test('masque la creation et l actualisation hors-ligne pour un acces a echeance mais garde le retrait', async () => {
+    const snapshot: OfflineSnapshot = {
+      dataType: 'analytic_snapshot',
+      baseId: 'b1',
+      baseName: 'Registre Neuro',
+      templateVersionId: 'v1',
+      fields: [],
+      patients: [],
+      cachedAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+    const cached = vi.spyOn(offlineCache, 'get').mockResolvedValue(snapshot);
+    const expiringListing: BaseListing = {
+      ...baseListing,
+      role: 'editor',
+      permissions: { ...ALL_PERMS, canEditStructuredData: false, canManageAccess: false },
+      canCreateStructuredData: true,
+      expiresAt: '2099-01-01T00:00:00Z',
+    };
+    const bases = { async getBase() { return expiringListing; } } as unknown as BaseRepository;
+    const patients = { async listPatientsPage() { return { rows: [], total: 0 }; } } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Retirer' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rendre disponible hors-ligne' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualiser la copie hors-ligne' })).not.toBeInTheDocument();
+    cached.mockRestore();
   });
 
   test('affiche une valeur de terminologie par son libelle dans la liste', async () => {
