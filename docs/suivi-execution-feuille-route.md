@@ -1465,3 +1465,62 @@ cahiers métier et technique, QA, checklists, E2E, feuille de route, lots et pro
 Les rapports datés restent des archives de leurs candidats respectifs et renvoient désormais vers
 [`etat-actuel-2026-08-01.md`](etat-actuel-2026-08-01.md), qui distingue la release technique
 réussie des conditions encore requises pour toute donnée réelle.
+
+## Chantier A — justificatifs des comptes de mission (clôture du 2026-08-11)
+
+La décision produit est livrée : le seul propriétaire de la base choisit l'identifiant du compte
+de mission ; le serveur génère un mot de passe robuste. Aucun e-mail n'est requis ou montré pour
+ce rôle. Le mot de passe reste consultable par le propriétaire, masqué par défaut, mais n'est
+conservé qu'en enveloppe AES-256-GCM côté serveur. La clé dédiée et les secrets d'administration
+ne sont jamais envoyés au navigateur.
+
+L'interface propose désormais un écran global `/missions`, également accessible depuis chaque
+base, avec la base liée, le nom du compte, l'identifiant, le mot de passe masqué, l'échéance et les
+actions révéler/copier, prolonger, régénérer et révoquer. La connexion accepte un identifiant de
+mission ou l'e-mail d'un compte ordinaire. Les invitations, renvois et réinitialisations par
+e-mail ont été retirés du parcours mission.
+
+La migration additive `20260811120000_managed_mission_credentials.sql` porte l'unicité, le coffre,
+l'idempotence et l'audit. La génération courante est vérifiée par RLS à chaque accès : une
+régénération supprime les sessions Auth, invalide immédiatement les anciens jetons et remplace le
+mot de passe sans changer l'identifiant. Les anciens comptes de mission fondés sur l'e-mail sont
+bannis, leurs sessions sont supprimées et leur absence de justificatif géré les fait échouer
+fermés. Les RPC de réservation et de finalisation restent réservées à `service_role` ; l'acteur
+propriétaire est revérifié en base.
+
+### Preuves locales et CI
+
+- parcours réel local médecin → compte de mission dans deux profils, avec régénération pendant une
+  session ouverte : ancien jeton et ancien mot de passe refusés, nouveau mot de passe accepté ;
+- vérificateur Edge/Auth/RLS : **29/29** ; tests Edge : **100/100** ; tests web : **282/282** ;
+- suites RLS/DB, ACL, typecheck, lint, build, dépendances, schéma, manifeste et actionlint : vertes ;
+- aucune valeur de mot de passe retrouvée dans les tables en clair, l'audit, les logs Edge/Vite ou
+  le stockage persistant du navigateur ;
+- PR fonctionnelle `#133`, promotions `#134`, puis correctifs ACL hébergés `#135` à `#138`, tous
+  fusionnés uniquement après `build-test` et `scanner-image` verts.
+
+Deux staging ont révélé un faux positif du scanner ACL : sur Supabase hébergé, `service_role` peut
+exécuter les fonctions internes sans qu'elles soient des endpoints Edge. Le contrôle final exige
+positivement les onze RPC Edge inventoriées, leur exécution serveur et leur refus à
+`anon`/`authenticated`, tout en conservant l'inventaire exhaustif des signatures authentifiées et
+des `search_path`. Un troisième run a été annulé avant déploiement lorsque l'ancien tunnel ClamAV
+a été confirmé injoignable malgré un processus local vivant. Aucun de ces runs n'a été utilisé
+comme preuve de promotion.
+
+### Promotion coordonnée
+
+- SHA applicatif déployé : `bb99ac72ba46541904d255f7bf129ecd2ad3ca4e` ;
+- staging réussi : `31475841694` — sauvegarde chiffrée, 113 migrations, Storage conforme,
+  154 fonctions `SECURITY DEFINER` conformes, sept Edge Functions, justificatifs mission **29/29**,
+  frontend, scanner strict et navigateur E2E ;
+- production technique réussie : `31476792936`, liée au staging `31475841694` pour le même SHA ;
+- le tunnel ClamAV a été renouvelé dans le conteneur
+  `meddata-cloudflared-20260811-0938`, puis l'URL et le jeton effectif du scanner ont été
+  synchronisés vers GitHub et Supabase sur staging et production, sans exposition de valeur ;
+- la production confirme `require_server_inspection() = true`, 113 migrations, l'empreinte Storage
+  attendue et l'inventaire distant exact des sept Edge Functions.
+
+Cette clôture concerne la production technique et des données fictives. Elle ne vaut ni
+autorisation juridique/éthique, ni autorisation d'usage clinique ou de données réelles. Le tunnel
+`trycloudflare` reste temporaire : une terminaison stable demeure requise pour une exploitation
+durable.

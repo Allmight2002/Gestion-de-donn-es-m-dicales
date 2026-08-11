@@ -247,6 +247,10 @@ Le même parcours, rejoué par `scripts/verify-mission-account.mjs` contre la vr
 locale et deux sessions Auth distinctes, a passé **29/29 vérifications**. Le script ne journalise
 ni l'identifiant public généré pour le test, ni aucun mot de passe.
 
+Le 2026-08-11, ce vérificateur a également passé **29/29** sur le staging déployé par le run
+`31475841694`, pour le SHA `bb99ac72ba46541904d255f7bf129ecd2ad3ca4e`. La production technique
+a ensuite été promue par le run `31476792936` avec cette preuve staging exacte.
+
 ---
 
 ## 7. Écarts constatés sur le produit
