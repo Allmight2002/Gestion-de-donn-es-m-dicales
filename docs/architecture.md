@@ -73,8 +73,9 @@ Invariants d'une mission, portés **par trigger** (`guard_base_access_medecin`, 
 que soit la voie d'écriture) : échéance obligatoire ≤ 24 mois, `can_create_structured_data`
 obligatoire, `can_edit_structured_data` / `can_export_data` / `can_manage_access` /
 `can_view_raw_documents` interdites, justification écrite exigée si l'identité est ouverte.
-L'échéance est revérifiée par RLS **à chaque requête** : un jeton de session déjà émis ne survit
-pas à la révocation.
+L'échéance, la révocation et la génération courante du justificatif sont revérifiées par RLS **à
+chaque requête**. Un jeton émis avant une révocation ou une régénération ne survit donc pas à
+l'opération.
 
 ### 2.2 Rôle d'accès par base (`base_access.access_role`) — 2 valeurs
 
@@ -160,6 +161,9 @@ erDiagram
     template_field }o--o| terminology_release : "listes de valeurs"
 
     profiles ||--o{ base_access : "acces (mission = expires_at non nul)"
+    profiles ||--o| mission_account_credential : "justificatif chiffre"
+    base ||--o{ mission_account_credential : "comptes geres par le proprietaire"
+    mission_account_credential ||--o{ mission_credential_operation : "reprises idempotentes"
 ```
 
 ### Inventaire par domaine
@@ -170,11 +174,16 @@ type, bornes, valeurs autorisées, `required`, `scope` (permanent / rencontre) e
 `allow_missing_codes`. Les règles de cohérence sont du JSON contrôlé (opérateurs en
 liste blanche). Un gabarit est **global** (admin) ou **personnel** (médecin propriétaire).
 
-**Comptes & bases** (`profiles`, `base`, `base_access`, `base_invitation`)
+**Comptes & bases** (`profiles`, `base`, `base_access`, `base_invitation`,
+`mission_account_credential`, `mission_credential_operation`)
 `profiles` est lié à `auth.users` (on ne recrée pas de table utilisateur). Une `base`
 référence une version publiée de gabarit (`current_template_version_id`) et porte un
 `observation_model` : `cross_sectional`, `longitudinal` ou `event_registry`. Les bases
 historiques restent longitudinales. Le modèle ne peut changer que tant que la base est vide.
+Pour un compte de mission, le propriétaire choisit l'identifiant visible ; Auth reçoit une identité
+technique non affichée. Le mot de passe généré est conservé uniquement sous enveloppe AES-256-GCM.
+La génération active est copiée dans le JWT et comparée côté base afin d'invalider immédiatement
+les sessions antérieures lors d'une régénération.
 
 **Zone identité** (`patient_identity`, `clinical_attachment`) — restreinte, jamais exportée.
 
@@ -330,6 +339,7 @@ seule, ou le patient **et** la demande.
 20260728043556_preserve_historical_terminology
 20260729104500_mission_accounts           20260729153000_mission_profile_reconcile
 20260801140238_restore_deleted_base       20260801185149_observation_model_base
+20260811120000_managed_mission_credentials
 ```
 
 ---
@@ -379,8 +389,9 @@ la donnée (pas de faux positif par table vide).
 | `validator@demo.test` | `curateur` | Compte hérité (le rôle `validateur` est supprimé) |
 | `anna.analyst@demo.test` | `medecin` | `viewer` + `can_export_data` sur la base d'Alice (export **sans** identité) |
 
-Le seed ne crée **pas** de compte `saisisseur` : une mission se provisionne depuis l'écran
-« Comptes de mission » d'un médecin propriétaire (voir [tests-multicomptes.md](tests-multicomptes.md)).
+Le seed ne crée **pas** de compte `saisisseur` : une mission se provisionne depuis l'écran global
+« Comptes de mission » ou depuis la base d'un médecin propriétaire (voir
+[tests-multicomptes.md](tests-multicomptes.md)).
 
 ---
 
@@ -398,7 +409,7 @@ doivent pas être pilotables par le navigateur seul. Détail complet :
 | `cleanup-upload` | Reprend les tickets d'upload abandonnés | Idempotence et nettoyage hors session utilisateur |
 | `reconcile-quarantine` | Réconcilie les objets mis en quarantaine | Accès `service_role` au bucket isolé |
 | `generate-export` | Produit l'export d'une cohorte figée | Restreint aux lignes `curated`, hash enregistré, rollback si la journalisation échoue |
-| `create-mission-account` | Provisionne un compte `saisisseur` | Nécessite l'admin Auth ; le médecin déclenche, l'étudiant définit son secret |
+| `create-mission-account` | Crée, révèle, régénère ou révoque les justificatifs d'un `saisisseur` | Nécessite l'admin Auth et la clé de chiffrement Edge ; seul le propriétaire choisit l'identifiant et consulte le mot de passe généré |
 
 > Une modification locale sous `supabase/functions/` **ne change pas le cloud** : chaque fonction
 > doit être redéployée explicitement. Les validations locales ne prouvent jamais la version

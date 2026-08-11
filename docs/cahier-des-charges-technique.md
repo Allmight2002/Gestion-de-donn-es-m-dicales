@@ -23,7 +23,7 @@ Navigateur (PWA React, clé ANON publique)
    │   appels RPC / lectures filtrées par RLS
    ▼
 Supabase ── PostgreSQL (schéma + RLS + RPC + triggers)  ← source de vérité
-         ├─ Auth (GoTrue : email/mot de passe, JWT)
+         ├─ Auth (GoTrue : e-mail ou identité technique de mission, mot de passe, JWT)
          ├─ Storage (buckets privés : images, documents bruts)
          └─ Edge Functions / Deno (signed-read : URL signée auditée)
 ```
@@ -82,7 +82,7 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
 | **Analytique** | `patient`, `encounter`, `field_change_log` | `age_value`/`age_unit` en colonnes ; **jamais la DOB** |
 | **Documents bruts** | `raw_submission`, `raw_document`, `curation_task`, `curation_draft`, `curation_clarification` | Restreinte ; accès curateur **réservé** |
 | Gabarits | `template`, `template_version`, `template_field`, `validation_rule` | Version publiée **immuable** |
-| Comptes & bases | `profiles`, `base`, `base_access`, `base_invitation` | `profiles` ↔ `auth.users` ; `base.observation_model` |
+| Comptes & bases | `profiles`, `base`, `base_access`, `base_invitation`, `mission_account_credential`, `mission_credential_operation` | `profiles` ↔ `auth.users` ; justificatifs de mission chiffrés ; génération de session contrôlée par RLS |
 | Cohortes & export | `cohort`, `cohort_member`, `cohort_encounter_member`, `export_log` | Cohorte figée = instantané |
 | Audit & import | `audit_log`, `import_batch`, `import_row_hash` | Journal infalsifiable ; cycle de vie d'import |
 
@@ -138,6 +138,11 @@ Voir le diagramme ER complet dans [architecture.md §3](architecture.md).
   métadonnées (RPC `curation_pool`), jamais le patient ni l'identité.
 - **ET-17. Cloisonnement hors-ligne** (cf. §8) : instantanés et file d'écritures **estampillés par
   utilisateur** ; aucune lecture ni synchronisation inter-comptes.
+- **ET-17bis. Justificatifs de mission** : identifiant unique choisi par le propriétaire, mot de
+  passe généré côté Edge et stocké uniquement sous enveloppe AES-256-GCM. Le secret de chiffrement
+  dédié n'entre jamais dans le navigateur. Création et régénération sont des opérations idempotentes
+  distinctes ; la génération active, l'échéance et la révocation sont contrôlées côté base afin
+  d'invalider les jetons antérieurs.
 
 ---
 
@@ -153,6 +158,8 @@ Voir le diagramme ER complet dans [architecture.md §3](architecture.md).
 | `detect_import_duplicates` | Avertissement de doublon probable à l'aperçu (lecture seule) |
 | `create_curation_submission`, `submit_curation_request`, `claim/release_curation_task`, `request/answer_clarification` | Machine d'état de la curation |
 | `curation_pool` | Pool minimal (métadonnées non identifiantes) |
+| `begin_mission_account_creation`, `begin_mission_credential_regeneration`, `complete_mission_credential_operation` | RPC internes `service_role` seulement : réservation/finalisation transactionnelles, propriétaire explicite conservé dans l'audit |
+| `mission_accounts_owned`, `mission_credential_envelope` | Inventaire global et lecture de l'enveloppe réservés au propriétaire |
 | `cohort_preview`, `create_cohort_snapshot` | Cohortes dynamiques / figées |
 | `download_base_snapshot` | **Instantané hors-ligne en 1 appel** (analytique seul, RLS) |
 | `log_sensitive_read` | Trace d'une lecture sensible (identité, document) |

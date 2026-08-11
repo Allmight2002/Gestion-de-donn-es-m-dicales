@@ -121,6 +121,7 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Connexion medecin proprietaire.
 - Connexion deuxieme medecin.
 - Connexion curateur.
+- Connexion d'un compte de mission par **Identifiant**, sans e-mail.
 - Deconnexion.
 - Bouton precedent apres deconnexion.
 - Route `/admin` avec un compte non admin.
@@ -132,6 +133,7 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Un medecin non admin ne voit pas l'administration.
 - Un curateur ne voit pas le tableau de bord medecin.
 - Un utilisateur sans acces ne voit pas la base ni les fiches patients.
+- Un compte de mission n'a acces qu'a sa base et aux actions de saisie autorisees.
 
 ## 6. Tableau de bord et bases
 
@@ -436,6 +438,35 @@ QA-UNK-2,2026-07-08,165
 - Un lien accepte ne peut pas etre reutilise.
 - Si l'erreur `digest(text, unknown) does not exist` apparait, la migration pgcrypto n'est pas appliquee en production.
 
+## 16 bis. Comptes de mission
+
+Ce parcours est distinct des invitations entre medecins ci-dessus. Il n'utilise aucun e-mail.
+
+### A tester
+
+- Avec le proprietaire, ouvrir l'ecran global `/missions` depuis le tableau de bord et verifier le
+  resume de toutes ses bases.
+- Creer un compte sur une base `QA-*` avec un libelle et un identifiant fictifs personnalises.
+- Verifier que le mot de passe genere est masque par defaut, puis le reveler et le copier.
+- Dans un second profil de navigateur, se connecter avec l'identifiant et le mot de passe, puis
+  verifier que seule la base de mission est visible.
+- Garder cette session ouverte. Cote proprietaire, confirmer la regeneration du mot de passe.
+- Recharger l'ancienne session, essayer l'ancien mot de passe, puis le nouveau.
+- Prolonger l'echeance, forcer une echeance passee sur la cible de test si la procedure l'autorise,
+  puis revoquer le compte.
+- Inspecter journaux et audit avec des recherches exactes sur les mots de passe fictifs sans jamais
+  copier ces secrets dans le rapport partage.
+- Avec un autre medecin, tenter de lister, reveler, regenerer, prolonger ou revoquer ce compte.
+
+### Attendu
+
+- Seul le proprietaire cree et administre le compte ; un autre medecin est refuse.
+- L'identifiant reste stable et unique ; le rejeu de la creation ne cree aucun doublon.
+- Le mot de passe reste consultable par le proprietaire mais n'existe en base que chiffre et ne se
+  retrouve ni dans l'audit, ni dans les journaux, ni dans le stockage persistant du navigateur.
+- Apres regeneration, l'ancienne session et l'ancien mot de passe sont refuses ; le nouveau
+  fonctionne. Apres expiration ou revocation, toute lecture metier reste refusee.
+
 ## 17. Consultations d'identite
 
 ### A tester
@@ -661,6 +692,7 @@ Supprimer ou revoquer :
 - cohortes `QA-*` ;
 - jeux de variables `QA-*` ;
 - invitations de test ;
+- comptes de mission `QA-*` (revoquer avant le nettoyage technique) ;
 - acces accordes au deuxieme compte ;
 - exports conserves si l'interface le permet ;
 - demandes de curation `QA-*`.

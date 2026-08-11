@@ -66,11 +66,13 @@ par le serveur** entre en zone analytique.
 **RG-6.** Tout nouveau compte est **médecin** par défaut ; seul un administrateur système peut le
 promouvoir curateur. Nul ne peut modifier son propre rôle.
 
-**RG-6bis.** Un compte `saisisseur` n'est **pas** créé par inscription libre : il est provisionné
-par un médecin propriétaire depuis l'écran « Comptes de mission ». Le médecin déclenche
-l'invitation, mais **seul l'étudiant définit son mot de passe** — sans quoi toute saisie
-deviendrait contestable. L'accès porte une **échéance obligatoire** (24 mois maximum),
-prolongeable ou révocable par le médecin. Voir [spec-comptes-mission.md](spec-comptes-mission.md).
+**RG-6bis.** Un compte `saisisseur` n'est **pas** créé par inscription libre : il est géré
+exclusivement par le propriétaire de la base depuis l'écran global « Comptes de mission » ou depuis
+la base. Le propriétaire choisit un identifiant unique ; le serveur génère le mot de passe et le
+conserve chiffré afin que le propriétaire puisse le consulter, masqué par défaut, puis le remettre à
+l'étudiant. Il peut le régénérer ou révoquer le compte. L'accès porte une **échéance obligatoire**
+(24 mois maximum), prolongeable ou révocable par le propriétaire. Voir
+[spec-comptes-mission.md](spec-comptes-mission.md).
 
 > Les anciens rôles `analyste` et `validateur` ont été **supprimés** : le curateur structure ET
 > finalise seul (plus d'étape de validation séparée). Le rôle `saisisseur` a été **ajouté** le
@@ -98,7 +100,9 @@ exporte des données **sans identité**.
 ## 4. Exigences fonctionnelles par domaine
 
 ### 4.1 Comptes et authentification
-- **EF-2.** Connexion par email + mot de passe ; réinitialisation et changement de mot de passe.
+- **EF-2.** Connexion par e-mail pour les comptes ordinaires ou par identifiant pour les comptes de
+  mission, toujours avec mot de passe. La récupération par e-mail ne concerne pas les comptes de
+  mission.
 - **EF-3.** L'administrateur système attribue les rôles globaux (écran **Admin → Rôles**).
 - **HP** : l'auto-inscription en self-service depuis l'app (les comptes sont créés via le back-office
   Supabase ou un script d'administration), cf. §9.
@@ -219,8 +223,9 @@ exporte des données **sans identité**.
 
 ### 4.11 Traçabilité (audit)
 - **EF-31.** Les **actions sensibles** sont tracées dans un **journal infalsifiable** : consultation
-  d'identité, ouverture/téléchargement de document, changement d'accès, invitation, figement de
-  cohorte, export, suppression, publication de gabarit.
+  d'identité, ouverture/téléchargement de document, changement d'accès, création, révélation,
+  régénération ou révocation d'un compte de mission, invitation entre médecins, figement de cohorte,
+  export, suppression, publication de gabarit. Aucun justificatif secret n'entre dans l'audit.
 - **RG-17.** Un utilisateur **ne peut pas fabriquer** d'événement d'audit ni en modifier.
 
 ---

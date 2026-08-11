@@ -1,11 +1,16 @@
 # Tester les flux entre comptes — comptes de mission et collaboration
 
 > **Objet** : comment vérifier à la main ce qu'aucun test automatisé ne traverse — la chaîne
-> complète Auth + Edge Function + courriel + deux sessions utilisateur vivantes.
+> complète Auth + Edge Function + deux sessions utilisateur vivantes.
 > **Origine** : session de travail du **2026-08-09**, sur demande du porteur du besoin.
 > **Portée** : ce document couvre le *comment tester*, les obstacles rencontrés et les décisions
 > prises. Il ne remplace ni `spec-comptes-mission.md` (la spécification du rôle), ni
 > `qa-parcours-site.md` (le plan de test du site déployé).
+
+> **État courant au 2026-08-11** : le circuit de mission par courriel décrit comme preuve historique
+> dans les §1, §3, §6.1 et §7.1/7.4 a été **remplacé**. Le propriétaire choisit l'identifiant, le
+> serveur génère le mot de passe et le conserve chiffré ; le propriétaire peut le révéler,
+> régénérer ou révoquer depuis l'écran global `/missions`. La procédure actuelle est au §8.
 
 ---
 
@@ -14,9 +19,9 @@
 Les fonctionnalités du produit sont largement implémentées, mais **celles qui font intervenir
 plusieurs comptes n'avaient jamais été essayées par un utilisateur** :
 
-- les **comptes de mission** (rôle `saisisseur`) : un médecin confie la saisie d'une base à un
-  étudiant pour une durée limitée, l'étudiant reçoit un courriel, active son compte, saisit, et
-  son accès s'éteint à l'échéance ;
+- les **comptes de mission** (rôle `saisisseur`) : historiquement, le test portait sur un courriel
+  d'activation ; depuis le 2026-08-11, le propriétaire remet directement l'identifiant choisi et le
+  mot de passe généré pour une durée limitée ;
 - la **collaboration entre médecins** : invitation, acceptation, permissions accordées puis
   retirées, édition simultanée.
 
@@ -24,9 +29,9 @@ La question posée était : *comment faire pour les tester ?*
 
 Le besoin réel derrière la question n'est pas de re-tester les règles de sécurité — elles sont
 déjà verrouillées (§2) — mais de vérifier que **les couches tiennent ensemble** : un compte créé
-par une Edge Function, un courriel réellement expédié, un lien qui atterrit sur le bon écran, une
-seconde personne qui se connecte et voit ce qu'elle doit voir. C'est précisément la zone qu'aucun
-test unitaire, RLS ou Deno ne peut couvrir.
+par une Edge Function, un secret réellement utilisable sans fuite, une seconde personne qui se
+connecte et voit ce qu'elle doit voir, puis une régénération qui invalide sa session vivante. C'est
+précisément la zone qu'aucun test unitaire, RLS ou Deno ne peut couvrir seul.
 
 ---
 
@@ -37,8 +42,9 @@ test unitaire, RLS ou Deno ne peut couvrir.
 | Fichier | Nombre de tests | Ce qu'il verrouille |
 |---|---|---|
 | `test/mission-accounts.test.ts` | 51 | Rôle posé par `app_metadata` seul ; saisie → brouillon → soumission → immuabilité ; identité refusée par défaut et option justifiée ; cloisonnement à une seule base ; échéance et révocation appliquées par la base ; prolongation ; révocation sur déclassement de rôle |
+| `test/mission-credentials.test.ts` | 9 | Unicité sans distinction de casse ; refus inter-comptes ; reprise idempotente ; génération courante ; expiration, révocation et anciennes sessions refusées ; absence de clair dans les tables et l'audit |
 | `test/access.test.ts` | 8 | Invitations réservées au propriétaire ; invitation révoquée inacceptable ; anti-escalade d'un délégué `can_manage_access` |
-| `supabase/functions/create-mission-account/handler_test.ts` | 22 | Appelant non autorisé ; adresse déjà prise ; bornes de durée ; rejeu idempotent ; réconciliation du rôle avant provisionnement |
+| `supabase/functions/create-mission-account/*_test.ts` | 15 | Génération robuste, chiffrement authentifié, contrat create/reveal/regenerate/revoke, refus propriétaire et absence de fuite dans les réponses d'erreur |
 
 ```bash
 npm run test:rls
@@ -47,8 +53,8 @@ npm run test:rls
 **Ce que ces tests ne peuvent pas prouver**, et qui justifie le test manuel :
 
 - la création réelle du compte Auth par l'Edge Function sur un vrai GoTrue ;
-- le départ effectif du courriel et la validité du lien qu'il contient ;
-- l'écran d'arrivée de la personne invitée ;
+- la connexion réelle avec l'identifiant visible alors qu'Auth utilise une identité technique ;
+- l'invalidation d'une session GoTrue déjà ouverte après régénération ;
 - ce que l'interface **propose** à un rôle (un bouton offert à tort n'est pas un défaut de
   sécurité — la base refuse — mais c'est un défaut d'usage, et c'est exactement ce qui a été
   trouvé, cf. §7.2) ;
@@ -58,19 +64,20 @@ npm run test:rls
 
 ## 3. Décision : tester sur la pile locale, pas sur le cloud
 
-**Décision du 2026-08-09 : la cible du test manuel multi-comptes est la pile Supabase locale
-(Docker).** Le site en ligne n'est pas la bonne cible pour ce flux précis.
+**La pile Supabase locale (Docker) reste la première cible du test manuel multi-comptes.** Elle
+permet de forcer l'échéance, de réinitialiser les données fictives et d'inspecter les traces. Une
+vérification synthétique distante est ensuite exécutée sur staging puis sur production technique.
 
 | Critère | Pile locale | Cloud (site déployé) |
 |---|---|---|
-| Courriel d'invitation | **Capté par Mailpit** (`http://127.0.0.1:54324`) | SMTP par défaut Supabase fortement bridé et souvent limité aux adresses de l'équipe du projet : le courriel risque de ne jamais arriver, et on conclurait à tort à un défaut applicatif |
+| Justificatifs de mission | Création et régénération réelles sans SMTP ; journaux inspectables | Même contrat Edge, avec secret de chiffrement propre à la cible |
 | Forcer une échéance | **Oui**, en SQL (§8) — la garde n'impose qu'un maximum de 24 mois, pas de minimum | Non : il faudrait attendre |
 | Remise à zéro | **Oui**, une commande | Non : les traces d'export sont volontairement immuables |
 | Risque | Aucun : données fictives, poste isolé | Écriture dans l'environnement en ligne |
 
-**Nuance importante** : le flux **collaboration entre médecins** n'envoie *pas* de courriel — il
-génère un lien à copier (cf. `qa-parcours-site.md` §6bis). Ce flux-là est donc testable en ligne
-sans difficulté. C'est le flux **compte de mission** qui exige le local.
+**Nuance importante** : le flux **collaboration entre médecins** continue à générer un lien à
+copier (cf. `qa-parcours-site.md` §6bis). Il est distinct du compte de mission et n'est pas modifié
+par le présent lot.
 
 ---
 
@@ -201,7 +208,9 @@ npm run supabase:stop -- --no-backup
 
 ---
 
-## 6. Résultat du parcours bout-en-bout
+## 6. Résultats des parcours bout-en-bout
+
+### 6.1 Preuve historique du circuit retiré — 2026-08-09
 
 Parcours réellement exécuté le 2026-08-09 sur la pile locale, base neuve `QA-base-mission`,
 compte de mission `thesard.qa@example.test`.
@@ -217,8 +226,26 @@ compte de mission `thesard.qa@example.test`.
 | Saisie | Patient créé par le compte de mission, statut « Brouillon » |
 | Cloisonnement de l'identité | Vérifié en base : la ligne d'identité ne contient **ni nom, ni date de naissance, ni téléphone, ni adresse** |
 
-**Conclusion : la chaîne fonctionne.** Le mécanisme de cloisonnement tient en conditions réelles,
-comme les tests le laissaient attendre.
+**Conclusion historique :** le cloisonnement tenait, mais le compte créé ne disposait pas d'un mot
+de passe durable. Ce circuit par e-mail n'est plus dans le produit.
+
+### 6.2 Circuit courant — 2026-08-11
+
+Parcours réellement exécuté sur la pile locale, avec une base et des justificatifs entièrement
+fictifs :
+
+| Étape | Résultat observé |
+|---|---|
+| Création par le propriétaire | Compte créé depuis `/missions` avec un identifiant personnalisé et sans e-mail ; lien vers la base et échéance visibles |
+| Conservation | Mot de passe masqué par défaut, révélable à nouveau par le propriétaire ; seules une enveloppe AES-256-GCM et son nonce existent dans la table applicative |
+| Première connexion | Connexion par « Identifiant » réussie ; une seule base visible pour le `saisisseur` |
+| Régénération avec session ouverte | Session antérieure incapable de relire le profil ou les données après rechargement ; ancien mot de passe refusé ; nouveau accepté |
+| Régénération depuis l'interface | Confirmation native affichée ; identifiant inchangé ; nouveau secret fonctionnel et ancien refusé |
+| Traces | Aucun des mots de passe fictifs retrouvé dans les journaux Edge, Vite ou navigateur ; audit création/révélation/régénération sans champ secret |
+
+Le même parcours, rejoué par `scripts/verify-mission-account.mjs` contre la vraie Edge Function
+locale et deux sessions Auth distinctes, a passé **29/29 vérifications**. Le script ne journalise
+ni l'identifiant public généré pour le test, ni aucun mot de passe.
 
 ---
 
@@ -226,7 +253,7 @@ comme les tests le laissaient attendre.
 
 Ce sont les découvertes que seul le test manuel pouvait produire.
 
-### 7.1 La personne invitée ne définit jamais son mot de passe — fonctionnel, sérieux
+### 7.1 Ancien compte sans mot de passe durable — **résolu par remplacement**
 
 Le lien du courriel ouvre une **session valide directement sur le tableau de bord**. L'écran de
 définition du mot de passe (`/reset-password`) n'est jamais atteint.
@@ -244,7 +271,7 @@ inutilisable devrait-il rester silencieux ?** L'absence de la variable pourrait 
 une erreur explicite au démarrage de la fonction.
 
 > **Chantier A** de [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md) §2 —
-> cause vérifiée, travail à faire et point encore à trancher. Rien n'est implémenté à ce jour.
+> le 2026-08-11, ce contrat a été supprimé au profit des justificatifs gérés par le propriétaire.
 
 ### 7.2 Écarts d'interface du rôle `saisisseur`
 
@@ -288,34 +315,105 @@ Conséquence pour le test : **un refus légitime est indiscernable d'une panne**
 > la cause est confirmée sur le chemin export (`error.context` non lu) ; le défaut est transverse à
 > tous les appelants d'Edge Functions et doit se corriger une seule fois.
 
-### 7.4 Courriel d'invitation générique
+### 7.4 Courriel d'invitation générique — **sans objet pour les missions**
 
 En local, la personne invitée reçoit un message intitulé « Reset your password », expédié par
 « Admin <admin@email.com> ». Pour quelqu'un qui n'a jamais utilisé le produit et à qui l'on
 demande de rejoindre un registre clinique, c'est déroutant — et le vocabulaire (« réinitialiser »)
 ne correspond pas à la situation (« activer »). Les modèles de courriel se personnalisent côté
 Supabase ; **il reste à vérifier ce que reçoit réellement une personne invitée sur le projet en
-ligne.**
+ligne. Ce constat reste une preuve du circuit historique ; aucun courriel n'est désormais envoyé
+pour un compte de mission.
 
 ---
 
-## 8. Ce qui reste à tester
+## 8. Feuille de route de test — interactions entre comptes
 
-- **Collaboration entre médecins** : la procédure existe déjà et est prête à l'emploi —
-  `qa-parcours-site.md` §6bis, étapes **C1 à C8** (invitation, acceptation, profil appliqué, ajout
-  de la permission Identités, **édition simultanée avec conflit de version**, lien à usage unique,
-  mauvais compte, révocation). Elle vise le site déployé mais se joue telle quelle en local.
-- **Échéance et révocation d'une mission vues depuis la session de l'étudiant.** La garde n'impose
-  qu'un maximum de 24 mois, pas de minimum : l'échéance se force en base plutôt que de l'attendre.
+Cette feuille de route est le point de départ d'une nouvelle campagne manuelle. Elle se joue avec
+des données **fictives uniquement**. Noter pour chaque étape `OK`, `KO` ou `BLOQUÉ`, l'observation,
+la version/commit testé et, en cas de défaut, le compte concerné et les étapes exactes de
+reproduction. Ne jamais copier d'identité réelle dans un rapport ni une capture.
 
-  ```sql
-  update base_access set expires_at = now() - interval '1 minute' where user_id = '<id du compte de mission>';
-  ```
+> **Ne pas mélanger les flux.** Les invitations par lien du §Phase 1 concernent la collaboration
+> entre médecins. Les comptes de mission des phases 2 et 4 n'utilisent jamais de courriel.
 
-- **Deux sessions réellement simultanées** : la même origine partage le stockage du navigateur, il
-  faut donc une fenêtre de navigation privée (ou un second profil) pour tenir deux sessions à la
-  fois.
-- **Prolongation et renvoi d'invitation** depuis l'écran du médecin.
+### Phase 0 — préparation sûre
+
+1. Utiliser la pile locale (§3 et §4) : Docker, `npm run supabase:start`, puis
+   `npm run supabase:storage`.
+2. Lancer le frontend avec les variables locales et `--host 127.0.0.1` (§4) ; ne pas utiliser
+   `npm run dev` seul, car `.env.local` cible la production sur ce poste (§5.1).
+3. Préparer deux sessions réellement distinctes : navigateur normal pour le médecin propriétaire,
+   navigation privée ou second profil pour le compte de mission. Mailpit n'intervient pas.
+4. Créer une base neuve `QA-*` depuis l'interface ; ne pas utiliser les identifiants décoratifs du
+   seed pour les appels Edge (§5.5). Noter la date, la version et les comptes fictifs employés.
+
+### Phase 1 — collaboration entre médecins (C1 à C8)
+
+Suivre intégralement [`qa-parcours-site.md` §6bis](qa-parcours-site.md) : invitation par lien,
+acceptation par le bon compte, profil appliqué, ouverture contrôlée de l'identité, conflit de
+version, lien à usage unique, mauvais compte et révocation.
+
+**Critères essentiels :** le second médecin ne voit jamais l'identité avant l'autorisation ; sa
+seconde sauvegarde concurrente est refusée sans écraser la première ; après révocation, la base et
+son URL directe deviennent inaccessibles. Cette phase est testable localement ou sur le site
+déployé, car elle n'envoie pas de courriel.
+
+### Phase 2 — compte de mission : parcours de base
+
+1. Propriétaire : depuis `/missions`, créer un compte sur la base `QA-*`, choisir un libellé et un
+   identifiant fictifs, sans option identité.
+2. Relever le mot de passe généré, vérifier qu'il se masque, puis le révéler à nouveau et le copier.
+   Aucun e-mail ni Mailpit n'intervient.
+3. Saisisseur : dans un second profil, se connecter avec ces éléments ; vérifier une seule base
+   visible, le bandeau d'échéance, les zones médecin absentes,
+   puis créer un patient et une rencontre en brouillon.
+4. Vérifier les refus attendus : autre base, export, gestion des accès, documents bruts, hors-ligne,
+   identité non autorisée, suppression et fiche d'autrui.
+5. Saisisseur : corriger son propre brouillon, puis le soumettre ; vérifier qu'il ne peut plus le
+   modifier après soumission.
+
+**Critère :** aucune invitation ou réinitialisation par e-mail n'est proposée. La régénération
+confirmée par le propriétaire rend l'ancien mot de passe inutilisable et invalide les sessions
+associées ; l'identifiant reste identique et le nouveau mot de passe fonctionne dans un profil neuf.
+
+### Phase 3 — identité restreinte après L16
+
+Créer une seconde mission avec l'option identité et sa justification. Tester les cinq champs : nom
+complet, date de naissance, téléphone, adresse et identifiant externe.
+
+1. Le saisisseur crée un patient avec cette identité, puis corrige chacun de ces champs sur son
+   propre brouillon.
+2. Il tente la même correction après soumission, après expiration, après révocation et sur un
+   patient d'autrui : chaque tentative doit être refusée, sans modification partielle.
+3. Le médecin corrige ensuite cette même identité : la correction doit réussir et rester visible.
+4. Créer volontairement un rapprochement nom/date avec un autre patient fictif : le mécanisme
+   anti-doublon doit avertir avant l'enregistrement.
+
+### Phase 4 — cycle de vie de la mission dans deux sessions
+
+1. Depuis le propriétaire, tester **Prolonger**, **Révéler** puis **Régénérer** ; vérifier côté
+   saisisseur l'effet réel, pas seulement le message côté propriétaire. Conserver la session du
+   saisisseur ouverte pendant la régénération.
+2. Forcer l'échéance sur la pile locale, puis recharger la session du saisisseur :
+
+   ```sql
+   update base_access set expires_at = now() - interval '1 minute' where user_id = '<id du compte de mission>';
+   ```
+
+3. Refaire avec **Révoquer** depuis la session médecin tandis que le saisisseur est encore ouvert :
+   le prochain chargement ou enregistrement doit être refusé et ne rien écrire.
+
+### Phase 5 — qualité des refus et clôture
+
+Après L17, provoquer au moins un refus par parcours (base invalide, droit absent, cohorte non
+exportable) : l'interface doit afficher le message court choisi par le serveur, jamais
+`Edge Function returned a non-2xx status code`, `[object Object]`, une erreur SQL ou un secret.
+
+Conclure avec le format de rapport de [`qa-parcours-site.md` §8](qa-parcours-site.md) : synthèse,
+résultats, anomalies reproductibles, captures fictives et ressenti utilisateur. Enfin, supprimer ou
+réinitialiser les données `QA-*` locales (§10) ; ne jamais réemployer ces comptes pour un test en
+ligne.
 
 ---
 

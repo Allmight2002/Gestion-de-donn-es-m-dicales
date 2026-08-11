@@ -73,7 +73,9 @@ export function makeSupabaseBackend(client: SupabaseClient | null): AuthBackend 
       return () => data.subscription.unsubscribe();
     },
 
-    async signIn(email, password) {
+    async signIn(identifier, password) {
+      const normalized = identifier.trim().toLowerCase();
+      const email = normalized.includes('@') ? normalized : `${normalized}@mission.meddata.invalid`;
       const { error } = await client.auth.signInWithPassword({ email, password });
       if (error) throw error;
     },

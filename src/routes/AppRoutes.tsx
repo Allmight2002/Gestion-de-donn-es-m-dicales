@@ -79,6 +79,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/missions"
+        element={
+          <ProtectedRoute area="member" globalRoles={['medecin']}>
+            <MissionAccounts />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/templates"
         element={
           <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
@@ -145,7 +153,7 @@ export function AppRoutes() {
           <Route path="queue" element={<CompletionQueue />} />
           <Route path="activity" element={<ActivityLog />} />
           <Route path="access" element={<AccessManagement />} />
-          <Route path="missions" element={<MissionAccounts />} />
+          <Route path="missions" element={<RequireGlobalRole globalRoles={['medecin']}><MissionAccounts /></RequireGlobalRole>} />
           <Route path="template" element={<BaseTemplateEditor />} />
           <Route path="curation" element={<CurationBoard />} />
         </Route>

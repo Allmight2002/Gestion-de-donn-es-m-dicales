@@ -28,7 +28,7 @@ export interface TestDb {
   /** Chaine de connexion vers l'instance embarquee (pour les scripts qui lisent SUPABASE_DB_URL). */
   url: string;
   /** Execute une fonction en tant qu'utilisateur authentifie (RLS appliquee). */
-  asUser<T>(uid: string, fn: (c: Client) => Promise<T>): Promise<T>;
+  asUser<T>(uid: string, fn: (c: Client) => Promise<T>, claims?: Record<string, unknown>): Promise<T>;
   stop(): Promise<void>;
 }
 
@@ -68,13 +68,13 @@ export async function startTestDb(opts: { seed?: boolean } = {}): Promise<TestDb
   // (plans, GUC) sur une connexion longue duree, qui faisait echouer a tort le
   // WITH CHECK d'un INSERT. La connexion devient `authenticated` avec le claim JWT
   // (sub = id utilisateur), exactement comme une requete Supabase.
-  const asUser: TestDb['asUser'] = async (uid, fn) => {
+  const asUser: TestDb['asUser'] = async (uid, fn, claims = {}) => {
     const c = pg.getPgClient();
     await c.connect();
     try {
       await c.query('begin');
       await c.query("select set_config('request.jwt.claims', $1, true)", [
-        JSON.stringify({ sub: uid, role: 'authenticated' }),
+        JSON.stringify({ sub: uid, role: 'authenticated', ...claims }),
       ]);
       await c.query('set local role authenticated');
       try {

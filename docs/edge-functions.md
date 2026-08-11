@@ -423,3 +423,70 @@ update public.app_security_setting
 
 Puis rebuild. Le build refuse explicitement `VITE_REQUIRE_SERVER_INSPECTION=true` si
 `VITE_USE_SIGNED_READ=true` n'est pas aussi pose.
+
+---
+
+## 10.5 - Justificatifs des comptes de mission (`create-mission-account`)
+
+Cette fonction remplace entièrement l'ancien circuit d'invitation par e-mail du rôle
+`saisisseur`. Elle accepte quatre actions authentifiées :
+
+| Action | Effet |
+|---|---|
+| `create` | réserve une opération idempotente, crée l'identité Auth technique, l'accès borné et l'enveloppe chiffrée du mot de passe |
+| `reveal` | vérifie que l'appelant est le propriétaire de la base, déchiffre le mot de passe en mémoire et audite la consultation sans le secret |
+| `regenerate` | génère un nouveau mot de passe, incrémente la génération du justificatif, met à jour Auth et supprime les sessions antérieures |
+| `revoke` | révoque l'accès et le justificatif, supprime les sessions et bannit l'identité Auth de mission |
+
+L'identifiant visible est choisi par le propriétaire et reste stable lors d'une régénération.
+Auth utilise en interne une adresse technique de la forme `<identifiant>@mission.meddata.invalid` ;
+elle n'est jamais présentée à l'utilisateur et n'est pas un canal de récupération. Le frontend ne
+reçoit jamais la clé `service_role`.
+
+### Chiffrement et reprise
+
+Le mot de passe est généré avec `crypto.getRandomValues`, puis stocké uniquement sous forme
+d'enveloppe AES-256-GCM dans `mission_account_credential`. La clé de chiffrement est un secret Edge
+dédié de 32 octets, encodé en base64url :
+
+```powershell
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$value = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+npx supabase secrets set "MISSION_CREDENTIALS_ENCRYPTION_KEY=$value" `
+  --project-ref '<reference-explicitement-verifiee>' `
+  --yes
+Remove-Variable value, bytes
+```
+
+Ne jamais afficher, journaliser ni conserver cette valeur dans le dépôt. Utiliser une valeur
+distincte par environnement et ne pas la faire tourner sans procédure de rechiffrement : les mots
+de passe déjà conservés deviendraient sinon illisibles. La présence du nom de secret se vérifie avec
+`supabase secrets list`; sa valeur n'est pas récupérable par cette commande.
+
+Chaque création ou régénération possède un `operationId` fourni par le navigateur. La réservation
+SQL précède la création ou la mise à jour Auth. Un rejeu strict du même `operationId` restitue donc
+le même justificatif, tandis qu'une demande différente avec le même identifiant est refusée. Une
+régénération n'est jamais déclenchée implicitement par la reprise d'une création.
+
+Les RPC de réservation et de finalisation sont exécutables par `service_role` seulement. L'Edge y
+transmet l'UUID de l'appelant déjà authentifié ; la base revalide que cet acteur possède la base et
+l'inscrit comme auteur de l'audit. Un navigateur muni d'un JWT de propriétaire ne peut donc pas
+injecter sa propre enveloppe chiffrée ni finaliser une opération hors de l'Edge.
+
+La base ne fait pas confiance à la seule validité du JWT : pour le rôle `saisisseur`, la génération
+inscrite dans `app_metadata.mission_credential_generation` doit correspondre à la génération active
+en base. L'échéance et la révocation de `base_access` restent également vérifiées par RLS.
+
+### Déploiement et vérification
+
+```bash
+supabase functions deploy create-mission-account --import-map deno.json
+node scripts/verify-mission-account.mjs --env-file=.env.staging --prefix=STAGING_
+```
+
+Le secret doit être posé sur la cible Supabase avant de déployer la fonction. La vérification
+distante utilise uniquement des données fictives et ne doit imprimer aucun identifiant de connexion
+ni mot de passe de mission. Une fusion Git ne déploie pas cette fonction : MedData exige le workflow
+manuel **Coordinated release**, d'abord sur staging puis sur production pour le même commit et avec
+l'identifiant du run staging réussi.

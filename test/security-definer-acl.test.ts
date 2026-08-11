@@ -18,10 +18,11 @@ afterAll(async () => {
 
 describe('inventaire SECURITY DEFINER', () => {
   test('classe chaque signature autorisee sans doublon', () => {
-    const { inventory, signatures } = loadFunctionPrivilegeInventory();
+    const { inventory, signatures, serviceRoleSignatures } = loadFunctionPrivilegeInventory();
     expect(inventory.categories).toHaveLength(7);
-    expect(signatures).toHaveLength(94); // L9 : choix du modele d'observation d'une base.
-    expect(new Set(signatures).size).toBe(signatures.length);
+    expect(signatures).toHaveLength(98); // L15 : gardes et lectures des comptes de mission.
+    expect(serviceRoleSignatures).toHaveLength(11); // Edge seulement : fichiers, quarantaine et missions.
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(109);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
@@ -30,12 +31,14 @@ describe('inventaire SECURITY DEFINER', () => {
       config: string[] | null;
       anon_can_execute: boolean;
       authenticated_can_execute: boolean;
+      service_role_can_execute: boolean;
     }>(`
       select
         p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as signature,
         p.proconfig as config,
         has_function_privilege('anon', p.oid, 'EXECUTE') as anon_can_execute,
-        has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute
+        has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute,
+        has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_can_execute
       from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'

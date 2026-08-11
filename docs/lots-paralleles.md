@@ -38,8 +38,8 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L4, L11, L13, L15 |
 | **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L11, L12, L15, L18 |
 | **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
-| **L15** | Redirection du mot de passe des comptes de mission | `create-mission-account/index.ts`, `edge-functions.md`, `supabase/functions/.env` | **tous** (aucun écran) |
-| **L16** | Compte de mission : écriture de l'identité **et** écarts d'interface | migration, `test/mission-accounts.test.ts`, `spec-comptes-mission.md`, `NewPatient.tsx`, `BaseHome.tsx`, `PatientDetail.tsx`, `AppShell.tsx` | **seul** |
+| **L15** | Comptes de mission : identifiant et mot de passe générés | `create-mission-account/{index,handler}.ts`, tests Edge, `MissionAccounts.tsx`, connexion, textes et spec | **seul** (Auth + accès) |
+| **L16** | Compte de mission : création **et correction** de l'identité, écarts d'interface | migration, `test/mission-accounts.test.ts`, `spec-comptes-mission.md`, `NewPatient.tsx`, `EditPatient.tsx`, `BaseHome.tsx`, `PatientDetail.tsx`, `AppShell.tsx` | **seul** |
 | **L17** | Messages d'erreur des Edge Functions | `src/data/exports.ts`, `src/data/mission.ts`, utilitaire partagé | L11, L14, L18, L19 |
 | **L18** | Cohorte dynamique : compteur vivant et « Figer maintenant » | `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
 | **L19** | Archivage d'une cohorte | migration, `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
@@ -201,19 +201,20 @@ faut retélécharger.
 
 Touche `TerminologyInput.tsx`, comme L4 : ne pas lancer les deux ensemble.
 
-### L15 — Redirection du mot de passe des comptes de mission
+### L15 — Comptes de mission : identifiant et mot de passe générés (à lancer SEUL)
 
 **Chantier A** de [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md) §2.
-Sans `MISSION_PASSWORD_REDIRECT_URL`, l'Edge Function envoie le courriel d'activation **sans**
-`redirectTo` : le lien ouvre une session sur le tableau de bord, l'écran de définition du mot de
-passe n'est jamais atteint, et l'étudiant se retrouve sans mot de passe à l'expiration de sa
-session.
+Décision du 2026-08-11 : pour **tous** les comptes de mission, le médecin reçoit un identifiant et
+un mot de passe générés à remettre à l'étudiant ; l'e-mail n'est pas requis. La création, la
+connexion et la régénération remplacent le flux actuel d'invitation par courriel.
 
-Le lot documente la variable, l'ajoute à la configuration locale, vérifie (**en lecture seule**)
-la valeur configurée en production, et tranche une question ouverte : le repli silencieux
-doit-il devenir une erreur explicite au démarrage de la fonction ?
+Le lot touche l'Edge Function, les tests de son contrat, l'écran de gestion des comptes et la
+connexion. Il doit garantir côté serveur l'unicité, l'idempotence, l'absence de secret dans les
+traces, la régénération explicitement confirmée et l'invalidation des anciens accès. Il ne modifie
+ni migration distante ni paramètre cloud sans demande explicite.
 
-Ne touche **aucun écran** : parallélisable avec n'importe quel autre lot.
+Il est traité **seul** : Auth et accès aux données sont une surface de sécurité, et il touche des
+écrans qui doivent être vérifiés ensemble.
 
 ### L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)
 
@@ -228,8 +229,10 @@ délibérément les tests correspondants et réécrit §4, §9 et §12 de
 (option A)** : ne pas la rouvrir, la mettre en œuvre.
 
 Phase interface — la section « Identité (zone restreinte) » de `NewPatient.tsx` devient
-conditionnée à `canViewIdentity`, et les quatre corrections d'écran déjà écrites sont finies et
-testées.
+conditionnée à `canViewIdentity`. La zone complète (nom, date de naissance, téléphone, adresse,
+identifiant externe) devient aussi corrigeable après création : le saisisseur seulement sur son
+propre brouillon autorisé, le médecin autorisé sur les patients de sa base. Les quatre corrections
+d'écran déjà écrites sont finies et testées.
 
 > **Rien n'existe en code.** Une première implémentation des points d'écran avait été écrite puis
 > **effacée le 2026-08-10** : elle datait d'avant que le renversement du §4 ne soit tranché, et ne
@@ -237,7 +240,7 @@ testées.
 > registre. Le lot part de zéro, avec ses tests.
 
 Surface base : appliquer `meddata-db-safety`. Touche `AppShell.tsx`, `BaseHome.tsx`,
-`PatientDetail.tsx`, `NewPatient.tsx` et `messages.ts` : à lancer **seul**.
+`PatientDetail.tsx`, `EditPatient.tsx`, `NewPatient.tsx` et `messages.ts` : à lancer **seul**.
 
 ### L17 — Messages d'erreur des Edge Functions
 
@@ -283,7 +286,7 @@ du bucket `scientific-exports`. **Ne pas lancer avec L18** : mêmes fichiers.
 Neuf lots sont livrés : **L1, L2, L3, L5, L6, L7, L8, L9 et L10**. Il en reste **dix** :
 L4, L11, L12, L13, L14, et les cinq nouveaux L15 à L19.
 
-1. **D'abord, et en parallèle** : **L15** (aucun écran, donc compatible avec tout) et **L17**
+1. **D'abord** : **L15**, seul, car il modifie le circuit Auth et la remise des accès. Puis **L17**
    (messages d'erreur). L17 mérite de passer tôt : c'est lui qui rend les prochaines séances de
    test manuel exploitables, au lieu d'obliger à ouvrir les outils de développement à chaque
    refus.

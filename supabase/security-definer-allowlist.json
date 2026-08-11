@@ -3,6 +3,22 @@
   "schema": "public",
   "role": "authenticated",
   "reviewRule": "Every signature is explicitly classified; any addition, removal or overload change must fail CI and receive an authorization review.",
+  "serviceRole": {
+    "rationale": "Service-role-only Edge commands handle trusted file finalization, quarantine, mission profile reconciliation and encrypted mission credential operations.",
+    "signatures": [
+      "begin_mission_account_creation(p_operation_id uuid, p_actor_id uuid, p_base_id uuid, p_user_id uuid, p_account_label text, p_login_identifier text, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text)",
+      "begin_mission_credential_regeneration(p_operation_id uuid, p_actor_id uuid, p_access_id uuid, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text)",
+      "complete_file_inspection(p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb, p_quarantine_bucket text, p_quarantine_path text)",
+      "complete_mission_credential_operation(p_operation_id uuid, p_actor_id uuid)",
+      "complete_verified_upload_operation(p_ticket_id uuid, p_user_id uuid, p_entity text, p_metadata jsonb, p_verified_file_hash text, p_verified_file_size bigint, p_verified_mime_type text)",
+      "mission_account_lookup(p_email text)",
+      "quarantine_reconciliation_candidates(p_limit integer)",
+      "reconcile_mission_profile(p_user_id uuid)",
+      "record_quarantine_move(p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb)",
+      "rollback_verified_upload_operation(p_ticket_id uuid, p_user_id uuid, p_document_id uuid)",
+      "update_quarantine_move(p_move_id uuid, p_status text, p_last_error text)"
+    ]
+  },
   "categories": [
     {
       "id": "authorization-policy-helper",
@@ -22,6 +38,7 @@
         "has_base_access(p_base uuid)",
         "has_pending_upload_ticket(p_bucket text, p_path text)",
         "is_active_assigned_curator(p_task_id uuid)",
+        "is_authenticated_session_current()",
         "is_assigned_curator(p_task_id uuid)",
         "is_assigned_to_submission(p_submission_id uuid)",
         "is_base_active(p_base uuid)",
@@ -52,6 +69,8 @@
         "log_identity_read(p_patient_id uuid)",
         "log_raw_document_read(p_document_id uuid)",
         "mission_accounts(p_base_id uuid)",
+        "mission_accounts_owned(p_base_id uuid)",
+        "mission_credential_envelope(p_access_id uuid)",
         "patient_age_at(p_patient_id uuid, p_at date, p_unit text)"
       ]
     },
@@ -68,6 +87,7 @@
         "list_deleted_bases()",
         "revoke_base_access(p_access_id uuid)",
         "revoke_base_invitation(p_invitation_id uuid)",
+        "revoke_mission_access(p_access_id uuid)",
         "restore_deleted_base(p_base_id uuid)",
         "set_base_inclusion_target(p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint)",
         "set_base_observation_model(p_base_id uuid, p_observation_model text)",

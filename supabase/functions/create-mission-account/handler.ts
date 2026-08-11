@@ -1,34 +1,45 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readJsonObject, RequestValidationError, UUID_RE, validationResponse } from '../_shared/contracts.ts';
+import {
+  type CredentialCipher,
+  generateMissionPassword,
+  missionTechnicalEmail,
+  normalizeMissionIdentifier,
+  sha256Hex,
+} from './credentials.ts';
 
-// Creation d'un COMPTE DE MISSION (docs/spec-comptes-mission.md §6).
-//
-// Seule fonction detentrice du droit admin Auth : le navigateur n'approche jamais la cle
-// service_role. Trois proprietes portees ici, le reste etant garanti par la base :
-//
-//   * le role `saisisseur` est pose DES LA CREATION du compte, dans app_metadata (non
-//     modifiable par l'utilisateur). Le trigger handle_new_user le lit la : un compte de
-//     mission n'est jamais medecin, meme une fraction de seconde ;
-//   * l'etudiant choisit LUI-MEME son mot de passe (courriel de definition de mot de
-//     passe) : le medecin ne connait pas le secret, sinon toute saisie serait contestable ;
-//   * l'operation est REJOUABLE. Auth et PostgreSQL ne forment pas une transaction : si le
-//     compte existe deja avec le role de mission attendu mais sans ligne d'acces, le rejeu
-//     reprend au provisionnement au lieu de repartir de zero ou d'echouer.
-//
-// L'autorisation de l'appelant est verifiee ici (pre-vol, avant l'acte irreversible qu'est
-// la creation du compte) PUIS re-verifiee par provision_mission_access, appelee avec le
-// jeton du medecin : la base reste seule juge.
+export interface MissionAuthUserState {
+  userId: string;
+  email: string | null;
+  globalRole: string | null;
+  credentialGeneration: number | null;
+}
 
 export interface MissionAuthAdmin {
-  /** Cree le compte Auth avec le role de mission dans app_metadata. */
-  createMissionUser(email: string): Promise<{ userId?: string; error?: string }>;
-  /** Envoie le courriel qui permet a l'etudiant de definir son mot de passe. */
-  sendPasswordSetup(email: string): Promise<{ error?: string }>;
+  getMissionUser(userId: string): Promise<{ user?: MissionAuthUserState; error?: string }>;
+  createMissionUser(input: {
+    userId: string;
+    email: string;
+    password: string;
+    accountLabel: string;
+    credentialGeneration: number;
+  }): Promise<{ userId?: string; error?: string }>;
+  updateMissionCredentials(input: {
+    userId: string;
+    email: string;
+    password: string;
+    credentialGeneration: number;
+  }): Promise<{ error?: string }>;
+  banMissionUser(userId: string): Promise<{ error?: string }>;
 }
 
 export interface MissionAccountDeps {
   buildClients: (authHeader: string) => { asUser: SupabaseClient; admin: SupabaseClient };
   auth: MissionAuthAdmin;
+  cipher: CredentialCipher;
+  generatePassword?: () => string;
+  randomUUID?: () => string;
+  fingerprint?: (value: string) => Promise<string>;
 }
 
 const CORS = {
@@ -36,43 +47,86 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
 
-// Duree d'une mission : au moins un jour, au plus 24 mois (decision du 2026-07-29).
-// Les memes bornes sont re-appliquees par la base ; celles-ci evitent de creer un compte
-// Auth pour une demande qui serait de toute facon refusee.
 const MIN_DURATION_MS = 24 * 60 * 60 * 1000;
-const MAX_DURATION_MS = 731 * 24 * 60 * 60 * 1000; // 24 mois, borne haute (annees bissextiles)
-const MAX_EMAIL_LENGTH = 254;
+const MAX_DURATION_MS = 731 * 24 * 60 * 60 * 1000;
 const MAX_JUSTIFICATION_LENGTH = 500;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const IDENTIFIER_RE = /^[a-z0-9](?:[a-z0-9.-]{1,46}[a-z0-9])?$/;
 
-type MissionAction = 'create' | 'resend';
+type MissionAction = 'create' | 'regenerate' | 'reveal' | 'revoke';
 
-interface MissionRequest {
-  action: MissionAction;
+interface CreateRequest {
+  action: 'create';
+  operationId: string;
   baseId: string;
-  email: string;
+  accountLabel: string;
+  loginIdentifier: string;
   expiresAt: string;
   canViewIdentity: boolean;
   identityJustification: string | null;
 }
 
+interface RegenerateRequest {
+  action: 'regenerate';
+  accessId: string;
+  operationId: string;
+}
+
+interface RevealRequest {
+  action: 'reveal';
+  accessId: string;
+}
+
+interface RevokeRequest {
+  action: 'revoke';
+  accessId: string;
+}
+
+type MissionRequest = CreateRequest | RegenerateRequest | RevealRequest | RevokeRequest;
+
+function parseAccessId(body: Record<string, unknown>): string {
+  if (typeof body.accessId !== 'string' || !UUID_RE.test(body.accessId)) {
+    throw new RequestValidationError(400, 'Compte de mission invalide');
+  }
+  return body.accessId;
+}
+
 function parse(body: Record<string, unknown>): MissionRequest {
-  const action = body.action === undefined ? 'create' : body.action;
-  if (action !== 'create' && action !== 'resend') {
+  const action = (body.action ?? 'create') as MissionAction;
+  if (!['create', 'regenerate', 'reveal', 'revoke'].includes(action)) {
     throw new RequestValidationError(400, 'Action invalide');
+  }
+  if (action !== 'create') {
+    const accessId = parseAccessId(body);
+    if (action === 'regenerate') {
+      if (typeof body.operationId !== 'string' || !UUID_RE.test(body.operationId)) {
+        throw new RequestValidationError(400, 'Operation invalide');
+      }
+      return { action, accessId, operationId: body.operationId };
+    }
+    return { action, accessId };
+  }
+
+  if (typeof body.operationId !== 'string' || !UUID_RE.test(body.operationId)) {
+    throw new RequestValidationError(400, 'Operation invalide');
   }
   if (typeof body.baseId !== 'string' || !UUID_RE.test(body.baseId)) {
     throw new RequestValidationError(400, 'Base invalide');
   }
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-  if (!email || email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
-    throw new RequestValidationError(400, 'Adresse de courriel invalide');
-  }
-
-  if (action === 'resend') {
-    return { action, baseId: body.baseId, email, expiresAt: '', canViewIdentity: false, identityJustification: null };
+  const accountLabel = typeof body.accountLabel === 'string' ? body.accountLabel.trim() : '';
+  if (!accountLabel || accountLabel.length > 120) throw new RequestValidationError(400, 'Nom du compte invalide');
+  const loginIdentifier = normalizeMissionIdentifier(
+    typeof body.loginIdentifier === 'string' ? body.loginIdentifier : '',
+  );
+  if (!IDENTIFIER_RE.test(loginIdentifier)) {
+    throw new RequestValidationError(
+      400,
+      'Identifiant invalide : 3 a 48 caracteres, lettres minuscules, chiffres, points ou tirets',
+    );
   }
 
   if (typeof body.expiresAt !== 'string') throw new RequestValidationError(400, 'Echeance invalide');
@@ -83,40 +137,237 @@ function parse(body: Record<string, unknown>): MissionRequest {
   if (delta > MAX_DURATION_MS) throw new RequestValidationError(400, 'La mission ne peut depasser 24 mois');
 
   const canViewIdentity = body.canViewIdentity === true;
-  let justification: string | null = null;
+  let identityJustification: string | null = null;
   if (canViewIdentity) {
-    justification = typeof body.identityJustification === 'string' ? body.identityJustification.trim() : '';
-    if (!justification) throw new RequestValidationError(400, "Justification requise pour ouvrir l'identite");
-    if (justification.length > MAX_JUSTIFICATION_LENGTH) {
+    identityJustification = typeof body.identityJustification === 'string' ? body.identityJustification.trim() : '';
+    if (!identityJustification) {
+      throw new RequestValidationError(400, "Justification requise pour ouvrir l'identite");
+    }
+    if (identityJustification.length > MAX_JUSTIFICATION_LENGTH) {
       throw new RequestValidationError(400, 'Justification trop longue');
     }
   }
 
   return {
     action,
+    operationId: body.operationId,
     baseId: body.baseId,
-    email,
+    accountLabel,
+    loginIdentifier,
     expiresAt: new Date(expires).toISOString(),
     canViewIdentity,
-    identityJustification: justification,
+    identityJustification,
   };
 }
 
-interface AccountState {
-  userId: string;
-  globalRole: string | null;
-  activated: boolean;
+interface CredentialRow {
+  user_id: string;
+  base_id: string;
+  account_label: string;
+  login_identifier: string;
+  password_ciphertext: string;
+  password_nonce: string;
+  credential_generation: number;
+  operation_status: string;
 }
 
-/** Etat Auth+profil de l'adresse, via une RPC reservee au service_role. */
-async function lookupAccount(admin: SupabaseClient, email: string): Promise<AccountState | null | 'error'> {
-  const { data, error } = await admin.rpc('mission_account_lookup', { p_email: email });
-  if (error) return 'error';
-  const rows = (Array.isArray(data) ? data : []) as Array<
-    { user_id: string; global_role: string | null; activated: boolean }
-  >;
-  if (rows.length === 0) return null;
-  return { userId: rows[0].user_id, globalRole: rows[0].global_role, activated: rows[0].activated === true };
+function firstCredential(data: unknown): CredentialRow | null {
+  const rows = Array.isArray(data) ? data as CredentialRow[] : [];
+  return rows[0] ?? null;
+}
+
+function requestFingerprint(deps: MissionAccountDeps, payload: unknown): Promise<string> {
+  return (deps.fingerprint ?? sha256Hex)(JSON.stringify(payload));
+}
+
+async function decryptCredential(deps: MissionAccountDeps, row: CredentialRow): Promise<string> {
+  return await deps.cipher.decrypt({ ciphertext: row.password_ciphertext, nonce: row.password_nonce });
+}
+
+function credentialResponse(row: CredentialRow, password: string, extra: Record<string, unknown> = {}) {
+  return json(200, {
+    ...extra,
+    userId: row.user_id,
+    credential: { loginIdentifier: row.login_identifier, password },
+  });
+}
+
+function isExpectedMissionUser(user: MissionAuthUserState, row: CredentialRow): boolean {
+  return user.userId === row.user_id &&
+    user.email?.toLowerCase() === missionTechnicalEmail(row.login_identifier) &&
+    user.globalRole === 'saisisseur' &&
+    user.credentialGeneration === row.credential_generation;
+}
+
+async function handleCreate(
+  input: CreateRequest,
+  actorId: string,
+  asUser: SupabaseClient,
+  admin: SupabaseClient,
+  deps: MissionAccountDeps,
+): Promise<Response> {
+  // Pre-vol avant toute reservation/creation Auth irreversible.
+  const { data: owner, error: ownerError } = await asUser.rpc('is_base_owner', { p_base: input.baseId });
+  if (ownerError || owner !== true) return json(403, { error: 'Reserve au proprietaire de la base' });
+
+  const generatedPassword = (deps.generatePassword ?? generateMissionPassword)();
+  const envelope = await deps.cipher.encrypt(generatedPassword);
+  const proposedUserId = deps.randomUUID ? deps.randomUUID() : crypto.randomUUID();
+  const fingerprint = await requestFingerprint(deps, {
+    action: input.action,
+    baseId: input.baseId,
+    accountLabel: input.accountLabel,
+    loginIdentifier: input.loginIdentifier,
+    expiresAt: input.expiresAt,
+    canViewIdentity: input.canViewIdentity,
+    identityJustification: input.identityJustification,
+  });
+
+  const { data, error } = await admin.rpc('begin_mission_account_creation', {
+    p_operation_id: input.operationId,
+    p_actor_id: actorId,
+    p_base_id: input.baseId,
+    p_user_id: proposedUserId,
+    p_account_label: input.accountLabel,
+    p_login_identifier: input.loginIdentifier,
+    p_password_ciphertext: envelope.ciphertext,
+    p_password_nonce: envelope.nonce,
+    p_request_fingerprint: fingerprint,
+  });
+  if (error) {
+    const message = String((error as { message?: unknown }).message ?? '');
+    if (message.includes('Identifiant deja utilise')) return json(409, { error: 'Cet identifiant est deja utilise' });
+    if (message.includes('Conflit d idempotence')) {
+      return json(409, { error: 'Operation deja utilisee pour une autre demande' });
+    }
+    console.error('create-mission-account: creation reservation failed');
+    return json(409, { error: 'Creation du compte refusee' });
+  }
+  const row = firstCredential(data);
+  if (!row) return json(500, { error: 'Creation du compte impossible' });
+  const password = await decryptCredential(deps, row);
+
+  if (row.operation_status === 'completed') {
+    return credentialResponse(row, password, { created: false, replayed: true });
+  }
+
+  const existing = await deps.auth.getMissionUser(row.user_id);
+  if (existing.error) {
+    console.error('create-mission-account: auth lookup failed');
+    return json(502, { error: 'Verification du compte impossible' });
+  }
+  if (existing.user && !isExpectedMissionUser(existing.user, row)) {
+    console.error('create-mission-account: reserved auth identity mismatch');
+    return json(409, { error: 'Etat du compte incompatible' });
+  }
+  if (!existing.user) {
+    const created = await deps.auth.createMissionUser({
+      userId: row.user_id,
+      email: missionTechnicalEmail(row.login_identifier),
+      password,
+      accountLabel: row.account_label,
+      credentialGeneration: row.credential_generation,
+    });
+    if (!created.userId) {
+      console.error('create-mission-account: auth user creation failed');
+      return json(502, { error: 'Creation du compte impossible' });
+    }
+  }
+
+  const { data: role, error: roleError } = await admin.rpc('reconcile_mission_profile', { p_user_id: row.user_id });
+  if (roleError || role !== 'saisisseur') {
+    console.error('create-mission-account: mission role could not be established');
+    return json(409, { error: 'Role de mission non etabli : aucun acces pose' });
+  }
+
+  const { data: access, error: accessError } = await asUser.rpc('provision_mission_access', {
+    p_base_id: input.baseId,
+    p_user_id: row.user_id,
+    p_expires_at: input.expiresAt,
+    p_can_view_identity: input.canViewIdentity,
+    p_identity_justification: input.identityJustification,
+  });
+  if (accessError || !access) {
+    console.error('create-mission-account: access provisioning refused');
+    return json(409, { error: 'Compte reserve mais acces non pose : relancez la meme demande' });
+  }
+
+  const { error: completeError } = await admin.rpc('complete_mission_credential_operation', {
+    p_operation_id: input.operationId,
+    p_actor_id: actorId,
+  });
+  if (completeError) {
+    console.error('create-mission-account: completion failed');
+    return json(409, { error: 'Compte cree mais operation non finalisee : relancez la meme demande' });
+  }
+  return credentialResponse(row, password, { created: true, accessId: (access as { id?: unknown }).id });
+}
+
+async function handleRegenerate(
+  input: RegenerateRequest,
+  actorId: string,
+  admin: SupabaseClient,
+  deps: MissionAccountDeps,
+) {
+  const generatedPassword = (deps.generatePassword ?? generateMissionPassword)();
+  const envelope = await deps.cipher.encrypt(generatedPassword);
+  const fingerprint = await requestFingerprint(deps, { action: input.action, accessId: input.accessId });
+  const { data, error } = await admin.rpc('begin_mission_credential_regeneration', {
+    p_operation_id: input.operationId,
+    p_actor_id: actorId,
+    p_access_id: input.accessId,
+    p_password_ciphertext: envelope.ciphertext,
+    p_password_nonce: envelope.nonce,
+    p_request_fingerprint: fingerprint,
+  });
+  if (error) {
+    console.error('create-mission-account: regeneration reservation failed');
+    return json(409, { error: 'Regeneration des justificatifs refusee' });
+  }
+  const row = firstCredential(data);
+  if (!row) return json(500, { error: 'Regeneration impossible' });
+  const password = await decryptCredential(deps, row);
+  if (row.operation_status !== 'completed') {
+    const updated = await deps.auth.updateMissionCredentials({
+      userId: row.user_id,
+      email: missionTechnicalEmail(row.login_identifier),
+      password,
+      credentialGeneration: row.credential_generation,
+    });
+    if (updated.error) {
+      console.error('create-mission-account: auth credential update failed');
+      return json(502, { error: 'Mise a jour des justificatifs impossible' });
+    }
+    const { error: completeError } = await admin.rpc('complete_mission_credential_operation', {
+      p_operation_id: input.operationId,
+      p_actor_id: actorId,
+    });
+    if (completeError) {
+      console.error('create-mission-account: regeneration completion failed');
+      return json(409, { error: 'Justificatifs modifies mais operation non finalisee : relancez la meme demande' });
+    }
+  }
+  return credentialResponse(row, password, { regenerated: true, replayed: row.operation_status === 'completed' });
+}
+
+async function handleReveal(input: RevealRequest, asUser: SupabaseClient, deps: MissionAccountDeps) {
+  const { data, error } = await asUser.rpc('mission_credential_envelope', { p_access_id: input.accessId });
+  if (error) return json(403, { error: 'Justificatifs indisponibles' });
+  const row = firstCredential(data);
+  if (!row) return json(404, { error: 'Justificatifs indisponibles' });
+  const password = await decryptCredential(deps, row);
+  return credentialResponse(row, password, { revealed: true });
+}
+
+async function handleRevoke(input: RevokeRequest, asUser: SupabaseClient, deps: MissionAccountDeps) {
+  const { data: userId, error } = await asUser.rpc('revoke_mission_access', { p_access_id: input.accessId });
+  if (error || typeof userId !== 'string') return json(403, { error: 'Revocation refusee' });
+  const banned = await deps.auth.banMissionUser(userId);
+  if (banned.error) {
+    console.error('create-mission-account: auth ban failed after database revocation');
+    return json(502, { error: 'Acces aux donnees revoque ; fermeture Auth a relancer' });
+  }
+  return json(200, { revoked: true });
 }
 
 export async function handleCreateMissionAccount(req: Request, deps: MissionAccountDeps): Promise<Response> {
@@ -139,100 +390,16 @@ export async function handleCreateMissionAccount(req: Request, deps: MissionAcco
   } catch {
     return json(500, { error: 'Configuration serveur indisponible' });
   }
-
   const { data: who } = await asUser.auth.getUser();
   if (!who?.user) return json(401, { error: 'Session invalide' });
 
-  // Pre-vol : ne jamais creer un compte Auth pour un appelant qui n'a pas la main sur la
-  // base. La base re-verifie ensuite ; ce controle evite seulement l'acte irreversible.
-  const { data: allowed, error: permissionError } = await asUser.rpc('can_manage_access', { p_base: input.baseId });
-  if (permissionError || allowed !== true) {
-    return json(403, { error: 'Gestion des acces requise sur cette base' });
+  try {
+    if (input.action === 'create') return await handleCreate(input, who.user.id, asUser, admin, deps);
+    if (input.action === 'regenerate') return await handleRegenerate(input, who.user.id, admin, deps);
+    if (input.action === 'reveal') return await handleReveal(input, asUser, deps);
+    return await handleRevoke(input, asUser, deps);
+  } catch {
+    console.error('create-mission-account: unexpected credential operation failure');
+    return json(500, { error: 'Operation de compte indisponible' });
   }
-
-  const existing = await lookupAccount(admin, input.email);
-  if (existing === 'error') {
-    console.error('create-mission-account: lookup failed');
-    return json(500, { error: 'Verification du compte impossible' });
-  }
-
-  if (input.action === 'resend') {
-    if (!existing || existing.globalRole !== 'saisisseur') {
-      return json(404, { error: 'Aucun compte de mission pour cette adresse' });
-    }
-    const { error: mailError } = await deps.auth.sendPasswordSetup(input.email);
-    if (mailError) {
-      console.error('create-mission-account: password setup mail failed on resend');
-      return json(502, { error: 'Envoi du courriel impossible' });
-    }
-    return json(200, { userId: existing.userId, resent: true });
-  }
-
-  let userId: string;
-  let created = false;
-
-  if (existing && existing.globalRole !== 'saisisseur') {
-    // Aucune retrogradation silencieuse d'un compte existant (medecin, curateur, admin).
-    // Message generique cote client : l'existence d'un compte ne doit pas etre enumerable.
-    console.error('create-mission-account: refused, address already bound to a non-mission account');
-    return json(409, { error: 'Cette adresse ne peut pas recevoir un compte de mission' });
-  }
-
-  if (existing) {
-    // Rejeu : le compte de mission existe deja (invitation precedente, ou provisionnement
-    // interrompu apres la creation Auth). On reprend au provisionnement.
-    userId = existing.userId;
-  } else {
-    const invited = await deps.auth.createMissionUser(input.email);
-    if (!invited.userId) {
-      console.error('create-mission-account: auth user creation failed');
-      return json(502, { error: 'Creation du compte impossible' });
-    }
-    userId = invited.userId;
-    created = true;
-  }
-
-  // Supabase n'ecrit PAS app_metadata dans la meme instruction que l'insertion de
-  // l'utilisateur : le declencheur handle_new_user ne voit donc pas le role et cree un
-  // profil medecin. Sans cette reconciliation, le compte de mission naitrait medecin,
-  // capable de creer ses propres bases — l'escalade meme que le lot doit empecher.
-  // La RPC relit app_metadata cote serveur et refuse de toucher un compte deja etabli.
-  // Idempotente : sans effet sur un rejeu.
-  const { data: role, error: roleError } = await admin.rpc('reconcile_mission_profile', {
-    p_user_id: userId,
-  });
-  if (roleError || role !== 'saisisseur') {
-    console.error('create-mission-account: mission role could not be established');
-    return json(409, { error: 'Role de mission non etabli : aucun acces pose' });
-  }
-
-  // Provisionnement AVEC LE JETON DU MEDECIN : l'autorisation, les invariants de mission
-  // et l'audit restent portes par la base (auth.uid() = le medecin appelant).
-  const { data: access, error: accessError } = await asUser.rpc('provision_mission_access', {
-    p_base_id: input.baseId,
-    p_user_id: userId,
-    p_expires_at: input.expiresAt,
-    p_can_view_identity: input.canViewIdentity,
-    p_identity_justification: input.identityJustification,
-  });
-  if (accessError || !access) {
-    // Compensation : le compte Auth eventuellement cree reste INERTE (role saisisseur sans
-    // aucune ligne d'acces : il ne peut ni creer de base, ni voir quoi que ce soit). Le rejeu
-    // de la meme demande le retrouvera et reprendra exactement ici.
-    console.error('create-mission-account: access provisioning refused');
-    return json(409, {
-      error: created ? 'Compte cree mais acces non pose : relancez la meme demande' : 'Acces de mission refuse',
-    });
-  }
-
-  // Le courriel de definition de mot de passe part APRES le provisionnement : l'etudiant
-  // qui suit le lien trouve sa base en place. Un echec d'envoi ne perd pas la mission,
-  // il se rattrape par le renvoi d'invitation.
-  const { error: mailError } = await deps.auth.sendPasswordSetup(input.email);
-  if (mailError) {
-    console.error('create-mission-account: password setup mail failed');
-    return json(200, { userId, created, mailSent: false });
-  }
-
-  return json(200, { userId, created, mailSent: true });
 }

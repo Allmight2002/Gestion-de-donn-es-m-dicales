@@ -1,194 +1,195 @@
 # Spécification — Comptes de mission (rôle `saisisseur`)
 
-- Statut : **implémentée** (lot L10, 2026-07-29) — migration `20260729104500_mission_accounts.sql`,
-  Edge Function `create-mission-account`, écran « Comptes de mission » et parcours saisisseur
-- Date : 2026-07-19 · conception · décisions restantes tranchées le 2026-07-29
-- Demandeur : Dr Mbassi (besoin : étudiants en thèse saisissant des données pour un directeur)
-- Cadre de calendrier : développement local autorisé par
-  `docs/feuille-route-developpement-post-readiness.md`, avec données fictives
-  uniquement. B2, B6, B7 et B10 restent ouverts pour le pilote clinique et la
-  production. Toute modification crée un nouveau SHA qui devra être revalidé
-  avant staging ou promotion.
+- Statut : **implémentée dans le code et validée sur la pile locale le 2026-08-11**
+- Migrations : `20260729104500_mission_accounts.sql`,
+  `20260729153000_mission_profile_reconcile.sql` et
+  `20260811120000_managed_mission_credentials.sql`
+- Surface serveur : Edge Function `create-mission-account`
+- Surface web : connexion commune, écran global `/missions` et écran par base
+- Périmètre autorisé : données fictives uniquement tant que les prérequis juridiques et cliniques
+  ne sont pas levés
 
-## 1. Besoin
+## 1. Besoin et propriété du compte
 
-Un médecin doit pouvoir confier la saisie de données d'une seule base à un étudiant (thésard, assistant de recherche) pour une durée qu'il choisit, puis récupérer un registre propre à l'échéance : l'étudiant saisit sans modifier ce qui est soumis, ne voit pas l'identité nominative, ne peut rien exporter, et son accès s'éteint automatiquement.
+Un propriétaire de base doit pouvoir confier temporairement la saisie à un étudiant, un thésard
+ou un assistant. Le **compte appartient fonctionnellement au propriétaire de la base** : il le
+nomme, choisit son identifiant de connexion, relève ou révèle son mot de passe, le prolonge, en
+régénère les justificatifs et le révoque.
 
-Le modèle actuel ne le permet pas :
-
-- tout nouveau compte devient `medecin` (`handle_new_user`, `20260616090500_integrity.sql:13`) et peut créer ses propres bases et gabarits ;
-- `base_access` porte `revoked_at` mais **pas d'expiration** (`20260616090200_tables.sql:109`) ;
-- `can_edit_structured_data` couvre indistinctement création et modification ;
-- l'expiration existante (`base_invitation.expires_at`) ne limite que l'invitation, pas l'accès accepté.
+Le compte ne requiert aucune adresse e-mail de l'étudiant. Le médecin remet directement les
+justificatifs à la personne chargée de la saisie. L'étudiant ne choisit pas son mot de passe
+initial et le circuit d'invitation/réinitialisation par e-mail n'existe plus pour le rôle
+`saisisseur`.
 
 ## 2. Décisions de conception
 
-| Décision | Alternative rejetée | Raison |
-|---|---|---|
-| Nouveau rôle global `saisisseur` | « Compte médecin limité à la création » | Le rôle `medecin` porte des droits hors de toute base — créer des bases (`20260616090400_rls.sql:68`), des gabarits (`rls.sql:27`), accepter des invitations — que `base_access` ne peut pas restreindre. Un étudiant-médecin pourrait créer sa propre base et y recopier des données hors du contrôle du directeur. De plus, toute policy future écrite `is_medecin() and …` exclut le saisisseur automatiquement : le défaut échoue fermé. |
-| La « mission » est la ligne `base_access` étendue | Table `data_entry_mission` dédiée | `granted_by` (médecin responsable), `created_at`, `revoked_at` existent déjà ; il ne manque que `expires_at` et la permission de création. Moins de surface, mêmes garanties, audit déjà en place. |
-| Nouvelle permission `can_create_structured_data` | Réutiliser `can_edit_structured_data` | Sépare « créer » de « modifier ». Compatibilité : les RPC de création accepteront `can_create` **ou** `can_edit` (aucun backfill, aucun changement pour les éditeurs actuels) ; les RPC de modification resteront sur `can_edit` seul. |
-| Création du compte par invitation admin (Edge Function + `inviteUserByEmail`) | Le médecin choisit le mot de passe | Imputabilité : seul l'étudiant détient son secret, sinon toute saisie devient contestable. Le médecin déclenche, l'étudiant active et définit son mot de passe. |
-| Rôle transporté par `app_metadata` | `user_metadata` | `user_metadata` est modifiable par l'utilisateur lui-même : y lire un rôle serait une escalade de privilège triviale. `app_metadata` n'est modifiable que côté admin. |
-| Brouillon/soumission via `validation_status` existant | Immuabilité dès la première sauvegarde ; ou nouveau statut dédié | Les rencontres portent déjà `'draft'`/`'complete'`/`'curated'` (`20260616090900_encounters.sql`). L'interdiction absolue de corriger rendrait une faute de frappe irréparable par l'étudiant. |
-| Expiration et révocation vérifiées par RLS à chaque requête | Révocation de la session Auth seule | Un jeton déjà émis reste valide jusqu'à son expiration ; seule la vérification en base garantit l'effet immédiat. C'est déjà le modèle du produit (base et autorisation serveur = source de vérité). |
-| Terminologie : rôle logiciel ≠ titre professionnel | — | Les thésards de médecine sont médecins au sens du titre ; `medecin` dans MedData signifie « peut créer/posséder des bases » (`20260616090300_functions.sql:15`). Un interne peut être `saisisseur` le temps d'une mission puis être promu. |
-
-## 3. Modèle de données (migration additive unique)
-
-Aucune migration existante n'est modifiée. Une nouvelle migration horodatée ajoute :
-
-1. **`profiles.global_role`** : étendre la contrainte `check` à `('system_admin','medecin','curateur','saisisseur')` (drop/add de la contrainte, données existantes inchangées).
-2. **`base_access.expires_at timestamptz null`** : `null` = accès permanent (comportement actuel préservé pour toutes les lignes existantes) ; non-null = accès de mission.
-3. **`base_access.can_create_structured_data boolean not null default false`** : `false` pour l'existant — sans effet puisque les RPC de création accepteront aussi `can_edit_structured_data`.
-4. **Contrainte de cohérence** : pour un profil `saisisseur`, `expires_at` obligatoire, `can_edit_structured_data`, `can_export_data`, `can_manage_access`, `can_view_raw_documents` forcés à `false` (trigger de garde, même approche que `20260616094200`).
-5. La contrainte `unique (base_id, user_id)` est conservée : une nouvelle mission du même étudiant sur la même base = mise à jour de la ligne (nouvel `expires_at`, `revoked_at` remis à `null`), tracée dans `audit_log`.
-
-`base_invitation` n'est pas touchée : le flux collaborateur-médecin existant reste inchangé ; le flux mission ne passe pas par elle.
-
-## 4. Droits du rôle `saisisseur`
-
-| Capacité | Autorisé | Mécanisme |
-|---|---|---|
-| Voir la base attribuée et son dictionnaire/gabarit | Oui | `has_base_access`, `can_read_template` étendues |
-| Créer un patient **minimal** (code, sans identité nominative) | Oui (recommandé, à confirmer §13) | RPC de création sous `can_create_structured_data` |
-| Créer des rencontres et valeurs, sauvegarder ses brouillons | Oui | `validation_status='draft'`, auteur = lui |
-| Corriger **son propre** brouillon | Oui | RLS : `created_by = auth.uid()` et statut `draft` |
-| Soumettre (passage `draft` → `complete`) | Oui | Après soumission, immuable pour lui |
-| Modifier/supprimer une saisie soumise, la sienne ou celle d'autrui | **Non** | Modification réservée `can_edit_structured_data` (médecin), motivée et journalisée dans `field_change_log` |
-| Voir l'identité nominative (`full_name`, téléphone, adresse) | **Non par défaut** | Option `can_view_identity` activable par le médecin, justifiée (§13) |
-| Écrire l'identité nominative | **Non** | `can_write_identity` jamais accordée |
-| Voir/téléverser des documents bruts | **Non** (v1) | `can_view_raw_documents=false` ; pas d'upload |
-| Exporter, curer, gérer les accès, inviter | **Non** | Permissions forcées à `false` (§3.4) |
-| Créer une base ou un gabarit | **Non** | Policies inchangées : `is_medecin()` seul |
-| Accéder à une autre base | **Non** | Une seule ligne `base_access` |
-| Mode hors-ligne | **Non** (v1) | Exclu du rôle même si le mode est réactivé un jour ; si levé plus tard : les replays d'outbox postérieurs à l'expiration doivent être refusés par RLS avec un rejet propre côté UI, sans perte silencieuse |
-
-> ⚠️ **Renversement décidé le 2026-08-10, pas encore implémenté.** La ligne « Écrire l'identité
-> nominative — **Non** » ci-dessus **décrit le code actuel** mais ne reflète plus la décision du
-> porteur : le compte de mission **doit** pouvoir écrire l'identité, lorsque le médecin lui a
-> accordé l'option `can_view_identity` à la création de la mission. Motif : sans support papier
-> stable, l'étudiant est la seule source de l'identité au moment de l'inclusion, et l'exclusion
-> détruit l'information au lieu de la protéger. Ce tableau, le §9 et le §12 sont à réécrire **par
-> la migration qui redéfinit `can_write_identity()`**, pas avant. Contexte complet, options
-> écartées et plan d'exécution :
-> [chantiers-interactions-comptes.md §4](chantiers-interactions-comptes.md).
->
-> Note de la même campagne : le point « voir la base attribuée et son dictionnaire/gabarit » est
-> partiellement tenu — les **champs** du gabarit sont lisibles, son **nom** ne l'est pas, et il
-> a été décidé de ne pas corriger (chantier B, point 6).
-
-## 5. Cycle de vie du compte
-
-1. **Création** — le médecin (propriétaire ou `can_manage_access` sur la base) saisit : e-mail, date de fin, option identité. L'Edge Function (§6) crée le compte par invitation et pose l'accès.
-2. **Activation** — l'étudiant reçoit l'e-mail Supabase, définit son mot de passe, arrive sur sa seule base.
-3. **Mission** — chaque requête est autorisée par RLS : rôle valide **et** accès actif (`revoked_at is null` et (`expires_at is null` ou `now() < expires_at`)).
-4. **Prolongation** — le médecin peut repousser `expires_at` (RPC dédiée, auditée) : une thèse déborde souvent.
-5. **Échéance** — refus automatique de toute requête, aucune action requise. L'UI du saisisseur affiche l'échéance à l'avance.
-6. **Révocation anticipée** — le médecin pose `revoked_at` (mécanisme existant) ; effet immédiat via RLS.
-7. **Entretien** — le compte Auth échu reste inerte (aucun accès) ; une opération d'entretien le désactive (ban) puis le purge selon un délai à fixer avec le volet juridique (l'e-mail de l'étudiant est une donnée personnelle). L'auteur des saisies reste conservé dans `audit_log` et les tables métier après purge du compte.
-
-## 6. Edge Function `create-mission-account`
-
-Septième fonction, à côté des six existantes, seule détentrice du droit admin — jamais de `service_role` au navigateur.
-
-Contrôles dans l'ordre :
-
-1. authentifier l'appelant par son JWT ; exiger `is_medecin()` et (propriétaire ou `can_manage_access`) sur la base cible ;
-2. valider l'e-mail et la durée (bornes min/max, proposition §13) ;
-3. **refuser si l'e-mail correspond à un compte existant** (aucune rétrogradation silencieuse d'un médecin ; message générique côté client, détail côté logs serveur uniquement) ;
-4. `auth.admin.inviteUserByEmail(email)` avec `app_metadata = { global_role: 'saisisseur' }` ;
-5. insérer la ligne `base_access` (base, utilisateur, `expires_at`, `can_create_structured_data=true`, tout le reste `false`, `granted_by` = appelant) ;
-6. journaliser dans `audit_log`.
-
-Exigences transverses :
-
-- **Idempotence/compensation** : Auth et PostgreSQL ne forment pas une transaction. L'opération doit être rejouable : si l'utilisateur Auth existe déjà avec l'`app_metadata` mission attendue mais sans `base_access`, reprendre à l'étape 5 ; tout autre état intermédiaire → erreur explicite sans demi-création. Même philosophie que `finalize-upload`.
-- **Renvoi d'invitation** : opération séparée pour e-mail perdu, mêmes contrôles d'appelant.
-- **Erreurs** : génériques côté frontend, jamais d'erreur interne brute (règle projet).
-- Le trigger `handle_new_user` (étendu, §7) lit `raw_app_meta_data ->> 'global_role'` : `'saisisseur'` → profil saisisseur ; sinon `'medecin'` comme aujourd'hui (l'auto-inscription publique ne change pas).
-
-## 7. Fonctions d'autorisation et gardes à modifier
-
-Toutes `SECURITY DEFINER` : chaque signature nouvelle ou modifiée doit être ajoutée à `supabase/security-definer-allowlist.json` avec justification, sous peine d'échec (voulu) du contrôle `db:function-acl:verify`.
-
-| Objet | Modification |
+| Décision | Conséquence |
 |---|---|
-| `is_saisisseur()` | Nouvelle, miroir de `is_medecin()` |
-| `handle_new_user()` | Lit le rôle depuis `raw_app_meta_data` uniquement (jamais `raw_user_meta_data`) |
-| `has_base_access(p_base)` | `(is_medecin() or is_saisisseur())` + condition d'accès actif incluant `expires_at` |
-| `can_read_template(p_template)` | Étendue au saisisseur pour la base attribuée |
-| `can_create_structured_data(p_base)` | Nouvelle : `(is_medecin() or is_saisisseur())` et (propriétaire ou accès actif avec `can_create_structured_data` **ou** `can_edit_structured_data`) |
-| `can_view_identity(p_base)` | `(is_medecin() or is_saisisseur())` + flag — le flag reste `false` par défaut pour les missions |
-| `can_edit_structured_data`, `can_export_data`, `can_manage_access`, `can_view_raw_documents`, `can_write_identity`, `can_curate` | **Inchangées côté rôle** (`is_medecin()` seul) — l'exclusion du saisisseur est structurelle ; seule la condition `expires_at` s'y ajoute |
-| Garde `20260616094200` (bénéficiaire d'un `base_access` = médecin) | Accepter aussi `saisisseur` |
-| Garde `20260616095000` (déclassement de rôle → révocation des accès) | Étendre : perte du rôle `saisisseur` révoque aussi |
-| `guard_profile_role` (anti-auto-escalade) | Inchangée ; promotion `saisisseur` → `medecin` réservée à l'admin système |
-| RPC de création (patient minimal, rencontre, valeurs) | Autorisation élargie à `can_create_structured_data` ; RPC de modification/suppression inchangées |
+| Rôle global distinct `saisisseur` | Le compte ne peut ni créer une base ou un gabarit, ni hériter des capacités globales du rôle `medecin`. |
+| Une mission reste une ligne `base_access` bornée | `expires_at` et `revoked_at` sont vérifiés par la base à chaque requête. |
+| Le propriétaire choisit l'identifiant | Format : 3 à 48 caractères, lettres, chiffres, points ou tirets ; unicité globale sans distinction de casse. |
+| Le serveur génère le mot de passe | 24 caractères par défaut, source cryptographique, au moins une majuscule, une minuscule, un chiffre et un symbole. |
+| Mot de passe révélable ultérieurement | Il est conservé uniquement sous forme chiffrée AES-256-GCM ; la clé n'est ni en base ni dans le navigateur. |
+| Identité Auth technique cachée | Auth reçoit `<identifiant>@mission.meddata.invalid`; cette adresse n'apparaît jamais dans l'interface ou le contrat public. |
+| Régénération séparée et confirmée | L'identifiant reste stable ; le mot de passe et la génération de session changent. |
+| Propriétaire uniquement | Un collaborateur avec `can_manage_access` ne peut ni lister, ni créer, ni révéler, ni prolonger, ni régénérer, ni révoquer ces comptes. |
 
-Point à vérifier à l'implémentation : la RPC de création de patient minimal écrit `patient_code` dans `patient_identity` (« patient minimal §7.1 », `20260616090200_tables.sql:125`) — confirmer qu'elle peut le faire sous `can_create_structured_data` sans exiger `can_write_identity`, et que les champs nominatifs restent hors de sa portée.
+`base_invitation` reste réservé au partage entre médecins et n'est pas utilisé par les comptes de
+mission.
 
-## 8. Interface utilisateur
+## 3. Modèle de données
 
-- **Côté médecin** : écran « Comptes de mission » par base — liste (étudiant, échéance, statut actif/expiré/révoqué), création, prolongation, révocation, renvoi d'invitation. Les corrections post-soumission passent par le flux de correction existant (motif + `field_change_log`).
-- **Côté saisisseur** : parcours réduit à sa base — saisie, ses brouillons, soumission ; bandeau permanent « mission jusqu'au JJ/MM/AAAA » ; à l'échéance ou révocation, écran explicite « mission terminée » (pas d'erreur brute).
-- i18n : libellés français d'abord, clés dans `src/i18n/messages.ts`.
+### 3.1 Mission et permissions
 
-## 9. Sécurité — menaces couvertes
+`base_access` porte la base, le bénéficiaire, l'échéance, la révocation et les permissions. Pour un
+`saisisseur` :
 
-| Menace | Réponse |
-|---|---|
-| L'étudiant crée sa propre base/gabarit et y recopie des données | Impossible : policies de création inchangées, `is_medecin()` seul |
-| Export via appel API direct (hors UI) | Refus RLS/RPC : `can_export_data` jamais accordée au rôle |
-| Requêtes après révocation avec un jeton encore valide | Refus RLS à chaque requête (`revoked_at`/`expires_at` en base) |
-| Auto-promotion via métadonnées utilisateur | Rôle lu uniquement dans `app_metadata` ; `guard_profile_role` en défense en profondeur |
-| Le médecin connaît le secret de l'étudiant | Impossible par conception (invitation, mot de passe défini par l'étudiant) |
-| Compte existant réutilisé/rétrogradé silencieusement | Refus explicite à la création (§6.3) |
-| Accès à une autre base, à l'identité, aux documents bruts | Une seule ligne d'accès ; flags à `false` ; zones cloisonnées |
-| Demi-création (Auth sans accès, ou l'inverse) | Idempotence/compensation de l'Edge Function (§6) |
+- `expires_at` est obligatoire ;
+- `can_create_structured_data = true` ;
+- édition des données soumises, export, gestion des accès et documents bruts restent interdits ;
+- l'accès ne concerne qu'une base.
 
-Conformité : l'e-mail de l'étudiant entre au registre des traitements (volet juridique Tchad, `docs/juridique/`) ; politique de purge des comptes échus à y adosser.
+### 3.2 Coffre chiffré
 
-## 10. Tests exigés
+`mission_account_credential` associe au compte : propriétaire, base, nom d'usage, identifiant,
+enveloppe chiffrée, nonce, génération et statut. La table :
 
-- **DB/RLS** (infra PostgreSQL embarquée) : expiration effective en cours de session ; révocation immédiate ; refus de modification/suppression après soumission (siennes et celles d'autrui) ; modification de son propre brouillon acceptée ; refus export/curation/gestion d'accès/création de base/gabarit/écriture identité ; accès croisé entre bases refusé ; création patient minimal sans identité nominative ; prolongation ; réactivation sur la même base (contrainte unique) ; trigger de rôle (`app_metadata` saisisseur vs auto-inscription médecin) ; révocation sur déclassement ; **compatibilité : un éditeur existant (`can_edit`) crée toujours sans `can_create`** ; allowlist `SECURITY DEFINER` à jour (le test `test/security-definer-acl.test.ts` échouera sinon).
-- **Edge** (handlers testables + injection, pattern lot 9) : appelant non autorisé, e-mail existant, durée hors bornes, idempotence des rejeux, compensation après échec partiel.
-- **Web** : parcours saisisseur (saisie → brouillon → soumission → immuabilité), bandeau d'échéance, écran de fin de mission, écran médecin (création/prolongation/révocation).
+- n'accorde aucun droit direct à `anon` ou `authenticated` ;
+- ne contient jamais le mot de passe en clair ;
+- impose l'unicité de l'identifiant ;
+- n'est lue qu'au travers de RPC `SECURITY DEFINER` bornées au propriétaire.
 
-> **Vérification manuelle bout-en-bout du 2026-08-09** (création réelle du compte, courriel,
-> activation, saisie) : résultats, obstacles d'environnement et écarts constatés par rapport au §4
-> et au §8 dans [tests-multicomptes.md](tests-multicomptes.md). La chaîne fonctionne ; les écarts
-> relevés sont d'interface et de configuration, pas de cloisonnement.
+`mission_credential_operation` enregistre les créations et régénérations idempotentes avec une
+empreinte de demande, une génération résultante et un état `pending`/`completed`. Il ne contient
+ni identifiant Auth secret, ni mot de passe, ni enveloppe.
 
-## 11. Découpage en lots d'implémentation
+## 4. Contrat Edge
 
-1. **Lot A — base** : migration additive, fonctions d'autorisation, gardes, RPC, tests DB/RLS, allowlist. (Skill `meddata-db-safety` obligatoire.)
-2. **Lot B — Edge** : `create-mission-account` + renvoi d'invitation, tests Deno.
-3. **Lot C — UI** : écrans médecin et saisisseur, i18n, tests web.
-4. **Lot D — validation** : E2E staging (création → saisie → expiration → révocation), revue `validate-audit-lots`, mise à jour de `docs/architecture.md` et du cahier technique.
+L'Edge Function accepte uniquement `POST` authentifié et les actions suivantes :
 
-## 12. Décisions du demandeur — toutes tranchées
+- `create` : `operationId`, `baseId`, `accountLabel`, `loginIdentifier`, échéance et option identité ;
+- `reveal` : `accessId` ;
+- `regenerate` : `accessId` et `operationId` ;
+- `revoke` : `accessId`.
 
-| Question | Décision |
-|---|---|
-| ~~L'étudiant peut-il créer des patients minimaux ?~~ | **2026-07-28 : oui.** Création minimale, **identité nominative exclue**. Le compte de mission écrit dans `patient` et `encounter`, jamais les champs nominatifs de `patient_identity` : c'est cette exclusion qui rend la permission acceptable. — **⚠️ Renversée le 2026-08-10** : cette décision reposait sur une hypothèse de terrain fausse (le médecin crée les patients, l'étudiant remplit l'analytique). Dans l'usage réel, l'étudiant est le seul point de contact au moment de l'inclusion et il n'existe pas de support papier stable. L'écriture de l'identité lui est **accordée sous l'option `can_view_identity`**, justifiée et journalisée. À implémenter : [chantiers-interactions-comptes.md §4](chantiers-interactions-comptes.md). |
-| Durée maximale d'une mission | **2026-07-29 : 24 mois**, prolongeable. Bornée par le trigger de garde et par les RPC de provisionnement/prolongation, pas seulement par l'interface. |
-| Lecture de l'identité sur option | **2026-07-29 : option conservée, réglée À LA CRÉATION du compte, case décochée par défaut**, justification obligatoire consignée dans `base_access.identity_justification` et dans `audit_log`. Le persona visé est une personne de terrain qui peut devoir rapprocher des dossiers papier nominatifs. |
-| Upload de documents par le saisisseur | **2026-07-29 : non en v1.** `can_view_raw_documents` reste refusé et la route de téléversement est fermée au rôle. À réévaluer avec le scanner pérenne (B2). |
-| Délai de purge des comptes échus | **2026-07-29 : 12 mois après l'échéance.** Règle consignée ici et à porter au registre des traitements (`docs/juridique/`, volet Tchad) ; la purge reste une **opération d'entretien déclenchée à la main**, pas un travail automatique qui supprimerait des comptes sans supervision. |
-| Nom du rôle | **2026-07-29 : `saisisseur`** en base ; libellé « compte de mission » dans l'interface. |
+Les actions `resend`, l'e-mail de l'étudiant et toute redirection de mot de passe sont supprimés.
+La clé `service_role` reste exclusivement dans l'Edge Function.
 
-### Écart assumé par rapport au §6
+`MISSION_CREDENTIALS_ENCRYPTION_KEY` est un secret Edge dédié contenant exactement 32 octets
+encodés en base64url. Il est obligatoire sur chaque cible avant le déploiement de la fonction.
+Une même clé doit rester stable sur une cible : sa perte rendrait les mots de passe déjà stockés
+impossibles à révéler. Sa rotation nécessite une procédure de ré-enveloppement qui n'entre pas
+dans ce lot.
 
-`inviteUserByEmail` ne sait écrire que `user_metadata`, modifiable par l'utilisateur lui-même :
-le compte serait donc **médecin le temps de l'invitation**, avec le droit de créer ses propres
-bases. L'Edge Function crée donc le compte par `createUser` **avec `app_metadata`**, puis envoie
-un courriel de définition de mot de passe. La propriété exigée au §2 est conservée — l'étudiant
-reste seul détenteur de son secret — et le rôle est correct dès la première milliseconde.
+## 5. Création et reprise
 
-## 13. Références
+1. L'Edge vérifie que l'appelant est le propriétaire de la base.
+2. Elle génère le mot de passe et chiffre l'enveloppe avant toute création Auth.
+3. L'Edge appelle avec `service_role` la RPC interne `begin_mission_account_creation`, qui réserve
+   atomiquement l'identifiant, l'UUID Auth et l'opération tout en enregistrant le propriétaire comme
+   acteur. Cette RPC n'est pas exécutable directement par le navigateur.
+4. L'Edge crée l'utilisateur Auth avec l'identité technique, le mot de passe et
+   `app_metadata.global_role = saisisseur` plus `mission_credential_generation = 1`.
+5. Elle réconcilie le profil, pose `base_access`, puis marque l'opération terminée.
+6. Elle retourne au propriétaire l'identifiant public et le mot de passe.
 
-- Schéma : `supabase/migrations/20260616090200_tables.sql` (`base_access:109`, `patient_identity:126`, `field_change_log:188`, `audit_log:275`) ; `20260616090300_functions.sql:15` (`is_medecin`) ; `20260616090400_rls.sql:27,68` (gabarits, bases) ; `20260616090500_integrity.sql:8` (`handle_new_user`, `guard_profile_role`) ; `20260616090900_encounters.sql` (`validation_status` `'draft'`) ; `20260616094200` et `20260616095000` (gardes d'accès).
-- Contrôle des privilèges : `supabase/security-definer-allowlist.json`, `scripts/verify-function-privileges.mjs`, `docs/security-definer.md`.
-- Contexte readiness : `docs/readiness-production-2026-07-19.md` (§9 : toute modification déclenche une réévaluation).
-- Supabase : invitations administratives (`inviteUserByEmail`, opération serveur avec clé secrète), jetons et déconnexion — https://supabase.com/docs/guides/auth/users, https://supabase.com/docs/guides/auth/signout.
+Si la réponse est perdue, le même `operationId` et la même demande rendent exactement le même
+compte et la même enveloppe ; aucun doublon et aucun nouveau secret silencieux ne sont créés. Une
+même clé d'opération réutilisée pour une autre demande est refusée. Changer explicitement un champ
+du formulaire crée une nouvelle opération.
+
+## 6. Révélation, régénération et révocation
+
+### Révélation
+
+Le propriétaire peut révéler ou copier le mot de passe d'un compte actif. La RPC vérifie la
+propriété, l'échéance et la révocation, journalise `mission_credentials_revealed`, puis rend
+l'enveloppe chiffrée à l'Edge qui seule la déchiffre. Le navigateur ne conserve le clair que dans
+l'état mémoire de l'écran ; rechargement, masquage, déconnexion ou révocation le retirent.
+
+### Régénération
+
+Après confirmation visible :
+
+1. la base incrémente `credential_generation`, remplace l'enveloppe et supprime les sessions Auth ;
+2. l'Edge remplace le mot de passe Auth et la génération placée dans `app_metadata` ;
+3. l'opération est marquée terminée et auditée ;
+4. l'identifiant public reste inchangé.
+
+Un JWT antérieur porte l'ancienne génération. `is_saisisseur()` compare ce claim au coffre à
+chaque requête : l'ancien jeton est refusé immédiatement, même avant son expiration. Un échec Auth
+intermédiaire laisse donc le compte fermé ; le rejeu avec le même `operationId` reprend le même
+secret au lieu d'en produire un autre.
+
+### Révocation
+
+`revoke_mission_access` pose `base_access.revoked_at`, marque le coffre `revoked`, supprime les
+sessions et audite l'opération. L'Edge bannit ensuite l'utilisateur Auth. La RLS coupe les données
+dès la transaction base, y compris si le bannissement Auth doit être rejoué.
+
+## 7. Connexion
+
+L'écran demande « Identifiant » et mot de passe :
+
+- une valeur sans `@` est normalisée puis traduite localement vers l'identité Auth technique ;
+- une adresse e-mail reste acceptée pour les comptes ordinaires ;
+- « Mot de passe oublié » n'est proposé que pour une adresse e-mail ordinaire ;
+- aucune adresse e-mail n'est nécessaire ou affichée pour un compte de mission.
+
+Les anciens comptes `saisisseur` fondés sur l'e-mail n'ont pas de ligne dans le coffre et échouent
+donc fermés dans `is_saisisseur()`. La migration bannit leurs identités Auth et supprime leurs
+sessions existantes. Les lignes historiques peuvent subsister pour la traçabilité, mais leurs
+anciens justificatifs ne permettent plus de se connecter ni de lire une donnée MedData.
+
+## 8. Interface propriétaire
+
+Deux chemins partagent le même composant :
+
+- `/missions` : vue générale de tous les comptes liés aux bases possédées, avec nom de la base et
+  création sur une base sélectionnée ;
+- `/bases/:id/missions` : vue filtrée sur une base.
+
+Chaque ligne montre : nom du compte, base liée, identifiant, mot de passe masqué, échéance et jours
+restants, état actif/expiré/révoqué, option identité et actions révéler/copier, prolonger,
+régénérer et révoquer. La route, l'onglet de base et les RPC sont réservés au propriétaire.
+
+## 9. Audit et absence de fuite
+
+Les événements enregistrés sont : demande/création, demande/régénération, révélation,
+prolongation et révocation. Les métadonnées contiennent uniquement les UUID utiles, l'échéance,
+les flags et la génération. Elles ne contiennent jamais : mot de passe, enveloppe, nonce, clé de
+chiffrement ou identité Auth technique.
+
+Les erreurs HTTP et logs Edge sont génériques. Le frontend n'écrit les justificatifs ni dans
+`localStorage`, ni dans IndexedDB, ni dans les notifications. Le presse-papiers n'est utilisé
+qu'après une action explicite « Copier ».
+
+## 10. Couverture exigée
+
+- PostgreSQL/RLS : droits directs absents, unicité, reprise et conflit, refus inter-propriétaires,
+  génération courante, anciennes sessions, expiration, révocation et audit sans secret ;
+- Edge : validation du nouveau contrat, propriété avant Auth, identité technique, reprise exacte,
+  régénération, révélation, révocation et erreurs/logs sans fuite ;
+- Web : écran global et par base, propriétaire uniquement, identifiant choisi, masque/révélation,
+  copie, confirmation de régénération/révocation et connexion identifiant ou e-mail ;
+- parcours réel : création par le médecin, connexion du saisisseur, rotation pendant une session
+  ouverte, refus de l'ancien jeton et des anciens mots de passe, acceptation du nouveau.
+
+## 11. Preuve locale du 2026-08-11
+
+Sur Supabase local remis à zéro et une base fictive à UUID v4 :
+
+- le propriétaire a créé `qa-mission-20260811` depuis la vue générale, sans e-mail ;
+- le mot de passe est apparu masqué et est resté révélable par le propriétaire ;
+- le saisisseur s'est connecté avec l'identifiant public et n'a vu qu'une base ;
+- une régénération par le vrai endpoint a rendu une session déjà ouverte inapte à charger le
+  profil ; l'ancien mot de passe a été refusé et le nouveau accepté ;
+- une seconde régénération confirmée dans l'interface a conservé l'identifiant, refusé le mot de
+  passe précédent et accepté le nouveau ;
+- aucun des trois secrets de test n'apparaît dans les logs Edge, Vite ou console ; l'audit ne
+  contient aucune clé de secret et les trois opérations idempotentes sont `completed`.
+- le vérificateur automatisé du contrat Edge complet a passé 29/29 contrôles, dont les reprises,
+  doublons, refus inter-comptes/inter-bases, expiration, rotation, anciennes sessions et révocation.
+
+Cette preuve locale n'est pas une preuve de déploiement. La validation staging puis production
+doit porter le même SHA via le workflow manuel « Coordinated release ».
