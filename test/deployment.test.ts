@@ -64,7 +64,11 @@ describe('configuration de deploiement', () => {
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
     expect(storage).toContain('has_pending_upload_ticket');
     expect(config).toContain('[functions.generate-export]');
-    expect(exportsData).toContain("client.functions.invoke('generate-export'");
+    // Chantier D : l'appel passe par l'utilitaire partage qui traduit le refus de l'Edge
+    // (src/lib/edgeFunctionError.ts). L'exigence verifiee ici reste la meme : l'export est
+    // produit par la fonction Edge, jamais cote client.
+    expect(exportsData).toContain('invokeEdgeFunction');
+    expect(exportsData).toContain("'generate-export'");
     expect(exportsData).not.toContain('createUploadTicket(client, input.baseId, EXPORTS_BUCKET');
     expect(exportsData).not.toContain('cleanupUploadedObject(client, EXPORTS_BUCKET');
     expect(exportsData).not.toContain('crypto.subtle.digest');
@@ -179,7 +183,9 @@ describe('configuration de deploiement', () => {
     expect(inspection).toContain("inspect-upload");
     // Le client passe par l'operation idempotente serveur ; les wrappers historiques ont disparu.
     expect(inspection).toContain('create_upload_operation');
-    expect(inspection).toContain("functions.invoke('finalize-upload'");
+    // Chantier D : meme utilitaire partage ; la finalisation reste servie par l'Edge.
+    expect(inspection).toContain('invokeEdgeFunction');
+    expect(inspection).toContain("'finalize-upload'");
     expect(finalizeUpload).toContain("admin.rpc('complete_verified_upload_operation'");
     expect(finalizeUpload).toContain("admin.storage.from(ticket.bucket).download(ticket.path)");
     expect(inspection).not.toContain('export async function createUploadTicket');

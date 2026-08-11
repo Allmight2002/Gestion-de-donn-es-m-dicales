@@ -1524,3 +1524,52 @@ Cette clôture concerne la production technique et des données fictives. Elle n
 autorisation juridique/éthique, ni autorisation d'usage clinique ou de données réelles. Le tunnel
 `trycloudflare` reste temporaire : une terminaison stable demeure requise pour une exploitation
 durable.
+
+## Chantier D — un refus d'Edge Function redevient lisible (2026-08-11)
+
+**Problème.** Quand une Edge Function refusait une demande, l'interface affichait
+`Edge Function returned a non-2xx status code` — le message de *transport* de la bibliothèque
+cliente — au lieu de la phrase courte que la fonction avait elle-même choisie. Un refus légitime
+était donc indiscernable d'une panne ; ce défaut a coûté deux diagnostics complets pendant la
+campagne de test manuel du 2026-08-09.
+
+**Cause, désormais établie sur les deux chemins.** `functions.invoke` lève un `FunctionsHttpError`
+dont le `.message` est toujours cette phrase ; le corps réel (`{ error, code, resource }`) est porté
+par `error.context`, qui **est l'objet `Response`**. `src/data/exports.ts` ne le lisait pas ;
+`src/data/mission.ts` croyait le lire mais interrogeait `context.body`, c'est-à-dire un
+`ReadableStream`, et retombait donc systématiquement sur le message de transport. La lecture n'est
+possible qu'en asynchrone.
+
+**Correction — une fois, pas appelant par appelant.** `src/lib/edgeFunctionError.ts` lit le corps,
+n'en retient que la phrase du serveur et son code technique, et compose « phrase (CODE) ». Le
+message de transport ne sert qu'en dernier recours. Rien d'autre du corps n'est affiché : ni erreur
+interne, ni objet — le `[object Object]` d'un lot antérieur devient structurellement impossible. Les
+cinq appels frontend (`generate-export`, `create-mission-account`, `signed-read`, `inspect-upload`,
+`finalize-upload`) passent par cet utilitaire ; `signed-read` cesse d'avaler son erreur et son motif
+remonte jusqu'à la vignette. `cleanup-upload` et `reconcile-quarantine` ne sont pas appelées depuis
+le navigateur et restent hors périmètre.
+
+**Garde anti-récidive.** Un test d'inventaire échoue si un nouvel appel direct à `functions.invoke`
+apparaît hors de l'utilitaire partagé, et vérifie que les deux dérogations inscrites sont encore
+justifiées.
+
+**Vérifications.** `npm run typecheck`, `npm run lint`, `npm run test:web` (51 fichiers, 309 tests)
+et `npm run build` (avec `VITE_USE_SIGNED_READ=true`) verts. 26 tests nouveaux : contrat de
+l'utilitaire, un test de refus par appelant, et le message rendu à l'écran pour `signed-read`.
+
+**Refus réels provoqués sur la pile locale**, message lu dans l'application : `cohortId invalide`
+(export), `Base invalide` puis `Cet identifiant est deja utilise` (comptes de mission),
+`Inspection antivirus impossible : Acces refuse.` (inspect-upload), `Acces refuse` sous la vignette
+(signed-read, chemin auparavant muet), `Objet Storage incoherent` (finalize-upload). Les deux
+premiers sont exactement les incidents du 2026-08-09. Sur demande du porteur, la preuve est **locale
+uniquement** ; aucun refus n'a été rejoué en production.
+
+**Découverte d'environnement.** Sur la pile locale, `service_role` n'a aucun privilège DML sur les
+tables de `public`, là où un projet hébergé les accorde par défaut : toute Edge Function lisant une
+table côté serveur échoue localement par un refus trompeur. Consigné comme sixième piège de poste
+dans `docs/chantiers-interactions-comptes.md` §5.5.
+
+**Déploiement.** Aucun. Sur instruction du porteur, la release coordonnée n'a pas été lancée : le
+correctif s'arrête à la fusion, qui ne déploie rien (`vercel.json` porte `git.deploymentEnabled:
+false`). La mise en production reste à faire par le workflow **Coordinated release**, staging puis
+production pour le même commit.

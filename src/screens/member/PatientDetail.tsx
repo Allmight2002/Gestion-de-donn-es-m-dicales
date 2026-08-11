@@ -31,7 +31,7 @@ function AttachmentMedia({ isImage, label, load, onReveal, readable }: {
   isImage: boolean; label: string; load: () => Promise<string | null>; onReveal: () => void; readable: boolean;
 }) {
   const { t } = useI18n();
-  const { url, busy, error, reveal } = useSignedFile(load, onReveal);
+  const { url, busy, error, errorMessage: refusal, reveal } = useSignedFile(load, onReveal);
   const Icon = isImage ? ImageIcon : FileText;
   if (!readable) {
     return (
@@ -48,17 +48,21 @@ function AttachmentMedia({ isImage, label, load, onReveal, readable }: {
     return <img src={url} alt={label} className="h-32 w-40 rounded border border-slate-200 object-cover" />;
   }
   return (
-    <button
-      type="button"
-      onClick={() => { if (isImage) void reveal(); else void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); }); }}
-      disabled={busy}
-      className="flex h-32 w-40 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-    >
-      <span className="text-2xl">{isImage ? '🖼️' : '📄'}</span>
-      <span className="text-xs text-teal-700 hover:underline">
-        {busy ? t('common.loading') : error ? t('common.error') : isImage ? t('image.show') : t('image.open')}
-      </span>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => { if (isImage) void reveal(); else void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); }); }}
+        disabled={busy}
+        className="flex h-32 w-40 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+      >
+        <span className="text-2xl">{isImage ? '🖼️' : '📄'}</span>
+        <span className="text-xs text-teal-700 hover:underline">
+          {busy ? t('common.loading') : error ? t('common.error') : isImage ? t('image.show') : t('image.open')}
+        </span>
+      </button>
+      {/* Chantier D : le motif choisi par le serveur, sinon un refus reste indiscernable d'une panne. */}
+      {refusal && <p role="alert" className="mt-1 break-words text-xs text-red-600">{refusal}</p>}
+    </>
   );
 }
 

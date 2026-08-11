@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { invokeEdgeFunction, readEdgeFunctionFailure } from '../lib/edgeFunctionError';
 
 export const REQUIRE_SERVER_INSPECTION = import.meta.env.VITE_REQUIRE_SERVER_INSPECTION === 'true';
 
@@ -27,20 +28,12 @@ export function isInspectionRetryable(
   return status === 'pending' || status === 'scanning' || (requireServerInspection && status === 'accepted_client');
 }
 
-async function functionErrorMessage(error: unknown): Promise<string | null> {
-  const context = (error as { context?: unknown }).context;
-  if (context instanceof Response) {
-    try {
-      const body = await context.clone().json() as { error?: unknown; signature?: unknown };
-      const detail = typeof body.error === 'string' ? body.error : null;
-      const signature = typeof body.signature === 'string' ? body.signature : null;
-      return [detail, signature ? `signature: ${signature}` : null].filter(Boolean).join(' - ') || null;
-    } catch {
-      return null;
-    }
-  }
-  const message = (error as { message?: unknown }).message;
-  return typeof message === 'string' ? message : null;
+// Le refus lui-meme est lu par l'utilitaire partage ; seule la SIGNATURE virale, propre a cette
+// fonction et deja affichee auparavant, est ajoutee ici.
+async function inspectionFailureDetail(error: unknown): Promise<string> {
+  const failure = await readEdgeFunctionFailure(error);
+  const signature = typeof failure.body?.signature === 'string' ? failure.body.signature : null;
+  return [failure.message, signature ? `signature: ${signature}` : null].filter(Boolean).join(' - ');
 }
 
 async function invokeInspection(client: SupabaseClient, entity: InspectEntity, id: string): Promise<void> {
@@ -48,8 +41,7 @@ async function invokeInspection(client: SupabaseClient, entity: InspectEntity, i
     body: { entity, id },
   });
   if (error) {
-    const detail = await functionErrorMessage(error);
-    throw new Error(`Inspection antivirus impossible${detail ? ` : ${detail}` : ''}.`);
+    throw new Error(`Inspection antivirus impossible : ${await inspectionFailureDetail(error)}.`);
   }
 
   if (data?.status !== 'accepted') {
@@ -104,11 +96,12 @@ export async function finalizeUploadOperation(
   entity: UploadEntity,
   metadata: Record<string, string | null>,
 ): Promise<string> {
-  const { data, error } = await client.functions.invoke('finalize-upload', {
-    body: { ticketId, entity, metadata },
+  const data = await invokeEdgeFunction<{ id?: unknown }>(client, 'finalize-upload', {
+    ticketId,
+    entity,
+    metadata,
   });
-  if (error) throw error;
-  const id = (data as { id?: unknown } | null)?.id;
+  const id = data?.id;
   if (typeof id !== 'string') throw new Error('Document persiste absent');
   return id;
 }

@@ -23,16 +23,20 @@ function RawDocumentLink({ label, load, onReveal, readable }: {
   label: string; load: () => Promise<string | null>; onReveal: () => void; readable: boolean;
 }) {
   const { t } = useI18n();
-  const { busy, error, reveal } = useSignedFile(load, onReveal);
+  const { busy, error, errorMessage: refusal, reveal } = useSignedFile(load, onReveal);
   return (
-    <button
-      type="button"
-      onClick={() => void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); })}
-      disabled={busy || !readable}
-      className={readable ? 'text-teal-700 hover:underline disabled:opacity-50' : 'cursor-not-allowed text-slate-400'}
-    >
-      {busy ? `${label} …` : error ? `${label} (${t('common.error')})` : label}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => void reveal().then((u) => { if (u) window.open(u, '_blank', 'noopener,noreferrer'); })}
+        disabled={busy || !readable}
+        className={readable ? 'text-teal-700 hover:underline disabled:opacity-50' : 'cursor-not-allowed text-slate-400'}
+      >
+        {busy ? `${label} …` : error ? `${label} (${t('common.error')})` : label}
+      </button>
+      {/* Chantier D : le motif choisi par le serveur, sinon un refus reste indiscernable d'une panne. */}
+      {refusal && <span role="alert" className="text-xs text-red-600">{refusal}</span>}
+    </>
   );
 }
 

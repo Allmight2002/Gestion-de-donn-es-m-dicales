@@ -7,6 +7,7 @@
 // LOCAL / DEMO (flag absent) : repli sur la signature client directe (aucune Edge Function
 // deployee en local) -> le flux de demonstration continue de fonctionner.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { invokeEdgeFunction } from '../lib/edgeFunctionError';
 
 const USE_SIGNED_READ = import.meta.env.VITE_USE_SIGNED_READ === 'true';
 
@@ -19,9 +20,10 @@ export async function signedRead(
   ttl: number,
 ): Promise<string | null> {
   if (USE_SIGNED_READ) {
-    const { data, error } = await client.functions.invoke('signed-read', { body: { entity, id } });
-    if (error) return null;
-    return (data as { url?: string } | null)?.url ?? null;
+    // Le refus de l'Edge Function (quarantaine, inspection en cours, droits) est REMONTE : il etait
+    // auparavant avale en `null`, ce qui rendait un refus legitime indiscernable d'un fichier absent.
+    const data = await invokeEdgeFunction<{ url?: string }>(client, 'signed-read', { entity, id });
+    return data?.url ?? null;
   }
   // §5.7 — Ceinture + bretelles : en production, le repli de signature client (non audite) est
   // INTERDIT. Le build l'impose deja (vite.config) ; si un bundle mal configure arrivait quand meme

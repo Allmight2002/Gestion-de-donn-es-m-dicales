@@ -3,6 +3,7 @@
 // du fichier conserve sont produits cote serveur par l'Edge Function `generate-export`.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { invokeEdgeFunction } from '../lib/edgeFunctionError';
 import { signedRead } from './signedRead';
 
 export const EXPORTS_BUCKET = 'scientific-exports';
@@ -47,16 +48,15 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
 
   return {
     async recordExport(input) {
-      const { data, error } = await client.functions.invoke('generate-export', {
-        body: {
-          cohortId: input.cohortId,
-          baseId: input.baseId,
-          templateVersions: input.templateVersions,
-          format: input.format,
-          options: input.options,
-        },
+      // Le refus de l'Edge Function (cohorte non figee, EXPORT_INCOMPLETE, limite depassee) doit
+      // arriver tel quel a l'ecran : `invokeEdgeFunction` lit le corps de la reponse.
+      const data = await invokeEdgeFunction<LogRow>(client, 'generate-export', {
+        cohortId: input.cohortId,
+        baseId: input.baseId,
+        templateVersions: input.templateVersions,
+        format: input.format,
+        options: input.options,
       });
-      if (error) throw error;
       return mapLog(data as LogRow);
     },
 
