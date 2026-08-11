@@ -110,6 +110,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: '/admin', labelKey: 'staff.admin.title', Icon: FileText, end: true },
             { to: '/admin/roles', labelKey: 'roleadmin.title', Icon: KeyRound },
           ]
+        : role === 'saisisseur'
+          ? [
+              { to: '/', labelKey: 'member.dashboard.title', Icon: LayoutDashboard, end: true },
+              { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount + rejectedCount > 0 },
+            ]
         : [
             { to: '/', labelKey: 'member.dashboard.title', Icon: LayoutDashboard, end: true },
             ...(role === 'medecin'

@@ -8,6 +8,7 @@ import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { PatientDetail } from './PatientDetail';
 import { EditPatient } from './EditPatient';
+import { EditPatientIdentity } from './EditPatientIdentity';
 import { EditEncounter } from './EditEncounter';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
@@ -78,14 +79,16 @@ function renderAt(
   audit?: AuditRepository,
   templates: TemplateRepository = templateRepo,
   attachments: AttachmentRepository = stubAttachments,
+  baseRepository: BaseRepository = baseRepo,
 ) {
   return render(
     <I18nProvider>
-      <RepositoryProvider bases={baseRepo} templates={templates} patients={patients} attachments={attachments} audit={audit}>
+      <RepositoryProvider bases={baseRepository} templates={templates} patients={patients} attachments={attachments} audit={audit}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} />
             <Route path="/bases/:id/patients/:patientId/edit" element={<EditPatient />} />
+            <Route path="/bases/:id/patients/:patientId/identity/edit" element={<EditPatientIdentity />} />
             <Route path="/bases/:id/patients/:patientId/encounters/:encounterId/edit" element={<EditEncounter />} />
           </Routes>
         </MemoryRouter>
@@ -102,7 +105,8 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByText('12')).toBeInTheDocument(); // valeur de la rencontre
     expect(screen.getByText('Paludisme')).toBeInTheDocument(); // libelle lisible de la terminologie
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
   // Chantier D : un refus de `signed-read` etait avale en silence ; l'utilisateur ne voyait
@@ -140,6 +144,149 @@ describe('PatientDetail (fiche)', () => {
     fireEvent.change(screen.getByLabelText('Motif de la suppression'), { target: { value: 'doublon' } });
     await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
     await waitFor(() => expect(softDeletePatient).toHaveBeenCalledWith('p1', 'doublon'));
+  });
+
+  test('un simple lecteur ne voit pas la suppression du patient', async () => {
+    const viewerBase: BaseListing = {
+      ...baseListing,
+      role: 'viewer',
+      permissions: { ...ALL_PERMS, canEditStructuredData: false, canManageAccess: false },
+    };
+    const viewerRepo = { async getBase() { return viewerBase; } } as unknown as BaseRepository;
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, templateRepo, stubAttachments, viewerRepo);
+    await screen.findByText('Jean Test');
+    expect(screen.queryByRole('button', { name: 'Supprimer ce patient' })).not.toBeInTheDocument();
+  });
+
+  test('le saisisseur ne voit Corriger l identite que sur son propre brouillon autorise', async () => {
+    const missionBase: BaseListing = {
+      ...baseListing,
+      role: 'editor',
+      permissions: {
+        canViewIdentity: true,
+        canViewRawDocuments: false,
+        canEditStructuredData: false,
+        canExportData: false,
+        canManageAccess: false,
+      },
+      canCreateStructuredData: true,
+      expiresAt: '2099-01-01T00:00:00Z',
+      currentUserId: 'mission-1',
+    };
+    const missionRepo = { async getBase() { return missionBase; } } as unknown as BaseRepository;
+    const ownDraft = { ...patientView, validationStatus: 'draft', createdBy: 'mission-1' };
+    const first = renderAt(
+      '/bases/b1/patients/p1',
+      makePatients({ getPatient: async () => ownDraft }),
+      undefined,
+      templateRepo,
+      stubAttachments,
+      missionRepo,
+    );
+    expect(await screen.findByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
+    first.unmount();
+
+    const submitted = renderAt(
+      '/bases/b1/patients/p1',
+      makePatients({ getPatient: async () => ({ ...ownDraft, validationStatus: 'complete' }) }),
+      undefined,
+      templateRepo,
+      stubAttachments,
+      missionRepo,
+    );
+    await screen.findByText('Jean Test');
+    expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
+    submitted.unmount();
+
+    renderAt(
+      '/bases/b1/patients/p1',
+      makePatients({ getPatient: async () => ({ ...ownDraft, createdBy: 'mission-2' }) }),
+      undefined,
+      templateRepo,
+      stubAttachments,
+      missionRepo,
+    );
+    await screen.findByText('Jean Test');
+    expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
+  });
+});
+
+describe('EditPatientIdentity (correction nominative)', () => {
+  test('corrige les cinq champs avec motif et version sur le brouillon propre du saisisseur', async () => {
+    const updatePatientIdentity = vi.fn(async () => ({ version: 8, updatedAt: '2026-08-11T12:00:00Z' }));
+    const missionPatient: PatientListItem = {
+      ...patientView,
+      validationStatus: 'draft',
+      createdBy: 'mission-1',
+    };
+    const missionBase: BaseListing = {
+      ...baseListing,
+      role: 'editor',
+      permissions: {
+        canViewIdentity: true,
+        canViewRawDocuments: false,
+        canEditStructuredData: false,
+        canExportData: false,
+        canManageAccess: false,
+      },
+      canCreateStructuredData: true,
+      expiresAt: '2099-01-01T00:00:00Z',
+      currentUserId: 'mission-1',
+    };
+    const missionRepo = { async getBase() { return missionBase; } } as unknown as BaseRepository;
+    renderAt(
+      '/bases/b1/patients/p1/identity/edit',
+      makePatients({
+        getPatient: async () => missionPatient,
+        findIdentityMatches: async () => [],
+        updatePatientIdentity,
+      }),
+      undefined,
+      templateRepo,
+      stubAttachments,
+      missionRepo,
+    );
+
+    fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Jeanne Exemple' } });
+    fireEvent.change(screen.getByLabelText('Date de naissance'), { target: { value: '1981-02-03' } });
+    fireEvent.change(screen.getByLabelText('Téléphone'), { target: { value: '+235 60 00 00 00' } });
+    fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: 'Quartier fictif, N’Djamena' } });
+    fireEvent.change(screen.getByLabelText('Identifiant externe'), { target: { value: 'EXT-FICTIF-9' } });
+    fireEvent.change(screen.getByLabelText(/Motif de la correction/), { target: { value: 'Correction depuis le cahier de saisie' } });
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+
+    await waitFor(() => expect(updatePatientIdentity).toHaveBeenCalledWith(
+      'p1',
+      {
+        fullName: 'Jeanne Exemple',
+        dateOfBirth: '1981-02-03',
+        phone: '+235 60 00 00 00',
+        address: 'Quartier fictif, N’Djamena',
+        externalIdentifier: 'EXT-FICTIF-9',
+      },
+      'Correction depuis le cahier de saisie',
+      7,
+    ));
+  });
+
+  test('repasse par l avertissement de doublon avant la correction', async () => {
+    const updatePatientIdentity = vi.fn(async () => ({ version: 8, updatedAt: null }));
+    const match = { patientId: 'p2', code: 'P-0002', fullName: 'Doublon Fictif', dateOfBirth: '1990-01-01' };
+    renderAt(
+      '/bases/b1/patients/p1/identity/edit',
+      makePatients({ findIdentityMatches: async () => [match], updatePatientIdentity }),
+    );
+
+    fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Doublon Fictif' } });
+    fireEvent.change(screen.getByLabelText('Date de naissance'), { target: { value: '1990-01-01' } });
+    fireEvent.change(screen.getByLabelText(/Motif de la correction/), { target: { value: 'Correction doublon contrôlée' } });
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/autre dossier porte déjà/i);
+    expect(updatePatientIdentity).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /patient différent/i }));
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    await waitFor(() => expect(updatePatientIdentity).toHaveBeenCalledTimes(1));
   });
 });
 

@@ -134,7 +134,7 @@ describe('Dashboard', () => {
     await user.type(screen.getByLabelText('Nom de la base'), 'Registre AVC');
     await user.click(screen.getByRole('button', { name: 'Créer la base' }));
     // Navigation vers /bases/:id -> BaseHome affiche la nouvelle base.
-    expect(await screen.findByRole('button', { name: /nouveau patient/i })).toBeInTheDocument();
+    expect((await screen.findAllByRole('button', { name: /nouveau patient/i })).length).toBeGreaterThan(0);
     expect(screen.getByText('Registre AVC')).toBeInTheDocument();
   });
 

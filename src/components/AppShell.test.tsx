@@ -90,6 +90,15 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.queryByRole('link', { name: /Groupes de recherche/ })).not.toBeInTheDocument();
   });
 
+  test('saisisseur : barre laterale limitee au tableau de bord et a la synchronisation', async () => {
+    renderShell({ id: 'u-mission', fullName: 'Saisie Fictive', globalRole: 'saisisseur', language: 'fr' });
+    expect(await screen.findByRole('link', { name: /Tableau de bord/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Synchronisation/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Groupes de recherche/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Mes jeux de variables/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Comptes de mission/ })).not.toBeInTheDocument();
+  });
+
   test('logout avec outbox vide se deconnecte sans confirmation', async () => {
     await purgeAllOfflineData();
     const signedOut = vi.fn();

@@ -31,6 +31,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
+  const [canViewIdentity, setCanViewIdentity] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,12 +54,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   useEffect(() => {
     const name = fullName.trim();
     setAckDuplicate(false); // toute nouvelle identite doit etre re-confirmee
-    if (!baseId || !name || !dob) { setMatches([]); return; }
+    if (!canViewIdentity || !baseId || !name || !dob) { setMatches([]); return; }
     const handle = setTimeout(() => {
       patients.findIdentityMatches(baseId, name, dob).then(setMatches).catch(() => setMatches([]));
     }, 400);
     return () => clearTimeout(handle);
-  }, [baseId, fullName, dob, patients]);
+  }, [baseId, canViewIdentity, fullName, dob, patients]);
 
   const load = useCallback(async () => {
     if (!baseId) return;
@@ -78,6 +79,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       }
       const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
       setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
+      setCanViewIdentity(base.role === 'owner' || base.permissions.canViewIdentity);
       setFields(fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
       setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
       setError(null);
@@ -114,7 +116,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       // peut ne pas avoir abouti si la saisie est rapide (copier-coller + Entree) -> sans cette
       // re-verification, la garde se contourne involontairement par la vitesse. Best-effort :
       // si la recherche echoue (reseau), on n'empeche pas la creation.
-      if (!isSameOperationRetry && !ackDuplicate && fullName.trim() && dob) {
+      if (canViewIdentity && !isSameOperationRetry && !ackDuplicate && fullName.trim() && dob) {
         let live = matches;
         try { live = await patients.findIdentityMatches(baseId, fullName.trim(), dob); setMatches(live); } catch { /* best-effort */ }
         if (live.length > 0) {
@@ -142,11 +144,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       }
       const created = await patients.createPatient(baseId, {
         code: code.trim(),
-        fullName: fullName.trim() || null,
-        dateOfBirth: dob || null,
-        phone: phone || null,
-        address: address || null,
-        externalIdentifier: externalId.trim() || null,
+        fullName: canViewIdentity ? (fullName.trim() || null) : null,
+        dateOfBirth: canViewIdentity ? (dob || null) : null,
+        phone: canViewIdentity ? (phone || null) : null,
+        address: canViewIdentity ? (address || null) : null,
+        externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
         permanentData: permanent,
       });
       toast(t('toast.patient_saved')); // UI-2
@@ -188,7 +190,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
         </label>
 
-        <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+        {canViewIdentity && <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
           <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
           <p className="text-xs text-slate-500">{t('patient.identity_note')}</p>
           <div className="grid grid-cols-2 gap-3">
@@ -215,7 +217,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             <span className="text-slate-700">{t('patient.address')}</span>
             <input className="input mt-1" value={address} onChange={(e) => setAddress(e.target.value)} />
           </label>
-        </fieldset>
+        </fieldset>}
 
         {/* Doublon potentiel (meme nom + date de naissance) : on previent sans bloquer. */}
         {matches.length > 0 && (
