@@ -89,6 +89,7 @@
 | [idees-post-readiness.md](idees-post-readiness.md) | File d'attente produit tenue à jour |
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | ⚠️ **Proposition non implémentée** (étude de conception) |
+| [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | ⚠️ **Proposition non implémentée** — listes de diagnostics, en remplacement des variables `diagnostic_1/2/3` |
 | [brief-audit-prochain.md](brief-audit-prochain.md) | Cadrage du prochain audit |
 | [strategie-produit-post-mvp.md](strategie-produit-post-mvp.md) · [-claude.md](strategie-produit-post-mvp-claude.md) · [-synthese.md](strategie-produit-post-mvp-synthese.md) | 🗄️ Études de marché datées (juillet) + synthèse d'arbitrage |
 
@@ -135,5 +136,5 @@
 
 ---
 
-*Index vérifié le 10 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
+*Index vérifié le 11 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
 dans `docs/`.*
