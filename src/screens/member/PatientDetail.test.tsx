@@ -72,10 +72,16 @@ function makePatients(over: Partial<PatientRepository> = {}): PatientRepository 
   } as unknown as PatientRepository;
 }
 
-function renderAt(path: string, patients: PatientRepository, audit?: AuditRepository, templates: TemplateRepository = templateRepo) {
+function renderAt(
+  path: string,
+  patients: PatientRepository,
+  audit?: AuditRepository,
+  templates: TemplateRepository = templateRepo,
+  attachments: AttachmentRepository = stubAttachments,
+) {
   return render(
     <I18nProvider>
-      <RepositoryProvider bases={baseRepo} templates={templates} patients={patients} attachments={stubAttachments} audit={audit}>
+      <RepositoryProvider bases={baseRepo} templates={templates} patients={patients} attachments={attachments} audit={audit}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} />
@@ -97,6 +103,26 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByText('Paludisme')).toBeInTheDocument(); // libelle lisible de la terminologie
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
+  });
+
+  // Chantier D : un refus de `signed-read` etait avale en silence ; l'utilisateur ne voyait
+  // qu'un libelle « Erreur » indiscernable d'un fichier manquant.
+  test('affiche le motif du refus renvoye par signed-read', async () => {
+    const attachments = {
+      async listAttachments() {
+        return [{
+          id: 'a1', kind: 'image', label: 'Scanner', filePath: 'b1/p1/a1.png',
+          mimeType: 'image/png', inspectionStatus: 'accepted' as const,
+        }];
+      },
+      async attachmentUrl() {
+        throw new Error('Fichier en quarantaine : lecture refusee');
+      },
+    } as unknown as AttachmentRepository;
+
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, templateRepo, attachments);
+    await userEvent.click(await screen.findByRole('button', { name: /Afficher l.image/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Fichier en quarantaine : lecture refusee');
   });
 
   test('ne double-journalise pas l identite cote client', async () => {
