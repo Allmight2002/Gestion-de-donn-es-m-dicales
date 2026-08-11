@@ -21,7 +21,7 @@
 | **A** | Justificatifs gérés par le propriétaire | Auth + base + Edge Function + interface | **Tranchée : identifiant choisi, mot de passe généré et chiffré, sans e-mail** (§2.2) | **Clos le 2026-08-11 : local, staging et production technique validés** | SHA `bb99ac72ba46541904d255f7bf129ecd2ad3ca4e` |
 | **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
 | **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
-| **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | Non tranchée | Signalé, non traité | — |
+| **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | **Tranchée : utilitaire partagé, phrase du serveur + code** (§5.4) | **Implémenté et vérifié localement le 2026-08-11** (§5.5) | branche `codex/edge-error-messages` |
 | **E** | Cohortes : suppression, carte dynamique, figeage inexportable | Base + frontend | Recommandation posée, non tranchée | Documenté dans la file d'attente | [idees-post-readiness.md](idees-post-readiness.md) |
 
 **Ordre conseillé.** C avant B, parce que la migration de C débloque la RPC que l'écran de B
@@ -481,10 +481,50 @@ Une leçon de la campagne à conserver : lors d'un lot antérieur, un correctif 
 un seul appelant avait laissé les autres afficher `[object Object]`. Le corriger partout ou nulle
 part.
 
-### 5.5 État
+### 5.5 État — corrigé le 2026-08-11
 
-Signalé le 2026-08-09 dans deux séances distinctes. **Non traité, non planifié.** Ce document est le
-premier endroit où il est consigné comme chantier.
+Signalé le 2026-08-09 dans deux séances distinctes, puis **corrigé** sur `codex/edge-error-messages`.
+
+**Cause du repli de `mission.ts`, désormais confirmée** (le §5.2 la laissait ouverte) :
+`FunctionsHttpError.context` **est l'objet `Response`**, pas un objet `{ body }`. `mission.ts` lisait
+`context.body`, c'est-à-dire un `ReadableStream` — ni chaîne, ni objet portant `.error` — de sorte que
+ses deux branches échouaient et qu'il retombait toujours sur `error.message`. Le corps ne se lit
+qu'**en asynchrone** (`await context.clone().text()`), ce que seul `inspection.ts` faisait.
+
+**Correction.** Un utilitaire unique, [`src/lib/edgeFunctionError.ts`](../src/lib/edgeFunctionError.ts),
+lit le corps du refus, n'en retient que la phrase choisie par la fonction (champ `error`) et son code
+technique (champ `code`, uniquement s'il ressemble à un jeton en majuscules), et compose
+« phrase (CODE) ». Le message de transport n'est utilisé qu'en dernier recours. La phrase est mise sur
+une seule ligne et bornée à 300 caractères ; aucun autre champ du corps n'est affiché, ce qui rend
+structurellement impossibles à la fois la fuite d'une erreur interne et le retour du `[object Object]`.
+
+Les cinq appels frontend passent par cet utilitaire. `signed-read` **cesse d'avaler l'erreur** : son
+motif remonte jusqu'à la vignette (`useSignedFile` porte désormais le message, rendu par
+`PatientDetail` et `CurationTask`). Une **garde d'inventaire** dans
+[`src/data/edgeFunctionCallers.test.tsx`](../src/data/edgeFunctionCallers.test.tsx) échoue si un
+nouvel appel direct à `functions.invoke` apparaît hors de l'utilitaire : c'est ce qui empêche la
+répétition du lot antérieur corrigé « appelant par appelant ».
+
+**Refus réels provoqués sur la pile locale, message lu à l'écran** (un par chemin) :
+
+| Chemin | Geste | Ce que l'écran affiche |
+|---|---|---|
+| `generate-export` | export d'une cohorte du seed | `cohortId invalide` (400) |
+| `create-mission-account` | création sur la base du seed | `Base invalide` (400) |
+| `create-mission-account` | identifiant déjà pris | `Cet identifiant est deja utilise` (409) |
+| `inspect-upload` | « Relancer l'inspection » | `Inspection antivirus impossible : Acces refuse.` (403) |
+| `signed-read` | « Afficher l'image » | `Acces refuse` (403) — ce chemin ne disait **rien** avant |
+| `finalize-upload` | envoi d'un document, objet Storage divergent | `Objet Storage incoherent` (409) |
+
+Les deux premiers sont exactement les incidents du 2026-08-09 : chacun affichait auparavant
+`Edge Function returned a non-2xx status code`.
+
+> **Sixième piège de poste, découvert à cette occasion** : sur la pile **locale**, `service_role`
+> n'a aucun privilège `select/insert/update/delete` sur les tables de `public`, alors qu'un projet
+> Supabase **hébergé** les accorde par défaut. Toute Edge Function qui lit une table avec le client
+> d'administration échoue donc localement par un refus trompeur (`Cohorte introuvable`,
+> `Acces refuse`) sans que rien ne soit cassé côté code. À rapprocher de la note déjà portée par
+> `scripts/verify-function-privileges.mjs` sur l'héritage implicite des `EXECUTE` en hébergé.
 
 ---
 

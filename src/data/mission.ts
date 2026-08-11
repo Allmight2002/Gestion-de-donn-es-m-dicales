@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { invokeEdgeFunction } from '../lib/edgeFunctionError';
 
 export const MISSION_MAX_MONTHS = 24;
 
@@ -100,17 +101,15 @@ export function makeMissionRepository(client: SupabaseClient | null): MissionRep
   const configuredClient = client;
 
   async function invoke(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const { data, error } = await configuredClient.functions.invoke('create-mission-account', { body });
-    if (error) {
-      const detail = (error as { context?: { body?: unknown } }).context?.body;
-      const message = typeof detail === 'string'
-        ? safeMessage(detail)
-        : detail && typeof detail === 'object' && typeof (detail as { error?: unknown }).error === 'string'
-          ? String((detail as { error: string }).error)
-          : null;
-      throw new Error(message ?? error.message);
-    }
-    return (data ?? {}) as Record<string, unknown>;
+    // La lecture du refus est centralisee : `error.context` est un `Response`, son corps ne se lit
+    // pas de facon synchrone. L'ancienne tentative locale lisait `context.body` (un flux) et
+    // retombait donc toujours sur le message de transport.
+    const data = await invokeEdgeFunction<Record<string, unknown>>(
+      configuredClient,
+      'create-mission-account',
+      body,
+    );
+    return data ?? {};
   }
 
   return {
@@ -159,15 +158,6 @@ export function makeMissionRepository(client: SupabaseClient | null): MissionRep
       await invoke({ action: 'revoke', accessId });
     },
   };
-}
-
-function safeMessage(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw) as { error?: unknown };
-    return typeof parsed.error === 'string' && parsed.error.length <= 300 ? parsed.error : null;
-  } catch {
-    return null;
-  }
 }
 
 export const missionRepository: MissionRepository = makeMissionRepository(supabase);
