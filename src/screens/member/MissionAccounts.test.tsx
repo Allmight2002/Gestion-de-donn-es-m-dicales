@@ -129,6 +129,55 @@ describe('propriete et vue generale', () => {
   });
 });
 
+// Les navigateurs compilent l'attribut `pattern` avec le drapeau `v`. Une expression qui n'y
+// compile pas fait IGNORER l'attribut en silence : le champ cesse d'etre valide cote navigateur et
+// une saisie non conforme part jusqu'au serveur, qui la refuse par un 400 difficile a relier a sa
+// cause. C'est ce qui etait arrive au motif de l'identifiant de mission (`.-` non echappe).
+describe('motifs de validation cote navigateur', () => {
+  test('le motif de l identifiant compile sous le drapeau v et applique la regle du serveur', async () => {
+    renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo());
+    const source = (await screen.findByLabelText(/Identifiant de connexion/i)).getAttribute('pattern');
+    expect(source).toBeTruthy();
+    expect(() => new RegExp(`^(?:${source!})$`, 'v')).not.toThrow();
+
+    // Meme regle que IDENTIFIER_RE de create-mission-account (la saisie est deja mise en minuscules).
+    const rule = new RegExp(`^(?:${source!})$`, 'v');
+    for (const accepte of ['mission-neuro-01', 'mission.neuro.01', 'abc']) {
+      expect(rule.test(accepte)).toBe(true);
+    }
+    for (const refuse of ['mission neuro', '-mission', 'mission-', '.mission', 'mission_01', 'é'.repeat(4)]) {
+      expect(rule.test(refuse)).toBe(false);
+    }
+  });
+
+  test('aucun autre motif du frontend ne casse silencieusement', async () => {
+    // Garde volontairement transverse : le piege est invisible a la relecture et se represenerait
+    // a l'identique sur n'importe quel autre champ.
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { join, relative } = await import('node:path');
+    const root = join(process.cwd(), 'src');
+    const files = (function walk(dir: string): string[] {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return walk(path);
+        return entry.name.endsWith('.tsx') && !entry.name.endsWith('.test.tsx') ? [path] : [];
+      });
+    })(root);
+
+    const invalides: string[] = [];
+    for (const file of files) {
+      for (const [, source] of readFileSync(file, 'utf8').matchAll(/\spattern="([^"]+)"/g)) {
+        try {
+          new RegExp(`^(?:${source})$`, 'v');
+        } catch {
+          invalides.push(`${relative(root, file).replace(/\\/g, '/')} : ${source}`);
+        }
+      }
+    }
+    expect(invalides).toEqual([]);
+  });
+});
+
 describe('creation et conservation chiffree', () => {
   test('transmet le nom, l identifiant choisi et l echeance, jamais une adresse email', async () => {
     const create = vi.fn(async (_input: CreateMissionInput) => credential);

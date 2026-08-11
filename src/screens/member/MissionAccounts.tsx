@@ -258,11 +258,16 @@ export function MissionAccounts() {
                 </label>
                 <label className="form-label">
                   {t('mission.identifier')}
+                  {/* Le tiret de la classe est ECHAPPE : les navigateurs compilent `pattern` avec le
+                      drapeau `v`, qui refuse `.-` en classe de caracteres. Une expression qui ne
+                      compile pas fait IGNORER l'attribut — le champ n'etait donc plus valide cote
+                      navigateur et un identifiant non conforme partait jusqu'au serveur. Meme regle
+                      que `IDENTIFIER_RE` de create-mission-account ; la saisie est deja minuscule. */}
                   <input
                     required
                     minLength={3}
                     maxLength={48}
-                    pattern="[A-Za-z0-9](?:[A-Za-z0-9.-]{1,46}[A-Za-z0-9])?"
+                    pattern="[A-Za-z0-9](?:[A-Za-z0-9.\-]{1,46}[A-Za-z0-9])?"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
