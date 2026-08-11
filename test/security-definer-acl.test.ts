@@ -32,20 +32,13 @@ describe('inventaire SECURITY DEFINER', () => {
       anon_can_execute: boolean;
       authenticated_can_execute: boolean;
       service_role_can_execute: boolean;
-      service_role_explicit_execute: boolean;
     }>(`
       select
         p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as signature,
         p.proconfig as config,
         has_function_privilege('anon', p.oid, 'EXECUTE') as anon_can_execute,
         has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute,
-        has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_can_execute,
-        exists (
-          select 1
-          from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
-          where acl.grantee = (select oid from pg_roles where rolname = 'service_role')
-            and acl.privilege_type = 'EXECUTE'
-        ) as service_role_explicit_execute
+        has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_can_execute
       from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
@@ -63,13 +56,11 @@ describe('inventaire SECURITY DEFINER', () => {
 
     expect(inspectFunctionPrivileges(functions.rows, privileges.rows[0])).toEqual([]);
 
-    // Supabase hébergé peut donner à service_role un pouvoir implicite sur les
-    // fonctions internes sans ACL explicite. Ce droit d'administration ne doit pas
-    // transformer toutes les fonctions de trigger en commandes Edge inventoriées.
+    // Supabase hébergé rend service_role exécuteur de toutes les fonctions internes.
+    // Ce pouvoir d'administration ne doit pas transformer chaque trigger en commande
+    // Edge inventoriée ; seules les signatures Edge attendues sont exigées et cloisonnées.
     expect(functions.rows.some((row) => row.signature === 'handle_new_user()')).toBe(true);
-    const hostedRoleInheritance = functions.rows.map((row) =>
-      row.signature === 'handle_new_user()' ? { ...row, service_role_can_execute: true } : row
-    );
+    const hostedRoleInheritance = functions.rows.map((row) => ({ ...row, service_role_can_execute: true }));
     expect(inspectFunctionPrivileges(hostedRoleInheritance, privileges.rows[0])).toEqual([]);
   });
 
