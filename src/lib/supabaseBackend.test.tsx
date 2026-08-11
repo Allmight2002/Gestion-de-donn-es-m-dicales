@@ -54,3 +54,29 @@ describe('makeSupabaseBackend signOut', () => {
     expect(localStorage.getItem(key)).toBeNull();
   });
 });
+
+describe('makeSupabaseBackend signIn', () => {
+  test('traduit un identifiant de mission vers l identite Auth technique', async () => {
+    const signInWithPassword = vi.fn(async () => ({ error: null }));
+    const backend = makeSupabaseBackend(clientWithAuth({ signInWithPassword }));
+
+    await backend.signIn(' Mission-Neuro-01 ', 'mot-de-passe-fictif');
+
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'mission-neuro-01@mission.meddata.invalid',
+      password: 'mot-de-passe-fictif',
+    });
+  });
+
+  test('conserve la connexion email des comptes ordinaires', async () => {
+    const signInWithPassword = vi.fn(async () => ({ error: null }));
+    const backend = makeSupabaseBackend(clientWithAuth({ signInWithPassword }));
+
+    await backend.signIn(' Medecin@Example.TEST ', 'mot-de-passe-fictif');
+
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'medecin@example.test',
+      password: 'mot-de-passe-fictif',
+    });
+  });
+});

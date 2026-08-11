@@ -21,7 +21,11 @@ let aliceEncounterId: string;
 const IN_12_MONTHS = "now() + interval '12 months'";
 
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
-  db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
+  db.asUser(
+    uid,
+    async (c: Client) => (await c.query(sql, params)).rows,
+    uid === studentId ? { app_metadata: { mission_credential_generation: 1 } } : undefined,
+  );
 
 const CREATE_PATIENT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 const CREATE_ENCOUNTER = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
@@ -88,6 +92,14 @@ beforeAll(async () => {
   )[0].id;
 
   studentId = await createAuthUser('etudiant@demo.test', { global_role: 'saisisseur' });
+  await db.admin.query(
+    `insert into public.mission_account_credential (
+       user_id, base_id, owner_user_id, account_label, login_identifier,
+       password_ciphertext, password_nonce, credential_generation, status
+     ) values ($1, $2, $3, 'Compte de test mission', 'mission-test-01',
+               'ciphertext-test-non-secret', 'nonce-test-123', 1, 'active')`,
+    [studentId, baseId, aliceId],
+  );
   await resetMission();
 });
 
@@ -340,11 +352,11 @@ describe('capacites refusees au role', () => {
       rowsAs(studentId, `select * from public.provision_mission_access($1,$2,${IN_12_MONTHS},false,null)`, [
         baseId, studentId,
       ]),
-    ).rejects.toThrow(/medecin/i);
+    ).rejects.toThrow(/proprietaire/i);
   });
 
   test('il ne peut pas lire l inventaire des comptes de mission', async () => {
-    await expect(rowsAs(studentId, 'select * from public.mission_accounts($1)', [baseId])).rejects.toThrow(/medecin/i);
+    await expect(rowsAs(studentId, 'select * from public.mission_accounts($1)', [baseId])).rejects.toThrow(/proprietaire/i);
   });
 
   test('la garde refuse toute ligne de mission aux permissions elargies', async () => {
@@ -437,7 +449,7 @@ describe('echeance et revocation : la base tranche, pas l interface', () => {
     ).rows[0].id;
     await expect(
       rowsAs(bobId, "select * from public.extend_mission_access($1, now() + interval '6 months')", [accessId]),
-    ).rejects.toThrow(/[Gg]estion des acces/);
+    ).rejects.toThrow(/proprietaire/i);
     await expect(rowsAs(bobId, 'select public.revoke_base_access($1)', [accessId])).rejects.toThrow();
   });
 
@@ -518,14 +530,14 @@ describe('inventaire cote medecin', () => {
   test('le proprietaire voit son compte de mission, avec echeance et etat', async () => {
     const rows = await rowsAs(aliceId, 'select * from public.mission_accounts($1)', [baseId]);
     expect(rows).toHaveLength(1);
-    expect(rows[0].email).toBe('etudiant@demo.test');
+    expect(rows[0].email).toBe('mission-test-01');
     expect(rows[0].expires_at).not.toBeNull();
     expect(rows[0].can_view_identity).toBe(false);
   });
 
   test('un medecin etranger a la base n y accede pas', async () => {
     await expect(rowsAs(bobId, 'select * from public.mission_accounts($1)', [baseId])).rejects.toThrow(
-      /[Gg]estion des acces/,
+      /proprietaire/i,
     );
   });
 });

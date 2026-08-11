@@ -8,7 +8,7 @@ export interface AuthBackend {
   getSession(): Promise<SessionUser | null>;
   /** S'abonne aux changements de session ; renvoie une fonction de desabonnement. */
   onAuthChange(callback: (user: SessionUser | null) => void): () => void;
-  signIn(email: string, password: string): Promise<void>;
+  signIn(identifier: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   fetchProfile(userId: string): Promise<Profile | null>;
   sendPasswordReset(email: string): Promise<void>;

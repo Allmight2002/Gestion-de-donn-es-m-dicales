@@ -102,6 +102,7 @@ jobs:
           BACKUP_PREPARE_DUMP_IMAGE: 'true'
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          MISSION_CREDENTIALS_ENCRYPTION_KEY: ${{ secrets.MISSION_CREDENTIALS_ENCRYPTION_KEY }}
           STAGING_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           STAGING_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -134,9 +135,11 @@ jobs:
       - name: Configure strict Edge runtime secrets
         env: *staging_env
         run: |
+          test -n "$MISSION_CREDENTIALS_ENCRYPTION_KEY"
           npm exec -- supabase secrets set \
             "CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL" \
             "CLAMAV_SCAN_TOKEN=$CLAMAV_SCAN_TOKEN" \
+            "MISSION_CREDENTIALS_ENCRYPTION_KEY=$MISSION_CREDENTIALS_ENCRYPTION_KEY" \
             "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION" \
             --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy all Edge Functions
@@ -145,6 +148,9 @@ jobs:
       - name: Verify backend drift before frontend
         env: *staging_env
         run: RELEASE_DRIFT_OUTPUT="$RUNNER_TEMP/backend-drift.json" npm run release:drift
+      - name: Verify managed mission credentials without exposing them
+        env: *staging_env
+        run: node scripts/verify-mission-account.mjs --prefix=STAGING_
       - name: Preserve immutable backend evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -640,6 +646,7 @@ jobs:
           BACKUP_PREPARE_DUMP_IMAGE: 'true'
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
+          MISSION_CREDENTIALS_ENCRYPTION_KEY: ${{ secrets.MISSION_CREDENTIALS_ENCRYPTION_KEY }}
           REQUIRE_SERVER_INSPECTION: 'true'
           DB_REQUIRE_SERVER_INSPECTION: 'true'
         run: |
@@ -660,6 +667,10 @@ jobs:
       - name: Backend promotion before frontend strict switch
         env: *production_env
         run: |
+          test -n "$MISSION_CREDENTIALS_ENCRYPTION_KEY"
+          npm exec -- supabase secrets set \
+            "MISSION_CREDENTIALS_ENCRYPTION_KEY=$MISSION_CREDENTIALS_ENCRYPTION_KEY" \
+            --project-ref "$SUPABASE_PROJECT_REF"
           npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
           npm run db:function-acl:verify

@@ -949,52 +949,44 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L15 — Redirection du mot de passe des comptes de mission
+## L15 — Comptes de mission : identifiant et mot de passe générés
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
 dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
 docs/chantiers-interactions-comptes.md (chantier A, §2) et docs/edge-functions.md.
 
-CONTEXTE, constaté en test manuel bout-en-bout le 2026-08-09 sur la pile locale.
-L'Edge Function create-mission-account lit MISSION_PASSWORD_REDIRECT_URL et, si
-la variable est absente, appelle resetPasswordForEmail SANS redirectTo
-(supabase/functions/create-mission-account/index.ts, ligne 39). GoTrue retombe
-alors sur site_url : le lien du courriel ouvre une session valide sur le TABLEAU
-DE BORD, et l'écran de définition du mot de passe (/reset-password) n'est jamais
-atteint. La personne invitée n'a donc jamais de mot de passe ; elle est bloquée
-dès l'expiration de sa session, sans autre recours que « Mot de passe oublié ».
+CONTEXTE. Le flux actuel d'invitation par e-mail a produit un compte sans mot de
+passe durable lors du test du 2026-08-09. La décision produit est désormais
+TRANCHÉE : tous les comptes de mission, même sans e-mail, reçoivent un
+identifiant de connexion et un mot de passe GÉNÉRÉS. Le médecin les remet à
+l'étudiant ; l'étudiant ne choisit pas son mot de passe initial.
 
-PÉRIMÈTRE — quatre points.
+PÉRIMÈTRE.
 
-1. Documenter la variable dans docs/edge-functions.md, avec la valeur attendue
-   <origine du site>/reset-password, pour la production ET pour le staging.
-   Elle n'y figure aujourd'hui nulle part.
-2. Ajouter la variable à la configuration locale (supabase/functions/.env, qui
-   n'existe pas encore) pour que le parcours soit testable de bout en bout.
-3. Vérifier — EN LECTURE SEULE — la valeur réellement configurée sur le projet
-   Supabase de production. Ne modifie RIEN dans le cloud sans me le demander.
-4. Trancher avec moi la question ouverte ci-dessous, puis l'implémenter si je
-   choisis la garde.
+1. Remplacer le contrat Edge fondé sur l'e-mail, l'invitation et « resend » par
+   la création puis la régénération explicite de justificatifs. Ne répare pas la
+   redirection e-mail : ce circuit est remplacé pour le rôle `saisisseur`.
+2. Générer côté serveur un identifiant unique et un mot de passe robuste. Si Auth
+   nécessite une identité technique distincte, elle ne doit jamais être exposée
+   à l'utilisateur ; jamais de secret d'administration dans le navigateur.
+3. Afficher les deux éléments au médecin une seule fois, après création ou
+   régénération confirmée. Ne les stocke, journalise ou audite jamais en clair.
+4. Adapter la connexion pour saisir « Identifiant » et mot de passe, sans e-mail
+   requis ; retirer les actions d'invitation/réinitialisation par e-mail de
+   l'interface mission.
+5. La régénération est une opération séparée, autorisée et auditée : elle rend
+   les anciens justificatifs et sessions inutilisables. Une reprise automatique
+   après réponse perdue ne crée pas un doublon ni un nouveau secret silencieux.
 
-LA QUESTION OUVERTE, à ne pas décider seul : un repli silencieux qui produit un
-compte inutilisable doit-il rester silencieux ? L'absence de la variable pourrait
-légitimement devenir une erreur explicite au démarrage de la fonction. Contre :
-la fonction cesserait de démarrer sur un environnement mal configuré. Pour : le
-service dégradé actuel crée des comptes que personne ne peut récupérer, sans
-aucun signal, et la panne n'apparaît que côté étudiant, des heures plus tard.
+SÉCURITÉ. L'accès aux données reste décidé côté base/RLS par le rôle, la mission,
+l'échéance et la révocation. Les tests doivent inclure l'absence de fuite de
+secrets, l'unicité, les doublons/reprises, la régénération, les sessions
+antérieures, l'expiration, la révocation et les refus inter-comptes.
 
-DEUX VÉRIFICATIONS À NE PAS OUBLIER, elles n'ont jamais été faites :
-- supabase/config.toml ne déclare que site_url et AUCUNE additional_redirect_urls.
-  Confirme que GoTrue accepte un redirectTo pointant sur un chemin sous site_url ;
-  sinon ajoute l'entrée d'allowlist.
-- En local le lien vise 127.0.0.1 alors que Vite n'écoute par défaut que sur
-  localhost en IPv6 sur ce poste. Sans --host 127.0.0.1, ton correctif semblera
-  ne pas fonctionner pour une raison sans rapport (cf. docs/tests-multicomptes.md
-  §5.3).
-
-AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
-rien tant que tu n'as pas mes réponses.
+AVANT DE COMMENCER : ne rouvre pas la décision identifiant/mot de passe générés
+ni la règle « sans e-mail ». Pose seulement les questions techniques réellement
+bloquantes et ne code rien tant que tu n'as pas mes réponses.
 
 AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
 une pull request, la fusionner et promouvoir jusqu'à la production, sans me
@@ -1011,13 +1003,15 @@ staging réussi pour le MÊME commit.
 CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
 cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
 
-TERMINÉ SIGNIFIE : sur la pile locale, tu as créé un compte de mission, ouvert le
-courriel dans Mailpit, suivi le lien, et ATTERRI sur l'écran de définition du mot
-de passe — pas sur le tableau de bord. Tu ne t'arrêtes pas avant. Si une commande
-t'est refusée, donne-la-moi telle quelle.
+TERMINÉ SIGNIFIE : sur la pile locale, le médecin crée un compte de mission sans
+e-mail, relève une seule fois les deux justificatifs, puis l'étudiant se connecte
+dans un second profil. Après régénération confirmée, l'ancien mot de passe et les
+sessions antérieures sont refusés, le nouveau fonctionne, et aucune trace ne
+contient le secret. Tu ne t'arrêtes pas avant. Si une commande t'est refusée,
+donne-la-moi telle quelle.
 
-Ce lot ne touche aucun écran : il peut tourner en parallèle de n'importe quel
-autre.
+Ce lot touche l'interface de gestion des comptes et la connexion : traite-le
+SEUL, pas en parallèle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
@@ -1033,7 +1027,7 @@ docs/chantiers-interactions-comptes.md §3 et §4 IN EXTENSO — l'analyse et la
 décision sont déjà faites, ne les refais pas — et docs/spec-comptes-mission.md.
 
 ATTENTION : ce lot touche une migration, des tests de base, la spécification et
-quatre écrans. Il doit tourner SEUL. Vérifie avec moi qu'aucun autre chantier
+cinq écrans. Il doit tourner SEUL. Vérifie avec moi qu'aucun autre chantier
 n'est en cours avant de commencer.
 
 RIEN N'EXISTE EN CODE. Une premiere implementation des points d'ecran avait ete
@@ -1047,7 +1041,9 @@ compte de mission (rôle saisisseur) DOIT pouvoir écrire l'identité nominative
 lorsque le médecin lui a accordé l'option can_view_identity à la création de la
 mission. Motif : sans support papier stable, l'étudiant est la seule source de
 l'identité au moment de l'inclusion ; l'exclusion détruit l'information au lieu
-de la protéger. C'est un RENVERSEMENT assumé de la décision du 2026-07-28
+de la protéger. Cela couvre TOUTE la zone « Identité (zone restreinte) » : nom
+complet, date de naissance, téléphone, adresse et identifiant externe — pas la
+seule date de naissance. C'est un RENVERSEMENT assumé de la décision du 2026-07-28
 consignée au §12 de la spec. L'option retenue est A (étendre la formule), pas B
 (créer une écriture sans lecture) : les raisons sont au §4.5 du document.
 
@@ -1058,21 +1054,39 @@ non révoqué, non expiré, can_view_identity accordée et can_create_structured
 Ne modifie aucune migration existante. La RPC create_patient se débloque d'elle-
 même puisqu'elle appelle déjà cette fonction.
 
+CORRECTION APRÈS CRÉATION — exigence ajoutée le 2026-08-11. Écrire l'identité à
+la création ne suffit pas : une erreur de nom, de date de naissance, de téléphone,
+d'adresse ou d'identifiant externe doit pouvoir être corrigée. `update_patient`
+ne porte que les données analytiques ; ne le détourne pas et ne rouvre pas les
+policies d'écriture directe. Ajoute une RPC dédiée, auditée et avec verrou de
+version, qui modifie la zone identité complète. Elle doit appliquer côté serveur
+les règles exactes suivantes :
+- médecin propriétaire : correction de l'identité des patients de sa base ;
+- médecin collaborateur : seulement avec les droits identité ET édition ;
+- saisisseur : seulement son propre patient, encore `draft`, mission active et
+  option `can_view_identity` accordée ; jamais une fiche soumise ni celle d'autrui.
+
+La correction garde un motif, une trace exploitable, et repasse par la protection
+contre les doublons. Toute vérification d'autorisation, de statut, d'auteur et de
+version est côté RPC : l'interface ne constitue jamais la barrière de sécurité.
+
 PIÈGE À NE PAS MANQUER : is_medecin() exige profiles.global_role = 'medecin', ce
 qu'un saisisseur ne satisfera JAMAIS. La branche saisisseur doit donc s'ajouter au
 niveau supérieur, HORS de la conjonction « is_medecin() and ... ». Surtout, ne
 relâche pas is_medecin() pour la branche médecin.
 
-Puis : contrôle de l'allowlist SECURITY DEFINER. La signature est inchangée, donc
-a priori rien à ajouter — CONFIRME-LE par npm run db:function-acl:verify, ne le
-suppose pas.
+Puis : contrôle de l'allowlist SECURITY DEFINER. La nouvelle RPC de correction
+doit recevoir une autorisation `EXECUTE` minimale et être ajoutée à l'inventaire
+si nécessaire — CONFIRME-LE par npm run db:function-acl:verify, ne le suppose pas.
 
 Puis : test/mission-accounts.test.ts. Le cas « il ne peut JAMAIS écrire l'identité »
 devient « il ne peut écrire que si l'option lui a été accordée ». CONSERVE le cas
 négatif sans option et le cas après échéance. Reprends aussi les assertions de
 nullité des champs nominatifs après création et l'assertion can_write_identity =
-false avec option. Écris dans le commit qu'il s'agit d'un retournement délibéré,
-pas d'une régression.
+false avec option. Ajoute les cas de correction des cinq champs d'identité par
+le saisisseur sur son brouillon, puis les refus après soumission, expiration,
+révocation, sur une fiche d'autrui et par écriture directe. Écris dans le commit
+qu'il s'agit d'un retournement délibéré, pas d'une régression.
 
 Puis : réécris §4, §9 et §12 de docs/spec-comptes-mission.md, en consignant la
 raison du renversement. Ne te contente pas de retourner la ligne du tableau §4 :
@@ -1086,13 +1100,19 @@ PHASE 2 — INTERFACE, seulement après la phase 1. L'ordre est impératif : sin
 l'écran proposerait une saisie que la base refuse encore.
 - NewPatient.tsx : la section « Identité (zone restreinte) » devient conditionnée
   à canViewIdentity — masquée sans l'option, visible avec.
+- PatientDetail.tsx et le parcours d'édition : proposer et enregistrer la
+  correction de TOUTE la zone identité restreinte sur une fiche déjà créée. Ne pas
+  faire croire qu'un bouton « Modifier » corrige une identité s'il ne modifie que
+  les données analytiques. Le saisisseur ne voit cette action que sur son propre
+  brouillon autorisé ; le médecin autorisé peut corriger les patients de la base.
 - Applique les quatre corrections d'écran décidées (registre §3.1, §3.3, §3.4,
   §3.5) : bouton « Nouveau patient » piloté par la permission de CRÉATION et non
   de modification, suppression de patient réservée à canEdit — elle est
   aujourd'hui offerte à TOUT LE MONDE, y compris un simple lecteur —,
   « Rendre disponible hors-ligne » masqué pour un accès à échéance (mais la copie
   résiduelle reste RETIRABLE), et barre latérale réduite pour le rôle saisisseur.
-- Tests web pour ces cinq points dans src/screens/member/*.test.tsx.
+- Tests web pour ces cinq points et la correction de l'identité complète dans
+  src/screens/member/*.test.tsx.
 
 HORS PÉRIMÈTRE, décidé et clos : le nom du gabarit qui s'affiche « Modèle : — ».
 La cause est la policy template_read, le porteur a décidé de ne pas y toucher. Ne
@@ -1124,9 +1144,11 @@ cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
 
 TERMINÉ SIGNIFIE : le changement est en production, et tu as rejoué le parcours
 complet du compte de mission sur la pile locale — création, activation, saisie
-d'un patient AVEC son identité, puis vérification en base que l'identité est bien
-enregistrée. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi
-telle quelle.
+d'un patient AVEC toute son identité, correction de chacun des champs de cette
+zone sur son brouillon, puis vérification en base que l'identité est bien
+enregistrée. Vérifie aussi qu'après soumission le saisisseur est refusé, tandis
+que le médecin autorisé peut corriger la même identité. Tu ne t'arrêtes pas avant.
+Si une commande t'est refusée, donne-la-moi telle quelle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```

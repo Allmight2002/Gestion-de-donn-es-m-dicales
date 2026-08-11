@@ -14,6 +14,11 @@ export function loadFunctionPrivilegeInventory() {
   if (!Array.isArray(inventory.categories) || inventory.categories.length === 0) {
     throw new Error('Inventaire SECURITY DEFINER sans categorie.');
   }
+  if (String(inventory.serviceRole?.rationale ?? '').trim().length < 40
+    || !Array.isArray(inventory.serviceRole?.signatures)
+    || inventory.serviceRole.signatures.length === 0) {
+    throw new Error('Inventaire SECURITY DEFINER service_role invalide.');
+  }
   const signatures = [];
   for (const category of inventory.categories) {
     if (!/^[a-z0-9-]+$/.test(category?.id ?? '') || String(category?.rationale ?? '').trim().length < 40) {
@@ -24,13 +29,19 @@ export function loadFunctionPrivilegeInventory() {
     }
     signatures.push(...category.signatures);
   }
-  const duplicates = signatures.filter((signature, index) => signatures.indexOf(signature) !== index);
+  const serviceRoleSignatures = [...inventory.serviceRole.signatures];
+  const allSignatures = [...signatures, ...serviceRoleSignatures];
+  const duplicates = allSignatures.filter((signature, index) => allSignatures.indexOf(signature) !== index);
   if (duplicates.length > 0) throw new Error(`Signatures SECURITY DEFINER dupliquees: ${duplicates.join(', ')}.`);
-  return { inventory, signatures: signatures.sort() };
+  return {
+    inventory,
+    signatures: signatures.sort(),
+    serviceRoleSignatures: serviceRoleSignatures.sort(),
+  };
 }
 
 export function inspectFunctionPrivileges(rows, schemaPrivileges) {
-  const { signatures: expected } = loadFunctionPrivilegeInventory();
+  const { signatures: expected, serviceRoleSignatures: expectedServiceRole } = loadFunctionPrivilegeInventory();
   const errors = [];
   const anonymous = rows.filter((row) => row.anon_can_execute).map((row) => row.signature);
   if (anonymous.length > 0) errors.push(`${anonymous.length} fonction(s) executable(s) par anon.`);
@@ -43,6 +54,19 @@ export function inspectFunctionPrivileges(rows, schemaPrivileges) {
   const unexpected = actual.filter((signature) => !expected.includes(signature));
   if (missing.length > 0) errors.push(`Signatures authenticated manquantes: ${missing.join(', ')}.`);
   if (unexpected.length > 0) errors.push(`Signatures authenticated non inventoriees: ${unexpected.join(', ')}.`);
+
+  const actualServiceRole = rows
+    .filter((row) => row.service_role_can_execute && !row.authenticated_can_execute)
+    .map((row) => row.signature)
+    .sort();
+  const missingServiceRole = expectedServiceRole.filter((signature) => !actualServiceRole.includes(signature));
+  const unexpectedServiceRole = actualServiceRole.filter((signature) => !expectedServiceRole.includes(signature));
+  if (missingServiceRole.length > 0) {
+    errors.push(`Signatures service_role manquantes ou exposees a authenticated: ${missingServiceRole.join(', ')}.`);
+  }
+  if (unexpectedServiceRole.length > 0) {
+    errors.push(`Signatures service_role exclusives non inventoriees: ${unexpectedServiceRole.join(', ')}.`);
+  }
 
   for (const row of rows) {
     const setting = row.config?.find((entry) => entry.startsWith('search_path='));
@@ -76,7 +100,8 @@ export async function verifyFunctionPrivileges(dbUrl) {
         p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as signature,
         p.proconfig as config,
         has_function_privilege('anon', p.oid, 'EXECUTE') as anon_can_execute,
-        has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute
+        has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute,
+        has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_can_execute
       from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'

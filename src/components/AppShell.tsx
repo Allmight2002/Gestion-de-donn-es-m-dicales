@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink } from 'react-router';
 import {
-  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, Users, X,
+  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, UserPlus, Users, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
@@ -112,6 +112,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           ]
         : [
             { to: '/', labelKey: 'member.dashboard.title', Icon: LayoutDashboard, end: true },
+            ...(role === 'medecin'
+              ? [{ to: '/missions', labelKey: 'mission.global_title' as MessageKey, Icon: UserPlus }]
+              : []),
             { to: '/groups', labelKey: 'group.title', Icon: Users },
             { to: '/templates', labelKey: 'mytemplates.title', Icon: FileText },
             { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount + rejectedCount > 0 },

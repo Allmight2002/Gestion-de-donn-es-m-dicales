@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260801185149_observation_model_base.sql`
-- Tables : 38 · Policies RLS : 61 · Triggers : 58 · Fonctions : 225
+- Dernière migration incluse : `20260811120000_managed_mission_credentials.sql`
+- Tables : 40 · Policies RLS : 61 · Triggers : 58 · Fonctions : 232
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -427,6 +427,42 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
+### mission_account_credential · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| user_id | uuid | non |  |
+| base_id | uuid | non |  |
+| owner_user_id | uuid | non |  |
+| account_label | text | non |  |
+| login_identifier | text | non |  |
+| password_ciphertext | text | non |  |
+| password_nonce | text | non |  |
+| credential_generation | integer | non | `1` |
+| status | text | non | `'provisioning'::text` |
+| created_at | timestamp with time zone | non | `now()` |
+| updated_at | timestamp with time zone | non | `now()` |
+| last_rotated_at | timestamp with time zone | non | `now()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
+### mission_credential_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| operation_id | uuid | non |  |
+| actor_id | uuid | non |  |
+| action | text | non |  |
+| base_id | uuid | non |  |
+| user_id | uuid | non |  |
+| request_fingerprint | text | non |  |
+| result_generation | integer | non |  |
+| status | text | non | `'pending'::text` |
+| created_at | timestamp with time zone | non | `now()` |
+| completed_at | timestamp with time zone | oui |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ### offline_encounter_operation · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -521,9 +557,9 @@ Triggers :
 Policies :
 - `profiles_select_admin` (SELECT) — USING is_system_admin()
 - `profiles_select_collaborators` (SELECT) — USING owns_base_with_member(id)
-- `profiles_select_self` (SELECT) — USING (id = auth.uid())
+- `profiles_select_self` (SELECT) — USING ((id = auth.uid()) AND is_authenticated_session_current())
 - `profiles_update_admin` (UPDATE) — USING (is_system_admin() AND (id <> auth.uid())) · WITH CHECK (is_system_admin() AND (id <> auth.uid()))
-- `profiles_update_self` (UPDATE) — USING (id = auth.uid()) · WITH CHECK (id = auth.uid())
+- `profiles_update_self` (UPDATE) — USING ((id = auth.uid()) AND is_authenticated_session_current()) · WITH CHECK ((id = auth.uid()) AND is_authenticated_session_current())
 
 Triggers :
 - `trg_guard_profile_role` — BEFORE UPDATE → `guard_profile_role()`
@@ -871,6 +907,8 @@ Triggers :
 | base_of_cohort | p_cohort uuid | DEFINER | sql |
 | base_of_patient | p_patient uuid | DEFINER | sql |
 | begin_import_batch | p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer | DEFINER | plpgsql |
+| begin_mission_account_creation | p_operation_id uuid, p_actor_id uuid, p_base_id uuid, p_user_id uuid, p_account_label text, p_login_identifier text, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text | DEFINER | plpgsql |
+| begin_mission_credential_regeneration | p_operation_id uuid, p_actor_id uuid, p_access_id uuid, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text | DEFINER | plpgsql |
 | bump_curation_draft_revision | — | INVOKER | plpgsql |
 | bump_patient_row_version | — | INVOKER | plpgsql |
 | can_create_structured_data | p_base uuid | DEFINER | sql |
@@ -887,6 +925,7 @@ Triggers :
 | cohort_preview | p_base_id uuid, p_filter jsonb, p_validated_only boolean | INVOKER | sql |
 | complete_file_inspection | p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb, p_quarantine_bucket text, p_quarantine_path text | DEFINER | plpgsql |
 | complete_import_batch | p_batch_id uuid | DEFINER | plpgsql |
+| complete_mission_credential_operation | p_operation_id uuid, p_actor_id uuid | DEFINER | plpgsql |
 | complete_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_entity text, p_metadata jsonb, p_verified_file_hash text, p_verified_file_size bigint, p_verified_mime_type text | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
@@ -974,6 +1013,7 @@ Triggers :
 | is_active_assigned_curator | p_task_id uuid | DEFINER | sql |
 | is_assigned_curator | p_task_id uuid | DEFINER | sql |
 | is_assigned_to_submission | p_submission_id uuid | DEFINER | sql |
+| is_authenticated_session_current | — | DEFINER | sql |
 | is_base_active | p_base uuid | DEFINER | sql |
 | is_base_owner | p_base uuid | DEFINER | sql |
 | is_curateur | — | DEFINER | sql |
@@ -993,6 +1033,8 @@ Triggers :
 | log_sensitive_read | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid | DEFINER | plpgsql |
 | mission_account_lookup | p_email text | DEFINER | plpgsql |
 | mission_accounts | p_base_id uuid | DEFINER | plpgsql |
+| mission_accounts_owned | p_base_id uuid | DEFINER | plpgsql |
+| mission_credential_envelope | p_access_id uuid | DEFINER | plpgsql |
 | owns_base_with_member | p_user uuid | DEFINER | sql |
 | owns_template | p_template uuid | DEFINER | sql |
 | patient_age_at | p_patient_id uuid, p_at date, p_unit text | DEFINER | plpgsql |
@@ -1034,6 +1076,7 @@ Triggers :
 | restore_deleted_base | p_base_id uuid | DEFINER | plpgsql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
+| revoke_mission_access | p_access_id uuid | DEFINER | plpgsql |
 | rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |
 | rule_apply_op | op text, a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |

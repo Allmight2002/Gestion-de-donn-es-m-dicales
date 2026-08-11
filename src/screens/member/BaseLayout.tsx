@@ -58,7 +58,7 @@ export function BaseLayout() {
     ...(isOwner || listing?.permissions.canManageAccess
       ? [{ to: `/bases/${id}/access`, labelKey: 'base.tab_access' as MessageKey, Icon: KeyRound }]
       : []),
-    ...(isOwner || listing?.permissions.canManageAccess
+    ...(isOwner
       ? [{ to: `/bases/${id}/missions`, labelKey: 'mission.tab' as MessageKey, Icon: UserPlus }]
       : []),
     ...(isOwner ? [{ to: `/bases/${id}/template`, labelKey: 'base.tab_template' as MessageKey, Icon: FileText }] : []),

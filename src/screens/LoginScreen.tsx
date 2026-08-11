@@ -8,19 +8,19 @@ import { ThemeToggle } from '../components/ThemeToggle';
 export function LoginScreen() {
   const { signIn, sendPasswordReset, busy, error } = useAuth();
   const { t } = useI18n();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [resetSent, setResetSent] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setResetSent(false);
-    await signIn(email, password);
+    await signIn(identifier, password);
   }
 
   async function onReset() {
-    if (!email) return;
-    const ok = await sendPasswordReset(email);
+    if (!identifier.includes('@')) return;
+    const ok = await sendPasswordReset(identifier);
     if (ok) setResetSent(true);
   }
 
@@ -47,15 +47,19 @@ export function LoginScreen() {
 
           <form onSubmit={onSubmit} className="space-y-4">
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700">{t('login.email')}</span>
+              <span className="mb-1 block font-medium text-slate-700">{t('login.identifier')}</span>
               <input
-                type="email"
+                type="text"
                 required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="input"
               />
+              <span className="helper-text">{t('login.identifier_hint')}</span>
             </label>
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-700">{t('login.password')}</span>
@@ -77,9 +81,11 @@ export function LoginScreen() {
             </button>
           </form>
 
-          <button type="button" onClick={() => void onReset()} className="mt-4 text-sm font-medium text-teal-700 hover:text-teal-800">
-            {t('login.forgot')}
-          </button>
+          {identifier.includes('@') && !identifier.toLowerCase().endsWith('@mission.meddata.invalid') && (
+            <button type="button" onClick={() => void onReset()} className="mt-4 text-sm font-medium text-teal-700 hover:text-teal-800">
+              {t('login.forgot')}
+            </button>
+          )}
         </div>
         <p className="mt-4 text-center text-xs text-slate-400">{t('app.title')}</p>
       </div>
