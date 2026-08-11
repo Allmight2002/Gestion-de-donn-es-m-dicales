@@ -5,6 +5,7 @@ import {
   parseReconcileRequest,
   readJsonObject,
   RequestValidationError,
+  validationResponse,
 } from './contracts.ts';
 
 Deno.test('HTTP contract rejects wrong content type, malformed and oversized payloads', async () => {
@@ -30,6 +31,18 @@ Deno.test('HTTP contract rejects wrong content type, malformed and oversized pay
       ),
     RequestValidationError,
   );
+});
+
+Deno.test('validation responses expose their safe message to browser callers', async () => {
+  const response = validationResponse(new RequestValidationError(400, 'Identifiant invalide'));
+
+  assertEquals(response.status, 400);
+  assertEquals(response.headers.get('access-control-allow-origin'), '*');
+  assertEquals(
+    response.headers.get('access-control-allow-headers'),
+    'authorization, x-client-info, apikey, content-type',
+  );
+  assertEquals(await response.json(), { error: 'Identifiant invalide' });
 });
 
 Deno.test('generate-export accepts stable defaults and rejects identifiers/enums', () => {
