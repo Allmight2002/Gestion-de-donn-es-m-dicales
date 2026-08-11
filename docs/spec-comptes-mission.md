@@ -29,6 +29,7 @@ Le modèle actuel ne le permet pas :
 | La « mission » est la ligne `base_access` étendue | Table `data_entry_mission` dédiée | `granted_by` (médecin responsable), `created_at`, `revoked_at` existent déjà ; il ne manque que `expires_at` et la permission de création. Moins de surface, mêmes garanties, audit déjà en place. |
 | Nouvelle permission `can_create_structured_data` | Réutiliser `can_edit_structured_data` | Sépare « créer » de « modifier ». Compatibilité : les RPC de création accepteront `can_create` **ou** `can_edit` (aucun backfill, aucun changement pour les éditeurs actuels) ; les RPC de modification resteront sur `can_edit` seul. |
 | Création du compte par invitation admin (Edge Function + `inviteUserByEmail`) | Le médecin choisit le mot de passe | Imputabilité : seul l'étudiant détient son secret, sinon toute saisie devient contestable. Le médecin déclenche, l'étudiant active et définit son mot de passe. |
+| **Évolution décidée le 2026-08-11, à livrer par L15** : identifiant et mot de passe générés | Invitation/réinitialisation par e-mail | Mode unique, même sans e-mail : le médecin remet les accès initiaux puis peut les régénérer. Le secret n'est jamais persisté ni audité en clair ; l'accès reste contrôlé par la base. |
 | Rôle transporté par `app_metadata` | `user_metadata` | `user_metadata` est modifiable par l'utilisateur lui-même : y lire un rôle serait une escalade de privilège triviale. `app_metadata` n'est modifiable que côté admin. |
 | Brouillon/soumission via `validation_status` existant | Immuabilité dès la première sauvegarde ; ou nouveau statut dédié | Les rencontres portent déjà `'draft'`/`'complete'`/`'curated'` (`20260616090900_encounters.sql`). L'interdiction absolue de corriger rendrait une faute de frappe irréparable par l'étudiant. |
 | Expiration et révocation vérifiées par RLS à chaque requête | Révocation de la session Auth seule | Un jeton déjà émis reste valide jusqu'à son expiration ; seule la vérification en base garantit l'effet immédiat. C'est déjà le modèle du produit (base et autorisation serveur = source de vérité). |
@@ -77,6 +78,10 @@ Aucune migration existante n'est modifiée. Une nouvelle migration horodatée aj
 > Note de la même campagne : le point « voir la base attribuée et son dictionnaire/gabarit » est
 > partiellement tenu — les **champs** du gabarit sont lisibles, son **nom** ne l'est pas, et il
 > a été décidé de ne pas corriger (chantier B, point 6).
+
+> **Évolution non encore implémentée.** Les sections suivantes décrivent le comportement livré par
+> L10 (invitation par e-mail). Le lot L15 le remplacera par les identifiants générés décidés le
+> 2026-08-11 ; ne pas présenter cette évolution comme déjà active avant ses tests de bout en bout.
 
 ## 5. Cycle de vie du compte
 

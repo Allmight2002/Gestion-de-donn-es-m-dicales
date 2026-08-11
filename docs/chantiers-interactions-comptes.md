@@ -18,7 +18,7 @@
 
 | # | Chantier | Nature | Décision | État | Où vit le travail |
 |---|---|---|---|---|---|
-| **A** | Redirection du mot de passe des comptes de mission | Configuration + Edge Function | 1 point encore ouvert (§2.4) | **Rien d'implémenté** — séance interrompue | worktree `vigilant-curran-fe8b58`, **propre** |
+| **A** | Identifiants générés des comptes de mission | Auth + Edge Function + interface | **Tranchée : mode unique sans e-mail** (§2.2) | **Rien d'implémenté** | worktree `vigilant-curran-fe8b58`, **propre** |
 | **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
 | **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
 | **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | Non tranchée | Signalé, non traité | — |
@@ -57,16 +57,57 @@ toute reprise de test manuel : ils se represénteront à l'identique.
 
 ---
 
-## 2. Chantier A — la personne invitée ne définit jamais son mot de passe
+## 2. Chantier A — identifiants générés, sans e-mail obligatoire
 
-### 2.1 Constat
+### 2.1 Constat historique
 
 Le lien reçu par courriel ouvre **une session valide directement sur le tableau de bord**. L'écran
 de définition du mot de passe (`/reset-password`, `src/screens/ResetPassword.tsx`) n'est jamais
 atteint. L'étudiant travaille pendant la durée de vie de cette session, puis **se retrouve bloqué
-sans mot de passe**, avec pour seul recours « Mot de passe oublié ».
+sans mot de passe**, avec pour seul recours « Mot de passe oublié ». Ce constat explique l'écart
+observé le 2026-08-09, mais **n'est plus le correctif recherché**.
 
-### 2.2 Cause, vérifiée dans le code
+### 2.2 Décision produit — 2026-08-11
+
+Un **mode unique** s'applique à tous les comptes de mission, avec ou sans adresse e-mail : lors de
+la création, le médecin reçoit un **identifiant de connexion généré** et un **mot de passe généré**
+à remettre à l'étudiant. L'étudiant ne choisit pas son mot de passe initial et l'e-mail n'est ni une
+condition de création, ni un canal d'activation ou de récupération.
+
+Le médecin peut explicitement régénérer les accès. Cette action invalide les anciens identifiants et
+sessions, et laisse une trace d'audit sans jamais contenir le secret. L'ancien mécanisme d'invitation
+et de renvoi de courriel est donc remplacé, pas réparé.
+
+### 2.3 Invariants de sécurité et de fiabilité
+
+- L'identifiant et le mot de passe sont produits côté serveur avec une source aléatoire sûre ; le mot
+  de passe en clair n'est ni stocké dans la base applicative, ni journalisé, ni ajouté à l'audit.
+- L'interface médecin les affiche une seule fois après la création ou une régénération explicite.
+  Aucun secret ne doit apparaître dans les notifications, erreurs, captures de diagnostic ou logs.
+- L'identifiant visible peut être différent de l'identité technique d'Auth ; ce mappage reste côté
+  serveur. Aucun secret d'administration Auth ne passe dans le navigateur.
+- Une création réessayée après réponse perdue ne doit pas créer un deuxième compte ni changer
+  silencieusement le mot de passe : la régénération est une opération distincte, confirmée et
+  auditée.
+- Les règles métier restent inchangées : accès limité à la mission, échéance et révocation contrôlés
+  côté base/RLS à chaque accès ; la révocation d'un mot de passe ne remplace pas ces contrôles.
+
+### 2.4 Travail demandé
+
+1. Remplacer dans l'Edge Function les paramètres et actions fondés sur l'e-mail (`create` /
+   `resend`) par la création et la régénération contrôlée de justificatifs.
+2. Créer le compte Auth avec une identité technique non exposée, un mot de passe généré et le rôle
+   applicatif déjà autoritaire dans `app_metadata`. Vérifier l'unicité et l'idempotence côté serveur.
+3. Adapter l'écran médecin pour remettre les deux éléments une seule fois, avec confirmation avant
+   régénération ; adapter la connexion pour accepter l'« Identifiant » sans exposer l'e-mail
+   technique.
+4. Retirer le parcours d'invitation, de renvoi et de réinitialisation par courriel pour ce rôle, et
+   mettre les tests, textes et procédure manuelle en cohérence.
+5. Couvrir notamment : création sans e-mail, connexion dans un second profil, absence de secret dans
+   les traces, rejet de l'ancien mot de passe après régénération, sessions antérieures invalidées,
+   et maintien des refus après expiration ou révocation.
+
+### 2.5 Cause historique, vérifiée dans le code
 
 [`supabase/functions/create-mission-account/index.ts:39`](../supabase/functions/create-mission-account/index.ts:39) :
 
@@ -83,40 +124,7 @@ La variable **n'est documentée nulle part** dans [edge-functions.md](edge-funct
 n'apparaît aujourd'hui que dans `docs/audits/audit-technique-complet-2026-08-09.md:75` (liste des
 secrets de production non vérifiables localement) et dans [tests-multicomptes.md §7.1](tests-multicomptes.md).
 
-### 2.3 Travail demandé
-
-1. **Documenter la variable** dans [edge-functions.md](edge-functions.md), avec la valeur attendue
-   `<origine du site>/reset-password`, **pour la production et pour le staging**.
-2. **Trancher le point 2.4 ci-dessous** puis, le cas échéant, implémenter.
-3. **Vérifier la valeur réellement configurée** sur le projet Supabase de production avant le
-   prochain usage réel du flux. *Lecture seule* : ne rien modifier dans le cloud sans demande
-   explicite.
-4. **Ajouter la variable à la configuration locale** pour que le parcours soit testable de bout en
-   bout (`supabase/functions/.env` — ce fichier **n'existe pas aujourd'hui**).
-
-Deux vérifications à faire au moment de l'implémentation, qui n'ont pas été menées :
-
-- `supabase/config.toml` ne déclare **que** `site_url = "http://127.0.0.1:5173"` et **aucune**
-  `additional_redirect_urls`. Confirmer que GoTrue accepte bien un `redirectTo` pointant sur un
-  chemin sous `site_url` ; si non, ajouter l'entrée d'allowlist.
-- Le lien local vise `127.0.0.1`, alors que Vite n'écoute par défaut que sur `localhost` (IPv6) sur
-  ce poste — cf. [tests-multicomptes.md §5.3](tests-multicomptes.md). Sans `--host 127.0.0.1`, le
-  correctif semblera ne pas fonctionner pour une raison sans rapport.
-
-### 2.4 Point encore ouvert — repli silencieux ou erreur explicite ?
-
-**Un repli silencieux qui produit un compte inutilisable devrait-il rester silencieux ?**
-L'absence de `MISSION_PASSWORD_REDIRECT_URL` pourrait légitimement être une **erreur explicite au
-démarrage de la fonction**, au même titre que les autres secrets manquants. L'argument contre : la
-fonction cesserait de démarrer sur un environnement mal configuré, alors qu'aujourd'hui elle rend
-un service dégradé mais réel. L'argument pour : ce service dégradé crée des comptes que personne ne
-peut récupérer, sans aucun signal, et la panne n'apparaît qu'au bout de plusieurs heures — côté
-étudiant, pas côté médecin.
-
-**Non tranché.** À décider avant d'implémenter, parce que la réponse change la nature du correctif :
-simple documentation d'un côté, garde au démarrage de l'autre.
-
-### 2.5 État
+### 2.6 État
 
 Séance ouverte le 2026-08-09 dans le worktree `.claude/worktrees/vigilant-curran-fe8b58`
 (branche `claude/vigilant-curran-fe8b58`, basée sur `9cd3e04`). La séance a été **interrompue avant
@@ -338,29 +346,47 @@ Skill `meddata-db-safety` obligatoire pour les points 1 et 2.
    > niveau supérieur**, hors de la conjonction `is_medecin() and …`, et surtout **pas** en
    > relâchant `is_medecin()` pour la branche médecin.
 
-2. **Contrôle de l'allowlist `SECURITY DEFINER`** : la signature est inchangée, donc a priori rien à
-   ajouter — **à confirmer par `npm run db:function-acl:verify`, pas à supposer**.
+2. **Correction de toute l'identité après création** : `update_patient` ne porte que les données
+   analytiques ; il ne peut pas corriger `full_name`, `date_of_birth`, `phone`, `address` ni
+   `external_identifier`. Ajouter une RPC dédiée, auditée et protégée par verrou de version, jamais
+   une écriture directe depuis le navigateur. Le médecin propriétaire (ou le médecin collaborateur
+   ayant les droits d'identité et d'édition) peut corriger cette zone pour les patients de sa base.
+   Le saisisseur ne peut la corriger que pour **son propre patient encore en brouillon**, pendant une
+   mission active avec l'option identité accordée ; ni les fiches soumises, ni celles d'autrui. La
+   correction doit conserver un motif, une trace, et la protection contre les doublons déjà appliquée
+   à la création.
 
-3. **`test/mission-accounts.test.ts`** : le cas « il ne peut JAMAIS écrire l'identité » (≈ l.241)
+3. **Contrôle de l'allowlist `SECURITY DEFINER`** : la nouvelle RPC de correction doit recevoir une
+   autorisation `EXECUTE` minimale, être ajoutée à l'inventaire si nécessaire, et être vérifiée par
+   `npm run db:function-acl:verify` — ne rien supposer.
+
+4. **`test/mission-accounts.test.ts`** : le cas « il ne peut JAMAIS écrire l'identité » (≈ l.241)
    devient « il ne peut écrire que si l'option lui a été accordée ». **Conserver** le cas négatif
    sans option et le cas après échéance. Les assertions de nullité des champs nominatifs après
    création (≈ l.138-148) et l'assertion `can_write_identity = false` avec option (≈ l.253) sont à
-   revoir dans le même mouvement. C'est un **retournement délibéré et documenté**, pas une
-   régression — l'écrire dans le commit.
+   revoir dans le même mouvement. Couvrir aussi la correction de chacun des cinq champs de la zone
+   restreinte par le saisisseur sur son brouillon, puis les refus après soumission, expiration,
+   révocation, sur le patient d'autrui et par écriture directe. C'est un **retournement délibéré et
+   documenté**, pas une régression — l'écrire dans le commit.
 
-4. **`docs/spec-comptes-mission.md` §4, §9 et §12 réécrits**, en consignant la raison du renversement
+5. **`docs/spec-comptes-mission.md` §4, §9 et §12 réécrits**, en consignant la raison du renversement
    (pas de support papier stable, l'étudiant est la seule source de l'identité au moment de
    l'inclusion, études transversales). Ne pas se contenter de retourner la ligne du tableau §4 : la
    phrase du §12 « c'est cette exclusion qui rend la permission acceptable » doit être remplacée par
    ce qui rend désormais la permission acceptable (option décochée par défaut, justification
    obligatoire, journalisation, périmètre d'une seule base, échéance).
 
-5. **UI** : dans `NewPatient`, la section « Identité (zone restreinte) » devient conditionnée à
-   `canViewIdentity` — masquée sans l'option, visible avec. C'est le point 2 du chantier B.
+6. **UI** : dans `NewPatient`, la section « Identité (zone restreinte) » devient conditionnée à
+   `canViewIdentity` — masquée sans l'option, visible avec. Ajouter aussi un parcours de correction
+   de la zone complète sur une fiche déjà créée, avec les mêmes règles de droit et d'état que la RPC ;
+   un clic « Modifier » ne doit plus donner l'illusion qu'il corrige une identité alors qu'il ne
+   modifie que les données analytiques. C'est le point 2 du chantier B, complété par le retour de
+   test du 2026-08-11.
 
-6. **Tests web** pour les points 1, 3, 4, 5 du chantier B et pour celui-ci.
+7. **Tests web** pour les points 1, 3, 4, 5 du chantier B et pour la création/correction de la zone
+   d'identité complète.
 
-7. **Validation** : `npm run typecheck` · `npm run lint` · `npm run test:web` · `npm run test:rls`.
+8. **Validation** : `npm run typecheck` · `npm run lint` · `npm run test:web` · `npm run test:rls`.
 
 **L'ordre a son importance** : la migration d'abord, sinon l'écran proposerait une saisie que la
 base refuse encore.
@@ -486,8 +512,8 @@ des arbitrages d'usage.
 |---|---|---|---|
 | 1 | `.env.local` fait pointer `npm run dev` sur la **production** | (a) renommer en `.env.production.local` ; (b) bandeau visible quand l'origine Supabase n'est pas locale ; (c) statu quo + discipline | [tests-multicomptes.md §5.1](tests-multicomptes.md) |
 | 2 | Identifiants du seed non conformes RFC-4122 → **aucun flux Edge testable sur les données de démonstration** | (a) vrais UUID v4 dans le seed ; (b) assouplir `UUID_RE` ; (c) statu quo documenté — **option en vigueur** | [tests-multicomptes.md §5.5](tests-multicomptes.md) |
-| 3 | `MISSION_PASSWORD_REDIRECT_URL` absente : repli silencieux ou erreur explicite ? | (a) documenter seulement ; (b) garde au démarrage de la fonction | §2.4 |
-| 4 | Courriel d'invitation générique (« Reset your password », de « Admin <admin@email.com> ») | Personnaliser les modèles côté Supabase. **Vérifier d'abord ce que reçoit réellement une personne invitée sur le projet en ligne** — non vérifié | [tests-multicomptes.md §7.4](tests-multicomptes.md) |
+| 3 | Mode d'activation des comptes de mission | **Tranché le 2026-08-11 : identifiant et mot de passe générés pour tous, sans e-mail requis** | §2.2 |
+| 4 | Remise ou régénération des accès | Affichage unique au médecin, régénération explicitement confirmée et auditée ; aucun secret persistant | §2.3 |
 | 5 | Cohortes : archivage ou suppression dure conditionnelle ? | Recommandation : archivage | §6.2 |
 
 ---
@@ -537,8 +563,9 @@ Repris de [tests-multicomptes.md §8](tests-multicomptes.md), avec l'ajout des c
 - **Deux sessions réellement simultanées** : la même origine partage le stockage du navigateur —
   fenêtre de navigation privée ou second profil.
 - **Prolongation et renvoi d'invitation** depuis l'écran du médecin.
-- **Après les chantiers A et C** : rejouer le parcours complet du compte de mission, cette fois
-  jusqu'à la définition effective du mot de passe et à la saisie d'une identité par l'étudiant.
+- **Après les chantiers A et C** : rejouer le parcours complet du compte de mission, de la remise
+  des identifiants générés à la connexion dans un second profil et à la saisie d'une identité par
+  l'étudiant.
 
 ---
 

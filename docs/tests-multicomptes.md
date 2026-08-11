@@ -299,23 +299,93 @@ ligne.**
 
 ---
 
-## 8. Ce qui reste à tester
+## 8. Feuille de route de test — interactions entre comptes
 
-- **Collaboration entre médecins** : la procédure existe déjà et est prête à l'emploi —
-  `qa-parcours-site.md` §6bis, étapes **C1 à C8** (invitation, acceptation, profil appliqué, ajout
-  de la permission Identités, **édition simultanée avec conflit de version**, lien à usage unique,
-  mauvais compte, révocation). Elle vise le site déployé mais se joue telle quelle en local.
-- **Échéance et révocation d'une mission vues depuis la session de l'étudiant.** La garde n'impose
-  qu'un maximum de 24 mois, pas de minimum : l'échéance se force en base plutôt que de l'attendre.
+Cette feuille de route est le point de départ d'une nouvelle campagne manuelle. Elle se joue avec
+des données **fictives uniquement**. Noter pour chaque étape `OK`, `KO` ou `BLOQUÉ`, l'observation,
+la version/commit testé et, en cas de défaut, le compte concerné et les étapes exactes de
+reproduction. Ne jamais copier d'identité réelle dans un rapport ni une capture.
 
-  ```sql
-  update base_access set expires_at = now() - interval '1 minute' where user_id = '<id du compte de mission>';
-  ```
+> **Ne pas mélanger les états.** Tant que L15, L16 et L17 ne sont pas livrés, leurs scénarios sont
+> des vérifications de régression à préparer, pas des critères de succès du produit actuel. Les
+> signaler « à rejouer après le lot », plutôt que de conclure à une panne nouvelle.
 
-- **Deux sessions réellement simultanées** : la même origine partage le stockage du navigateur, il
-  faut donc une fenêtre de navigation privée (ou un second profil) pour tenir deux sessions à la
-  fois.
-- **Prolongation et renvoi d'invitation** depuis l'écran du médecin.
+### Phase 0 — préparation sûre
+
+1. Utiliser la pile locale (§3 et §4) : Docker, `npm run supabase:start`, puis
+   `npm run supabase:storage`.
+2. Lancer le frontend avec les variables locales et `--host 127.0.0.1` (§4) ; ne pas utiliser
+   `npm run dev` seul, car `.env.local` cible la production sur ce poste (§5.1).
+3. Préparer deux sessions réellement distinctes : navigateur normal pour le médecin propriétaire,
+   navigation privée ou second profil pour le deuxième compte. Garder Mailpit ouvert seulement pour
+   les scénarios historiques par courriel, pas pour le mode L15.
+4. Créer une base neuve `QA-*` depuis l'interface ; ne pas utiliser les identifiants décoratifs du
+   seed pour les appels Edge (§5.5). Noter la date, la version et les comptes fictifs employés.
+
+### Phase 1 — collaboration entre médecins (C1 à C8)
+
+Suivre intégralement [`qa-parcours-site.md` §6bis](qa-parcours-site.md) : invitation par lien,
+acceptation par le bon compte, profil appliqué, ouverture contrôlée de l'identité, conflit de
+version, lien à usage unique, mauvais compte et révocation.
+
+**Critères essentiels :** le second médecin ne voit jamais l'identité avant l'autorisation ; sa
+seconde sauvegarde concurrente est refusée sans écraser la première ; après révocation, la base et
+son URL directe deviennent inaccessibles. Cette phase est testable localement ou sur le site
+déployé, car elle n'envoie pas de courriel.
+
+### Phase 2 — compte de mission : parcours de base
+
+1. Médecin : créer un compte de mission sur la base `QA-*`, sans option identité.
+2. Après L15 : relever une seule fois l'identifiant et le mot de passe générés, sans e-mail ni
+   Mailpit, puis les remettre au saisisseur fictif.
+3. Saisisseur : dans un second profil, se connecter avec ces éléments ; vérifier une seule base
+   visible, le bandeau d'échéance, les zones médecin absentes,
+   puis créer un patient et une rencontre en brouillon.
+4. Vérifier les refus attendus : autre base, export, gestion des accès, documents bruts, hors-ligne,
+   identité non autorisée, suppression et fiche d'autrui.
+5. Saisisseur : corriger son propre brouillon, puis le soumettre ; vérifier qu'il ne peut plus le
+   modifier après soumission.
+
+**Après L15 :** aucune invitation ou réinitialisation par e-mail n'est requise. La régénération
+confirmée par le médecin rend l'ancien mot de passe inutilisable et invalide les sessions associées;
+le nouvel identifiant et mot de passe permettent une connexion dans un profil neuf.
+
+### Phase 3 — identité restreinte après L16
+
+Créer une seconde mission avec l'option identité et sa justification. Tester les cinq champs : nom
+complet, date de naissance, téléphone, adresse et identifiant externe.
+
+1. Le saisisseur crée un patient avec cette identité, puis corrige chacun de ces champs sur son
+   propre brouillon.
+2. Il tente la même correction après soumission, après expiration, après révocation et sur un
+   patient d'autrui : chaque tentative doit être refusée, sans modification partielle.
+3. Le médecin corrige ensuite cette même identité : la correction doit réussir et rester visible.
+4. Créer volontairement un rapprochement nom/date avec un autre patient fictif : le mécanisme
+   anti-doublon doit avertir avant l'enregistrement.
+
+### Phase 4 — cycle de vie de la mission dans deux sessions
+
+1. Depuis le médecin, tester **Prolonger** puis **Renvoyer l'invitation** ; vérifier côté
+   saisisseur l'effet utile, pas seulement le toast côté médecin.
+2. Forcer l'échéance sur la pile locale, puis recharger la session du saisisseur :
+
+   ```sql
+   update base_access set expires_at = now() - interval '1 minute' where user_id = '<id du compte de mission>';
+   ```
+
+3. Refaire avec **Révoquer** depuis la session médecin tandis que le saisisseur est encore ouvert :
+   le prochain chargement ou enregistrement doit être refusé et ne rien écrire.
+
+### Phase 5 — qualité des refus et clôture
+
+Après L17, provoquer au moins un refus par parcours (base invalide, droit absent, cohorte non
+exportable) : l'interface doit afficher le message court choisi par le serveur, jamais
+`Edge Function returned a non-2xx status code`, `[object Object]`, une erreur SQL ou un secret.
+
+Conclure avec le format de rapport de [`qa-parcours-site.md` §8](qa-parcours-site.md) : synthèse,
+résultats, anomalies reproductibles, captures fictives et ressenti utilisateur. Enfin, supprimer ou
+réinitialiser les données `QA-*` locales (§10) ; ne jamais réemployer ces comptes pour un test en
+ligne.
 
 ---
 
