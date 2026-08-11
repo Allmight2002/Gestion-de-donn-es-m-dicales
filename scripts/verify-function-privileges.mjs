@@ -56,7 +56,10 @@ export function inspectFunctionPrivileges(rows, schemaPrivileges) {
   if (unexpected.length > 0) errors.push(`Signatures authenticated non inventoriees: ${unexpected.join(', ')}.`);
 
   const actualServiceRole = rows
-    .filter((row) => row.service_role_can_execute && !row.authenticated_can_execute)
+    // Sur les projets Supabase hébergés, service_role peut hériter implicitement de
+    // l'exécution de fonctions internes. L'inventaire Edge porte uniquement sur les
+    // GRANT explicites versionnés, pas sur ce pouvoir d'administration implicite.
+    .filter((row) => row.service_role_explicit_execute && !row.authenticated_can_execute)
     .map((row) => row.signature)
     .sort();
   const missingServiceRole = expectedServiceRole.filter((signature) => !actualServiceRole.includes(signature));
@@ -101,7 +104,13 @@ export async function verifyFunctionPrivileges(dbUrl) {
         p.proconfig as config,
         has_function_privilege('anon', p.oid, 'EXECUTE') as anon_can_execute,
         has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute,
-        has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_can_execute
+        has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_can_execute,
+        exists (
+          select 1
+          from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+          where acl.grantee = (select oid from pg_roles where rolname = 'service_role')
+            and acl.privilege_type = 'EXECUTE'
+        ) as service_role_explicit_execute
       from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
