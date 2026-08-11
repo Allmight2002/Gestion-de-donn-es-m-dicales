@@ -1573,3 +1573,57 @@ dans `docs/chantiers-interactions-comptes.md` §5.5.
 correctif s'arrête à la fusion, qui ne déploie rien (`vercel.json` porte `git.deploymentEnabled:
 false`). La mise en production reste à faire par le workflow **Coordinated release**, staging puis
 production pour le même commit.
+
+## Chantiers B/C — identité complète du compte de mission (clôture du 2026-08-11)
+
+Le renversement décidé par le porteur le 2026-08-10 est livré. Il s'agit d'un **retournement
+délibéré**, et non d'une régression : lorsqu'un médecin accorde l'option identité à une mission,
+le saisisseur peut créer un patient avec le nom complet, la date de naissance, le téléphone,
+l'adresse et l'identifiant externe. Sans cette option, la zone reste masquée et la base refuse les
+valeurs nominatives. La branche médecin de `can_write_identity()` n'a pas été relâchée.
+
+La migration additive `20260811130000_mission_identity_write_correction.sql` ajoute la branche
+saisisseur hors de `is_medecin()` et la RPC `update_patient_identity`. Cette RPC vérifie côté
+serveur l'accès, le rôle, l'auteur, le statut `draft` et la version ; elle exige un motif, journalise
+les champs et versions sans conserver les anciennes ou nouvelles valeurs nominatives, et laisse
+les écritures directes fermées. Les pièces jointes restent réservées aux médecins malgré
+l'élargissement de `can_write_identity`.
+
+L'interface masque ou montre toute la zone identité selon l'option, distingue la correction
+d'identité de l'édition analytique, réserve la correction du saisisseur à son propre brouillon,
+pilote « Nouveau patient » par la création, réserve la suppression à l'édition, borne le mode
+hors-ligne des accès à échéance et réduit la barre latérale du rôle `saisisseur`. Le défaut
+« Modèle : — » est resté hors périmètre comme décidé.
+
+### Preuves locales
+
+- `npm run typecheck`, `npm run lint` et build de production avec lecture signée : verts ;
+- `npm run test:web` : **318/318** ; `npm run test:rls` : **601/601** ;
+- `npm run db:verify` : **114 migrations** applicables depuis zéro ; snapshot de schéma et
+  manifeste à jour ;
+- `npm run db:function-acl:verify` : **155 fonctions `SECURITY DEFINER` conformes** ; sept Edge
+  Functions inventoriées ;
+- parcours réel sur Supabase local : **37/37** — création et activation de la mission, patient avec
+  les cinq champs d'identité, correction des cinq champs sur son brouillon, vérification directe en
+  base, refus du saisisseur après soumission, correction du même patient par le médecin ;
+- nettoyage vérifié : aucune base QA active et aucune mission QA active restantes.
+
+### Git, CI et release coordonnée
+
+- commit fonctionnel `dc90392` ; PR `#145` vers `develop`, CI `31489555015` verte ; PR `#146`
+  vers `main`, CI `31489777013` et `31489806008` vertes ; CI du merge `main` `31490024107` verte ;
+- le premier staging `31490265593` a été bloqué dans `validate`, avant tout déploiement, parce que
+  le snapshot de schéma versionné s'arrêtait à la migration précédente ;
+- correction ciblée `10c1473` ; PR `#147` vers `develop`, CI `31490622129` verte ; PR `#148` vers
+  `main`, CI `31490839240` et `31490860582` vertes ; CI du merge `main` `31491126538` verte ;
+- SHA applicatif finalement promu : `fae091a3f2a9b6537be53573923986daec563325` ;
+- staging réussi : `31491345747` — validation, sauvegarde chiffrée, migrations, Storage, ACL,
+  Edge Functions, dérive, vérificateur mission, frontend et E2E navigateur verts ;
+- production technique réussie : `31492429206`, liée au staging `31491345747` pour le **même SHA**
+  et passée par les preuves de gouvernance, restauration et responsabilités opérationnelles avant
+  la sauvegarde et la promotion.
+
+Cette clôture prouve la production technique avec données fictives ; elle ne vaut pas autorisation
+d'utiliser des données réelles ni autorisation clinique. L'élargissement de ce qu'un compte de
+mission peut connaître doit encore être répercuté dans le registre des traitements
+(`docs/juridique/`, volet Tchad) et dans la charte utilisateurs.
