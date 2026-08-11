@@ -1627,3 +1627,33 @@ Cette clôture prouve la production technique avec données fictives ; elle ne v
 d'utiliser des données réelles ni autorisation clinique. L'élargissement de ce qu'un compte de
 mission peut connaître doit encore être répercuté dans le registre des traitements
 (`docs/juridique/`, volet Tchad) et dans la charte utilisateurs.
+
+## Motif de l'identifiant de mission — validation navigateur rétablie (2026-08-11)
+
+**Constat.** Le champ « Identifiant de connexion » de l'écran *Comptes de mission* portait
+`pattern="[A-Za-z0-9](?:[A-Za-z0-9.-]{1,46}[A-Za-z0-9])?"`. Les navigateurs compilent l'attribut
+`pattern` avec le drapeau `v`, dans lequel `.-` en classe de caractères est invalide. L'expression
+ne compilant pas, la spécification impose d'**ignorer entièrement l'attribut** : le champ n'était
+donc plus validé côté navigateur, sans le moindre signe visible hormis une ligne dans la console.
+
+**Conséquence.** Un identifiant non conforme partait jusqu'au serveur, y était refusé par
+`IDENTIFIER_RE` (`create-mission-account/handler.ts`) sous la forme d'une `RequestValidationError`,
+rendue par `validationResponse`. Or cette réponse ne portait pas d'en-têtes CORS avant la
+correction serveur `fix: expose Edge validation errors to browsers` : le navigateur bloquait alors
+la lecture du corps et la bibliothèque levait un `FunctionsFetchError` **sans corps du tout**. Ni
+l'utilisateur ni l'utilitaire du chantier D ne pouvaient voir le motif — le refus se présentait
+comme une panne. Les trois défauts se composaient ; c'est la piste à garder en tête pour le
+diagnostic des créations de comptes de mission observé en test.
+
+**Correction.** Le tiret est échappé (`[A-Za-z0-9.\-]`), forme qui compile sous `v`, sous `u` et
+sans drapeau, et qui laisse la règle inchangée — identique à celle du serveur, la saisie étant déjà
+mise en minuscules. Aucune modification du contrat serveur.
+
+**Vérifications.** `npm run typecheck`, `npm run lint` et `npm run test:web` (51 fichiers,
+320 tests) verts. Deux gardes ajoutées dans `src/screens/member/MissionAccounts.test.tsx` : le motif
+rendu doit compiler sous le drapeau `v` et appliquer la règle attendue, et **aucun autre**
+`pattern` du frontend ne doit casser silencieusement. Les deux échouent bien sur l'ancienne
+écriture — vérifié en la rétablissant temporairement.
+
+**Déploiement.** Aucun de mon fait : la mise en ligne reste à déclencher par le porteur, en même
+temps que la correction CORS, pour rendre enfin lisible le refus réel.
