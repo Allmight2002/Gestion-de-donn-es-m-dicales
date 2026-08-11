@@ -41,8 +41,20 @@ create table if not exists auth.users (
   email_confirmed_at timestamptz,
   raw_app_meta_data  jsonb default '{}'::jsonb,
   raw_user_meta_data jsonb default '{}'::jsonb,
+  banned_until      timestamptz,
   created_at         timestamptz default now(),
   updated_at         timestamptz default now()
+);
+
+-- Sous-ensemble de auth.sessions utilise par la rotation/revocation des comptes de
+-- mission. Sur Supabase reel, cette table appartient au service Auth et contient
+-- davantage de colonnes ; les migrations applicatives n'utilisent ici que id/user_id.
+create table if not exists auth.sessions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  not_after  timestamptz
 );
 
 -- auth.uid() / role() / jwt() : lisent request.jwt.claims (defensif si absent/vide).

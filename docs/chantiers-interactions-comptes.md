@@ -18,15 +18,15 @@
 
 | # | Chantier | Nature | Décision | État | Où vit le travail |
 |---|---|---|---|---|---|
-| **A** | Identifiants générés des comptes de mission | Auth + Edge Function + interface | **Tranchée : mode unique sans e-mail** (§2.2) | **Rien d'implémenté** | worktree `vigilant-curran-fe8b58`, **propre** |
+| **A** | Justificatifs gérés par le propriétaire | Auth + base + Edge Function + interface | **Tranchée : identifiant choisi, mot de passe généré et chiffré, sans e-mail** (§2.2) | **Implémenté et validé localement le 2026-08-11 ; promotion distante à faire** | branche `codex/mission-credentials` |
 | **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
 | **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
 | **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | Non tranchée | Signalé, non traité | — |
 | **E** | Cohortes : suppression, carte dynamique, figeage inexportable | Base + frontend | Recommandation posée, non tranchée | Documenté dans la file d'attente | [idees-post-readiness.md](idees-post-readiness.md) |
 
 **Ordre conseillé.** C avant B, parce que la migration de C débloque la RPC que l'écran de B
-propose ; sinon l'interface offrirait une saisie que la base refuse encore. A est indépendant et
-peut se traiter en parallèle. D est transverse et gagnerait à passer avant toute nouvelle séance de
+propose ; sinon l'interface offrirait une saisie que la base refuse encore. A a été traité seul,
+conformément au périmètre du lot. D est transverse et gagnerait à passer avant toute nouvelle séance de
 test manuel, puisque c'est lui qui a coûté le plus de temps de diagnostic. E n'est pas urgent.
 
 **Règle de conduite héritée des séances** : la base est la source de vérité. Aucun de ces chantiers
@@ -57,7 +57,7 @@ toute reprise de test manuel : ils se represénteront à l'identique.
 
 ---
 
-## 2. Chantier A — identifiants générés, sans e-mail obligatoire
+## 2. Chantier A — justificatifs gérés par le propriétaire, sans e-mail
 
 ### 2.1 Constat historique
 
@@ -69,43 +69,52 @@ observé le 2026-08-09, mais **n'est plus le correctif recherché**.
 
 ### 2.2 Décision produit — 2026-08-11
 
-Un **mode unique** s'applique à tous les comptes de mission, avec ou sans adresse e-mail : lors de
-la création, le médecin reçoit un **identifiant de connexion généré** et un **mot de passe généré**
-à remettre à l'étudiant. L'étudiant ne choisit pas son mot de passe initial et l'e-mail n'est ni une
-condition de création, ni un canal d'activation ou de récupération.
+Un **mode unique** s'applique à tous les comptes de mission : le propriétaire de la base choisit un
+**identifiant de connexion unique** et le serveur génère un **mot de passe robuste**. Le compte
+reste sous la responsabilité du propriétaire, qui remet ces justificatifs à l'étudiant. L'étudiant
+ne choisit pas son mot de passe initial et l'e-mail n'est ni une condition de création, ni un canal
+d'activation ou de récupération.
 
-Le médecin peut explicitement régénérer les accès. Cette action invalide les anciens identifiants et
-sessions, et laisse une trace d'audit sans jamais contenir le secret. L'ancien mécanisme d'invitation
-et de renvoi de courriel est donc remplacé, pas réparé.
+Seul le propriétaire peut consulter le mot de passe, masqué par défaut, depuis la liste globale des
+comptes de mission ou depuis la base concernée. Le secret reste disponible parce qu'il est chiffré
+côté serveur avec une clé dédiée ; il n'est jamais conservé en clair. Le propriétaire peut
+explicitement régénérer le mot de passe. Cette action conserve l'identifiant, invalide l'ancien mot
+de passe et les sessions antérieures, et laisse une trace d'audit sans jamais contenir le secret.
+L'ancien mécanisme d'invitation et de renvoi de courriel est donc remplacé, pas réparé.
 
 ### 2.3 Invariants de sécurité et de fiabilité
 
-- L'identifiant et le mot de passe sont produits côté serveur avec une source aléatoire sûre ; le mot
-  de passe en clair n'est ni stocké dans la base applicative, ni journalisé, ni ajouté à l'audit.
-- L'interface médecin les affiche une seule fois après la création ou une régénération explicite.
-  Aucun secret ne doit apparaître dans les notifications, erreurs, captures de diagnostic ou logs.
+- L'identifiant est choisi par le propriétaire, validé et réservé côté serveur sans distinction de
+  casse. Le mot de passe est produit côté serveur avec une source aléatoire sûre.
+- Le mot de passe n'est stocké qu'en enveloppe AES-256-GCM ; la clé dédiée reste dans le secret Edge
+  `MISSION_CREDENTIALS_ENCRYPTION_KEY`. Le clair n'apparaît ni en base, ni dans l'audit, ni dans les
+  journaux, notifications ou erreurs.
+- Seul le propriétaire de la base peut demander le déchiffrement. L'interface le masque par défaut
+  et ne le persiste pas dans le navigateur ; chaque révélation est auditée sans le secret.
 - L'identifiant visible peut être différent de l'identité technique d'Auth ; ce mappage reste côté
   serveur. Aucun secret d'administration Auth ne passe dans le navigateur.
-- Une création réessayée après réponse perdue ne doit pas créer un deuxième compte ni changer
-  silencieusement le mot de passe : la régénération est une opération distincte, confirmée et
-  auditée.
+- Une création réessayée avec le même identifiant d'opération restitue le même résultat sans créer
+  de deuxième compte ni changer silencieusement le mot de passe. Toute régénération possède son
+  propre identifiant d'opération, exige une confirmation et est auditée.
 - Les règles métier restent inchangées : accès limité à la mission, échéance et révocation contrôlés
   côté base/RLS à chaque accès ; la révocation d'un mot de passe ne remplace pas ces contrôles.
 
-### 2.4 Travail demandé
+### 2.4 Réalisation du 2026-08-11
 
-1. Remplacer dans l'Edge Function les paramètres et actions fondés sur l'e-mail (`create` /
-   `resend`) par la création et la régénération contrôlée de justificatifs.
-2. Créer le compte Auth avec une identité technique non exposée, un mot de passe généré et le rôle
-   applicatif déjà autoritaire dans `app_metadata`. Vérifier l'unicité et l'idempotence côté serveur.
-3. Adapter l'écran médecin pour remettre les deux éléments une seule fois, avec confirmation avant
-   régénération ; adapter la connexion pour accepter l'« Identifiant » sans exposer l'e-mail
-   technique.
-4. Retirer le parcours d'invitation, de renvoi et de réinitialisation par courriel pour ce rôle, et
-   mettre les tests, textes et procédure manuelle en cohérence.
-5. Couvrir notamment : création sans e-mail, connexion dans un second profil, absence de secret dans
-   les traces, rejet de l'ancien mot de passe après régénération, sessions antérieures invalidées,
-   et maintien des refus après expiration ou révocation.
+1. L'Edge Function expose désormais quatre opérations explicites : `create`, `reveal`,
+   `regenerate` et `revoke`. Elle réserve les opérations en base avant tout changement Auth afin de
+   rendre les reprises idempotentes.
+2. Auth reçoit une adresse technique interne dérivée de l'identifiant ; elle n'est jamais affichée.
+   Le navigateur ne reçoit aucun secret d'administration. La génération courante est portée dans
+   `app_metadata` et contrôlée par la base à chaque accès du rôle `saisisseur`.
+3. L'écran global **Comptes de mission** résume les comptes de toutes les bases appartenant au
+   médecin. L'écran par base reste disponible. Le mot de passe est masqué, révélable ou copiable par
+   le seul propriétaire, et n'est conservé que dans l'état mémoire de la page.
+4. La connexion accepte un « Identifiant » de mission ou l'e-mail d'un compte ordinaire. Les actions
+   d'invitation, de renvoi et de récupération par e-mail ont disparu du parcours mission.
+5. Les anciens comptes de mission dépourvus d'enveloppe de justificatifs sont inertes : leurs
+   identités Auth sont bannies, leurs sessions existantes sont supprimées par la migration et les
+   gardes RLS refusent leurs jetons.
 
 ### 2.5 Cause historique, vérifiée dans le code
 
@@ -124,12 +133,25 @@ La variable **n'est documentée nulle part** dans [edge-functions.md](edge-funct
 n'apparaît aujourd'hui que dans `docs/audits/audit-technique-complet-2026-08-09.md:75` (liste des
 secrets de production non vérifiables localement) et dans [tests-multicomptes.md §7.1](tests-multicomptes.md).
 
-### 2.6 État
+### 2.6 État et preuve locale
 
-Séance ouverte le 2026-08-09 dans le worktree `.claude/worktrees/vigilant-curran-fe8b58`
-(branche `claude/vigilant-curran-fe8b58`, basée sur `9cd3e04`). La séance a été **interrompue avant
-toute modification** : le worktree est propre, aucun commit, aucun fichier touché. **Tout reste à
-faire.**
+Le lot a été repris le 2026-08-11 sur `codex/mission-credentials`. Sur la pile Supabase locale, un
+propriétaire a créé un compte sans e-mail depuis l'écran global, puis le compte s'est connecté avec
+l'identifiant choisi. Après une régénération réalisée pendant que sa session était encore ouverte :
+
+- l'ancienne session n'a plus pu lire le profil ni les données ;
+- l'ancien mot de passe a été refusé et le nouveau accepté ;
+- l'identifiant est resté inchangé ;
+- les opérations création, révélation et régénération ont été auditées sans champ de secret ;
+- les journaux Edge, Vite et navigateur ne contenaient aucun des mots de passe fictifs utilisés.
+
+Le vérificateur automatisé du vrai contrat Edge a en outre passé **29/29 contrôles** : reprise
+exacte, doublon refusé, connexion réelle, refus inter-comptes et inter-bases, expiration,
+régénération, anciens jetons et mots de passe, révocation, chiffrement et absence de clair dans
+les tables et l'audit.
+
+La promotion distante reste soumise à la CI verte puis au workflow manuel **Coordinated release**,
+staging avant production pour le même commit.
 
 ---
 
@@ -512,13 +534,13 @@ des arbitrages d'usage.
 |---|---|---|---|
 | 1 | `.env.local` fait pointer `npm run dev` sur la **production** | (a) renommer en `.env.production.local` ; (b) bandeau visible quand l'origine Supabase n'est pas locale ; (c) statu quo + discipline | [tests-multicomptes.md §5.1](tests-multicomptes.md) |
 | 2 | Identifiants du seed non conformes RFC-4122 → **aucun flux Edge testable sur les données de démonstration** | (a) vrais UUID v4 dans le seed ; (b) assouplir `UUID_RE` ; (c) statu quo documenté — **option en vigueur** | [tests-multicomptes.md §5.5](tests-multicomptes.md) |
-| 3 | Mode d'activation des comptes de mission | **Tranché le 2026-08-11 : identifiant et mot de passe générés pour tous, sans e-mail requis** | §2.2 |
-| 4 | Remise ou régénération des accès | Affichage unique au médecin, régénération explicitement confirmée et auditée ; aucun secret persistant | §2.3 |
+| 3 | Mode d'activation des comptes de mission | **Tranché le 2026-08-11 : identifiant choisi par le propriétaire et mot de passe généré, sans e-mail** | §2.2 |
+| 4 | Conservation et régénération du mot de passe | Secret disponible au seul propriétaire, masqué et stocké chiffré ; régénération confirmée et auditée, ancien secret et anciennes sessions invalidés | §2.3 |
 | 5 | Cohortes : archivage ou suppression dure conditionnelle ? | Recommandation : archivage | §6.2 |
 
 ---
 
-## 8. État du dépôt au 2026-08-10 — où vit chaque chose
+## 8. État historique du dépôt au 2026-08-10 — où vivait chaque chose
 
 Instantané daté, à relire plutôt qu'à croire une fois ce document fusionné.
 
@@ -562,10 +584,12 @@ Repris de [tests-multicomptes.md §8](tests-multicomptes.md), avec l'ajout des c
 
 - **Deux sessions réellement simultanées** : la même origine partage le stockage du navigateur —
   fenêtre de navigation privée ou second profil.
-- **Prolongation et renvoi d'invitation** depuis l'écran du médecin.
-- **Après les chantiers A et C** : rejouer le parcours complet du compte de mission, de la remise
-  des identifiants générés à la connexion dans un second profil et à la saisie d'une identité par
-  l'étudiant.
+- **Promotion distante du chantier A** : CI verte, vérification synthétique sur staging, puis
+  production technique pour le même commit via **Coordinated release**. Confirmer que le secret Edge
+  dédié est présent sur chaque cible sans jamais en afficher la valeur.
+- **Après le chantier C** : rejouer la saisie d'une identité autorisée par le compte de mission ; ce
+  scénario est distinct de la création, de la révélation et de la régénération des justificatifs,
+  déjà validées localement pour le chantier A.
 
 ---
 

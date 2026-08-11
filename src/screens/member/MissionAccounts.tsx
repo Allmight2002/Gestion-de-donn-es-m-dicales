@@ -1,23 +1,24 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useParams } from 'react-router';
-import { UserPlus } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useParams } from 'react-router';
+import { Copy, Eye, EyeOff, RotateCcw, UserPlus } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useBaseRepository, useMissionRepository } from '../../data/RepositoryProvider';
-import { daysUntil, maxExpiryDate, missionStatus, type MissionAccount } from '../../data/mission';
+import {
+  daysUntil,
+  maxExpiryDate,
+  missionStatus,
+  type MissionAccount,
+  type MissionCredential,
+} from '../../data/mission';
+import type { BaseListing } from '../../data/bases';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
 
-// Ecran « Comptes de mission » (docs/spec-comptes-mission.md §8, cote medecin).
-// Toutes les regles sont appliquees par le serveur : cet ecran ne fait que proposer les
-// bons choix par defaut — echeance bornee, noms des patients FERMES tant qu'on ne les
-// ouvre pas explicitement avec un motif.
-
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
-/** Une date de formulaire (JJ/MM/AAAA) devient une echeance en fin de journee. */
 const endOfDay = (value: string): string => new Date(`${value}T23:59:59`).toISOString();
 const showDate = (iso: string): string => new Date(iso).toLocaleDateString();
 
@@ -29,14 +30,18 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export function MissionAccounts() {
-  const { id: baseId } = useParams();
+  const { id: routeBaseId } = useParams();
+  const globalView = !routeBaseId;
   const { t } = useI18n();
   const bases = useBaseRepository();
   const missions = useMissionRepository();
 
+  const [ownedBases, setOwnedBases] = useState<BaseListing[]>([]);
+  const [selectedBaseId, setSelectedBaseId] = useState(routeBaseId ?? '');
   const [canManage, setCanManage] = useState(false);
   const [items, setItems] = useState<MissionAccount[]>([]);
-  const [email, setEmail] = useState('');
+  const [accountLabel, setAccountLabel] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
   const [until, setUntil] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 6);
@@ -46,23 +51,39 @@ export function MissionAccounts() {
   const [reason, setReason] = useState('');
   const [extendFor, setExtendFor] = useState<string | null>(null);
   const [extendTo, setExtendTo] = useState('');
+  const [revealed, setRevealed] = useState<{ accessId: string; credential: MissionCredential } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const createOperation = useRef<string | null>(null);
+  const regenerationOperations = useRef(new Map<string, string>());
 
   const msg = (e: unknown) => errorMessage(e, t('common.error'));
   const maxDate = isoDate(maxExpiryDate());
   const minDate = isoDate(new Date(Date.now() + 86_400_000));
+  const targetBaseId = routeBaseId ?? selectedBaseId;
+
+  const resetCreateOperation = () => { createOperation.current = null; };
 
   const load = useCallback(async () => {
-    if (!baseId) return;
     setLoading(true);
     try {
-      const base = await bases.getBase(baseId);
-      const manage = base?.role === 'owner' || base?.permissions.canManageAccess === true;
-      setCanManage(manage);
-      if (manage) setItems(await missions.list(baseId));
+      if (routeBaseId) {
+        const base = await bases.getBase(routeBaseId);
+        const owner = base?.role === 'owner';
+        setCanManage(owner);
+        setOwnedBases(base && owner ? [base] : []);
+        if (owner) setItems(await missions.list(routeBaseId));
+        else setItems([]);
+      } else {
+        const allBases = await bases.listMyBases();
+        const owned = allBases.filter((base) => base.role === 'owner');
+        setOwnedBases(owned);
+        setCanManage(owned.length > 0);
+        setSelectedBaseId((current) => current || owned[0]?.base.id || '');
+        setItems(await missions.list());
+      }
       setError(null);
     } catch (e) {
       setError(msg(e));
@@ -70,18 +91,50 @@ export function MissionAccounts() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, bases, missions]);
+  }, [routeBaseId, bases, missions]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  async function run(fn: () => Promise<unknown>, successKey?: MessageKey) {
+  async function create(e: FormEvent) {
+    e.preventDefault();
+    if (!targetBaseId || !accountLabel.trim() || !loginIdentifier.trim()) return;
     setBusy(true);
     setNotice(null);
     try {
-      await fn();
-      if (successKey) setNotice(t(successKey));
+      createOperation.current ??= crypto.randomUUID();
+      const credential = await missions.create({
+        operationId: createOperation.current,
+        baseId: targetBaseId,
+        accountLabel: accountLabel.trim(),
+        loginIdentifier: loginIdentifier.trim(),
+        expiresAt: endOfDay(until),
+        canViewIdentity,
+        identityJustification: canViewIdentity ? reason.trim() : null,
+      });
+      await load();
+      const created = (await missions.list(targetBaseId)).find(
+        (item) => item.loginIdentifier === credential.loginIdentifier,
+      );
+      if (created) setRevealed({ accessId: created.accessId, credential });
+      setNotice(t('mission.created'));
+      setAccountLabel('');
+      setLoginIdentifier('');
+      setCanViewIdentity(false);
+      setReason('');
+      createOperation.current = null;
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function extend(mission: MissionAccount) {
+    setBusy(true);
+    try {
+      await missions.extend(mission.accessId, endOfDay(extendTo));
+      setExtendFor(null);
       await load();
       setError(null);
     } catch (e) {
@@ -91,24 +144,66 @@ export function MissionAccounts() {
     }
   }
 
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    if (!baseId || !email.trim()) return;
+  async function reveal(mission: MissionAccount) {
     setBusy(true);
     setNotice(null);
     try {
-      const { mailSent } = await missions.create({
-        baseId,
-        email: email.trim(),
-        expiresAt: endOfDay(until),
-        canViewIdentity,
-        identityJustification: canViewIdentity ? reason.trim() : null,
-      });
-      setNotice(t(mailSent ? 'mission.created' : 'mission.created_no_mail'));
-      setEmail('');
-      setCanViewIdentity(false);
-      setReason('');
+      const credential = await missions.reveal(mission.accessId);
+      setRevealed({ accessId: mission.accessId, credential });
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyPassword(mission: MissionAccount) {
+    setBusy(true);
+    try {
+      const credential = revealed?.accessId === mission.accessId
+        ? revealed.credential
+        : await missions.reveal(mission.accessId);
+      setRevealed({ accessId: mission.accessId, credential });
+      await navigator.clipboard.writeText(credential.password);
+      setNotice(t('mission.password_copied'));
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function regenerate(mission: MissionAccount) {
+    if (!window.confirm(t('mission.regenerate_confirm'))) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const operationId = regenerationOperations.current.get(mission.accessId) ?? crypto.randomUUID();
+      regenerationOperations.current.set(mission.accessId, operationId);
+      const credential = await missions.regenerate(mission.accessId, operationId);
+      regenerationOperations.current.delete(mission.accessId);
+      setRevealed({ accessId: mission.accessId, credential });
+      setNotice(t('mission.regenerated'));
       await load();
+      setError(null);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(mission: MissionAccount) {
+    if (!window.confirm(t('mission.revoke_confirm'))) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await missions.revoke(mission.accessId);
+      if (revealed?.accessId === mission.accessId) setRevealed(null);
+      await load();
+      setNotice(t('mission.revoked'));
       setError(null);
     } catch (e) {
       setError(msg(e));
@@ -120,8 +215,11 @@ export function MissionAccounts() {
   if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-4xl space-y-5 sm:space-y-6">
-      <PageHeader title={t('mission.title')} description={t('mission.subtitle')} />
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
+      <PageHeader
+        title={globalView ? t('mission.global_title') : t('mission.title')}
+        description={globalView ? t('mission.global_subtitle') : t('mission.subtitle')}
+      />
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {notice && <p role="status" className="text-sm text-teal-700">{notice}</p>}
@@ -133,15 +231,46 @@ export function MissionAccounts() {
           <SectionCard title={t('mission.create')} description={t('mission.max_hint')} icon={UserPlus}>
             <form onSubmit={create} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
+                {globalView && (
+                  <label className="form-label">
+                    {t('mission.base')}
+                    <select
+                      required
+                      className="input"
+                      value={selectedBaseId}
+                      onChange={(e) => { setSelectedBaseId(e.target.value); resetCreateOperation(); }}
+                    >
+                      {ownedBases.map((base) => (
+                        <option key={base.base.id} value={base.base.id}>{base.base.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="form-label">
-                  {t('mission.email')}
+                  {t('mission.account_label')}
                   <input
-                    type="email"
                     required
+                    maxLength={120}
                     className="input"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={accountLabel}
+                    onChange={(e) => { setAccountLabel(e.target.value); resetCreateOperation(); }}
                   />
+                </label>
+                <label className="form-label">
+                  {t('mission.identifier')}
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={48}
+                    pattern="[A-Za-z0-9](?:[A-Za-z0-9.-]{1,46}[A-Za-z0-9])?"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="input font-mono"
+                    value={loginIdentifier}
+                    onChange={(e) => { setLoginIdentifier(e.target.value.toLowerCase()); resetCreateOperation(); }}
+                  />
+                  <span className="helper-text">{t('mission.identifier_hint')}</span>
                 </label>
                 <label className="form-label">
                   {t('mission.until')}
@@ -152,16 +281,15 @@ export function MissionAccounts() {
                     min={minDate}
                     max={maxDate}
                     value={until}
-                    onChange={(e) => setUntil(e.target.value)}
+                    onChange={(e) => { setUntil(e.target.value); resetCreateOperation(); }}
                   />
                 </label>
               </div>
 
-              {/* Case DECOCHEE au depart : le cloisonnement est la regle, l'ouverture l'exception. */}
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
                 <Checkbox
                   checked={canViewIdentity}
-                  onChange={(e) => setCanViewIdentity(e.target.checked)}
+                  onChange={(e) => { setCanViewIdentity(e.target.checked); resetCreateOperation(); }}
                   label={t('mission.identity_label')}
                   description={t('mission.identity_hint')}
                   containerClassName="w-full items-start"
@@ -173,14 +301,14 @@ export function MissionAccounts() {
                       required
                       className="input"
                       value={reason}
-                      onChange={(e) => setReason(e.target.value)}
+                      onChange={(e) => { setReason(e.target.value); resetCreateOperation(); }}
                     />
                   </label>
                 )}
               </div>
 
               <button type="submit" disabled={busy} className="btn-primary">
-                {t('mission.send')}
+                {t('mission.create_button')}
               </button>
             </form>
           </SectionCard>
@@ -190,41 +318,89 @@ export function MissionAccounts() {
             {items.length === 0 ? (
               <p className="text-sm text-slate-500">{t('mission.none')}</p>
             ) : (
-              <ul className="space-y-2 text-sm">
-                {items.map((m) => {
-                  const status = missionStatus(m);
-                  const left = daysUntil(m.expiresAt);
+              <ul className="space-y-3 text-sm">
+                {items.map((mission) => {
+                  const status = missionStatus(mission);
+                  const left = daysUntil(mission.expiresAt);
                   const live = status === 'active' || status === 'pending';
+                  const shown = revealed?.accessId === mission.accessId ? revealed.credential : null;
                   return (
-                    <li key={m.accessId} className="card space-y-2 px-3 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span>
-                          <span className="font-medium">{m.fullName || m.email}</span>
-                          {m.fullName && <span className="text-slate-500"> · {m.email}</span>}
-                        </span>
+                    <li key={mission.accessId} className="card space-y-3 px-4 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-900">{mission.accountLabel}</p>
+                          {globalView && (
+                            <Link to={`/bases/${mission.baseId}`} className="text-xs font-medium text-teal-700 hover:underline">
+                              {mission.baseName}
+                            </Link>
+                          )}
+                        </div>
                         <span className={`badge ${STATUS_TONE[status]}`}>
                           {t(`mission.status.${status}` as MessageKey)}
                         </span>
                       </div>
+
+                      <div className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+                        <div>
+                          <span className="text-xs font-medium text-slate-500">{t('mission.identifier')}</span>
+                          <p className="mt-1 break-all font-mono text-sm text-slate-900">
+                            {mission.loginIdentifier ?? t('mission.legacy_disabled')}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-slate-500">{t('mission.password')}</span>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <code className="min-w-36 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm">
+                              {shown?.password ?? '••••••••••••'}
+                            </code>
+                            {status !== 'revoked' && mission.credentialStatus === 'active' && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => shown ? setRevealed(null) : void reveal(mission)}
+                                  className="icon-button"
+                                  title={shown ? t('mission.hide_password') : t('mission.show_password')}
+                                  aria-label={shown ? t('mission.hide_password') : t('mission.show_password')}
+                                >
+                                  {shown ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void copyPassword(mission)}
+                                  className="icon-button"
+                                  title={t('mission.copy_password')}
+                                  aria-label={t('mission.copy_password')}
+                                >
+                                  <Copy size={16} aria-hidden />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                         <span>
-                          {t('mission.until')} {showDate(m.expiresAt)}
+                          {t('mission.until')} {showDate(mission.expiresAt)}
                           {live && left >= 0 && ` — ${t('mission.days_left').replace('{n}', String(left))}`}
                         </span>
-                        {m.canViewIdentity && (
+                        {mission.canViewIdentity && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">
                             {t('mission.identity_on')}
                           </span>
                         )}
                       </div>
-                      {live && (
-                        <div className="flex flex-wrap items-center gap-3 text-xs">
+
+                      {status !== 'revoked' && mission.credentialStatus === 'active' && (
+                        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-2 text-xs">
                           <button
                             type="button"
                             disabled={busy}
                             onClick={() => {
-                              setExtendFor(extendFor === m.accessId ? null : m.accessId);
-                              setExtendTo(isoDate(new Date(m.expiresAt)));
+                              setExtendFor(extendFor === mission.accessId ? null : mission.accessId);
+                              setExtendTo(isoDate(new Date(mission.expiresAt)));
                             }}
                             className="font-medium text-teal-700 hover:underline"
                           >
@@ -233,34 +409,26 @@ export function MissionAccounts() {
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => void run(() => missions.resend(baseId!, m.email), 'mission.resent')}
-                            className="font-medium text-slate-600 hover:underline"
+                            onClick={() => void regenerate(mission)}
+                            className="inline-flex items-center gap-1 font-medium text-slate-600 hover:underline"
                           >
-                            {t('mission.resend')}
+                            <RotateCcw size={13} aria-hidden /> {t('mission.regenerate')}
                           </button>
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => {
-                              if (window.confirm(t('mission.revoke_confirm'))) {
-                                void run(() => missions.revoke(m.accessId));
-                              }
-                            }}
+                            onClick={() => void revoke(mission)}
                             className="font-medium text-red-600 hover:underline"
                           >
                             {t('mission.revoke')}
                           </button>
                         </div>
                       )}
-                      {extendFor === m.accessId && (
+
+                      {extendFor === mission.accessId && (
                         <form
                           className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2"
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            void run(() => missions.extend(m.accessId, endOfDay(extendTo))).then(() =>
-                              setExtendFor(null)
-                            );
-                          }}
+                          onSubmit={(e) => { e.preventDefault(); void extend(mission); }}
                         >
                           <label className="form-label text-xs">
                             {t('mission.extend_to')}

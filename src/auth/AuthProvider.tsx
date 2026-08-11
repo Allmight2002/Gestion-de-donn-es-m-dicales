@@ -98,7 +98,7 @@ export interface AuthContextValue {
   profile: Profile | null;
   error: string | null;
   busy: boolean;
-  signIn(email: string, password: string): Promise<boolean>;
+  signIn(identifier: string, password: string): Promise<boolean>;
   signOut(): Promise<void>;
   sendPasswordReset(email: string): Promise<boolean>;
   updatePassword(newPassword: string): Promise<boolean>;
@@ -243,11 +243,11 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
   }, [applyUser]);
 
   const signIn = useCallback(
-    async (email: string, password: string) => {
+    async (identifier: string, password: string) => {
       setBusy(true);
       setError(null);
       try {
-        await backend.signIn(email, password);
+        await backend.signIn(identifier, password);
         return true;
       } catch (e) {
         setError(errorMessage(e, 'Echec de la connexion'));

@@ -3,6 +3,7 @@ export interface FunctionPrivilegeRow {
   config: string[] | null;
   anon_can_execute: boolean;
   authenticated_can_execute: boolean;
+  service_role_can_execute: boolean;
 }
 
 export interface SchemaPrivileges {
@@ -15,9 +16,11 @@ export function loadFunctionPrivilegeInventory(): {
     version: number;
     schema: string;
     role: string;
+    serviceRole: { rationale: string; signatures: string[] };
     categories: Array<{ id: string; rationale: string; signatures: string[] }>;
   };
   signatures: string[];
+  serviceRoleSignatures: string[];
 };
 export function inspectFunctionPrivileges(
   rows: FunctionPrivilegeRow[],
