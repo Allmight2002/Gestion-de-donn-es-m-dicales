@@ -1,6 +1,6 @@
 # Spécification — Comptes de mission (rôle `saisisseur`)
 
-- Statut : **implémentée dans le code et validée sur la pile locale le 2026-08-11**
+- Statut : **déployée sur staging et en production technique le 2026-08-11**
 - Migrations : `20260729104500_mission_accounts.sql`,
   `20260729153000_mission_profile_reconcile.sql` et
   `20260811120000_managed_mission_credentials.sql`

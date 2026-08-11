@@ -18,7 +18,7 @@
 
 | # | Chantier | Nature | Décision | État | Où vit le travail |
 |---|---|---|---|---|---|
-| **A** | Justificatifs gérés par le propriétaire | Auth + base + Edge Function + interface | **Tranchée : identifiant choisi, mot de passe généré et chiffré, sans e-mail** (§2.2) | **Implémenté et validé localement le 2026-08-11 ; promotion distante à faire** | branche `codex/mission-credentials` |
+| **A** | Justificatifs gérés par le propriétaire | Auth + base + Edge Function + interface | **Tranchée : identifiant choisi, mot de passe généré et chiffré, sans e-mail** (§2.2) | **Clos le 2026-08-11 : local, staging et production technique validés** | SHA `bb99ac72ba46541904d255f7bf129ecd2ad3ca4e` |
 | **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
 | **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
 | **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | Non tranchée | Signalé, non traité | — |
@@ -133,7 +133,7 @@ La variable **n'est documentée nulle part** dans [edge-functions.md](edge-funct
 n'apparaît aujourd'hui que dans `docs/audits/audit-technique-complet-2026-08-09.md:75` (liste des
 secrets de production non vérifiables localement) et dans [tests-multicomptes.md §7.1](tests-multicomptes.md).
 
-### 2.6 État et preuve locale
+### 2.6 État et preuves
 
 Le lot a été repris le 2026-08-11 sur `codex/mission-credentials`. Sur la pile Supabase locale, un
 propriétaire a créé un compte sans e-mail depuis l'écran global, puis le compte s'est connecté avec
@@ -150,8 +150,19 @@ exacte, doublon refusé, connexion réelle, refus inter-comptes et inter-bases, 
 régénération, anciens jetons et mots de passe, révocation, chiffrement et absence de clair dans
 les tables et l'audit.
 
-La promotion distante reste soumise à la CI verte puis au workflow manuel **Coordinated release**,
-staging avant production pour le même commit.
+La CI est ensuite restée verte sur les passages branche → `develop` → `main`. Le workflow manuel
+**Coordinated release** a validé le même SHA
+`bb99ac72ba46541904d255f7bf129ecd2ad3ca4e` sur staging (`31475841694`), puis en production
+technique (`31476792936`) avec l'identifiant de ce staging. Le staging a notamment confirmé :
+
+- 113 migrations et l'empreinte Storage attendue ;
+- 154 fonctions `SECURITY DEFINER` conformes ;
+- les sept Edge Functions déployées, dont `create-mission-account` ;
+- le parcours distant des justificatifs de mission, **29/29 vérifications** ;
+- le frontend, le scanner strict et les tests navigateur E2E.
+
+Cette promotion est une preuve technique avec données fictives. Elle n'autorise ni usage clinique
+ni traitement de données réelles.
 
 ---
 
