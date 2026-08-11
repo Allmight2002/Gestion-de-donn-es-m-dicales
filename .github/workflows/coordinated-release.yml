@@ -704,7 +704,17 @@ jobs:
           npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=production --token "$VERCEL_TOKEN"
           npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token "$VERCEL_TOKEN"
           URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")
-          curl --fail --silent --show-error --head "$URL"
+          node -e "const u=new URL(process.argv[1]); if(u.protocol!=='https:' || !u.hostname.endsWith('.vercel.app')) process.exit(1)" "$URL"
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --location --output /dev/null "$URL"; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo 'Le deploiement Vercel ne repond pas apres 60 secondes.' >&2
+              exit 1
+            fi
+            sleep 5
+          done
       - name: Activate strict database last and verify cloud
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
