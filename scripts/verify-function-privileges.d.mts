@@ -4,7 +4,6 @@ export interface FunctionPrivilegeRow {
   anon_can_execute: boolean;
   authenticated_can_execute: boolean;
   service_role_can_execute: boolean;
-  service_role_explicit_execute: boolean;
 }
 
 export interface SchemaPrivileges {
