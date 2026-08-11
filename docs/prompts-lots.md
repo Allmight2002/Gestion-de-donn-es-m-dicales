@@ -2,13 +2,20 @@
 
 - Établi le 2026-07-28, en complément de [`lots-paralleles.md`](lots-paralleles.md)
 - **Révisé le 2026-08-10** : état des lots remis à jour, et cinq prompts ajoutés (L15 à L19)
+- **Révisé le 2026-08-11** : sept prompts ajoutés (L20 à L26), issus de
+  [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
 **Avant de lancer deux lots en même temps**, vérifier le tableau de
 [`lots-paralleles.md`](lots-paralleles.md) : deux lots qui touchent le même
 fichier produiront un conflit de fusion, même si leurs sujets n'ont aucun
-rapport. **L14 et L16 doivent tourner seuls.**
+rapport. **L14, L16, L20 et L26 doivent tourner seuls.**
+
+> **Collisions à connaître avant d'ouvrir un thread L20 à L26** : **L21** touche les deux fichiers
+> de **L4** et l'un de ceux de **L13** ; **L23** touche les deux fichiers de **L18** et **L19**.
+> Solder ces quatre lots d'abord, ou commencer par **L20, L22, L24 et L25**, qui ne partagent
+> aucun fichier avec le reste du plan.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
@@ -32,9 +39,11 @@ travail déjà fait :
 | L9 | **Livré** le 2026-08-01 (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
 | L10 | **Livré** le 2026-07-29. Prompt conservé pour mémoire. |
 
-**Les lots restant à traiter sont** : L4, L11, L12, L13, L14, et les cinq nouveaux
+**Les lots restant à traiter sont** : L4, L11, L12, L13, L14, les cinq
 **L15, L16, L17, L18 et L19** (campagne de vérification des flux multi-comptes, cf.
-[`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)).
+[`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)), et les sept nouveaux
+**L20 à L26** (listes de diagnostics, cf.
+[`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)).
 
 > **L16 est prioritaire parmi les nouveaux** : il porte une décision produit déjà tranchée par le
 > porteur, que rien ne traduit encore en base. Tant que la migration n'existe pas, la
@@ -1354,4 +1363,534 @@ locale qu'une cohorte retirée laisse son journal d'exports INTACT. Tu ne t'arr�
 pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L20 — Listes de diagnostics : surface base (à lancer SEUL)
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md — en entier, c'est la spécification du lot.
+
+BESOIN. Aujourd'hui, un patient portant plusieurs diagnostics oblige à créer
+diagnostic_1, diagnostic_2, diagnostic_3 : il faut deviner un maximum à l'avance,
+les patients déjà saisis portent des colonnes vides indiscernables d'une absence
+réelle, et compter un diagnostic oblige à balayer trois colonnes. La
+spécification introduit une variable à VALEURS MULTIPLES. Ce lot en pose la seule
+surface base.
+
+CE LOT EST LE PRÉREQUIS DE L21 À L26. Tant que la base refuse un tableau, toute
+interface qui en écrit un est inutilisable.
+
+PÉRIMÈTRE — une seule migration additive, plus les tests. Aucun écran.
+
+1. template_field (supabase/migrations/20260616090200_tables.sql:49) reçoit
+   is_multiple boolean not null default false, plus une contrainte le réservant au
+   type 'terminology'. La valeur par défaut reproduit exactement le comportement
+   actuel : aucune donnée existante n'est touchée.
+
+2. assert_data_valid — sa version COURANTE est dans
+   20260728043556_preserve_historical_terminology.sql, pas dans la migration
+   d'origine. Ajoute is_multiple à son select, et une branche multivaluée. Ordre
+   d'évaluation à préserver : la branche __missing__ passe AVANT la branche de
+   type, donc un code de donnée manquante continue de fonctionner sans traitement
+   particulier. Règles : tableau, longueur 1 à 50, chaque élément objet aux seules
+   clés code et label non vides, chaque couple vérifié contre terminology_concept
+   avec is_selectable TOUTES PUBLICATIONS CONSERVÉES CONFONDUES (c'est la règle
+   posée par 20260728043556, ne la restreins pas à la publication active), aucun
+   code répété.
+
+3. base_completeness_stats (20260616097000_completeness_stats.sql:31) teste
+   nullif(data ->> field_key, '') is not null. Sur un tableau, ->> renvoie sa
+   représentation textuelle : '[]' serait compté comme RENSEIGNÉ. Exige
+   jsonb_array_length > 0 pour un champ multivalué.
+
+4. jsonb_matches — l'évaluateur serveur des filtres de cohorte, appelé par
+   cohort_preview (20260616092100_cohort_eligibility.sql:12) et
+   create_cohort_snapshot. Ajoute has_any et has_none : au moins une / aucune
+   valeur dont le code figure dans la liste fournie. L'interface arrive en L23 ;
+   ce lot ne touche aucun écran.
+
+POURQUOI TOUT DANS UNE SEULE MIGRATION : ces quatre points portent sur les mêmes
+fonctions. Les séparer imposerait trois migrations successives les réécrivant, et
+trois revues de sécurité au lieu d'une.
+
+TESTS EXIGÉS, dans test/ : tableau vide refusé, code en double refusé, clé
+surnuméraire refusée, couple code/libellé incohérent refusé, concept d'une
+publication conservée mais non active ACCEPTÉ, code de donnée manquante toujours
+accepté à la place du tableau, refusé si allow_missing_codes est faux,
+is_multiple refusé sur un autre type que terminology, longueur bornée à 50,
+complétude correcte sur liste vide et non vide, has_any et has_none sur des
+listes de taille 0, 1 et N.
+
+Aucune table nouvelle, donc aucune policy RLS à écrire — c'est précisément ce que
+le choix de stockage cherchait à obtenir. Vérifie-le plutôt que de le supposer.
+
+SURFACE BASE : applique la Skill meddata-db-safety.
+
+À LANCER SEUL.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as prouvé sur la pile
+locale qu'une base existante continue de s'écrire et de s'exporter exactement
+comme avant. Tu ne t'arrêtes pas avant. Si une commande t'est refusée,
+donne-la-moi telle quelle.
+
+Mets à jour le statut de docs/spec-variables-multivaluees.md et consigne le
+résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L21 — Listes de diagnostics : saisie et constructeur
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §6.
+
+PRÉREQUIS : le lot L20 doit être fusionné. Vérifie que template_field porte
+is_multiple avant de commencer ; sinon la base refusera tout ce que cette
+interface écrit.
+
+PÉRIMÈTRE — front seul, aucune migration.
+
+1. CONSTRUCTEUR, src/screens/staff/FieldForm.tsx : une case « Accepte plusieurs
+   valeurs », rendue UNIQUEMENT pour type === 'terminology'. Elle est
+   structurelle : soumets-la à lockStructural, comme le type et la portée. Elle
+   n'est donc modifiable que tant que la version du gabarit est en draft.
+
+2. SAISIE, src/screens/member/TerminologyInput.tsx : un mode multivalué. Le
+   composant actuel remplace la zone de recherche par une étiquette dès qu'une
+   valeur est choisie (branche if (selected)). En mode multivalué, les valeurs
+   choisies s'affichent en étiquettes NUMÉROTÉES — le numéro est le rang, et c'est
+   lui qui portera la convention « le premier est le diagnostic principal » — avec
+   un bouton de retrait, et LA ZONE DE RECHERCHE RESTE VISIBLE en dessous. Un
+   concept déjà choisi est écarté des résultats.
+
+3. POINT À NE PAS RATER : retirer la dernière valeur doit SUPPRIMER LA CLÉ de
+   data, pas écrire un tableau vide. La base refuse le tableau vide,
+   délibérément — il n'existe qu'une seule représentation de « pas de valeur ». Un
+   client qui écrit un tableau vide produit un refus serveur visible plutôt qu'une
+   donnée douteuse ; c'est voulu, mais c'est au client de ne pas le déclencher.
+
+4. src/domain/validation.ts:82 validateField — sa branche terminology (ligne 105)
+   ne vérifie aujourd'hui que la FORME, le serveur restant seul juge de
+   l'existence du concept. Garde ce partage : en multivalué, vérifie que c'est un
+   tableau de couples bien formés, rien de plus.
+
+5. ValueInput.tsx : le sélecteur de code manquant est conservé tel quel. Un code
+   manquant REMPLACE le tableau, il ne s'y ajoute pas.
+
+Le cache local de terminologie et la saisie hors connexion ne changent pas : ils
+portent sur la recherche, pas sur la cardinalité du champ.
+
+NE PAS LANCER EN MÊME TEMPS QUE L4 (mêmes deux fichiers) NI QUE L13
+(TerminologyInput.tsx). L4 étend la soupape au type terminology, L21 en change la
+cardinalité : mener les deux ensemble mélangerait deux raisonnements sur le même
+composant.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as saisi sur
+l'application déployée une rencontre portant quatre diagnostics, puis retiré le
+deuxième, puis rouvert la fiche pour vérifier que les trois restants sont intacts
+et correctement ordonnés. Tu ne t'arrêtes pas avant. Si une commande t'est
+refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L22 — Listes de diagnostics : export
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §7.
+
+COMMENCE PAR LE TEST DE NON-RÉGRESSION, avant toute autre chose.
+supabase/functions/generate-export/exportContract.ts:82 formatValue teste
+isTerminologyValue AVANT Array.isArray (ligne 92). Une liste de diagnostics
+tomberait donc dans v.join('; ') et rendrait « [object Object] » sur TOUTE la
+colonne. Ce défaut a déjà frappé trois fois dans ce dépôt : sur les codes
+manquants, sur la liste des patients (lot L1), et sur les messages des Edge
+Functions (lot L17). Écris le test qui échoue d'abord, dans
+exportContract_test.ts. Ensuite seulement, implémente.
+
+PÉRIMÈTRE — surface Deno isolée, aucun fichier commun avec les lots front.
+
+1. FEUILLE PRINCIPALE, pour un champ multivalué : la colonne principale porte les
+   libellés joints par « ; », la colonne terminology_code__… (codeColumnId, ligne
+   75) porte les codes joints par « ; », et une colonne nb__… porte le nombre de
+   valeurs. Un code de donnée manquante remplit la colonne principale avec son
+   code et laisse nb__… VIDE — jamais 0, qui signifierait « aucun diagnostic ».
+
+2. COLONNES INDICATRICES has__…__<code>, valant 0 ou 1, une par code
+   EFFECTIVEMENT PRÉSENT dans l'export. Suffixe = code normalisé en minuscules,
+   tout caractère hors [a-z0-9] remplacé par un souligné. Collision après
+   normalisation résolue par un indice numérique, correspondance portée au
+   dictionnaire. AU-DELÀ DE 100 CODES DISTINCTS, ne les produis pas et porte la
+   mention au dictionnaire : une base réelle peut porter des centaines de
+   diagnostics distincts, et une feuille de mille colonnes n'aide personne.
+   assertNoIdentity s'applique à ces colonnes comme aux autres.
+
+3. FEUILLE DÉDIÉE, une par champ multivalué, nommée d'après son libellé, une
+   ligne par valeur : patient_code, encounter_id (vide pour un champ de portée
+   patient), rang à partir de 1, code, label. C'est la forme sans perte : elle
+   survit au seuil de 100 et sert les analyses par diagnostic. handler.ts:549
+   montre comment les feuilles sont assemblées aujourd'hui.
+
+4. DICTIONNAIRE, buildDictionary ligne 206 : une colonne is_multiple, et une ligne
+   par colonne dérivée (nb__…, has__…) documentant sa nature calculée et son code
+   d'origine.
+
+5. EXPORT MIXTE : mergeExportFields unionne déjà les versions de gabarit sur
+   scope + field_key. Vérifie par un test qu'une rencontre saisie AVANT le passage
+   en multivalué reste correctement rendue.
+
+Parallélisable avec L21, L23, L24 et L25 : aucun fichier commun.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as OUVERT le fichier
+xlsx produit par l'application déployée pour vérifier de tes yeux qu'aucune
+cellule ne contient « [object Object] », que la feuille dédiée porte les bons
+rangs, et que la somme d'une colonne indicatrice donne le nombre attendu de
+patients. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi
+telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L23 — Listes de diagnostics : cohortes
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §8.
+
+PRÉREQUIS : le lot L20 doit être fusionné — il apporte les opérateurs has_any et
+has_none dans jsonb_matches, côté serveur. Ce lot est FRONT SEUL, sans migration.
+
+PÉRIMÈTRE.
+
+1. src/screens/member/CohortBuilder.tsx:31, operatorsFor : pour un champ
+   multivalué, renvoie has_any et has_none, ET EUX SEULS. Retirer eq et neq de
+   l'interface pour ce cas n'est pas cosmétique : une égalité sur une liste
+   produirait un résultat faux SANS LE SIGNALER, et une cohorte fausse ne se voit
+   pas — elle se publie.
+
+2. Les libellés de ces deux opérateurs doivent se lire en clinicien, pas en
+   informaticien : « porte au moins un de » et « ne porte aucun de ». Ajoute tes
+   clés à la FIN de la section française puis anglaise de src/i18n/messages.ts,
+   pour limiter les conflits.
+
+3. La valeur saisie pour ces opérateurs est une LISTE DE CODES, choisis dans le
+   référentiel — pas du texte libre. Réutilise le composant de recherche existant
+   plutôt que d'en écrire un second.
+
+4. VÉRIFIE l'aperçu ET le figeage : cohort_preview et create_cohort_snapshot
+   appellent tous deux jsonb_matches. Un filtre qui marche à l'aperçu mais pas au
+   figeage produirait une cohorte silencieusement différente de ce qui a été
+   montré.
+
+NE PAS LANCER EN MÊME TEMPS QUE L18 NI L19 : mêmes deux fichiers.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as construit sur
+l'application déployée une cohorte « porte au moins un de [deux diagnostics] »,
+vérifié son compte à l'aperçu, puis figé et vérifié que la population figée est
+IDENTIQUE à celle annoncée. Tu ne t'arrêtes pas avant. Si une commande t'est
+refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L24 — Listes de diagnostics : refus au mappage d'import
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §9.
+
+CE LOT N'AJOUTE PAS L'IMPORT DES DIAGNOSTICS. Il pose un refus honnête.
+
+CONSTAT. L'import ne prend en charge AUCUN champ de type terminology, même à
+valeur unique : src/domain/import.ts transmet les cellules sans résoudre de
+concept, et la validation serveur rejette une chaîne là où un couple code/libellé
+est attendu. Ce n'est pas une régression du lot L21 — c'est un manque antérieur,
+que L21 rend simplement visible : dès qu'une variable multivaluée existe, elle
+apparaît dans la liste des cibles de mappage.
+
+PÉRIMÈTRE — petit lot, front seul, aucune migration.
+
+1. autoMapColumns (src/domain/import.ts:123) ne doit pas proposer
+   automatiquement une cible de type terminology, multivaluée ou non.
+
+2. Le choix manuel de cette cible dans src/screens/member/ImportData.tsx est
+   refusé, avec un message qui dit CE QUI SE PASSE et QUOI FAIRE : la variable se
+   saisit à la main pour l'instant, l'import ne sait pas encore résoudre un
+   diagnostic dans le référentiel. Pas de message technique, pas d'erreur brute.
+
+3. Le rapport d'import mentionne explicitement les colonnes ignorées pour ce
+   motif, plutôt que de les fondre dans les colonnes « ignorées » ordinaires. Un
+   utilisateur qui importe un fichier contenant une colonne Diagnostic doit
+   comprendre pourquoi elle n'est pas arrivée.
+
+À NOTER POUR PLUS TARD, ne pas l'implémenter ici : le format d'entrée naturel
+sera celui de la sortie — libellés séparés par « ; » dans une colonne unique — et
+la route « plusieurs colonnes vers un même champ » est aujourd'hui bloquée par
+duplicateTargets (import.ts:141), qui traite toute cible assignée deux fois comme
+un conflit.
+
+Parallélisable avec L21, L22, L23 et L25.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as tenté sur
+l'application déployée d'importer un fichier contenant une colonne Diagnostic,
+pour vérifier que le refus arrive AU MAPPAGE avec un message compréhensible, et
+non en fin d'import sous forme d'erreur serveur. Tu ne t'arrêtes pas avant. Si
+une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L25 — Conflit hors-ligne : issue « garder les deux »
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §10 et docs/securite-mode-hors-ligne.md.
+
+CE LOT EST SÉPARABLE. Rien n'en dépend, et son absence ne produit AUCUNE perte
+silencieuse : le conflit est déjà correctement détecté par le jeton optimiste.
+Il améliore une résolution, il ne répare pas un trou.
+
+SITUATION. Deux appareils hors ligne ajoutent chacun un diagnostic à la même
+rencontre. Le premier synchronise, le second voit son jeton baseUpdatedAt périmé
+et le conflit remonte — jusque-là tout fonctionne. Mais la résolution est binaire
+(src/data/offline.ts:545, resolveKeepMine et resolveKeepServer) : garder la
+sienne écrase le diagnostic ajouté par l'autre.
+
+PÉRIMÈTRE — front seul, aucune migration.
+
+1. Une troisième issue « garder les deux » : union des deux listes par CODE,
+   ordre local d'abord puis nouveautés serveur, sans doublon. Elle n'est possible
+   que parce que chaque valeur porte un identifiant stable — son code.
+
+2. Écris-la comme une FONCTION DE DOMAINE PURE, testable sans base et sans
+   navigateur, appelée par la couche offline. Ne la disperse pas dans le
+   composant.
+
+3. Elle ne s'affiche que lorsqu'elle a un sens : une rencontre dont le conflit ne
+   porte que sur des champs à valeur unique n'a rien à fusionner, et proposer une
+   fusion impossible serait pire que ne rien proposer. Détermine le cas et
+   justifie ton choix.
+
+4. L'OutboxEntry (offline.ts:274) transporte l'objet data COMPLET, sous garde de
+   baseUpdatedAt et d'un operationId d'idempotence. Ne change pas cette forme :
+   c'est elle qui fait que les listes de diagnostics n'ont demandé aucun travail
+   hors-ligne. Vérifie qu'un rejeu de l'entrée fusionnée reste idempotent.
+
+5. L'écran de résolution est dans SyncCenter.tsx.
+
+Parallélisable avec L21, L22, L23 et L24.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as REJOUÉ le scénario
+à deux appareils — deux navigateurs, chacun hors ligne, chacun ajoutant un
+diagnostic différent — pour vérifier que « garder les deux » conserve
+effectivement les deux. Tu ne t'arrêtes pas avant. Si une commande t'est refusée,
+donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L26 — Regroupement des variables diagnostic_1/2/3 (à lancer SEUL, en dernier)
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §12 EN ENTIER.
+
+PRÉREQUIS ABSOLU : L20 à L22 fusionnés et en service. Ce lot est le SEUL de la
+famille qui touche des données DÉJÀ ENREGISTRÉES. Ne le commence pas avant que
+tout le reste fonctionne, ni sans une sauvegarde vérifiée.
+
+SITUATION. Le porteur a saisi ses diagnostics multiples sous forme de variables
+diagnostic_1, diagnostic_2, diagnostic_3. Une fois la variable multivaluée
+disponible, ces variables doivent pouvoir être regroupées — sinon les anciennes
+rencontres et les nouvelles se lisent dans deux formes différentes et l'export
+est coupé en deux.
+
+PÉRIMÈTRE — DEUX OPÉRATIONS QUI NE DOIVENT JAMAIS ÊTRE FUSIONNÉES.
+
+A. REGROUPER LA VARIABLE. Crée une version de gabarit en draft où diagnostic_1,
+   diagnostic_2 et diagnostic_3 sont remplacées par un diagnostic multivalué.
+   N'affecte QUE les saisies futures. Une version publiée est immuable — c'est
+   déjà garanti côté serveur, appuie-toi dessus.
+
+B. CONVERTIR LES ENREGISTREMENTS EXISTANTS. Déplace les valeurs des trois clés
+   vers le tableau, dans l'ordre des suffixes, et rattache l'enregistrement à la
+   nouvelle version. FACULTATIVE, explicitement cochée par l'utilisateur, JAMAIS
+   déclenchée par A.
+
+CONTRAINTES SUR B, toutes obligatoires.
+
+1. Une fonction d'APERÇU EN LECTURE SEULE précède l'exécution et rend : le nombre
+   d'enregistrements concernés, les valeurs non résolubles en concept du
+   référentiel, les doublons entre diagnostic_1 et diagnostic_2, et les
+   enregistrements déjà convertis. Rien ne s'écrit avant que le porteur ait vu ça.
+
+2. L'exécution est TRANSACTIONNELLE PAR ENREGISTREMENT et IDEMPOTENTE : une
+   reprise après interruption ne doit ni dupliquer une valeur ni retraiter un
+   enregistrement déjà converti.
+
+3. Chaque conversion est tracée dans field_change_log avec l'ancienne et la
+   nouvelle valeur. Sa contrainte source (20260616090200_tables.sql:198) doit
+   accueillir une valeur supplémentaire dédiée : c'est une modification ADDITIVE
+   d'une contrainte check sur une table PORTANT DES DONNÉES. Traite-la comme
+   telle.
+
+4. Une valeur non résoluble BLOQUE la conversion de l'enregistrement concerné et
+   est rapportée. Jamais écartée en silence. Perdre un diagnostic sans le dire
+   serait la pire issue possible de ce lot.
+
+5. Aucune conversion automatique, aucune conversion à l'ouverture d'un écran,
+   aucune conversion « pendant qu'on y est ». L'utilisateur déclenche, voit, puis
+   confirme.
+
+SURFACE BASE : applique la Skill meddata-db-safety. À LANCER SEUL.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as converti une base
+de démonstration sur la pile locale puis COMPTÉ les diagnostics avant et après
+pour prouver qu'aucun n'a été perdu, y compris sur un enregistrement portant un
+doublon et sur un enregistrement portant une valeur non résoluble. Tu ne
+t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
+
+Mets à jour docs/spec-variables-multivaluees.md et consigne le résultat à la fin
+de docs/suivi-execution-feuille-route.md.
 ```
