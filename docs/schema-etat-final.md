@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260811120000_managed_mission_credentials.sql`
-- Tables : 40 · Policies RLS : 61 · Triggers : 58 · Fonctions : 232
+- Dernière migration incluse : `20260811130000_mission_identity_write_correction.sql`
+- Tables : 40 · Policies RLS : 61 · Triggers : 58 · Fonctions : 233
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -154,9 +154,9 @@ Triggers :
 | upload_ticket_id | uuid | oui |  |
 
 Policies :
-- `ca_insert` (INSERT) — WITH CHECK can_write_identity(base_of_patient(patient_id))
+- `ca_insert` (INSERT) — WITH CHECK (is_medecin() AND can_write_identity(base_of_patient(patient_id)))
 - `ca_select` (SELECT) — USING (can_view_identity(base_of_patient(patient_id)) AND (deleted_at IS NULL))
-- `ca_update` (UPDATE) — USING can_write_identity(base_of_patient(patient_id)) · WITH CHECK can_write_identity(base_of_patient(patient_id))
+- `ca_update` (UPDATE) — USING (is_medecin() AND can_write_identity(base_of_patient(patient_id))) · WITH CHECK (is_medecin() AND can_write_identity(base_of_patient(patient_id)))
 
 Triggers :
 - `trg_ca_inspection_guard` — BEFORE INSERT/UPDATE → `guard_inspection_status()`
@@ -1108,6 +1108,7 @@ Triggers :
 | update_encounter | p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
+| update_patient_identity | p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | upload_ticket_authorized | p_base_id uuid, p_bucket text | DEFINER | sql |
