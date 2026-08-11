@@ -63,6 +63,9 @@ describe('configuration de deploiement', () => {
     expect(edge).toContain("action = 'export_read'");
     expect(edge).toContain("path.startsWith(`${baseId}/`)");
     expect(storage).toContain('has_pending_upload_ticket');
+    expect(storage).toMatch(
+      /create policy "clinical_attachments_insert"[\s\S]*?public\.is_medecin\(\)[\s\S]*?public\.can_write_identity/,
+    );
     expect(config).toContain('[functions.generate-export]');
     // Chantier D : l'appel passe par l'utilitaire partage qui traduit le refus de l'Edge
     // (src/lib/edgeFunctionError.ts). L'exigence verifiee ici reste la meme : l'export est

@@ -21,6 +21,7 @@ import { useSignedFile } from '../../lib/useSignedFile';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
+import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 type Column = { id: string; fieldKey: string; label: string; scope: string; displayOrder: number };
@@ -87,6 +88,7 @@ export function PatientDetail() {
   const [encounterFields, setEncounterFields] = useState<Column[]>([]);
   const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
+  const [canCorrectIdentity, setCanCorrectIdentity] = useState(false);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -111,6 +113,7 @@ export function PatientDetail() {
         const op = snap?.patients.find((pp) => pp.id === patientId) ?? null;
         setOfflineView(true);
         setCanEdit(false);
+        setCanCorrectIdentity(false);
         setIsCrossSectional(false);
         setAttachments([]);
         if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
@@ -139,6 +142,7 @@ export function PatientDetail() {
       setEncounters(encs);
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
+      setCanCorrectIdentity(canCorrectPatientIdentity(base, p));
       setIsCrossSectional((base?.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       if (base?.base.currentTemplateVersionId) {
         const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
@@ -189,15 +193,17 @@ export function PatientDetail() {
         badge={offlineView ? <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span> : undefined}
         actions={!offlineView ? (
           <>
-            <DeleteWithReason
-              label={t('del.patient')}
-              onConfirm={async (reason) => {
-                if (!patientId) return;
-                await patients.softDeletePatient(patientId, reason);
-              }}
-              onSuccess={() => navigate(`/bases/${baseId}`)}
-              verifyDeletedAfterError={async () => !!baseId && !!patientId && (await patients.getPatient(baseId, patientId)) === null}
-            />
+            {canEdit && (
+              <DeleteWithReason
+                label={t('del.patient')}
+                onConfirm={async (reason) => {
+                  if (!patientId) return;
+                  await patients.softDeletePatient(patientId, reason);
+                }}
+                onSuccess={() => navigate(`/bases/${baseId}`)}
+                verifyDeletedAfterError={async () => !!baseId && !!patientId && (await patients.getPatient(baseId, patientId)) === null}
+              />
+            )}
             {!isCrossSectional && (
               <button
                 onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
@@ -216,7 +222,17 @@ export function PatientDetail() {
           <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patient.identity.fullName ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.dob')} :</span> {patient.identity.dateOfBirth ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.phone')} :</span> {patient.identity.phone ?? '—'}</div>
+          <div><span className="text-slate-500">{t('patient.address')} :</span> {patient.identity.address ?? '—'}</div>
           <div><span className="text-slate-500">{t('patient.external_id')} :</span> {patient.identity.externalIdentifier ?? '—'}</div>
+          {canCorrectIdentity && (
+            <button
+              type="button"
+              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/identity/edit`)}
+              className="mt-3 text-xs font-medium text-teal-700 hover:underline"
+            >
+              {t('patient.edit_identity')}
+            </button>
+          )}
         </fieldset>
       )}
 
@@ -317,12 +333,14 @@ export function PatientDetail() {
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">{t('image.section')}</h2>
-            <button
-              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/images/new`)}
-              className="text-sm text-teal-700 hover:underline"
-            >
-              + {t('image.add')}
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/images/new`)}
+                className="text-sm text-teal-700 hover:underline"
+              >
+                + {t('image.add')}
+              </button>
+            )}
           </div>
           {attachments.length === 0 ? (
             <p className="text-sm text-slate-500">{t('image.none')}</p>
@@ -343,15 +361,17 @@ export function PatientDetail() {
                     <figcaption className="truncate text-xs text-slate-500">{a.label ?? a.kind}</figcaption>
                     <div className="mt-1 flex items-center gap-1">
                       <InspectionStatusBadge status={a.inspectionStatus} />
-                      {isInspectionRetryable(a.inspectionStatus) && (
+                      {canEdit && isInspectionRetryable(a.inspectionStatus) && (
                         <RetryInspectionButton disabled={busy} onClick={() => void retryAttachmentInspection(a.id)} />
                       )}
                     </div>
-                    <DeleteWithReason
-                      onConfirm={(reason) => attachmentsRepo.softDeleteAttachment(a.id, reason)}
-                      onSuccess={load}
-                      verifyDeletedAfterError={async () => !(await attachmentsRepo.listAttachments(patientId!)).some((current) => current.id === a.id)}
-                    />
+                    {canEdit && (
+                      <DeleteWithReason
+                        onConfirm={(reason) => attachmentsRepo.softDeleteAttachment(a.id, reason)}
+                        onSuccess={load}
+                        verifyDeletedAfterError={async () => !(await attachmentsRepo.listAttachments(patientId!)).some((current) => current.id === a.id)}
+                      />
+                    )}
                   </figure>
                 );
               })}

@@ -30,6 +30,8 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 const CREATE_PATIENT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 const CREATE_ENCOUNTER = 'select * from public.create_encounter($1,$2,$3,$4,$5::jsonb,$6)';
 const UPDATE_ENCOUNTER = 'select * from public.update_encounter($1,$2::jsonb,$3,$4,$5::timestamptz)';
+const UPDATE_IDENTITY =
+  'select * from public.update_patient_identity($1,$2,$3::date,$4,$5,$6,$7,$8::bigint)';
 
 /** Cree un compte auth + profil via le trigger on_auth_user_created. */
 async function createAuthUser(email: string, appMetadata: object, userMetadata: object = {}): Promise<string> {
@@ -238,19 +240,22 @@ describe('immuabilite apres soumission', () => {
 });
 
 // =============================================================================
-describe('identite nominative', () => {
+describe('identite nominative : retournement delibere du 2026-08-10', () => {
   test('sans l option, get_patient_identity ne renvoie RIEN au compte de mission', async () => {
+    await resetMission();
     expect(await rowsAs(studentId, 'select * from public.get_patient_identity($1)', [alicePatientId])).toHaveLength(0);
     expect(await rowsAs(studentId, 'select public.can_view_identity($1) as ok', [baseId])).toEqual([{ ok: false }]);
   });
 
-  test('la table patient_identity n est de toute facon pas lisible en direct', async () => {
+  test('sans l option, la table patient_identity n est pas lisible en direct', async () => {
+    await resetMission();
     expect(
       await rowsAs(studentId, 'select full_name from public.patient_identity where base_id = $1', [baseId]),
     ).toHaveLength(0);
   });
 
-  test('il ne peut JAMAIS ecrire l identite : create_patient refuse un nom', async () => {
+  test('sans l option, create_patient refuse toujours chaque champ nominatif', async () => {
+    await resetMission();
     await expect(
       rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-020', 'Jean Dupont', null, null, null, null, '{}']),
     ).rejects.toThrow(/identite/i);
@@ -259,17 +264,266 @@ describe('identite nominative', () => {
     ).rejects.toThrow(/identite/i);
   });
 
-  test('avec l option activee et justifiee, la lecture passe — mais l ecriture reste refusee', async () => {
-    await resetMission(true, 'Rapprochement des dossiers papier nominatifs du service');
+  test('avec l option activee et justifiee, les cinq champs sont crees et relisibles', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
     expect(await rowsAs(studentId, 'select public.can_view_identity($1) as ok', [baseId])).toEqual([{ ok: true }]);
-    expect(await rowsAs(studentId, 'select public.can_write_identity($1) as ok', [baseId])).toEqual([{ ok: false }]);
+    expect(await rowsAs(studentId, 'select public.can_write_identity($1) as ok', [baseId])).toEqual([{ ok: true }]);
+
+    const patient = (
+      await rowsAs(studentId, CREATE_PATIENT, [
+        baseId,
+        'MIS-022',
+        'Amina Fictive',
+        '1992-04-05',
+        '+235 60 00 00 01',
+        'Quartier Exemple, N Djamena',
+        'DOS-FICTIF-022',
+        '{}',
+      ])
+    )[0];
+    const identity = (
+      await db.admin.query(
+        `select full_name, date_of_birth::text as date_of_birth, phone, address, external_identifier
+         from public.patient_identity where base_id=$1 and patient_code=$2`,
+        [baseId, 'MIS-022'],
+      )
+    ).rows[0];
+    expect(identity).toMatchObject({
+      full_name: 'Amina Fictive',
+      date_of_birth: '1992-04-05',
+      phone: '+235 60 00 00 01',
+      address: 'Quartier Exemple, N Djamena',
+      external_identifier: 'DOS-FICTIF-022',
+    });
     expect(
-      (await rowsAs(studentId, 'select * from public.get_patient_identity($1)', [alicePatientId])).length,
+      (await rowsAs(studentId, 'select * from public.get_patient_identity($1)', [patient.id])).length,
     ).toBeGreaterThan(0);
+  });
+
+  test('le saisisseur corrige les cinq champs de son brouillon avec version, motif et audit sans valeurs', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const patient = (
+      await rowsAs(studentId, CREATE_PATIENT, [
+        baseId, 'MIS-023', 'Nom Initial Fictif', '1990-01-01', '+235 60 00 00 02',
+        'Adresse initiale fictive', 'DOS-FICTIF-023-A', '{}',
+      ])
+    )[0];
+
+    const corrected = (
+      await rowsAs(studentId, UPDATE_IDENTITY, [
+        patient.id,
+        'Nom Corrige Fictif',
+        '1990-02-03',
+        '+235 60 00 00 03',
+        'Adresse corrigee fictive',
+        'DOS-FICTIF-023-B',
+        'Correction des informations relevees pendant l inclusion',
+        patient.row_version,
+      ])
+    )[0];
+    expect(corrected.row_version).toBe(String(Number(patient.row_version) + 1));
+
+    const identity = (
+      await db.admin.query(
+        `select full_name, date_of_birth::text as date_of_birth, phone, address, external_identifier
+         from public.patient_identity where base_id=$1 and patient_code=$2`,
+        [baseId, 'MIS-023'],
+      )
+    ).rows[0];
+    expect(identity).toMatchObject({
+      full_name: 'Nom Corrige Fictif',
+      date_of_birth: '1990-02-03',
+      phone: '+235 60 00 00 03',
+      address: 'Adresse corrigee fictive',
+      external_identifier: 'DOS-FICTIF-023-B',
+    });
+
+    const audit = (
+      await db.admin.query(
+        `select user_id, metadata from public.audit_log
+         where action='patient_identity_corrected' and entity_id=$1 order by created_at desc limit 1`,
+        [patient.id],
+      )
+    ).rows[0];
+    expect(audit.user_id).toBe(studentId);
+    expect(audit.metadata).toMatchObject({
+      reason: 'Correction des informations relevees pendant l inclusion',
+      from_version: Number(patient.row_version),
+      to_version: Number(corrected.row_version),
+    });
+    expect(audit.metadata.changed_fields).toEqual([
+      'full_name', 'date_of_birth', 'phone', 'address', 'external_identifier',
+    ]);
+    expect(JSON.stringify(audit.metadata)).not.toMatch(
+      /Nom Corrige|1990-02-03|60 00 00 03|Adresse corrigee|DOS-FICTIF/,
+    );
+  });
+
+  test('la correction exige un motif et la version courante', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const patient = (
+      await rowsAs(studentId, CREATE_PATIENT, [
+        baseId, 'MIS-024', 'Version Fictive', '1991-01-01', null, null, null, '{}',
+      ])
+    )[0];
     await expect(
-      rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-022', 'Jean Dupont', null, null, null, null, '{}']),
-    ).rejects.toThrow(/identite/i);
+      rowsAs(studentId, UPDATE_IDENTITY, [
+        patient.id, 'Sans Motif Fictif', '1991-01-01', null, null, null, '   ', patient.row_version,
+      ]),
+    ).rejects.toThrow(/Motif de correction requis/i);
+    await expect(
+      rowsAs(studentId, UPDATE_IDENTITY, [
+        patient.id, 'Version Obsolete Fictive', '1991-01-01', null, null, null,
+        'Tentative avec version obsolete', Number(patient.row_version) + 1,
+      ]),
+    ).rejects.toThrow(/CONFLIT_VERSION/i);
+  });
+
+  test('la correction est refusee apres soumission', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const patient = (
+      await rowsAs(studentId, CREATE_PATIENT, [
+        baseId, 'MIS-025', 'Soumise Fictive', '1993-01-01', null, null, null, '{}',
+      ])
+    )[0];
+    const submitted = (
+      await rowsAs(studentId, 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)', [
+        patient.id, '{}', 'complete', 'Soumission du brouillon', patient.row_version,
+      ])
+    )[0];
+    await expect(
+      rowsAs(studentId, UPDATE_IDENTITY, [
+        patient.id, 'Correction Interdite Fictive', '1993-01-01', null, null, null,
+        'Correction apres soumission', submitted.row_version,
+      ]),
+    ).rejects.toThrow(/Acces refuse/i);
+  });
+
+  test('la correction est refusee apres expiration puis apres revocation', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const patient = (
+      await rowsAs(studentId, CREATE_PATIENT, [
+        baseId, 'MIS-026', 'Mission Fictive', '1994-01-01', null, null, null, '{}',
+      ])
+    )[0];
+    await db.admin.query(
+      "update public.base_access set expires_at = now() - interval '1 day' where user_id=$1 and revoked_at is null",
+      [studentId],
+    );
+    await expect(
+      rowsAs(studentId, UPDATE_IDENTITY, [
+        patient.id, 'Expiree Fictive', '1994-01-01', null, null, null, 'Correction apres echeance', patient.row_version,
+      ]),
+    ).rejects.toThrow(/Acces refuse/i);
+
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const accessId = (
+      await db.admin.query('select id from public.base_access where user_id=$1 and revoked_at is null', [studentId])
+    ).rows[0].id;
+    await rowsAs(aliceId, 'select public.revoke_base_access($1)', [accessId]);
+    await expect(
+      rowsAs(studentId, UPDATE_IDENTITY, [
+        patient.id, 'Revoquee Fictive', '1994-01-01', null, null, null, 'Correction apres revocation', patient.row_version,
+      ]),
+    ).rejects.toThrow(/Acces refuse/i);
     await resetMission();
+  });
+
+  test('la correction est refusee sur une fiche d autrui et par ecriture directe', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const other = (
+      await db.admin.query('select row_version from public.patient where id=$1', [alicePatientId])
+    ).rows[0];
+    await expect(
+      rowsAs(studentId, UPDATE_IDENTITY, [
+        alicePatientId, 'Intrusion Fictive', '1980-01-01', null, null, null,
+        'Tentative sur une fiche d autrui', other.row_version,
+      ]),
+    ).rejects.toThrow(/Acces refuse/i);
+
+    await rowsAs(studentId, CREATE_PATIENT, [
+      baseId, 'MIS-027', 'Directe Fictive', '1995-01-01', null, null, null, '{}',
+    ]);
+    const direct = await rowsAs(
+      studentId,
+      `update public.patient_identity set full_name='Contournement Fictif'
+       where base_id=$1 and patient_code=$2 returning full_name`,
+      [baseId, 'MIS-027'],
+    );
+    expect(direct).toHaveLength(0);
+    const stored = (
+      await db.admin.query(
+        'select full_name from public.patient_identity where base_id=$1 and patient_code=$2',
+        [baseId, 'MIS-027'],
+      )
+    ).rows[0];
+    expect(stored.full_name).toBe('Directe Fictive');
+  });
+
+  test('le medecin autorise corrige une identite soumise, y compris comme collaborateur', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    const patient = (
+      await rowsAs(studentId, CREATE_PATIENT, [
+        baseId, 'MIS-028', 'Medecin Fictive', '1996-01-01', null, null, null, '{}',
+      ])
+    )[0];
+    const submitted = (
+      await rowsAs(studentId, 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)', [
+        patient.id, '{}', 'complete', 'Soumission du brouillon', patient.row_version,
+      ])
+    )[0];
+    const ownerCorrection = (
+      await rowsAs(aliceId, UPDATE_IDENTITY, [
+        patient.id, 'Proprietaire Fictive', '1996-02-02', null, null, null,
+        'Correction par le medecin proprietaire', submitted.row_version,
+      ])
+    )[0];
+    const collaboratorCorrection = (
+      await rowsAs(editorId, UPDATE_IDENTITY, [
+        patient.id, 'Collaborateur Fictive', '1996-03-03', null, null, null,
+        'Correction par le medecin collaborateur autorise', ownerCorrection.row_version,
+      ])
+    )[0];
+    expect(collaboratorCorrection.row_version).toBe(String(Number(ownerCorrection.row_version) + 1));
+  });
+
+  test('le collaborateur doit cumuler les droits identite et edition', async () => {
+    const patient = (
+      await db.admin.query('select row_version from public.patient where id=$1', [alicePatientId])
+    ).rows[0];
+    await db.admin.query(
+      'update public.base_access set can_view_identity=false where base_id=$1 and user_id=$2',
+      [baseId, editorId],
+    );
+    await expect(
+      rowsAs(editorId, UPDATE_IDENTITY, [
+        alicePatientId, 'Collaborateur Refuse Fictif', '1980-01-01', null, null, null,
+        'Droit identite absent', patient.row_version,
+      ]),
+    ).rejects.toThrow(/Acces refuse/i);
+    await db.admin.query(
+      'update public.base_access set can_view_identity=true where base_id=$1 and user_id=$2',
+      [baseId, editorId],
+    );
+  });
+
+  test('l option identite ne donne aucun droit de gestion des pieces jointes', async () => {
+    await resetMission(true, 'Inclusion directe sans support papier stable');
+    await expect(
+      rowsAs(
+        studentId,
+        `select * from public.create_upload_operation(
+           $1,'clinical-attachments',$2,gen_random_uuid(),repeat('a',64),1,'application/pdf',60
+         )`,
+        [baseId, `${baseId}/mission-no-attachment.pdf`],
+      ),
+    ).rejects.toThrow(/Acces upload refuse/i);
+    await expect(
+      rowsAs(
+        studentId,
+        "select public.finalize_upload_operation(gen_random_uuid(), 'attachment', '{}'::jsonb)",
+      ),
+    ).rejects.toThrow(/UPLOAD_FINALIZATION_SERVER_REQUIRED/i);
   });
 
   test('activer l identite sans justification est refuse par la base', async () => {

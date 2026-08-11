@@ -20,6 +20,7 @@ const ImportData = lazy(() => import('../screens/member/ImportData').then((m) =>
 const EncounterCreateChoice = lazy(() => import('../screens/member/EncounterCreateChoice').then((m) => ({ default: m.EncounterCreateChoice })));
 const PatientDetail = lazy(() => import('../screens/member/PatientDetail').then((m) => ({ default: m.PatientDetail })));
 const EditPatient = lazy(() => import('../screens/member/EditPatient').then((m) => ({ default: m.EditPatient })));
+const EditPatientIdentity = lazy(() => import('../screens/member/EditPatientIdentity').then((m) => ({ default: m.EditPatientIdentity })));
 const EncounterForm = lazy(() => import('../screens/member/EncounterForm').then((m) => ({ default: m.EncounterForm })));
 const EditEncounter = lazy(() => import('../screens/member/EditEncounter').then((m) => ({ default: m.EditEncounter })));
 const AddImage = lazy(() => import('../screens/member/AddImage').then((m) => ({ default: m.AddImage })));
@@ -129,7 +130,7 @@ export function AppRoutes() {
       <Route
         path="/sync"
         element={
-          <ProtectedRoute area="member" globalRoles={HORS_MISSION}>
+          <ProtectedRoute area="member">
             <SyncCenter />
           </ProtectedRoute>
         }
@@ -219,6 +220,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <EditPatient />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bases/:id/patients/:patientId/identity/edit"
+        element={
+          <ProtectedRoute area="member">
+            <EditPatientIdentity />
           </ProtectedRoute>
         }
       />

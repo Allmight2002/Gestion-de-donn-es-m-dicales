@@ -58,6 +58,8 @@ export interface PatientListItem {
   /** Version optimiste des donnees permanentes. */
   version?: number | null;
   updatedAt?: string | null;
+  /** Auteur serveur de la fiche, requis pour limiter la correction d'identite du saisisseur. */
+  createdBy?: string | null;
   identity: PatientIdentityInfo | null; // null si pas d'acces identite
 }
 
@@ -169,6 +171,8 @@ export interface PatientRepository {
   finalizePatient(patientId: string): Promise<void>;
   /** Corrige / complete les donnees PERMANENTES d'un patient (journalise, re-validees). */
   updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string, expectedVersion: number | null): Promise<{ version: number | null; updatedAt: string | null }>;
+  /** Corrige la zone identite complete via la RPC dediee, auditee et verrouillee. */
+  updatePatientIdentity(patientId: string, identity: PatientIdentityInfo, reason: string, expectedVersion: number | null): Promise<{ version: number | null; updatedAt: string | null }>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
   importRecords(baseId: string, rows: ImportRow[], opts: ImportOptions): Promise<ImportReport>;
   /** Ouvre un lot d'import (controles globaux + idempotence) ; renvoie l'id du lot pour les chunks. */
@@ -185,10 +189,12 @@ export interface PatientRepository {
 }
 
 type PatientRow = {
-  id: string; patient_code: string; template_version_id: string; data: Record<string, unknown>; validation_status: string; row_version?: number | null; updated_at?: string | null;
+  id: string; patient_code: string; template_version_id: string; data: Record<string, unknown>; validation_status: string; row_version?: number | null; updated_at?: string | null; created_by?: string | null;
 };
 const PATIENT_READ_COLUMNS = 'id, patient_code, template_version_id, data, validation_status, row_version, updated_at';
 const LEGACY_PATIENT_READ_COLUMNS = 'id, patient_code, template_version_id, data, validation_status, updated_at';
+const PATIENT_DETAIL_READ_COLUMNS = `${PATIENT_READ_COLUMNS}, created_by`;
+const LEGACY_PATIENT_DETAIL_READ_COLUMNS = `${LEGACY_PATIENT_READ_COLUMNS}, created_by`;
 
 // Compatibilite de lecture pendant une promotion coordonnee : un schema plus ancien peut ne
 // pas encore posseder patient.row_version. Le repli est volontairement etroit afin de ne
@@ -233,6 +239,7 @@ const toListItem = (p: PatientRow): PatientListItem => ({
   validationStatus: p.validation_status,
   version: p.row_version ?? null,
   updatedAt: p.updated_at ?? null,
+  createdBy: p.created_by ?? null,
   identity: null,
 });
 const mapEncounter = (r: EncounterRow): Encounter => ({
@@ -258,6 +265,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
+      updatePatientIdentity: fail,
       getImportBatchState: fail, completeImportBatch: fail, cancelImportBatch: fail, getCompletionQueue: fail, getCompletionQueuePage: fail,
     };
   }
@@ -376,9 +384,9 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         .eq('base_id', baseId)
         .is('deleted_at', null)
         .maybeSingle();
-      const current = await query(PATIENT_READ_COLUMNS);
+      const current = await query(PATIENT_DETAIL_READ_COLUMNS);
       const resolved = current.error && isMissingPatientRowVersion(current.error)
-        ? await query(LEGACY_PATIENT_READ_COLUMNS)
+        ? await query(LEGACY_PATIENT_DETAIL_READ_COLUMNS)
         : current;
       if (resolved.error) throw resolved.error;
       const p = resolved.data;
@@ -474,6 +482,22 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async updatePatientData(patientId, data, status, reason, expectedVersion) {
       const { data: row, error } = await client.rpc('update_patient', {
         p_patient_id: patientId, p_data: data, p_validation_status: status, p_reason: reason,
+        p_expected_version: expectedVersion,
+      });
+      if (error) throw error;
+      const r = (Array.isArray(row) ? row[0] : row) as PatientRow;
+      return { version: r.row_version ?? null, updatedAt: r.updated_at ?? null };
+    },
+
+    async updatePatientIdentity(patientId, identity, reason, expectedVersion) {
+      const { data: row, error } = await client.rpc('update_patient_identity', {
+        p_patient_id: patientId,
+        p_full_name: identity.fullName,
+        p_date_of_birth: identity.dateOfBirth,
+        p_phone: identity.phone,
+        p_address: identity.address,
+        p_external_identifier: identity.externalIdentifier,
+        p_reason: reason,
         p_expected_version: expectedVersion,
       });
       if (error) throw error;
