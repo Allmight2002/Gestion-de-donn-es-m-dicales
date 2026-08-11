@@ -37,7 +37,11 @@ export function validationResponse(error: unknown): Response {
     : new RequestValidationError(400, 'Requete invalide');
   return new Response(JSON.stringify({ error: validation.message }), {
     status: validation.status,
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'content-type': 'application/json',
+    },
   });
 }
 
