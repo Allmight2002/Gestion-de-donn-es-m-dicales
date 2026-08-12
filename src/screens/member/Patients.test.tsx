@@ -14,6 +14,11 @@ import type { PatientRepository, PatientListItem, NewPatientInput } from '../../
 import type { TemplateField } from '../../data/types';
 import { offlineCache, type OfflineSnapshot } from '../../data/offline';
 
+// NewPatient lit le role global (la voie curation est fermee aux comptes de mission).
+vi.mock('../../auth/useAuth', () => ({
+  useAuth: () => ({ profile: { id: 'u', fullName: 'M', globalRole: 'medecin', language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+}));
+
 const ALL_PERMS = {
   canViewIdentity: true, canViewRawDocuments: true, canEditStructuredData: true,
   canExportData: true, canManageAccess: true,
@@ -187,70 +192,8 @@ describe('NewPatient', () => {
 });
 
 describe('BaseHome (liste patients)', () => {
-  test('exige un motif et le nom de la base avant la suppression proprietaire', async () => {
-    const user = userEvent.setup();
-    const softDeleteBase = vi.fn(async () => undefined);
-    const removeOffline = vi.spyOn(offlineCache, 'remove').mockResolvedValue();
-    const bases = {
-      async getBase() { return baseListing; },
-      softDeleteBase,
-    } as unknown as BaseRepository;
-    const patientRepo = {
-      async listPatientsPage() { return { rows: [], total: 0 }; },
-    } as unknown as PatientRepository;
-
-    render(
-      <I18nProvider>
-        <RepositoryProvider bases={bases} templates={templateRepo} patients={patientRepo}>
-          <MemoryRouter initialEntries={['/bases/b1']}>
-            <Routes>
-              <Route path="/bases/:id" element={<BaseHome />} />
-              <Route path="/" element={<div>TABLEAU DE BORD</div>} />
-            </Routes>
-          </MemoryRouter>
-        </RepositoryProvider>
-      </I18nProvider>,
-    );
-
-    await user.click(await screen.findByRole('button', { name: 'Actions' }));
-    await user.click(screen.getByRole('button', { name: 'Supprimer la base' }));
-    const dialog = screen.getByRole('dialog', { name: 'Supprimer cette base ?' });
-    const confirm = within(dialog).getByRole('button', { name: 'Supprimer la base' });
-    expect(confirm).toBeDisabled();
-    await user.type(within(dialog).getByLabelText('Motif de la suppression'), 'Création par erreur');
-    await user.type(within(dialog).getByLabelText('Saisissez le nom de la base pour confirmer'), 'Registre Neuro');
-    expect(confirm).toBeEnabled();
-    await user.click(confirm);
-
-    expect(softDeleteBase).toHaveBeenCalledWith('b1', 'Création par erreur');
-    expect(await screen.findByText('TABLEAU DE BORD')).toBeInTheDocument();
-    removeOffline.mockRestore();
-  });
-
-  test('place les actions occasionnelles dans un menu compact de l en-tete', async () => {
-    const patientRepo = {
-      async listPatientsPage() { return { rows: [], total: 0 }; },
-    } as unknown as PatientRepository;
-
-    render(
-      <I18nProvider>
-        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={patientRepo}>
-          <MemoryRouter initialEntries={['/bases/b1']}>
-            <Routes>
-              <Route path="/bases/:id" element={<BaseHome />} />
-            </Routes>
-          </MemoryRouter>
-        </RepositoryProvider>
-      </I18nProvider>,
-    );
-
-    const menu = await screen.findByRole('button', { name: 'Actions' });
-    expect(menu.closest('header')).not.toBeNull();
-    await userEvent.click(menu);
-    const action = screen.getByRole('button', { name: 'Rendre disponible hors-ligne' });
-    expect(action.closest('header')).not.toBeNull();
-  });
-
+  // Les reglages de la base (copie hors-ligne, modele d'observation, suppression) sont
+  // desormais testes dans BaseSettings.test.tsx : l'en-tete ne porte plus que la saisie.
   test('pilote Nouveau patient par la permission de creation, y compris dans l etat vide', async () => {
     const creatorListing: BaseListing = {
       ...baseListing,
