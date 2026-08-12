@@ -23,10 +23,24 @@ import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { WorkflowSteps } from '../../components/WorkflowSteps';
 import { Checkbox } from '../../components/Checkbox';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 const ALL_OPS: FilterOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'between'];
 const SIMPLE_OPS: FilterOp[] = ['eq', 'neq'];
 const TEXT_OPS: FilterOp[] = ['eq', 'neq', 'in'];
+
+interface FreezeCandidate {
+  cohort: CohortSummary;
+  name: string;
+  unvalidatedCount: number;
+}
+
+interface SnapshotWarning {
+  name: string;
+  filter: FilterDefinition;
+  validatedOnly: boolean;
+  unvalidatedCount: number;
+}
 
 function operatorsFor(field: TemplateField | undefined): FilterOp[] {
   if (!field) return SIMPLE_OPS;
@@ -57,6 +71,9 @@ export function CohortBuilder() {
   const [validatedOnly, setValidatedOnly] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [liveCounts, setLiveCounts] = useState<Record<string, { patientCount: number; encounterCount: number }>>({});
+  const [freezeCandidate, setFreezeCandidate] = useState<FreezeCandidate | null>(null);
+  const [snapshotWarning, setSnapshotWarning] = useState<SnapshotWarning | null>(null);
 
   const msg = (value: unknown) => errorMessage(value, t('common.error'));
   const selectedField = fields.find((field) => field.fieldKey === draftField);
@@ -76,6 +93,10 @@ export function CohortBuilder() {
       }
       const existing = await cohorts.listCohorts(baseId);
       setList(existing);
+      const dynamicCounts = await Promise.all(existing
+        .filter((cohort) => cohort.cohortType === 'dynamic')
+        .map(async (cohort) => [cohort.id, await cohorts.preview(baseId, cohort.filterDefinition, cohort.validatedOnly)] as const));
+      setLiveCounts(Object.fromEntries(dynamicCounts));
       if (existing.length === 0) setBuilderOpen(true);
     } catch (value) {
       setError(msg(value));
@@ -158,6 +179,34 @@ export function CohortBuilder() {
 
   const buildFilter = (): FilterDefinition => ({ conditions });
 
+  async function countUnvalidated(filter: FilterDefinition): Promise<number> {
+    if (!baseId) return 0;
+    const [all, validated] = await Promise.all([
+      cohorts.preview(baseId, filter, false),
+      cohorts.preview(baseId, filter, true),
+    ]);
+    return Math.max(0, all.patientCount - validated.patientCount);
+  }
+
+  async function createSnapshot(nameToSave: string, filter: FilterDefinition, snapshotValidatedOnly: boolean, closeBuilderAfterSave: boolean) {
+    if (!baseId) return;
+    setBusy(true);
+    try {
+      await cohorts.createSnapshot(baseId, nameToSave, filter, snapshotValidatedOnly);
+      setSnapshotWarning(null);
+      setFreezeCandidate(null);
+      if (closeBuilderAfterSave) {
+        resetBuilder();
+        setBuilderOpen(false);
+      }
+      await load();
+    } catch (value) {
+      setError(msg(value));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onPreview() {
     if (!baseId) return;
     setBusy(true);
@@ -179,11 +228,40 @@ export function CohortBuilder() {
     }
     setBusy(true);
     try {
-      if (cohortType === 'snapshot') await cohorts.createSnapshot(baseId, name.trim(), buildFilter(), validatedOnly);
-      else await cohorts.createDynamic(baseId, name.trim(), buildFilter(), validatedOnly);
+      if (cohortType === 'snapshot') {
+        const filter = buildFilter();
+        if (!validatedOnly) {
+          const unvalidatedCount = await countUnvalidated(filter);
+          if (unvalidatedCount > 0) {
+            setSnapshotWarning({ name: name.trim(), filter, validatedOnly, unvalidatedCount });
+            return;
+          }
+        }
+        await cohorts.createSnapshot(baseId, name.trim(), filter, validatedOnly);
+      } else await cohorts.createDynamic(baseId, name.trim(), buildFilter(), validatedOnly);
       resetBuilder();
       setBuilderOpen(false);
       await load();
+    } catch (value) {
+      setError(msg(value));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startFreeze(cohort: CohortSummary) {
+    if (!baseId) return;
+    setBusy(true);
+    try {
+      const unvalidatedCount = cohort.validatedOnly ? 0 : await countUnvalidated(cohort.filterDefinition);
+      setFreezeCandidate({
+        cohort,
+        name: t('cohort.freeze_name')
+          .replace('{name}', cohort.name)
+          .replace('{date}', formatDate(new Date().toISOString(), lang)),
+        unvalidatedCount,
+      });
+      setError(null);
     } catch (value) {
       setError(msg(value));
     } finally {
@@ -435,11 +513,60 @@ export function CohortBuilder() {
                     </button>
                   </div>
                 )}
+                {cohort.cohortType === 'dynamic' && (
+                  <div className="space-y-3 border-t border-slate-100 pt-3">
+                    <p className="text-sm text-slate-600">
+                      {liveCounts[cohort.id] ? (
+                        <><strong className="text-slate-900">{liveCounts[cohort.id].patientCount}</strong> {t('cohort.patients')} · <strong className="text-slate-900">{liveCounts[cohort.id].encounterCount}</strong> {t('cohort.encounters')}</>
+                      ) : t('cohort.live_count_loading')}
+                    </p>
+                    <p className="text-sm text-slate-500">{t('cohort.dynamic_export_hint')}</p>
+                    <button type="button" onClick={() => void startFreeze(cohort)} disabled={busy} className="btn-secondary">
+                      <Snowflake size={16} aria-hidden /> {t('cohort.freeze_now')}
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={freezeCandidate !== null}
+        title={t('cohort.freeze_title')}
+        body={freezeCandidate?.unvalidatedCount
+          ? <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('cohort.unvalidated_warning').replace('{n}', String(freezeCandidate.unvalidatedCount))}</p>
+          : undefined}
+        confirmLabel={t('cohort.freeze_confirm')}
+        confirmDisabled={!freezeCandidate?.name.trim()}
+        busy={busy}
+        onCancel={() => setFreezeCandidate(null)}
+        onConfirm={() => {
+          if (freezeCandidate) void createSnapshot(freezeCandidate.name.trim(), freezeCandidate.cohort.filterDefinition, freezeCandidate.cohort.validatedOnly, false);
+        }}
+      >
+        <label className="form-label">
+          {t('cohort.freeze_name_label')}
+          <input
+            className="input"
+            value={freezeCandidate?.name ?? ''}
+            onChange={(event) => setFreezeCandidate((current) => current ? { ...current, name: event.target.value } : current)}
+          />
+        </label>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={snapshotWarning !== null}
+        title={t('cohort.unvalidated_title')}
+        body={snapshotWarning ? <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('cohort.unvalidated_warning').replace('{n}', String(snapshotWarning.unvalidatedCount))}</p> : undefined}
+        confirmLabel={t('cohort.unvalidated_confirm')}
+        busy={busy}
+        onCancel={() => setSnapshotWarning(null)}
+        onConfirm={() => {
+          if (snapshotWarning) void createSnapshot(snapshotWarning.name, snapshotWarning.filter, snapshotWarning.validatedOnly, true);
+        }}
+      />
     </section>
   );
 }
