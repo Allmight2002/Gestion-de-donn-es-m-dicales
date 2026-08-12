@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Outlet, Routes, Route } from 'react-router';
+import { Navigate, Outlet, Routes, Route, useParams } from 'react-router';
 import { ProtectedRoute, PublicOnly, RequireGlobalRole } from './ProtectedRoute';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ResetPassword } from '../screens/ResetPassword';
@@ -15,9 +15,7 @@ const MyTemplates = lazy(() => import('../screens/member/MyTemplates').then((m) 
 const TemplateFromFile = lazy(() => import('../screens/member/TemplateFromFile').then((m) => ({ default: m.TemplateFromFile })));
 const TemplateLibrary = lazy(() => import('../screens/member/TemplateLibrary').then((m) => ({ default: m.TemplateLibrary })));
 const NewPatient = lazy(() => import('../screens/member/NewPatient').then((m) => ({ default: m.NewPatient })));
-const PatientCreateChoice = lazy(() => import('../screens/member/PatientCreateChoice').then((m) => ({ default: m.PatientCreateChoice })));
 const ImportData = lazy(() => import('../screens/member/ImportData').then((m) => ({ default: m.ImportData })));
-const EncounterCreateChoice = lazy(() => import('../screens/member/EncounterCreateChoice').then((m) => ({ default: m.EncounterCreateChoice })));
 const PatientDetail = lazy(() => import('../screens/member/PatientDetail').then((m) => ({ default: m.PatientDetail })));
 const EditPatient = lazy(() => import('../screens/member/EditPatient').then((m) => ({ default: m.EditPatient })));
 const EditPatientIdentity = lazy(() => import('../screens/member/EditPatientIdentity').then((m) => ({ default: m.EditPatientIdentity })));
@@ -32,6 +30,7 @@ const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) 
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
 const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
 const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
+const BaseSettings = lazy(() => import('../screens/member/BaseSettings').then((m) => ({ default: m.BaseSettings })));
 const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
 const GroupDetail = lazy(() => import('../screens/member/GroupDetail').then((m) => ({ default: m.GroupDetail })));
 const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
@@ -47,6 +46,20 @@ const RoleAdmin = lazy(() => import('../screens/staff/RoleAdmin').then((m) => ({
 // Ce filtre de route n'est qu'un confort d'affichage — chacun de ces ecrans est de toute
 // facon refuse par la base (docs/spec-comptes-mission.md §4).
 const HORS_MISSION = ['medecin', 'curateur'] as const;
+
+// La page intercalaire « saisir moi-meme / confier au staff » a ete retiree du parcours :
+// elle n'affichait qu'un seul bouton pour un compte de mission, et une etape de plus pour
+// tous les autres. Le formulaire de saisie s'ouvre directement, et confier au staff devient
+// une action de son en-tete. Les anciennes URL (liens, favoris) restent valides.
+function RedirectToManualPatient() {
+  const { id } = useParams();
+  return <Navigate to={`/bases/${id}/patients/new/manual`} replace />;
+}
+
+function RedirectToManualEncounter() {
+  const { id, patientId } = useParams();
+  return <Navigate to={`/bases/${id}/patients/${patientId}/encounters/new/manual`} replace />;
+}
 
 export function AppRoutes() {
   return (
@@ -149,6 +162,7 @@ export function AppRoutes() {
         <Route index element={<BaseHome />} />
         <Route element={<RequireGlobalRole globalRoles={HORS_MISSION}><Outlet /></RequireGlobalRole>}>
           <Route path="import" element={<ImportData />} />
+          <Route path="parametres" element={<BaseSettings />} />
           <Route path="cohorts" element={<CohortBuilder />} />
           <Route path="stats" element={<BaseStats />} />
           <Route path="queue" element={<CompletionQueue />} />
@@ -187,7 +201,7 @@ export function AppRoutes() {
         path="/bases/:id/patients/new"
         element={
           <ProtectedRoute area="member">
-            <PatientCreateChoice />
+            <RedirectToManualPatient />
           </ProtectedRoute>
         }
       />
@@ -235,7 +249,7 @@ export function AppRoutes() {
         path="/bases/:id/patients/:patientId/encounters/new"
         element={
           <ProtectedRoute area="member">
-            <EncounterCreateChoice />
+            <RedirectToManualEncounter />
           </ProtectedRoute>
         }
       />

@@ -1,8 +1,11 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { Send } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
-import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useAuth } from '../../auth/useAuth';
+import { isMissionAccount } from '../../auth/logic';
+import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -31,7 +34,11 @@ export function EncounterForm() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const curation = useCurationRepository();
   const { toast } = useToast();
+  const { profile } = useAuth();
+  // Meme regle que pour le patient : la voie curation est fermee aux comptes de mission.
+  const maySubmitToCuration = !isMissionAccount(profile);
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -163,6 +170,21 @@ export function EncounterForm() {
     }
   }
 
+  // Confier la rencontre au staff : cree une demande de portee 'encounter' et ouvre la page
+  // de depot des documents deidentifies. La saisie en cours reste dans son brouillon local.
+  async function submitToStaff() {
+    if (!baseId || !patientId) return;
+    setBusy(true);
+    try {
+      const { taskId } = await curation.createSubmission(baseId, patientId, null, 'encounter');
+      navigate(`/curation/${taskId}`);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
@@ -171,7 +193,14 @@ export function EncounterForm() {
         <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
-        <h1 className="page-title mt-2">{t('encounter.new')}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="page-title">{t('encounter.new')}</h1>
+          {maySubmitToCuration && (
+            <button type="button" onClick={() => void submitToStaff()} disabled={busy} className="btn-secondary">
+              <Send size={16} aria-hidden /> {t('create.submit')}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

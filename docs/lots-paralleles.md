@@ -1,17 +1,24 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-10**
+- Établi le 2026-07-27 · **révisé le 2026-08-11**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
   [`idees-post-readiness.md`](idees-post-readiness.md),
-  [`feuille-route-developpement-post-readiness.md`](feuille-route-developpement-post-readiness.md)
-  et, pour les lots L15 à L19,
-  [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)
+  [`feuille-route-developpement-post-readiness.md`](feuille-route-developpement-post-readiness.md),
+  pour les lots L15 à L19
+  [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md),
+  et pour les lots L20 à L26
+  [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)
 
 > **Révision du 2026-08-10** : trois lots étaient livrés sans être marqués comme tels —
 > **L6** (2026-08-09), **L8** (2026-08-01) et **L9** (2026-08-01). Cinq lots sont ajoutés,
 > **L15 à L19**, issus de la campagne de vérification manuelle des flux multi-comptes.
+
+> **Révision du 2026-08-11** : sept lots sont ajoutés, **L20 à L26**, issus de
+> [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md) — les listes de diagnostics
+> en remplacement des variables `diagnostic_1/2/3`. **L21 entre en collision avec L4 et L13**, et
+> **L23 avec L18 et L19** : voir l'ordre suggéré.
 
 Le critère de découpage est le **fichier touché**, pas le thème. Deux lots qui
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
@@ -43,9 +50,21 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L17** | Messages d'erreur des Edge Functions | `src/data/exports.ts`, `src/data/mission.ts`, utilitaire partagé | L11, L14, L18, L19 |
 | **L18** | Cohorte dynamique : compteur vivant et « Figer maintenant » | `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
 | **L19** | Archivage d'une cohorte | migration, `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
+| **L20** | Listes de diagnostics : surface base | migration, `test/validation.test.ts`, `test/templates.admin.test.ts`, `src/data/types.ts`, `src/data/templates.ts` | **seul** (prérequis de L21 à L26) |
+| **L21** | Listes de diagnostics : saisie et constructeur | `TerminologyInput.tsx`, `FieldForm.tsx`, `FieldInput.tsx`, `ValueInput.tsx`, `src/domain/validation.ts` | L22, L24, L25 — **jamais avec L4 ni L13** |
+| **L22** | Listes de diagnostics : export | `exportContract.ts`, `handler.ts` et leurs tests Deno | L21, L23, L24, L25 |
+| **L23** | Listes de diagnostics : cohortes | `CohortBuilder.tsx`, `src/data/cohorts.ts` | L21, L22, L24 — **jamais avec L18 ni L19** |
+| **L24** | Listes de diagnostics : refus au mappage d'import | `src/domain/import.ts`, `ImportData.tsx` | L21, L22, L23, L25 |
+| **L25** | Conflit hors-ligne : issue « garder les deux » | `src/data/offline.ts`, `SyncCenter.tsx` | L21, L22, L23, L24 |
+| **L26** | Regroupement des variables `diagnostic_1/2/3` | migration, RPC d'aperçu et de conversion, écran du constructeur | **seul**, en dernier |
 
 > **L18 et L19 touchent les deux mêmes fichiers** : ne jamais les lancer ensemble. Traiter L18
 > d'abord (front seul, gain immédiat), L19 ensuite (surface base).
+
+> **L21 touche `TerminologyInput.tsx` et `FieldForm.tsx`** — les deux fichiers de **L4**, et le
+> premier est aussi celui de **L13**. **L23 touche les deux fichiers de L18 et L19.** Ces
+> collisions sont structurelles, pas circonstancielles : elles décident de l'ordre, pas
+> l'inverse.
 
 ## Deux fichiers à surveiller
 
@@ -275,6 +294,102 @@ des exports**. Archivage recommandé (`deleted_at`) plutôt que suppression dure
 Surface base : appliquer `meddata-db-safety`. Décider dans le même mouvement du sort des fichiers
 du bucket `scientific-exports`. **Ne pas lancer avec L18** : mêmes fichiers.
 
+### L20 — Listes de diagnostics : surface base (à lancer SEUL)
+
+§4, §5, §8 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). **Prérequis de
+tous les lots L21 à L26** : tant que la base refuse un tableau, l'interface qui en écrit un est
+inutilisable.
+
+Une seule migration additive porte toute la surface serveur — colonne `is_multiple` sur
+`template_field` avec contrainte la réservant au type `terminology`, branche multivaluée dans
+`assert_data_valid`, garde `jsonb_array_length > 0` dans `base_completeness_stats`, opérateurs
+`has_any` et `has_none` dans `jsonb_matches`. Les regrouper évite trois migrations successives sur
+les mêmes fonctions et permet une seule revue.
+
+Invariants à démontrer par les tests : tableau vide refusé, code en double refusé, clé
+surnuméraire refusée, couple code/libellé incohérent refusé, concept d'une publication conservée
+mais non active accepté, code de donnée manquante toujours accepté à la place du tableau,
+`is_multiple` refusé sur un autre type que `terminology`, longueur bornée à 50.
+
+Surface base : appliquer `meddata-db-safety`. Aucune table nouvelle, donc aucune policy RLS à
+écrire — c'est précisément ce que le choix de stockage cherchait à obtenir.
+
+### L21 — Listes de diagnostics : saisie et constructeur
+
+§6 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Case « Accepte plusieurs
+valeurs » dans `FieldForm.tsx`, rendue seulement pour le type `terminology` et soumise à
+`lockStructural`. Mode multivalué de `TerminologyInput.tsx` : étiquettes numérotées, zone de
+recherche maintenue sous elles, concept déjà choisi écarté des résultats, retrait de la dernière
+valeur **supprimant la clé** plutôt qu'écrivant `[]`.
+
+**Ne jamais lancer avec L4** (mêmes deux fichiers) **ni avec L13** (`TerminologyInput.tsx`). L4
+étend la soupape au type `terminology` et L21 en change la cardinalité : les traiter ensemble
+mélangerait deux raisonnements sur le même composant.
+
+### L22 — Listes de diagnostics : export
+
+§7 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Surface Deno isolée :
+aucun fichier commun avec les lots front, donc parallélisable largement.
+
+**Commencer par le test de non-régression.** `formatValue` teste `isTerminologyValue` avant
+`Array.isArray` ; une liste de diagnostics tomberait dans `v.join('; ')` et rendrait
+`[object Object]` sur toute la colonne. Le même défaut a déjà frappé les codes manquants et
+l'affichage des listes de patients (L1) : il doit être verrouillé par un test avant que la
+fonctionnalité existe.
+
+Puis les colonnes `nb__…`, les colonnes indicatrices `has__…` avec leur seuil de 100 codes
+distincts et leur règle de normalisation, la feuille dédiée, et les lignes de dictionnaire des
+colonnes dérivées.
+
+### L23 — Listes de diagnostics : cohortes
+
+§8 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Front seul : les
+opérateurs serveur arrivent avec L20. `operatorsFor` renvoie `has_any` et `has_none` — et eux
+seuls — pour un champ multivalué. Retirer `eq` de l'interface pour ce cas n'est pas cosmétique :
+une égalité sur une liste produirait un résultat faux sans le signaler.
+
+**Ne pas lancer avec L18 ni L19** : mêmes deux fichiers.
+
+### L24 — Listes de diagnostics : refus au mappage d'import
+
+§9 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). L'import ne prend en
+charge aucun champ `terminology`, même à valeur unique. Le lot ne l'ajoute pas : il **refuse la
+cible au mappage avec un message clair**, au lieu de laisser l'utilisateur découvrir un échec
+serveur opaque en fin d'import.
+
+Petit lot, isolé, à faible risque. Il évite une régression d'usage introduite par L21 : dès qu'une
+variable multivaluée existe, elle apparaît dans la liste des cibles d'import.
+
+### L25 — Conflit hors-ligne : issue « garder les deux »
+
+§10 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). **Séparable** : rien
+dans les lots précédents n'en dépend, et son absence ne produit aucune perte silencieuse — le
+conflit est déjà détecté par le jeton optimiste.
+
+Deux appareils hors ligne qui ajoutent chacun un diagnostic produisent aujourd'hui une résolution
+binaire, où `resolveKeepMine` écrase la valeur de l'autre. Le lot ajoute une troisième issue
+réalisant l'union des deux listes par `code`, ordre local puis nouveautés serveur. Fonction de
+domaine pure, testable sans base.
+
+### L26 — Regroupement des variables `diagnostic_1/2/3` (à lancer SEUL, en dernier)
+
+§12 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). **Seul lot de cette
+famille qui touche des données déjà enregistrées.** À traiter après que tout le reste soit en
+service, et précédé d'une sauvegarde vérifiée.
+
+Deux opérations qui ne doivent jamais être fusionnées : créer une version de gabarit portant la
+variable regroupée (n'affecte que les saisies futures), et convertir les enregistrements existants
+(facultative, explicitement cochée). Une fonction d'aperçu en lecture seule précède l'exécution et
+rend les valeurs non résolubles, les doublons entre `diagnostic_1` et `diagnostic_2`, et les
+enregistrements déjà convertis.
+
+L'exécution est transactionnelle par enregistrement et idempotente : une reprise après
+interruption ne doit ni dupliquer une valeur ni retraiter un enregistrement. Chaque conversion est
+tracée dans `field_change_log`, dont la contrainte `source` doit accueillir une valeur
+supplémentaire — modification additive d'une contrainte `check` sur une table portant des données.
+
+Surface base : appliquer `meddata-db-safety`.
+
 ## Ce qui n'a pas besoin de lot
 
 - **P5, terminologie avancée** : couverte par les lots T1 à T4 déjà livrés.
@@ -283,8 +398,8 @@ du bucket `scientific-exports`. **Ne pas lancer avec L18** : mêmes fichiers.
 
 ## Ordre suggéré
 
-Neuf lots sont livrés : **L1, L2, L3, L5, L6, L7, L8, L9 et L10**. Il en reste **dix** :
-L4, L11, L12, L13, L14, et les cinq nouveaux L15 à L19.
+Neuf lots sont livrés : **L1, L2, L3, L5, L6, L7, L8, L9 et L10**. Il en reste **dix-sept** :
+L4, L11, L12, L13, L14, les cinq L15 à L19, et les sept nouveaux L20 à L26.
 
 1. **D'abord** : **L15**, seul, car il modifie le circuit Auth et la remise des accès. Puis **L17**
    (messages d'erreur). L17 mérite de passer tôt : c'est lui qui rend les prochaines séances de
@@ -297,6 +412,18 @@ L4, L11, L12, L13, L14, et les cinq nouveaux L15 à L19.
 4. **Ensuite** : L11, L13, **L19**. L11 attend encore sept décisions, mais ses étapes locales
    sont réalisables sans elles. L19 ne doit pas suivre L18 de trop près : mêmes fichiers.
 5. **Seul, en dernier** : L14.
+6. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
+   1. **L20 seul** — surface base, prérequis de tous les autres ;
+   2. puis en parallèle **L21, L22 et L24** — à condition que **L4 et L13** soient soldés ou non
+      lancés ;
+   3. puis **L23** — à condition que **L18 et L19** soient soldés ou non lancés — et **L25**,
+      qui ne dépend de rien ;
+   4. **L26 seul, en dernier**, après sauvegarde vérifiée.
+
+> Le plus économique est de **solder L4 et L13 avant d'entamer L21**, et **L18 et L19 avant L23**.
+> Sinon la famille des listes de diagnostics immobilise quatre lots existants pendant toute sa
+> durée. L22, L24 et L25 restent lançables sans attendre : ils ne partagent aucun fichier avec le
+> reste du plan.
 
 ### Leçon des trois lots menés en parallèle
 

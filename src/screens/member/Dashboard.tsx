@@ -1,7 +1,7 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronDown, Database, Plus, UserPlus, X } from 'lucide-react';
+import { ChevronDown, Database, Plus, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase, isMissionAccount } from '../../auth/logic';
@@ -117,24 +117,21 @@ export function Dashboard() {
         onCancel={() => setRestoreTarget(null)}
         onConfirm={() => void restoreBase()}
       />
+      {/* Les comptes de mission vivent dans la barre laterale (destination globale) : les
+          rappeler ici ne ferait que disputer la place a l'action propre de cet ecran. */}
       <PageHeader
         title={t('member.dashboard.title')}
         description={t('dashboard.subtitle')}
         actions={mayCreate && online && (
-          <>
-            <Link to="/missions" className="btn-secondary">
-              <UserPlus size={16} aria-hidden /> {t('mission.global_title')}
-            </Link>
-            <button
-              type="button"
-              onClick={() => setCreateOpen((open) => !open)}
-              className={createOpen ? 'btn-secondary' : 'btn-primary'}
-              aria-expanded={createOpen}
-            >
-              {createOpen ? <X size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
-              {createOpen ? t('common.cancel') : t('dashboard.new_base')}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => setCreateOpen((open) => !open)}
+            className={createOpen ? 'btn-secondary' : 'btn-primary'}
+            aria-expanded={createOpen}
+          >
+            {createOpen ? <X size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
+            {createOpen ? t('common.cancel') : t('dashboard.new_base')}
+          </button>
         )}
       />
 

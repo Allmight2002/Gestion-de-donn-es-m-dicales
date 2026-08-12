@@ -112,4 +112,48 @@ describe('CohortBuilder', () => {
     expect(screen.queryByLabelText('Nom de la cohorte')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voir le résultat' })).toHaveClass('btn-primary');
   });
+
+  test('une cohorte dynamique affiche son effectif vivant et peut etre figee sous un nom modifiable', async () => {
+    const filter: FilterDefinition = { conditions: [{ scope: 'patient', field: 'sexe', op: 'eq', value: 'F' }] };
+    const preview = vi.fn(async () => ({ patientCount: 7, encounterCount: 9 }));
+    const createSnapshot = vi.fn(async (_b: string, _n: string, _f: FilterDefinition) => ({ id: 'frozen' }));
+    renderBuilder(makeCohorts({
+      preview,
+      createSnapshot,
+      async listCohorts() {
+        return [{ id: 'dynamic-1', name: 'Suivi F', cohortType: 'dynamic', snapshotAt: null, memberCount: 0, filterDefinition: filter, validatedOnly: true }];
+      },
+    }));
+
+    expect(await screen.findByText((_, element) => element?.textContent === '7 patients · 9 rencontres')).toBeInTheDocument();
+    expect(screen.getByText(/figez-la avant de l’exporter/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Figer maintenant' }));
+
+    const name = await screen.findByLabelText('Nom de la cohorte figée');
+    expect((name as HTMLInputElement).value).toContain('Suivi F');
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Analyse F figée');
+    await userEvent.click(screen.getByRole('button', { name: 'Créer la cohorte figée' }));
+
+    await waitFor(() => expect(createSnapshot).toHaveBeenCalledWith('b1', 'Analyse F figée', filter, true));
+  });
+
+  test('avertit avant de figer une cohorte incluant des fiches non validees sans bloquer sa creation', async () => {
+    const preview = vi.fn(async (_b: string, _f: FilterDefinition, validatedOnly = true) => (
+      validatedOnly ? { patientCount: 3, encounterCount: 4 } : { patientCount: 5, encounterCount: 6 }
+    ));
+    const createSnapshot = vi.fn(async () => ({ id: 'snapshot' }));
+    renderBuilder(makeCohorts({ preview, createSnapshot }));
+
+    await screen.findByRole('heading', { name: 'Cohortes' });
+    await userEvent.click(screen.getByRole('checkbox', { name: /inclure uniquement les données vérifiées/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voir le résultat' }));
+    fireEvent.change(await screen.findByLabelText('Nom de la cohorte'), { target: { value: 'Avec brouillons' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Créer la cohorte' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('2 fiches non validées');
+    expect(createSnapshot).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Créer quand même' }));
+    await waitFor(() => expect(createSnapshot).toHaveBeenCalledWith('b1', 'Avec brouillons', { conditions: [] }, false));
+  });
 });

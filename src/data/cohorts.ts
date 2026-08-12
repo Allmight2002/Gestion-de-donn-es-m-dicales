@@ -22,6 +22,8 @@ export interface CohortSummary {
   cohortType: 'dynamic' | 'snapshot';
   snapshotAt: string | null;
   memberCount: number;
+  filterDefinition: FilterDefinition;
+  validatedOnly: boolean;
 }
 
 export interface CohortRepository {
@@ -45,7 +47,7 @@ export function makeCohortRepository(client: SupabaseClient | null): CohortRepos
     async listCohorts(baseId) {
       const { data, error } = await client
         .from('cohort')
-        .select('id, name, cohort_type, snapshot_at, cohort_member(count)')
+        .select('id, name, cohort_type, snapshot_at, filter_definition, validated_only, cohort_member(count)')
         .eq('base_id', baseId)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -55,6 +57,8 @@ export function makeCohortRepository(client: SupabaseClient | null): CohortRepos
         cohortType: c.cohort_type as 'dynamic' | 'snapshot',
         snapshotAt: (c.snapshot_at as string | null) ?? null,
         memberCount: ((c.cohort_member as { count: number }[] | null)?.[0]?.count) ?? 0,
+        filterDefinition: (c.filter_definition as FilterDefinition) ?? { conditions: [] },
+        validatedOnly: (c.validated_only as boolean | null) ?? true,
       }));
     },
 
