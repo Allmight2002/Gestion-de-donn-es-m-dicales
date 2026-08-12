@@ -30,6 +30,7 @@ const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) 
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
 const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
 const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
+const BaseSettings = lazy(() => import('../screens/member/BaseSettings').then((m) => ({ default: m.BaseSettings })));
 const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
 const GroupDetail = lazy(() => import('../screens/member/GroupDetail').then((m) => ({ default: m.GroupDetail })));
 const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
@@ -161,6 +162,7 @@ export function AppRoutes() {
         <Route index element={<BaseHome />} />
         <Route element={<RequireGlobalRole globalRoles={HORS_MISSION}><Outlet /></RequireGlobalRole>}>
           <Route path="import" element={<ImportData />} />
+          <Route path="parametres" element={<BaseSettings />} />
           <Route path="cohorts" element={<CohortBuilder />} />
           <Route path="stats" element={<BaseStats />} />
           <Route path="queue" element={<CompletionQueue />} />

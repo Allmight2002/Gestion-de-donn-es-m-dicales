@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// UI-1 : la page de base en ONGLETS — fil d'Ariane, onglets selon le role/permissions,
-// contenu enfant rendu via Outlet, navigation par onglet.
+// La page de base en ONGLETS — fil d'Ariane, quatre destinations selon le role/permissions,
+// sous-onglets du groupe actif, contenu enfant rendu via Outlet.
 import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -38,7 +38,11 @@ function renderLayout(listing: BaseListing) {
           <Routes>
             <Route path="/bases/:id" element={<BaseLayout />}>
               <Route index element={<div>HOME</div>} />
-              <Route path="import" element={<div>IMPORT</div>} />
+              <Route path="parametres" element={<div>REGLAGES</div>} />
+              <Route path="queue" element={<div>FILE</div>} />
+              <Route path="cohorts" element={<div>COHORTES</div>} />
+              <Route path="stats" element={<div>STATS</div>} />
+              <Route path="activity" element={<div>JOURNAL</div>} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -47,32 +51,43 @@ function renderLayout(listing: BaseListing) {
   );
 }
 
-describe('BaseLayout (UI-1, onglets)', () => {
-  test('proprietaire : tous les onglets + fil d Ariane + Outlet ; naviguer vers Importer', async () => {
+// Le regroupement ne donne acces a rien de nouveau : chaque entree garde la condition
+// d'affichage de son ecran, et un groupe sans entree disponible disparait.
+describe('BaseLayout — quatre destinations', () => {
+  test('proprietaire : Patients, A completer, Analyse, Parametres — et rien de plus', async () => {
     renderLayout(listingWith('owner'));
-    expect(await screen.findByRole('link', { name: /Importer/ })).toBeInTheDocument();
-    for (const label of ['Patients', 'Cohortes', 'Journal', 'Accès', 'Variables', 'Curation']) {
-      expect(screen.getByRole('link', { name: new RegExp(label) })).toBeInTheDocument();
-    }
+    const nav = await screen.findByRole('navigation', { name: 'Gliomes 2026' });
+    expect(Array.from(nav.querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['Patients', 'À compléter', 'Analyse', 'Paramètres']);
     expect(screen.getByText('Gliomes 2026')).toBeInTheDocument(); // fil d'Ariane
     expect(screen.getByText('HOME')).toBeInTheDocument(); // enfant (Outlet)
-
-    await userEvent.click(screen.getByRole('link', { name: /Importer/ }));
-    expect(await screen.findByText('IMPORT')).toBeInTheDocument();
   });
 
-  test('lecteur sans permissions : Patients + Journal seulement', async () => {
-    renderLayout(listingWith('viewer'));
-    expect(await screen.findByRole('link', { name: /Journal/ })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Patients/ })).toBeInTheDocument();
-    for (const label of ['Importer', 'Cohortes', 'Accès', 'Variables', 'Curation']) {
-      expect(screen.queryByRole('link', { name: new RegExp(label) })).not.toBeInTheDocument();
-    }
-  });
-
-  test('proprietaire : l onglet des comptes de mission est propose', async () => {
+  test('l onglet Parametres ouvre les reglages et deplie ses sous-onglets', async () => {
     renderLayout(listingWith('owner'));
-    expect(await screen.findByRole('link', { name: /Comptes de mission/ })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('link', { name: /Paramètres/ }));
+    expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
+    const subs = screen.getByRole('navigation', { name: 'Paramètres' });
+    expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['Général', 'Variables', 'Accès', 'Journal']);
+  });
+
+  test('le journal et les statistiques restent accessibles a un lecteur, ranges dans leur groupe', async () => {
+    renderLayout(listingWith('viewer'));
+    const nav = await screen.findByRole('navigation', { name: 'Gliomes 2026' });
+    expect(Array.from(nav.querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['Patients', 'Analyse', 'Paramètres']); // ni saisie a completer, ni curation
+    await userEvent.click(screen.getByRole('link', { name: /Paramètres/ }));
+    const subs = await screen.findByRole('navigation', { name: 'Paramètres' });
+    expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent)).toEqual(['Général', 'Journal']);
+    expect(screen.queryByRole('link', { name: 'Variables' })).not.toBeInTheDocument();
+  });
+
+  test('un seul sous-onglet disponible : pas de barre secondaire', async () => {
+    renderLayout(listingWith('viewer'));
+    await userEvent.click(await screen.findByRole('link', { name: /Analyse/ }));
+    expect(await screen.findByText('STATS')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Analyse' })).not.toBeInTheDocument();
   });
 });
 
@@ -82,10 +97,8 @@ describe('BaseLayout — compte de mission', () => {
   test('le bandeau annonce l echeance et le parcours se limite a la saisie', async () => {
     renderLayout(listingWith('viewer', {}, { expiresAt: inDays(120), canCreateStructuredData: true }));
     expect(await screen.findByText(/Mission sur cette base jusqu/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Patients/ })).toBeInTheDocument();
-    for (const label of ['Importer', 'Cohortes', 'Journal', 'Statistiques', 'Accès', 'Variables', 'Curation', 'Comptes de mission']) {
-      expect(screen.queryByRole('link', { name: new RegExp(label) })).not.toBeInTheDocument();
-    }
+    const nav = screen.getByRole('navigation', { name: 'Gliomes 2026' });
+    expect(Array.from(nav.querySelectorAll('a'), (link) => link.textContent)).toEqual(['Patients']);
   });
 
   test('a l approche de l echeance, le bandeau compte les jours restants', async () => {

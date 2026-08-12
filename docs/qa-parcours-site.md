@@ -55,7 +55,10 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 4. Réduire la fenêtre en largeur mobile (~375 px) : barre haute + menu tiroir fonctionnels.
 
 ### 4.2 Page d'une base (onglets)
-5. Ouvrir une base : fil d'Ariane + onglets (Patients, Importer, Cohortes, À compléter, Statistiques, Journal, Accès, Variables, Curation).
+5. Ouvrir une base : fil d'Ariane + quatre onglets (Patients, À compléter, Analyse, Paramètres).
+   Vérifier la barre de sous-onglets du groupe actif : **À compléter** (file d'attente, Curation),
+   **Analyse** (Cohortes, Statistiques), **Paramètres** (Général, Variables, Accès, Journal).
+   « Importer » est un bouton de l'en-tête de la liste des patients, plus un onglet.
 6. **Statistiques** : cartes (Patients inclus/Objectif/Progression) ; fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré » → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
 7. **Complétude par variable** : les barres s'affichent, les moins complètes en premier, couleurs (rouge/ambre/vert).
 8. **À compléter** : cliquer « Compléter » sur une rencontre → le formulaire d'édition s'ouvre avec les bons champs.
@@ -70,11 +73,13 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 
 ### 4.3 bis Modèle d'observation (L9)
 15. Tableau de bord → créer une base fictive en choisissant **« Une seule saisie par participant »**.
-16. Vérifier que, base vide, le choix peut encore être changé ; ouvrir ensuite « Nouveau patient » :
-    le formulaire unique est sectionné et aucune action « Ajouter une rencontre » n'est proposée.
+16. Onglet **Paramètres → Général** : vérifier que, base vide, le modèle peut encore être changé ;
+    ouvrir ensuite « Nouveau patient » : le formulaire unique est sectionné et aucune action
+    « Ajouter une rencontre » n'est proposée.
 17. Ouvrir une base longitudinale existante : l'action « Ajouter une rencontre » doit rester
-    présente et ouvrir le choix de saisie de rencontre.
-18. Après une première saisie transverse, vérifier que le modèle est verrouillé.
+    présente et ouvrir directement le formulaire de rencontre (le choix intercalaire a été
+    retiré ; « Confier les documents au staff » est un bouton de l'en-tête du formulaire).
+18. Après une première saisie transverse, vérifier que le sélecteur du modèle est désactivé.
 
 ### 4.4 Jeux de variables (F1, F3)
 15. Mes jeux de variables → « **Depuis un fichier Excel** » : téléverser un petit CSV créé par toi (colonnes : `Age,Sexe,Date visite,Poids (kg),Commentaire` + 3-4 lignes) → vérifier les **types détectés** (entier/liste M-F/date/nombre/texte), modifier un libellé, décocher une colonne, créer → le jeu de variables `QA-…` apparaît dans Mes jeux de variables.
