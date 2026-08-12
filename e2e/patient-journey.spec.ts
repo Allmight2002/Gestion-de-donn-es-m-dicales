@@ -43,9 +43,9 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     await page.goto(`/bases/${baseId}`);
     await expect(page.getByRole('button', { name: /Nouveau patient|New patient/i })).toBeVisible();
 
-    // 3) creation d'un patient fictif — via l'UI reelle (choix -> saisie manuelle -> enregistrement)
+    // 3) creation d'un patient fictif — via l'UI reelle : « Nouveau patient » ouvre
+    //    directement le formulaire (la page de choix intercalaire a ete retiree).
     await page.getByRole('button', { name: /Nouveau patient|New patient/i }).click();
-    await page.getByRole('button', { name: /Entrer les donn.es moi-m.me|Enter the data myself/i }).click();
     await page.getByLabel(/Code patient|Patient code/i).fill(code);
     await page.getByLabel(/Nom complet|Full name/i).fill(fullName);
     await page.getByLabel(/Date de naissance|Date of birth/i).fill('1990-01-01');
