@@ -5,7 +5,7 @@ qu'ils ne prouvent plus, et à quelle condition les rétablir. Il existe pour
 qu'aucune dérogation ne se dissolve dans le temps : une dérogation oubliée est
 pire qu'un contrôle absent, parce qu'elle donne l'illusion d'un contrôle.
 
-Deux dérogations sont actives au 2026-08-01. Elles ne sont **pas de même
+Trois dérogations sont actives au 2026-08-12. Elles ne sont **pas de même
 nature**, et cette distinction est le point important de ce document.
 
 Le contexte qui autorise temporairement ces dérogations est consigné dans la
@@ -84,3 +84,48 @@ autre modification.
 acceptable pour une production ne contenant que des **données fictives**, sans
 utilisateur tiers. Elle ne l'est plus dès la première donnée réelle, dès le
 premier patient, et dès le premier utilisateur qui n'est pas le porteur.
+
+## 3. Inspection antivirus suspendue
+
+**Variable** : `INSPECTION_MODE=paused` (input `inspection` du workflow de
+release, valeur par défaut) · décision détaillée dans
+[`decision-pause-inspection-2026-08-12.md`](decision-pause-inspection-2026-08-12.md).
+
+**Nature : dette assumée, motivée par le coût d'exploitation.** Rien n'empêche
+techniquement d'héberger ClamAV. Ce qui a été jugé insoutenable, c'est la
+procédure : un conteneur Docker et un tunnel `trycloudflare` éphémère à relancer,
+avec une nouvelle URL à reporter dans les secrets, **à chaque release** — pour un
+environnement qui ne contient que des données fictives.
+
+### Ce qui n'est plus prouvé
+
+| Preuve | Ce que la release ne démontre plus |
+|---|---|
+| Détection virale | Un fichier infecté déposé est conservé et relu tel quel. |
+| Quarantaine physique | Le déplacement inter-buckets et le pointeur forensique ne sont pas exercés. |
+| Préflight E2E | Les familles EICAR et la reprise `accepted_client` sont déclarées `NON EXECUTE` — jamais comptées comme vertes. |
+
+### Ce que la dérogation ne touche pas
+
+La lecture auditée (`VITE_USE_SIGNED_READ=true`, fonction `signed-read`), le
+contrôle magic-bytes, les limites de taille des buckets, la policy qui refuse un
+objet sans ticket, la sauvegarde chiffrée vérifiée et les gardes de cible restent
+**intégralement** en vigueur.
+
+### La suspension est déclarée, jamais déduite
+
+`INSPECTION_MODE` non renseignée vaut `strict` : une variable oubliée ne peut pas
+désactiver l'antivirus. Les trois drapeaux (frontend, Edge, base) doivent valoir
+`false` **ensemble** et explicitement, sans quoi la release échoue — un frontend
+permissif devant une base stricte bloquerait les documents en `pending`, l'inverse
+ouvrirait une lecture sans verdict. Chaque exécution écrit la dérogation dans son
+journal.
+
+### Condition de levée
+
+Lancer la release avec `inspection: strict`. Le scanner est reprouvé (`/health`,
+fichier sain, EICAR) avant que la base ne repasse en strict, et le préflight rejoue
+ses six familles. Aucune autre modification n'est requise.
+
+**À déclarer telle quelle dans le dossier ANSICE**, et à lever avant toute donnée
+réelle.

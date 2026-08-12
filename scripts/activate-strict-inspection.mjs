@@ -1,8 +1,17 @@
-// Dernier interrupteur de la release stricte : prouve le scanner, puis active la politique DB.
-// Ne jamais lancer avant le deploiement des Edge Functions et du frontend strict.
+// Dernier interrupteur du parcours d'inspection.
+//   INSPECTION_MODE=strict (defaut) : prouve le scanner, PUIS active la politique DB.
+//     Ne jamais lancer avant le deploiement des Edge Functions et du frontend strict.
+//   INSPECTION_MODE=paused : suspend la politique DB dans la meme transaction verrouillee,
+//     sans scanner ni tunnel. La suspension est journalisee, jamais silencieuse.
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateSupabaseTarget } from './check-supabase-target.mjs';
+import {
+  INSPECTION_MODE_ERROR,
+  INSPECTION_PAUSED,
+  inspectionPauseBanner,
+  readInspectionMode,
+} from './inspection-mode.mjs';
 
 const clean = (value) => value?.trim() ?? '';
 const EICAR = [
@@ -78,7 +87,9 @@ async function defaultCreateClient(dbUrl) {
   return new pg.Client({ connectionString: dbUrl });
 }
 
-export async function activateStrictInspection({ dbUrl, createClient = defaultCreateClient }) {
+// Bascule transactionnelle de la politique DB. `strict` est un booleen INTERNE (jamais une
+// entree utilisateur) : la valeur SQL est donc une constante litterale des deux cotes.
+async function setInspectionPolicy({ dbUrl, strict, createClient = defaultCreateClient }) {
   if (!/^postgres(ql)?:\/\//i.test(clean(dbUrl))) {
     throw new SafeActivationError('SUPABASE_DB_URL doit etre une URL PostgreSQL.');
   }
@@ -91,20 +102,34 @@ export async function activateStrictInspection({ dbUrl, createClient = defaultCr
     transactionStarted = true;
     await client.query("select pg_advisory_xact_lock(hashtextextended('meddata.strict_inspection.activation', 0))");
     const updated = await client.query(
-      "update public.app_security_setting set value = 'true', updated_at = now() where key = 'require_server_inspection' returning key",
+      `update public.app_security_setting set value = '${strict ? 'true' : 'false'}', updated_at = now() where key = 'require_server_inspection' returning key`,
     );
     if (updated.rowCount !== 1) throw new SafeActivationError('La configuration DB require_server_inspection est absente ou ambigue.');
     const verified = await client.query('select public.require_server_inspection() as strict');
-    if (verified.rows[0]?.strict !== true) throw new SafeActivationError('La base ne confirme pas le mode strict apres mise a jour.');
+    if (verified.rows[0]?.strict !== strict) {
+      throw new SafeActivationError(strict
+        ? 'La base ne confirme pas le mode strict apres mise a jour.'
+        : 'La base ne confirme pas la suspension de l inspection apres mise a jour.');
+    }
     await client.query('commit');
     transactionStarted = false;
   } catch (error) {
     if (transactionStarted) await client.query('rollback').catch(() => {});
     if (error instanceof SafeActivationError) throw error;
-    throw new SafeActivationError('Activation transactionnelle du mode strict impossible.');
+    throw new SafeActivationError(strict
+      ? 'Activation transactionnelle du mode strict impossible.'
+      : 'Suspension transactionnelle de l inspection impossible.');
   } finally {
     await client.end().catch(() => {});
   }
+}
+
+export async function activateStrictInspection({ dbUrl, createClient }) {
+  await setInspectionPolicy({ dbUrl, createClient, strict: true });
+}
+
+export async function pauseServerInspection({ dbUrl, createClient }) {
+  await setInspectionPolicy({ dbUrl, createClient, strict: false });
 }
 
 export async function runStrictActivation({ target, env = process.env }) {
@@ -123,15 +148,50 @@ export async function runStrictActivation({ target, env = process.env }) {
   console.log(`Mode strict DB ${target}: active et verifie.`);
 }
 
+/**
+ * Suspension declaree du parcours d'inspection : aucun scanner n'est sollicite, mais la
+ * cible reste verrouillee et les drapeaux doivent avoir ete abaisses AVANT, sans quoi la
+ * base et les fonctions Edge diraient deux choses differentes.
+ */
+export async function runInspectionPause({ target, env = process.env }) {
+  if (!['staging', 'production'].includes(target)) {
+    throw new SafeActivationError('--target=staging ou --target=production est requis.');
+  }
+  const targetErrors = validateSupabaseTarget({ target, env });
+  if (targetErrors.length) throw new SafeActivationError(targetErrors.join(' '));
+  // La lecture auditee par `signed-read` n'est PAS concernee par la derogation : elle reste due.
+  if (env.VITE_USE_SIGNED_READ !== 'true') {
+    throw new SafeActivationError('VITE_USE_SIGNED_READ=true reste requis, inspection suspendue ou non.');
+  }
+  for (const name of ['VITE_REQUIRE_SERVER_INSPECTION', 'REQUIRE_SERVER_INSPECTION', 'DB_REQUIRE_SERVER_INSPECTION']) {
+    if (env[name] !== 'false') {
+      throw new SafeActivationError(`${name}=false est requis pour suspendre l inspection (valeur declaree, jamais deduite).`);
+    }
+  }
+
+  console.log(inspectionPauseBanner(target));
+  await pauseServerInspection({ dbUrl: clean(env.SUPABASE_DB_URL) });
+  console.log(`Inspection serveur ${target}: suspendue et verifiee en base (aucun scanner requis).`);
+}
+
 const isMain = process.argv[1]
   && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
 if (isMain) {
   const target = process.argv.find((arg) => arg.startsWith('--target='))?.slice(9) ?? '';
+  // --mode= prime sur INSPECTION_MODE : un script npm dedie ne depend pas de l'environnement.
+  const modeArg = process.argv.find((arg) => arg.startsWith('--mode='))?.slice(7);
+  const mode = readInspectionMode(modeArg === undefined ? process.env : { INSPECTION_MODE: modeArg });
+  const paused = mode === INSPECTION_PAUSED;
   try {
-    await runStrictActivation({ target });
+    if (!mode) throw new SafeActivationError(INSPECTION_MODE_ERROR);
+    if (paused) await runInspectionPause({ target });
+    else await runStrictActivation({ target });
   } catch (error) {
-    const message = error instanceof SafeActivationError ? error.message : 'Activation stricte interrompue.';
-    console.error(`Activation stricte refusee: ${message}`);
+    const label = paused ? 'Suspension d inspection refusee' : 'Activation stricte refusee';
+    const message = error instanceof SafeActivationError
+      ? error.message
+      : `${paused ? 'Suspension' : 'Activation stricte'} interrompue.`;
+    console.error(`${label}: ${message}`);
     process.exit(1);
   }
 }

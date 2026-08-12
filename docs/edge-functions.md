@@ -177,6 +177,11 @@ Elle utilise les memes secrets Supabase que les autres fonctions Edge.
 
 ### Deploy ClamAV
 
+> Toute cette section ne concerne que `INSPECTION_MODE=strict`. Depuis la
+> [decision du 12 aout 2026](decision-pause-inspection-2026-08-12.md), le parcours antivirus
+> est **suspendu par defaut** : ni conteneur, ni tunnel, ni secrets `CLAMAV_*` ne sont requis
+> pour deployer — et aucun fichier depose n'est alors analyse.
+
 Le depot fournit un pont HTTP minimal vers `clamd` :
 
 ```bash

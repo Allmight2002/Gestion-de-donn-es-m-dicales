@@ -114,6 +114,12 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      INSPECTION_RETRY_COOLDOWN_MS=60000 \
                      QUARANTINE_BUCKET=quarantined-uploads
 ```
+> **Inspection antivirus en pause depuis le 12 août 2026**
+> ([décision](decision-pause-inspection-2026-08-12.md)). Les deux secrets `CLAMAV_*` et
+> `REQUIRE_SERVER_INSPECTION=true` ci-dessus ne concernent que `INSPECTION_MODE=strict`. En
+> mode `paused` (défaut du pipeline), posez `REQUIRE_SERVER_INSPECTION=false`, aucun scanner
+> n'est requis — et **aucun fichier déposé n'est analysé**. Données fictives uniquement.
+
 Avant un deploiement clinique, lancez aussi `npm run env:check` dans un contexte qui contient les
 variables frontend et les secrets Edge : le script refuse une divergence entre
 `VITE_REQUIRE_SERVER_INSPECTION` et `REQUIRE_SERVER_INSPECTION`. Quand ce mode est actif, posez
@@ -210,7 +216,9 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
 ### Contrôles opérationnels et cloud à prouver
 
 Une revue du dépôt local ne peut pas attester ces contrôles. Avant toute donnée réelle, conserver
-une preuve datée pour chacun des points suivants :
+une preuve datée pour chacun des points suivants. Les quatre premiers sont précisément ce que la
+[dérogation du 12 août 2026](decision-pause-inspection-2026-08-12.md) suspend : les rétablir, c'est
+relancer la release avec `inspection: strict`.
 
 - scanner ClamAV permanent, joignable par les Edge Functions et supervisé (`/health`, alertes,
   signatures à jour) ;

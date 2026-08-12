@@ -24,7 +24,7 @@ Créer les environnements GitHub `staging` et `production`. Dans chacun :
 
 - variable `APP_URL` : URL HTTPS canonique du frontend ;
 - secrets `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` ;
-- secrets `CLAMAV_SCAN_URL` et `CLAMAV_SCAN_TOKEN`.
+- secrets `CLAMAV_SCAN_URL` et `CLAMAV_SCAN_TOKEN` (uniquement si `INSPECTION_MODE=strict`).
 - secret `MONITOR_ALERT_WEBHOOK_URL` : destination HTTPS d'alerte, distincte de
   GitHub et gérée par l'exploitation.
 
@@ -33,6 +33,15 @@ L'environnement `staging` exige aussi `VERCEL_TOKEN`, `VERCEL_ORG_ID` et
 éphémère, HttpOnly et limité au déploiement `APP_URL` exact. La valeur du cookie
 n'est ni journalisée ni conservée dans l'artefact ; elle est supprimée même si la
 sonde échoue. `APP_URL` doit alors être une URL HTTPS `*.vercel.app`.
+
+> **Sondes antivirus suspendues depuis le 12 août 2026**
+> ([décision](decision-pause-inspection-2026-08-12.md)). Le workflow tourne avec
+> `INSPECTION_MODE=paused` : les trois sondes `clamav-*` ne sont **pas émises**, les
+> secrets `CLAMAV_*` deviennent facultatifs, et la preuve JSON porte
+> `inspectionMode: "paused"`. Ces sondes **disparaissent** du rapport au lieu de
+> passer au vert : un rapport vert n'atteste donc rien sur l'antivirus. Poser la
+> variable de dépôt `INSPECTION_MODE=strict` rétablit la surveillance complète, sans
+> autre modification. Le paragraphe ci-dessous ne vaut que dans ce mode.
 
 `CLAMAV_SCAN_URL` doit se terminer par `/scan`. Le moniteur exige le mode strict
 et refuse une clé serveur à la place de la clé publique. Il refuse aussi une base

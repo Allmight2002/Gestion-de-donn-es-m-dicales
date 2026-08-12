@@ -51,6 +51,56 @@ describe('monitoring operationnel', () => {
     })).toThrow(/doit valoir true/);
   });
 
+  // Decision du 12 aout 2026 : sonder un scanner suspendu produirait une alerte permanente
+  // qui ne surveille rien. Les sondes disparaissent donc du rapport — elles ne passent pas
+  // au vert — et le mode observe est consigne dans la preuve.
+  test('inspection suspendue : aucune sonde antivirus, et aucun scanner exige', async () => {
+    const paused = {
+      ...validEnvironment(),
+      INSPECTION_MODE: 'paused',
+      MONITOR_REQUIRE_STRICT_INSPECTION: 'false',
+      CLAMAV_SCAN_URL: '',
+      CLAMAV_SCAN_TOKEN: '',
+      MONITOR_MAX_SIGNATURE_AGE_HOURS: '',
+    };
+    const config = validateMonitorConfiguration(paused);
+    expect(config.inspectionMode).toBe('paused');
+    expect(config.scanUrl).toBeNull();
+
+    const requested: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      requested.push(url);
+      if (url === config.appUrl) {
+        return new Response('<!doctype html><div id="root"></div>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+      }
+      if (url.endsWith('/auth/v1/health')) return Response.json({ version: 'synthetic' });
+      if (url.includes('/rest/v1/profiles')) return Response.json([]);
+      if (url.endsWith('/storage/v1/status')) return new Response(null, { status: 200 });
+      throw new Error(`appel inattendu: ${url}`);
+    }));
+
+    const checks = await monitor(config);
+    expect(checks.every((check) => check.ok)).toBe(true);
+    expect(checks.map((check) => check.name)).not.toContain('clamav-health');
+    expect(checks.some((check) => check.name.startsWith('clamav-'))).toBe(false);
+    expect(requested.some((url) => url.includes('scanner.example.test'))).toBe(false);
+  });
+
+  test('inspection suspendue : un moniteur qui se pretend encore strict est refuse', () => {
+    expect(() => validateMonitorConfiguration({
+      ...validEnvironment(),
+      INSPECTION_MODE: 'paused',
+    })).toThrow(/doit valoir false/);
+    expect(() => validateMonitorConfiguration({
+      ...validEnvironment(),
+      INSPECTION_MODE: 'off',
+    })).toThrow(/INSPECTION_MODE/);
+  });
+
   test('accepte le statut Storage officiel a corps vide et transmet le cookie Vercel seulement au frontend', async () => {
     const config = validateMonitorConfiguration(validEnvironment());
     const requests: Array<{ url: string; headers: Headers }> = [];

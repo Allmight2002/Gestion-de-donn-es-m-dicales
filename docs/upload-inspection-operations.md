@@ -42,6 +42,16 @@ vérifier l'existence Storage et les références SQL, puis soit supprimer l'obj
 marquer le ticket `cleaned`, soit conserver la ligne en `pending` et réinspecter. Toute action
 doit produire une entrée d'audit; aucune suppression ne doit viser un objet rattaché.
 
+## Mode suspendu (`INSPECTION_MODE=paused`)
+
+Depuis la [décision du 12 août 2026](decision-pause-inspection-2026-08-12.md), le parcours
+antivirus peut être suspendu : aucun scanner n'est sollicité, `require_server_inspection()`
+vaut `false`, et les lignes restent en `accepted_client` — lisibles, mais **sans aucun verdict
+serveur**. Les états `scanning` et `quarantined` ne sont alors jamais atteints, et
+`last_inspection_error` n'est pas alimenté. Réservé aux données fictives ; la réconciliation
+prudente ci-dessus s'applique d'autant plus au retour en mode strict, puisqu'un
+`accepted_client` produit pendant la pause n'a jamais été analysé.
+
 ## Checklist cloud avant mode strict
 
 - Héberger ClamAV sur un service stable, privé et redémarré automatiquement.
