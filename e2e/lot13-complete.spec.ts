@@ -291,9 +291,12 @@ test('@lot13 hors-ligne: cache minimise, refresh, outbox, reconnexion, expiratio
   test.setTimeout(180_000);
   await signIn(page, 'MEDECIN');
   const patient = state.patients[1];
-  await page.goto(`/bases/${state.baseId}`);
+  // La copie hors-ligne se commande depuis l'onglet Parametres de la base ; le retrait
+  // n'apparait qu'une fois l'instantane enregistre, c'est donc lui qui atteste la copie.
+  await page.goto(`/bases/${state.baseId}/parametres`);
   await page.getByRole('button', { name: /Rendre disponible hors-ligne|Make available offline/i }).click();
-  await expect(page.getByText(/Disponible hors-ligne|Available offline/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: /^Retirer$|^Remove$/i })).toBeVisible({ timeout: 30_000 });
+  await page.goto(`/bases/${state.baseId}`);
   await page.evaluate(async () => { if ('serviceWorker' in navigator) await navigator.serviceWorker.ready; });
   await page.reload();
 
@@ -327,9 +330,9 @@ test('@lot13 hors-ligne: cache minimise, refresh, outbox, reconnexion, expiratio
   await expect(page.getByRole('alert')).toContainText(/pas disponible|not available|expir/i);
 
   await context.setOffline(false);
-  await page.reload();
+  await page.goto(`/bases/${state.baseId}/parametres`);
   await page.getByRole('button', { name: /Rendre disponible hors-ligne|Make available offline/i }).click();
-  await expect(page.getByText(/Disponible hors-ligne|Available offline/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: /^Retirer$|^Remove$/i })).toBeVisible({ timeout: 30_000 });
   await context.setOffline(true);
   await page.goto(`/bases/${state.baseId}/patients/${patient.id}/encounters/${patient.encounterId}/edit`);
   await page.getByLabel(/^Score$/i).first().fill('22');
