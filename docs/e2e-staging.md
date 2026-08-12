@@ -12,6 +12,13 @@ documents.
 > EICAR. Le tunnel scanner reste temporaire : cette preuve ne vaut pas hébergement pérenne ni
 > autorisation de données réelles.
 
+> **Depuis le 12 août 2026, le scanner n'est plus obligatoire** ([décision](decision-pause-inspection-2026-08-12.md)).
+> Avec `INSPECTION_MODE=paused`, ce préflight tourne **sans ClamAV** : les familles qui
+> dépendent du verdict antivirus sont déclarées `NON EXECUTE` et le rapport final annonce
+> explicitement qu'il est **partiel**. Un run vert dans ce mode ne prouve donc **ni** détection
+> virale **ni** quarantaine. Les pré-requis 3 et la section « Ordre d'activation » ci-dessous
+> ne concernent que `INSPECTION_MODE=strict`.
+
 > **Jamais sur la prod.** Le script `scripts/e2e-staging.mjs` refuse de démarrer si
 > `STAGING_SUPABASE_URL` ne pointe pas vers le projet staging. On ne relinke jamais le CLI :
 > on cible toujours via `--db-url` / `--project-ref` explicites.
@@ -24,8 +31,8 @@ documents.
 2. Provisionner le staging : `db push` (toutes les migrations), `apply-storage.mjs`
    (buckets + policies), deployer les Edge Functions (`signed-read`, `inspect-upload`,
    `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), creer un compte `medecin`.
-3. **Scanner ClamAV joignable par l'Edge.** `inspect-upload` s'exécute dans le cloud : il ne
-   peut pas joindre `localhost`. En local :
+3. **Scanner ClamAV joignable par l'Edge — `INSPECTION_MODE=strict` uniquement.**
+   `inspect-upload` s'exécute dans le cloud : il ne peut pas joindre `localhost`. En local :
    ```bash
    CLAMAV_SCAN_TOKEN=<jeton> docker compose -f docker-compose.clamav.yml up -d
    cloudflared tunnel --url http://127.0.0.1:8088   # expose /scan, URL éphémère
@@ -33,6 +40,25 @@ documents.
    ⚠️ Les tunnels `trycloudflare` gratuits sont **instables** (l'URL change à chaque relance) :
    reposer `CLAMAV_SCAN_URL` à chaque nouvelle URL. Un tunnel nommé (compte Cloudflare) ou un
    petit VPS est préférable pour un usage régulier.
+
+## Mode `paused` : ce qui est joué, ce qui ne l'est pas
+
+```bash
+npm run inspection:pause -- --target=staging   # suspend la politique DB (transactionnel)
+npm run e2e:staging                            # INSPECTION_MODE=paused
+```
+
+| Famille | Mode `paused` |
+|---|---|
+| Fichier sain | **joué** — chaîne complète jusqu'à `accepted_client`, `signed-read` délivre l'URL, octets relus |
+| EICAR dans un `.docx` | `NON EXECUTE` |
+| EICAR déguisé (`.pdf`) | `NON EXECUTE` |
+| Upload sans ticket | **joué** — policy `storage.objects` |
+| Objet > 20 Mio | **joué** — limite du bucket |
+| `accepted_client` (héritage) | `NON EXECUTE` |
+
+Le script refuse de démarrer si la base est encore stricte alors que `INSPECTION_MODE=paused`
+(les uploads resteraient bloqués en `pending`), et inversement.
 
 ## Ordre d'activation du mode strict (À RESPECTER)
 
@@ -88,6 +114,11 @@ actif, scanner ClamAV 3.6 M signatures via tunnel. Détection EICAR confirmée c
 
 ## Après la session
 
-Couper le tunnel et la pile Docker (`docker compose -f docker-compose.clamav.yml down`).
-Remettre éventuellement le staging en non-strict (`value = 'false'`) si on veut y refaire des
-tests sans scanner. Le projet staging peut rester : il resservira à chaque preflight de release.
+Couper le tunnel et la pile Docker (`docker compose -f docker-compose.clamav.yml down`), puis
+remettre le staging en non-strict pour les sessions suivantes :
+
+```bash
+npm run inspection:pause -- --target=staging
+```
+
+Le projet staging peut rester : il resservira à chaque preflight de release.

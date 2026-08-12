@@ -7,9 +7,15 @@
 //
 //   node scripts/e2e-staging.mjs          (ou : npm run e2e:staging)
 //
-// Prerequis : .env.staging rempli (local, gitignore), mode STRICT active sur le
-// staging (secrets Edge + require_server_inspection=true), scanner ClamAV joignable
-// par l'Edge (tunnel). Le script REFUSE de viser un projet non-staging.
+// Prerequis : .env.staging rempli (local, gitignore) et un mode d'inspection COHERENT
+// avec la base visee. Le script REFUSE de viser un projet non-staging.
+//
+//   INSPECTION_MODE=strict (defaut) : mode strict actif en base, secrets Edge poses,
+//     scanner ClamAV joignable par l'Edge (tunnel) -> les 6 familles sont jouees.
+//   INSPECTION_MODE=paused : aucun scanner. Les familles qui DEPENDENT du verdict
+//     antivirus ne sont pas jouees et sont declarees NON EXECUTEES — jamais comptees
+//     comme vertes. Le reste de la chaine documentaire (ticket, policies Storage,
+//     limites de taille, URL signee) reste prouve.
 // =============================================================================
 import { readFileSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
@@ -17,6 +23,16 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
+import {
+  INSPECTION_MODE_ERROR,
+  INSPECTION_PAUSED,
+  inspectionPauseBanner,
+  readInspectionMode,
+} from './inspection-mode.mjs';
+
+const INSPECTION_MODE = readInspectionMode(process.env);
+if (!INSPECTION_MODE) { console.error(`✗ ${INSPECTION_MODE_ERROR}`); process.exit(1); }
+const SCANNER_PAUSED = INSPECTION_MODE === INSPECTION_PAUSED;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -122,9 +138,29 @@ const user = createClient(SUPA_URL, ANON, { auth: { persistSession: false } });
 const service = createClient(SUPA_URL, SERVICE, { auth: { persistSession: false } });
 
 const results = [];
+const skipped = [];
 function report(name, ok, detail = '') {
   results.push({ name, ok });
   console.log(`${ok ? '✅ PASS' : '❌ FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
+}
+// Un scenario non joue n'est ni vert ni rouge : il est ABSENT, et le rapport le dit.
+function skip(name, reason) {
+  skipped.push({ name, reason });
+  console.log(`⏭️  NON EXECUTE  ${name} — ${reason}`);
+}
+
+// Scenario qui DEPEND du verdict antivirus : joue tel quel en mode strict, declare non
+// execute quand l'inspection est suspendue. Jamais transforme en succes par defaut.
+async function scannerScenario(name, run) {
+  if (SCANNER_PAUSED) {
+    skip(name, 'aucun scanner joignable (INSPECTION_MODE=paused)');
+    return;
+  }
+  try {
+    await run();
+  } catch (e) {
+    report(name, false, e.message);
+  }
 }
 
 async function edge(fn, body) {
@@ -196,13 +232,20 @@ async function uploadAttachment({ baseId, patientId }, bytes, label, status = 'p
 async function main() {
   await admin.connect();
 
-  // 0) Le preflight exige le mode STRICT reellement actif en base.
+  // 0) Le mode declare doit correspondre a la valeur REELLE en base, dans les deux sens.
   const strict = (await q('select public.require_server_inspection() as s'))[0].s === true;
-  if (!strict) {
+  if (SCANNER_PAUSED) {
+    if (strict) {
+      console.error('✗ INSPECTION_MODE=paused mais require_server_inspection() = true : la base exige encore un verdict serveur, les uploads resteraient bloques. Suspendez-la d\'abord (npm run inspection:pause -- --target=staging).');
+      process.exit(1);
+    }
+    console.log(inspectionPauseBanner('staging'));
+  } else if (!strict) {
     console.error('✗ require_server_inspection() = false sur le staging : activez le mode strict avant le preflight (ordre d\'activation, docs/deploiement.md).');
     process.exit(1);
+  } else {
+    console.log('Mode strict actif sur le staging ✓');
   }
-  console.log('Mode strict actif sur le staging ✓');
 
   const { data: auth, error: ae } = await user.auth.signInWithPassword({ email: EMAIL, password: PASSWORD });
   if (ae) { console.error(`✗ connexion medecin staging impossible : ${ae.message}`); process.exit(1); }
@@ -210,12 +253,18 @@ async function main() {
   const fx = await ensureFixture(medecinId);
   console.log(`Fixture E2E prete (base ${fx.baseId})\n`);
 
-  // 1) Fichier SAIN : accepted -> URL signee -> octets relus.
+  // 1) Fichier SAIN : verdict serveur (strict) ou statut client (pause) -> URL signee -> octets relus.
   try {
     const a = await uploadAttachment(fx, PDF_CLEAN, 'E2E sain');
-    const insp = await edge('inspect-upload', { entity: 'attachment', id: a.id });
-    const accepted = insp.data?.status === 'accepted';
-    report('sain : inspect-upload -> accepted', accepted, JSON.stringify(insp.data));
+    if (SCANNER_PAUSED) {
+      const row = (await q('select inspection_status from public.clinical_attachment where id=$1', [a.id]))[0];
+      report('sain : chaine documentaire -> accepted_client (AUCUN verdict antivirus)', row.inspection_status === 'accepted_client', row.inspection_status);
+      skip('sain : inspect-upload -> accepted', 'verdict serveur indisponible (INSPECTION_MODE=paused)');
+    } else {
+      const insp = await edge('inspect-upload', { entity: 'attachment', id: a.id });
+      const accepted = insp.data?.status === 'accepted';
+      report('sain : inspect-upload -> accepted', accepted, JSON.stringify(insp.data));
+    }
     const sr = await edge('signed-read', { entity: 'attachment', id: a.id });
     const url = sr.data?.url;
     let fetched = false;
@@ -227,7 +276,7 @@ async function main() {
   } catch (e) { report('sain : chaine complete', false, e.message); }
 
   // 2) EICAR dans un ZIP nomme .docx : verdict CLAMAV -> quarantaine PHYSIQUE.
-  try {
+  await scannerScenario('eicar(docx) : chaine quarantaine', async () => {
     const b = await uploadAttachment(fx, DOCX_EICAR, 'E2E eicar-docx', 'pending', 'docx', WORD_MIME);
     const insp = await edge('inspect-upload', { entity: 'attachment', id: b.id });
     report('eicar(docx) : inspect-upload -> quarantined (verdict clamav)', insp.data?.status === 'quarantined', JSON.stringify(insp.data));
@@ -245,14 +294,14 @@ async function main() {
     report('eicar(docx) : signed-read REFUSE (aucune URL)', !sr.data?.url && sr.status !== 200);
     const { data: userQ, error: userQe } = await user.storage.from('quarantined-uploads').list(qFolder);
     report('eicar(docx) : bucket quarantaine ILLISIBLE par un utilisateur', Boolean(userQe) || (userQ ?? []).length === 0);
-  } catch (e) { report('eicar(docx) : chaine quarantaine', false, e.message); }
+  });
 
   // 3) EICAR brut nomme .pdf : refus AVANT clamav (magic-bytes) -> quarantaine aussi.
-  try {
+  await scannerScenario('eicar(brut) : quarantaine', async () => {
     const c = await uploadAttachment(fx, RAW_EICAR, 'E2E eicar-brut');
     const insp = await edge('inspect-upload', { entity: 'attachment', id: c.id });
     report('eicar(brut) : deguisement d extension -> quarantined', insp.data?.status === 'quarantined', JSON.stringify(insp.data));
-  } catch (e) { report('eicar(brut) : quarantaine', false, e.message); }
+  });
 
   // 4) Upload SANS ticket : la policy storage.objects doit refuser.
   try {
@@ -271,17 +320,22 @@ async function main() {
   } catch (e) { report('21 Mio : REFUSE par la limite Storage', true, e.message); }
 
   // 6) Reprise d un accepted_client (heritage pilote fictif) : reinspectable en strict.
-  try {
+  await scannerScenario('accepted_client : reprise', async () => {
     const d = await uploadAttachment(fx, PDF_CLEAN, 'E2E reprise', 'accepted_client');
     const sr0 = await edge('signed-read', { entity: 'attachment', id: d.id });
     report('accepted_client : signed-read REFUSE en mode strict', !sr0.data?.url && sr0.status !== 200);
     const insp = await edge('inspect-upload', { entity: 'attachment', id: d.id });
     report('accepted_client : reinspection -> accepted', insp.data?.status === 'accepted', JSON.stringify(insp.data));
-  } catch (e) { report('accepted_client : reprise', false, e.message); }
+  });
 
   await admin.end();
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${failed === 0 ? '🎉' : '💥'} ${results.length - failed}/${results.length} scenarios verts`);
+  if (skipped.length > 0) {
+    console.log(`⚠️  ${skipped.length} scenario(s) NON EXECUTE(S) — ce preflight est PARTIEL :`);
+    for (const item of skipped) console.log(`   - ${item.name} (${item.reason})`);
+    console.log('   Aucune preuve de detection antivirus ni de quarantaine n est produite par cette execution.');
+  }
   process.exit(failed === 0 ? 0 : 1);
 }
 

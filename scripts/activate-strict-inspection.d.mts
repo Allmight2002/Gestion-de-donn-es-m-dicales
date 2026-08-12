@@ -22,4 +22,6 @@ export interface StrictActivationInput {
 
 export function verifyStrictScanner(input: ScannerVerificationInput): Promise<void>;
 export function activateStrictInspection(input: StrictActivationInput): Promise<void>;
+export function pauseServerInspection(input: StrictActivationInput): Promise<void>;
 export function runStrictActivation(input: { target: string; env?: NodeJS.ProcessEnv }): Promise<void>;
+export function runInspectionPause(input: { target: string; env?: NodeJS.ProcessEnv }): Promise<void>;

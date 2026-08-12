@@ -7,6 +7,13 @@
 // variables annoncent le mode strict. Le mode par defaut reste SANS dependance (import pg
 // uniquement dans la branche cloud).
 
+import {
+  INSPECTION_MODE_ERROR,
+  INSPECTION_PAUSED,
+  inspectionPauseBanner,
+  readInspectionMode,
+} from './inspection-mode.mjs';
+
 const cloudMode = process.argv.includes('--cloud');
 const yes = (name) => process.env[name] === 'true';
 const value = (name) => process.env[name] ?? '';
@@ -15,8 +22,18 @@ const fail = (message) => {
   process.exitCode = 1;
 };
 
+const inspectionMode = readInspectionMode(process.env);
+if (!inspectionMode) fail(INSPECTION_MODE_ERROR);
+const inspectionPaused = inspectionMode === INSPECTION_PAUSED;
+
 const frontendStrict = yes('VITE_REQUIRE_SERVER_INSPECTION');
 const edgeStrict = yes('REQUIRE_SERVER_INSPECTION');
+
+// INSPECTION_MODE=paused est une declaration, pas une tolerance : les drapeaux stricts
+// doivent avoir ete abaisses, sans quoi la configuration ment sur ce qu'elle applique.
+if (inspectionPaused && (frontendStrict || edgeStrict || yes('DB_REQUIRE_SERVER_INSPECTION'))) {
+  fail("INSPECTION_MODE=paused exige VITE_REQUIRE_SERVER_INSPECTION, REQUIRE_SERVER_INSPECTION et DB_REQUIRE_SERVER_INSPECTION a 'false'.");
+}
 
 if (frontendStrict !== edgeStrict) {
   fail("VITE_REQUIRE_SERVER_INSPECTION et REQUIRE_SERVER_INSPECTION doivent valoir 'true' ensemble, ou etre tous deux desactives.");
@@ -92,5 +109,6 @@ if (cloudMode) {
 }
 
 if (!process.exitCode) {
+  if (inspectionPaused) console.log(inspectionPauseBanner('configuration courante'));
   console.log('Inspection env OK');
 }

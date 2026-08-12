@@ -16,6 +16,16 @@ on:
         description: Identifiant du workflow staging reussi pour ce meme SHA (obligatoire en production)
         required: false
         type: string
+      inspection:
+        # Decision du 12 aout 2026 (docs/decision-pause-inspection-2026-08-12.md) : le parcours
+        # ClamAV n'est plus obligatoire pour les preuves staging ni pour la production interne.
+        # 'paused' = aucun scanner, aucun tunnel ephemere ; les fichiers ne sont PAS analyses.
+        # 'strict' = scanner joignable exige : le seul mode admissible avec des donnees reelles.
+        description: Parcours d inspection antivirus (paused = scanner ClamAV non requis)
+        required: false
+        default: paused
+        type: choice
+        options: [paused, strict]
 
 permissions:
   contents: read
@@ -60,9 +70,10 @@ jobs:
           VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
           VITE_SUPABASE_ANON_KEY: ci-public-anon-key-placeholder-123456
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
           VITE_OFFLINE_MODE: disabled
           VITE_OFFLINE_ADMIN_ACK: 'false'
+          INSPECTION_MODE: ${{ inputs.inspection }}
           RELEASE_TARGET: ${{ inputs.target }}
         run: npm run release:env -- --target=pr && npm run build && npm run manifest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -90,7 +101,8 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          INSPECTION_MODE: ${{ inputs.inspection }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -109,8 +121,8 @@ jobs:
           STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
           STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
-          REQUIRE_SERVER_INSPECTION: 'true'
-          DB_REQUIRE_SERVER_INSPECTION: 'true'
+          REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          DB_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
         run: |
           test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
           npm run release:env -- --target=staging
@@ -132,16 +144,27 @@ jobs:
           npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
           npm run db:function-acl:verify
-      - name: Configure strict Edge runtime secrets
+      # Sens de la bascule : on ACTIVE le strict en dernier (sinon les uploads se bloquent),
+      # mais on le SUSPEND en premier. Relacher la base avant ses lecteurs evite de creer des
+      # lignes `pending` qu'aucun scanner ne viendrait plus debloquer.
+      - name: Suspend server inspection first when the scanner path is paused
+        if: inputs.inspection != 'strict'
+        env: *staging_env
+        run: npm run inspection:pause -- --target=staging
+      - name: Configure Edge runtime secrets for the declared inspection mode
         env: *staging_env
         run: |
           test -n "$MISSION_CREDENTIALS_ENCRYPTION_KEY"
-          npm exec -- supabase secrets set \
-            "CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL" \
-            "CLAMAV_SCAN_TOKEN=$CLAMAV_SCAN_TOKEN" \
-            "MISSION_CREDENTIALS_ENCRYPTION_KEY=$MISSION_CREDENTIALS_ENCRYPTION_KEY" \
-            "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION" \
-            --project-ref "$SUPABASE_PROJECT_REF"
+          # REQUIRE_SERVER_INSPECTION est TOUJOURS repose : c'est lui qui empeche une valeur
+          # 'true' residuelle de bloquer les lectures alors qu'aucun scanner ne repond plus.
+          secrets=(
+            "MISSION_CREDENTIALS_ENCRYPTION_KEY=$MISSION_CREDENTIALS_ENCRYPTION_KEY"
+            "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"
+          )
+          if [ "$INSPECTION_MODE" = "strict" ]; then
+            secrets+=("CLAMAV_SCAN_URL=$CLAMAV_SCAN_URL" "CLAMAV_SCAN_TOKEN=$CLAMAV_SCAN_TOKEN")
+          fi
+          npm exec -- supabase secrets set "${secrets[@]}" --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy all Edge Functions
         env: *staging_env
         run: for dir in supabase/functions/*; do [ -f "$dir/index.ts" ] || continue; fn=$(basename "$dir"); npm exec -- supabase functions deploy "$fn" --import-map deno.json --use-api --project-ref "$SUPABASE_PROJECT_REF"; done
@@ -181,9 +204,10 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
           VITE_OFFLINE_MODE: disabled
           VITE_OFFLINE_ADMIN_ACK: 'false'
+          INSPECTION_MODE: ${{ inputs.inspection }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -198,12 +222,13 @@ jobs:
           URL=$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --yes --token "$VERCEL_TOKEN")
           node -e "const u=new URL(process.argv[1]); if(u.protocol!=='https:' || !u.hostname.endsWith('.vercel.app')) process.exit(1)" "$URL"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
-      - name: Activate strict DB last, then run cloud and backend E2E gates
+      - name: Apply the declared inspection mode last, then run cloud and backend E2E gates
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          INSPECTION_MODE: ${{ inputs.inspection }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -218,11 +243,15 @@ jobs:
           STAGING_SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           STAGING_MEDECIN_EMAIL: ${{ secrets.STAGING_MEDECIN_EMAIL }}
           STAGING_MEDECIN_PASSWORD: ${{ secrets.STAGING_MEDECIN_PASSWORD }}
-          REQUIRE_SERVER_INSPECTION: 'true'
-          DB_REQUIRE_SERVER_INSPECTION: 'true'
+          REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          DB_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
         run: |
           test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
-          npm run inspection:activate -- --target=staging
+          # Mode strict : la base bascule EN DERNIER, apres le frontend et les fonctions.
+          # Mode pause : deja suspendue en amont (job backend-staging), rien a faire ici.
+          if [ "$INSPECTION_MODE" = "strict" ]; then
+            npm run inspection:activate -- --target=staging
+          fi
           npm run env:check:cloud
           npm run release:drift
           npm run e2e:staging
@@ -365,6 +394,9 @@ jobs:
       STAGING_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
       REQUIRE_SERVER_INSPECTION: 'true'
       DB_REQUIRE_SERVER_INSPECTION: 'true'
+      # Ce job de validation LOT 13 reste volontairement STRICT quel que soit l'input :
+      # il existe pour exercer la chaine complete, scanner compris, sur un preview isole.
+      INSPECTION_MODE: strict
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -632,9 +664,10 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
           VITE_OFFLINE_MODE: disabled
           VITE_OFFLINE_ADMIN_ACK: 'false'
+          INSPECTION_MODE: ${{ inputs.inspection }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -647,8 +680,8 @@ jobs:
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
           MISSION_CREDENTIALS_ENCRYPTION_KEY: ${{ secrets.MISSION_CREDENTIALS_ENCRYPTION_KEY }}
-          REQUIRE_SERVER_INSPECTION: 'true'
-          DB_REQUIRE_SERVER_INSPECTION: 'true'
+          REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          DB_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
         run: |
           test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.sha }}"
           npm run release:env -- --target=production
@@ -668,12 +701,22 @@ jobs:
         env: *production_env
         run: |
           test -n "$MISSION_CREDENTIALS_ENCRYPTION_KEY"
-          npm exec -- supabase secrets set \
-            "MISSION_CREDENTIALS_ENCRYPTION_KEY=$MISSION_CREDENTIALS_ENCRYPTION_KEY" \
-            --project-ref "$SUPABASE_PROJECT_REF"
           npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
           npm run db:function-acl:verify
+          # Sens de la bascule : on ACTIVE le strict en dernier (sinon les uploads se bloquent),
+          # mais on le SUSPEND en premier — avant les lecteurs Edge et frontend. Une base encore
+          # stricte face a des lecteurs relaches produirait des lignes `pending` qu'aucun scanner
+          # ne viendrait plus debloquer.
+          if [ "$INSPECTION_MODE" != "strict" ]; then
+            npm run inspection:pause -- --target=production
+          fi
+          # Le drapeau Edge suit le mode declare, sans quoi une valeur 'true' residuelle
+          # bloquerait les lectures en l'absence de scanner.
+          npm exec -- supabase secrets set \
+            "MISSION_CREDENTIALS_ENCRYPTION_KEY=$MISSION_CREDENTIALS_ENCRYPTION_KEY" \
+            "REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION" \
+            --project-ref "$SUPABASE_PROJECT_REF"
           for dir in supabase/functions/*; do
             [ -f "$dir/index.ts" ] || continue
             fn=$(basename "$dir")
@@ -694,7 +737,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
           VITE_OFFLINE_MODE: disabled
           VITE_OFFLINE_ADMIN_ACK: 'false'
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -715,12 +758,13 @@ jobs:
             fi
             sleep 5
           done
-      - name: Activate strict database last and verify cloud
+      - name: Apply the declared inspection mode last and verify cloud
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
-          VITE_REQUIRE_SERVER_INSPECTION: 'true'
+          VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          INSPECTION_MODE: ${{ inputs.inspection }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -729,6 +773,11 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
           CLAMAV_SCAN_TOKEN: ${{ secrets.CLAMAV_SCAN_TOKEN }}
-          REQUIRE_SERVER_INSPECTION: 'true'
-          DB_REQUIRE_SERVER_INSPECTION: 'true'
-        run: npm run inspection:activate -- --target=production && npm run env:check:cloud && EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json" npm run release:drift
+          REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+          DB_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
+        run: |
+          if [ "$INSPECTION_MODE" = "strict" ]; then
+            npm run inspection:activate -- --target=production
+          fi
+          npm run env:check:cloud
+          EXPECTED_EDGE_INVENTORY_FILE="$RUNNER_TEMP/staging-backend/backend-drift.json" npm run release:drift

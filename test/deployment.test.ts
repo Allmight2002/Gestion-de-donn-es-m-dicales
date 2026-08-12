@@ -392,6 +392,53 @@ describe('configuration de deploiement', () => {
     expect(cloudGate).toBeGreaterThan(strictActivation);
   });
 
+  test('le parcours antivirus est un mode declare, jamais une desactivation silencieuse', () => {
+    const workflow = read('.github/workflows/coordinated-release.yml');
+    const staging = workflow.slice(workflow.indexOf('\n  backend-staging:'), workflow.indexOf('\n  lot13-complete-staging:'));
+    const lot13 = workflow.slice(workflow.indexOf('\n  lot13-complete-staging:'), workflow.indexOf('\n  production:'));
+    const production = workflow.slice(workflow.indexOf('\n  production:'));
+
+    // L'input existe, et son defaut est la pause decidee le 12 aout 2026.
+    expect(workflow).toContain('      inspection:');
+    expect(workflow).toContain('        default: paused');
+    expect(workflow).toContain('        options: [paused, strict]');
+
+    // Les deux cibles savent suspendre ET reactiver ; aucune n'est figee sur un seul chemin.
+    for (const target of ['staging', 'production']) {
+      expect(workflow).toContain(`npm run inspection:activate -- --target=${target}`);
+      expect(workflow).toContain(`npm run inspection:pause -- --target=${target}`);
+    }
+
+    // Sens de bascule : le strict s'ACTIVE en dernier (apres le frontend), mais se SUSPEND
+    // en premier — avant les secrets Edge et le frontend. Une base encore stricte face a des
+    // lecteurs deja relaches produirait des lignes `pending` definitivement bloquees.
+    for (const [job, target] of [[staging, 'staging'], [production, 'production']] as const) {
+      const pause = job.indexOf(`npm run inspection:pause -- --target=${target}`);
+      const activate = job.indexOf(`npm run inspection:activate -- --target=${target}`);
+      const edgeSecrets = job.indexOf('REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION');
+      const frontendDeploy = job.indexOf('deploy --prebuilt');
+      expect(pause).toBeGreaterThan(-1);
+      expect(pause).toBeLessThan(edgeSecrets);
+      expect(pause).toBeLessThan(frontendDeploy);
+      expect(activate).toBeGreaterThan(frontendDeploy);
+    }
+
+    // Le drapeau Edge est repose des DEUX cotes : une valeur 'true' residuelle bloquerait
+    // les lectures alors qu'aucun scanner ne repond plus (documents coinces en pending).
+    expect(staging).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
+    expect(production).toContain('"REQUIRE_SERVER_INSPECTION=$REQUIRE_SERVER_INSPECTION"');
+
+    // Les frontends REELLEMENT deployes suivent le mode : plus aucune valeur figee a 'true'
+    // hors du job LOT 13, volontairement gele en strict.
+    for (const job of [staging, production]) {
+      expect(job).not.toContain("VITE_REQUIRE_SERVER_INSPECTION: 'true'");
+      expect(job).not.toContain("REQUIRE_SERVER_INSPECTION: 'true'");
+      expect(job).not.toContain("DB_REQUIRE_SERVER_INSPECTION: 'true'");
+    }
+    expect(lot13).toContain('INSPECTION_MODE: strict');
+    expect(lot13).toContain("REQUIRE_SERVER_INSPECTION: 'true'");
+  });
+
   test('la production exige une sauvegarde chiffree verifiee et conservee avant toute ecriture', () => {
     const workflow = read('.github/workflows/coordinated-release.yml');
     const productionStart = workflow.indexOf('\n  production:');
