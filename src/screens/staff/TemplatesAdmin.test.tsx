@@ -197,6 +197,27 @@ describe('TemplateVersionEditor (brouillon)', () => {
     expect(await screen.findByText('Diagnostic — valeur proposée')).toBeInTheDocument();
   });
 
+  test('ajoute aussi le compagnon d un diagnostic de terminologie permanent', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft');
+    const addField = vi.spyOn(repo, 'addField');
+    renderEditor(repo);
+    await screen.findByText('Champs');
+    await user.selectOptions(screen.getByLabelText('Portée'), 'patient');
+    await user.selectOptions(screen.getByLabelText('Type'), 'terminology');
+    await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
+    await user.type(screen.getByLabelText('Libellé'), 'Diagnostic principal');
+    await user.click(screen.getByRole('checkbox', { name: 'Permettre de signaler un diagnostic absent du référentiel' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    await waitFor(() => expect(addField).toHaveBeenCalledOnce());
+    expect(addField).toHaveBeenCalledWith(
+      'v1',
+      expect.objectContaining({ fieldKey: 'diagnostic', type: 'terminology', scope: 'patient' }),
+      expect.objectContaining({ fieldKey: 'diagnostic_autre', type: 'text', scope: 'patient', required: false }),
+    );
+  });
+
   test('un conflit de clé compagnon ne crée rien et conserve le formulaire', async () => {
     const user = userEvent.setup();
     const repo = statefulMock('draft');

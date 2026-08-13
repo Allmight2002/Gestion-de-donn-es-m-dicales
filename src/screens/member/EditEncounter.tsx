@@ -182,7 +182,15 @@ export function EditEncounter() {
           </select>
         </label>
 
-        <EncounterFields fields={fields} values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} />
+        <EncounterFields
+          fields={fields}
+          values={values}
+          onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
+          onRemove={(key) => setValues((current) => {
+            const { [key]: _removed, ...remaining } = current;
+            return remaining;
+          })}
+        />
 
         <label className="flex flex-col text-sm">
           <span className="font-medium text-slate-700">

@@ -824,6 +824,12 @@ export const messages = {
     'base.restore_title': 'Restaurer cette base ?',
     'base.restore_body': 'La base et ses données seront de nouveau accessibles à vous seul. Les personnes précédemment invitées devront être invitées à nouveau.',
     'base.restore_confirm': 'Restaurer la base',
+    // --- Soupape terminologie (L4) ----------------------------------------------
+    'admin.terminology_proposal_enable': 'Permettre de signaler un diagnostic absent du référentiel',
+    'admin.terminology_proposal_hint': 'Crée un champ texte à côté : le diagnostic introuvable y est décrit sans entrer dans le référentiel, pour être traité plus tard.',
+    'field.terminology_proposal_option': 'Diagnostic absent du référentiel',
+    'field.terminology_proposal_prompt': 'Décrivez le diagnostic introuvable :',
+    'field.terminology_proposal_warning': 'Ce diagnostic n’est pas enregistré dans le champ contrôlé : la fiche restera à compléter jusqu’à son traitement.',
   },
   en: {
     'observation.model_label': 'Observation model',
@@ -1643,6 +1649,12 @@ export const messages = {
     'base.restore_title': 'Restore this registry?',
     'base.restore_body': 'The registry and its data will become accessible to you again. Previously invited people must be invited again.',
     'base.restore_confirm': 'Restore registry',
+    // --- Terminology safety valve (L4) -------------------------------------------
+    'admin.terminology_proposal_enable': 'Allow reporting a diagnosis missing from the reference',
+    'admin.terminology_proposal_hint': 'Creates a text field alongside: the missing diagnosis is described there without entering the reference, for later review.',
+    'field.terminology_proposal_option': 'Diagnosis missing from the reference',
+    'field.terminology_proposal_prompt': 'Describe the missing diagnosis:',
+    'field.terminology_proposal_warning': 'This diagnosis is not recorded in the controlled field: the record will stay to be completed until it is reviewed.',
   },
 } as const;
 
