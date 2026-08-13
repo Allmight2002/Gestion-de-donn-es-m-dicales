@@ -20,10 +20,11 @@ const runAs = (uid: string, sql: string, params?: unknown[]) =>
 
 const INSERT = `with upload as (
     select public.base_of_cohort($1) as base_id,
-           public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path
+           public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path,
+           (select name from public.cohort where id=$1) as cohort_name
   )
-  insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
-  select $1, to_jsonb(array[$2::uuid]), auth.uid(),'csv','{}'::jsonb,5,6,upload.path,'abc123' from upload returning id`;
+  insert into public.export_log(cohort_id, base_id, cohort_name, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
+  select $1, upload.base_id, upload.cohort_name, to_jsonb(array[$2::uuid]), auth.uid(),'csv','{}'::jsonb,5,6,upload.path,'abc123' from upload returning id`;
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true });
@@ -64,8 +65,9 @@ describe('export_log : generation uniquement serveur', () => {
        on conflict (base_id,user_id) do update set access_role='viewer', can_export_data=false, revoked_at=null`,
       [baseId, bobId, aliceId],
     );
+    const before = await rowsAs(bobId, 'select id from public.export_log where cohort_id=$1', [cohortId]);
     await expect(rowsAs(bobId, INSERT, [cohortId, tvId])).rejects.toThrow();
-    expect(await rowsAs(bobId, 'select id from public.export_log where cohort_id=$1', [cohortId])).toHaveLength(0);
+    expect(await rowsAs(bobId, 'select id from public.export_log where cohort_id=$1', [cohortId])).toHaveLength(before.length);
   });
 
   test('le staff ne voit pas les traces d export', async () => {

@@ -1749,3 +1749,24 @@ dans le compagnon ; choisir ensuite un diagnostic du référentiel retire la pro
 Le mode d'inspection des fichiers de cette release était volontairement `paused` : cette preuve
 concerne exclusivement les données fictives et le parcours sans fichier. Elle ne vaut ni
 autorisation clinique, ni autorisation d'utiliser des données réelles.
+
+## 2026-08-13 — Idée 11 : suppression réelle d'une cohorte, preuve d'export conservée
+
+Décision du porteur : aucune corbeille de cohortes. Une cohorte peut être supprimée de la liste et
+de la base, même si elle a déjà été exportée. La migration
+`20260813150000_delete_cohort_preserve_export_evidence.sql` rend le journal autonome : chaque
+`export_log` conserve le `base_id` et le nom de cohorte historiques ; la référence à `cohort` passe
+à `ON DELETE SET NULL`. Les fichiers déjà produits dans `scientific-exports` restent immuables et
+accessibles par lecture signée aux utilisateurs autorisés de cette base.
+
+La RPC `delete_cohort` verrouille la cohorte, vérifie `can_curate`, supprime dans une transaction,
+et inscrit `cohort_deleted` avec le nombre d'exports préservés. Le DELETE direct RLS de `cohort` est
+fermé. Le frontend propose une confirmation explicite et explique que les exports et leur preuve
+restent conservés.
+
+Preuve locale : le test base crée une cohorte figée et un `export_log`, appelle la RPC sous un
+compte curateur, puis vérifie l'absence de cohorte et de membres, avec journal intact (`cohort_id`
+nul, `base_id`, nom, chemin Storage et empreinte conservés) et trace d'audit présente. Tests ciblés
+verts : `test/cohorts.test.ts`, `test/exports.test.ts`, `test/audit.test.ts` (**22/22**),
+`CohortBuilder.test.tsx` (**6/6**) et `signed-read` Edge (**14/14**), plus `typecheck`, lint,
+`db:verify` et build avec `VITE_USE_SIGNED_READ=true`.

@@ -142,6 +142,38 @@ describe('RLS sur la creation de cohorte', () => {
   });
 });
 
+describe('suppression de cohorte : preuve d export conservee', () => {
+  test('la RPC retire la cohorte et ses membres, conserve le journal, et ferme le DELETE direct', async () => {
+    const cohort = await rowsAs(aliceId, SNAPSHOT, [baseId, 'A retirer', fM]);
+    const cohortId = cohort[0].id as string;
+    const exportId = (await db.admin.query(
+      `insert into public.export_log(cohort_id, base_id, cohort_name, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
+       values($1, $2, 'A retirer', $3, 'csv', '{}'::jsonb, 2, 3, ($2::uuid)::text || '/exports/proof.csv', 'proof-hash') returning id`,
+      [cohortId, baseId, aliceId],
+    )).rows[0].id as string;
+
+    expect(await rowsAs(aliceId, 'delete from public.cohort where id=$1 returning id', [cohortId])).toHaveLength(0);
+    await rowsAs(annaId, 'select public.delete_cohort($1)', [cohortId]);
+
+    expect((await db.admin.query('select id from public.cohort where id=$1', [cohortId])).rows).toHaveLength(0);
+    expect((await db.admin.query('select count(*)::int n from public.cohort_member where cohort_id=$1', [cohortId])).rows[0].n).toBe(0);
+    expect((await db.admin.query('select count(*)::int n from public.cohort_encounter_member where cohort_id=$1', [cohortId])).rows[0].n).toBe(0);
+    expect((await db.admin.query('select cohort_id, base_id, cohort_name, stored_file_path, file_hash from public.export_log where id=$1', [exportId])).rows[0])
+      .toMatchObject({ cohort_id: null, base_id: baseId, cohort_name: 'A retirer', stored_file_path: `${baseId}/exports/proof.csv`, file_hash: 'proof-hash' });
+    expect(await rowsAs(annaId, 'select id from public.export_log where id=$1', [exportId])).toHaveLength(1);
+    expect((await db.admin.query("select metadata from public.audit_log where action='cohort_deleted' and entity_id=$1", [cohortId])).rows[0].metadata)
+      .toMatchObject({ cohort_name: 'A retirer', preserved_export_count: 1 });
+    await rowsAs(annaId, 'select public.delete_cohort($1)', [cohortId]);
+    expect((await db.admin.query("select count(*)::int n from public.audit_log where action='cohort_deleted' and entity_id=$1", [cohortId])).rows[0].n).toBe(1);
+  });
+
+  test('un viewer ne peut pas supprimer une cohorte, meme via la RPC', async () => {
+    const cohort = await rowsAs(aliceId, SNAPSHOT, [baseId, 'Protegee', fM]);
+    await expect(rowsAs(bobId, 'select public.delete_cohort($1)', [cohort[0].id])).rejects.toThrow(/acces/i);
+    expect((await db.admin.query('select id from public.cohort where id=$1', [cohort[0].id])).rows).toHaveLength(1);
+  });
+});
+
 describe('integrite inter-base des membres de cohorte', () => {
   test('insert direct et UUID connu ne peuvent melanger patients, rencontres ou bases', async () => {
     const tv = (await db.admin.query('select current_template_version_id v from public.base where id=$1', [baseId])).rows[0].v;
