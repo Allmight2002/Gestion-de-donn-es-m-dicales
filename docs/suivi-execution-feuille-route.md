@@ -1683,3 +1683,43 @@ rencontres.
 
 La preuve de staging, de production et l'essai sur l'application déployée seront ajoutés ici après
 le workflow manuel **Coordinated release** pour le même SHA.
+
+## Cohortes D6/D8 — effectif vivant, figeage explicite et avertissement d'export (clôture 2026-08-13)
+
+Le défaut signalé le 2026-08-09 est clos : une cohorte à mise à jour automatique n'est plus une
+carte vide. `listCohorts` remonte désormais son filtre enregistré et son choix
+`validated_only`; la carte calcule alors l'effectif courant par `cohort_preview`, sans tenter de
+matérialiser des membres qui n'existent pas pour ce type de cohorte.
+
+**D6.** Chaque carte dynamique montre les patients et rencontres actuellement éligibles, explique
+qu'elle doit être figée avant export, et propose **Figer maintenant**. L'action reprend exactement
+le filtre et le choix de validation de la carte pour créer une cohorte figée, avec un nom
+prérempli et modifiable. Le refus d'exporter une cohorte dynamique reste volontairement inchangé :
+un export reste attaché à une population reproductible et à ses décomptes figés.
+
+**D8.** Quand le figeage inclut des brouillons, le dialogue prévient désormais : « Cette cohorte
+contient N fiches non validées et ne sera pas exportable en l'état. » Le choix reste non bloquant,
+comme décidé : l'utilisateur peut créer la cohorte figée puis corriger ou valider les fiches avant
+l'export, sans que l'UI ne masque l'incompatibilité avec la règle serveur.
+
+### Vérifications
+
+- aucun schéma, migration, RPC, RLS, Storage ou Edge Function n'a été modifié ;
+- tests ciblés `CohortBuilder` : **5/5** ; `npm run typecheck`, lint ciblé et build de production
+  avec `VITE_USE_SIGNED_READ=true` verts ;
+- PR fonctionnelle `#159` vers `develop`, puis `#160` vers `main` ; le correctif E2E qui avait
+  différé la release a été intégré avant la promotion ;
+- SHA finalement promu : `be948689a4ab10b056e5d26d2262911059ce4307` ; staging
+  `31659772160` puis production `31687476980` réussis pour ce même SHA, avec validation,
+  sauvegarde, promotion backend/frontend et contrôles cloud du workflow ;
+- essai navigateur en production technique, après actualisation du bundle : création d'une
+  cohorte dynamique explicitement nommée pour la vérification sur données fictives ; sa carte
+  affiche **1 patient, 0 rencontre**, le message d'absence d'export et **Figer maintenant**. Le
+  dialogue de figeage s'ouvre avec le nom prérempli ; aucun figement supplémentaire n'a été
+  confirmé pendant cet essai ;
+- le cas D8 a aussi été contrôlé sur une cohorte dynamique incluant un brouillon : l'avertissement
+  indique **1 fiche non validée** et le bouton « Créer la cohorte figée » reste actif. Le dialogue
+  a été annulé, afin de ne pas laisser une cohorte volontairement non exportable.
+
+Cette clôture prouve une production technique avec données fictives. Elle ne vaut ni autorisation
+clinique, ni autorisation d'utiliser des données réelles.
