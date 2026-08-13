@@ -59,6 +59,8 @@ describe('makeProposalField (F5)', () => {
 describe('findProposalField et proposalKeysOf', () => {
   const diagnostic = field({ fieldKey: 'diagnostic', type: 'select' });
   const companion = field({ fieldKey: proposalKeyOf('diagnostic'), type: 'text' });
+  const terminology = field({ fieldKey: 'diagnostic_cim', type: 'terminology', scope: 'patient' });
+  const terminologyCompanion = field({ fieldKey: proposalKeyOf('diagnostic_cim'), type: 'text', scope: 'patient' });
   const autre = field({ fieldKey: 'motif', type: 'text' });
 
   test('associe le compagnon a sa source', () => {
@@ -76,7 +78,16 @@ describe('findProposalField et proposalKeysOf', () => {
     expect([...proposalKeysOf([diagnostic, companion, autre])]).toEqual(['diagnostic_autre']);
   });
 
+  test('associe aussi une proposition a un diagnostic de terminologie', () => {
+    expect(findProposalField([terminology, terminologyCompanion], terminology)?.fieldKey).toBe('diagnostic_cim_autre');
+    expect([...proposalKeysOf([terminology, terminologyCompanion])]).toEqual(['diagnostic_cim_autre']);
+  });
+
   test('un champ texte sans source a liste controlee reste un champ ordinaire', () => {
     expect(proposalKeysOf([autre, companion]).size).toBe(0);
+  });
+
+  test('un champ non controle ne peut pas capturer un homonyme compagnon', () => {
+    expect(findProposalField([autre, field({ fieldKey: proposalKeyOf('motif'), type: 'text' })], autre)).toBeUndefined();
   });
 });

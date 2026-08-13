@@ -54,6 +54,9 @@ export function FieldForm({
   const [allowMissingCodes, setAllowMissingCodes] = useState(initial?.allowMissingCodes ?? false);
 
   const isChoice = type === 'select' || type === 'multiselect';
+  // Les listes conservent leur perimetre historique (rencontre). L4 etend uniquement la
+  // terminologie, pour laquelle la soupape est utile aussi dans les donnees permanentes.
+  const supportsProposal = type === 'terminology' || (isChoice && scope === 'encounter');
   const isNumber = type === 'number' || type === 'integer';
   const toggleEncType = (x: string) =>
     setEncounterTypes((prev) => (prev.includes(x) ? prev.filter((y) => y !== x) : [...prev, x]));
@@ -84,7 +87,7 @@ export function FieldForm({
       unit: isNumber && unit.trim() ? unit.trim() : null,
       allowMissingCodes,
     };
-    const wantsProposal = isChoice && withProposal && !editing && scope === 'encounter';
+    const wantsProposal = supportsProposal && withProposal && !editing;
     const accepted = await onSubmit(
       built,
       wantsProposal ? makeProposalField(built, t('admin.proposal_label_suffix')) : undefined,
@@ -204,14 +207,18 @@ export function FieldForm({
               <p className="text-xs text-slate-500">{t('admin.value_set_hint')}</p>
             </div>
           )}
-          {/* F5 — soupape : a la CREATION seulement (elle cree un second champ), et pour les
-              champs de RENCONTRE seulement, seul endroit ou la saisie couplee est rendue. */}
-          {!editing && scope === 'encounter' && (
-            <div className="surface-muted p-3">
-              <Checkbox label={t('admin.proposal_enable')} checked={withProposal} onChange={(e) => setWithProposal(e.target.checked)} />
-              <p className="text-xs text-slate-500">{t('admin.proposal_hint')}</p>
-            </div>
-          )}
+        </div>
+      )}
+      {/* Soupape a la CREATION seulement : elle cree un second champ. Les diagnostics comme
+          les listes restent controles ; la proposition est donc stockee a cote, jamais dedans. */}
+      {supportsProposal && !editing && (
+        <div className="surface-muted p-3 sm:col-span-2 lg:col-span-3">
+          <Checkbox
+            label={t(type === 'terminology' ? 'admin.terminology_proposal_enable' : 'admin.proposal_enable')}
+            checked={withProposal}
+            onChange={(e) => setWithProposal(e.target.checked)}
+          />
+          <p className="text-xs text-slate-500">{t(type === 'terminology' ? 'admin.terminology_proposal_hint' : 'admin.proposal_hint')}</p>
         </div>
       )}
       {isNumber && (

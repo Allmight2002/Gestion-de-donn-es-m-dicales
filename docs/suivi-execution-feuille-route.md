@@ -1657,3 +1657,29 @@ rendu doit compiler sous le drapeau `v` et appliquer la règle attendue, et **au
 
 **Déploiement.** Aucun de mon fait : la mise en ligne reste à déclencher par le porteur, en même
 temps que la correction CORS, pour rendre enfin lisible le refus réel.
+
+## L4 — soupape pour un diagnostic absent du référentiel (2026-08-13)
+
+Une variable de type `terminology` peut désormais activer, **à sa création**, la même soupape que
+les listes contrôlées. Elle crée atomiquement un champ texte compagnon `<cle>_autre`, jamais
+obligatoire, et fonctionne pour les variables de rencontre comme pour les données permanentes du
+patient. Les variables existantes ne sont pas modifiées.
+
+Lorsque le saisisseur ne trouve pas un diagnostic, il choisit « Diagnostic absent du référentiel »
+et décrit le terme recherché dans ce compagnon. La clé du diagnostic est alors **retirée** du
+payload — elle n'est même pas envoyée avec `null` — afin que seul un couple `{code,label}` choisi
+dans le référentiel puisse occuper la colonne analysable. La sélection ultérieure d'un vrai
+diagnostic retire réciproquement la proposition. Le même comportement est porté par les parcours
+de création, correction et curation ; la soupape préexistante des listes reste limitée aux
+rencontres.
+
+### Preuves locales
+
+- tests ciblés : **51/51** ; tests web complets : **330/330** ; `npm run typecheck` et
+  `npm run lint` verts ;
+- build de production vert avec `VITE_USE_SIGNED_READ=true` ;
+- `npm test` global n'a pas terminé avant la limite locale de cinq minutes et n'est donc pas
+  compté comme preuve ; aucune fusion ne sera faite tant que la CI distante n'est pas verte.
+
+La preuve de staging, de production et l'essai sur l'application déployée seront ajoutés ici après
+le workflow manuel **Coordinated release** pour le même SHA.

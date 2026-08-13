@@ -13,6 +13,8 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
 import { SectionedFields } from './EncounterFields';
+import { ChoiceWithProposal } from './ChoiceWithProposal';
+import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -178,6 +180,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
+  // Une proposition est toujours rendue avec sa source. Cela vaut aussi pour les donnees
+  // permanentes : le texte libre reste dans le champ compagnon, jamais dans le diagnostic.
+  const companionKeys = proposalKeysOf(fields);
+  const visibleFields = fields.filter((field) => !companionKeys.has(field.fieldKey));
+
   return (
     <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div>
@@ -269,23 +276,40 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
           ) : (
             <SectionedFields
-              fields={fields}
-              renderField={(field) => (
-                <label className="flex flex-col text-sm">
+              fields={visibleFields}
+              renderField={(field) => {
+                const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
+                return (
+                <div className="flex flex-col text-sm">
                   <span className="text-slate-700">
                     {field.label}
                     {field.required && <span className="text-red-500"> *</span>}
                     {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
                   </span>
                   <div className="mt-1">
-                    <FieldInput
-                      field={field}
-                      value={permanent[field.fieldKey]}
-                      onChange={(value) => setPermanent((current) => ({ ...current, [field.fieldKey]: value }))}
-                    />
+                    {proposal ? (
+                      <ChoiceWithProposal
+                        field={field}
+                        proposal={proposal}
+                        value={permanent[field.fieldKey]}
+                        proposalValue={permanent[proposal.fieldKey]}
+                        onChange={(key, value) => setPermanent((current) => ({ ...current, [key]: value }))}
+                        onRemove={(key) => setPermanent((current) => {
+                          const { [key]: _removed, ...remaining } = current;
+                          return remaining;
+                        })}
+                      />
+                    ) : (
+                      <FieldInput
+                        field={field}
+                        value={permanent[field.fieldKey]}
+                        onChange={(value) => setPermanent((current) => ({ ...current, [field.fieldKey]: value }))}
+                      />
+                    )}
                   </div>
-                </label>
-              )}
+                </div>
+                );
+              }}
             />
           )
         )}
