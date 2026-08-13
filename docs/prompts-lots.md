@@ -4,18 +4,25 @@
 - **Révisé le 2026-08-10** : état des lots remis à jour, et cinq prompts ajoutés (L15 à L19)
 - **Révisé le 2026-08-11** : sept prompts ajoutés (L20 à L26), issus de
   [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)
+- **Révisé le 2026-08-13** : sept prompts ajoutés (L27 à L33), le reste des améliorations du
+  moteur de formulaires
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
 **Avant de lancer deux lots en même temps**, vérifier le tableau de
 [`lots-paralleles.md`](lots-paralleles.md) : deux lots qui touchent le même
 fichier produiront un conflit de fusion, même si leurs sujets n'ont aucun
-rapport. **L14, L16, L20 et L26 doivent tourner seuls.**
+rapport. **L14, L16, L20, L26 et L31 doivent tourner seuls.**
 
 > **Collisions à connaître avant d'ouvrir un thread L20 à L26** : **L21** touche les deux fichiers
 > de **L4** et l'un de ceux de **L13** ; **L23** touche les deux fichiers de **L18** et **L19**.
 > Solder ces quatre lots d'abord, ou commencer par **L20, L22, L24 et L25**, qui ne partagent
 > aucun fichier avec le reste du plan.
+
+> **L27 à L33 forment une file d'attente, pas un ensemble parallélisable.** `FieldForm.tsx` est
+> touché par L27, L28, L30, L31 et L33 ; `exportContract.ts` par L27, L30, L31, L32 et L33. Une
+> seule session à la fois sur le moteur de formulaires. **Seul L29 échappe à la règle** : il
+> n'ouvre que son propre écran et tourne en parallèle de n'importe quoi.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
@@ -39,7 +46,13 @@ travail déjà fait :
 | L9 | **Livré** le 2026-08-01 (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
 | L10 | **Livré** le 2026-07-29. Prompt conservé pour mémoire. |
 
-**Les lots restant à traiter sont** : L4, L11, L12, L13, L14, les cinq
+> ⚠️ **Le tableau ci-dessus est daté du 2026-08-10 et a été dépassé.** L'état qui fait foi est la
+> section « Ordre suggéré » de [`lots-paralleles.md`](lots-paralleles.md), tenue à jour : L4, L12,
+> L13 et L15 à L19 y sont également marqués intégrés, et L11 est en travail. **Les lots restant à
+> lancer sont L14, L20 à L26 (listes de diagnostics) et L27 à L33 (moteur de formulaires).**
+> Vérifier là-bas avant d'ouvrir un thread.
+
+**La liste ci-dessous date de la révision du 2026-08-10** : L4, L11, L12, L13, L14, les cinq
 **L15, L16, L17, L18 et L19** (campagne de vérification des flux multi-comptes, cf.
 [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)), et les sept nouveaux
 **L20 à L26** (listes de diagnostics, cf.
@@ -1893,4 +1906,499 @@ t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
 
 Mets à jour docs/spec-variables-multivaluees.md et consigne le résultat à la fin
 de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L27 — Texte d'aide par variable
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la section L27 de
+docs/lots-paralleles.md.
+
+BESOIN. Une variable n'a aujourd'hui qu'un libellé. Rien ne dit COMMENT la
+renseigner, alors que la réponse en dépend : « score de Glasgow à l'admission »
+signifie-t-il le premier score documenté, ou celui pris après sédation ? Deux
+personnes qui saisissent la même base répondent différemment, et l'écart ne se
+voit jamais dans les données.
+
+PÉRIMÈTRE — petit lot, mais il traverse la base, la saisie et l'export.
+
+1. Une colonne description text sur template_field
+   (supabase/migrations/20260616090200_tables.sql:49). Migration additive,
+   nullable, sans valeur par défaut.
+
+2. Un champ de saisie dans src/screens/staff/FieldForm.tsx. Ce n'est PAS une
+   propriété structurelle : elle doit rester modifiable même sur une version
+   publiée si le produit le permet — vérifie ce que fait lockStructural pour les
+   autres champs non structurels comme le libellé, et aligne-toi dessus.
+
+3. Une icône d'aide dans src/screens/member/EncounterFields.tsx, à côté du
+   libellé. Discrète : elle ne doit pas allonger le formulaire, qui est déjà long
+   sur mobile. Accessible au clavier et annoncée aux technologies d'assistance.
+
+4. UNE COLONNE description AU DICTIONNAIRE D'EXPORT. buildDictionary
+   (supabase/functions/generate-export/exportContract.ts:206) porte aujourd'hui
+   column_id, field_key, label, scope, section, type, unit, allowed_values et
+   template_versions — pas de description. C'est pourtant l'endroit exact où un
+   relecteur extérieur ou un statisticien cherche la définition d'une variable.
+   Sans ce point, le lot rate sa cible.
+
+RÈGLE : le texte d'aide ne contient JAMAIS de donnée patient. C'est une
+définition de variable, pas un commentaire de dossier.
+
+Peut tourner en parallèle de L29 uniquement. Tous les autres lots de la famille
+formulaires touchent FieldForm.tsx ou exportContract.ts.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as OUVERT le fichier
+xlsx produit par l'application déployée pour vérifier que la feuille Dictionnaire
+porte bien la description saisie. Tu ne t'arrêtes pas avant. Si une commande
+t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L28 — Valeur par défaut et unicité
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la section L28 de
+docs/lots-paralleles.md.
+
+DEUX COLONNES SUR template_field, MAIS DEUX MÉCANISMES SANS RAPPORT. Ne les
+traite pas comme une seule fonctionnalité.
+
+1. default_value — un PRÉREMPLISSAGE À LA SAISIE, jamais une valeur écrite
+   d'office. Une date de consultation proposée à aujourd'hui, un pays proposé à
+   Tchad. Le serveur ne doit RIEN écrire de lui-même : si l'utilisateur efface la
+   proposition, le champ est vide, pas rempli avec la valeur par défaut. Un champ
+   prérempli non touché reste discernable d'un champ confirmé si le produit en a
+   besoin — discute-en avec moi.
+
+   RÈGLE À FAIRE RESPECTER PAR L'INTERFACE : ne jamais proposer de valeur par
+   défaut sur une variable clinique dont la proposition orienterait la réponse.
+   Une valeur par défaut sur « complication » ou sur « issue » fabrique des
+   données. Avertis dans le constructeur plutôt que d'interdire.
+
+2. is_unique — une CONTRAINTE SERVEUR, pas un contrôle d'interface. Numéro de
+   dossier, identifiant institutionnel. Elle doit résister à l'import, au rejeu
+   hors-ligne et à deux saisies simultanées : donc un index d'unicité PARTIEL sur
+   la valeur extraite du jsonb, portée par base et ignorant les fiches
+   supprimées — pas un select préalable suivi d'un insert, qui laisse passer deux
+   écritures concurrentes.
+
+   Regarde comment uq_patient_base_code et uq_identity_base_code sont écrits
+   (tables.sql) : même forme, même raison.
+
+   Le message d'erreur rendu à l'utilisateur doit être compréhensible et ne
+   jamais laisser fuir l'erreur PostgreSQL brute.
+
+Surface base : applique la Skill meddata-db-safety.
+
+Touche FieldForm.tsx : ne pas lancer avec L4, L21, L27, L30, L31 ni L33.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as prouvé sur la pile
+locale que DEUX écritures simultanées du même numéro de dossier n'en laissent
+passer qu'une. Un test qui vérifie l'unicité en série ne prouve rien. Tu ne
+t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L29 — Prévisualisation du formulaire
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la section L29 de
+docs/lots-paralleles.md.
+
+C'EST LE SEUL LOT DE LA FAMILLE FORMULAIRES QUI N'ENTRE EN COLLISION AVEC RIEN.
+Il ouvre son propre écran et ne touche TemplateVersionEditor.tsx que pour y poser
+un bouton. Il peut tourner en parallèle de n'importe quel autre lot.
+
+BESOIN. Voir son formulaire tel que le verra la personne qui saisit, sans avoir à
+créer un patient d'essai qu'il faudra ensuite supprimer.
+
+PÉRIMÈTRE — front seul, aucune migration.
+
+1. Un écran de prévisualisation qui rend le formulaire de la version en cours
+   d'édition, en RÉUTILISANT les composants de saisie réels (EncounterFields,
+   ValueInput, FieldInput). Ne réimplémente pas un rendu parallèle : une
+   prévisualisation qui diverge du formulaire réel est pire qu'aucune
+   prévisualisation.
+
+2. Vue ordinateur et vue mobile. C'est en mobile que l'ordre des variables et la
+   longueur des sections décident du confort réel, et c'est là que le porteur
+   saisit.
+
+3. Le choix du type de rencontre, puisqu'il pilote quelles variables
+   s'affichent (encounter_types).
+
+4. RIEN NE S'ÉCRIT. Aucun appel d'écriture, aucun brouillon local, aucune entrée
+   dans l'outbox hors-ligne. Vérifie-le explicitement plutôt que de le supposer :
+   les composants de saisie réels peuvent porter des effets de bord.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, tu as prévisualisé un
+formulaire sur l'application déployée en vue mobile, et tu as VÉRIFIÉ QU'AUCUNE
+ÉCRITURE n'a été produite — ni patient, ni rencontre, ni brouillon, ni entrée
+d'outbox. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi
+telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L30 — Options de liste : code interne stable
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis docs/idees-post-readiness.md §4
+et la section L30 de docs/lots-paralleles.md.
+
+DÉFAUT CONNU DEPUIS LE 2026-07-22, jamais corrigé pour les listes ordinaires. Une
+option de select est stockée EN TEXTE : allowed_values est un tableau de chaînes,
+et c'est la chaîne elle-même qui part dans patient.data / encounter.data. La
+validation serveur teste allowed_values @> jsonb_build_array(txt).
+
+CONSÉQUENCE. Corriger une option — hematome en hématome — rend les fiches déjà
+saisies invalides à la prochaine écriture, et scinde une modalité en DEUX dans
+les statistiques. Le porteur ne le verra pas : rien ne signale l'écart.
+
+C'est exactement le problème que le référentiel de terminologie a résolu pour les
+diagnostics (migration 20260726210000). Applique-lui la même solution.
+
+PÉRIMÈTRE.
+
+1. allowed_values devient une liste d'objets { value_key, label, is_active }. Le
+   value_key part en base, le libellé reste modifiable, une option retirée est
+   DÉSACTIVÉE et non supprimée — sinon l'historique devient illisible.
+
+2. Éditeur d'options dans FieldForm.tsx : ajouter, renommer, réordonner,
+   désactiver. Aujourd'hui c'est un textarea de valeurs libres.
+
+3. Rendu dans FieldInput.tsx : les options inactives ne sont plus proposées à la
+   saisie, mais une fiche qui en porte une reste lisible et modifiable sur ses
+   autres champs.
+
+4. Export : la colonne principale porte le libellé, comme pour la terminologie,
+   et une colonne de code porte le value_key. Regarde comment codeColumnId est
+   fait pour terminology (exportContract.ts:75) et suis la même convention.
+
+5. CONVERSION DES DONNÉES EXISTANTES, avec les mêmes exigences que L26 : fonction
+   d'aperçu en lecture seule, opt-in explicite, transactionnelle par
+   enregistrement, idempotente, tracée dans field_change_log. Une valeur qui ne
+   correspond à aucune option BLOQUE la conversion de son enregistrement et est
+   rapportée — jamais écartée en silence.
+
+Surface base : applique la Skill meddata-db-safety.
+
+Touche FieldForm.tsx et exportContract.ts : ne pas lancer avec les autres lots de
+la famille formulaires, ni avec L21 ou L22.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as RENOMMÉ une option
+sur une base de démonstration portant déjà des fiches, puis vérifié que ces
+fiches restent valides, restent modifiables, et comptent toujours pour UNE seule
+modalité à l'export. Tu ne t'arrêtes pas avant. Si une commande t'est refusée,
+donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L31 — Sections personnalisables
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la section L31 de
+docs/lots-paralleles.md.
+
+LE PLUS LOURD DE LA FAMILLE. Ne le sous-estime pas : une source extérieure l'a
+qualifié de « relativement localisé », c'est faux.
+
+CONSTAT. section est un check (section in ('clinique','biologie','paraclinique')),
+et ces trois valeurs sont RÉPLIQUÉES DANS NEUF FICHIERS : src/data/types.ts,
+src/domain/templateLibrary.ts, src/screens/member/EncounterFields.tsx,
+src/screens/member/ImportData.tsx, src/screens/member/TemplateFromFile.tsx,
+src/screens/staff/FieldForm.tsx, supabase/seed.sql, la migration d'origine
+20260616090200_tables.sql et 20260711000200_template_transactionality.sql.
+Vérifie cette liste toi-même avant de commencer, elle a pu bouger.
+
+BESOIN. Un registre de traumatisme crânien ne se structure pas en « clinique /
+biologie / paraclinique » mais en « identification / circonstances / examen
+initial / imagerie / prise en charge / évolution ». Les sections doivent être
+créées, renommées et réordonnées par le propriétaire de la base.
+
+PÉRIMÈTRE.
+
+1. Une table template_section rattachée à TEMPLATE_VERSION — pas à la base. Une
+   section est une structure de gabarit : elle suit le versionnement et
+   l'immutabilité des versions publiées, comme les variables.
+
+2. Migration de repli : toute base existante conserve ses trois sections
+   actuelles, devenues des sections ordinaires. Aucune variable ne change de
+   section, aucun formulaire ne change d'apparence au déploiement.
+
+3. NE PAS CONFONDRE la section — regroupement visuel du formulaire, propre à
+   chaque base — avec la catégorie de donnée. Les deux peuvent coexister, et
+   c'est l'intérêt du lot. Si tu choisis de garder les deux notions, dis-le-moi
+   avant.
+
+4. EncounterFields.tsx porte aujourd'hui une section de secours pour qu'une
+   variable dont la section est inconnue ne DISPARAISSE PAS du formulaire.
+   Préserve ce comportement : c'est un filet, pas un détail.
+
+5. Import, export et bibliothèque de gabarits doivent suivre. Une section
+   personnalisée doit apparaître au dictionnaire d'export.
+
+Surface base : applique la Skill meddata-db-safety. À traiter SEUL.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, une base existante ouvre son
+formulaire EXACTEMENT comme avant, et une base neuve peut définir ses propres
+sections et les réordonner. Tu ne t'arrêtes pas avant. Si une commande t'est
+refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L32 — Affichage conditionnel
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, src/domain/templateRules.ts
+en entier, puis la section L32 de docs/lots-paralleles.md.
+
+ÉTAT ACTUEL. Le moteur de règles sait rendre un champ OBLIGATOIRE sous condition
+({ if:{field,operator,value}, then:{field, operator:'required'} } — 'required'
+est le seul opérateur autorisé dans le then), comparer deux champs
+({operator,left_field,right_field}), et distinguer blocage et avertissement
+(severity block/warn). Il ne sait PAS montrer ou masquer.
+
+BESOIN. Ne montrer les variables d'imagerie que si une imagerie a été faite.
+C'est le plus gros gain ressenti sur un formulaire long.
+
+DÉCISION À PRENDRE AVANT DE CODER, ET ELLE NE PEUT PAS ÊTRE REMISE À PLUS TARD :
+que devient la valeur d'un champ DÉJÀ RENSEIGNÉ qui devient masqué ?
+
+  - conservée et exportée — au risque qu'une analyse compte une valeur que
+    l'utilisateur croit avoir retirée ;
+  - effacée — au risque de perdre une saisie sur un simple changement d'avis.
+
+Les deux se défendent. Le choix change la migration, l'export et les tests. C'est
+le piège classique des systèmes de recueil clinique, et il ne se rattrape pas
+après coup. POSE-MOI LA QUESTION et attends ma réponse.
+
+PÉRIMÈTRE, une fois la décision prise.
+
+1. Un type de règle 'visibility' à côté de l'existant, avec l'évaluation serveur
+   correspondante. Le moteur reste une STRUCTURE JSON À LISTE BLANCHE
+   D'OPÉRATEURS, jamais évaluée comme du code : c'est la ligne posée par
+   templateRules.ts, ne la franchis pas.
+
+2. src/screens/staff/RuleForm.tsx : construire une règle de visibilité sans
+   écrire de JSON à la main, comme pour les deux formes existantes.
+
+3. EncounterFields.tsx : appliquer la visibilité au rendu.
+
+4. Un champ MASQUÉ ne peut pas être OBLIGATOIRE. Détermine l'ordre d'évaluation
+   — visibilité d'abord, obligation ensuite — et impose-le côté serveur, pas
+   seulement à l'écran. Sinon une fiche devient impossible à valider pour un
+   champ que personne ne voit.
+
+5. Interdis les cycles : A masqué par B, B masqué par A. Une validation du graphe
+   de dépendances au moment de l'enregistrement de la règle, pas à la saisie.
+
+Touche EncounterFields.tsx et exportContract.ts : ne pas lancer avec L27, L31 ni
+L22.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as vérifié sur
+l'application déployée qu'un champ masqué ne bloque pas la validation d'une
+fiche, et que sa valeur se comporte comme décidé — conservée ou effacée, selon
+ma réponse. Tu ne t'arrêtes pas avant. Si une commande t'est refusée,
+donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L33 — Raisons de valeur manquante par variable
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la section L33 de
+docs/lots-paralleles.md.
+
+ÉTAT ACTUEL. Trois codes — non_fait, inconnu, non_applicable — FIGÉS EN DUR côté
+serveur dans assert_data_valid (version courante :
+20260728043556_preserve_historical_terminology.sql), répétés dans
+src/domain/validation.ts et dans le contrat d'export. Identiques pour toutes les
+variables. Le seul réglage disponible est allow_missing_codes, un booléen qui les
+autorise ou les refuse EN BLOC.
+
+BESOIN. Toutes les raisons n'ont pas de sens pour toutes les variables. « Non
+réalisé » convient à un examen, pas à un sexe. Et deux raisons manquent à un
+registre clinique : le REFUS du patient, et NON DOCUMENTÉ — distinct d'inconnu,
+qui laisse croire que l'information a été cherchée.
+
+PÉRIMÈTRE.
+
+1. Une colonne portant, par variable, la liste des raisons proposées. Décide avec
+   moi si allow_missing_codes est conservé comme raccourci ou remplacé.
+
+2. Deux codes ajoutés : refus et non_documente. LES TROIS CODES EXISTANTS NE
+   CHANGENT NI DE NOM NI DE SENS — la migration est additive et les données déjà
+   saisies restent lisibles telles quelles. Ne renomme rien.
+
+3. Validation serveur : une raison non autorisée pour cette variable est refusée,
+   avec un message nommant le libellé de la variable et jamais une valeur
+   clinique.
+
+4. ValueInput.tsx : le sélecteur ne propose que les raisons autorisées pour la
+   variable en cours.
+
+5. Export : les nouveaux codes apparaissent tels quels dans la colonne, et le
+   dictionnaire documente les raisons autorisées par variable. Vérifie que
+   MISSING_CODES dans exportContract.ts et dans src/domain/validation.ts restent
+   la MÊME liste — deux listes qui divergent produiraient un export incohérent
+   avec la saisie.
+
+Surface base : applique la Skill meddata-db-safety.
+
+Touche FieldForm.tsx, validation.ts et exportContract.ts : ne pas lancer avec les
+autres lots de la famille formulaires, ni avec L21 ou L22.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, une fiche portant un ancien
+code manquant reste lisible et modifiable, et une variable peut proposer « refus »
+sans que « non réalisé » lui soit imposé. Tu ne t'arrêtes pas avant. Si une
+commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
