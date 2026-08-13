@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260813132500_base_proposals.sql`
-- Tables : 40 · Policies RLS : 61 · Triggers : 58 · Fonctions : 234
+- Dernière migration incluse : `20260813150000_delete_cohort_preserve_export_evidence.sql`
+- Tables : 40 · Policies RLS : 60 · Triggers : 58 · Fonctions : 235
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -179,7 +179,6 @@ Triggers :
 | created_at | timestamp with time zone | non | `now()` |
 
 Policies :
-- `c_delete` (DELETE) — USING can_curate(base_id)
 - `c_insert` (INSERT) — WITH CHECK can_curate(base_id)
 - `c_select` (SELECT) — USING (is_medecin() AND has_base_access(base_id))
 - `c_update` (UPDATE) — USING can_curate(base_id) · WITH CHECK can_curate(base_id)
@@ -329,7 +328,7 @@ Triggers :
 | Colonne | Type | Nullable | Défaut |
 |---|---|---|---|
 | id | uuid | non | `gen_random_uuid()` |
-| cohort_id | uuid | non |  |
+| cohort_id | uuid | oui |  |
 | exported_by | uuid | oui |  |
 | exported_at | timestamp with time zone | non | `now()` |
 | format | text | non |  |
@@ -342,10 +341,12 @@ Triggers :
 | generation_mode | text | non | `'client'::text` |
 | generated_by_function | text | oui |  |
 | server_generated_at | timestamp with time zone | oui |  |
+| base_id | uuid | non |  |
+| cohort_name | text | non |  |
 
 Policies :
 - `el_insert` (INSERT) — WITH CHECK false
-- `el_select` (SELECT) — USING can_export_data(base_of_cohort(cohort_id))
+- `el_select` (SELECT) — USING can_export_data(base_id)
 
 Triggers :
 - `trg_audit_export` — AFTER INSERT → `trg_audit_export_fn()`
@@ -946,6 +947,7 @@ Triggers :
 | dearmor | text | INVOKER | c |
 | decrypt | bytea, bytea, text | INVOKER | c |
 | decrypt_iv | bytea, bytea, bytea, text | INVOKER | c |
+| delete_cohort | p_cohort_id uuid | DEFINER | plpgsql |
 | delete_curation_request | p_task_id uuid, p_reason text, p_delete_patient boolean | DEFINER | plpgsql |
 | delete_template | p_template_id uuid | DEFINER | plpgsql |
 | delete_template_field | p_field_id uuid | DEFINER | plpgsql |
