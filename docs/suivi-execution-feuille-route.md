@@ -1831,3 +1831,8 @@ et le test web de l'ErrorBoundary sont verts. Le test RLS vérifie qu'un e-mail,
 jeton et un paramètre d'URL synthétiques n'apparaissent pas dans l'enregistrement stocké. La purge
 à 30 jours est prévue par RPC de service; son ordonnanceur et l'alerte distante restent à la
 frontière B5. Les preuves staging et production seront ajoutées après la release coordonnée.
+## L27 — Texte d'aide par variable (2026-08-13)
+
+Une consigne de saisie nullable est ajoutée à `template_field`, sans valeur par défaut ni réécriture des variables existantes. Le constructeur l'enregistre et la laisse modifiable après première saisie, comme le libellé ; le formulaire la présente à la demande par une aide clavier et lecteur d'écran. L'export XLSX ajoute `description` à la feuille **Dictionnaire**.
+
+Validation locale : tests web ciblés (11), RLS ciblé (40), tests Edge (102), `db:verify`, `typecheck`, `lint`, `edge:check` et build avec `VITE_USE_SIGNED_READ=true` verts. Publication et preuve staging/production du même SHA restent à consigner.

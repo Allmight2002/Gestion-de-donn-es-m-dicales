@@ -65,6 +65,19 @@ describe('FieldForm — jeux de valeurs (F4)', () => {
   });
 });
 
+describe('FieldForm description', () => {
+  test('submits the data-entry guidance', async () => {
+    const onSubmit = renderForm();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'glasgow');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Score de Glasgow');
+    await userEvent.type(screen.getByLabelText('Consigne de saisie'), 'Premier score documenté avant toute sédation');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      description: 'Premier score documenté avant toute sédation',
+    }), undefined);
+  });
+});
+
 // F5 — la soupape cree un SECOND champ, transmis a part pour que l'appelant l'ajoute apres.
 describe('FieldForm — soupape (F5)', () => {
   async function fillChoiceField() {

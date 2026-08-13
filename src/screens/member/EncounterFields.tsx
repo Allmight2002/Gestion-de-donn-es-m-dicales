@@ -1,4 +1,5 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useId, useState, type ReactNode } from 'react';
+import { CircleHelp } from 'lucide-react';
 import type { FieldSection, TemplateField } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
@@ -11,6 +12,34 @@ type DisplaySection = (typeof SECTIONS)[number];
 
 const displaySectionOf = (section: unknown): DisplaySection =>
   DEFINED_SECTIONS.includes(section as FieldSection) ? section as FieldSection : 'other';
+
+function FieldLabel({ field }: { field: TemplateField }) {
+  const { t } = useI18n();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpId = useId();
+  return (
+    <span className="flex items-center gap-1 text-slate-700">
+      {field.label}
+      {field.description && (
+        <span className="relative inline-flex">
+          <button
+            type="button"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-slate-400 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+            aria-label={t('form.field_help')}
+            aria-expanded={helpOpen}
+            aria-controls={helpId}
+            onClick={() => setHelpOpen((open) => !open)}
+          >
+            <CircleHelp aria-hidden="true" size={16} />
+          </button>
+          {helpOpen && <span id={helpId} role="tooltip" className="absolute left-0 top-full z-10 w-64 rounded bg-slate-800 p-2 text-xs font-normal text-white shadow-lg">{field.description}</span>}
+        </span>
+      )}
+      {field.required && <span className="text-red-500"> *</span>}
+      {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
+    </span>
+  );
+}
 
 /** Un champ de rencontre s'applique-t-il a ce type ? (encounterTypes null/vide = tous). */
 export const fieldAppliesToType = (f: TemplateField, type: string) =>
@@ -67,11 +96,7 @@ export function EncounterFields({
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
           <div className="flex flex-col text-sm">
-            <span className="text-slate-700">
-              {field.label}
-              {field.required && <span className="text-red-500"> *</span>}
-              {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
-            </span>
+            <FieldLabel field={field} />
             <div className="mt-1">
               {proposal ? (
                 <ChoiceWithProposal

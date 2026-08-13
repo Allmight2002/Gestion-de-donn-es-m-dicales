@@ -1,7 +1,7 @@
 # Idées produit post-readiness — file d'attente
 
 - Tenu à jour à partir des échanges avec le porteur (Dr Mbassi)
-- Dernière mise à jour : 2026-08-10
+- Dernière mise à jour : 2026-08-13
 
 Cette liste rassemble les **chantiers concrets** identifiés mais **volontairement non commencés**. Elle est distincte des études `docs/strategie-produit-post-mvp*.md` (stratégie de marché et positionnement) : ici, ce sont des évolutions techniques précises, prêtes à être spécifiées puis construites.
 
@@ -29,7 +29,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 |---|---|---|---|---|---|
 | 1 | **Comptes de mission** (rôle `saisisseur`) — un médecin confie la saisie d'une seule base à un étudiant, pour une durée limitée, en création seule, révocable | Moyenne (base + Edge + UI) | — | [`spec-comptes-mission.md`](spec-comptes-mission.md) | Spec écrite ; 6 décisions en attente du demandeur |
 | 2 | **Observabilité des erreurs** — être notifié automatiquement des bugs et de leurs causes, sans exposer de donnée patient | Moyenne (front + base + alerting) | Fait partie du blocage monitoring **B5** | [`spec-observabilite-erreurs.md`](spec-observabilite-erreurs.md) | Spec écrite ; 7 décisions en attente du demandeur |
-| 3 | **Bouton de suppression de base** — surface dans l'interface la suppression déjà existante côté serveur | Petite (surtout UI) | — | *(à spécifier si besoin)* | Noté ; capacité serveur complète, UI absente |
+| 3 | **Bouton de suppression de base** — surface dans l'interface la suppression déjà existante côté serveur | Petite (surtout UI) | — | *(à spécifier si besoin)* | **Livrée** : suppression avec motif (`BaseSettings.tsx:121`), corbeille et restauration (`Dashboard.tsx:259`). Reste la **purge définitive**, qui n'existe nulle part → défaut **D10** |
 | 4a | **Registre « Diagnostic urgences » (noyau)** — base à listes contrôlées (diagnostic, motif, issue) pour produire des diagnostics analysables | **Nulle (configuration, pas de code)** | — | *(canevas à préparer)* | Signal terrain fort (directrice des urgences, Tchad) ; faisable dès maintenant en données fictives |
 | 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(cadrée en séance le 2026-07-26)* | **Lancée** : structure du référentiel livrée (T1) ; contenu, type de champ et interface à suivre |
 | 5 | **Bibliothèque de jeux de valeurs** — listes prêtes à l'emploi insérables en un clic dans un champ `select`/`multiselect`, au lieu de saisir chaque valeur à la main | Petite (front, contenu pur) | — | *(cadrée en séance le 2026-07-26)* | **Mécanisme livré le 2026-07-26** ; jeux cliniques à enrichir au fil des retours |
@@ -287,6 +287,113 @@ Prérequis technique : `listCohorts` ne remonte aujourd'hui ni `filter_definitio
 D7 a coûté deux diagnostics complets pendant la campagne de test manuel, chaque fois en obligeant à sortir de l'application. À corriger **une fois, dans un utilitaire partagé** — un correctif appliqué à un seul appelant avait déjà, lors d'un lot antérieur, laissé les autres afficher `[object Object]`. Contrainte à préserver : les Edge Functions renvoient volontairement des messages courts et génériques ; le but est d'afficher ce que le serveur a **déjà choisi de dire**, pas davantage.
 
 D6, D7, D8 et les chantiers liés aux comptes de mission sont repris avec leurs options et décisions dans [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md).
+
+### Lot de retours d'usage du 2026-08-13 (D9 à D12)
+
+Signalés par le porteur à l'usage et par des testeurs. **Consignés, pas à corriger dans l'immédiat.**
+Chaque symptôme a été vérifié dans le code avant d'être écrit ici : les quatre sont réels, et trois
+d'entre eux sont **transverses** — ils ne se corrigent proprement qu'une fois, dans une primitive
+partagée, jamais écran par écran.
+
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D9 | **Les menus déroulants ne se ferment pas quand on clique ailleurs** : il faut re-cliquer sur le bouton qui les a ouverts. Source de confusion répétée | Les trois menus flottants sont des `<details>/<summary>` natifs (`src/screens/member/MyTemplates.tsx:170`, `src/screens/staff/TemplatesAdmin.tsx:180`, `src/screens/member/BaseHome.tsx:273`). L'élément natif n'offre **ni fermeture au clic extérieur, ni fermeture à Échap**, et rien ne l'ajoute : aucun écouteur `mousedown`/`pointerdown` n'existe dans `src/` | Petite (front, composant partagé) | Signalé 2026-08-13 |
+| D10 | **Une base mise à la corbeille ne peut jamais être supprimée définitivement** par son propriétaire — alors que l'interface annonce une « purge manuelle » à une date précise | La corbeille n'offre que « Restaurer » (`src/screens/member/Dashboard.tsx:286`). `list_deleted_bases()` calcule `purge_eligible_at = deleted_at + interval '1 year'` (`20260801140238_restore_deleted_base.sql:168`), rendu par le libellé « Purge manuelle possible à partir du {date} » (`src/i18n/messages.ts:822`). Or **aucune purge n'existe** : pas de RPC de suppression dure (le dépôt n'expose que `softDeleteBase`, `restoreDeletedBase`, `listDeletedBases`, `src/data/bases.ts:99`), et aucune tâche planifiée (les seuls crons sont la sauvegarde et le moniteur) | Moyenne (base + front + décision de conservation) | Signalé 2026-08-13 |
+| D11 | **Un message d'erreur peut rester hors de l'écran** : il s'affiche en haut de page alors que l'action a été déclenchée en bas. L'utilisateur voit une action qui « ne fait rien » | Motif général : 51 blocs `role="alert"` répartis sur 40 fichiers d'interface (hors tests), la plupart rendus en tête d'écran ou de section, et **rien ne ramène l'utilisateur vers eux** (aucun `scrollIntoView` ni `window.scrollTo` dans `src/`). Le toast existe (`src/components/Toast.tsx`) mais n'a que les variantes `success` et `warning`, et n'est employé que par une dizaine d'écrans | Moyenne (front, **transverse**) | Signalé 2026-08-13 |
+| D12 | **Les boutons ne changent pas de couleur quand on les presse**, en particulier au doigt | `src/index.css:126-134` et `:186-190` ne définissent que des états `hover:` pour `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger` et `.icon-button` ; le seul retour à l'appui est `active:translate-y-px` sur `.btn-primary` — un décalage d'un pixel, sans couleur. Or Tailwind v4 (`package.json:89`) conditionne `hover:` à `@media (hover: hover)` : **sur écran tactile ces styles ne s'appliquent jamais**. Le focus clavier, lui, est correct (contour global `:focus-visible`, `src/index.css:38`) | Petite (front, primitives CSS) | Signalé 2026-08-13 |
+
+#### D9 — fermeture des menus
+
+Deux détails confirment que le motif est en cause, et pas un écran en particulier :
+
+- deux des trois menus **contournent déjà** le problème en fermant le menu à la main au clic sur une
+  entrée (`event.currentTarget.closest('details')?.removeAttribute('open')`,
+  `MyTemplates.tsx:177` et `:184`) ; le sélecteur de colonnes de `BaseHome.tsx:273` n'a pas ce
+  contournement ;
+- chaque ligne de liste porte son propre `<details>` sans attribut `name` : **plusieurs menus peuvent
+  donc rester ouverts en même temps**, ce qui ajoute à la confusion décrite.
+
+Correction attendue : un composant `Menu` unique, réutilisé par les trois appels — fermeture au
+`pointerdown` extérieur, à Échap (avec retour du focus sur le bouton déclencheur) et à la sélection,
+un seul menu ouvert à la fois. L'API native `popover="auto"` + `popovertarget` fournit ce
+*light-dismiss* sans code ; à retenir seulement après vérification sur les navigateurs visés, la cible
+d'usage comprenant des téléphones anciens.
+
+**Ne pas toucher** aux trois autres `<details>` : `AccessManagement.tsx:246`, `Dashboard.tsx:259`
+(la corbeille) et `SyncCenter.tsx:110` sont des dépliants en flux, pas des menus flottants — l'élément
+natif y est le bon choix.
+
+Même famille, à traiter dans le même lot : la liste de suggestions de terminologie
+(`TerminologyInput.tsx:145`) ne se referme que sur choix ou vidage du champ. Elle est en flux et non
+superposée, donc bien moins déroutante.
+
+#### D10 — purge définitive d'une base
+
+Le défaut n'est pas seulement l'absence de bouton : **l'interface annonce une opération que personne
+ne peut exécuter**, ni le propriétaire, ni un exploitant. Une base d'essai ou créée par erreur reste
+donc dans la corbeille indéfiniment.
+
+Deux écarts s'ajoutent, à trancher avant d'écrire la moindre ligne :
+
+- **le délai ne concorde pas** avec le cadre juridique. La politique de conservation prévoit une purge
+  sous `[90 jours]`, avec la mention explicite « procédure de purge périodique à formaliser côté
+  exploitation ; vérifier l'outillage existant avant de fixer le délai »
+  ([`juridique/tchad/09-conservation.md:42`](juridique/tchad/09-conservation.md)) — alors que le
+  produit affiche un an et inscrit une rétention de 365 jours dans l'audit de restauration
+  (`20260801140238_restore_deleted_base.sql:152`) ;
+- **la suppression dure n'est pas un geste anodin** : elle croise le droit à l'effacement d'un côté,
+  et la traçabilité exigée par le registre des traitements de l'autre.
+
+Trois issues possibles, à instruire avec `meddata-db-safety` puisqu'il s'agit d'une suppression
+irréversible :
+
+- **purge par le propriétaire après le délai**, via une RPC dédiée qui préserve `audit_log` et le
+  journal des exports. **Piège à vérifier avant tout `delete`** : recenser les clés étrangères qui
+  pointent vers `base` et leur clause `on delete`, exactement comme l'idée 11 l'a montré pour
+  `export_log.cohort_id ... on delete cascade` — un `delete` naïf effacerait la preuve avec la donnée ;
+- **purge d'exploitation** (tâche planifiée idempotente), avec un libellé d'interface qui dit alors la
+  vérité : la base sera purgée, pas « purgeable par vous » ;
+- **suppression immédiate réservée aux bases vides** (aucun patient jamais créé), qui couvre le cas
+  courant de la base d'essai sans toucher à la conservation de données cliniques.
+
+À défaut de trancher tout de suite, la correction minimale est de **ne plus annoncer une action
+inexistante** et d'aligner le délai affiché sur la politique de conservation.
+
+#### D11 — visibilité des messages d'échec
+
+Exemple mesurable : `NewPatient.tsx` rend l'erreur ligne 204 et le bouton d'enregistrement ligne 294 —
+tout un formulaire les sépare. Même écart dans `EditPatient`, `EncounterForm`, `CohortBuilder` et
+`ImportData`.
+
+C'est exactement **D1**, corrigé le 2026-07-26 — mais uniquement sur les deux écrans de gabarits. Le
+reste de l'application a gardé le motif, ce qui confirme une fois de plus qu'un correctif appliqué à
+un seul appelant ne clôt pas ce genre de défaut.
+
+Correction attendue : une **variante `error` du toast** et un utilitaire d'annonce d'échec unique,
+appelé partout à la place du `setError` de tête de page **pour les échecs d'action**. Distinction à
+préserver : une erreur de **chargement** d'écran garde sa place en tête, elle est au bon endroit et
+décrit l'état de la page. Conserver `role="alert"` / `aria-live` pour les lecteurs d'écran, et vérifier
+qu'un toast de 3 secondes (`Toast.tsx:20`) suffit à un message d'erreur — sinon prévoir une fermeture
+manuelle plutôt qu'une disparition automatique.
+
+À faire dans le même lot que **D7** : les deux répondent à la même question — que sait l'utilisateur
+quand une action échoue.
+
+#### D12 — retour visuel des boutons
+
+Sur téléphone, un appui ne produit donc **aucun** changement de couleur tant que l'action n'a pas
+abouti ; c'est la cause directe du « je ne sais pas si j'ai appuyé » remonté par les testeurs. À
+confirmer sur un vrai appareil au moment de corriger, comme cela avait été fait pour D2.
+
+Deux manques complémentaires, relevés au passage : `.btn-ghost` et `.icon-button` n'ont **pas d'état
+désactivé** (`disabled:opacity-60` absent, présent sur les trois autres primitives), et rien ne marque
+l'attente pendant une action longue au-delà du grisage.
+
+Correction attendue : doubler chaque `hover:` d'un `active:` de même intention sur les cinq
+primitives, compléter `disabled:` là où il manque, et prévoir un état « en cours » lisible pour les
+boutons d'action longue. Recoupe l'**idée 10** (finition de l'interface) et se traite dans le même
+lot ; une couleur d'appui n'est pas une animation, le garde-fou `prefers-reduced-motion` n'a pas
+d'objet ici.
 
 ## Comment utiliser cette liste
 

@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-11**
+- Établi le 2026-07-27 · **révisé le 2026-08-13**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -19,6 +19,20 @@
 > [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md) — les listes de diagnostics
 > en remplacement des variables `diagnostic_1/2/3`. **L21 entre en collision avec L4 et L13**, et
 > **L23 avec L18 et L19** : voir l'ordre suggéré.
+
+> **Seconde révision du 2026-08-11** — deux corrections et un ajout.
+>
+> **Trois lots étaient livrés sans être marqués**, pour la deuxième fois : **L15** et **L16**
+> (migrations `20260811120000` et `20260811130000` sur `main`, commits `009ed3c` et `dc90392` ;
+> la phase interface de L16 est également en place dans `NewPatient.tsx`) et **L17** (utilitaire
+> `src/lib/edgeFunctionError.ts`, commit `6a453b9`). Les étapes 1 et 2 de l'ordre suggéré sont
+> donc soldées.
+>
+> **Sept lots sont ajoutés, L27 à L33** : le reste des améliorations du moteur de formulaires,
+> après vérification de chaque point contre le code. Beaucoup de ce qui était réputé manquant
+> existe déjà — min/max, unités, obligation conditionnelle, avertissement non bloquant,
+> duplication d'une variable, réorganisation par glisser-déposer, affichage compact du
+> constructeur, versionnement.
 
 Le critère de découpage est le **fichier touché**, pas le thème. Deux lots qui
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
@@ -45,9 +59,9 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L4, L11, L13, L15 |
 | **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L11, L12, L15, L18 |
 | **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
-| **L15** | Comptes de mission : identifiant et mot de passe générés | `create-mission-account/{index,handler}.ts`, tests Edge, `MissionAccounts.tsx`, connexion, textes et spec | **seul** (Auth + accès) |
-| **L16** | Compte de mission : création **et correction** de l'identité, écarts d'interface | migration, `test/mission-accounts.test.ts`, `spec-comptes-mission.md`, `NewPatient.tsx`, `EditPatient.tsx`, `BaseHome.tsx`, `PatientDetail.tsx`, `AppShell.tsx` | **seul** |
-| **L17** | Messages d'erreur des Edge Functions | `src/data/exports.ts`, `src/data/mission.ts`, utilitaire partagé | L11, L14, L18, L19 |
+| ~~L15~~ | ~~Comptes de mission : identifiant et mot de passe générés~~ | **Livré le 2026-08-11** (`009ed3c`) | — |
+| ~~L16~~ | ~~Compte de mission : création et correction de l'identité~~ | **Livré le 2026-08-11** (`dc90392`, base + interface) | — |
+| ~~L17~~ | ~~Messages d'erreur des Edge Functions~~ | **Livré** (`6a453b9`, `src/lib/edgeFunctionError.ts`) | — |
 | **L18** | Cohorte dynamique : compteur vivant et « Figer maintenant » | `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
 | **L19** | Archivage d'une cohorte | migration, `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
 | **L20** | Listes de diagnostics : surface base | migration, `test/validation.test.ts`, `test/templates.admin.test.ts`, `src/data/types.ts`, `src/data/templates.ts` | **seul** (prérequis de L21 à L26) |
@@ -57,6 +71,18 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L24** | Listes de diagnostics : refus au mappage d'import | `src/domain/import.ts`, `ImportData.tsx` | L21, L22, L23, L25 |
 | **L25** | Conflit hors-ligne : issue « garder les deux » | `src/data/offline.ts`, `SyncCenter.tsx` | L21, L22, L23, L24 |
 | **L26** | Regroupement des variables `diagnostic_1/2/3` | migration, RPC d'aperçu et de conversion, écran du constructeur | **seul**, en dernier |
+| **L27** | Texte d'aide par variable | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `exportContract.ts` | L29 |
+| **L28** | Valeur par défaut et unicité | migration, `FieldForm.tsx`, `NewPatient.tsx`, `EncounterForm.tsx` | L29 |
+| **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
+| **L30** | Options de liste : code interne stable | migration + conversion, `FieldForm.tsx`, `FieldInput.tsx`, `exportContract.ts` | L29 |
+| **L31** | Sections personnalisables | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `ImportData.tsx`, `TemplateFromFile.tsx`, `templateLibrary.ts`, `seed.sql`, `exportContract.ts` | L29 |
+| **L32** | Affichage conditionnel | migration, `RuleForm.tsx`, `EncounterFields.tsx`, `validation.ts`, `exportContract.ts` | L28, L29 |
+| **L33** | Raisons de valeur manquante par variable | migration, `FieldForm.tsx`, `ValueInput.tsx`, `validation.ts`, `exportContract.ts` | L29 |
+
+> **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
+> L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
+> déjà par L22. Cette famille est une **file d'attente**, à traiter un lot à la fois. Seul **L29**
+> échappe à la règle : il n'ouvre que son propre écran.
 
 > **L18 et L19 touchent les deux mêmes fichiers** : ne jamais les lancer ensemble. Traiter L18
 > d'abord (front seul, gain immédiat), L19 ensuite (surface base).
@@ -390,29 +416,152 @@ supplémentaire — modification additive d'une contrainte `check` sur une table
 
 Surface base : appliquer `meddata-db-safety`.
 
+### L27 — Texte d'aide par variable
+
+Une variable n'a aujourd'hui qu'un libellé. Rien ne dit **comment** la renseigner, alors que la
+réponse dépend de la définition : « score de Glasgow à l'admission » signifie-t-il le premier score
+documenté, ou celui après sédation ? Deux personnes qui saisissent la même base répondent
+différemment, et l'écart ne se voit jamais.
+
+Une colonne `description` sur `template_field`, un champ dans le constructeur, une icône d'aide
+dans le formulaire, et **une colonne de plus au dictionnaire d'export** — `buildDictionary` n'en
+porte pas aujourd'hui, alors que c'est précisément l'endroit où un relecteur extérieur cherche la
+définition d'une variable.
+
+Le plus petit lot de la famille, et celui qui pèse le plus sur la qualité des données.
+
+### L28 — Valeur par défaut et unicité
+
+Deux colonnes sur `template_field`, mais deux mécanismes distincts.
+
+`default_value` est un **préremplissage à la saisie**, jamais une valeur écrite d'office : une date
+de consultation proposée à aujourd'hui, un pays proposé à Tchad. Ne jamais préremplir une variable
+clinique dont la valeur par défaut orienterait la réponse.
+
+`is_unique` est une **contrainte serveur**, pas un contrôle d'interface : numéro de dossier,
+identifiant institutionnel. Elle doit résister à l'import, au rejeu hors-ligne et à deux saisies
+simultanées — donc un index d'unicité partiel, pas un `select` préalable.
+
+### L29 — Prévisualisation du formulaire
+
+Le seul lot de la famille qui n'entre en collision avec rien : il ouvre son propre écran et ne
+touche `TemplateVersionEditor.tsx` que pour y poser un bouton.
+
+Voir son formulaire tel que le verra la personne qui saisit, sans créer un patient d'essai. Utile
+surtout en vue mobile, où l'ordre des variables et la longueur des sections décident du confort
+réel. À lancer en parallèle de n'importe quel autre lot.
+
+### L30 — Options de liste : code interne stable
+
+**Défaut déjà consigné** dans [`idees-post-readiness.md`](idees-post-readiness.md) §4 : le `select`
+stocke le **libellé**, pas un code. Corriger une option — `hematome` en `hématome` — rend les
+fiches déjà saisies invalides à la prochaine écriture et scinde une modalité en deux dans les
+statistiques.
+
+C'est le même problème que le référentiel de terminologie a résolu pour les diagnostics, resté
+entier pour les listes ordinaires. Le lot lui applique la même solution : `allowed_values` devient
+une liste d'objets `{ value_key, label, is_active }`, le code part en base, le libellé reste
+modifiable, et une option retirée peut être désactivée sans détruire l'historique.
+
+Il emporte donc une **conversion des données existantes**, avec les mêmes exigences que L26 :
+aperçu en lecture seule, opt-in, idempotence, journalisation. Surface base : appliquer
+`meddata-db-safety`.
+
+### L31 — Sections personnalisables
+
+`section` est un `check (section in ('clinique','biologie','paraclinique'))`, et ces trois valeurs
+sont **répliquées dans neuf fichiers** : `types.ts`, `templateLibrary.ts`, `EncounterFields.tsx`,
+`ImportData.tsx`, `TemplateFromFile.tsx`, `FieldForm.tsx`, `seed.sql`, la migration d'origine et
+`20260711000200_template_transactionality.sql`.
+
+Le lot le plus lourd de la famille, et le seul dont le document d'orientation sous-estimait le
+coût en le qualifiant de « relativement localisé ». Une table `template_section` rattachée à
+`template_version`, avec une migration de repli conservant les trois sections actuelles comme
+sections par défaut de toute base existante.
+
+Ne pas confondre la **section** — le regroupement visuel du formulaire, propre à chaque base — avec
+la **catégorie de donnée** ; les deux peuvent coexister, et c'est même l'intérêt du lot.
+
+### L32 — Affichage conditionnel
+
+Le moteur de règles sait aujourd'hui rendre un champ **obligatoire** sous condition
+(`then.operator = 'required'`, seul opérateur autorisé), comparer deux champs, et distinguer
+blocage et avertissement. Il ne sait pas **montrer ou masquer**.
+
+C'est le plus gros gain ressenti sur un formulaire long : ne montrer les variables d'imagerie que
+si une imagerie a été faite.
+
+**Décision à prendre avant de coder, et elle ne peut pas être remise à plus tard** : que devient la
+valeur d'un champ déjà renseigné qui devient masqué ? Conservée et exportée — au risque qu'une
+analyse compte une valeur que l'utilisateur croit avoir retirée. Ou effacée — au risque de perdre
+une saisie sur un simple changement d'avis. Les deux se défendent ; le choix change la migration,
+l'export et les tests. C'est le piège classique des systèmes de recueil clinique.
+
+Le moteur reste une **structure JSON à liste blanche d'opérateurs**, jamais évaluée comme du code :
+c'est la ligne posée par `templateRules.ts` et il ne faut pas en sortir.
+
+### L33 — Raisons de valeur manquante par variable
+
+Les trois codes (`non_fait`, `inconnu`, `non_applicable`) sont **figés en dur** côté serveur,
+identiques pour toutes les variables, et le seul réglage disponible est un booléen les autorisant
+ou non en bloc.
+
+Le lot permet de choisir, variable par variable, lesquelles proposer, et d'en ajouter deux qui
+manquent à un registre clinique : **refus** du patient et **non documenté** — distinct de
+« inconnu », qui laisse croire que l'information a été cherchée.
+
+Les codes existants ne changent ni de nom ni de sens : la migration est additive et les données
+déjà saisies restent lisibles telles quelles.
+
+## Deux chantiers volontairement laissés hors des lots
+
+**Champs calculés.** Un langage d'expression (`DATEDIFF`, `IF` imbriqués) devrait tourner à
+l'identique en TypeScript, en PL/pgSQL et en Deno — trois implémentations d'une même sémantique sur
+des valeurs cliniques. La bifurcation à trancher d'abord : catalogue fermé de calculs paramétrés,
+ou calcul uniquement à l'export sans jamais être stocké. Tant que ce choix n'est pas fait, le lot
+n'a pas de périmètre. Reste en file d'idées (`idees-fonctionnalites-futures.md` A3).
+
+**Groupes répétables.** Plusieurs occurrences portant chacune leurs propres attributs — des
+interventions avec date, type, indication. Le critère de bascule est posé au §2 de
+[`spec-variables-multivaluees.md`](spec-variables-multivaluees.md) : deux attributs propres ou plus
+par occurrence. C'est un chantier de la taille de L20 à L26 réunis ; il lui faut sa spécification
+avant ses lots.
+
 ## Ce qui n'a pas besoin de lot
+
 
 - **P5, terminologie avancée** : couverte par les lots T1 à T4 déjà livrés.
 - **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
 - **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
 
-## Ordre suggéré
+## Ordre suggéré — état au 2026-08-13
 
-Neuf lots sont livrés : **L1, L2, L3, L5, L6, L7, L8, L9 et L10**. Il en reste **dix-sept** :
-L4, L11, L12, L13, L14, les cinq L15 à L19, et les sept nouveaux L20 à L26.
+**Niveau atteint.** L4 (PR #169), L12 (PR #172, puis snapshot #174), L13 (PR #180), L18
+(PR #159) et L19 (PR #179, schema #184, promotion #185) sont intégrés. L19 a aussi sa preuve de
+production technique avec données fictives : staging `31709473891`, puis production `31711004972`
+pour le même SHA `3092302`. Avec L1–L10 et L15–L17, cela porte à **dix-huit lots livrés/intégrés**.
 
-1. **D'abord** : **L15**, seul, car il modifie le circuit Auth et la remise des accès. Puis **L17**
-   (messages d'erreur). L17 mérite de passer tôt : c'est lui qui rend les prochaines séances de
-   test manuel exploitables, au lieu d'obliger à ouvrir les outils de développement à chaque
-   refus.
-2. **Ensuite, seul** : **L16** — c'est le seul lot porteur d'une décision produit déjà tranchée
-   qui n'a pas encore de traduction en base. Tant qu'elle n'est pas portée par une migration, la
-   spécification et le code disent le contraire l'un de l'autre.
-3. **Puis en parallèle** : L4, L12, **L18**.
-4. **Ensuite** : L11, L13, **L19**. L11 attend encore sept décisions, mais ses étapes locales
-   sont réalisables sans elles. L19 ne doit pas suivre L18 de trop près : mêmes fichiers.
-5. **Seul, en dernier** : L14.
-6. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
+**Travail actif.** L11 (observabilité, PR #176) est le seul lot fonctionnel encore en travail
+local. Sa PR est actuellement `DIRTY` : résoudre d'abord les trois conflits de fusion
+(`docs/schema-etat-final.md`, `docs/suivi-execution-feuille-route.md`,
+`test/security-definer-acl.test.ts`) puis relancer la CI. L19 et son correctif E2E associé sont
+clos. Aucun lot de la famille formulaires ou diagnostics n'est encore lancé.
+
+L'ordre suivant reflète la priorité confirmée : **terminer les chantiers actifs, puis traiter la
+famille moteur de formulaires avant L13/L14 et avant la famille diagnostics.**
+
+1. **Terminer L11**. Il reste parallélisable avec la famille formulaires ; son prompt impose ses
+   décisions de confidentialité avant toute finalisation.
+2. **Famille « moteur de formulaires »**, avant les diagnostics :
+   1. **L27** — texte d'aide par variable ;
+   2. **L29** — prévisualisation, seul lot de cette famille qui peut tourner en parallèle de L27 ;
+   3. **L28** — valeur par défaut et unicité ;
+   4. **L33** — raisons de valeur manquante par variable ;
+   5. **L32** — affichage conditionnel, après décision explicite sur les valeurs masquées ;
+   6. **L30** — codes d'options, après le reste car il convertit des données existantes ;
+   7. **L31** — sections personnalisables, dernier et plus lourd.
+3. **L14**, seul, après les autres ajouts de textes i18n.
+4. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
    1. **L20 seul** — surface base, prérequis de tous les autres ;
    2. puis en parallèle **L21, L22 et L24** — à condition que **L4 et L13** soient soldés ou non
       lancés ;
@@ -420,10 +569,17 @@ L4, L11, L12, L13, L14, les cinq L15 à L19, et les sept nouveaux L20 à L26.
       qui ne dépend de rien ;
    4. **L26 seul, en dernier**, après sauvegarde vérifiée.
 
-> Le plus économique est de **solder L4 et L13 avant d'entamer L21**, et **L18 et L19 avant L23**.
+> L13 et L19 sont déjà soldés : L21 peut suivre L20, et L23 peut suivre L20 sans attendre de
+> lot de cohorte.
 > Sinon la famille des listes de diagnostics immobilise quatre lots existants pendant toute sa
 > durée. L22, L24 et L25 restent lançables sans attendre : ils ne partagent aucun fichier avec le
 > reste du plan.
+
+> **Les deux familles se gênent aussi entre elles** : L21 et L27, L28, L30, L31, L33 touchent tous
+> `FieldForm.tsx` ; L22 et L27, L30, L31, L32, L33 touchent tous `exportContract.ts`. En pratique,
+> **une seule session à la fois sur le moteur de formulaires**, sauf L29 ; ne pas entamer L21/L22
+> avant la fin de cette file. Les lots vraiment parallélisables pendant ce temps sont L11, L14,
+> L23, L24, L25 et L29.
 
 ### Leçon des trois lots menés en parallèle
 
