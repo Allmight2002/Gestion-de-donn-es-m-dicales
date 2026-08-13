@@ -29,6 +29,7 @@ const MissionAccounts = lazy(() => import('../screens/member/MissionAccounts').t
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
 const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
+const BaseProposals = lazy(() => import('../screens/member/BaseProposals').then((m) => ({ default: m.BaseProposals })));
 const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
 const BaseSettings = lazy(() => import('../screens/member/BaseSettings').then((m) => ({ default: m.BaseSettings })));
 const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
@@ -166,6 +167,7 @@ export function AppRoutes() {
           <Route path="cohorts" element={<CohortBuilder />} />
           <Route path="stats" element={<BaseStats />} />
           <Route path="queue" element={<CompletionQueue />} />
+          <Route path="propositions" element={<BaseProposals />} />
           <Route path="activity" element={<ActivityLog />} />
           <Route path="access" element={<AccessManagement />} />
           <Route path="missions" element={<RequireGlobalRole globalRoles={['medecin']}><MissionAccounts /></RequireGlobalRole>} />

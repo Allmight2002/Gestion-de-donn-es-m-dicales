@@ -40,6 +40,7 @@ function renderLayout(listing: BaseListing) {
               <Route index element={<div>HOME</div>} />
               <Route path="parametres" element={<div>REGLAGES</div>} />
               <Route path="queue" element={<div>FILE</div>} />
+              <Route path="propositions" element={<div>PROPOSITIONS</div>} />
               <Route path="cohorts" element={<div>COHORTES</div>} />
               <Route path="stats" element={<div>STATS</div>} />
               <Route path="activity" element={<div>JOURNAL</div>} />
@@ -70,6 +71,14 @@ describe('BaseLayout — quatre destinations', () => {
     const subs = screen.getByRole('navigation', { name: 'Paramètres' });
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
       .toEqual(['Général', 'Variables', 'Accès', 'Journal']);
+  });
+
+  test('les propositions figurent dans A completer pour le seul proprietaire', async () => {
+    renderLayout(listingWith('owner'));
+    await userEvent.click(await screen.findByRole('link', { name: 'À compléter' }));
+    const subs = await screen.findByRole('navigation', { name: 'À compléter' });
+    expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['À compléter', 'Propositions', 'Curation']);
   });
 
   test('le journal et les statistiques restent accessibles a un lecteur, ranges dans leur groupe', async () => {

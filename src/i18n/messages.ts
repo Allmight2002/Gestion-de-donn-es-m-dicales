@@ -830,6 +830,15 @@ export const messages = {
     'field.terminology_proposal_option': 'Diagnostic absent du référentiel',
     'field.terminology_proposal_prompt': 'Décrivez le diagnostic introuvable :',
     'field.terminology_proposal_warning': 'Ce diagnostic n’est pas enregistré dans le champ contrôlé : la fiche restera à compléter jusqu’à son traitement.',
+    // --- Propositions hors liste (L12) ------------------------------------------
+    'base.tab_proposals': 'Propositions',
+    'proposals.title': 'Propositions hors liste',
+    'proposals.subtitle': 'Valeurs proposées dans les fiches, à examiner avant de faire évoluer les variables.',
+    'proposals.owner_only': 'Cet écran est réservé au médecin responsable de la base.',
+    'proposals.empty': 'Aucune valeur proposée dans cette base.',
+    'proposals.occurrences': 'occurrence(s)',
+    'proposals.patient_data': 'Données du participant',
+    'proposals.open_record': 'Ouvrir la fiche',
   },
   en: {
     'observation.model_label': 'Observation model',
@@ -1655,6 +1664,15 @@ export const messages = {
     'field.terminology_proposal_option': 'Diagnosis missing from the reference',
     'field.terminology_proposal_prompt': 'Describe the missing diagnosis:',
     'field.terminology_proposal_warning': 'This diagnosis is not recorded in the controlled field: the record will stay to be completed until it is reviewed.',
+    // --- Out-of-list proposals (L12) ---------------------------------------------
+    'base.tab_proposals': 'Proposals',
+    'proposals.title': 'Out-of-list proposals',
+    'proposals.subtitle': 'Values proposed in records, to review before updating the variables.',
+    'proposals.owner_only': 'This screen is restricted to the registry owner.',
+    'proposals.empty': 'No proposed value in this registry.',
+    'proposals.occurrences': 'occurrence(s)',
+    'proposals.patient_data': 'Participant data',
+    'proposals.open_record': 'Open record',
   },
 } as const;
 
