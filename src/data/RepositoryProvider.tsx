@@ -12,6 +12,7 @@ import { auditRepository, type AuditRepository } from './audit';
 import { groupRepository, type GroupRepository } from './groups';
 import { terminologyRepository, type TerminologyRepository } from './terminology';
 import { missionRepository, type MissionRepository } from './mission';
+import { clientErrorRepository, type ClientErrorRepository } from './clientErrors';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -27,6 +28,7 @@ interface Repositories {
   groups: GroupRepository;
   terminology: TerminologyRepository;
   missions: MissionRepository;
+  clientErrors: ClientErrorRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -43,6 +45,7 @@ const RepositoryContext = createContext<Repositories>({
   groups: groupRepository,
   terminology: terminologyRepository,
   missions: missionRepository,
+  clientErrors: clientErrorRepository,
 });
 
 export function RepositoryProvider({
@@ -60,6 +63,7 @@ export function RepositoryProvider({
   groups = groupRepository,
   terminology = terminologyRepository,
   missions = missionRepository,
+  clientErrors = clientErrorRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -75,9 +79,10 @@ export function RepositoryProvider({
   groups?: GroupRepository;
   terminology?: TerminologyRepository;
   missions?: MissionRepository;
+  clientErrors?: ClientErrorRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -133,4 +138,8 @@ export function useGroupRepository(): GroupRepository {
 
 export function useMissionRepository(): MissionRepository {
   return useContext(RepositoryContext).missions;
+}
+
+export function useClientErrorRepository(): ClientErrorRepository {
+  return useContext(RepositoryContext).clientErrors;
 }

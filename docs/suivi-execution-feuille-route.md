@@ -1723,3 +1723,19 @@ l'export, sans que l'UI ne masque l'incompatibilité avec la règle serveur.
 
 Cette clôture prouve une production technique avec données fictives. Elle ne vaut ni autorisation
 clinique, ni autorisation d'utiliser des données réelles.
+
+## L11 — observabilité des erreurs (implémentation locale 2026-08-13)
+
+Le navigateur capte maintenant les plantages React, les erreurs globales et les promesses rejetées.
+Pour préserver la confidentialité, il ne transmet jamais de message d'erreur brut : le journal ne
+conserve qu'un nom technique borné, un résumé fixe et des emplacements de pile expurgés. La base
+réapplique cette réduction, impose une liste blanche de contextes, limite le débit à dix occurrences
+par minute et par compte, puis regroupe les doublons. La lecture passe exclusivement par une RPC
+réservée à `system_admin`; l'écran **État du système** n'offre aucun export.
+
+Preuves locales : `npm run typecheck`, lint, build, `npm run schema`, `npm run manifest`, le test
+RLS ciblé (4/4) et le test web de l'ErrorBoundary (2/2) sont verts. Le test RLS vérifie notamment
+qu'un e-mail, un numéro long, un jeton et un paramètre d'URL synthétiques n'apparaissent pas dans
+l'enregistrement stocké. La purge à 30 jours est prévue par RPC de service; son ordonnanceur et
+l'alerte distante restent volontairement bloqués à la frontière B5. Les preuves de staging et de
+production seront ajoutées ici après la release coordonnée du même SHA.

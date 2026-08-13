@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink } from 'react-router';
 import {
-  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, UserPlus, Users, X,
+  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, ShieldAlert, UserPlus, Users, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { useI18n } from '../i18n/useI18n';
@@ -109,6 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? [
             { to: '/admin', labelKey: 'staff.admin.title', Icon: FileText, end: true },
             { to: '/admin/roles', labelKey: 'roleadmin.title', Icon: KeyRound },
+            { to: '/admin/system-status', labelKey: 'system_status.title', Icon: ShieldAlert },
           ]
         : role === 'saisisseur'
           ? [
