@@ -1723,3 +1723,29 @@ l'export, sans que l'UI ne masque l'incompatibilité avec la règle serveur.
 
 Cette clôture prouve une production technique avec données fictives. Elle ne vaut ni autorisation
 clinique, ni autorisation d'utiliser des données réelles.
+
+## L4 — soupape pour un diagnostic absent du référentiel — clôture (2026-08-13)
+
+Le lot L4 est livré pour les **nouvelles** variables `terminology`, de rencontre ou permanentes.
+L'activation crée un champ texte compagnon `<cle>_autre`, non obligatoire. Une proposition retire
+la clé du diagnostic du payload (elle n'est pas écrite, même à `null`) et ne conserve le texte que
+dans le compagnon ; choisir ensuite un diagnostic du référentiel retire la proposition.
+
+### Preuves
+
+- commit fonctionnel `e74269b` ; PR `#169` vers `develop`, puis PR `#170` vers `main` ; les
+  contrôles obligatoires `build-test` et `scanner-image` sont verts pour les deux promotions ;
+- SHA applicatif promu par le workflow : `2a2b4f1e185faf4c12f4e38beb1d2db7028fcbdc` ; staging
+  [`31699252690`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31699252690)
+  vert (validation complète, backend, frontend et E2E navigateur) ; production
+  [`31702390264`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31702390264)
+  verte, explicitement liée à ce staging et contrôlant ce même SHA avant la promotion ;
+- essai manuel sur `gestion-de-donn-es-m-dicales.vercel.app`, avec données fictives : création de
+  `diagnostic_absent_test_14` en `terminology` permanent, avec compagnon
+  `diagnostic_absent_test_14_autre` ; saisie de « Diagnostic fictif L14 » dans l'option
+  « Diagnostic absent du référentiel » ; après enregistrement et réouverture, le diagnostic
+  contrôlé reste vide et seule la « valeur proposée » contient ce texte.
+
+Le mode d'inspection des fichiers de cette release était volontairement `paused` : cette preuve
+concerne exclusivement les données fictives et le parcours sans fichier. Elle ne vaut ni
+autorisation clinique, ni autorisation d'utiliser des données réelles.
