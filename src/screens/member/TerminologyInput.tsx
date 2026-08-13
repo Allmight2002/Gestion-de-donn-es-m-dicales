@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTerminologyRepository } from '../../data/RepositoryProvider';
 import { MIN_QUERY_LENGTH, type TerminologyOption } from '../../data/terminology';
-import { cacheIsCurrent, cacheStatus, downloadReference, searchLocal } from '../../data/terminologyCache';
+import { cacheFreshness, cacheStatus, downloadReference, searchLocal } from '../../data/terminologyCache';
 import { errorMessage } from '../../lib/errorMessage';
 import { isTerminologyValue, type TerminologyValue } from '../../data/types';
 import { useOnline } from '../../data/offline';
@@ -34,26 +34,54 @@ export function TerminologyInput({
   // Seule la derniere frappe compte : une reponse lente ne doit pas ecraser une plus recente.
   const requestRef = useRef(0);
   const cacheCheckRef = useRef(0);
+  const staleRef = useRef(false);
   // Une copie locale evite un aller-retour reseau a chaque frappe, et permet de saisir
   // sans connexion. Tant qu'elle est absente, on interroge le serveur.
   const [local, setLocal] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
+  const [stale, setStale] = useState(false);
 
   const selected = isTerminologyValue(value) ? value : null;
 
   useEffect(() => {
     const ticket = ++cacheCheckRef.current;
-    const availability = online
-      ? cacheIsCurrent(repo)
-      : cacheStatus().then((status) => !!status && status.count > 0);
-    void availability
-      .then((available) => {
-        if (ticket === cacheCheckRef.current) setLocal(available);
+    const freshness = online
+      ? cacheFreshness(repo)
+      : cacheStatus().then((status) => status?.count ? (staleRef.current ? 'stale' : 'current') : 'absent');
+    void freshness
+      .then((state) => {
+        if (ticket !== cacheCheckRef.current) return;
+        setLocal(state === 'current');
+        setStale(state === 'stale');
+        staleRef.current = state === 'stale';
+        // La publication change rarement, mais une copie obsolete ne doit pas faire perdre
+        // silencieusement la recherche hors connexion. Le telechargement reste visible et
+        // n'utilise jamais l'ancien contenu pendant son remplacement.
+        if (state === 'stale' && online) {
+          setDownloading(0);
+          void downloadReference(repo, (recus) => setDownloading(recus))
+            .then((status) => {
+              if (ticket !== cacheCheckRef.current) return;
+              setLocal(status.count > 0);
+              setStale(false);
+              staleRef.current = false;
+            })
+            .catch((e) => {
+              if (ticket === cacheCheckRef.current) setError(errorMessage(e, t('common.error')));
+            })
+            .finally(() => {
+              if (ticket === cacheCheckRef.current) setDownloading(null);
+            });
+        }
       })
       .catch(() => {
-        if (ticket === cacheCheckRef.current) setLocal(false);
+        if (ticket === cacheCheckRef.current) {
+          setLocal(false);
+          setStale(false);
+          staleRef.current = false;
+        }
       });
-  }, [online, repo]);
+  }, [online, repo, t]);
 
   async function telecharger() {
     ++cacheCheckRef.current;
@@ -125,6 +153,15 @@ export function TerminologyInput({
 
   return (
     <div className="space-y-1">
+      {stale && !online ? (
+        <p role="status" className="text-xs text-amber-700 dark:text-amber-300">
+          {t('terminology.stale_offline')}
+        </p>
+      ) : downloading !== null ? (
+        <p role="status" className="text-xs text-slate-500">
+          {t('terminology.stale_refreshing')} {downloading > 0 ? downloading : ''}
+        </p>
+      ) : null}
       <input
         type="search"
         className="input"
@@ -165,15 +202,9 @@ export function TerminologyInput({
       {!searching && !error && options.length === 0 && query.trim().length >= MIN_QUERY_LENGTH && (
         <p className="text-xs text-slate-500">{t('terminology.no_result')}</p>
       )}
-      {/* La copie locale ne se telecharge qu'a la demande : c'est plusieurs milliers
-          d'entrees, on ne l'impose pas sur une connexion limitee. */}
       {local ? (
         <p className="text-xs text-slate-400">{t('terminology.local_ready')}</p>
-      ) : downloading !== null ? (
-        <p role="status" className="text-xs text-slate-500">
-          {t('terminology.downloading')} {downloading > 0 ? downloading : ''}
-        </p>
-      ) : (
+      ) : downloading === null ? (
         <button
           type="button"
           onClick={() => void telecharger()}
@@ -181,7 +212,7 @@ export function TerminologyInput({
         >
           {t('terminology.download')}
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -5,7 +5,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-  cacheIsCurrent, cacheStatus, clearCache, downloadReference, normalizeQuery, searchLocal,
+  cacheFreshness, cacheIsCurrent, cacheStatus, clearCache, downloadReference, normalizeQuery, searchLocal,
 } from './terminologyCache';
 import { makeTerminologyRepository, type TerminologyEntry, type TerminologyRepository } from './terminology';
 
@@ -101,6 +101,7 @@ describe('copie locale', () => {
       }),
     });
     expect(await cacheIsCurrent(neuf)).toBe(false);
+    expect(await cacheFreshness(neuf)).toBe('stale');
   });
 
   test('un referentiel absent cote serveur ne produit pas de copie muette', async () => {

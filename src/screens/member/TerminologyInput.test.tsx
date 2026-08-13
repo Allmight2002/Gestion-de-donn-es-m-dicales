@@ -123,4 +123,49 @@ describe('TerminologyInput (F6)', () => {
     expect(await screen.findByRole('option', { name: DIABETE.label })).toBeInTheDocument();
     expect(search).toHaveBeenCalledWith('di');
   });
+
+  test('rafraichit automatiquement une copie perimee et le signale au-dessus de la recherche', async () => {
+    await downloadReference({
+      search: async () => [],
+      activeRelease: async () => RELEASE,
+      listEntries: async () => ({
+        entries: [{ code: CHOLERA.code, label: CHOLERA.label, searchText: 'cholera' }], total: 1,
+      }),
+    });
+    let finishDownload: (() => void) | undefined;
+    const page = new Promise<{ entries: { code: string; label: string; searchText: string }[]; total: number }>((resolve) => { finishDownload = () => resolve({ entries: [{ code: CHOLERA.code, label: CHOLERA.label, searchText: 'cholera' }], total: 1 }); });
+    renderInput({
+      activeRelease: async () => ({ ...RELEASE, id: '00000000-0000-4000-8000-000000000002' }),
+      listEntries: async () => page,
+    });
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Mise à jour de la copie locale des diagnostics');
+    expect(screen.getByRole('status').compareDocumentPosition(screen.getByRole('combobox')) & 4).toBeTruthy();
+    finishDownload?.();
+    expect(await screen.findByText('Recherche hors connexion disponible.')).toBeInTheDocument();
+  });
+
+  test('annonce hors ligne qu une copie perimee sera rafraichie au retour du reseau', async () => {
+    await downloadReference({
+      search: async () => [],
+      activeRelease: async () => RELEASE,
+      listEntries: async () => ({
+        entries: [{ code: CHOLERA.code, label: CHOLERA.label, searchText: 'cholera' }], total: 1,
+      }),
+    });
+    let finishDownload: (() => void) | undefined;
+    const page = new Promise<{ entries: { code: string; label: string; searchText: string }[]; total: number }>((resolve) => { finishDownload = () => resolve({ entries: [{ code: CHOLERA.code, label: CHOLERA.label, searchText: 'cholera' }], total: 1 }); });
+    renderInput({
+      activeRelease: async () => ({ ...RELEASE, id: '00000000-0000-4000-8000-000000000002' }),
+      listEntries: async () => page,
+    });
+    await screen.findByRole('status');
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    window.dispatchEvent(new Event('offline'));
+
+    expect(await screen.findByText('La copie locale des diagnostics doit être mise à jour dès le retour du réseau.')).toBeInTheDocument();
+    finishDownload?.();
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    window.dispatchEvent(new Event('online'));
+  });
 });
