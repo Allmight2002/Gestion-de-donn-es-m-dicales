@@ -34,7 +34,10 @@ jobs:
     env:
       MONITOR_TARGET: ${{ matrix.target }}
       MONITOR_APP_URL: ${{ vars.APP_URL }}
-      MONITOR_REQUIRE_STRICT_INSPECTION: 'true'
+      # Parcours antivirus suspendu par defaut (decision du 12 aout 2026). Poser la variable
+      # de depot INSPECTION_MODE=strict retablit les sondes ClamAV sans autre modification.
+      INSPECTION_MODE: ${{ vars.INSPECTION_MODE || 'paused' }}
+      MONITOR_REQUIRE_STRICT_INSPECTION: ${{ (vars.INSPECTION_MODE || 'paused') == 'strict' && 'true' || 'false' }}
       MONITOR_MAX_SIGNATURE_AGE_HOURS: '48'
       MONITOR_OUTPUT: monitor-evidence-${{ matrix.target }}.json
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -94,7 +97,7 @@ jobs:
           rm -f "$cookie_jar"
           echo "MONITOR_FRONTEND_STORAGE_STATE=$storage_state" >> "$GITHUB_ENV"
 
-      - name: Probe application, Supabase and strict antivirus
+      - name: Probe application, Supabase and (in strict mode) the antivirus
         id: probe
         continue-on-error: true
         run: node scripts/operations-monitor.mjs

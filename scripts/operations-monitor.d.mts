@@ -5,9 +5,12 @@ export function validateMonitorConfiguration(env?: Record<string, string | undef
   appUrl: string;
   supabaseUrl: string;
   anonKey: string;
-  scanUrl: string;
-  scanToken: string;
-  maxSignatureAgeHours: number;
+  inspectionMode: 'strict' | 'paused';
+  inspectionPaused: boolean;
+  // Nuls quand l'inspection est suspendue : aucune sonde antivirus n'est alors emise.
+  scanUrl: string | null;
+  scanToken: string | null;
+  maxSignatureAgeHours: number | null;
   frontendStorageStatePath: string | null;
 };
 

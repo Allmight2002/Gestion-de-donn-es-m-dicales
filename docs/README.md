@@ -108,6 +108,7 @@
 | [exercice-reprise-staging-2026-07-23.md](exercice-reprise-staging-2026-07-23.md) · [-26.md](exercice-reprise-staging-2026-07-26.md) | 2026-07 | Exercices sauvegarde / restauration / reprise |
 | [decision-rpo-rto-staging-2026-07-25.md](decision-rpo-rto-staging-2026-07-25.md) | 2026-07-25 | Décision de continuité (RPO/RTO) |
 | [decision-environnement-production-tests-2026-07-29.md](decision-environnement-production-tests-2026-07-29.md) | 2026-07-29 | Décision sur l'environnement `production` persistant |
+| [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md) | 2026-08-12 | Décision de mise en pause du parcours antivirus (ClamAV non requis) |
 
 ## 8. Cadre juridique
 

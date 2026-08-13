@@ -25,7 +25,7 @@ Configurer les environnements GitHub `staging` et `production` avec :
   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`;
 - sauvegarde : `STORAGE_BACKUP_ENCRYPTION_KEY`, cle AES-256 en base64 propre a chaque
   environnement, conservee hors du depot et separee des artefacts chiffres;
-- scanner : `CLAMAV_SCAN_URL`, `CLAMAV_SCAN_TOKEN`;
+- scanner (uniquement si `inspection: strict`) : `CLAMAV_SCAN_URL`, `CLAMAV_SCAN_TOKEN`;
 - préflight API staging : `STAGING_MEDECIN_EMAIL`, `STAGING_MEDECIN_PASSWORD`;
 - E2E navigateur (facultatif) : `STAGING_CURATEUR_EMAIL/PASSWORD`, `STAGING_ADMIN_EMAIL/PASSWORD` ;
   fixtures des parcours métier : `STAGING_E2E_BASE_ID`, `STAGING_E2E_EXPORT_BASE_ID`,
@@ -33,14 +33,38 @@ Configurer les environnements GitHub `staging` et `production` avec :
   `docs/e2e-browser.md`);
 - Vercel : `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
-Le pipeline force `VITE_USE_SIGNED_READ`, `VITE_REQUIRE_SERVER_INSPECTION`,
-`REQUIRE_SERVER_INSPECTION` et `DB_REQUIRE_SERVER_INSPECTION` a `true`. Il force aussi
+Le pipeline force `VITE_USE_SIGNED_READ` a `true`. Les trois drapeaux d'inspection
+(`VITE_REQUIRE_SERVER_INSPECTION`, `REQUIRE_SERVER_INSPECTION`,
+`DB_REQUIRE_SERVER_INSPECTION`) suivent desormais l'input `inspection` — voir
+« Mode d'inspection » ci-dessous — et doivent bouger ENSEMBLE. Il force aussi
 `VITE_OFFLINE_MODE=disabled` et `VITE_OFFLINE_ADMIN_ACK=false`; le build refuse tout
 mode hors-ligne incoherent ou active, sauf le preview LOT 13 isole qui porte son
 acquittement explicite propre. Les scripts
 `release:env` valident presence, formats et coherence sans afficher de valeurs. Seules les
 variables `VITE_*` sont publiques; une cle service-role, URL DB ou token scanner ne doit jamais
 etre prefixe `VITE_`.
+
+## Mode d'inspection (input `inspection`)
+
+Depuis la [`decision du 12 aout 2026`](decision-pause-inspection-2026-08-12.md), le parcours
+antivirus n'est plus obligatoire. Le workflow expose un input `inspection` :
+
+- **`paused` (defaut)** : aucun scanner, aucun tunnel. Les secrets `CLAMAV_*` ne sont pas
+  requis ni deployes, les trois drapeaux passent a `false`, la politique DB est **suspendue**
+  transactionnellement par `npm run inspection:pause`, et le preflight E2E declare
+  `NON EXECUTE` les familles qui dependent du verdict antivirus. Chaque etape ecrit la
+  derogation dans le journal du run.
+- **`strict`** : comportement anterieur. Les secrets `CLAMAV_*` sont exiges et deployes, le
+  scanner est prouve (`/health`, fichier sain, EICAR) puis la base est activee par
+  `npm run inspection:activate`. C'est le **seul mode admissible avec des donnees reelles**.
+
+`REQUIRE_SERVER_INSPECTION` est repose sur les fonctions Edge dans les deux modes, staging
+comme production : sans cela, une valeur `true` residuelle bloquerait les lectures alors
+qu'aucun scanner ne repond plus. La suspension est toujours declaree, jamais deduite : une
+variable absente vaut `strict`, et `release:env` refuse un trio incoherent.
+
+Le job de validation `lot13-complete-staging` reste fige en `strict` : il existe justement
+pour exercer la chaine complete, scanner compris, sur un preview isole.
 
 ## Staging et production
 

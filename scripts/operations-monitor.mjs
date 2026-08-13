@@ -7,6 +7,12 @@ import {
   projectRefFromSupabaseUrl,
 } from './check-supabase-target.mjs';
 import { vercelCookieHeaderFromStorageState } from './vercel-cookie-state.mjs';
+import {
+  INSPECTION_MODE_ERROR,
+  INSPECTION_PAUSED,
+  inspectionPauseBanner,
+  readInspectionMode,
+} from './inspection-mode.mjs';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const RETRIES = 2;
@@ -70,13 +76,27 @@ export function validateMonitorConfiguration(env = process.env) {
   if (anonKey.length < 20 || /service_role|sb_secret_/i.test(anonKey)) {
     throw new Error('SUPABASE_ANON_KEY est invalide ou contient une cle serveur.');
   }
-  const scanUrl = httpsUrl(required(env, 'CLAMAV_SCAN_URL'), 'CLAMAV_SCAN_URL').toString();
-  const scanToken = required(env, 'CLAMAV_SCAN_TOKEN');
-  if (scanToken.length < 32 || /change-me|changeme|placeholder/i.test(scanToken)) {
-    throw new Error('CLAMAV_SCAN_TOKEN est absent ou utilise une valeur par defaut.');
-  }
-  if (required(env, 'MONITOR_REQUIRE_STRICT_INSPECTION') !== 'true') {
-    throw new Error('MONITOR_REQUIRE_STRICT_INSPECTION doit valoir true.');
+  // Parcours antivirus suspendu (docs/decision-pause-inspection-2026-08-12.md) : sonder un
+  // scanner inexistant produirait une alerte permanente sans rien surveiller. On cesse donc
+  // de le sonder — et la preuve JSON dit lequel des deux modes a ete observe.
+  const inspectionMode = readInspectionMode(env);
+  if (!inspectionMode) throw new Error(INSPECTION_MODE_ERROR);
+  const inspectionPaused = inspectionMode === INSPECTION_PAUSED;
+  let scanUrl = null;
+  let scanToken = null;
+  if (inspectionPaused) {
+    if (required(env, 'MONITOR_REQUIRE_STRICT_INSPECTION') !== 'false') {
+      throw new Error('MONITOR_REQUIRE_STRICT_INSPECTION doit valoir false quand INSPECTION_MODE=paused.');
+    }
+  } else {
+    scanUrl = httpsUrl(required(env, 'CLAMAV_SCAN_URL'), 'CLAMAV_SCAN_URL').toString();
+    scanToken = required(env, 'CLAMAV_SCAN_TOKEN');
+    if (scanToken.length < 32 || /change-me|changeme|placeholder/i.test(scanToken)) {
+      throw new Error('CLAMAV_SCAN_TOKEN est absent ou utilise une valeur par defaut.');
+    }
+    if (required(env, 'MONITOR_REQUIRE_STRICT_INSPECTION') !== 'true') {
+      throw new Error('MONITOR_REQUIRE_STRICT_INSPECTION doit valoir true.');
+    }
   }
   return {
     target,
@@ -84,9 +104,13 @@ export function validateMonitorConfiguration(env = process.env) {
     appUrl: httpsUrl(required(env, 'MONITOR_APP_URL'), 'MONITOR_APP_URL').toString(),
     supabaseUrl,
     anonKey,
+    inspectionMode,
+    inspectionPaused,
     scanUrl,
     scanToken,
-    maxSignatureAgeHours: positiveInteger(env, 'MONITOR_MAX_SIGNATURE_AGE_HOURS', { maximum: 168 }),
+    maxSignatureAgeHours: inspectionPaused
+      ? null
+      : positiveInteger(env, 'MONITOR_MAX_SIGNATURE_AGE_HOURS', { maximum: 168 }),
     frontendStorageStatePath: clean(env.MONITOR_FRONTEND_STORAGE_STATE) || null,
   };
 }
@@ -195,6 +219,10 @@ export async function monitor(config, { frontendCookieHeader = '' } = {}) {
     await response.arrayBuffer();
     return response.status;
   }));
+  // Inspection suspendue : aucune sonde antivirus. Les checks `clamav-*` sont ABSENTS du
+  // rapport plutot que verts — un rapport vert ne doit jamais laisser croire que le scanner
+  // va bien. Le mode observe est consigne dans la preuve JSON.
+  if (config.inspectionPaused) return checks;
   checks.push(await runCheck('clamav-health', () => expectJsonStatus(
     healthUrlForScan(config.scanUrl),
     { headers: { Accept: 'application/json' } },
@@ -262,6 +290,7 @@ async function main() {
     target: config.target,
     projectRef: config.projectRef,
     appOriginSha256: sha256(new URL(config.appUrl).origin),
+    inspectionMode: config.inspectionMode,
     ok: checks.every((check) => check.ok),
     checks,
   };
@@ -270,6 +299,7 @@ async function main() {
   for (const check of checks) {
     console.log(`${check.ok ? 'PASS' : 'FAIL'} ${check.name} (${check.durationMs} ms${check.httpStatus ? `, HTTP ${check.httpStatus}` : ''})`);
   }
+  if (config.inspectionPaused) console.log(inspectionPauseBanner(config.target));
   if (!evidence.ok) process.exitCode = 1;
 }
 
