@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260813010000_initial_inspection_status_follows_policy.sql`
-- Tables : 40 · Policies RLS : 61 · Triggers : 58 · Fonctions : 233
+- Dernière migration incluse : `20260813132500_base_proposals.sql`
+- Tables : 40 · Policies RLS : 61 · Triggers : 58 · Fonctions : 234
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -906,6 +906,7 @@ Triggers :
 | base_inclusion_stats | p_base_id uuid | INVOKER | sql |
 | base_of_cohort | p_cohort uuid | DEFINER | sql |
 | base_of_patient | p_patient uuid | DEFINER | sql |
+| base_proposals | p_base_id uuid, p_limit integer, p_offset integer | INVOKER | plpgsql |
 | begin_import_batch | p_base_id uuid, p_file_hash text, p_template_version_id uuid, p_conflict text, p_status text, p_expected_rows integer | DEFINER | plpgsql |
 | begin_mission_account_creation | p_operation_id uuid, p_actor_id uuid, p_base_id uuid, p_user_id uuid, p_account_label text, p_login_identifier text, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text | DEFINER | plpgsql |
 | begin_mission_credential_regeneration | p_operation_id uuid, p_actor_id uuid, p_access_id uuid, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text | DEFINER | plpgsql |
