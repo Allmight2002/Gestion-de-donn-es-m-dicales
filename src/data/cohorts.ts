@@ -31,6 +31,7 @@ export interface CohortRepository {
   preview(baseId: string, filter: FilterDefinition, validatedOnly?: boolean): Promise<{ patientCount: number; encounterCount: number }>;
   createDynamic(baseId: string, name: string, filter: FilterDefinition, validatedOnly?: boolean): Promise<{ id: string }>;
   createSnapshot(baseId: string, name: string, filter: FilterDefinition, validatedOnly?: boolean): Promise<{ id: string }>;
+  deleteCohort(cohortId: string): Promise<void>;
 }
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -40,7 +41,7 @@ export function makeCohortRepository(client: SupabaseClient | null): CohortRepos
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listCohorts: fail, preview: fail, createDynamic: fail, createSnapshot: fail };
+    return { listCohorts: fail, preview: fail, createDynamic: fail, createSnapshot: fail, deleteCohort: fail };
   }
 
   return {
@@ -88,6 +89,11 @@ export function makeCohortRepository(client: SupabaseClient | null): CohortRepos
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string };
       return { id: row.id };
+    },
+
+    async deleteCohort(cohortId) {
+      const { error } = await client.rpc('delete_cohort', { p_cohort_id: cohortId });
+      if (error) throw error;
     },
   };
 }

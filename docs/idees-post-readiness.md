@@ -38,7 +38,7 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 | 8 | **Modèle d'observation d'une base** — rendre le suivi longitudinal explicite et optionnel : étude transversale, suivi répété, ou registre d'événements | Grande (front + une colonne) | — | *(cadrée le 2026-07-27)* | **Livrée le 2026-08-01** (L9, staging et cible technique production validés) |
 | 9 | **Alléger le chargement de l'application** — 1,7 Mo précachés dès la première visite, dont 837 Ko de tableur | Moyenne (configuration du build) | — | *(signalée le 2026-07-27)* | **Livrée** le 2026-07-28 — précache 1 728 → 892 Kio |
 | 10 | **Finition de l'interface** — zone de profil trop discrète, cases à cocher système, absence de retour visuel sur les changements d'état | Moyenne (front, transverse) | — | *(signalée le 2026-07-27)* | À faire |
-| 11 | **Suppression d'une cohorte** — retirer une cohorte devenue inutile, sans effacer le journal de ses exports | Moyenne (base + front) | — | *(signalée le 2026-08-09)* | À faire |
+| 11 | **Suppression d'une cohorte** — retirer une cohorte devenue inutile, sans effacer le journal de ses exports | Moyenne (base + front) | — | *(signalée le 2026-08-09)* | **Livrée le 2026-08-13** : suppression réelle, journal et fichiers d'exports conservés |
 
 ## Notes par idée
 
@@ -222,12 +222,7 @@ Signalé par le porteur le 2026-08-09 : une cohorte créée ne peut plus être r
 
 **Piège à ne pas manquer.** `export_log.cohort_id` référence `cohort(id)` **`on delete cascade`** (`20260616090200_tables.sql:262`). Un `DELETE` direct effacerait donc en cascade le journal des exports de la cohorte — qui a exporté, quand, avec quelle empreinte. C'est la traçabilité sur laquelle s'appuie le volet juridique (registre des traitements, charte utilisateurs). Un bouton naïf transformerait « ranger ma liste » en effacement de preuve.
 
-Deux issues propres :
-
-- **archivage** (recommandé) : `deleted_at` sur `cohort`, cohorte retirée de la liste, journal intact, restauration possible — même motif que la corbeille des bases (`soft_delete_base`, idée 3) ;
-- **suppression dure conditionnelle** : une RPC qui supprime seulement si `export_log` est vide pour cette cohorte, et refuse explicitement sinon.
-
-À traiter avec `meddata-db-safety` (migration + RPC). Décider dans le même mouvement du sort des fichiers conservés dans le bucket `scientific-exports` : maintenus lisibles, ou purgés explicitement.
+**Décision du porteur le 2026-08-13 : suppression réelle, sans archivage.** Une cohorte est retirée définitivement de la liste et de `cohort`, y compris ses membres figés. Pour conserver la preuve, `export_log` garde désormais son `base_id` et le nom historique de la cohorte ; sa référence à la cohorte devient nulle lors du DELETE au lieu de déclencher une cascade. Les fichiers du bucket `scientific-exports` restent immuables et lisibles par les personnes autorisées sur la base. La suppression passe uniquement par la RPC `delete_cohort`, réservée à `can_curate` et auditée.
 
 ## Défauts / UX signalés (à corriger, pas des idées)
 

@@ -18,10 +18,11 @@ const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
 
 const EXPORT_INSERT = `with upload as (
     select public.base_of_cohort($1) as base_id,
-           public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path
+           public.base_of_cohort($1)::text || '/exports/' || gen_random_uuid()::text || '.csv' as path,
+           (select name from public.cohort where id=$1) as cohort_name
   )
-  insert into public.export_log(cohort_id, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
-  select $1, to_jsonb(array[$2::uuid]), $3::uuid, 'csv', '{}'::jsonb, 1, 1, upload.path, 'h1' from upload returning id`;
+  insert into public.export_log(cohort_id, base_id, cohort_name, template_versions, exported_by, format, export_options, patient_count, encounter_count, stored_file_path, file_hash)
+  select $1, upload.base_id, upload.cohort_name, to_jsonb(array[$2::uuid]), $3::uuid, 'csv', '{}'::jsonb, 1, 1, upload.path, 'h1' from upload returning id`;
 const CREATE_PAT = 'select * from public.create_patient($1,$2,$3,$4,$5,$6,$7,$8::jsonb)';
 
 beforeAll(async () => {

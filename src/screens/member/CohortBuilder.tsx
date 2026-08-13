@@ -7,6 +7,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Snowflake,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -74,6 +75,7 @@ export function CohortBuilder() {
   const [liveCounts, setLiveCounts] = useState<Record<string, { patientCount: number; encounterCount: number }>>({});
   const [freezeCandidate, setFreezeCandidate] = useState<FreezeCandidate | null>(null);
   const [snapshotWarning, setSnapshotWarning] = useState<SnapshotWarning | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<CohortSummary | null>(null);
 
   const msg = (value: unknown) => errorMessage(value, t('common.error'));
   const selectedField = fields.find((field) => field.fieldKey === draftField);
@@ -262,6 +264,20 @@ export function CohortBuilder() {
         unvalidatedCount,
       });
       setError(null);
+    } catch (value) {
+      setError(msg(value));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCohort() {
+    if (!deleteCandidate) return;
+    setBusy(true);
+    try {
+      await cohorts.deleteCohort(deleteCandidate.id);
+      setDeleteCandidate(null);
+      await load();
     } catch (value) {
       setError(msg(value));
     } finally {
@@ -526,11 +542,27 @@ export function CohortBuilder() {
                     </button>
                   </div>
                 )}
+                <div className="border-t border-slate-100 pt-3">
+                  <button type="button" onClick={() => setDeleteCandidate(cohort)} disabled={busy} className="btn-secondary text-red-700">
+                    <Trash2 size={16} aria-hidden /> {t('cohort.delete')}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteCandidate !== null}
+        title={t('cohort.delete_title')}
+        body={deleteCandidate ? t('cohort.delete_body').replace('{name}', deleteCandidate.name) : undefined}
+        confirmLabel={t('cohort.delete_confirm')}
+        danger
+        busy={busy}
+        onCancel={() => setDeleteCandidate(null)}
+        onConfirm={() => void deleteCohort()}
+      />
 
       <ConfirmDialog
         open={freezeCandidate !== null}
