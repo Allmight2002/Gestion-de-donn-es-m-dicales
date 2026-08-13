@@ -22,6 +22,7 @@ const champ = (over: Partial<ExportField> & Pick<ExportField, 'fieldKey' | 'type
   section: 'clinique',
   unit: null,
   allowedValues: null,
+  description: null,
   ...over,
 });
 
@@ -69,6 +70,7 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
   assertEquals(dictionary.rows, [
     {
       column_id: columnId(DIAGNOSTIC),
+      description: '',
       label: 'diagnostic',
       type: 'terminology',
       field_key: 'diagnostic',
@@ -79,7 +81,8 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       template_versions: '',
     },
     {
-      column_id: codeColumnId(DIAGNOSTIC),
+          column_id: codeColumnId(DIAGNOSTIC),
+          description: '',
       label: 'diagnostic — code',
       type: 'terminology_code',
       field_key: 'diagnostic',
@@ -96,6 +99,12 @@ Deno.test('la colonne de code n existe que pour les champs de terminologie', () 
   const table = buildEncounterExport([rencontre({ issue: 'Domicile' })], [ISSUE]);
   assertEquals(table.columns.includes(codeColumnId(ISSUE)), false);
   assertEquals(table.rows[0][columnId(ISSUE)], 'Domicile');
+});
+
+Deno.test('le dictionnaire porte la consigne de saisie', () => {
+  const dictionary = buildDictionary([champ({ fieldKey: 'glasgow', type: 'integer', description: 'Premier score documenté avant toute sédation' })]);
+  assertEquals(dictionary.columns.includes('description'), true);
+  assertEquals(dictionary.rows[0].description, 'Premier score documenté avant toute sédation');
 });
 
 Deno.test('un diagnostic absent laisse les deux colonnes vides', () => {

@@ -38,6 +38,7 @@ export function FieldForm({
   const isCrossSectional = observationModel === 'cross_sectional';
   const [fieldKey, setFieldKey] = useState(initial?.fieldKey ?? '');
   const [label, setLabel] = useState(initial?.label ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [scope, setScope] = useState<FieldScope>(isCrossSectional ? 'patient' : (initial?.scope ?? 'encounter'));
   const [section, setSection] = useState<FieldSection>(initial?.section ?? 'clinique');
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
@@ -78,7 +79,7 @@ export function FieldForm({
     if (!fieldKey.trim() || !label.trim()) return;
     const values = parsedValues;
     const built: NewField = {
-      fieldKey: fieldKey.trim(), label: label.trim(), scope: isCrossSectional ? 'patient' : scope, section, type, required,
+      fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null, scope: isCrossSectional ? 'patient' : scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
       encounterTypes: !isCrossSectional && scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
       allowedValues: isChoice && values.length > 0 ? values : null,
@@ -96,6 +97,7 @@ export function FieldForm({
     if (!editing) {
       setFieldKey('');
       setLabel('');
+      setDescription('');
       setEncounterTypes([]);
       setAllowedValues('');
       setMinValue('');
@@ -121,6 +123,11 @@ export function FieldForm({
       <label className="form-label">
         {t('admin.label')}
         <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
+      </label>
+      <label htmlFor="field-description" className="form-label sm:col-span-2">
+        {t('admin.field_description')}
+        <textarea id="field-description" aria-label={t('admin.field_description')} className={inputCls} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <span className="helper-text">{t('admin.field_description_hint')}</span>
       </label>
       <label className="form-label">
         {isCrossSectional ? t('observation.single_form_scope') : t('admin.scope')}

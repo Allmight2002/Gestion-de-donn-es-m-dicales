@@ -39,6 +39,7 @@ const FIELDS = [
     template_version_id: TV,
     field_key: 'sbp',
     label: 'SBP',
+    description: 'Mesure assise apres cinq minutes de repos',
     scope: 'encounter',
     section: 'vitals',
     type: 'number',

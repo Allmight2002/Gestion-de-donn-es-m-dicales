@@ -373,6 +373,8 @@ describe('renommer et supprimer un gabarit (v3.0)', () => {
 describe('edition d un champ : libelle libre, nom/type verrouilles si la variable est utilisee', () => {
   const UPDATE =
     'select * from public.update_template_field($1,$2,$3,$4,$5,$6,$7)';
+  const UPDATE_DESCRIPTION =
+    'select * from public.update_template_field($1,$2,$3,$4,$5,$6,$7,$8,$9::text[],$10::jsonb,$11::numeric,$12::numeric,$13,$14)';
 
   test('variable VIERGE : le proprietaire change librement nom interne, type et libelle', async () => {
     const fid = (await rowsAs(memberId, ADD_FIELD + ' returning id', [aliceVersionId, 'vierge']))[0].id;
@@ -422,6 +424,22 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     expect(okSection[0].section).toBe('biologie');
     // la cle est restee 'usee' (rien casse cote donnees)
     expect((await db.admin.query('select field_key from public.template_field where id=$1', [fid])).rows[0].field_key).toBe('usee');
+  });
+
+  test('variable UTILISEE : la consigne de saisie reste modifiable', async () => {
+    const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
+    const fid = (await db.asUser(memberId, (c) =>
+      c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'usee_description','U','patient','clinique','text') returning id", [aliceVersionId]),
+    )).rows[0].id;
+    await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,$2,$3,$4)",
+      [baseId, 'P-DESC-' + Date.now(), aliceVersionId, JSON.stringify({ usee_description: '42' })],
+    );
+    const out = await rowsAs(memberId, UPDATE_DESCRIPTION, [
+      fid, 'usee_description', 'U', 'Premier score documente avant sedation', 'patient', 'clinique', 'text', false,
+      null, null, null, null, null, true,
+    ]);
+    expect(out[0].description).toBe('Premier score documente avant sedation');
   });
 
   test('un tiers ne peut pas editer le champ d un autre gabarit', async () => {
