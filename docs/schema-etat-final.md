@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260813150000_delete_cohort_preserve_export_evidence.sql`
-- Tables : 40 · Policies RLS : 60 · Triggers : 58 · Fonctions : 235
+- Dernière migration incluse : `20260813170000_client_error_observability.sql`
+- Tables : 41 · Policies RLS : 61 · Triggers : 58 · Fonctions : 239
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -120,6 +120,30 @@ Policies :
 Triggers :
 - `trg_audit_invitation` — AFTER INSERT → `trg_audit_invitation_fn()`
 - `trg_base_invitation_escalation` — BEFORE INSERT/UPDATE → `guard_access_escalation()`
+
+### client_error_log · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| occurred_at | timestamp with time zone | non |  |
+| received_at | timestamp with time zone | non | `now()` |
+| last_occurred_at | timestamp with time zone | non |  |
+| user_id | uuid | oui |  |
+| error_name | text | non |  |
+| error_message | text | non |  |
+| stack | text | oui |  |
+| component_stack | text | oui |  |
+| context | text | non |  |
+| app_version | text | oui |  |
+| severity | text | non |  |
+| fingerprint | text | non |  |
+| occurrence_count | integer | non | `1` |
+| source | text | non | `'web'::text` |
+| notified_at | timestamp with time zone | oui |  |
+
+Policies :
+- `client_error_log_select_system_admin` (SELECT) — USING is_system_admin()
 
 ### clinical_attachment · RLS activée
 
@@ -1028,6 +1052,7 @@ Triggers :
 | is_system_admin | — | DEFINER | sql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
 | list_deleted_bases | — | DEFINER | plpgsql |
+| list_recent_client_errors | p_limit integer, p_since timestamp with time zone, p_context text | DEFINER | plpgsql |
 | log_attachment_read | p_attachment_id uuid | DEFINER | plpgsql |
 | log_audit | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid, p_metadata jsonb | DEFINER | plpgsql |
 | log_export_read | p_export_id uuid | DEFINER | plpgsql |
@@ -1064,9 +1089,11 @@ Triggers :
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
+| purge_client_error_log | — | DEFINER | plpgsql |
 | quarantine_reconciliation_candidates | p_limit integer | DEFINER | sql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
 | reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
+| record_client_error | p_occurred_at timestamp with time zone, p_name text, p_message text, p_stack text, p_component_stack text, p_context text, p_app_version text, p_severity text | DEFINER | plpgsql |
 | record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | reject_cross_sectional_encounter | — | DEFINER | plpgsql |
@@ -1086,6 +1113,7 @@ Triggers :
 | rule_holds | rule jsonb, data jsonb | INVOKER | plpgsql |
 | rule_value_present | v jsonb | INVOKER | sql |
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
+| scrub_client_error_text | p_value text, p_max_length integer | INVOKER | plpgsql |
 | search_terminology | p_query text, p_limit integer | INVOKER | sql |
 | set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |
 | set_base_observation_model | p_base_id uuid, p_observation_model text | DEFINER | plpgsql |

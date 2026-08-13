@@ -1771,14 +1771,11 @@ verts : `test/cohorts.test.ts`, `test/exports.test.ts`, `test/audit.test.ts` (**
 `CohortBuilder.test.tsx` (**6/6**) et `signed-read` Edge (**14/14**), plus `typecheck`, lint,
 `db:verify` et build avec `VITE_USE_SIGNED_READ=true`.
 
-Livraison : le snapshot de schéma a été régénéré après le premier essai staging, puis la CI est
-verte pour les PR `#179`, `#184` et `#185`. Le commit `3092302402dce580706c9c0ca6d138e845f8177b`
-a été promu par le workflow **Coordinated release** : staging
-[`31709473891`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31709473891)
-vert (validation, sauvegarde chiffrée, backend, frontend et E2E navigateur), puis production
-[`31711004972`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31711004972)
-verte, liée à ce run staging pour le même SHA. La production a contrôlé la sauvegarde chiffrée
-préalable, la migration, les fonctions Edge, le frontend et la dérive cloud.
+Livraison : le snapshot de schéma a été régénéré ; le commit
+`3092302402dce580706c9c0ca6d138e845f8177b` a été promu par le workflow **Coordinated release** :
+staging [`31709473891`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31709473891)
+puis production [`31711004972`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31711004972)
+verts, avec sauvegarde chiffrée, backend, frontend, E2E navigateur et contrôle de dérive cloud.
 
 Cette clôture prouve une production technique avec données fictives. Elle ne vaut ni autorisation
 clinique, ni autorisation d'utiliser des données réelles.
@@ -1819,3 +1816,18 @@ clinique ni interface existante n'est réécrite.
 
 Cette clôture prouve le fonctionnement en production technique avec des données fictives. Elle ne
 vaut ni autorisation clinique, ni autorisation d'utiliser des données réelles.
+
+## L11 — observabilité des erreurs (implémentation locale 2026-08-13)
+
+Le navigateur capte les plantages React, les erreurs globales et les promesses rejetées. Pour
+préserver la confidentialité, il ne transmet jamais de message d'erreur brut : le journal conserve
+un nom technique borné, un résumé fixe et des emplacements de pile expurgés. La base réapplique
+cette réduction, impose une liste blanche de contextes, limite le débit à dix occurrences par
+minute et par compte, puis regroupe les doublons. La lecture passe exclusivement par une RPC
+réservée à `system_admin`; l'écran **État du système** n'offre aucun export.
+
+Preuves locales : typecheck, lint, build, `npm run schema`, `npm run manifest`, le test RLS ciblé
+et le test web de l'ErrorBoundary sont verts. Le test RLS vérifie qu'un e-mail, un numéro long, un
+jeton et un paramètre d'URL synthétiques n'apparaissent pas dans l'enregistrement stocké. La purge
+à 30 jours est prévue par RPC de service; son ordonnanceur et l'alerte distante restent à la
+frontière B5. Les preuves staging et production seront ajoutées après la release coordonnée.
