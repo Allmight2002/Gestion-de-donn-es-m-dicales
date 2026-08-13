@@ -81,8 +81,8 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       template_versions: '',
     },
     {
-          column_id: codeColumnId(DIAGNOSTIC),
-          description: '',
+      column_id: codeColumnId(DIAGNOSTIC),
+      description: '',
       label: 'diagnostic — code',
       type: 'terminology_code',
       field_key: 'diagnostic',
@@ -102,7 +102,9 @@ Deno.test('la colonne de code n existe que pour les champs de terminologie', () 
 });
 
 Deno.test('le dictionnaire porte la consigne de saisie', () => {
-  const dictionary = buildDictionary([champ({ fieldKey: 'glasgow', type: 'integer', description: 'Premier score documenté avant toute sédation' })]);
+  const dictionary = buildDictionary([
+    champ({ fieldKey: 'glasgow', type: 'integer', description: 'Premier score documenté avant toute sédation' }),
+  ]);
   assertEquals(dictionary.columns.includes('description'), true);
   assertEquals(dictionary.rows[0].description, 'Premier score documenté avant toute sédation');
 });
