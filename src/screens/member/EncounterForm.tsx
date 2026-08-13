@@ -252,6 +252,10 @@ export function EncounterForm() {
           fields={fields.filter((f) => fieldAppliesToType(f, encounterType))}
           values={values}
           onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
+          onRemove={(key) => setValues((current) => {
+            const { [key]: _removed, ...remaining } = current;
+            return remaining;
+          })}
         />
 
         {blocking.length > 0 && (

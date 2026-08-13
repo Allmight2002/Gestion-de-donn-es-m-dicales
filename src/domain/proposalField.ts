@@ -22,6 +22,7 @@ export function proposalKeyOf(fieldKey: string): string {
 
 /** Le champ compagnon d'un champ source present dans la meme liste, s'il existe. */
 export function findProposalField(fields: TemplateField[], source: TemplateField): TemplateField | undefined {
+  if (!isProposalSource(source)) return undefined;
   const key = proposalKeyOf(source.fieldKey);
   return fields.find((f) => f.fieldKey === key && f.type === 'text' && f.scope === source.scope);
 }
@@ -30,7 +31,7 @@ export function findProposalField(fields: TemplateField[], source: TemplateField
 export function proposalKeysOf(fields: TemplateField[]): Set<string> {
   const keys = new Set<string>();
   for (const f of fields) {
-    if (isChoiceField(f)) {
+    if (isProposalSource(f)) {
       const companion = findProposalField(fields, f);
       if (companion) keys.add(companion.fieldKey);
     }
@@ -38,8 +39,9 @@ export function proposalKeysOf(fields: TemplateField[]): Set<string> {
   return keys;
 }
 
-export function isChoiceField(field: { type: string; allowedValues?: unknown }): boolean {
-  return field.type === 'select' || field.type === 'multiselect';
+/** Types dont la valeur reste contrôlée, donc qui peuvent avoir une proposition compagnon. */
+export function isProposalSource(field: { type: string }): boolean {
+  return field.type === 'select' || field.type === 'multiselect' || field.type === 'terminology';
 }
 
 /**

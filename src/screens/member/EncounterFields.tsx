@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import type { FieldSection, TemplateField } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
-import { findProposalField, isChoiceField, proposalKeysOf } from '../../domain/proposalField';
+import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
 
@@ -50,10 +50,12 @@ export function EncounterFields({
   fields,
   values,
   onChange,
+  onRemove,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
   onChange: (key: string, v: unknown) => void;
+  onRemove: (key: string) => void;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -62,7 +64,7 @@ export function EncounterFields({
     <SectionedFields
       fields={visibleFields}
       renderField={(field) => {
-        const proposal = isChoiceField(field) ? findProposalField(fields, field) : undefined;
+        const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
           <div className="flex flex-col text-sm">
             <span className="text-slate-700">
@@ -78,6 +80,7 @@ export function EncounterFields({
                   value={values[field.fieldKey]}
                   proposalValue={values[proposal.fieldKey]}
                   onChange={onChange}
+                  onRemove={onRemove}
                 />
               ) : (
                 <ValueInput field={field} value={values[field.fieldKey]} onChange={(v) => onChange(field.fieldKey, v)} />

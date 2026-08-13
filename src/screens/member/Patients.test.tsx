@@ -189,6 +189,55 @@ describe('NewPatient', () => {
         .filter((legend) => ['Clinique', 'Biologie', 'Paraclinique', 'Autre'].includes(legend ?? '')),
     ).toEqual(['Clinique', 'Paraclinique', 'Autre']);
   });
+
+  test('enregistre la proposition d un diagnostic permanent dans le champ compagnon seulement', async () => {
+    const user = userEvent.setup();
+    const createPatient = vi.fn(async (_baseId: string, _input: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
+    const terminologyTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'patient', type: 'terminology', required: true }),
+            field({ fieldKey: 'diagnostic_autre', label: 'Diagnostic — valeur proposée', scope: 'patient', type: 'text', displayOrder: 1 }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patientRepo = {
+      async listPatients() { return []; },
+      async findIdentityMatches() { return []; },
+      createPatient,
+    } as unknown as PatientRepository;
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={terminologyTemplateRepo} patients={patientRepo} terminology={{
+          search: async () => [], activeRelease: async () => null, listEntries: async () => ({ entries: [], total: 0 }),
+        } as never}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/new']}>
+            <Routes>
+              <Route path="/bases/:id/patients/new" element={<NewPatient />} />
+              <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByLabelText('Diagnostic');
+    expect(screen.queryByLabelText('Diagnostic — valeur proposée')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Diagnostic absent du référentiel' }));
+    await user.type(screen.getByRole('textbox', { name: 'Décrivez le diagnostic introuvable :' }), 'Diagnostic fictif rare');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
+
+    expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
+    expect(createPatient).toHaveBeenCalledWith('b1', expect.objectContaining({
+      permanentData: { diagnostic_autre: 'Diagnostic fictif rare' },
+    }));
+    expect(createPatient.mock.calls[0][1].permanentData).not.toHaveProperty('diagnostic');
+  });
 });
 
 describe('BaseHome (liste patients)', () => {

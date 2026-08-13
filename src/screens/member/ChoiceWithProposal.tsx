@@ -15,14 +15,18 @@ export function ChoiceWithProposal({
   value,
   proposalValue,
   onChange,
+  onRemove,
 }: {
   field: TemplateField;
   proposal: TemplateField;
   value: unknown;
   proposalValue: unknown;
   onChange: (key: string, v: unknown) => void;
+  /** Retire une cle de la saisie : aucune valeur n'est envoyee pour un champ controle vide. */
+  onRemove: (key: string) => void;
 }) {
   const { t } = useI18n();
+  const isTerminology = field.type === 'terminology';
   const hasProposal = typeof proposalValue === 'string' && proposalValue.trim() !== '';
   // Revele des qu'une proposition existe (relecture) ou que l'utilisateur vient de la demander.
   const [asked, setAsked] = useState(false);
@@ -31,21 +35,24 @@ export function ChoiceWithProposal({
   function toggleProposal(next: boolean) {
     setAsked(next);
     if (next) {
-      // La valeur hors liste ne doit jamais occuper le champ source.
-      onChange(field.fieldKey, null);
+      // La valeur hors liste ne doit jamais occuper le champ source, pas meme a null :
+      // il est retire du payload avant l'appel serveur.
+      onRemove(field.fieldKey);
     } else {
-      onChange(proposal.fieldKey, null);
+      onRemove(proposal.fieldKey);
     }
   }
 
   function changeSource(next: unknown) {
-    onChange(field.fieldKey, next);
     const selected = Array.isArray(next) ? next.length > 0 : next !== null && next !== undefined && next !== '';
     if (selected) {
+      onChange(field.fieldKey, next);
       // Les deux valeurs sont mutuellement exclusives : une ancienne proposition ne doit
       // pas subsister silencieusement apres le choix d'une valeur controlee.
       setAsked(false);
-      onChange(proposal.fieldKey, null);
+      onRemove(proposal.fieldKey);
+    } else {
+      onRemove(field.fieldKey);
     }
   }
 
@@ -55,21 +62,21 @@ export function ChoiceWithProposal({
       <Checkbox
         checked={open}
         onChange={(e) => toggleProposal(e.target.checked)}
-        label={t('field.proposal_option')}
+        label={t(isTerminology ? 'field.terminology_proposal_option' : 'field.proposal_option')}
         containerClassName="px-1 text-xs"
       />
       {open && (
         <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950">
           <label className="flex flex-col text-xs text-amber-900 dark:text-amber-100">
-            {t('field.proposal_prompt')}
+            {t(isTerminology ? 'field.terminology_proposal_prompt' : 'field.proposal_prompt')}
             <input
               className="input mt-1"
               value={typeof proposalValue === 'string' ? proposalValue : ''}
-              onChange={(e) => onChange(proposal.fieldKey, e.target.value || null)}
+              onChange={(e) => e.target.value ? onChange(proposal.fieldKey, e.target.value) : onRemove(proposal.fieldKey)}
             />
           </label>
           <p role="status" className="text-xs text-amber-800 dark:text-amber-200">
-            {t('field.proposal_warning')}
+            {t(isTerminology ? 'field.terminology_proposal_warning' : 'field.proposal_warning')}
           </p>
         </div>
       )}

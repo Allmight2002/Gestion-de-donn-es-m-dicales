@@ -31,13 +31,13 @@ const diagnostic = field({
 });
 const companion = field({ fieldKey: 'diagnostic_autre', label: 'Diagnostic — valeur proposée', type: 'text' });
 
-function renderFields(values: Record<string, unknown> = {}, onChange = vi.fn()) {
+function renderFields(values: Record<string, unknown> = {}, onChange = vi.fn(), onRemove = vi.fn()) {
   render(
     <I18nProvider>
-      <EncounterFields fields={[diagnostic, companion]} values={values} onChange={onChange} />
+      <EncounterFields fields={[diagnostic, companion]} values={values} onChange={onChange} onRemove={onRemove} />
     </I18nProvider>,
   );
-  return onChange;
+  return { onChange, onRemove };
 }
 
 describe('EncounterFields — soupape (F5)', () => {
@@ -53,13 +53,13 @@ describe('EncounterFields — soupape (F5)', () => {
   });
 
   test('demander la soupape vide le champ a liste controlee', async () => {
-    const onChange = renderFields({ diagnostic: 'Paludisme' });
+    const { onRemove } = renderFields({ diagnostic: 'Paludisme' });
     await userEvent.click(screen.getByRole('checkbox', { name: 'Autre — absent de la liste' }));
-    expect(onChange).toHaveBeenCalledWith('diagnostic', null);
+    expect(onRemove).toHaveBeenCalledWith('diagnostic');
   });
 
   test('le texte saisi part dans le champ compagnon, jamais dans la liste', async () => {
-    const onChange = renderFields();
+    const { onChange } = renderFields();
     await userEvent.click(screen.getByRole('checkbox', { name: 'Autre — absent de la liste' }));
     await userEvent.type(screen.getByRole('textbox'), 'D');
 
@@ -79,10 +79,10 @@ describe('EncounterFields — soupape (F5)', () => {
   });
 
   test('choisir ensuite une valeur controlee efface la proposition precedente', async () => {
-    const onChange = renderFields({ diagnostic_autre: 'Morsure de serpent' });
+    const { onChange, onRemove } = renderFields({ diagnostic_autre: 'Morsure de serpent' });
     await userEvent.selectOptions(screen.getByLabelText('Diagnostic'), 'Paludisme');
 
     expect(onChange).toHaveBeenCalledWith('diagnostic', 'Paludisme');
-    expect(onChange).toHaveBeenCalledWith('diagnostic_autre', null);
+    expect(onRemove).toHaveBeenCalledWith('diagnostic_autre');
   });
 });

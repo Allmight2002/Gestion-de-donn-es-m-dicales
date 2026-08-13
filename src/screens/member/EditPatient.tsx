@@ -119,7 +119,15 @@ export function EditPatient() {
         {fields.length === 0 ? (
           <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
         ) : (
-          <EncounterFields fields={fields} values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} />
+          <EncounterFields
+            fields={fields}
+            values={values}
+            onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
+            onRemove={(key) => setValues((current) => {
+              const { [key]: _removed, ...remaining } = current;
+              return remaining;
+            })}
+          />
         )}
 
         <label className="flex flex-col text-sm">
