@@ -77,6 +77,40 @@ describe('upload_ticket', () => {
     expect((await db.admin.query('select count(*)::int as n from public.clinical_attachment where upload_ticket_id=$1', [first[0].ticket_id])).rows[0].n).toBe(1);
   });
 
+  // Regression 2026-08-13, vue par le preflight staging : la finalisation posait
+  // 'pending' EN DUR. Hors mode strict, le client n'appelle pas `inspect-upload`,
+  // donc rien ne sortait la ligne de cet etat et le document restait a jamais
+  // illisible. Le statut initial doit suivre la politique serveur, pas une constante.
+  test('le statut d inspection initial suit require_server_inspection()', async () => {
+    const finalizeFresh = async (label: string) => {
+      const key = randomUUID();
+      const op = await rowsAs(aliceId,
+        "select * from public.create_upload_operation($1, 'clinical-attachments', $2, $3, $4, 12, 'image/jpeg')",
+        [baseId, `${baseId}/${patientId}/${key}.jpg`, key, randomUUID().replace(/-/g, '').padEnd(64, '0')],
+      );
+      const done = await verifiedFinalize(aliceId, op[0].ticket_id, 'attachment',
+        { patient_id: patientId, kind: 'imagerie', label });
+      return (await db.admin.query(
+        'select inspection_status from public.clinical_attachment where id=$1', [done[0].id],
+      )).rows[0].inspection_status;
+    };
+    const setPolicy = (value: 'true' | 'false') => db.admin.query(
+      "update public.app_security_setting set value=$1 where key='require_server_inspection'", [value],
+    );
+
+    try {
+      // Inspection suspendue : controle navigateur seul, statut honnete et LISIBLE.
+      await setPolicy('false');
+      expect(await finalizeFresh('inspection suspendue')).toBe('accepted_client');
+
+      // Mode strict : aucun verdict serveur rendu, la ligne attend `inspect-upload`.
+      await setPolicy('true');
+      expect(await finalizeFresh('inspection stricte')).toBe('pending');
+    } finally {
+      await setPolicy('false');
+    }
+  });
+
   test('une cle ne peut pas etre reutilisee pour un autre fichier', async () => {
     const operationKey = randomUUID();
     await rowsAs(aliceId,
