@@ -27,7 +27,7 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Une erreur inattendue est survenue')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /recharger/i })).toBeInTheDocument();
     // Journalisation interne (tag [client-error]) — aucune sortie reseau.
-    expect(spy).toHaveBeenCalledWith('[client-error]', expect.stringContaining('boom test'), expect.anything());
+    expect(spy).toHaveBeenCalledWith('[client-error]', 'Error', { context: 'react-render' });
   });
 
   test('rend normalement les enfants quand il n y a pas d erreur', () => {

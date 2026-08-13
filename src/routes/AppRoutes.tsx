@@ -41,6 +41,7 @@ const CurationTask = lazy(() => import('../screens/member/CurationTask').then((m
 const AcceptInvitation = lazy(() => import('../screens/member/AcceptInvitation').then((m) => ({ default: m.AcceptInvitation })));
 const TemplatesAdmin = lazy(() => import('../screens/staff/TemplatesAdmin').then((m) => ({ default: m.TemplatesAdmin })));
 const RoleAdmin = lazy(() => import('../screens/staff/RoleAdmin').then((m) => ({ default: m.RoleAdmin })));
+const SystemStatus = lazy(() => import('../screens/staff/SystemStatus').then((m) => ({ default: m.SystemStatus })));
 
 // Un COMPTE DE MISSION (role `saisisseur`) n'a acces qu'a la saisie de sa base : ni
 // gabarits, ni cohortes, ni statistiques, ni journal, ni curation, ni gestion d'acces.
@@ -292,6 +293,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="admin">
             <RoleAdmin />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/system-status"
+        element={
+          <ProtectedRoute area="admin">
+            <SystemStatus />
           </ProtectedRoute>
         }
       />

@@ -161,6 +161,14 @@
         "finalize_upload_operation(p_ticket_id uuid, p_entity text, p_metadata jsonb)",
         "soft_delete_attachment(p_attachment_id uuid, p_reason text)"
       ]
+    },
+    {
+      "id": "client-error-observability-rpc",
+      "rationale": "Authenticated incident intake and system-admin-only diagnostic read. The server validates bounded categories, rate limits, grouping and privacy scrubbing; no raw application content is returned to callers.",
+      "signatures": [
+        "list_recent_client_errors(p_limit integer, p_since timestamp with time zone, p_context text)",
+        "record_client_error(p_occurred_at timestamp with time zone, p_name text, p_message text, p_stack text, p_component_stack text, p_context text, p_app_version text, p_severity text)"
+      ]
     }
   ]
 }

@@ -1807,3 +1807,18 @@ clinique ni interface existante n'est réécrite.
 
 Cette clôture prouve le fonctionnement en production technique avec des données fictives. Elle ne
 vaut ni autorisation clinique, ni autorisation d'utiliser des données réelles.
+
+## L11 — observabilité des erreurs (implémentation locale 2026-08-13)
+
+Le navigateur capte les plantages React, les erreurs globales et les promesses rejetées. Pour
+préserver la confidentialité, il ne transmet jamais de message d'erreur brut : le journal conserve
+un nom technique borné, un résumé fixe et des emplacements de pile expurgés. La base réapplique
+cette réduction, impose une liste blanche de contextes, limite le débit à dix occurrences par
+minute et par compte, puis regroupe les doublons. La lecture passe exclusivement par une RPC
+réservée à `system_admin`; l'écran **État du système** n'offre aucun export.
+
+Preuves locales : typecheck, lint, build, `npm run schema`, `npm run manifest`, le test RLS ciblé
+et le test web de l'ErrorBoundary sont verts. Le test RLS vérifie qu'un e-mail, un numéro long, un
+jeton et un paramètre d'URL synthétiques n'apparaissent pas dans l'enregistrement stocké. La purge
+à 30 jours est prévue par RPC de service; son ordonnanceur et l'alerte distante restent à la
+frontière B5. Les preuves staging et production seront ajoutées après la release coordonnée.
