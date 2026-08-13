@@ -18,6 +18,7 @@ describe('EncounterFields description', () => {
           }]}
           values={{}}
           onChange={() => undefined}
+          onRemove={() => undefined}
         />
       </I18nProvider>,
     );
