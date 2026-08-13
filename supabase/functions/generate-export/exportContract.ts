@@ -20,6 +20,7 @@ export interface ExportEncounter {
 export interface ExportField {
   fieldKey: string;
   label: string;
+  description?: string | null;
   scope: 'patient' | 'encounter';
   section: string;
   type: string;
@@ -208,6 +209,7 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
     'column_id',
     'field_key',
     'label',
+    'description',
     'scope',
     'section',
     'type',
@@ -220,6 +222,7 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
     rows: mergeExportFields(fields).flatMap((f) => {
       const common = {
         field_key: f.fieldKey,
+        description: f.description ?? '',
         scope: f.scope,
         section: f.section,
         unit: f.unit ?? '',

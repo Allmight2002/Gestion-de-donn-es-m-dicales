@@ -313,6 +313,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       template_version_id: string;
       field_key: string;
       label: string;
+      description: string | null;
       scope: 'patient' | 'encounter';
       section: string;
       type: string;
@@ -504,7 +505,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_field')
           .select(
-            'id, template_version_id, field_key, label, scope, section, type, unit, allowed_values, display_order',
+            'id, template_version_id, field_key, label, description, scope, section, type, unit, allowed_values, display_order',
             { count: 'exact' },
           )
           .in('template_version_id', chunk)
@@ -521,6 +522,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       rawFields.map((f) => ({
         fieldKey: f.field_key,
         label: f.label,
+        description: f.description,
         scope: f.scope,
         section: f.section,
         type: f.type,

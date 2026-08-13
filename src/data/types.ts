@@ -62,6 +62,7 @@ export interface TemplateField {
   id: string;
   fieldKey: string;
   label: string;
+  description?: string | null;
   scope: FieldScope;
   section: FieldSection;
   type: FieldType;
@@ -88,6 +89,8 @@ export interface ValidationRule {
 export interface NewField {
   fieldKey: string;
   label: string;
+  /** Consigne de saisie de la variable (jamais une donnee de dossier). */
+  description?: string | null;
   scope: FieldScope;
   section: FieldSection;
   type: FieldType;
