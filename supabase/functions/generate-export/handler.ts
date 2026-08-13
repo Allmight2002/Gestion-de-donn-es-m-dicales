@@ -581,6 +581,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       .from('export_log')
       .insert({
         cohort_id: cohortId,
+        base_id: cohort.base_id,
+        cohort_name: cohort.name,
         exported_by: who.user.id,
         template_versions: templateVersions,
         format,

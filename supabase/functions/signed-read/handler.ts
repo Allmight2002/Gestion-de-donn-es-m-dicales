@@ -94,9 +94,8 @@ export async function handleSignedRead(req: Request, deps: SignedReadDeps): Prom
     baseId = pat?.base_id ?? null;
   } else {
     const { data, error } = await asUser
-      .from('export_log').select('id, cohort_id, stored_file_path, export_options').eq('id', id).maybeSingle();
+      .from('export_log').select('id, base_id, stored_file_path, export_options').eq('id', id).maybeSingle();
     if (error || !data || !data.stored_file_path) return json(403, { error: 'Acces refuse' });
-    const { data: cohort } = await admin.from('cohort').select('base_id').eq('id', data.cohort_id).maybeSingle();
     bucket = 'scientific-exports';
     action = 'export_read';
     path = data.stored_file_path;
@@ -107,7 +106,7 @@ export async function handleSignedRead(req: Request, deps: SignedReadDeps): Prom
     ) {
       downloadFilename = requestedFilename;
     }
-    baseId = cohort?.base_id ?? null;
+    baseId = data.base_id ?? null;
     if (!baseId) return json(403, { error: 'Acces refuse' });
     const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', { p_base: baseId });
     if (canExportErr || canExport !== true) return json(403, { error: 'Acces refuse' });
