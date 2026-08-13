@@ -55,6 +55,9 @@ function mockBases(): BaseRepository {
     async getCompletenessStats() {
       return [];
     },
+    async getBaseProposalsPage() {
+      return { items: [], total: 0, limit: 50, offset: 0, hasMore: false };
+    },
     async setInclusionTarget() {},
     async listTemplateModels() {
       return [{ versionId: 'v1', versionNumber: 1, templateId: 't1', name: 'Neurochirurgie', specialty: 'neuro', scope: 'global' as const }];

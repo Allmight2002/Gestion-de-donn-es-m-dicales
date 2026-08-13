@@ -87,6 +87,28 @@ export interface CompletenessRow {
   total: number;
 }
 
+/** L12 : occurrence non vide d'une proposition hors liste, avec sa fiche source. */
+export interface BaseProposal {
+  fieldKey: string;
+  label: string;
+  scope: 'patient' | 'encounter';
+  proposalValue: string;
+  patientId: string;
+  patientCode: string;
+  encounterId: string | null;
+  encounterType: string | null;
+  encounterDate: string | null;
+  variableTotal: number;
+}
+
+export interface BaseProposalPage {
+  items: BaseProposal[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
   listDeletedBases(): Promise<DeletedBase[]>;
@@ -113,6 +135,8 @@ export interface BaseRepository {
   ): Promise<void>;
   /** B1 : completude par variable, les moins renseignees d'abord (RLS : sans acces -> vide). */
   getCompletenessStats(baseId: string, mode?: 'historical' | 'current' | 'both'): Promise<CompletenessRow[]>;
+  /** L12 : propositions de valeurs hors liste. RPC paginee reservee au proprietaire de la base. */
+  getBaseProposalsPage(baseId: string, limit: number, offset: number): Promise<BaseProposalPage>;
 }
 
 type BaseRow = {
@@ -155,6 +179,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       listMyBases: fail, listDeletedBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail,
       softDeleteBase: fail, restoreDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
       setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail,
+      getBaseProposalsPage: fail,
     };
   }
 
@@ -326,6 +351,23 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       const { data, error } = await client.rpc('base_completeness_stats', { p_base_id: baseId, p_mode: mode });
       if (error) throw error;
       return (data ?? []) as CompletenessRow[];
+    },
+
+    async getBaseProposalsPage(baseId, limit, offset) {
+      const { data, error } = await client.rpc('base_proposals', {
+        p_base_id: baseId,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (error) throw error;
+      const page = (data ?? {}) as Partial<BaseProposalPage>;
+      return {
+        items: page.items ?? [],
+        total: page.total ?? 0,
+        limit: page.limit ?? limit,
+        offset: page.offset ?? offset,
+        hasMore: page.hasMore ?? false,
+      };
     },
   };
 }
