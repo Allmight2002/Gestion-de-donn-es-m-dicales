@@ -30,6 +30,9 @@ export interface CacheStatus {
   cachedAt: number;
 }
 
+/** Etat de la copie locale par rapport a la publication active connue du serveur. */
+export type CacheFreshness = 'absent' | 'current' | 'stale' | 'unknown';
+
 function openDb(): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB indisponible'));
   return new Promise((resolve, reject) => {
@@ -169,9 +172,19 @@ export async function downloadReference(
 
 /** La copie est-elle celle du referentiel actuellement actif ? */
 export async function cacheIsCurrent(repo: TerminologyRepository): Promise<boolean> {
+  return (await cacheFreshness(repo)) === 'current';
+}
+
+/**
+ * Distingue une copie absente d'une copie devenue obsolete. Cette distinction permet a
+ * l'interface de relancer le telechargement sans jamais proposer une ancienne publication.
+ * `unknown` signifie que le serveur ne peut pas confirmer la publication active.
+ */
+export async function cacheFreshness(repo: TerminologyRepository): Promise<CacheFreshness> {
   const [local, distant] = await Promise.all([cacheStatus(), repo.activeRelease()]);
-  if (!local || !distant) return false;
-  return local.releaseId === distant.id;
+  if (!local) return 'absent';
+  if (!distant) return 'unknown';
+  return local.releaseId === distant.id ? 'current' : 'stale';
 }
 
 // Les entrees sont relues une fois puis gardees en memoire : relire IndexedDB a chaque

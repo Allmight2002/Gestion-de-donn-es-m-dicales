@@ -20,9 +20,9 @@ describe('inventaire SECURITY DEFINER', () => {
   test('classe chaque signature autorisee sans doublon', () => {
     const { inventory, signatures, serviceRoleSignatures } = loadFunctionPrivilegeInventory();
     expect(inventory.categories).toHaveLength(8);
-    expect(signatures).toHaveLength(101); // L11 ajoute les deux RPC d'observabilite privee.
+    expect(signatures).toHaveLength(102); // Cohorte supprimee et les deux RPC L11 sont incluses.
     expect(serviceRoleSignatures).toHaveLength(11); // Edge seulement : fichiers, quarantaine et missions.
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(112);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(113);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

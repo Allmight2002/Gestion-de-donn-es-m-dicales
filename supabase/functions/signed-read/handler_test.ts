@@ -134,13 +134,12 @@ Deno.test('signed-read: chemin hors base -> 409 incoherent', async () => {
 Deno.test('signed-read: export sans permission -> 403', async () => {
   const userResponder: Responder = (call) => {
     if (call.kind === 'from' && call.table === 'export_log') {
-      return okResult({ id: ID, cohort_id: ID, stored_file_path: PATH });
+      return okResult({ id: ID, base_id: BASE, stored_file_path: PATH });
     }
     if (call.kind === 'rpc' && call.rpc === 'can_export_data') return okResult(false);
     return okResult(null);
   };
-  const adminResponder: Responder = (call) =>
-    call.kind === 'from' && call.table === 'cohort' ? okResult({ base_id: BASE }) : okResult(null);
+  const adminResponder: Responder = () => okResult(null);
   const { status, body } = await readResponse(
     await handleSignedRead(
       makeRequest({ body: { entity: 'export', id: ID } }),
@@ -158,7 +157,7 @@ Deno.test('signed-read: export signe avec le nom lisible journalise', async () =
     if (call.kind === 'from' && call.table === 'export_log') {
       return okResult({
         id: ID,
-        cohort_id: ID,
+        base_id: BASE,
         stored_file_path: PATH,
         export_options: { download_filename: filename },
       });
@@ -167,7 +166,6 @@ Deno.test('signed-read: export signe avec le nom lisible journalise', async () =
     return okResult(null);
   };
   const adminResponder: Responder = (call) => {
-    if (call.kind === 'from' && call.table === 'cohort') return okResult({ base_id: BASE });
     if (call.kind === 'from' && call.table === 'audit_log') return okResult(null);
     if (call.kind === 'storage' && call.method === 'createSignedUrl') {
       signedOptions = call.args[2];

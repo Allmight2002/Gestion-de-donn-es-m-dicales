@@ -1724,18 +1724,101 @@ l'export, sans que l'UI ne masque l'incompatibilité avec la règle serveur.
 Cette clôture prouve une production technique avec données fictives. Elle ne vaut ni autorisation
 clinique, ni autorisation d'utiliser des données réelles.
 
+## L4 — soupape pour un diagnostic absent du référentiel — clôture (2026-08-13)
+
+Le lot L4 est livré pour les **nouvelles** variables `terminology`, de rencontre ou permanentes.
+L'activation crée un champ texte compagnon `<cle>_autre`, non obligatoire. Une proposition retire
+la clé du diagnostic du payload (elle n'est pas écrite, même à `null`) et ne conserve le texte que
+dans le compagnon ; choisir ensuite un diagnostic du référentiel retire la proposition.
+
+### Preuves
+
+- commit fonctionnel `e74269b` ; PR `#169` vers `develop`, puis PR `#170` vers `main` ; les
+  contrôles obligatoires `build-test` et `scanner-image` sont verts pour les deux promotions ;
+- SHA applicatif promu par le workflow : `2a2b4f1e185faf4c12f4e38beb1d2db7028fcbdc` ; staging
+  [`31699252690`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31699252690)
+  vert (validation complète, backend, frontend et E2E navigateur) ; production
+  [`31702390264`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31702390264)
+  verte, explicitement liée à ce staging et contrôlant ce même SHA avant la promotion ;
+- essai manuel sur `gestion-de-donn-es-m-dicales.vercel.app`, avec données fictives : création de
+  `diagnostic_absent_test_14` en `terminology` permanent, avec compagnon
+  `diagnostic_absent_test_14_autre` ; saisie de « Diagnostic fictif L14 » dans l'option
+  « Diagnostic absent du référentiel » ; après enregistrement et réouverture, le diagnostic
+  contrôlé reste vide et seule la « valeur proposée » contient ce texte.
+
+Le mode d'inspection des fichiers de cette release était volontairement `paused` : cette preuve
+concerne exclusivement les données fictives et le parcours sans fichier. Elle ne vaut ni
+autorisation clinique, ni autorisation d'utiliser des données réelles.
+
+## 2026-08-13 — Idée 11 : suppression réelle d'une cohorte, preuve d'export conservée
+
+Décision du porteur : aucune corbeille de cohortes. Une cohorte peut être supprimée de la liste et
+de la base, même si elle a déjà été exportée. La migration
+`20260813150000_delete_cohort_preserve_export_evidence.sql` rend le journal autonome : chaque
+`export_log` conserve le `base_id` et le nom de cohorte historiques ; la référence à `cohort` passe
+à `ON DELETE SET NULL`. Les fichiers déjà produits dans `scientific-exports` restent immuables et
+accessibles par lecture signée aux utilisateurs autorisés de cette base.
+
+La RPC `delete_cohort` verrouille la cohorte, vérifie `can_curate`, supprime dans une transaction,
+et inscrit `cohort_deleted` avec le nombre d'exports préservés. Le DELETE direct RLS de `cohort` est
+fermé. Le frontend propose une confirmation explicite et explique que les exports et leur preuve
+restent conservés.
+
+Preuve locale : le test base crée une cohorte figée et un `export_log`, appelle la RPC sous un
+compte curateur, puis vérifie l'absence de cohorte et de membres, avec journal intact (`cohort_id`
+nul, `base_id`, nom, chemin Storage et empreinte conservés) et trace d'audit présente. Tests ciblés
+verts : `test/cohorts.test.ts`, `test/exports.test.ts`, `test/audit.test.ts` (**22/22**),
+`CohortBuilder.test.tsx` (**6/6**) et `signed-read` Edge (**14/14**), plus `typecheck`, lint,
+`db:verify` et build avec `VITE_USE_SIGNED_READ=true`.
+
+## L12 — propositions hors liste à l'échelle d'une base (clôture 2026-08-13)
+
+Le médecin responsable dispose désormais, dans **À compléter > Propositions**, d'une vue en
+lecture seule des valeurs non vides saisies dans les champs compagnons `<clé>_autre`. La vue
+regroupe les occurrences par variable, conserve les doublons demandés et ouvre directement la
+fiche patient ou la rencontre correspondante. Elle ne propose ni promotion dans le référentiel,
+ni statut « traité » : l'évolution de la liste reste du ressort de l'éditeur de variables.
+
+La RPC paginée `base_proposals` rapproche chaque compagnon de sa variable source contrôlée
+(`select`, `multiselect` ou `terminology`) dans la version historique du modèle utilisée par la
+fiche. Elle ignore les valeurs vides, les fiches supprimées et les clés `_autre` arbitraires. Elle
+est `SECURITY INVOKER`, accordée au seul rôle authentifié, et refuse explicitement tout appel qui
+ne vient pas du propriétaire médecin de la base. La migration est additive ; aucune donnée
+clinique ni interface existante n'est réécrite.
+
+### Preuves de validation et de livraison
+
+- tests web L12 ciblés : **18/18** ; tests PostgreSQL L12 : **4/4** ; `typecheck`, lint,
+  `audit:dependencies -- --scope=staging`, `db:verify`, `release:edge:check`, contrôles Edge,
+  suite `npm test` et build de production verts ; le build produit le chunk dédié
+  `BaseProposals` et le manifeste de déploiement attendu ;
+- PR fonctionnelle `#172` puis synchronisation du schéma `#174` vers `develop`, toutes deux avec
+  CI verte ; promotion `develop` vers `main` par la PR `#175`, CI de PR `31702615803` et CI du
+  merge `main` `31702862708` vertes ;
+- SHA applicatif promu : `03c0a1c68e30f4a741c3ad281b501827a6dce7d8` ; staging manuel
+  **Coordinated release** `31703117067` réussi, puis production `31706350267` réussie avec ce même
+  SHA et l'identifiant du run staging ; le checkout, la preuve staging immuable, la sauvegarde
+  chiffrée préalable, la promotion backend/frontend et le contrôle cloud sont verts ;
+- vérification dans Chrome sur l'application de production, après activation du nouveau bundle :
+  la base fictive **Urgences pédiatriques** affiche **1 proposition** regroupée sous
+  **Diagnostic absent test 14**, valeur fictive **Diagnostic fictif L14**, fiche `P-0003` ;
+  **Ouvrir la fiche** mène bien à la fiche correspondante, où le champ compagnon porte cette
+  valeur. L'onglet a été laissé ouvert sur la liste des propositions déployée.
+
+Cette clôture prouve le fonctionnement en production technique avec des données fictives. Elle ne
+vaut ni autorisation clinique, ni autorisation d'utiliser des données réelles.
+
 ## L11 — observabilité des erreurs (implémentation locale 2026-08-13)
 
-Le navigateur capte maintenant les plantages React, les erreurs globales et les promesses rejetées.
-Pour préserver la confidentialité, il ne transmet jamais de message d'erreur brut : le journal ne
-conserve qu'un nom technique borné, un résumé fixe et des emplacements de pile expurgés. La base
-réapplique cette réduction, impose une liste blanche de contextes, limite le débit à dix occurrences
-par minute et par compte, puis regroupe les doublons. La lecture passe exclusivement par une RPC
+Le navigateur capte les plantages React, les erreurs globales et les promesses rejetées. Pour
+préserver la confidentialité, il ne transmet jamais de message d'erreur brut : le journal conserve
+un nom technique borné, un résumé fixe et des emplacements de pile expurgés. La base réapplique
+cette réduction, impose une liste blanche de contextes, limite le débit à dix occurrences par
+minute et par compte, puis regroupe les doublons. La lecture passe exclusivement par une RPC
 réservée à `system_admin`; l'écran **État du système** n'offre aucun export.
 
-Preuves locales : `npm run typecheck`, lint, build, `npm run schema`, `npm run manifest`, le test
-RLS ciblé (4/4) et le test web de l'ErrorBoundary (2/2) sont verts. Le test RLS vérifie notamment
-qu'un e-mail, un numéro long, un jeton et un paramètre d'URL synthétiques n'apparaissent pas dans
-l'enregistrement stocké. La purge à 30 jours est prévue par RPC de service; son ordonnanceur et
-l'alerte distante restent volontairement bloqués à la frontière B5. Les preuves de staging et de
-production seront ajoutées ici après la release coordonnée du même SHA.
+Preuves locales : typecheck, lint, build, `npm run schema`, `npm run manifest`, le test RLS ciblé
+et le test web de l'ErrorBoundary sont verts. Le test RLS vérifie qu'un e-mail, un numéro long, un
+jeton et un paramètre d'URL synthétiques n'apparaissent pas dans l'enregistrement stocké. La purge
+à 30 jours est prévue par RPC de service; son ordonnanceur et l'alerte distante restent à la
+frontière B5. Les preuves staging et production seront ajoutées après la release coordonnée.

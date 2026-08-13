@@ -545,14 +545,14 @@ Contournement utile si **seules des rencontres** bloquent : dans « Portée des 
 « Toutes les rencontres des patients » plutôt que « correspondantes » — cette portée ne lit pas la
 liste figée des rencontres. Attention : le contenu exporté n'est pas le même.
 
-### 6.2 Suppression d'une cohorte — impossible
+### 6.2 Suppression d'une cohorte — livrée le 2026-08-13
 
-Déjà consigné : **idée 11** de [idees-post-readiness.md](idees-post-readiness.md). Le point à ne pas
-manquer : `export_log.cohort_id` référence `cohort(id)` **`on delete cascade`**, donc un `DELETE`
-direct effacerait le journal des exports — la traçabilité sur laquelle s'appuie le volet juridique.
-Recommandation : **archivage** (`deleted_at`, même motif que la corbeille des bases) plutôt que
-suppression dure. Alternative : RPC qui ne supprime que si `export_log` est vide et refuse
-explicitement sinon. Skill `meddata-db-safety`. **Non tranché.**
+Décision du porteur : **suppression réelle, sans archivage**, tout en conservant le journal et les
+fichiers d'exports. La migration remplace la cascade dangereuse : `export_log` conserve le `base_id`
+et le nom de cohorte historiques, et `cohort_id` devient nul quand la cohorte est supprimée. L'accès
+aux exports signés se fonde sur cette base conservée, jamais sur une cohorte qui n'existe plus. La
+RPC `delete_cohort` est réservée à `can_curate`, verrouille la cohorte, supprime ses membres par
+cascade et crée une trace d'audit ; le DELETE direct est fermé.
 
 ### 6.3 Carte d'une cohorte dynamique sans compteur ni action
 
@@ -587,7 +587,7 @@ des arbitrages d'usage.
 | 2 | Identifiants du seed non conformes RFC-4122 → **aucun flux Edge testable sur les données de démonstration** | (a) vrais UUID v4 dans le seed ; (b) assouplir `UUID_RE` ; (c) statu quo documenté — **option en vigueur** | [tests-multicomptes.md §5.5](tests-multicomptes.md) |
 | 3 | Mode d'activation des comptes de mission | **Tranché le 2026-08-11 : identifiant choisi par le propriétaire et mot de passe généré, sans e-mail** | §2.2 |
 | 4 | Conservation et régénération du mot de passe | Secret disponible au seul propriétaire, masqué et stocké chiffré ; régénération confirmée et auditée, ancien secret et anciennes sessions invalidés | §2.3 |
-| 5 | Cohortes : archivage ou suppression dure conditionnelle ? | Recommandation : archivage | §6.2 |
+| 5 | Cohortes : archivage ou suppression dure conditionnelle ? | **Tranché le 2026-08-13 : suppression réelle avec conservation du journal et des fichiers d'exports** | §6.2 |
 
 ---
 

@@ -39,6 +39,7 @@ function makeCohorts(over: Partial<CohortRepository> = {}): CohortRepository {
     async preview() { return { patientCount: 5, encounterCount: 6 }; },
     async createDynamic() { return { id: 'c1' }; },
     async createSnapshot() { return { id: 'c1' }; },
+    async deleteCohort() {},
     ...over,
   } as unknown as CohortRepository;
 }
@@ -155,5 +156,26 @@ describe('CohortBuilder', () => {
     expect(createSnapshot).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Créer quand même' }));
     await waitFor(() => expect(createSnapshot).toHaveBeenCalledWith('b1', 'Avec brouillons', { conditions: [] }, false));
+  });
+
+  test('supprime une cohorte apres confirmation et la retire de la liste', async () => {
+    const deleteCohort = vi.fn(async () => {});
+    let listed = true;
+    renderBuilder(makeCohorts({
+      deleteCohort,
+      async listCohorts() {
+        return listed
+          ? [{ id: 'snapshot-1', name: 'Doublon', cohortType: 'snapshot', snapshotAt: '2026-08-13T00:00:00Z', memberCount: 2, filterDefinition: { conditions: [] }, validatedOnly: true }]
+          : [];
+      },
+    }));
+
+    expect(await screen.findByText('Doublon')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    expect(await screen.findByRole('dialog', { name: 'Supprimer cette cohorte ?' })).toHaveTextContent(/exports.*conserv/i);
+    listed = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer la cohorte' }));
+    await waitFor(() => expect(deleteCohort).toHaveBeenCalledWith('snapshot-1'));
+    expect(await screen.findByText('Aucune cohorte enregistrée')).toBeInTheDocument();
   });
 });
