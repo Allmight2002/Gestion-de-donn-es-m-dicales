@@ -141,7 +141,9 @@ jobs:
       - name: Migrations then Storage
         env: *staging_env
         run: |
-          npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
+          # Une migration additive peut etre ajoutee apres qu'un correctif horodate plus tard
+          # a deja atteint la cible. Le CLI exige alors cette intention explicite.
+          npm exec -- supabase db push --include-all --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
           npm run db:function-acl:verify
       # Sens de la bascule : on ACTIVE le strict en dernier (sinon les uploads se bloquent),
@@ -701,7 +703,7 @@ jobs:
         env: *production_env
         run: |
           test -n "$MISSION_CREDENTIALS_ENCRYPTION_KEY"
-          npm exec -- supabase db push --db-url "$SUPABASE_DB_URL"
+          npm exec -- supabase db push --include-all --db-url "$SUPABASE_DB_URL"
           npm run supabase:storage
           npm run db:function-acl:verify
           # Sens de la bascule : on ACTIVE le strict en dernier (sinon les uploads se bloquent),
