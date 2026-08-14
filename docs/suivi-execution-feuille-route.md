@@ -1882,23 +1882,15 @@ ou en créer la version suivante perdait silencieusement toutes les consignes, e
 
 ### Preuves de validation
 
-Intégration : PR #199 (branche de travail → `develop`), puis PR #200 (`develop` → `main`). CI verte
-sur `main` au commit de fusion, run `31815689454`.
-
-Mise en ligne : release coordonnée **staging** `31815747009` puis **production** `31819047497`, les
-deux au **même SHA `a169377`** et les deux en succès. Le déploiement ne suit pas la fusion — 
-`vercel.json` porte `git.deploymentEnabled: false` — il a donc fallu les deux runs manuels, le
-second recevant l'identifiant du premier.
-
-Cette section a été complétée au début du lot L33 : elle était restée vide dans la copie de travail
-de la session L28, dont le rapport n'avait pas été committé.
+Le déploiement ne suit pas la fusion — `vercel.json` porte `git.deploymentEnabled: false` — il a
+donc fallu les deux runs manuels, le second recevant l'identifiant du premier.
 
 - validation locale : `db:verify` (122 migrations appliquées depuis zéro), `test:rls` **641/641**
   (63 fichiers), `test:web` **366/366** (56 fichiers), `typecheck`, `lint`, `npm run schema` et build
   de production avec `VITE_USE_SIGNED_READ=true` — tous verts ; tests dédiés au lot : 15 en base,
   11 sur le domaine, 5 sur le constructeur, 4 sur la saisie de rencontre, 2 sur la saisie patient ;
 - PR fonctionnelle `#199` vers `develop`, CI `31814837312` verte ; promotion `develop` vers `main`
-  par la PR `#200`, CI `31815378593` verte ;
+  par la PR `#200`, CI `31815378593` verte, puis CI du merge `main` `31815689454` verte ;
 - SHA applicatif promu : `a169377ab04a328270be73ada9ab9c4f8269cafd` ; staging manuel **Coordinated
   release** `31815747009` réussi (validation, backend, frontend et parcours navigateur), puis
   production `31819047497` réussie avec ce même SHA et l'identifiant du run staging ; le contrôle
