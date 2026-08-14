@@ -1836,3 +1836,59 @@ frontière B5. Les preuves staging et production seront ajoutées après la rele
 Une consigne de saisie nullable est ajoutée à `template_field`, sans valeur par défaut ni réécriture des variables existantes. Le constructeur l'enregistre et la laisse modifiable après première saisie, comme le libellé ; le formulaire la présente à la demande par une aide clavier et lecteur d'écran. L'export XLSX ajoute `description` à la feuille **Dictionnaire**.
 
 Validation locale : tests web ciblés (11), RLS ciblé (40), tests Edge (102), `db:verify`, `typecheck`, `lint`, `edge:check` et build avec `VITE_USE_SIGNED_READ=true` verts. Publication et preuve staging/production du même SHA restent à consigner.
+
+## L28 — Valeur proposée à la saisie (2026-08-14)
+
+Une variable peut désormais porter une **valeur proposée** à la création d'une fiche : une date de
+consultation proposée à aujourd'hui, un pays proposé à Tchad. La proposition décrit la **saisie**,
+jamais la donnée — c'est la propriété centrale du lot, et elle est vérifiée côté base sur les deux
+voies d'écriture : une fiche enregistrée sans la clé reste sans la clé, et une proposition effacée
+par la personne qui saisit ne laisse aucune trace. Le serveur n'écrit cette valeur nulle part de
+lui-même.
+
+La colonne `default_value` est nullable et sans valeur par défaut : aucune variable existante n'est
+réécrite. La proposition est validée au moment où la variable est enregistrée — type, bornes, liste
+de valeurs — par un déclencheur et non par la seule RPC, parce que le constructeur écrit en direct
+dans `template_field`. Deux jetons dynamiques, `__today__` et `__now__`, sont résolus **à la saisie**
+en heure locale : une date figée dans le gabarit vieillirait. Aucune proposition n'est acceptée sur
+`multiselect` ni sur `terminology`.
+
+Le constructeur **avertit sans interdire** quand la proposition risque d'orienter la réponse : soit
+l'intitulé désigne un jugement clinique (complication, issue, décès, évolution…), soit la forme
+oui/non ou liste fait de la proposition la réponse tant que personne ne la change. La décision reste
+au médecin, qui connaît sa variable. Le préremplissage n'a lieu qu'à la **création**, jamais à la
+correction d'une fiche, jamais à l'import, et jamais par-dessus un brouillon restauré ; la mention
+« proposé » disparaît dès qu'on touche au champ.
+
+### `is_unique` écartée
+
+La seconde moitié prévue du lot n'est pas livrée, sur décision du porteur du besoin : le registre ne
+manipule aucun identifiant externe saisi à la main. Le seul identifiant en circulation est le code
+patient, généré par le produit et déjà protégé par `uq_patient_base_code` et `uq_identity_base_code`.
+Une contrainte d'unicité paramétrable n'aurait donc eu aucune variable à protéger. Le risque réel du
+registre est le doublon de **personne**, que la détection nom + date de naissance traite déjà et
+qu'une contrainte d'unicité ne traite pas. À rouvrir seulement si un numéro de cahier de consultation
+ou un code d'inclusion saisi à la main entre dans le recueil. La preuve de concurrence exigée par la
+commande initiale devient sans objet ; la preuve produite à la place est celle de la non-réécriture
+serveur, décrite ci-dessus.
+
+### Défaut réparé au passage
+
+La liste des colonnes recopiées d'une version de gabarit à l'autre était **dupliquée dans six
+fonctions**. La consigne de saisie ajoutée par L27 n'y avait pas été reportée : dupliquer un gabarit
+ou en créer la version suivante perdait silencieusement toutes les consignes, et
+`promote_template_to_global` perdait en plus les types de rencontre. Cette liste vit désormais dans
+`copy_template_fields`, appelée par les six fonctions.
+
+### Preuves de validation
+
+Intégration : PR #199 (branche de travail → `develop`), puis PR #200 (`develop` → `main`). CI verte
+sur `main` au commit de fusion, run `31815689454`.
+
+Mise en ligne : release coordonnée **staging** `31815747009` puis **production** `31819047497`, les
+deux au **même SHA `a169377`** et les deux en succès. Le déploiement ne suit pas la fusion — 
+`vercel.json` porte `git.deploymentEnabled: false` — il a donc fallu les deux runs manuels, le
+second recevant l'identifiant du premier.
+
+Cette section a été complétée au début du lot L33 : elle était restée vide dans la copie de travail
+de la session L28, dont le rapport n'avait pas été committé.
