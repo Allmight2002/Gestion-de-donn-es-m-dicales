@@ -316,3 +316,20 @@ describe('TemplateVersionEditor (publiee)', () => {
     expect(screen.queryByRole('button', { name: 'Ajouter un champ' })).toBeNull();
   });
 });
+
+// L29 — l'apercu s'ouvre depuis l'editeur, sur brouillon comme sur version publiee : voir
+// le formulaire que les gens saisissent aujourd'hui vaut autant que voir un brouillon.
+describe('TemplateVersionEditor — aperçu du formulaire', () => {
+  test.each(['draft', 'published'] as const)('s ouvre puis se referme (version %s)', async (status) => {
+    const user = userEvent.setup();
+    renderEditor(statefulMock(status));
+    await screen.findByText('Champs');
+
+    await user.click(screen.getByRole('button', { name: 'Aperçu du formulaire' }));
+    expect(await screen.findByRole('tab', { name: /Rencontre/ })).toBeInTheDocument();
+    expect(screen.queryByText('Champs')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /Retour à l’éditeur/ }));
+    expect(await screen.findByText('Champs')).toBeInTheDocument();
+  });
+});
