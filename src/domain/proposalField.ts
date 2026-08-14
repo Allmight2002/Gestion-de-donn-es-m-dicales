@@ -64,5 +64,6 @@ export function makeProposalField(source: NewField, labelSuffix: string): NewFie
     maxValue: null,
     unit: null,
     allowMissingCodes: false,
+    missingReasons: [],
   };
 }

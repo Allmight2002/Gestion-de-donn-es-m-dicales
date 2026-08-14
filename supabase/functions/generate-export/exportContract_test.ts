@@ -78,6 +78,7 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       section: 'clinique',
       unit: '',
       allowed_values: '',
+      missing_reasons: '',
       template_versions: '',
     },
     {
@@ -90,6 +91,7 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       section: 'clinique',
       unit: '',
       allowed_values: '',
+      missing_reasons: '',
       template_versions: '',
     },
   ]);

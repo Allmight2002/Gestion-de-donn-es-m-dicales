@@ -1836,3 +1836,141 @@ frontière B5. Les preuves staging et production seront ajoutées après la rele
 Une consigne de saisie nullable est ajoutée à `template_field`, sans valeur par défaut ni réécriture des variables existantes. Le constructeur l'enregistre et la laisse modifiable après première saisie, comme le libellé ; le formulaire la présente à la demande par une aide clavier et lecteur d'écran. L'export XLSX ajoute `description` à la feuille **Dictionnaire**.
 
 Validation locale : tests web ciblés (11), RLS ciblé (40), tests Edge (102), `db:verify`, `typecheck`, `lint`, `edge:check` et build avec `VITE_USE_SIGNED_READ=true` verts. Publication et preuve staging/production du même SHA restent à consigner.
+
+## L28 — Valeur proposée à la saisie (2026-08-14)
+
+Une variable peut désormais porter une **valeur proposée** à la création d'une fiche : une date de
+consultation proposée à aujourd'hui, un pays proposé à Tchad. La proposition décrit la **saisie**,
+jamais la donnée — c'est la propriété centrale du lot, et elle est vérifiée côté base sur les deux
+voies d'écriture : une fiche enregistrée sans la clé reste sans la clé, et une proposition effacée
+par la personne qui saisit ne laisse aucune trace. Le serveur n'écrit cette valeur nulle part de
+lui-même.
+
+La colonne `default_value` est nullable et sans valeur par défaut : aucune variable existante n'est
+réécrite. La proposition est validée au moment où la variable est enregistrée — type, bornes, liste
+de valeurs — par un déclencheur et non par la seule RPC, parce que le constructeur écrit en direct
+dans `template_field`. Deux jetons dynamiques, `__today__` et `__now__`, sont résolus **à la saisie**
+en heure locale : une date figée dans le gabarit vieillirait. Aucune proposition n'est acceptée sur
+`multiselect` ni sur `terminology`.
+
+Le constructeur **avertit sans interdire** quand la proposition risque d'orienter la réponse : soit
+l'intitulé désigne un jugement clinique (complication, issue, décès, évolution…), soit la forme
+oui/non ou liste fait de la proposition la réponse tant que personne ne la change. La décision reste
+au médecin, qui connaît sa variable. Le préremplissage n'a lieu qu'à la **création**, jamais à la
+correction d'une fiche, jamais à l'import, et jamais par-dessus un brouillon restauré ; la mention
+« proposé » disparaît dès qu'on touche au champ.
+
+### `is_unique` écartée
+
+La seconde moitié prévue du lot n'est pas livrée, sur décision du porteur du besoin : le registre ne
+manipule aucun identifiant externe saisi à la main. Le seul identifiant en circulation est le code
+patient, généré par le produit et déjà protégé par `uq_patient_base_code` et `uq_identity_base_code`.
+Une contrainte d'unicité paramétrable n'aurait donc eu aucune variable à protéger. Le risque réel du
+registre est le doublon de **personne**, que la détection nom + date de naissance traite déjà et
+qu'une contrainte d'unicité ne traite pas. À rouvrir seulement si un numéro de cahier de consultation
+ou un code d'inclusion saisi à la main entre dans le recueil. La preuve de concurrence exigée par la
+commande initiale devient sans objet ; la preuve produite à la place est celle de la non-réécriture
+serveur, décrite ci-dessus.
+
+### Défaut réparé au passage
+
+La liste des colonnes recopiées d'une version de gabarit à l'autre était **dupliquée dans six
+fonctions**. La consigne de saisie ajoutée par L27 n'y avait pas été reportée : dupliquer un gabarit
+ou en créer la version suivante perdait silencieusement toutes les consignes, et
+`promote_template_to_global` perdait en plus les types de rencontre. Cette liste vit désormais dans
+`copy_template_fields`, appelée par les six fonctions.
+
+### Preuves de validation
+
+Le déploiement ne suit pas la fusion — `vercel.json` porte `git.deploymentEnabled: false` — il a
+donc fallu les deux runs manuels, le second recevant l'identifiant du premier.
+
+- validation locale : `db:verify` (122 migrations appliquées depuis zéro), `test:rls` **641/641**
+  (63 fichiers), `test:web` **366/366** (56 fichiers), `typecheck`, `lint`, `npm run schema` et build
+  de production avec `VITE_USE_SIGNED_READ=true` — tous verts ; tests dédiés au lot : 15 en base,
+  11 sur le domaine, 5 sur le constructeur, 4 sur la saisie de rencontre, 2 sur la saisie patient ;
+- PR fonctionnelle `#199` vers `develop`, CI `31814837312` verte ; promotion `develop` vers `main`
+  par la PR `#200`, CI `31815378593` verte, puis CI du merge `main` `31815689454` verte ;
+- SHA applicatif promu : `a169377ab04a328270be73ada9ab9c4f8269cafd` ; staging manuel **Coordinated
+  release** `31815747009` réussi (validation, backend, frontend et parcours navigateur), puis
+  production `31819047497` réussie avec ce même SHA et l'identifiant du run staging ; le contrôle
+  cloud final rapporte **122 migrations distantes** conformes
+  (`sha256=d6b2471613009c805448f7b3fc5516424e64af000ed6a0a5dc1a014f40b940c7`) et les sept Edge
+  Functions attendues ;
+- application déployée vérifiée sans authentification : le bundle servi en production contient les
+  nouveaux libellés (« Valeur proposée », mention « proposé »), preuve que le frontend promu est
+  bien celui de ce lot. La vérification **dans** l'application, qui demande une connexion, reste à
+  la charge du porteur.
+
+Comme les précédentes, cette clôture prouve le fonctionnement en production technique avec des
+données fictives. Elle ne vaut ni autorisation clinique, ni autorisation d'utiliser des données
+réelles. La dérogation d'inspection antivirus reste en vigueur pour cette release.
+
+## L33 — Raisons de valeur manquante par variable (2026-08-14)
+
+Les trois codes `non_fait`, `inconnu` et `non_applicable` étaient **figés en dur** dans
+`assert_data_valid`, identiques pour toutes les variables, et le seul réglage était un booléen
+les autorisant ou les refusant en bloc. Une variable choisit désormais **les raisons qu'elle
+propose**, parmi cinq : les trois précédentes, plus le **refus** de la personne et **non
+documenté** — distinct d'« inconnu », qui laisse croire que l'information a été cherchée.
+
+**Les trois codes existants ne changent ni de nom ni de sens.** La reprise de données donne
+exactement les trois codes historiques aux variables qui les acceptaient, et aucune raison à
+celles qui les refusaient : aucune variable existante ne change de comportement, et aucune fiche
+déjà saisie ne devient invalide.
+
+### `allow_missing_codes` conservé, en miroir
+
+`missing_reasons` devient la source de vérité ; le booléen n'est plus une seconde décision mais
+son **reflet**, tenu à jour par un déclencheur (vrai = liste non vide). Il n'est pas supprimé
+parce qu'il est **déjà recopié sur des appareils hors de portée** : `download_base_snapshot`
+l'écrit dans l'instantané hors-ligne stocké sur le téléphone, une PWA installée garde son ancien
+JavaScript jusqu'au prochain rafraîchissement, et `src/data/offline.ts` retombe sur `?? true`
+quand la clé manque. Le retirer aurait fait basculer un appareil non rafraîchi vers « valeurs
+manquantes autorisées partout », y compris sur les variables où elles sont interdites — sans
+aucune erreur visible. L'instantané émet désormais **les deux**, et l'ancienne signature de
+`update_template_field` reste en place : la transition n'a pas de fenêtre de bascule.
+
+### Retirer une raison d'une variable en service : refusé
+
+Ajouter reste libre à tout moment — élargir ce qui est acceptable ne peut invalider aucune fiche,
+et c'est un assouplissement par rapport à l'état antérieur, où toute modification du booléen était
+refusée sur une variable utilisée. Retirer est refusé tant que la variable porte des données.
+La conséquence est celle qui était recherchée : **aucune fiche ne peut porter une raison absente
+de la liste de sa propre version de gabarit**, donc une fiche ancienne reste modifiable *par
+construction*, sans cas particulier dans la validation, qui reste sans état. Pour restreindre, on
+crée une nouvelle version du gabarit ; les fiches existantes restent rattachées à l'ancienne.
+
+Ce refus vit dans le déclencheur de la migration et non dans `guard_template_field_update`, pour
+une raison d'**ordre d'exécution** : deux déclencheurs `BEFORE UPDATE` sur la même table
+s'exécutent par ordre alphabétique de nom, et un garde placé ailleurs verrait, selon l'ordre, un
+`missing_reasons` non encore réconcilié — donc un retrait invisible venant d'un client qui n'envoie
+que le booléen. Le contrôle est placé là où la réconciliation a lieu ; il est alors juste quel que
+soit l'ordre.
+
+### Une seule liste, vérifiée par un test
+
+`MISSING_CODES` n'est plus recopié : `src/domain/validation.ts` **importe** la liste du contrat
+d'export, via `src/domain/export.ts` qui l'exposait déjà au navigateur. Le test correspondant
+vérifie l'**identité de référence** (`toBe`) et non l'égalité de contenu : il échouerait si
+quelqu'un redupliquait la liste, ce qui est précisément le risque à couvrir — une raison
+saisissable mais inconnue de l'export produirait une colonne que personne ne sait relire.
+
+L'export rend les nouveaux codes **tels quels** dans la colonne, et le dictionnaire gagne une
+colonne `missing_reasons`. Quand une colonne traverse plusieurs versions dont les listes diffèrent,
+le dictionnaire documente leur **union** : sinon un code lu en face d'une fiche ancienne resterait
+inexpliqué.
+
+### Interface
+
+`ValueInput.tsx` ne propose que les raisons de la variable en cours, et **conserve la raison déjà
+enregistrée** même si la variable ne la propose plus — sans quoi le sélecteur s'ouvrirait vide et
+la fiche deviendrait illisible, puis inmodifiable au premier enregistrement. `FieldForm.tsx` garde
+sa case maîtresse, décochée par défaut : une variable neuve n'accepte toujours aucune valeur
+manquante tant que rien n'est demandé. Cochée, elle pré-coche les trois raisons historiques, puis
+laisse choisir. Sur une variable déjà utilisée, les raisons en service sont grisées et les autres
+restent cochables — l'interface reflète la règle serveur au lieu de laisser tenter un retrait qui
+finirait en erreur. Le libellé de la case, « Codes manquants (non fait / inconnu) », nommait deux
+raisons sur cinq : il devient « Accepter une valeur manquante ».
+
+### Preuves de validation

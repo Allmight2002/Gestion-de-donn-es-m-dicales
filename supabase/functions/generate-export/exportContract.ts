@@ -26,6 +26,8 @@ export interface ExportField {
   type: string;
   unit: string | null;
   allowedValues: unknown[] | null;
+  /** Raisons de valeur manquante proposees pour CETTE variable (L33). Absent = instantane ancien. */
+  missingReasons?: readonly string[] | null;
   templateVersionIds?: string[];
   displayOrder?: number;
 }
@@ -34,7 +36,17 @@ export interface ExportTable {
   rows: Record<string, unknown>[];
 }
 
-export const MISSING_CODES = ['non_fait', 'inconnu', 'non_applicable'] as const;
+/**
+ * Raisons de valeur manquante, dans l'ordre canonique de la base. Les trois premieres sont
+ * HISTORIQUES : ni leur code ni leur sens ne changent, et une fiche deja saisie reste lisible
+ * telle quelle. `refus` et `non_documente` sont ajoutees par L33 ; `non_documente` se distingue
+ * d'`inconnu`, qui laisse croire que l'information a ete cherchee.
+ *
+ * Cette liste est la SEULE : `src/domain/validation.ts` l'importe au lieu de la recopier
+ * (via `src/domain/export.ts`). Deux listes qui divergeraient produiraient un export
+ * incoherent avec la saisie -- une valeur saisissable mais illisible a l'export.
+ */
+export const MISSING_CODES = ['non_fait', 'inconnu', 'non_applicable', 'refus', 'non_documente'] as const;
 export type MissingCode = (typeof MISSING_CODES)[number];
 const MISSING_KEY = '__missing__';
 
@@ -45,6 +57,12 @@ function isMissing(value: unknown): value is { __missing__: MissingCode } {
 
 function missingCodeOf(value: unknown): MissingCode | null {
   return isMissing(value) ? value[MISSING_KEY] : null;
+}
+
+/** Sans doublon et dans l'ordre canonique de `MISSING_CODES`, comme en base. */
+export function sortMissingReasons(reasons: readonly string[]): string[] {
+  const present = new Set(reasons);
+  return MISSING_CODES.filter((c) => present.has(c));
 }
 
 export const FORBIDDEN_EXPORT_KEYS = [
@@ -114,7 +132,20 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
     const previous = merged.get(key);
     if (previous) {
       previous.templateVersionIds = [...new Set([...(previous.templateVersionIds ?? []), ...versions])].sort();
-    } else merged.set(key, { ...field, templateVersionIds: [...new Set(versions)].sort() });
+      // Une colonne peut traverser plusieurs versions dont les raisons different. Le
+      // dictionnaire doit couvrir TOUT ce que la colonne peut contenir, sinon il decrit
+      // une version et laisse un code inexplique en face d'une fiche plus ancienne.
+      previous.missingReasons = sortMissingReasons([
+        ...(previous.missingReasons ?? []),
+        ...(field.missingReasons ?? []),
+      ]);
+    } else {
+      merged.set(key, {
+        ...field,
+        templateVersionIds: [...new Set(versions)].sort(),
+        missingReasons: field.missingReasons ? sortMissingReasons(field.missingReasons) : field.missingReasons,
+      });
+    }
   }
   return [...merged.values()].sort((a, b) => a.scope.localeCompare(b.scope) || a.fieldKey.localeCompare(b.fieldKey));
 }
@@ -215,6 +246,9 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
     'type',
     'unit',
     'allowed_values',
+    // Sans cette colonne, un `refus` lu dans une colonne de donnees ne s'explique nulle part
+    // et ne se distingue pas d'une valeur libre du meme nom.
+    'missing_reasons',
     'template_versions',
   ];
   return {
@@ -227,6 +261,9 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
         section: f.section,
         unit: f.unit ?? '',
         allowed_values: Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
+        // Les CODES bruts, comme ils apparaissent dans la colonne de donnees, et non les
+        // libelles : c'est le code qui sera lu par l'analyse.
+        missing_reasons: (f.missingReasons ?? []).join('; '),
         template_versions: (f.templateVersionIds ?? []).join('; '),
       };
       const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common };
@@ -240,6 +277,9 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
           type: 'terminology_code',
           unit: '',
           allowed_values: '',
+          // Une raison manquante part dans la colonne du LIBELLE ; celle du code reste vide
+          // (`codeOf` ne rend un code que pour un vrai couple terminologique).
+          missing_reasons: '',
         },
       ];
     }),

@@ -191,3 +191,68 @@ describe('FieldForm — valeur proposée (L28)', () => {
     expect(screen.queryByLabelText('Valeur proposée')).toBeNull();
   });
 });
+
+// L33 : les raisons de valeur manquante se choisissent variable par variable.
+describe('FieldForm — raisons de valeur manquante (L33)', () => {
+  async function nameField(key: string, label: string) {
+    await userEvent.type(screen.getByLabelText('Clé technique'), key);
+    await userEvent.type(screen.getByLabelText('Libellé'), label);
+  }
+
+  test('une variable neuve n accepte aucune valeur manquante tant que rien n est demande', async () => {
+    const onSubmit = renderForm();
+    expect(screen.queryByText('Raisons proposées à la saisie')).toBeNull();
+    await nameField('sexe', 'Sexe');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ missingReasons: [], allowMissingCodes: false }),
+      undefined,
+    );
+  });
+
+  test('accepter les valeurs manquantes pre-coche les trois raisons historiques', async () => {
+    const onSubmit = renderForm();
+    await nameField('examen', 'Examen');
+    await userEvent.click(screen.getByLabelText('Accepter une valeur manquante'));
+    expect(screen.getByText('Raisons proposées à la saisie')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ missingReasons: ['non_fait', 'inconnu', 'non_applicable'] }),
+      undefined,
+    );
+  });
+
+  test('une variable peut proposer « refus » sans que « non fait » lui soit impose', async () => {
+    const onSubmit = renderForm();
+    await nameField('serologie', 'Sérologie VIH');
+    await userEvent.click(screen.getByLabelText('Accepter une valeur manquante'));
+    await userEvent.click(screen.getByLabelText('Non fait'));
+    await userEvent.click(screen.getByLabelText('Inconnu'));
+    await userEvent.click(screen.getByLabelText('Non applicable'));
+    await userEvent.click(screen.getByLabelText('Refus du patient'));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ missingReasons: ['refus'], allowMissingCodes: true }),
+      undefined,
+    );
+  });
+
+  test('variable deja utilisee : les raisons en service sont grisees, en ajouter reste possible', async () => {
+    render(
+      <I18nProvider>
+        <FieldForm
+          onSubmit={vi.fn()}
+          lockStructural
+          initial={{
+            fieldKey: 'examen', label: 'Examen', scope: 'encounter', section: 'clinique',
+            type: 'text', required: false, allowMissingCodes: true, missingReasons: ['non_fait'],
+          }}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText('Non fait')).toBeDisabled();
+    expect(screen.getByLabelText('Refus du patient')).toBeEnabled();
+    // Couper la case maitresse reviendrait a tout retirer : le serveur le refuse.
+    expect(screen.getByLabelText('Accepter une valeur manquante')).toBeDisabled();
+  });
+});

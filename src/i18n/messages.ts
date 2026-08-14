@@ -360,7 +360,7 @@ export const messages = {
     'admin.min': 'Min',
     'admin.max': 'Max',
     'admin.unit': 'Unité',
-    'admin.allow_missing': 'Codes manquants (non fait / inconnu)',
+    'admin.allow_missing': 'Accepter une valeur manquante',
     'admin.message': 'Message',
     'admin.severity': 'Sévérité',
     'admin.rule_invalid': 'Règle invalide',
@@ -439,6 +439,8 @@ export const messages = {
     'missing.non_fait': 'Non fait',
     'missing.inconnu': 'Inconnu',
     'missing.non_applicable': 'Non applicable',
+    'missing.refus': 'Refus du patient',
+    'missing.non_documente': 'Non documenté',
     'encounter.new': 'Nouvelle rencontre',
     'encounter.add': 'Ajouter une rencontre',
     'encounter.type': 'Type de rencontre',
@@ -888,6 +890,11 @@ export const messages = {
     'proposals.occurrences': 'occurrence(s)',
     'proposals.patient_data': 'Données du participant',
     'proposals.open_record': 'Ouvrir la fiche',
+    'admin.missing_reasons': 'Raisons proposées à la saisie',
+    'admin.missing_reasons_hint':
+      'Ne proposez que les raisons qui ont un sens pour cette variable. « Non fait » convient à un examen, pas à un sexe ; « non documenté » dit que personne n’a cherché, là où « inconnu » dit qu’on a cherché sans trouver.',
+    'admin.missing_reasons_locked':
+      'Cette variable porte déjà des données : les raisons déjà en service ne peuvent plus être retirées. En ajouter reste possible ; pour en retirer, créez une nouvelle version du jeu de variables.',
   },
   en: {
     'observation.model_label': 'Observation model',
@@ -1243,7 +1250,7 @@ export const messages = {
     'admin.min': 'Min',
     'admin.max': 'Max',
     'admin.unit': 'Unit',
-    'admin.allow_missing': 'Missing codes (not done / unknown)',
+    'admin.allow_missing': 'Accept a missing value',
     'admin.message': 'Message',
     'admin.severity': 'Severity',
     'admin.rule_invalid': 'Invalid rule',
@@ -1322,6 +1329,8 @@ export const messages = {
     'missing.non_fait': 'Not done',
     'missing.inconnu': 'Unknown',
     'missing.non_applicable': 'Not applicable',
+    'missing.refus': 'Patient refusal',
+    'missing.non_documente': 'Not documented',
     'encounter.new': 'New encounter',
     'encounter.add': 'Add encounter',
     'encounter.type': 'Encounter type',
@@ -1771,6 +1780,11 @@ export const messages = {
     'proposals.occurrences': 'occurrence(s)',
     'proposals.patient_data': 'Participant data',
     'proposals.open_record': 'Open record',
+    'admin.missing_reasons': 'Reasons offered during entry',
+    'admin.missing_reasons_hint':
+      'Only offer reasons that make sense for this variable. "Not done" fits an examination, not a sex; "not documented" says nobody looked, where "unknown" says someone looked and did not find.',
+    'admin.missing_reasons_locked':
+      'This variable already holds data: reasons already in service can no longer be removed. Adding remains possible; to remove one, create a new version of the variable set.',
   },
 } as const;
 
