@@ -2,6 +2,7 @@
 // Interface injectable -> l'UI ne depend pas directement de Supabase (testable).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import type { MissingCode } from '../domain/export';
 import type {
   NewField,
   RuleSeverity,
@@ -63,7 +64,8 @@ type FieldRow = {
   description: string | null;
   default_value: string | null;
   type: TemplateField['type']; unit: string | null; allowed_values: unknown[] | null; required: boolean;
-  min_value: number | null; max_value: number | null; allow_missing_codes: boolean; display_order: number;
+  min_value: number | null; max_value: number | null; allow_missing_codes: boolean;
+  missing_reasons: MissingCode[] | null; display_order: number;
   encounter_types: string[] | null;
 };
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
@@ -75,7 +77,8 @@ const mapField = (r: FieldRow): TemplateField => ({
   id: r.id, fieldKey: r.field_key, label: r.label, description: r.description, defaultValue: r.default_value,
   scope: r.scope, section: r.section, type: r.type,
   unit: r.unit, allowedValues: r.allowed_values, required: r.required, minValue: r.min_value,
-  maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, displayOrder: r.display_order,
+  maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, missingReasons: r.missing_reasons,
+  displayOrder: r.display_order,
   encounterTypes: r.encounter_types,
 });
 const mapRule = (r: RuleRow): ValidationRule => ({ id: r.id, rule: r.rule, message: r.message, severity: r.severity });
@@ -190,7 +193,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (cachedFields) return cachedFields;
       const { data, error } = await client
         .from('template_field')
-        .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types')
+        .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, missing_reasons, display_order, encounter_types')
         .eq('template_version_id', versionId)
         .order('display_order', { ascending: true });
       if (error) throw error;
@@ -229,7 +232,10 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           min_value: item.minValue ?? null,
           max_value: item.maxValue ?? null,
           unit: item.unit ?? null,
-          allow_missing_codes: item.allowMissingCodes ?? false,
+          // Les deux sont envoyes ENSEMBLE et coherents : le declencheur serveur n'a alors
+          // rien a arbitrer. Un client ancien, lui, n'enverra que le booleen.
+          allow_missing_codes: (item.missingReasons ?? []).length > 0,
+          missing_reasons: item.missingReasons ?? [],
         })))
         .select('*');
       if (error) throw error;
@@ -255,7 +261,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_min_value: field.minValue ?? null,
         p_max_value: field.maxValue ?? null,
         p_unit: field.unit ?? null,
-        p_allow_missing_codes: field.allowMissingCodes ?? false,
+        p_missing_reasons: field.missingReasons ?? [],
       });
       if (error) throw error;
       clearVersionCache();

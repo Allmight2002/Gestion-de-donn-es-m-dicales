@@ -88,3 +88,58 @@ describe('contrat export partage avec generate-export', () => {
       .toThrow('Code de valeur manquante invalide');
   });
 });
+
+// L33 : la saisie et l'export doivent parler des MEMES raisons. Deux listes maintenues en
+// parallele finissent par diverger, et une raison saisissable mais inconnue de l'export
+// produit une colonne que personne ne sait relire.
+describe('raisons de valeur manquante : une seule liste (L33)', () => {
+  test('le domaine de saisie et le contrat d export exposent LA MEME liste', async () => {
+    const domaine = await import('../src/domain/validation');
+    const contrat = await import('../supabase/functions/generate-export/exportContract');
+    // Identite de reference, pas seulement egalite de contenu : le domaine IMPORTE la liste
+    // du contrat au lieu de la recopier. Ce test echouerait si quelqu'un la redupliquait.
+    expect(domaine.MISSING_CODES).toBe(contrat.MISSING_CODES);
+    expect([...domaine.MISSING_CODES]).toEqual(['non_fait', 'inconnu', 'non_applicable', 'refus', 'non_documente']);
+  });
+
+  test('les trois codes historiques sont un sous-ensemble, et gardent leur rang', async () => {
+    const { HISTORIC_MISSING_CODES, MISSING_CODES } = await import('../src/domain/validation');
+    for (const c of HISTORIC_MISSING_CODES) expect(MISSING_CODES).toContain(c);
+    expect([...MISSING_CODES].slice(0, 3)).toEqual([...HISTORIC_MISSING_CODES]);
+  });
+
+  test('le dictionnaire documente les raisons autorisees par variable', () => {
+    const dictionary = buildDictionary([
+      { fieldKey: 'serologie', label: 'Sérologie', scope: 'encounter', section: 'biologie', type: 'text', unit: null, allowedValues: null, missingReasons: ['refus', 'non_documente'], templateVersionIds: [v1] },
+      { fieldKey: 'sexe', label: 'Sexe', scope: 'patient', section: 'clinique', type: 'select', unit: null, allowedValues: ['f', 'm'], missingReasons: [], templateVersionIds: [v1] },
+    ]);
+    expect(dictionary.columns).toContain('missing_reasons');
+    const bySexe = dictionary.rows.find((r) => r.field_key === 'sexe');
+    const bySero = dictionary.rows.find((r) => r.field_key === 'serologie');
+    expect(bySero?.missing_reasons).toBe('refus; non_documente');
+    expect(bySexe?.missing_reasons).toBe('');
+  });
+
+  test('une colonne traversant deux versions documente TOUTES les raisons qu elle peut contenir', () => {
+    // Sinon un code lu en face d une fiche ancienne reste inexplique dans le dictionnaire.
+    const dictionary = buildDictionary([
+      { fieldKey: 'examen', label: 'Examen', scope: 'encounter', section: 'clinique', type: 'text', unit: null, allowedValues: null, missingReasons: ['non_fait'], templateVersionIds: [v1] },
+      { fieldKey: 'examen', label: 'Examen', scope: 'encounter', section: 'clinique', type: 'text', unit: null, allowedValues: null, missingReasons: ['non_fait', 'refus'], templateVersionIds: [v2] },
+    ]);
+    expect(dictionary.rows.find((r) => r.field_key === 'examen')?.missing_reasons).toBe('non_fait; refus');
+  });
+
+  test('les nouveaux codes partent TELS QUELS dans la colonne de donnees', () => {
+    const table = buildPatientExport(
+      [{ code: 'P-1', templateVersionId: v1, data: { refus_test: { __missing__: 'refus' }, nd_test: { __missing__: 'non_documente' } } }],
+      [],
+      [
+        { fieldKey: 'refus_test', label: 'A', scope: 'patient', section: 'clinique', type: 'text', unit: null, allowedValues: null, templateVersionIds: [v1] },
+        { fieldKey: 'nd_test', label: 'B', scope: 'patient', section: 'clinique', type: 'text', unit: null, allowedValues: null, templateVersionIds: [v1] },
+      ],
+      'first',
+    );
+    expect(table.rows[0]['patient__refus_test']).toBe('refus');
+    expect(table.rows[0]['patient__nd_test']).toBe('non_documente');
+  });
+});

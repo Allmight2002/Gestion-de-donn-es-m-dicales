@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
 import { makeProposalField } from '../../domain/proposalField';
 import { NOW_TOKEN, TODAY_TOKEN, defaultValueRisk, supportsDefaultValue } from '../../domain/fieldDefaults';
+import { HISTORIC_MISSING_CODES, MISSING_CODES, allowedMissingReasons, type MissingCode } from '../../domain/validation';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { Checkbox } from '../../components/Checkbox';
@@ -53,7 +54,15 @@ export function FieldForm({
   const [minValue, setMinValue] = useState(initial?.minValue != null ? String(initial.minValue) : '');
   const [maxValue, setMaxValue] = useState(initial?.maxValue != null ? String(initial.maxValue) : '');
   const [unit, setUnit] = useState(initial?.unit ?? '');
-  const [allowMissingCodes, setAllowMissingCodes] = useState(initial?.allowMissingCodes ?? false);
+  // A la creation, les trois raisons historiques sont PRE-COCHEES mais la case maitresse
+  // reste decochee : une variable neuve n'accepte toujours aucune valeur manquante tant que
+  // personne ne le demande, exactement comme avant ce lot.
+  const [missingReasons, setMissingReasons] = useState<MissingCode[]>(
+    initial ? allowedMissingReasons(initial) : [],
+  );
+  const [allowMissingCodes, setAllowMissingCodes] = useState(
+    initial ? allowedMissingReasons(initial).length > 0 : false,
+  );
   const [defaultValue, setDefaultValue] = useState(initial?.defaultValue ?? '');
 
   const isChoice = type === 'select' || type === 'multiselect';
@@ -64,6 +73,19 @@ export function FieldForm({
   const toggleEncType = (x: string) =>
     setEncounterTypes((prev) => (prev.includes(x) ? prev.filter((y) => y !== x) : [...prev, x]));
   const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
+  // La case maitresse ferme tout ; sinon la liste fait foi. Cocher la case sans choisir de
+  // raison revient a demander les trois historiques : c'est ce que faisait le booleen seul.
+  const effectiveMissingReasons = !allowMissingCodes
+    ? []
+    : missingReasons.length > 0
+      ? MISSING_CODES.filter((c) => missingReasons.includes(c))
+      : [...HISTORIC_MISSING_CODES];
+  const toggleMissingReason = (c: MissingCode) =>
+    setMissingReasons((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  // Variable deja utilisee : AJOUTER une raison reste possible (elargir n'invalide aucune
+  // fiche), RETIRER est refuse par le serveur. L'interface grise donc les seules raisons
+  // deja en service, au lieu de laisser tenter un retrait qui finira en erreur.
+  const lockedReasons = lockStructural && initial ? allowedMissingReasons(initial) : [];
   const parsedValues = parseAllowedValues(allowedValues);
 
   // La proposition n'a de sens que sur les types ou elle epargne une frappe (jamais sur une
@@ -102,7 +124,8 @@ export function FieldForm({
       minValue: isNumber ? numOrNull(minValue) : null,
       maxValue: isNumber ? numOrNull(maxValue) : null,
       unit: isNumber && unit.trim() ? unit.trim() : null,
-      allowMissingCodes,
+      allowMissingCodes: effectiveMissingReasons.length > 0,
+      missingReasons: effectiveMissingReasons,
       defaultValue: allowsDefault && trimmedDefault ? trimmedDefault : null,
     };
     const wantsProposal = supportsProposal && withProposal && !editing;
@@ -121,6 +144,7 @@ export function FieldForm({
       setMaxValue('');
       setUnit('');
       setAllowMissingCodes(false);
+      setMissingReasons([]);
       setDefaultValue('');
       setWithProposal(false);
     }
@@ -262,12 +286,37 @@ export function FieldForm({
           </label>
         </>
       )}
-      <Checkbox
-        label={t('admin.allow_missing')}
-        checked={allowMissingCodes}
-        disabled={lockStructural}
-        onChange={(e) => setAllowMissingCodes(e.target.checked)}
-      />
+      <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-3">
+        <Checkbox
+          label={t('admin.allow_missing')}
+          checked={allowMissingCodes}
+          disabled={lockedReasons.length > 0}
+          onChange={(e) => {
+            setAllowMissingCodes(e.target.checked);
+            if (e.target.checked && missingReasons.length === 0) setMissingReasons([...HISTORIC_MISSING_CODES]);
+          }}
+        />
+        {allowMissingCodes && (
+          <fieldset className="surface-muted p-3">
+            <legend className="px-1 text-xs font-medium text-slate-600">{t('admin.missing_reasons')}</legend>
+            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+              {MISSING_CODES.map((c) => (
+                <Checkbox
+                  key={c}
+                  label={t(`missing.${c}` as const)}
+                  checked={missingReasons.includes(c)}
+                  disabled={lockedReasons.includes(c)}
+                  onChange={() => toggleMissingReason(c)}
+                />
+              ))}
+            </div>
+            <p className="helper-text mt-2">{t('admin.missing_reasons_hint')}</p>
+            {lockedReasons.length > 0 && (
+              <p className="mt-1 text-xs text-amber-700">{t('admin.missing_reasons_locked')}</p>
+            )}
+          </fieldset>
+        )}
+      </div>
 
       {/* Valeur PROPOSEE : reste modifiable meme sur une variable deja utilisee (elle ne
           change le sens d'aucune donnee deja saisie). */}

@@ -319,6 +319,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       type: string;
       unit: string | null;
       allowed_values: unknown[] | null;
+      missing_reasons: string[] | null;
       display_order: number;
     }
 
@@ -505,7 +506,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_field')
           .select(
-            'id, template_version_id, field_key, label, description, scope, section, type, unit, allowed_values, display_order',
+            'id, template_version_id, field_key, label, description, scope, section, type, unit, allowed_values, missing_reasons, display_order',
             { count: 'exact' },
           )
           .in('template_version_id', chunk)
@@ -528,6 +529,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         type: f.type,
         unit: f.unit,
         allowedValues: f.allowed_values,
+        missingReasons: f.missing_reasons,
         displayOrder: f.display_order,
         templateVersionIds: [f.template_version_id],
       })),

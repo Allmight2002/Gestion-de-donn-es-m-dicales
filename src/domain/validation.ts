@@ -6,10 +6,31 @@
 //    comme du code) -> erreurs bloquantes (block) ou avertissements (warn).
 import { isTerminologyValue, type TemplateField } from '../data/types';
 import { COMPARISON_OPERATORS, CONDITION_OPERATORS, type ConditionOperator } from './templateRules';
+import { MISSING_CODES, sortMissingReasons, type MissingCode } from './export';
 
-export const MISSING_CODES = ['non_fait', 'inconnu', 'non_applicable'] as const;
-export type MissingCode = (typeof MISSING_CODES)[number];
+// La liste des raisons n'est PAS recopiee ici : elle est importee du contrat d'export, qui
+// en est le seul proprietaire. Deux listes maintenues en parallele finiraient par diverger,
+// et une raison saisissable mais inconnue de l'export produirait une colonne illisible.
+export { MISSING_CODES };
+export type { MissingCode };
+
+/**
+ * Les trois raisons anterieures a L33. Ce n'est pas un doublon de `MISSING_CODES` mais une
+ * notion distincte : le REPLI de compatibilite. Un instantane hors-ligne telecharge avant ce
+ * lot ne porte pas `missingReasons` ; on retombe alors sur exactement ce que la variable
+ * proposait a ce moment-la — la meme regle que la reprise de donnees de la migration.
+ */
+export const HISTORIC_MISSING_CODES = ['non_fait', 'inconnu', 'non_applicable'] as const;
+
 const MISSING_KEY = '__missing__';
+
+/** Raisons proposees pour CETTE variable, repli compris. */
+export function allowedMissingReasons(
+  field: { missingReasons?: readonly string[] | null; allowMissingCodes?: boolean },
+): MissingCode[] {
+  if (field.missingReasons) return sortMissingReasons(field.missingReasons) as MissingCode[];
+  return field.allowMissingCodes ? [...HISTORIC_MISSING_CODES] : [];
+}
 
 export function makeMissing(code: MissingCode): { __missing__: MissingCode } {
   return { [MISSING_KEY]: code };
@@ -81,7 +102,10 @@ export interface FieldError {
  *  les valeurs RENSEIGNEES restent validees (bornes / type / liste). */
 export function validateField(field: TemplateField, value: unknown, requireComplete = true): string | null {
   if (isMissing(value)) {
-    return field.allowMissingCodes ? null : 'Valeur manquante non autorisée pour ce champ';
+    const allowed = allowedMissingReasons(field);
+    if (allowed.length === 0) return 'Valeur manquante non autorisée pour ce champ';
+    // Le serveur reste juge : ce controle evite l'aller-retour reseau, il ne le remplace pas.
+    return allowed.includes(value[MISSING_KEY]) ? null : 'Raison de valeur manquante non autorisée pour ce champ';
   }
   if (isEmpty(value)) {
     return field.required && requireComplete ? 'Champ obligatoire' : null;
