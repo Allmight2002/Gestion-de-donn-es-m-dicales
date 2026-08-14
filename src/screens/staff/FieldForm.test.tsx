@@ -139,3 +139,55 @@ describe('FieldForm — base transversale (L9)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ scope: 'patient', encounterTypes: null }), undefined);
   });
 });
+
+describe('FieldForm — valeur proposée (L28)', () => {
+  // Proposer une reponse a un jugement clinique fabrique de la donnee : le constructeur
+  // avertit, mais n'interdit pas — le medecin connait sa variable.
+  test('avertit quand la proposition porte sur un jugement clinique', async () => {
+    renderForm();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'complication');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Complication');
+    expect(screen.queryByRole('status')).toBeNull();
+
+    await userEvent.type(screen.getByLabelText('Valeur proposée'), 'aucune');
+    expect(screen.getByRole('status')).toHaveTextContent('fabrique de la donnée');
+  });
+
+  test('avertit sur une variable oui/non, dont la proposition devient la réponse', async () => {
+    renderForm();
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'boolean');
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'fievre');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Fièvre');
+    await userEvent.selectOptions(screen.getByLabelText('Valeur proposée'), 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('devient la réponse');
+  });
+
+  test('une variable neutre n avertit pas et transmet sa proposition', async () => {
+    const onSubmit = renderForm();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'pays');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Pays de résidence');
+    await userEvent.type(screen.getByLabelText('Valeur proposée'), 'Tchad');
+    expect(screen.queryByRole('status')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ defaultValue: 'Tchad' }), undefined);
+  });
+
+  // Une date FIXEE dans le jeu de variables vieillit : le constructeur ne propose que le jour même.
+  test('une date ne propose que la date du jour, transmise comme jeton', async () => {
+    const onSubmit = renderForm();
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'date');
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'date_consultation');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Date de consultation');
+    await userEvent.selectOptions(screen.getByLabelText('Valeur proposée'), '__today__');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ defaultValue: '__today__' }), undefined);
+  });
+
+  test('aucune proposition n est offerte sur une liste multiple ni sur un diagnostic', async () => {
+    renderForm();
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'multiselect');
+    expect(screen.queryByLabelText('Valeur proposée')).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'terminology');
+    expect(screen.queryByLabelText('Valeur proposée')).toBeNull();
+  });
+});

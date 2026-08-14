@@ -44,6 +44,9 @@ export interface OfflineField {
   // unite, liste de valeurs, caractere requis, bornes, codes manquants, types de rencontre).
   // Optionnelles : un instantane ANTERIEUR a cette version n'en dispose pas (replis a l'affichage).
   section?: string | null;
+  /** Consigne de saisie (L27) et valeur proposee (L28) : le formulaire hors-ligne est le meme. */
+  description?: string | null;
+  defaultValue?: string | null;
   unit?: string | null;
   allowedValues?: string[] | null;
   required?: boolean;
@@ -142,7 +145,8 @@ export function buildSnapshot(
     fields: fields.map((f) => ({
       id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder,
       // §7.5 : metadonnees completes conservees (edition hors-ligne fidele a l'edition en ligne).
-      section: f.section ?? null, unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
+      section: f.section ?? null, description: f.description ?? null, defaultValue: f.defaultValue ?? null,
+      unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
       required: f.required ?? false, minValue: f.minValue ?? null, maxValue: f.maxValue ?? null,
       allowMissingCodes: f.allowMissingCodes ?? true, encounterTypes: f.encounterTypes ?? null,
     })),

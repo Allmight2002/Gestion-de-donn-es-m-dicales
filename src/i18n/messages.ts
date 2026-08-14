@@ -307,7 +307,7 @@ export const messages = {
     'import.file_too_big': 'Fichier trop lourd : maximum {max} Mo. Réduisez-le ou découpez-le.',
     'import.progress': 'Traitement par lots : {done} / {total} lignes…',
     'admin.field_locked_hint':
-      'Variable déjà utilisée : seuls le libellé et la section sont modifiables. Pour changer son comportement (nom, type, requis, types de rencontre), créez une nouvelle version du jeu de variables.',
+      'Variable déjà utilisée : seuls le libellé, la consigne de saisie, la valeur proposée et la section sont modifiables. Pour changer son comportement (nom, type, requis, types de rencontre), créez une nouvelle version du jeu de variables.',
     'admin.published_readonly':
       'Version publiée : lecture seule. Dupliquez-la pour créer une nouvelle version.',
     'admin.field_key': 'Clé technique',
@@ -317,6 +317,18 @@ export const messages = {
     'admin.field_description': 'Consigne de saisie',
     'admin.field_description_hint': 'Décrivez la manière de renseigner cette variable',
     'form.field_help': 'Afficher la consigne de saisie',
+    'admin.field_default': 'Valeur proposée',
+    'admin.field_default_hint':
+      "Proposée à la création d'une fiche seulement. Le serveur ne l'écrit jamais : effacée à la saisie, la valeur reste vide.",
+    'admin.field_default_none': 'Aucune',
+    'admin.field_default_today': 'La date du jour',
+    'admin.field_default_now': "La date et l'heure de la saisie",
+    'admin.field_default_warn_clinical':
+      "Cette variable ressemble à un jugement clinique. Y proposer une réponse fabrique de la donnée : une fiche que personne ne relit sortira avec cette réponse.",
+    'admin.field_default_warn_shape':
+      'Sur une variable oui/non ou à liste, la valeur proposée devient la réponse tant que personne ne la change.',
+    'form.prefilled': 'proposé',
+    'form.prefilled_hint': 'Valeur proposée par le jeu de variables, pas encore modifiée',
     'admin.scope': 'Portée',
     'admin.section': 'Section',
     'admin.type': 'Type',
@@ -1179,7 +1191,7 @@ export const messages = {
     'import.file_too_big': 'File too heavy: maximum {max} MB. Reduce or split it.',
     'import.progress': 'Batch processing: {done} / {total} rows…',
     'admin.field_locked_hint':
-      'Variable already in use: only the label and section can be changed. To change its behaviour (key, type, required, encounter types), create a new template version.',
+      'Variable already in use: only the label, data-entry guidance, suggested value and section can be changed. To change its behaviour (key, type, required, encounter types), create a new template version.',
     'admin.published_readonly': 'Published version: read-only. Duplicate it to create a new version.',
     'admin.field_key': 'Field key',
     'admin.move_up': 'Move up',
@@ -1188,6 +1200,18 @@ export const messages = {
     'admin.field_description': 'Data-entry guidance',
     'admin.field_description_hint': 'Describe how to enter this variable',
     'form.field_help': 'Show data-entry guidance',
+    'admin.field_default': 'Suggested value',
+    'admin.field_default_hint':
+      'Suggested when a record is created, and only then. The server never writes it: cleared during entry, the value stays empty.',
+    'admin.field_default_none': 'None',
+    'admin.field_default_today': "Today's date",
+    'admin.field_default_now': 'Date and time of entry',
+    'admin.field_default_warn_clinical':
+      'This variable looks like a clinical judgement. Suggesting an answer here manufactures data: a record nobody reviews will be saved with that answer.',
+    'admin.field_default_warn_shape':
+      'On a yes/no or list variable, the suggested value becomes the answer until someone changes it.',
+    'form.prefilled': 'suggested',
+    'form.prefilled_hint': 'Value suggested by the template, not modified yet',
     'admin.scope': 'Scope',
     'admin.section': 'Section',
     'admin.type': 'Type',
