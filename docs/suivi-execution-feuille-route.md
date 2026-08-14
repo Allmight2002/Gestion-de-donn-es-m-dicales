@@ -1974,3 +1974,27 @@ finirait en erreur. Le libellé de la case, « Codes manquants (non fait / incon
 raisons sur cinq : il devient « Accepter une valeur manquante ».
 
 ### Preuves de validation
+
+- validation locale : `typecheck`, `lint`, `test:web` **377/377** (57 fichiers), `edge:test`
+  **102**, `edge:check`, `edge:lint`, `release:edge:check`, `db:verify` (**123 migrations
+  appliquées depuis zéro**), `npm run schema` et build de production avec
+  `VITE_USE_SIGNED_READ=true` — tous verts ; tests dédiés au lot : **17 en base**, 5 sur le
+  domaine, 5 sur le contrat d'export, 5 sur la saisie, 4 sur le constructeur ;
+- `test:rls` compte **668 tests sur 64 fichiers**, tous verts, mais **aucune exécution locale
+  unique ne les a portés ensemble** : la première a buté sur le compte figé de la liste blanche
+  des fonctions privilégiées — c'est le garde-fou prévu, la nouvelle signature de
+  `update_template_field` devant être inventoriée —, et la seconde, lancée après correction, a
+  perdu `test/mission-credentials.test.ts` dont le PostgreSQL embarqué s'est arrêté sous la
+  contention de trois instances simultanées. Ce fichier repasse **9/9** seul, et il ne touche
+  ni `template_field` ni les valeurs manquantes. La preuve d'ensemble est donc la CI, verte ;
+- PR fonctionnelle `#201` vers `develop`, CI `31826895445` verte ; promotion `develop` vers
+  `main` par la PR `#202`, CI `31827351462` verte, puis CI du merge `main` `31827836723` verte ;
+- SHA applicatif promu : `3a145c7e66416fd2899b615d9491fbf78307c5a0` ;
+- release coordonnée du **même SHA**, en mode `inspection=paused` et sur données fictives :
+  staging `31828221111` (validate, backend, frontend et parcours navigateur verts), puis
+  production `31831096560` en lui donnant l'identifiant du run staging. Les deux réussis.
+  La migration est donc appliquée sur la base cloud de production.
+
+Cette branche a aussi porté deux commits de documentation de **L28** (`5e9b542`, `c5effe1`) : son
+rapport était resté non committé dans la copie de travail, avec une section de preuves vide alors
+que le lot était déjà déployé.
