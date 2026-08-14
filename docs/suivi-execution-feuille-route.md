@@ -1892,3 +1892,24 @@ second recevant l'identifiant du premier.
 
 Cette section a été complétée au début du lot L33 : elle était restée vide dans la copie de travail
 de la session L28, dont le rapport n'avait pas été committé.
+
+- validation locale : `db:verify` (122 migrations appliquées depuis zéro), `test:rls` **641/641**
+  (63 fichiers), `test:web` **366/366** (56 fichiers), `typecheck`, `lint`, `npm run schema` et build
+  de production avec `VITE_USE_SIGNED_READ=true` — tous verts ; tests dédiés au lot : 15 en base,
+  11 sur le domaine, 5 sur le constructeur, 4 sur la saisie de rencontre, 2 sur la saisie patient ;
+- PR fonctionnelle `#199` vers `develop`, CI `31814837312` verte ; promotion `develop` vers `main`
+  par la PR `#200`, CI `31815378593` verte ;
+- SHA applicatif promu : `a169377ab04a328270be73ada9ab9c4f8269cafd` ; staging manuel **Coordinated
+  release** `31815747009` réussi (validation, backend, frontend et parcours navigateur), puis
+  production `31819047497` réussie avec ce même SHA et l'identifiant du run staging ; le contrôle
+  cloud final rapporte **122 migrations distantes** conformes
+  (`sha256=d6b2471613009c805448f7b3fc5516424e64af000ed6a0a5dc1a014f40b940c7`) et les sept Edge
+  Functions attendues ;
+- application déployée vérifiée sans authentification : le bundle servi en production contient les
+  nouveaux libellés (« Valeur proposée », mention « proposé »), preuve que le frontend promu est
+  bien celui de ce lot. La vérification **dans** l'application, qui demande une connexion, reste à
+  la charge du porteur.
+
+Comme les précédentes, cette clôture prouve le fonctionnement en production technique avec des
+données fictives. Elle ne vaut ni autorisation clinique, ni autorisation d'utiliser des données
+réelles. La dérogation d'inspection antivirus reste en vigueur pour cette release.
