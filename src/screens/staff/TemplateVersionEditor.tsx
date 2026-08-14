@@ -1,11 +1,12 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
+import { FormPreview } from './FormPreview';
 import { RuleForm, RuleSummary } from './RuleForm';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -37,6 +38,7 @@ export function TemplateVersionEditor({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<TemplateField | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false); // L29 : apercu du formulaire
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -76,6 +78,15 @@ export function TemplateVersionEditor({
   if (!data) return <p className="text-red-600">{error}</p>;
 
   const { version, fields, rules } = data;
+
+  // L29 : l'apercu prend tout l'ecran et se sert des donnees DEJA chargees ici — pas de
+  // route dediee, sinon le meme ecran devrait franchir deux zones de garde differentes
+  // (`member` pour /bases/:id/template et /templates, `admin` pour /admin) alors qu'il ne
+  // fait que reafficher ce que l'editeur a en main.
+  if (previewing) {
+    return <FormPreview version={version} fields={fields} rules={rules} onClose={() => setPreviewing(false)} />;
+  }
+
   const editable = version.status === 'draft';
   const fieldGridClass = editable
     ? 'xl:grid-cols-[3rem_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,.7fr)_5rem_minmax(7rem,auto)]'
@@ -120,33 +131,41 @@ export function TemplateVersionEditor({
           </h2>
           <span className="badge">{t(`status.${version.status}`)}</span>
         </div>
-        {showVersionActions ? (
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-            {editable && (
-              <button onClick={() => void run(() => repo.publishVersion(version.id))} disabled={busy} className="btn-primary">
-                {t('admin.publish')}
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          {/* L29 : voir le formulaire tel que le verra la personne qui saisit, sans creer
+              de patient d'essai. Disponible aussi sur une version publiee — voir ce qui est
+              saisi aujourd'hui vaut au moins autant que voir un brouillon. */}
+          <button type="button" onClick={() => setPreviewing(true)} className="btn-secondary">
+            <Eye size={16} aria-hidden /> {t('preview.open')}
+          </button>
+          {showVersionActions ? (
+            <>
+              {editable && (
+                <button onClick={() => void run(() => repo.publishVersion(version.id))} disabled={busy} className="btn-primary">
+                  {t('admin.publish')}
+                </button>
+              )}
+              <button onClick={() => void run(() => repo.duplicateVersion(version.id))} disabled={busy} className="btn-secondary">
+                {t('admin.duplicate')}
               </button>
-            )}
-            <button onClick={() => void run(() => repo.duplicateVersion(version.id))} disabled={busy} className="btn-secondary">
-              {t('admin.duplicate')}
-            </button>
-          </div>
-        ) : (
-          onNewVersion && (
-            <button
-              onClick={async () => {
-                setBusy(true);
-                try { const v = await repo.createNextVersion(version.templateId); setError(null); await onNewVersion(v.id); }
-                catch (e) { setError(msg(e)); }
-                finally { setBusy(false); }
-              }}
-              disabled={busy}
-              className="btn-secondary w-full sm:w-auto"
-            >
-              {t('admin.new_version')}
-            </button>
-          )
-        )}
+            </>
+          ) : (
+            onNewVersion && (
+              <button
+                onClick={async () => {
+                  setBusy(true);
+                  try { const v = await repo.createNextVersion(version.templateId); setError(null); await onNewVersion(v.id); }
+                  catch (e) { setError(msg(e)); }
+                  finally { setBusy(false); }
+                }}
+                disabled={busy}
+                className="btn-secondary"
+              >
+                {t('admin.new_version')}
+              </button>
+            )
+          )}
+        </div>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
