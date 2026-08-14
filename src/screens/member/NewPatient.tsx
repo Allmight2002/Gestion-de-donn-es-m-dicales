@@ -12,9 +12,10 @@ import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
-import { SectionedFields } from './EncounterFields';
+import { FieldLabel, SectionedFields } from './EncounterFields';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
+import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -32,6 +33,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const patients = usePatientRepository();
   const curation = useCurationRepository();
   const submitAttempt = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const defaultsApplied = useRef(false); // L28 : les propositions ne s'appliquent qu'au premier chargement
   const { toast } = useToast();
   const { profile } = useAuth();
   // Confier au pool de curation releve de la curation, fermee aux comptes de mission
@@ -52,6 +54,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [permanent, setPermanent] = useState<Record<string, unknown>>({});
+  // Cles preremplies par le jeu de variables et pas encore touchees (L28) : sert uniquement
+  // a l'affichage. Rien n'en est enregistre.
+  const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
   const [matches, setMatches] = useState<IdentityMatch[]>([]);
   const [ackDuplicate, setAckDuplicate] = useState(false); // B5 : confirmation « patient different »
 
@@ -89,7 +94,17 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
       setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       setCanViewIdentity(base.role === 'owner' || base.permissions.canViewIdentity);
-      setFields(fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
+      const patientFields = fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder);
+      setFields(patientFields);
+      // Preremplissage : CREATION seulement, cote client uniquement, et UNE SEULE FOIS -- un
+      // rechargement ne doit pas faire reapparaitre une proposition que la personne a effacee.
+      // Le serveur, lui, n'ecrit jamais ces valeurs de lui-meme.
+      if (!defaultsApplied.current) {
+        defaultsApplied.current = true;
+        const proposed = initialValuesFromDefaults(patientFields);
+        setPermanent(proposed.values);
+        setPrefilled(proposed.prefilled);
+      }
       setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
       setError(null);
     } catch (e) {
@@ -281,11 +296,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                 const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
                 return (
                 <div className="flex flex-col text-sm">
-                  <span className="text-slate-700">
-                    {field.label}
-                    {field.required && <span className="text-red-500"> *</span>}
-                    {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
-                  </span>
+                  {/* Meme libelle que le formulaire de rencontre : consigne de saisie et
+                      mention « proposé » y sont rendues au meme endroit. */}
+                  <FieldLabel field={field} prefilled={prefilled.has(field.fieldKey)} />
                   <div className="mt-1">
                     {proposal ? (
                       <ChoiceWithProposal
@@ -293,17 +306,34 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                         proposal={proposal}
                         value={permanent[field.fieldKey]}
                         proposalValue={permanent[proposal.fieldKey]}
-                        onChange={(key, value) => setPermanent((current) => ({ ...current, [key]: value }))}
-                        onRemove={(key) => setPermanent((current) => {
-                          const { [key]: _removed, ...remaining } = current;
-                          return remaining;
-                        })}
+                        onChange={(key, value) => {
+                          setPrefilled((current) => forgetPrefilled(current, key));
+                          setPermanent((current) => ({ ...current, [key]: value }));
+                        }}
+                        onRemove={(key) => {
+                          setPrefilled((current) => forgetPrefilled(current, key));
+                          setPermanent((current) => {
+                            const { [key]: _removed, ...remaining } = current;
+                            return remaining;
+                          });
+                        }}
                       />
                     ) : (
                       <FieldInput
                         field={field}
                         value={permanent[field.fieldKey]}
-                        onChange={(value) => setPermanent((current) => ({ ...current, [field.fieldKey]: value }))}
+                        onChange={(value) => {
+                          // Une proposition effacee ne laisse rien : elle n'a jamais ete une valeur.
+                          const wasProposed = prefilled.has(field.fieldKey);
+                          setPrefilled((current) => forgetPrefilled(current, field.fieldKey));
+                          setPermanent((current) => {
+                            if (wasProposed && isClearedValue(value)) {
+                              const { [field.fieldKey]: _cleared, ...rest } = current;
+                              return rest;
+                            }
+                            return { ...current, [field.fieldKey]: value };
+                          });
+                        }}
                       />
                     )}
                   </div>

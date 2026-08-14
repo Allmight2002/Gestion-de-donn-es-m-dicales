@@ -12,6 +12,7 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
+import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
@@ -50,6 +51,8 @@ export function EncounterForm() {
   const [encounterDate, setEncounterDate] = useState('');
   const [status, setStatus] = useState<string>('draft');
   const [values, setValues] = useState<Record<string, unknown>>({});
+  // Cles preremplies par le jeu de variables et pas encore touchees (L28) : affichage seul.
+  const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
   const [age, setAge] = useState<number | null>(null);
   const [blocking, setBlocking] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -69,7 +72,8 @@ export function EncounterForm() {
         return;
       }
       const version = await templates.getVersion(base.base.currentTemplateVersionId);
-      setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
+      const encounterFields = version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder);
+      setFields(encounterFields);
       setRules(version.rules);
       // A4 : restaurer un brouillon local eventuel (saisie non enregistree recuperee).
       const draft = patientId ? loadDraft<EncounterDraft>('encounter', patientId) : null;
@@ -79,6 +83,12 @@ export function EncounterForm() {
         setStatus(draft.data.status);
         setValues(draft.data.values);
         setDraftRestored(true);
+      } else {
+        // Preremplissage a la CREATION seulement, et jamais par-dessus un brouillon : une
+        // valeur que la personne avait effacee ne doit pas reapparaitre a la reprise.
+        const proposed = initialValuesFromDefaults(encounterFields);
+        setValues(proposed.values);
+        setPrefilled(proposed.prefilled);
       }
       setError(null);
     } catch (e) {
@@ -105,7 +115,10 @@ export function EncounterForm() {
     setEncounterType('consultation');
     setEncounterDate('');
     setStatus('draft');
-    setValues({});
+    // Abandonner le brouillon rend un formulaire NEUF : les propositions reviennent.
+    const proposed = initialValuesFromDefaults(fields);
+    setValues(proposed.values);
+    setPrefilled(proposed.prefilled);
     setDraftRestored(false);
   }
 
@@ -251,11 +264,27 @@ export function EncounterForm() {
         <EncounterFields
           fields={fields.filter((f) => fieldAppliesToType(f, encounterType))}
           values={values}
-          onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
-          onRemove={(key) => setValues((current) => {
-            const { [key]: _removed, ...remaining } = current;
-            return remaining;
-          })}
+          prefilledKeys={prefilled}
+          onChange={(k, v) => {
+            // Effacer une proposition jamais confirmee retire la cle, au lieu d'enregistrer
+            // une valeur vide la ou une fiche non preremplie n'aurait rien du tout.
+            const wasProposed = prefilled.has(k);
+            setPrefilled((current) => forgetPrefilled(current, k));
+            setValues((p) => {
+              if (wasProposed && isClearedValue(v)) {
+                const { [k]: _cleared, ...rest } = p;
+                return rest;
+              }
+              return { ...p, [k]: v };
+            });
+          }}
+          onRemove={(key) => {
+            setPrefilled((current) => forgetPrefilled(current, key));
+            setValues((current) => {
+              const { [key]: _removed, ...remaining } = current;
+              return remaining;
+            });
+          }}
         />
 
         {blocking.length > 0 && (

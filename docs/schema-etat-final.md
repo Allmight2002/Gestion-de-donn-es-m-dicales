@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260813200000_client_error_pgcrypto_search_path.sql`
-- Tables : 41 · Policies RLS : 61 · Triggers : 58 · Fonctions : 239
+- Dernière migration incluse : `20260814090000_template_field_default_value.sql`
+- Tables : 41 · Policies RLS : 61 · Triggers : 59 · Fonctions : 243
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -767,12 +767,15 @@ Policies :
 | allow_missing_codes | boolean | non | `true` |
 | display_order | integer | non | `0` |
 | encounter_types | ARRAY | oui |  |
+| description | text | oui |  |
+| default_value | text | oui |  |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
 - `tf_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
 
 Triggers :
+- `trg_template_field_default_value` — BEFORE INSERT/UPDATE → `enforce_template_field_default_value()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
@@ -954,6 +957,7 @@ Triggers :
 | complete_mission_credential_operation | p_operation_id uuid, p_actor_id uuid | DEFINER | plpgsql |
 | complete_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_entity text, p_metadata jsonb, p_verified_file_hash text, p_verified_file_size bigint, p_verified_mime_type text | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
+| copy_template_fields | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean | INVOKER | sql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
 | create_base_from_model_observation | p_name text, p_specialty text, p_source_version_id uuid, p_observation_model text | DEFINER | plpgsql |
 | create_base_invitation | p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone | DEFINER | plpgsql |
@@ -984,6 +988,7 @@ Triggers :
 | encrypt_iv | bytea, bytea, bytea, text | INVOKER | c |
 | enforce_observation_model_on_base | — | DEFINER | plpgsql |
 | enforce_observation_model_on_template_field | — | DEFINER | plpgsql |
+| enforce_template_field_default_value | — | INVOKER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
@@ -1141,6 +1146,8 @@ Triggers :
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_patient_identity | p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
+| update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
+| update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | upload_ticket_authorized | p_base_id uuid, p_bucket text | DEFINER | sql |
 | validation_rank | p_status text | INVOKER | sql |

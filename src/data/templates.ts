@@ -61,6 +61,7 @@ type VersionRow = { id: string; template_id: string; version_number: number; sta
 type FieldRow = {
   id: string; field_key: string; label: string; scope: TemplateField['scope']; section: TemplateField['section'];
   description: string | null;
+  default_value: string | null;
   type: TemplateField['type']; unit: string | null; allowed_values: unknown[] | null; required: boolean;
   min_value: number | null; max_value: number | null; allow_missing_codes: boolean; display_order: number;
   encounter_types: string[] | null;
@@ -71,7 +72,8 @@ const mapVersion = (r: VersionRow): TemplateVersion => ({
   id: r.id, templateId: r.template_id, versionNumber: r.version_number, status: r.status,
 });
 const mapField = (r: FieldRow): TemplateField => ({
-  id: r.id, fieldKey: r.field_key, label: r.label, description: r.description, scope: r.scope, section: r.section, type: r.type,
+  id: r.id, fieldKey: r.field_key, label: r.label, description: r.description, defaultValue: r.default_value,
+  scope: r.scope, section: r.section, type: r.type,
   unit: r.unit, allowedValues: r.allowed_values, required: r.required, minValue: r.min_value,
   maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, displayOrder: r.display_order,
   encounterTypes: r.encounter_types,
@@ -188,7 +190,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (cachedFields) return cachedFields;
       const { data, error } = await client
         .from('template_field')
-        .select('id, field_key, label, description, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types')
+        .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types')
         .eq('template_version_id', versionId)
         .order('display_order', { ascending: true });
       if (error) throw error;
@@ -216,6 +218,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           field_key: item.fieldKey,
           label: item.label,
           description: item.description?.trim() || null,
+          default_value: item.defaultValue?.trim() || null,
           scope: item.scope,
           section: item.section,
           type: item.type,
@@ -242,6 +245,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_field_key: field.fieldKey,
         p_label: field.label,
         p_description: field.description?.trim() || null,
+        p_default_value: field.defaultValue?.trim() || null,
         p_scope: field.scope,
         p_section: field.section,
         p_type: field.type,
