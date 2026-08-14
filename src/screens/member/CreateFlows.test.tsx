@@ -14,7 +14,7 @@ import { NewPatient } from './NewPatient';
 import { EncounterForm } from './EncounterForm';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
-import type { PatientRepository } from '../../data/patients';
+import type { NewPatientInput, PatientRepository } from '../../data/patients';
 import type { CurationRepository } from '../../data/curation';
 import type { GlobalRole } from '../../auth/types';
 
@@ -170,7 +170,7 @@ describe('NewPatient : detection de doublon', () => {
     // Scenario de l'agent QA : remplir et soumettre immediatement, sans laisser les 400 ms de
     // debounce aboutir. La re-verification FRAICHE au moment du submit doit bloquer.
     const findIdentityMatches = vi.fn(async () => [{ patientId: 'p9', code: 'P-0009', fullName: 'Marie Test', dateOfBirth: '1990-01-01' }]);
-    const createPatient = vi.fn(async () => ({ id: 'p1', code: 'P-0001' }));
+    const createPatient = vi.fn(async (_baseId: string, _input: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
     const patients = { async listPatients() { return []; }, findIdentityMatches, createPatient } as unknown as PatientRepository;
     const curation = { async createPatientCuration() { return { taskId: 't1' }; } } as unknown as CurationRepository;
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
@@ -236,5 +236,65 @@ describe('nouvelle rencontre : plus de page de choix', () => {
     renderAt('/bases/b1/patients/p1/encounters/new/manual', { patients: emptyPatients() });
     await screen.findByLabelText(/type/i);
     expect(screen.queryByRole('button', { name: submitAction })).toBeNull();
+  });
+});
+
+// L28 : le formulaire patient propose, il ne remplit pas d'office.
+const proposedTemplateRepo = {
+  async getVersion() {
+    return {
+      version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const },
+      fields: [
+        {
+          id: 'f1', fieldKey: 'pays', label: 'Pays', scope: 'patient' as const, section: 'clinique' as const,
+          type: 'text' as const, unit: null, allowedValues: null, required: false, minValue: null, maxValue: null,
+          allowMissingCodes: false, displayOrder: 0, defaultValue: 'Tchad',
+        },
+      ],
+      rules: [],
+    };
+  },
+} as unknown as TemplateRepository;
+
+function renderProposedPatient(patients: PatientRepository) {
+  return render(
+    <I18nProvider>
+      <RepositoryProvider bases={baseRepo} templates={proposedTemplateRepo} patients={patients}>
+        <ToastProvider>
+          <MemoryRouter initialEntries={['/bases/b1/patients/new/manual']}>
+            <Routes>
+              <Route path="/bases/:id/patients/new/manual" element={<NewPatient mode="manual" />} />
+              <Route path="/bases/:id/patients/:patientId" element={<div>FICHE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </RepositoryProvider>
+    </I18nProvider>,
+  );
+}
+
+describe('NewPatient — valeur proposée (L28)', () => {
+  test('la variable est préremplie, signalée, et enregistrée telle quelle', async () => {
+    const createPatient = vi.fn(async (_baseId: string, _input: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
+    const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; }, createPatient } as unknown as PatientRepository;
+    renderProposedPatient(patients);
+
+    expect(await screen.findByLabelText('Pays')).toHaveValue('Tchad');
+    expect(screen.getByText('proposé')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
+    await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
+    expect(createPatient.mock.calls[0][1]).toEqual(expect.objectContaining({ permanentData: { pays: 'Tchad' } }));
+  });
+
+  test('effacée, la proposition n est pas enregistrée', async () => {
+    const createPatient = vi.fn(async (_baseId: string, _input: NewPatientInput) => ({ id: 'p1', code: 'P-0001' }));
+    const patients = { async listPatients() { return []; }, async findIdentityMatches() { return []; }, createPatient } as unknown as PatientRepository;
+    renderProposedPatient(patients);
+
+    fireEvent.change(await screen.findByLabelText('Pays'), { target: { value: '' } });
+    await waitFor(() => expect(screen.queryByText('proposé')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
+    await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
+    expect(createPatient.mock.calls[0][1]).toEqual(expect.objectContaining({ permanentData: {} }));
   });
 });

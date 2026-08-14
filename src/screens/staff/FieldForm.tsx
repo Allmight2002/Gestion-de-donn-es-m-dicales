@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
 import { makeProposalField } from '../../domain/proposalField';
+import { NOW_TOKEN, TODAY_TOKEN, defaultValueRisk, supportsDefaultValue } from '../../domain/fieldDefaults';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { Checkbox } from '../../components/Checkbox';
@@ -53,6 +54,7 @@ export function FieldForm({
   const [maxValue, setMaxValue] = useState(initial?.maxValue != null ? String(initial.maxValue) : '');
   const [unit, setUnit] = useState(initial?.unit ?? '');
   const [allowMissingCodes, setAllowMissingCodes] = useState(initial?.allowMissingCodes ?? false);
+  const [defaultValue, setDefaultValue] = useState(initial?.defaultValue ?? '');
 
   const isChoice = type === 'select' || type === 'multiselect';
   // Les listes conservent leur perimetre historique (rencontre). L4 etend uniquement la
@@ -63,6 +65,20 @@ export function FieldForm({
     setEncounterTypes((prev) => (prev.includes(x) ? prev.filter((y) => y !== x) : [...prev, x]));
   const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
   const parsedValues = parseAllowedValues(allowedValues);
+
+  // La proposition n'a de sens que sur les types ou elle epargne une frappe (jamais sur une
+  // liste multiple ni sur un diagnostic : la base les refuse aussi).
+  const allowsDefault = supportsDefaultValue(type);
+  const trimmedDefault = defaultValue.trim();
+  // Avertissement, jamais refus : le medecin connait sa variable ; l'interface l'alerte quand
+  // la proposition risque de repondre a sa place.
+  const defaultRisk = allowsDefault && trimmedDefault ? defaultValueRisk({ fieldKey, label, type }) : null;
+  // Une date fixee dans un gabarit vieillit ; le constructeur ne propose donc que le jeton
+  // dynamique. Une valeur litterale deja enregistree reste offerte pour ne pas l'effacer.
+  const dateToken = type === 'datetime' ? NOW_TOKEN : TODAY_TOKEN;
+  const literalDateDefault = (type === 'date' || type === 'datetime') && trimmedDefault && trimmedDefault !== dateToken
+    ? trimmedDefault
+    : null;
 
   // Insertion par COPIE : les valeurs sont recopiees dans le champ, jamais referencees.
   // Modifier la bibliotheque plus tard ne peut donc pas changer le sens de donnees deja
@@ -87,6 +103,7 @@ export function FieldForm({
       maxValue: isNumber ? numOrNull(maxValue) : null,
       unit: isNumber && unit.trim() ? unit.trim() : null,
       allowMissingCodes,
+      defaultValue: allowsDefault && trimmedDefault ? trimmedDefault : null,
     };
     const wantsProposal = supportsProposal && withProposal && !editing;
     const accepted = await onSubmit(
@@ -104,6 +121,7 @@ export function FieldForm({
       setMaxValue('');
       setUnit('');
       setAllowMissingCodes(false);
+      setDefaultValue('');
       setWithProposal(false);
     }
   }
@@ -250,6 +268,71 @@ export function FieldForm({
         disabled={lockStructural}
         onChange={(e) => setAllowMissingCodes(e.target.checked)}
       />
+
+      {/* Valeur PROPOSEE : reste modifiable meme sur une variable deja utilisee (elle ne
+          change le sens d'aucune donnee deja saisie). */}
+      {allowsDefault && (
+        <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-3">
+          <label htmlFor="field-default" className="form-label">
+            {t('admin.field_default')}
+            {type === 'date' || type === 'datetime' ? (
+              <select
+                id="field-default"
+                aria-label={t('admin.field_default')}
+                className={inputCls}
+                value={trimmedDefault}
+                onChange={(e) => setDefaultValue(e.target.value)}
+              >
+                <option value="">{t('admin.field_default_none')}</option>
+                <option value={dateToken}>
+                  {t(type === 'datetime' ? 'admin.field_default_now' : 'admin.field_default_today')}
+                </option>
+                {literalDateDefault && <option value={literalDateDefault}>{literalDateDefault}</option>}
+              </select>
+            ) : type === 'boolean' ? (
+              <select
+                id="field-default"
+                aria-label={t('admin.field_default')}
+                className={inputCls}
+                value={trimmedDefault}
+                onChange={(e) => setDefaultValue(e.target.value)}
+              >
+                <option value="">{t('admin.field_default_none')}</option>
+                <option value="true">{t('common.yes')}</option>
+                <option value="false">{t('common.no')}</option>
+              </select>
+            ) : type === 'select' ? (
+              <select
+                id="field-default"
+                aria-label={t('admin.field_default')}
+                className={inputCls}
+                value={trimmedDefault}
+                onChange={(e) => setDefaultValue(e.target.value)}
+              >
+                <option value="">{t('admin.field_default_none')}</option>
+                {parsedValues.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="field-default"
+                aria-label={t('admin.field_default')}
+                type={isNumber ? 'number' : 'text'}
+                className={inputCls}
+                value={defaultValue}
+                onChange={(e) => setDefaultValue(e.target.value)}
+              />
+            )}
+            <span className="helper-text">{t('admin.field_default_hint')}</span>
+          </label>
+          {defaultRisk && (
+            <p role="status" className="text-xs text-amber-700">
+              ⚠️ {t(defaultRisk === 'clinical' ? 'admin.field_default_warn_clinical' : 'admin.field_default_warn_shape')}
+            </p>
+          )}
+        </div>
+      )}
 
       {!isCrossSectional && scope === 'encounter' && (
         <fieldset className="surface-muted p-3 sm:col-span-2 lg:col-span-3">

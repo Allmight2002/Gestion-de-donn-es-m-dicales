@@ -72,7 +72,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L25** | Conflit hors-ligne : issue « garder les deux » | `src/data/offline.ts`, `SyncCenter.tsx` | L21, L22, L23, L24 |
 | **L26** | Regroupement des variables `diagnostic_1/2/3` | migration, RPC d'aperçu et de conversion, écran du constructeur | **seul**, en dernier |
 | **L27** | Texte d'aide par variable | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `exportContract.ts` | L29 |
-| **L28** | Valeur par défaut et unicité | migration, `FieldForm.tsx`, `NewPatient.tsx`, `EncounterForm.tsx` | L29 |
+| ~~L28~~ | ~~Valeur par défaut et unicité~~ | **Livré le 2026-08-14** (valeur proposée ; `is_unique` écartée) | — |
 | **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
 | **L30** | Options de liste : code interne stable | migration + conversion, `FieldForm.tsx`, `FieldInput.tsx`, `exportContract.ts` | L29 |
 | **L31** | Sections personnalisables | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `ImportData.tsx`, `TemplateFromFile.tsx`, `templateLibrary.ts`, `seed.sql`, `exportContract.ts` | L29 |
@@ -430,17 +430,32 @@ définition d'une variable.
 
 Le plus petit lot de la famille, et celui qui pèse le plus sur la qualité des données.
 
-### L28 — Valeur par défaut et unicité
-
-Deux colonnes sur `template_field`, mais deux mécanismes distincts.
+### ~~L28 — Valeur par défaut et unicité~~ — **livré le 2026-08-14** (valeur proposée seule)
 
 `default_value` est un **préremplissage à la saisie**, jamais une valeur écrite d'office : une date
 de consultation proposée à aujourd'hui, un pays proposé à Tchad. Ne jamais préremplir une variable
 clinique dont la valeur par défaut orienterait la réponse.
 
-`is_unique` est une **contrainte serveur**, pas un contrôle d'interface : numéro de dossier,
-identifiant institutionnel. Elle doit résister à l'import, au rejeu hors-ligne et à deux saisies
-simultanées — donc un index d'unicité partiel, pas un `select` préalable.
+Livré : colonne `default_value` nullable, validée au moment où la variable est enregistrée (type,
+bornes, liste de valeurs) ; deux jetons dynamiques `__today__` et `__now__`, résolus **à la saisie**
+en heure locale ; refus de toute proposition sur `multiselect` et `terminology` ; préremplissage à
+la **création seulement**, jamais à la correction ni à l'import ; mention « proposé » qui disparaît
+dès qu'on touche au champ ; **une proposition effacée ne laisse aucune clé**. Le constructeur
+avertit — sans interdire — quand l'intitulé désigne un jugement clinique (complication, issue,
+décès, évolution…) ou quand la forme oui/non ou liste fait de la proposition la réponse.
+
+> **`is_unique` est écartée — décision du porteur, 2026-08-14.** Le registre ne manipule aucun
+> identifiant externe saisi à la main : le seul identifiant en circulation est le code patient,
+> généré par le produit et déjà protégé par `uq_patient_base_code` / `uq_identity_base_code`. Une
+> contrainte d'unicité paramétrable n'aurait donc aucune variable à protéger. Le risque réel du
+> registre est le doublon de **personne**, que la détection nom + date de naissance traite déjà, et
+> qu'une contrainte d'unicité ne traite pas. À rouvrir seulement si un numéro de cahier de
+> consultation ou un code d'inclusion saisi à la main entre dans le recueil.
+
+Effet de bord assumé du lot : la liste des colonnes recopiées d'une version de gabarit à l'autre
+était **dupliquée dans six fonctions**, et la consigne de saisie de L27 n'y avait pas été reportée
+— dupliquer un gabarit perdait silencieusement toutes les consignes, et `promote_template_to_global`
+perdait en plus les types de rencontre. Cette liste vit désormais dans `copy_template_fields`.
 
 ### L29 — Prévisualisation du formulaire
 

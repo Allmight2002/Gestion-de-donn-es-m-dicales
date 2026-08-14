@@ -63,6 +63,8 @@ export interface TemplateField {
   fieldKey: string;
   label: string;
   description?: string | null;
+  /** Valeur PROPOSEE a la creation d'une fiche. Jamais ecrite par le serveur : effacee, elle reste vide. */
+  defaultValue?: string | null;
   scope: FieldScope;
   section: FieldSection;
   type: FieldType;
@@ -91,6 +93,8 @@ export interface NewField {
   label: string;
   /** Consigne de saisie de la variable (jamais une donnee de dossier). */
   description?: string | null;
+  /** Valeur PROPOSEE a la creation d'une fiche (`__today__` / `__now__` = resolus a la saisie). */
+  defaultValue?: string | null;
   scope: FieldScope;
   section: FieldSection;
   type: FieldType;

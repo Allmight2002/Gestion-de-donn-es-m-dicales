@@ -13,7 +13,7 @@ type DisplaySection = (typeof SECTIONS)[number];
 const displaySectionOf = (section: unknown): DisplaySection =>
   DEFINED_SECTIONS.includes(section as FieldSection) ? section as FieldSection : 'other';
 
-function FieldLabel({ field }: { field: TemplateField }) {
+export function FieldLabel({ field, prefilled = false }: { field: TemplateField; prefilled?: boolean }) {
   const { t } = useI18n();
   const [helpOpen, setHelpOpen] = useState(false);
   const helpId = useId();
@@ -37,6 +37,16 @@ function FieldLabel({ field }: { field: TemplateField }) {
       )}
       {field.required && <span className="text-red-500"> *</span>}
       {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
+      {/* Valeur venue du jeu de variables, pas encore confirmee par la personne qui saisit :
+          la mention disparait des qu'on y touche. Rien n'est enregistre a ce sujet. */}
+      {prefilled && (
+        <span
+          title={t('form.prefilled_hint')}
+          className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500"
+        >
+          {t('form.prefilled')}
+        </span>
+      )}
     </span>
   );
 }
@@ -80,11 +90,14 @@ export function EncounterFields({
   values,
   onChange,
   onRemove,
+  prefilledKeys,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
   onChange: (key: string, v: unknown) => void;
   onRemove: (key: string) => void;
+  /** Cles preremplies par le jeu de variables et pas encore modifiees (L28). */
+  prefilledKeys?: Set<string>;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -96,7 +109,7 @@ export function EncounterFields({
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
           <div className="flex flex-col text-sm">
-            <FieldLabel field={field} />
+            <FieldLabel field={field} prefilled={prefilledKeys?.has(field.fieldKey) ?? false} />
             <div className="mt-1">
               {proposal ? (
                 <ChoiceWithProposal

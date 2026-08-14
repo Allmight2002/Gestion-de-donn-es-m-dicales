@@ -182,3 +182,80 @@ describe('EncounterForm', () => {
     expect(createEncounter).not.toHaveBeenCalled();
   });
 });
+
+// L28 : la valeur PROPOSEE. Elle epargne une frappe a la creation ; elle n'est jamais
+// reinjectee par le serveur, et effacee elle ne laisse rien.
+const proposedTemplateRepo = {
+  async getVersion() {
+    return {
+      version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+      fields: [
+        field({ fieldKey: 'pays', label: 'Pays', type: 'text', defaultValue: 'Tchad', displayOrder: 0 }),
+        field({ fieldKey: 'motif', label: 'Motif', type: 'text', displayOrder: 1 }),
+      ],
+      rules: [],
+    };
+  },
+} as unknown as TemplateRepository;
+
+function renderProposedForm(patientRepo: PatientRepository) {
+  return render(
+    <I18nProvider>
+      <RepositoryProvider bases={baseRepo} templates={proposedTemplateRepo} patients={patientRepo}>
+        <MemoryRouter initialEntries={['/bases/b1/patients/p1/encounters/new']}>
+          <Routes>
+            <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterForm />} />
+            <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+          </Routes>
+        </MemoryRouter>
+      </RepositoryProvider>
+    </I18nProvider>,
+  );
+}
+
+describe('EncounterForm — valeur proposée (L28)', () => {
+  afterEach(() => localStorage.clear());
+
+  test('la variable est préremplie et signalée « proposé » jusqu à ce qu on y touche', async () => {
+    renderProposedForm(makePatientRepo(vi.fn(async () => ({ id: 'e1' }))));
+    expect(await screen.findByLabelText('Pays')).toHaveValue('Tchad');
+    expect(screen.getByText('proposé')).toBeInTheDocument();
+    // Les variables sans proposition ne sont ni preremplies ni signalees.
+    expect(screen.getByLabelText('Motif')).toHaveValue('');
+
+    fireEvent.change(screen.getByLabelText('Pays'), { target: { value: 'Tchad ' } });
+    await waitFor(() => expect(screen.queryByText('proposé')).toBeNull());
+  });
+
+  test('une proposition non touchée est enregistrée comme une valeur ordinaire', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderProposedForm(makePatientRepo(createEncounter));
+    await screen.findByLabelText('Pays');
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(createEncounter.mock.calls[0][1].data).toEqual({ pays: 'Tchad' });
+  });
+
+  // Le coeur du lot : effacer la proposition doit laisser le champ VIDE, pas le remplir.
+  test('une proposition effacée n est pas enregistrée du tout', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderProposedForm(makePatientRepo(createEncounter));
+    await screen.findByLabelText('Pays');
+    fireEvent.change(screen.getByLabelText('Pays'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(createEncounter.mock.calls[0][1].data).toEqual({});
+  });
+
+  // Un brouillon garde la saisie telle qu'elle a ete laissee : une valeur effacee hier ne
+  // doit pas reapparaitre aujourd'hui parce que le gabarit la propose.
+  test('un brouillon restauré n est pas recouvert par la proposition', async () => {
+    saveDraft('encounter', 'p1', { encounterType: 'consultation', encounterDate: '2024-06-01', status: 'draft', values: { motif: 'Controle' } });
+    renderProposedForm(makePatientRepo(vi.fn(async () => ({ id: 'e1' }))));
+    expect(await screen.findByLabelText('Motif')).toHaveValue('Controle');
+    expect(screen.getByLabelText('Pays')).toHaveValue('');
+    expect(screen.queryByText('proposé')).toBeNull();
+  });
+});
