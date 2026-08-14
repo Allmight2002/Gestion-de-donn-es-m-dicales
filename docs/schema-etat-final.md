@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260813170000_client_error_observability.sql`
+- Dernière migration incluse : `20260813200000_client_error_pgcrypto_search_path.sql`
 - Tables : 41 · Policies RLS : 61 · Triggers : 58 · Fonctions : 239
 
 ## Tables (colonnes, RLS, policies, triggers)

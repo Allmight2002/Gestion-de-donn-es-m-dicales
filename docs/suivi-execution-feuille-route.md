@@ -1771,6 +1771,15 @@ verts : `test/cohorts.test.ts`, `test/exports.test.ts`, `test/audit.test.ts` (**
 `CohortBuilder.test.tsx` (**6/6**) et `signed-read` Edge (**14/14**), plus `typecheck`, lint,
 `db:verify` et build avec `VITE_USE_SIGNED_READ=true`.
 
+Livraison : le snapshot de schéma a été régénéré ; le commit
+`3092302402dce580706c9c0ca6d138e845f8177b` a été promu par le workflow **Coordinated release** :
+staging [`31709473891`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31709473891)
+puis production [`31711004972`](https://github.com/Allmight2002/Gestion-de-donn-es-m-dicales/actions/runs/31711004972)
+verts, avec sauvegarde chiffrée, backend, frontend, E2E navigateur et contrôle de dérive cloud.
+
+Cette clôture prouve une production technique avec données fictives. Elle ne vaut ni autorisation
+clinique, ni autorisation d'utiliser des données réelles.
+
 ## L12 — propositions hors liste à l'échelle d'une base (clôture 2026-08-13)
 
 Le médecin responsable dispose désormais, dans **À compléter > Propositions**, d'une vue en
