@@ -1905,3 +1905,72 @@ donc fallu les deux runs manuels, le second recevant l'identifiant du premier.
 Comme les précédentes, cette clôture prouve le fonctionnement en production technique avec des
 données fictives. Elle ne vaut ni autorisation clinique, ni autorisation d'utiliser des données
 réelles. La dérogation d'inspection antivirus reste en vigueur pour cette release.
+
+## L33 — Raisons de valeur manquante par variable (2026-08-14)
+
+Les trois codes `non_fait`, `inconnu` et `non_applicable` étaient **figés en dur** dans
+`assert_data_valid`, identiques pour toutes les variables, et le seul réglage était un booléen
+les autorisant ou les refusant en bloc. Une variable choisit désormais **les raisons qu'elle
+propose**, parmi cinq : les trois précédentes, plus le **refus** de la personne et **non
+documenté** — distinct d'« inconnu », qui laisse croire que l'information a été cherchée.
+
+**Les trois codes existants ne changent ni de nom ni de sens.** La reprise de données donne
+exactement les trois codes historiques aux variables qui les acceptaient, et aucune raison à
+celles qui les refusaient : aucune variable existante ne change de comportement, et aucune fiche
+déjà saisie ne devient invalide.
+
+### `allow_missing_codes` conservé, en miroir
+
+`missing_reasons` devient la source de vérité ; le booléen n'est plus une seconde décision mais
+son **reflet**, tenu à jour par un déclencheur (vrai = liste non vide). Il n'est pas supprimé
+parce qu'il est **déjà recopié sur des appareils hors de portée** : `download_base_snapshot`
+l'écrit dans l'instantané hors-ligne stocké sur le téléphone, une PWA installée garde son ancien
+JavaScript jusqu'au prochain rafraîchissement, et `src/data/offline.ts` retombe sur `?? true`
+quand la clé manque. Le retirer aurait fait basculer un appareil non rafraîchi vers « valeurs
+manquantes autorisées partout », y compris sur les variables où elles sont interdites — sans
+aucune erreur visible. L'instantané émet désormais **les deux**, et l'ancienne signature de
+`update_template_field` reste en place : la transition n'a pas de fenêtre de bascule.
+
+### Retirer une raison d'une variable en service : refusé
+
+Ajouter reste libre à tout moment — élargir ce qui est acceptable ne peut invalider aucune fiche,
+et c'est un assouplissement par rapport à l'état antérieur, où toute modification du booléen était
+refusée sur une variable utilisée. Retirer est refusé tant que la variable porte des données.
+La conséquence est celle qui était recherchée : **aucune fiche ne peut porter une raison absente
+de la liste de sa propre version de gabarit**, donc une fiche ancienne reste modifiable *par
+construction*, sans cas particulier dans la validation, qui reste sans état. Pour restreindre, on
+crée une nouvelle version du gabarit ; les fiches existantes restent rattachées à l'ancienne.
+
+Ce refus vit dans le déclencheur de la migration et non dans `guard_template_field_update`, pour
+une raison d'**ordre d'exécution** : deux déclencheurs `BEFORE UPDATE` sur la même table
+s'exécutent par ordre alphabétique de nom, et un garde placé ailleurs verrait, selon l'ordre, un
+`missing_reasons` non encore réconcilié — donc un retrait invisible venant d'un client qui n'envoie
+que le booléen. Le contrôle est placé là où la réconciliation a lieu ; il est alors juste quel que
+soit l'ordre.
+
+### Une seule liste, vérifiée par un test
+
+`MISSING_CODES` n'est plus recopié : `src/domain/validation.ts` **importe** la liste du contrat
+d'export, via `src/domain/export.ts` qui l'exposait déjà au navigateur. Le test correspondant
+vérifie l'**identité de référence** (`toBe`) et non l'égalité de contenu : il échouerait si
+quelqu'un redupliquait la liste, ce qui est précisément le risque à couvrir — une raison
+saisissable mais inconnue de l'export produirait une colonne que personne ne sait relire.
+
+L'export rend les nouveaux codes **tels quels** dans la colonne, et le dictionnaire gagne une
+colonne `missing_reasons`. Quand une colonne traverse plusieurs versions dont les listes diffèrent,
+le dictionnaire documente leur **union** : sinon un code lu en face d'une fiche ancienne resterait
+inexpliqué.
+
+### Interface
+
+`ValueInput.tsx` ne propose que les raisons de la variable en cours, et **conserve la raison déjà
+enregistrée** même si la variable ne la propose plus — sans quoi le sélecteur s'ouvrirait vide et
+la fiche deviendrait illisible, puis inmodifiable au premier enregistrement. `FieldForm.tsx` garde
+sa case maîtresse, décochée par défaut : une variable neuve n'accepte toujours aucune valeur
+manquante tant que rien n'est demandé. Cochée, elle pré-coche les trois raisons historiques, puis
+laisse choisir. Sur une variable déjà utilisée, les raisons en service sont grisées et les autres
+restent cochables — l'interface reflète la règle serveur au lieu de laisser tenter un retrait qui
+finirait en erreur. Le libellé de la case, « Codes manquants (non fait / inconnu) », nommait deux
+raisons sur cinq : il devient « Accepter une valeur manquante ».
+
+### Preuves de validation

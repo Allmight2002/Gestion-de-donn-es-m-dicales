@@ -298,6 +298,7 @@ export function TemplateVersionEditor({
                 maxValue: editing.maxValue,
                 unit: editing.unit,
                 allowMissingCodes: editing.allowMissingCodes,
+                missingReasons: editing.missingReasons,
               }}
               lockStructural={editing.inUse ?? false}
               submitLabel={t('admin.save')}

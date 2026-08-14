@@ -53,6 +53,8 @@ export interface OfflineField {
   minValue?: number | null;
   maxValue?: number | null;
   allowMissingCodes?: boolean;
+  /** Raisons de valeur manquante (L33). Absente d'un instantane telecharge avant ce lot. */
+  missingReasons?: string[] | null;
   encounterTypes?: string[] | null;
 }
 
@@ -148,7 +150,11 @@ export function buildSnapshot(
       section: f.section ?? null, description: f.description ?? null, defaultValue: f.defaultValue ?? null,
       unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
       required: f.required ?? false, minValue: f.minValue ?? null, maxValue: f.maxValue ?? null,
-      allowMissingCodes: f.allowMissingCodes ?? true, encounterTypes: f.encounterTypes ?? null,
+      // Les DEUX sont conserves : le booleen pour une copie de l'appli anterieure a L33, la
+      // liste pour les autres. Un instantane sans liste retombe sur les trois codes
+      // historiques -- exactement ce que la variable proposait alors.
+      allowMissingCodes: f.allowMissingCodes ?? true,
+      missingReasons: f.missingReasons ?? null, encounterTypes: f.encounterTypes ?? null,
     })),
     fieldsByVersion,
     rulesByVersion,

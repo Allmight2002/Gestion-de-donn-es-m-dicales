@@ -7,6 +7,7 @@ import {
   makeMissing,
   isMissing,
   missingCodeOf,
+  allowedMissingReasons,
 } from '../src/domain/validation';
 import type { TemplateField } from '../src/data/types';
 
@@ -106,5 +107,38 @@ describe('regles de coherence (§10, critere 4)', () => {
     const res = evaluateRules([warnRule], { admission_date: '2024-01-05', discharge_date: '2024-01-01' });
     expect(res.blocking).toHaveLength(0);
     expect(res.warnings).toContain('sortie >= admission');
+  });
+});
+
+// L33 : la liste des raisons cesse d'etre la meme pour toutes les variables.
+describe('raisons de valeur manquante par variable (L33)', () => {
+  test('une raison hors de la liste de la variable est refusee', () => {
+    const f = field({ fieldKey: 'serologie', type: 'text', missingReasons: ['refus'] });
+    expect(validateField(f, makeMissing('refus'))).toBeNull();
+    expect(validateField(f, makeMissing('non_fait'))).toMatch(/raison.*non autoris/i);
+  });
+
+  test('liste vide -> aucune valeur manquante, message inchange', () => {
+    const f = field({ fieldKey: 'sexe', type: 'text', allowMissingCodes: false, missingReasons: [] });
+    expect(validateField(f, makeMissing('inconnu'))).toMatch(/valeur manquante non autoris/i);
+  });
+
+  test('les deux nouvelles raisons satisfont la presence d un champ obligatoire', () => {
+    const f = field({ fieldKey: 'x', type: 'text', required: true, missingReasons: ['refus', 'non_documente'] });
+    expect(validateField(f, makeMissing('refus'))).toBeNull();
+    expect(validateField(f, makeMissing('non_documente'))).toBeNull();
+  });
+
+  test('sans liste (instantane anterieur au lot) -> repli sur les trois codes historiques', () => {
+    const ancien = field({ fieldKey: 'ancien', type: 'text', allowMissingCodes: true, missingReasons: undefined });
+    expect(allowedMissingReasons(ancien)).toEqual(['non_fait', 'inconnu', 'non_applicable']);
+    expect(validateField(ancien, makeMissing('non_fait'))).toBeNull();
+    // Une raison du lot n'est PAS retro-ajoutee a une variable qui ne la connaissait pas.
+    expect(validateField(ancien, makeMissing('refus'))).toMatch(/non autoris/i);
+  });
+
+  test('l ordre canonique est impose, quel que soit l ordre de saisie', () => {
+    const f = field({ fieldKey: 'x', type: 'text', missingReasons: ['non_documente', 'non_fait'] });
+    expect(allowedMissingReasons(f)).toEqual(['non_fait', 'non_documente']);
   });
 });

@@ -77,7 +77,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L30** | Options de liste : code interne stable | migration + conversion, `FieldForm.tsx`, `FieldInput.tsx`, `exportContract.ts` | L29 |
 | **L31** | Sections personnalisables | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `ImportData.tsx`, `TemplateFromFile.tsx`, `templateLibrary.ts`, `seed.sql`, `exportContract.ts` | L29 |
 | **L32** | Affichage conditionnel | migration, `RuleForm.tsx`, `EncounterFields.tsx`, `validation.ts`, `exportContract.ts` | L28, L29 |
-| **L33** | Raisons de valeur manquante par variable | migration, `FieldForm.tsx`, `ValueInput.tsx`, `validation.ts`, `exportContract.ts` | L29 |
+| ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
 > L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
@@ -515,9 +515,19 @@ l'export et les tests. C'est le piège classique des systèmes de recueil cliniq
 Le moteur reste une **structure JSON à liste blanche d'opérateurs**, jamais évaluée comme du code :
 c'est la ligne posée par `templateRules.ts` et il ne faut pas en sortir.
 
-### L33 — Raisons de valeur manquante par variable
+### L33 — Raisons de valeur manquante par variable — **livré**
 
-Les trois codes (`non_fait`, `inconnu`, `non_applicable`) sont **figés en dur** côté serveur,
+Livré le 2026-08-14. Une colonne `missing_reasons` porte, variable par variable, les raisons
+proposées parmi cinq — les trois historiques, plus `refus` et `non_documente`.
+`allow_missing_codes` est **conservé en miroir** : la liste fait foi, un déclencheur tient le
+booléen à jour. Il n'est pas supprimé parce que les instantanés hors-ligne déjà téléchargés et les
+PWA installées le lisent encore. Retirer une raison d'une variable en service est refusé (ajouter
+reste libre), ce qui rend toute fiche ancienne modifiable par construction. `MISSING_CODES` n'est
+plus recopié : `validation.ts` importe la liste du contrat d'export, et un test vérifie l'identité
+de référence. Détail dans
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md).
+
+État antérieur, pour mémoire : les trois codes (`non_fait`, `inconnu`, `non_applicable`) étaient **figés en dur** côté serveur,
 identiques pour toutes les variables, et le seul réglage disponible est un booléen les autorisant
 ou non en bloc.
 
@@ -568,10 +578,10 @@ famille moteur de formulaires avant L13/L14 et avant la famille diagnostics.**
 1. **Terminer L11**. Il reste parallélisable avec la famille formulaires ; son prompt impose ses
    décisions de confidentialité avant toute finalisation.
 2. **Famille « moteur de formulaires »**, avant les diagnostics :
-   1. **L27** — texte d'aide par variable ;
-   2. **L29** — prévisualisation, seul lot de cette famille qui peut tourner en parallèle de L27 ;
-   3. **L28** — valeur par défaut et unicité ;
-   4. **L33** — raisons de valeur manquante par variable ;
+   1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
+   2. ~~**L29**~~ — prévisualisation — **livré** ;
+   3. ~~**L28**~~ — valeur proposée — **livré** ;
+   4. ~~**L33**~~ — raisons de valeur manquante par variable — **livré le 2026-08-14** ;
    5. **L32** — affichage conditionnel, après décision explicite sur les valeurs masquées ;
    6. **L30** — codes d'options, après le reste car il convertit des données existantes ;
    7. **L31** — sections personnalisables, dernier et plus lourd.

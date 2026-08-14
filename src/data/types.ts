@@ -1,4 +1,7 @@
 // DTO de l'admin gabarits (camelCase cote front).
+// Import de TYPE uniquement : efface a la compilation, donc aucun cycle a l'execution.
+import type { MissingCode } from '../domain/export';
+
 export type FieldScope = 'patient' | 'encounter';
 export type FieldSection = 'clinique' | 'biologie' | 'paraclinique';
 export type FieldType =
@@ -74,6 +77,12 @@ export interface TemplateField {
   minValue: number | null;
   maxValue: number | null;
   allowMissingCodes: boolean;
+  /**
+   * Raisons de valeur manquante proposees pour CETTE variable (L33). Source de verite ;
+   * `allowMissingCodes` en est le miroir. Absente d'un instantane hors-ligne anterieur au
+   * lot : passer par `allowedMissingReasons` plutot que de la lire directement.
+   */
+  missingReasons?: MissingCode[] | null;
   displayOrder: number;
   /** Champ de rencontre limite a certains types (null/vide/absent = tous). Pilote affichage + requis. */
   encounterTypes?: string[] | null;
@@ -108,6 +117,8 @@ export interface NewField {
   maxValue?: number | null;
   /** Unite affichee (number / integer). */
   unit?: string | null;
-  /** Autorise les codes manquants (non_fait / inconnu / non_applicable). */
+  /** Autorise les codes manquants. Miroir de `missingReasons` : vrai = liste non vide. */
   allowMissingCodes?: boolean;
+  /** Raisons de valeur manquante proposees pour cette variable. */
+  missingReasons?: MissingCode[] | null;
 }
