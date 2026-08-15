@@ -22,15 +22,36 @@ export interface ComparisonRule {
   right_field: string;
 }
 
+/**
+ * Operateurs autorises dans la clause `then`. La liste est FERMEE : `required` impose la
+ * saisie, `visible` conditionne l'AFFICHAGE. Aucun autre verbe n'est accepte.
+ */
+export const THEN_OPERATORS = ['required', 'visible'] as const;
+export type ThenOperator = (typeof THEN_OPERATORS)[number];
+
 /** { if: {field, operator, value}, then: {field, operator: 'required'} }. */
 export interface ConditionalRule {
   if: { field: string; operator: ConditionOperator; value: unknown };
   then: { field: string; operator: 'required' };
 }
 
-export type TemplateRule = ComparisonRule | ConditionalRule;
+/**
+ * { if: {field, operator, value}, then: {field, operator: 'visible'} } (L32).
+ *
+ * `then.field` n'est montre QUE si la condition est vraie. Condition non verifiable —
+ * variable pilote vide, ou elle-meme masquee — vaut MASQUE : « ne montrer l'imagerie que si
+ * une imagerie a ete faite » se lit strictement, sinon un formulaire vierge montrerait tout.
+ */
+export interface VisibilityRule {
+  if: { field: string; operator: ConditionOperator; value: unknown };
+  then: { field: string; operator: 'visible' };
+}
 
-export type RuleValidation = { ok: true; kind: 'comparison' | 'conditional' } | { ok: false; error: string };
+export type TemplateRule = ComparisonRule | ConditionalRule | VisibilityRule;
+
+export type RuleKind = 'comparison' | 'conditional' | 'visibility';
+
+export type RuleValidation = { ok: true; kind: RuleKind } | { ok: false; error: string };
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.trim().length > 0;
@@ -62,10 +83,14 @@ export function validateRule(rule: unknown): RuleValidation {
     if (!('value' in cond)) {
       return { ok: false, error: 'Regle conditionnelle : "value" requis dans if' };
     }
-    if (then.operator !== 'required') {
-      return { ok: false, error: 'Regle conditionnelle : "then.operator" doit etre "required"' };
+    if (!THEN_OPERATORS.includes(then.operator as ThenOperator)) {
+      return { ok: false, error: 'Regle conditionnelle : "then.operator" doit etre "required" ou "visible"' };
     }
-    return { ok: true, kind: 'conditional' };
+    if (then.operator === 'visible' && cond.field === then.field) {
+      // Une variable qui commande son propre affichage ne peut jamais s'afficher.
+      return { ok: false, error: 'Regle d\'affichage : une variable ne peut pas commander son propre affichage' };
+    }
+    return { ok: true, kind: then.operator === 'visible' ? 'visibility' : 'conditional' };
   }
 
   // Forme comparaison : operator/left_field/right_field
@@ -81,6 +106,59 @@ export function validateRule(rule: unknown): RuleValidation {
   }
 
   return { ok: false, error: 'Forme de regle non reconnue' };
+}
+
+/** La regle est-elle une regle d'AFFICHAGE ? (structure validee, sinon null). */
+export function visibilityRuleOf(rule: unknown): VisibilityRule | null {
+  const res = validateRule(rule);
+  return res.ok && res.kind === 'visibility' ? (rule as VisibilityRule) : null;
+}
+
+/** Les seules regles d'affichage d'un lot, les autres formes etant ignorees. */
+export function visibilityRulesOf(rules: readonly unknown[]): VisibilityRule[] {
+  return rules.map(visibilityRuleOf).filter((r): r is VisibilityRule => r !== null);
+}
+
+/**
+ * Cherche un CYCLE dans le graphe des dependances d'affichage : A masque par B, B masque
+ * par A. Un cycle rend les deux variables definitivement invisibles — aucune des deux ne
+ * peut etre renseignee, donc aucune des deux ne peut satisfaire la condition de l'autre.
+ * Renvoie le chemin fautif (premiere variable repetee en fin) ou null.
+ *
+ * Le controle appartient a l'ENREGISTREMENT de la regle, pas a la saisie : une fiche ne doit
+ * jamais avoir a se defendre contre un gabarit incoherent.
+ */
+export function findVisibilityCycle(rules: readonly unknown[]): string[] | null {
+  // Arete pilote -> pilotee : l'affichage de `then.field` DEPEND de `if.field`.
+  const dependsOn = new Map<string, string[]>();
+  for (const rule of visibilityRulesOf(rules)) {
+    dependsOn.set(rule.then.field, [...(dependsOn.get(rule.then.field) ?? []), rule.if.field]);
+  }
+
+  const done = new Set<string>();
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+
+  function walk(field: string): string[] | null {
+    if (onStack.has(field)) return [...stack.slice(stack.indexOf(field)), field];
+    if (done.has(field)) return null;
+    stack.push(field);
+    onStack.add(field);
+    for (const parent of dependsOn.get(field) ?? []) {
+      const cycle = walk(parent);
+      if (cycle) return cycle;
+    }
+    stack.pop();
+    onStack.delete(field);
+    done.add(field);
+    return null;
+  }
+
+  for (const field of dependsOn.keys()) {
+    const cycle = walk(field);
+    if (cycle) return cycle;
+  }
+  return null;
 }
 
 /** Parse + valide une regle saisie en texte JSON. */

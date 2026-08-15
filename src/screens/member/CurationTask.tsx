@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
@@ -8,8 +8,8 @@ import { useAuditRepository, useCurationRepository, useTemplateRepository } from
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
-import { getTemplateFields } from '../../data/templates';
-import type { TemplateField } from '../../data/types';
+import type { TemplateField, ValidationRule } from '../../data/types';
+import { hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { FieldInput } from './FieldInput';
 import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 import { useSignedFile } from '../../lib/useSignedFile';
@@ -55,6 +55,7 @@ export function CurationTask() {
   const [bundle, setBundle] = useState<TaskBundle | null>(null);
   const [patientFields, setPatientFields] = useState<TemplateField[]>([]);
   const [encounterFields, setEncounterFields] = useState<TemplateField[]>([]);
+  const [rules, setRules] = useState<ValidationRule[]>([]);
   const [patientData, setPatientData] = useState<Record<string, unknown>>({});
   const [encounters, setEncounters] = useState<DraftEncounter[]>([]);
   const [docFile, setDocFile] = useState<File | null>(null);
@@ -69,6 +70,22 @@ export function CurationTask() {
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
+  // L32 — affichage conditionnel. Le poste de curation nourrit une fiche FINALISEE : une
+  // variable masquee ne s'y saisit pas, et sa valeur ne part pas au serveur, qui la refuserait.
+  const curated = useMemo(() => {
+    const patientHidden = hiddenFieldKeys(rules, patientData);
+    const cleanedEncounters = encounters.map((enc) => {
+      const hidden = hiddenFieldKeys(rules, enc.data);
+      return { hidden, encounter: { ...enc, data: withoutHiddenValues(enc.data, hidden).values } };
+    });
+    return {
+      patientHidden,
+      patientData: withoutHiddenValues(patientData, patientHidden).values,
+      encounterHidden: cleanedEncounters.map((e) => e.hidden),
+      encounters: cleanedEncounters.map((e) => e.encounter),
+    };
+  }, [rules, patientData, encounters]);
+
   const load = useCallback(async () => {
     if (!taskId) return;
     setLoading(true);
@@ -80,9 +97,13 @@ export function CurationTask() {
         setEncounters(b.draft.encounters ?? []);
       }
       if (b?.task.templateVersionId) {
-        const sorted = [...(await getTemplateFields(templates, b.task.templateVersionId))].sort((a, b2) => a.displayOrder - b2.displayOrder);
+        // L32 : les REGLES viennent avec les champs. Sans elles, le poste de curation
+        // proposerait des variables masquees que le serveur refusera a la finalisation.
+        const version = await templates.getVersion(b.task.templateVersionId);
+        const sorted = [...version.fields].sort((a, b2) => a.displayOrder - b2.displayOrder);
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
+        setRules(version.rules);
       }
       setError(null);
     } catch (e) {
@@ -354,7 +375,7 @@ export function CurationTask() {
             {task.scope !== 'encounter' && (
               <div className="card p-4">
                 <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
-                {patientFields.map((f) => (
+                {patientFields.filter((f) => !curated.patientHidden.has(f.fieldKey)).map((f) => (
                   <label key={f.id} className="mb-2 flex flex-col text-sm">
                     <span className="text-slate-700">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
                     <div className="mt-1">
@@ -394,6 +415,7 @@ export function CurationTask() {
                   </div>
                   <EncounterFields
                     fields={encounterFields.filter((f) => fieldAppliesToType(f, enc.encounter_type))}
+                    hiddenKeys={curated.encounterHidden[i]}
                     values={enc.data}
                     onChange={(k, v) => updateEncounter(i, { data: { ...enc.data, [k]: v } })}
                     onRemove={(key) => {
@@ -411,7 +433,7 @@ export function CurationTask() {
               <button
                 onClick={() =>
                   void run(
-                    () => curation.saveDraft(draft.id, patientData, encounters, draft.revision),
+                    () => curation.saveDraft(draft.id, curated.patientData, curated.encounters, draft.revision),
                     t('curation.saved'),
                   )}
                 disabled={busy}
@@ -423,7 +445,7 @@ export function CurationTask() {
               <button
                 onClick={() =>
                   void run(async () => {
-                    await curation.saveDraft(draft.id, patientData, encounters, draft.revision);
+                    await curation.saveDraft(draft.id, curated.patientData, curated.encounters, draft.revision);
                     await curation.finalizeTask(task.id);
                   }, t('curation.finalized'))}
                 disabled={busy}

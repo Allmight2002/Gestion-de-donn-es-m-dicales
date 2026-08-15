@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Send } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
@@ -7,11 +7,11 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
-import { validateValues, evaluateRules } from '../../domain/validation';
+import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, fieldAppliesToType } from './EncounterFields';
+import { EncounterFields, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -61,6 +61,22 @@ export function EncounterForm() {
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
+
+  // L32 — la visibilite s'evalue sur EXACTEMENT ce qui partira au serveur : les champs
+  // applicables au type choisi. Evaluer sur autre chose ferait diverger l'ecran du serveur
+  // des qu'une variable pilote cesse de s'appliquer au type de visite.
+  const applicableFields = useMemo(
+    () => fields.filter((f) => fieldAppliesToType(f, encounterType)),
+    [fields, encounterType],
+  );
+  const { hidden, removed, data: submittedData } = useMemo(() => {
+    const applicableData = Object.fromEntries(
+      Object.entries(values).filter(([k]) => applicableFields.some((f) => f.fieldKey === k)),
+    );
+    const hiddenKeys = hiddenFieldKeys(rules, applicableData);
+    const stripped = withoutHiddenValues(applicableData, hiddenKeys);
+    return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
+  }, [values, applicableFields, rules]);
 
   const load = useCallback(async () => {
     if (!baseId) return;
@@ -147,20 +163,20 @@ export function EncounterForm() {
     if (!baseId || !patientId) return;
 
     // Seuls les champs APPLICABLES au type choisi sont valides / envoyes (ex: pas d'admission
-    // pour une consultation). Les valeurs des champs masques ne sont pas soumises.
-    const applicable = fields.filter((f) => fieldAppliesToType(f, encounterType));
-    const applicableData = Object.fromEntries(
-      Object.entries(values).filter(([k]) => applicable.some((f) => f.fieldKey === k)),
-    );
+    // pour une consultation). Les valeurs des champs masques ne sont pas soumises : c'est ICI
+    // que l'effacement decide par le lot a lieu, apres l'annonce faite a l'ecran.
+    const applicable = applicableFields;
+    const applicableData = submittedData;
     // Le serveur valide toujours les valeurs renseignees, mais n'impose la completude et les
     // regles bloquantes qu'au statut curated. Le frontend reproduit exactement cette frontiere.
     const requireComplete = status === 'curated';
-    const fieldErrors = validateValues(applicable, applicableData, requireComplete).map((fe) =>
+    const fieldErrors = validateValues(applicable, applicableData, requireComplete, hidden).map((fe) =>
       `${labelOf(fe.fieldKey)} : ${fe.message}`
     );
     const ruleEval = evaluateRules(
       rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
       applicableData,
+      hidden,
     );
     const block = [...fieldErrors, ...(requireComplete ? ruleEval.blocking : [])];
     if (!encounterDate) block.unshift(t('encounter.date'));
@@ -262,9 +278,10 @@ export function EncounterForm() {
         </div>
 
         <EncounterFields
-          fields={fields.filter((f) => fieldAppliesToType(f, encounterType))}
+          fields={applicableFields}
           values={values}
           prefilledKeys={prefilled}
+          hiddenKeys={hidden}
           onChange={(k, v) => {
             // Effacer une proposition jamais confirmee retire la cle, au lieu d'enregistrer
             // une valeur vide la ou une fiche non preremplie n'aurait rien du tout.
@@ -286,6 +303,8 @@ export function EncounterForm() {
             });
           }}
         />
+
+        <HiddenValuesNotice removedKeys={removed} fields={fields} />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
