@@ -106,7 +106,11 @@ export const optionCodeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'
 
 const isOptionList = (field: Pick<ExportField, 'type'>) => field.type === 'select' || field.type === 'multiselect';
 
-interface RawOption { value_key?: unknown; label?: unknown; is_active?: unknown }
+interface RawOption {
+  value_key?: unknown;
+  label?: unknown;
+  is_active?: unknown;
+}
 
 /** Options d'une variable, avec repli sur les seuls codes pour un instantane ancien. */
 function optionsOf(field: ExportField): { key: string; label: string; isActive: boolean }[] {
@@ -362,7 +366,9 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
         // apparaisse dans les fiches anciennes et plus dans les recentes.
         allowed_values: isOptionList(f)
           ? options.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
-          : Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
+          : Array.isArray(f.allowedValues)
+          ? f.allowedValues.join('; ')
+          : '',
         // Les CODES bruts, comme ils apparaissent dans la colonne de donnees, et non les
         // libelles : c'est le code qui sera lu par l'analyse.
         missing_reasons: (f.missingReasons ?? []).join('; '),

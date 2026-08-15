@@ -11,10 +11,10 @@ import {
   buildPatientExport,
   codeColumnId,
   columnId,
-  optionCodeColumnId,
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
+  optionCodeColumnId,
 } from './exportContract.ts';
 
 const champ = (over: Partial<ExportField> & Pick<ExportField, 'fieldKey' | 'type'>): ExportField => ({
@@ -237,12 +237,16 @@ Deno.test('dictionnaire : une ligne de libelles, une ligne de codes, les inactiv
 Deno.test('dictionnaire : une colonne traversant deux versions decrit TOUTES ses options', () => {
   // Sinon un code lu dans une fiche ancienne ne s'explique nulle part.
   const v1 = champ({
-    fieldKey: 'evolution', type: 'select', templateVersionIds: ['v1'],
+    fieldKey: 'evolution',
+    type: 'select',
+    templateVersionIds: ['v1'],
     allowedValues: ['gueri'],
     allowedOptions: [{ value_key: 'gueri', label: 'Gueri', is_active: true }],
   });
   const v2 = champ({
-    fieldKey: 'evolution', type: 'select', templateVersionIds: ['v2'],
+    fieldKey: 'evolution',
+    type: 'select',
+    templateVersionIds: ['v2'],
     allowedValues: ['gueri', 'perdu'],
     allowedOptions: [
       { value_key: 'gueri', label: 'Gueri', is_active: true },
