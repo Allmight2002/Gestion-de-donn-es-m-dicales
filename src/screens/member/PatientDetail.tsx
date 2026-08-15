@@ -24,7 +24,12 @@ import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
-type Column = { id: string; fieldKey: string; label: string; scope: string; displayOrder: number };
+// L30 : `type` et les options voyagent avec la colonne pour que la fiche affiche le
+// LIBELLE de l'option et non son code -- en ligne comme depuis un instantane.
+type Column = {
+  id: string; fieldKey: string; label: string; scope: string; displayOrder: number;
+  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+};
 
 // §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
 // une image s'affiche apres « Afficher l'image » ; un document s'ouvre dans un onglet.
@@ -95,10 +100,11 @@ export function PatientDetail() {
   const [error, setError] = useState<string | null>(null);
 
   const fmt = useCallback(
-    (v: unknown): string => {
+    (v: unknown, field?: Column): string => {
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
       if (typeof v === 'boolean') return v ? '✓' : '✗';
-      return displayFieldValue(v, '—');
+      // La variable est passee pour que le LIBELLE de l'option s'affiche, et non son code.
+      return displayFieldValue(v, '—', field);
     },
     [t],
   );
@@ -147,7 +153,10 @@ export function PatientDetail() {
       if (base?.base.currentTemplateVersionId) {
         const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
         const sorted: Column[] = fields
-          .map((f) => ({ id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, displayOrder: f.displayOrder }))
+          .map((f) => ({
+            id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, displayOrder: f.displayOrder,
+            type: f.type, allowedValues: f.allowedValues, allowedOptions: f.allowedOptions,
+          }))
           .sort((a, b) => a.displayOrder - b.displayOrder);
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
@@ -270,7 +279,7 @@ export function PatientDetail() {
           {patientFields.map((f) => (
             <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
               <dt className="text-xs text-slate-500">{f.label}</dt>
-              <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey])}</dd>
+              <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f)}</dd>
             </div>
           ))}
         </dl>
@@ -319,7 +328,7 @@ export function PatientDetail() {
                     .map((f) => (
                       <div key={f.id} className="contents">
                         <dt className="text-slate-500">{f.label}</dt>
-                        <dd>{fmt(e.data[f.fieldKey])}</dd>
+                        <dd>{fmt(e.data[f.fieldKey], f)}</dd>
                       </div>
                     ))}
                 </dl>

@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { MissingCode } from '../domain/export';
+import { optionKeys, toRawOptions } from '../domain/fieldOptions';
 import type {
   NewField,
   RuleSeverity,
@@ -63,7 +64,8 @@ type FieldRow = {
   id: string; field_key: string; label: string; scope: TemplateField['scope']; section: TemplateField['section'];
   description: string | null;
   default_value: string | null;
-  type: TemplateField['type']; unit: string | null; allowed_values: unknown[] | null; required: boolean;
+  type: TemplateField['type']; unit: string | null; allowed_values: unknown[] | null;
+  allowed_options: unknown[] | null; required: boolean;
   min_value: number | null; max_value: number | null; allow_missing_codes: boolean;
   missing_reasons: MissingCode[] | null; display_order: number;
   encounter_types: string[] | null;
@@ -76,7 +78,8 @@ const mapVersion = (r: VersionRow): TemplateVersion => ({
 const mapField = (r: FieldRow): TemplateField => ({
   id: r.id, fieldKey: r.field_key, label: r.label, description: r.description, defaultValue: r.default_value,
   scope: r.scope, section: r.section, type: r.type,
-  unit: r.unit, allowedValues: r.allowed_values, required: r.required, minValue: r.min_value,
+  unit: r.unit, allowedValues: r.allowed_values, allowedOptions: r.allowed_options,
+  required: r.required, minValue: r.min_value,
   maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, missingReasons: r.missing_reasons,
   displayOrder: r.display_order,
   encounterTypes: r.encounter_types,
@@ -193,7 +196,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (cachedFields) return cachedFields;
       const { data, error } = await client
         .from('template_field')
-        .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, missing_reasons, display_order, encounter_types')
+        .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, display_order, encounter_types')
         .eq('template_version_id', versionId)
         .order('display_order', { ascending: true });
       if (error) throw error;
@@ -228,7 +231,12 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           required: item.required,
           display_order: nextOrder + index,
           encounter_types: item.scope === 'encounter' ? item.encounterTypes ?? null : null,
-          allowed_values: item.allowedValues ?? null,
+          // Les deux partent ENSEMBLE et coherents : les options font foi, le miroir des
+          // cles evite qu'un client non rafraichi ne lise une colonne vide.
+          allowed_values: item.allowedOptions
+            ? optionKeys(item.allowedOptions)
+            : item.allowedValues ?? null,
+          allowed_options: item.allowedOptions ? toRawOptions(item.allowedOptions) : null,
           min_value: item.minValue ?? null,
           max_value: item.maxValue ?? null,
           unit: item.unit ?? null,
@@ -257,6 +265,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_type: field.type,
         p_required: field.required,
         p_encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
+        // `p_allowed_options` selectionne la surcharge L30 de la RPC ; le serveur en deduit
+        // lui-meme le miroir `allowed_values`.
+        p_allowed_options: field.allowedOptions ? toRawOptions(field.allowedOptions) : null,
         p_allowed_values: field.allowedValues ?? null,
         p_min_value: field.minValue ?? null,
         p_max_value: field.maxValue ?? null,

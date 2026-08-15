@@ -11,6 +11,8 @@ import {
   type TemplateRule,
 } from '../../domain/templateRules';
 import type { RuleSeverity, TemplateField } from '../../data/types';
+// Alias : `fieldOptions` designe deja, dans cet ecran, la liste des VARIABLES proposees.
+import { fieldOptions as listOptionsOf } from '../../domain/fieldOptions';
 import { Checkbox } from '../../components/Checkbox';
 
 type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
@@ -142,11 +144,17 @@ export function RuleForm({
     return counts;
   }, [fields]);
 
+  // L30 : la regle compare la valeur STOCKEE, c'est-a-dire le code de l'option. C'est le
+  // libelle qui est propose au medecin. Confondre les deux ferait une regle qui ne se
+  // declenche jamais, sans erreur visible.
   const conditionOptions = useMemo(() => {
-    if (selectedConditionField?.type === 'boolean') return ['true', 'false'];
-    if (!Array.isArray(selectedConditionField?.allowedValues)) return [];
-    return selectedConditionField.allowedValues.map(String);
+    if (selectedConditionField?.type === 'boolean') return [{ value: 'true' }, { value: 'false' }];
+    return listOptionsOf(selectedConditionField).map((o) => ({ value: o.valueKey, label: o.label }));
   }, [selectedConditionField]);
+  const conditionOptionLabel = (option: { value: string; label?: string }) =>
+    option.value === 'true' ? t('rule.value_true')
+      : option.value === 'false' ? t('rule.value_false')
+        : option.label ?? option.value;
 
   function optionLabel(field: TemplateField) {
     const scope = field.scope === 'patient' ? t('rule.scope_patient') : t('rule.scope_encounter');
@@ -225,11 +233,11 @@ export function RuleForm({
             <div className="flex flex-wrap gap-3">
               {conditionOptions.map((option) => (
                 <Checkbox
-                    key={option}
-                    label={option === 'true' ? t('rule.value_true') : option === 'false' ? t('rule.value_false') : option}
-                    checked={conditionChoices.includes(option)}
+                    key={option.value}
+                    label={conditionOptionLabel(option)}
+                    checked={conditionChoices.includes(option.value)}
                     onChange={(e) => setConditionChoices((current) => (
-                      e.target.checked ? [...current, option] : current.filter((value) => value !== option)
+                      e.target.checked ? [...current, option.value] : current.filter((value) => value !== option.value)
                     ))}
                 />
               ))}
@@ -257,8 +265,8 @@ export function RuleForm({
           <select className="input mt-1" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)}>
             <option value="">{t('rule.choose')}</option>
             {conditionOptions.map((option) => (
-              <option key={option} value={option}>
-                {option === 'true' ? t('rule.value_true') : option === 'false' ? t('rule.value_false') : option}
+              <option key={option.value} value={option.value}>
+                {conditionOptionLabel(option)}
               </option>
             ))}
           </select>

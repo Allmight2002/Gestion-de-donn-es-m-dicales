@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260815090000_template_rule_visibility.sql`
-- Tables : 41 · Policies RLS : 61 · Triggers : 60 · Fonctions : 249
+- Dernière migration incluse : `20260815161000_option_key_repair.sql`
+- Tables : 41 · Policies RLS : 61 · Triggers : 61 · Fonctions : 257
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -770,12 +770,14 @@ Policies :
 | description | text | oui |  |
 | default_value | text | oui |  |
 | missing_reasons | ARRAY | non | `ARRAY['non_fait'::text, 'inconnu'::text, 'non_applicable'::text]` |
+| allowed_options | jsonb | oui |  |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
 - `tf_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
 
 Triggers :
+- `trg_template_field_allowed_options` — BEFORE INSERT/UPDATE → `enforce_template_field_allowed_options()`
 - `trg_template_field_default_value` — BEFORE INSERT/UPDATE → `enforce_template_field_default_value()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
@@ -992,6 +994,7 @@ Triggers :
 | encrypt_iv | bytea, bytea, bytea, text | INVOKER | c |
 | enforce_observation_model_on_base | — | DEFINER | plpgsql |
 | enforce_observation_model_on_template_field | — | DEFINER | plpgsql |
+| enforce_template_field_allowed_options | — | DEFINER | plpgsql |
 | enforce_template_field_default_value | — | INVOKER | plpgsql |
 | enforce_template_field_missing_reasons | — | DEFINER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
@@ -1073,6 +1076,7 @@ Triggers :
 | mission_accounts | p_base_id uuid | DEFINER | plpgsql |
 | mission_accounts_owned | p_base_id uuid | DEFINER | plpgsql |
 | mission_credential_envelope | p_access_id uuid | DEFINER | plpgsql |
+| option_key_repair_plan | p_base_id uuid | DEFINER | sql |
 | owns_base_with_member | p_user uuid | DEFINER | sql |
 | owns_template | p_template uuid | DEFINER | sql |
 | patient_age_at | p_patient_id uuid, p_at date, p_unit text | DEFINER | plpgsql |
@@ -1096,6 +1100,7 @@ Triggers :
 | pgp_sym_encrypt | text, text, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
+| preview_option_key_repair | p_base_id uuid | DEFINER | plpgsql |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
@@ -1110,9 +1115,11 @@ Triggers :
 | reject_cross_sectional_encounter_submission | — | DEFINER | plpgsql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
+| repair_option_keys | p_base_id uuid, p_confirm boolean | DEFINER | plpgsql |
 | replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |
 | require_server_inspection | — | DEFINER | sql |
+| resolve_option_key | p_options jsonb, p_value text | INVOKER | sql |
 | restore_deleted_base | p_base_id uuid | DEFINER | plpgsql |
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
@@ -1136,6 +1143,8 @@ Triggers :
 | soft_delete_patient | p_patient_id uuid, p_reason text | DEFINER | plpgsql |
 | submit_curation_request | p_task_id uuid | DEFINER | plpgsql |
 | template_field_in_use | p_field_id uuid | DEFINER | sql |
+| template_field_option_keys | p_options jsonb | INVOKER | sql |
+| template_field_options_from_values | p_values jsonb, p_previous jsonb | INVOKER | sql |
 | template_of_version | p_version uuid | DEFINER | sql |
 | template_version_fields_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_in_use | p_version_id uuid | DEFINER | sql |
@@ -1153,6 +1162,7 @@ Triggers :
 | update_patient_identity | p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
+| update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |

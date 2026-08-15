@@ -17,6 +17,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useCohortRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { CohortSummary, FilterCondition, FilterDefinition, FilterOp } from '../../data/cohorts';
 import { getTemplateFields } from '../../data/templates';
+import { fieldOptions } from '../../domain/fieldOptions';
 import type { TemplateField } from '../../data/types';
 import type { MessageKey } from '../../i18n/messages';
 import { EmptyState } from '../../components/EmptyState';
@@ -289,11 +290,16 @@ export function CohortBuilder() {
     if (draftOp === 'in') {
       return <input className="input" aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} />;
     }
-    if (selectedField?.type === 'select' && Array.isArray(selectedField.allowedValues)) {
+    // L30 : le filtre porte sur la valeur STOCKEE (le code) ; c'est le libelle qui est
+    // propose. Les options desactivees restent offertes ici : filtrer sur une modalite
+    // retiree du formulaire reste legitime, les fiches anciennes la portent encore.
+    if (selectedField?.type === 'select' && fieldOptions(selectedField).length > 0) {
       return (
         <select className="input" aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
           <option value="">—</option>
-          {selectedField.allowedValues.map((option) => <option key={String(option)} value={String(option)}>{String(option)}</option>)}
+          {fieldOptions(selectedField).map((option) => (
+            <option key={option.valueKey} value={option.valueKey}>{option.label}</option>
+          ))}
         </select>
       );
     }

@@ -67,7 +67,7 @@ Signalé le 2026-07-22 : la directrice des urgences d'un hôpital tchadien décr
 - **4a — noyau, faisable en configuration, zéro code** : le modèle de gabarits gère déjà les listes contrôlées (`select`/`multiselect` + `allowed_values`, contrôlées serveur, `tables.sql:56`). Une base à liste contrôlée (diagnostic, motif, issue) résout l'uniformité par construction et se monte dès maintenant (données fictives). Règle d'or : diagnostic = `select`, **jamais** texte libre.
 - **4b — programme, nouvelle ingénierie** : autocomplétion searchable (le `select` est un menu déroulant, inadapté au-delà de ~30 items), référentiel gouverné (ID stable ≠ libellé, synonymes, workflow de validation, historique de fusion, CIM), et plusieurs diagnostics **avec attributs par diagnostic** (principal/associé, certitude, admission/sortie) — impossible dans le modèle plat actuel.
 
-**Corrections MedData au design proposé par un LLM tiers** : l'âge ne se stocke pas via « date de naissance » en zone analytique (calculé depuis l'identité, ou saisi comme âge déclaré si registre sans identité) ; l'ID stable n'existe pas aujourd'hui (le `select` stocke le libellé → un renommage casse l'historique).
+**Corrections MedData au design proposé par un LLM tiers** : l'âge ne se stocke pas via « date de naissance » en zone analytique (calculé depuis l'identité, ou saisi comme âge déclaré si registre sans identité) ; l'ID stable n'existait pas (le `select` stockait le libellé → un renommage cassait l'historique). **Corrigé le 2026-08-15 par le lot L30** : une option porte désormais un code interne stable, le libellé reste modifiable, et une option retirée est désactivée sans détruire l'historique.
 
 **Décision du 2026-07-26 : on passe directement au 4b.** Deux pistes ont été écartées en séance. La liste courte **par service** d'abord : un patient hospitalisé en cardiologie a aussi son diabète et son insuffisance rénale à coder, donc restreindre la liste au service recrée le manque qu'on veut supprimer. Le menu déroulant ensuite, inadapté au-delà de quelques dizaines d'entrées. Reste la recherche incrémentale — le typeahead.
 
@@ -394,6 +394,84 @@ primitives, compléter `disabled:` là où il manque, et prévoir un état « en
 boutons d'action longue. Recoupe l'**idée 10** (finition de l'interface) et se traite dans le même
 lot ; une couleur d'appui n'est pas une animation, le garde-fou `prefers-reduced-motion` n'a pas
 d'objet ici.
+
+### Lot « export et analyse » du 2026-08-15 (D13 à D16)
+
+Relevés en auditant l'export **type de variable par type de variable**, à la demande du porteur.
+**Consignés, pas à corriger dans l'immédiat.** Chaque symptôme a été vérifié dans le code, et D14 a
+été prouvé en exécutant la bibliothèque XLSX réellement embarquée.
+
+⚠️ **D13, D14 et D15 touchent `exportContract.ts`, c'est-à-dire le fichier de
+[L22](lots-paralleles.md).** Ne pas les traiter dans un lot séparé tant que L22 n'est pas livré :
+soit les intégrer à L22, soit les enchaîner après lui. D16 porte sur `ExportPanel.tsx` et recoupe
+**D8**.
+
+| # | Défaut | Cause | Ampleur | Statut |
+|---|---|---|---|---|
+| D13 | **L'ordre des colonnes de l'export ne suit pas l'ordre du formulaire** — et ne l'a jamais suivi. Réordonner les variables dans le gabarit ne change rien au fichier produit | L'Edge Function charge pourtant les variables triées (`.order('display_order')`, `generate-export/handler.ts:516`), mais `mergeExportFields` retrie ensuite **alphabétiquement sur la clé technique** (`exportContract.ts:150`). `displayOrder` ne sert que de départage interne quand une même variable existe dans plusieurs versions de gabarit. Aucun test n'affirme l'ordre alphabétique : cela ressemble à un oubli, pas à une décision | Petite (Edge) | Signalé 2026-08-15 |
+| D14 | **Toutes les valeurs partent en cellules TEXTE dans le `.xlsx`** : un score de Glasgow ne se moyenne pas, ne se met pas en graphique, et R le lit en `character` | `formatValue` est typé `: string` et renvoie une chaîne pour toute valeur, nombres compris (`exportContract.ts:101`). SheetJS déduit le type de cellule du type JS reçu | Moyenne (Edge, **impact analyse**) | Signalé 2026-08-15 |
+| D15 | **Le code de donnée manquante occupe la colonne de valeur** : `encounter__gcs_admission` contient `8`, `12`, puis `non_fait`. La colonne devient mixte, donc non numérique — même après D14 | Choix **délibéré**, assumé en commentaire dans `buildDictionary` : « c'est le code qui sera lu par l'analyse ». MedData refuse `-99` en stockage, mais réintroduit la raison dans la colonne de valeur à l'export | Moyenne (Edge + **décision produit**) | Signalé 2026-08-15 |
+| D16 | **Un export vide ne s'explique pas** : la base contient des patients, le fichier n'en contient aucun, et rien ne dit pourquoi | Trois causes se cumulent sans être énoncées : l'export ne retient que les fiches `curated` (`handler.ts:352`, `:404`, `:437`) ; une base **transversale** n'a aucune rencontre, donc « 1 ligne / rencontre » et « Portée des rencontres » n'y donneront jamais rien ; la cohorte de patients exige un patient `curated` alors que la cohorte de rencontres n'exige que la rencontre (`20260616092100_cohort_eligibility.sql`), d'où des résultats opposés selon le mode | Moyenne (front) | Signalé 2026-08-15 |
+
+#### D14 — types de cellules dans le XLSX
+
+Preuve obtenue en appelant `json_to_sheet` de la bibliothèque embarquée avec la même valeur passée
+des deux façons :
+
+```
+gcs       type=s   valeur="8"     <- ce que MedData produit
+gcs_num   type=n   valeur=8       <- ce qu'il faudrait
+```
+
+`t=s` est une cellule texte. Deux précisions :
+
+- **le CSV n'est pas concerné** : le format n'a pas de types, `8` écrit comme texte s'y relit en
+  numérique dans Excel comme dans R. Le défaut est propre au XLSX ;
+- **la plomberie est déjà prête** : `neutralizeExportTable` préserve explicitement les valeurs
+  non-chaînes (`exportContract.ts:303`) et `NUMERIC_LITERAL` (`:289`) a été écrit pour ne pas
+  abîmer les littéraux numériques signés. L'intention numérique existe dans le code ; seul
+  `formatValue` la force en chaîne. **Aucun test n'affirme le type des cellules produites.**
+
+Correction attendue : renvoyer le type natif pour les champs `number`, `integer` et `boolean`, plus
+la méta `age_value` — et ajouter les tests de type de cellule qui manquent.
+
+**Les dates : ne rien changer.** Le texte ISO se trie correctement, se relit sans ambiguïté dans R,
+SPSS et Stata, et échappe aux conversions automatiques d'Excel qui interprètent parfois une date au
+format américain. Le documenter au dictionnaire suffit.
+
+#### D15 — emplacement de la raison de valeur manquante
+
+**Ce n'est pas une régression de [L33](lots-paralleles.md).** L33 a rendu les raisons configurables
+par variable et les a documentées au dictionnaire (`missing_reasons`) ; il n'a pas déplacé leur
+emplacement dans la feuille de données, et n'avait pas à le faire.
+
+Correction proposée : la colonne de valeur reste propre et vide, une colonne parallèle
+`missing__<column>` porte la raison. Rien n'est perdu et la colonne redevient exploitable. C'est un
+**changement de forme du fichier**, donc une décision du porteur, pas un correctif silencieux.
+
+#### D16 — dire pourquoi l'export est vide
+
+`ExportPanel.tsx:48` charge déjà la base, donc connaît le modèle d'observation sans requête
+supplémentaire. Avant de générer, l'écran pourrait masquer « 1 ligne / rencontre » et « Portée des
+rencontres » sur une base transversale, afficher le contenu réel de la cohorte — tant de patients,
+tant de rencontres — et énoncer que seules les fiches finalisées sont exportées.
+
+Un export vide doit s'expliquer lui-même. C'est ça, le défaut ; le filtre `curated`, lui, est
+légitime.
+
+#### Même famille — les variables `multiselect` à l'export
+
+[L22](lots-paralleles.md) ne traite que le champ de terminologie multivalué. Un `multiselect` sort
+aujourd'hui en **une seule colonne** `"a; b"` (`exportContract.ts:111`) : ni compte, ni colonnes
+indicatrices, ni feuille dédiée. Il a donc déjà le problème d'analyse que les listes de diagnostics
+vont résoudre, et deux variables également « listes » s'exporteraient différemment sans que rien ne
+l'explique.
+
+Réserve à écrire avant de l'aligner : l'identité d'une valeur de `multiselect` est la **chaîne**
+recopiée dans le gabarit, pas un code stable. Renommer une option dans une nouvelle version
+scinderait la colonne indicatrice en deux réalités distinctes. C'est
+[L30](lots-paralleles.md) — codes internes stables pour les options de liste — qui lève cette
+réserve ; à traiter avant, ou à documenter comme limite.
 
 ## Comment utiliser cette liste
 

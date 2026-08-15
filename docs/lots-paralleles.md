@@ -74,9 +74,9 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L27** | Texte d'aide par variable | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `exportContract.ts` | L29 |
 | ~~L28~~ | ~~Valeur par défaut et unicité~~ | **Livré le 2026-08-14** (valeur proposée ; `is_unique` écartée) | — |
 | **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
-| **L30** | Options de liste : code interne stable | migration + conversion, `FieldForm.tsx`, `FieldInput.tsx`, `exportContract.ts` | L29 |
+| ~~L30~~ | ~~Options de liste : code interne stable~~ | **Livré le 2026-08-15** (`allowed_options` fait foi, `allowed_values` conservé en miroir) | — |
 | **L31** | Sections personnalisables | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `ImportData.tsx`, `TemplateFromFile.tsx`, `templateLibrary.ts`, `seed.sql`, `exportContract.ts` | L29 |
-| **L32** | Affichage conditionnel | migration, `RuleForm.tsx`, `EncounterFields.tsx`, `validation.ts`, `exportContract.ts` | L28, L29 |
+| ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
 | ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
@@ -466,21 +466,33 @@ Voir son formulaire tel que le verra la personne qui saisit, sans créer un pati
 surtout en vue mobile, où l'ordre des variables et la longueur des sections décident du confort
 réel. À lancer en parallèle de n'importe quel autre lot.
 
-### L30 — Options de liste : code interne stable
+### L30 — Options de liste : code interne stable — **livré**
 
-**Défaut déjà consigné** dans [`idees-post-readiness.md`](idees-post-readiness.md) §4 : le `select`
-stocke le **libellé**, pas un code. Corriger une option — `hematome` en `hématome` — rend les
-fiches déjà saisies invalides à la prochaine écriture et scinde une modalité en deux dans les
-statistiques.
+Livré le 2026-08-15. Une option devient `{ value_key, label, is_active }` dans une **nouvelle**
+colonne `allowed_options` ; `allowed_values` est **conservée en miroir** des codes, comme
+`allow_missing_codes` l'est à L33 — sans quoi une PWA non rafraîchie rendrait « [object Object] »
+dans chaque menu déroulant, et toute la validation serveur aurait été à réécrire.
 
-C'est le même problème que le référentiel de terminologie a résolu pour les diagnostics, resté
-entier pour les listes ordinaires. Le lot lui applique la même solution : `allowed_values` devient
-une liste d'objets `{ value_key, label, is_active }`, le code part en base, le libellé reste
-modifiable, et une option retirée peut être désactivée sans détruire l'historique.
+**Le code d'une option déjà en service est la chaîne elle-même, verbatim.** Les fiches portent donc
+déjà leur code : ni les données, ni les règles de cohérence, ni les filtres de cohorte enregistrés,
+ni les valeurs proposées ne sont réécrits. La migration est purement additive.
 
-Il emporte donc une **conversion des données existantes**, avec les mêmes exigences que L26 :
-aperçu en lecture seule, opt-in, idempotence, journalisation. Surface base : appliquer
-`meddata-db-safety`.
+Sur une variable **déjà utilisée**, renommer un libellé, ajouter une option, en désactiver une et
+les réordonner deviennent possibles ; retirer une option ou changer un code restent refusés. Avant
+ce lot, `guard_template_field_update` refusait **toute** modification de la liste dès qu'une donnée
+existait : corriger `hematome` était impossible, pas seulement dangereux.
+
+La conversion (`preview_option_key_repair` / `repair_option_keys`) ne réécrit donc pas les fiches
+saines : elle **répare les orphelines** laissées par les renommages antérieurs au lot. Aperçu en
+lecture seule, opt-in, transactionnelle par enregistrement, idempotente par construction, tracée
+dans `field_change_log` sous la source `option_key_repair`. Une valeur non rapprochable bloque sa
+fiche et est rapportée. Détail dans
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md).
+
+État antérieur, pour mémoire — **défaut consigné** dans
+[`idees-post-readiness.md`](idees-post-readiness.md) §4 : le `select` stockait le **libellé**, pas
+un code. Corriger une option scindait une modalité en deux dans les statistiques, sans que rien ne
+le signale.
 
 ### L31 — Sections personnalisables
 
@@ -497,20 +509,25 @@ sections par défaut de toute base existante.
 Ne pas confondre la **section** — le regroupement visuel du formulaire, propre à chaque base — avec
 la **catégorie de donnée** ; les deux peuvent coexister, et c'est même l'intérêt du lot.
 
-### L32 — Affichage conditionnel
+### L32 — Affichage conditionnel — **livré**
 
-Le moteur de règles sait aujourd'hui rendre un champ **obligatoire** sous condition
+Livré le 2026-08-15. Une troisième forme de règle, dans la même structure JSON à liste blanche
+d'opérateurs : `{ if: {field, operator, value}, then: {field, operator: 'visible'} }`.
+`then.operator` n'accepte que deux verbes, `required` et `visible`.
+
+**La décision bloquante est tranchée : la valeur d'un champ qui devient masqué est effacée, jamais
+en silence.** L'écran annonce le nombre de valeurs concernées et n'efface qu'à l'enregistrement ;
+abandonner la saisie ne perd donc rien. Une condition non vérifiable vaut « masqué ». L'ordre
+d'évaluation — visibilité d'abord, obligation ensuite — est imposé par la base, et les cycles sont
+refusés à l'enregistrement de la règle. Détail dans
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md).
+
+État antérieur, pour mémoire : le moteur savait rendre un champ **obligatoire** sous condition
 (`then.operator = 'required'`, seul opérateur autorisé), comparer deux champs, et distinguer
-blocage et avertissement. Il ne sait pas **montrer ou masquer**.
+blocage et avertissement. Il ne savait pas **montrer ou masquer**.
 
 C'est le plus gros gain ressenti sur un formulaire long : ne montrer les variables d'imagerie que
 si une imagerie a été faite.
-
-**Décision à prendre avant de coder, et elle ne peut pas être remise à plus tard** : que devient la
-valeur d'un champ déjà renseigné qui devient masqué ? Conservée et exportée — au risque qu'une
-analyse compte une valeur que l'utilisateur croit avoir retirée. Ou effacée — au risque de perdre
-une saisie sur un simple changement d'avis. Les deux se défendent ; le choix change la migration,
-l'export et les tests. C'est le piège classique des systèmes de recueil clinique.
 
 Le moteur reste une **structure JSON à liste blanche d'opérateurs**, jamais évaluée comme du code :
 c'est la ligne posée par `templateRules.ts` et il ne faut pas en sortir.
@@ -559,12 +576,12 @@ avant ses lots.
 - **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
 - **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
 
-## Ordre suggéré — état au 2026-08-14
+## Ordre suggéré — état au 2026-08-15
 
 **Niveau atteint.** L1–L19 sont livrés, à l'exception de L14. L11 a été intégré puis promu sur
 `main` (PR #176, #189, correctifs #192 et #194). Dans la famille moteur de formulaires, L27,
-L28, L29 et L33 sont également livrés (PR #191/#193, #197/#198, #199/#200 et #201–#204).
-Cela porte à **vingt-deux lots livrés/intégrés**.
+L28, L29, L33, L32 et L30 sont également livrés (PR #191/#193, #197/#198, #199/#200, #201–#204,
+#205–#206 et #207). Cela porte à **vingt-quatre lots livrés/intégrés**.
 
 **Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
@@ -577,9 +594,12 @@ L14 seul, puis la famille diagnostics.
    2. ~~**L29**~~ — prévisualisation — **livré** ;
    3. ~~**L28**~~ — valeur proposée — **livré** ;
    4. ~~**L33**~~ — raisons de valeur manquante par variable — **livré le 2026-08-14** ;
-   5. **L32** — affichage conditionnel, **prochain lot** après décision explicite sur les valeurs masquées ;
-   6. **L30** — codes d'options, après le reste car il convertit des données existantes ;
-   7. **L31** — sections personnalisables, dernier et plus lourd.
+   5. ~~**L32**~~ — affichage conditionnel — **livré le 2026-08-15** ; la décision sur les valeurs
+      masquées est prise : effacées, jamais en silence ;
+   6. ~~**L30**~~ — codes d'options — **livré le 2026-08-15** ; la reprise est additive (le code
+      d'une option en service est la chaîne elle-même), la conversion ne traite que les
+      orphelines ;
+   7. **L31** — sections personnalisables, **prochain lot**, dernier et plus lourd.
 2. **L14**, seul, après les autres ajouts de textes i18n.
 3. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
    1. **L20 seul** — surface base, prérequis de tous les autres ;
@@ -597,7 +617,7 @@ L14 seul, puis la famille diagnostics.
 > `FieldForm.tsx` ; L22 et L27, L30, L31, L32, L33 touchent tous `exportContract.ts`. En pratique,
 > **une seule session à la fois sur le moteur de formulaires**, sauf L29 ; ne pas entamer L21/L22
 > avant la fin de cette file. La priorité retenue exclut donc tout lancement de la famille
-> diagnostics avant L32, L30 et L31 ; L14 suit ensuite seul.
+> diagnostics avant L30 et L31 ; L14 suit ensuite seul.
 
 ### Leçon des trois lots menés en parallèle
 

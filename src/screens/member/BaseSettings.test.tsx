@@ -96,3 +96,70 @@ describe('BaseSettings', () => {
     expect(await screen.findByLabelText(/Modèle d’observation/)).toBeDisabled();
   });
 });
+
+// L30 — la conversion des valeurs orphelines est un OPT-IN en deux gestes : analyser ne
+// modifie rien, convertir ne part qu'au second clic. Une valeur non rapprochable est
+// affichee telle quelle et n'est jamais devinee.
+describe('BaseSettings — conversion des codes d options (L30)', () => {
+  const previewAvecOrphelines = {
+    records: { repairable: 2, blocked: 1 },
+    fields: [{
+      entity: 'encounter' as const,
+      fieldKey: 'evolution',
+      label: 'Évolution',
+      repairableRecords: 2,
+      blockedRecords: 1,
+      mappings: [{ from: 'hematome', to: 'hématome', occurrences: 2 }],
+      blockingValues: [{ value: 'traumatisme crânien', occurrences: 1 }],
+    }],
+  };
+
+  function repo(over: Partial<BaseRepository>) {
+    return { async getBase() { return ownerListing; }, ...over } as unknown as BaseRepository;
+  }
+
+  test('analyser n appelle jamais la conversion et montre ce qui sera fait', async () => {
+    const user = userEvent.setup();
+    const previewOptionKeyRepair = vi.fn(async () => previewAvecOrphelines);
+    const repairOptionKeys = vi.fn();
+    renderSettings(repo({ previewOptionKeyRepair, repairOptionKeys }));
+
+    await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
+
+    expect(previewOptionKeyRepair).toHaveBeenCalledWith('b1');
+    expect(repairOptionKeys).not.toHaveBeenCalled();
+    expect(await screen.findByText(/« hematome »/)).toBeInTheDocument();
+    expect(screen.getByText(/traumatisme crânien/)).toBeInTheDocument();
+  });
+
+  test('convertir n est propose qu apres l analyse, et rejoue l apercu ensuite', async () => {
+    const user = userEvent.setup();
+    const previewOptionKeyRepair = vi.fn()
+      .mockResolvedValueOnce(previewAvecOrphelines)
+      .mockResolvedValue({ records: { repairable: 0, blocked: 1 }, fields: previewAvecOrphelines.fields });
+    const repairOptionKeys = vi.fn(async () => ({
+      repairedRecords: 2, repairedFields: 2, blockedRecords: 1, skippedRecords: 0, failedRecords: 0,
+    }));
+    renderSettings(repo({ previewOptionKeyRepair, repairOptionKeys }));
+
+    expect(screen.queryByRole('button', { name: 'Convertir les fiches' })).toBeNull();
+    await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
+    await user.click(await screen.findByRole('button', { name: 'Convertir les fiches' }));
+
+    expect(repairOptionKeys).toHaveBeenCalledWith('b1');
+    expect(await screen.findByRole('status')).toHaveTextContent('2 fiche(s) converties');
+    // L'apercu est rejoue : ce qui reste a l'ecran est l'etat reel, pas la photo d'avant.
+    expect(previewOptionKeyRepair).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Convertir les fiches' })).toBeNull();
+  });
+
+  test('rien a convertir : le dit, et n offre pas la conversion', async () => {
+    const user = userEvent.setup();
+    const previewOptionKeyRepair = vi.fn(async () => ({ records: { repairable: 0, blocked: 0 }, fields: [] }));
+    renderSettings(repo({ previewOptionKeyRepair }));
+
+    await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
+    expect(await screen.findByText(/Aucune fiche à convertir/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Convertir les fiches' })).toBeNull();
+  });
+});

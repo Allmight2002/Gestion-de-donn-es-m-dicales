@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
-import { VALUE_SET_LIBRARY, mergeValues, parseAllowedValues } from '../../domain/valueSetLibrary';
+import { VALUE_SET_LIBRARY } from '../../domain/valueSetLibrary';
+import { fieldOptions, makeValueKey, optionKeys, type FieldOption } from '../../domain/fieldOptions';
+import { OptionsEditor } from './OptionsEditor';
 import { makeProposalField } from '../../domain/proposalField';
 import { NOW_TOKEN, TODAY_TOKEN, defaultValueRisk, supportsDefaultValue } from '../../domain/fieldDefaults';
 import { HISTORIC_MISSING_CODES, MISSING_CODES, allowedMissingReasons, type MissingCode } from '../../domain/validation';
@@ -46,9 +48,10 @@ export function FieldForm({
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
   const [encounterTypes, setEncounterTypes] = useState<string[]>(initial?.encounterTypes ?? []);
-  // Une valeur par ligne : lisible au-dela de quelques items, et seul format qui autorise
-  // une valeur contenant une virgule (cf. parseAllowedValues).
-  const [allowedValues, setAllowedValues] = useState((initial?.allowedValues ?? []).join('\n'));
+  // L30 : la liste n'est plus du texte libre mais des options { code, libelle, actif }.
+  // `fieldOptions` retombe sur l'ancienne liste de chaines quand la variable est
+  // anterieure au lot -- cle = libelle, exactement le comportement d'avant.
+  const [options, setOptions] = useState<FieldOption[]>(() => fieldOptions(initial));
   const [valueSetId, setValueSetId] = useState('');
   const [withProposal, setWithProposal] = useState(false);
   const [minValue, setMinValue] = useState(initial?.minValue != null ? String(initial.minValue) : '');
@@ -86,7 +89,9 @@ export function FieldForm({
   // fiche), RETIRER est refuse par le serveur. L'interface grise donc les seules raisons
   // deja en service, au lieu de laisser tenter un retrait qui finira en erreur.
   const lockedReasons = lockStructural && initial ? allowedMissingReasons(initial) : [];
-  const parsedValues = parseAllowedValues(allowedValues);
+  // Seules les options ACTIVES peuvent etre proposees par defaut : proposer une modalite
+  // qu'on vient de retirer du formulaire n'aurait pas de sens (la base le refuse aussi).
+  const activeOptions = options.filter((o) => o.isActive);
 
   // La proposition n'a de sens que sur les types ou elle epargne une frappe (jamais sur une
   // liste multiple ni sur un diagnostic : la base les refuse aussi).
@@ -108,19 +113,29 @@ export function FieldForm({
   function insertValueSet() {
     const set = VALUE_SET_LIBRARY.find((s) => s.id === valueSetId);
     if (!set) return;
-    setAllowedValues(mergeValues(parsedValues, set.values).join('\n'));
+    setOptions((current) => {
+      const next = [...current];
+      for (const value of set.values) {
+        if (next.some((o) => o.label.toLocaleLowerCase() === value.toLocaleLowerCase())) continue;
+        next.push({ valueKey: makeValueKey(value, optionKeys(next)), label: value, isActive: true });
+      }
+      return next;
+    });
     setValueSetId('');
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
-    const values = parsedValues;
+    const listed = isChoice && options.length > 0 ? options : null;
     const built: NewField = {
       fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null, scope: isCrossSectional ? 'patient' : scope, section, type, required,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
       encounterTypes: !isCrossSectional && scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
-      allowedValues: isChoice && values.length > 0 ? values : null,
+      // Les DEUX partent : les options font foi, le miroir des codes garde lisible une
+      // copie de l'application qui n'a pas encore ete rafraichie.
+      allowedOptions: listed,
+      allowedValues: listed ? optionKeys(listed) : null,
       minValue: isNumber ? numOrNull(minValue) : null,
       maxValue: isNumber ? numOrNull(maxValue) : null,
       unit: isNumber && unit.trim() ? unit.trim() : null,
@@ -139,7 +154,7 @@ export function FieldForm({
       setLabel('');
       setDescription('');
       setEncounterTypes([]);
-      setAllowedValues('');
+      setOptions([]);
       setMinValue('');
       setMaxValue('');
       setUnit('');
@@ -223,40 +238,31 @@ export function FieldForm({
         containerClassName="sm:self-end"
       />
 
+      {/* L30 : l'editeur reste ACTIF sur une variable deja utilisee -- c'est tout l'objet
+          du lot. Seule la suppression d'une option y est retiree ; renommer, ajouter,
+          desactiver et reordonner restent possibles et ne touchent aucune fiche. */}
       {isChoice && (
-        <div className="flex flex-col gap-3 sm:col-span-2 lg:col-span-3">
-          <label className="form-label">
-            {t('admin.allowed_values')}
-            <textarea
-              className={inputCls}
-              rows={4}
-              value={allowedValues}
-              onChange={(e) => setAllowedValues(e.target.value)}
-              disabled={lockStructural}
-              placeholder={t('admin.allowed_values_ph')}
-            />
-          </label>
-          <p className="text-xs text-slate-500">{parsedValues.length} {t('admin.values_count')}</p>
-          {!lockStructural && (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="form-label">
-                {t('admin.value_set')}
-                <select className={inputCls} value={valueSetId} onChange={(e) => setValueSetId(e.target.value)}>
-                  <option value="">{t('admin.value_set_none')}</option>
-                  {VALUE_SET_LIBRARY.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.domain} · {s.name} ({s.values.length})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="button" onClick={insertValueSet} disabled={!valueSetId} className="btn-secondary">
-                {t('admin.value_set_insert')}
-              </button>
-              <p className="text-xs text-slate-500">{t('admin.value_set_hint')}</p>
-            </div>
-          )}
-        </div>
+        <fieldset className="flex flex-col gap-3 sm:col-span-2 lg:col-span-3">
+          <legend className="px-1 text-xs font-medium text-slate-600">{t('admin.options')}</legend>
+          <OptionsEditor options={options} onChange={setOptions} locked={lockStructural} />
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="form-label">
+              {t('admin.value_set')}
+              <select className={inputCls} value={valueSetId} onChange={(e) => setValueSetId(e.target.value)}>
+                <option value="">{t('admin.value_set_none')}</option>
+                {VALUE_SET_LIBRARY.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.domain} · {s.name} ({s.values.length})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={insertValueSet} disabled={!valueSetId} className="btn-secondary">
+              {t('admin.value_set_insert')}
+            </button>
+            <p className="text-xs text-slate-500">{t('admin.value_set_hint')}</p>
+          </div>
+        </fieldset>
       )}
       {/* Soupape a la CREATION seulement : elle cree un second champ. Les diagnostics comme
           les listes restent controles ; la proposition est donc stockee a cote, jamais dedans. */}
@@ -359,8 +365,9 @@ export function FieldForm({
                 onChange={(e) => setDefaultValue(e.target.value)}
               >
                 <option value="">{t('admin.field_default_none')}</option>
-                {parsedValues.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+                {/* La valeur enregistree est le CODE ; c'est le libelle qui s'affiche. */}
+                {activeOptions.map((o) => (
+                  <option key={o.valueKey} value={o.valueKey}>{o.label}</option>
                 ))}
               </select>
             ) : (

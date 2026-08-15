@@ -8,6 +8,7 @@ import type { BaseListing, ObservationModel } from '../../data/bases';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SectionCard } from '../../components/SectionCard';
+import { OptionKeyRepairPanel } from './OptionKeyRepairPanel';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import {
@@ -217,6 +218,12 @@ export function BaseSettings() {
             </select>
           </label>
         </SectionCard>
+      )}
+
+      {/* L30 : reserve a qui peut corriger les donnees de la base -- c'est une ecriture,
+          meme si elle ne change que le codage. Le serveur le verifie de toute facon. */}
+      {(isOwner || listing.permissions.canEditStructuredData) && id && (
+        <OptionKeyRepairPanel baseId={id} />
       )}
 
       <SectionCard title={t('offline.available')} description={t('offline.identity_unavailable')} icon={Download}>

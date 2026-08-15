@@ -335,7 +335,6 @@ export const messages = {
     'admin.type': 'Type',
     'admin.required': 'Obligatoire',
     'admin.allowed_values': 'Valeurs autorisées',
-    'admin.allowed_values_ph': 'Une valeur par ligne',
     'admin.values_count': 'valeur(s) définie(s)',
     'admin.value_set': "Liste prête à l'emploi",
     'admin.value_set_none': '— Choisir une liste —',
@@ -901,6 +900,41 @@ export const messages = {
       'Ne proposez que les raisons qui ont un sens pour cette variable. « Non fait » convient à un examen, pas à un sexe ; « non documenté » dit que personne n’a cherché, là où « inconnu » dit qu’on a cherché sans trouver.',
     'admin.missing_reasons_locked':
       'Cette variable porte déjà des données : les raisons déjà en service ne peuvent plus être retirées. En ajouter reste possible ; pour en retirer, créez une nouvelle version du jeu de variables.',
+    // --- Options de liste à code stable (L30) -----------------------------------
+    'admin.options': 'Options de la liste',
+    'admin.options_hint':
+      'Le libellé est ce que voit la personne qui saisit ; le code est ce qui part dans les données. Corriger un libellé ne change aucune fiche déjà remplie et ne scinde aucune statistique.',
+    'admin.option_label': 'Libellé de l’option',
+    'admin.option_code': 'code',
+    'admin.option_add': 'Ajouter l’option',
+    'admin.option_new_ph': 'Nouvelle option',
+    'admin.option_up': 'Monter',
+    'admin.option_down': 'Descendre',
+    'admin.option_remove': 'Supprimer',
+    'admin.option_deactivate': 'Désactiver',
+    'admin.option_reactivate': 'Réactiver',
+    'admin.option_inactive': 'désactivée',
+    'admin.option_inactive_hint':
+      'Une option désactivée n’est plus proposée à la saisie. Les fiches qui la portent restent lisibles et modifiables.',
+    'admin.options_locked_hint':
+      'Cette variable porte déjà des données : une option ne peut plus être supprimée, seulement désactivée. La renommer et en ajouter restent possibles.',
+    'admin.options_empty': 'Aucune option définie : la liste sera libre.',
+    'admin.option_duplicate': 'Cette option existe déjà dans la liste.',
+    // --- Conversion des valeurs orphelines (L30) --------------------------------
+    'options.repair_title': 'Codes des options de liste',
+    'options.repair_intro':
+      'Un renommage antérieur peut avoir laissé des fiches portant une valeur qui ne figure plus dans sa liste. Cet aperçu les recense ; rien n’est modifié tant que vous ne lancez pas la conversion.',
+    'options.repair_preview': 'Analyser les fiches',
+    'options.repair_run': 'Convertir les fiches',
+    'options.repair_none': 'Aucune fiche à convertir : toutes les valeurs correspondent à une option.',
+    'options.repair_repairable': 'fiche(s) convertible(s)',
+    'options.repair_blocked': 'fiche(s) bloquée(s)',
+    'options.repair_blocked_hint':
+      'Ces valeurs ne correspondent à aucune option, ou à plusieurs. Elles ne sont jamais devinées : ajoutez l’option manquante à la variable, puis relancez l’analyse.',
+    'options.repair_mapping': 'sera remplacé par',
+    'options.repair_done': 'Conversion terminée',
+    'options.repair_result':
+      '{repaired} fiche(s) converties, {blocked} bloquée(s), {skipped} ignorée(s), {failed} en échec.',
   },
   en: {
     'observation.model_label': 'Observation model',
@@ -1231,7 +1265,6 @@ export const messages = {
     'admin.type': 'Type',
     'admin.required': 'Required',
     'admin.allowed_values': 'Allowed values',
-    'admin.allowed_values_ph': 'One value per line',
     'admin.values_count': 'value(s) defined',
     'admin.value_set': 'Ready-made list',
     'admin.value_set_none': '— Choose a list —',
@@ -1797,6 +1830,41 @@ export const messages = {
       'Only offer reasons that make sense for this variable. "Not done" fits an examination, not a sex; "not documented" says nobody looked, where "unknown" says someone looked and did not find.',
     'admin.missing_reasons_locked':
       'This variable already holds data: reasons already in service can no longer be removed. Adding remains possible; to remove one, create a new version of the variable set.',
+    // --- List options with a stable code (L30) -----------------------------------
+    'admin.options': 'List options',
+    'admin.options_hint':
+      'The label is what the person entering data sees; the code is what goes into the data. Fixing a label changes no existing record and splits no statistic.',
+    'admin.option_label': 'Option label',
+    'admin.option_code': 'code',
+    'admin.option_add': 'Add option',
+    'admin.option_new_ph': 'New option',
+    'admin.option_up': 'Move up',
+    'admin.option_down': 'Move down',
+    'admin.option_remove': 'Remove',
+    'admin.option_deactivate': 'Deactivate',
+    'admin.option_reactivate': 'Reactivate',
+    'admin.option_inactive': 'inactive',
+    'admin.option_inactive_hint':
+      'An inactive option is no longer offered during entry. Records holding it stay readable and editable.',
+    'admin.options_locked_hint':
+      'This variable already holds data: an option can no longer be removed, only deactivated. Renaming and adding remain possible.',
+    'admin.options_empty': 'No option defined: the list will be free text.',
+    'admin.option_duplicate': 'That option is already in the list.',
+    // --- Orphan value conversion (L30) -------------------------------------------
+    'options.repair_title': 'List option codes',
+    'options.repair_intro':
+      'An earlier rename may have left records holding a value that no longer appears in its list. This preview lists them; nothing is changed until you run the conversion.',
+    'options.repair_preview': 'Analyse records',
+    'options.repair_run': 'Convert records',
+    'options.repair_none': 'No record to convert: every value matches an option.',
+    'options.repair_repairable': 'record(s) convertible',
+    'options.repair_blocked': 'record(s) blocked',
+    'options.repair_blocked_hint':
+      'These values match no option, or several. They are never guessed: add the missing option to the variable, then run the analysis again.',
+    'options.repair_mapping': 'will be replaced by',
+    'options.repair_done': 'Conversion finished',
+    'options.repair_result':
+      '{repaired} record(s) converted, {blocked} blocked, {skipped} skipped, {failed} failed.',
   },
 } as const;
 
