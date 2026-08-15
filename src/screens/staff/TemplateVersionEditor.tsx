@@ -7,7 +7,7 @@ import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/
 import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
 import { FormPreview } from './FormPreview';
-import { RuleForm, RuleSummary } from './RuleForm';
+import { RuleForm, RuleSummary, ruleHasSeverity } from './RuleForm';
 import { SkeletonList } from '../../components/Skeleton';
 
 interface Loaded {
@@ -339,7 +339,11 @@ export function TemplateVersionEditor({
             <li key={r.id} className="card flex items-start justify-between gap-3 px-3 py-2">
               <RuleSummary rule={r.rule} fields={fields} />
               <span className="flex items-center gap-2">
-                <span className="text-xs text-slate-500">{t(`severity.${r.severity}`)}</span>
+                {/* Une regle d'affichage ne bloque ni n'avertit : lui coller « Bloquant » la
+                    decrirait faux. */}
+                {ruleHasSeverity(r.rule) && (
+                  <span className="text-xs text-slate-500">{t(`severity.${r.severity}`)}</span>
+                )}
                 {editable && (
                   <button
                     onClick={() => void run(() => repo.deleteRule(r.id))}
@@ -357,6 +361,7 @@ export function TemplateVersionEditor({
             <RuleForm
               fields={fields}
               busy={busy}
+              existingRules={rules}
               onSubmit={(rule, message, severity) => void run(() => repo.addRule(version.id, rule, message, severity))}
             />
           </div>

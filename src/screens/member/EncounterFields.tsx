@@ -55,6 +55,28 @@ export function FieldLabel({ field, prefilled = false }: { field: TemplateField;
 export const fieldAppliesToType = (f: TemplateField, type: string) =>
   !f.encounterTypes || f.encounterTypes.length === 0 || f.encounterTypes.includes(type);
 
+/**
+ * L32 — annonce les valeurs qui seront retirees a l'enregistrement parce que leur variable
+ * n'est plus affichee. La decision du lot est l'effacement, JAMAIS EN SILENCE : ce bandeau
+ * est l'annonce, et rien n'est efface tant que la fiche n'est pas enregistree.
+ */
+export function HiddenValuesNotice({
+  removedKeys,
+  fields,
+}: {
+  removedKeys: readonly string[];
+  fields: TemplateField[];
+}) {
+  const { t } = useI18n();
+  if (removedKeys.length === 0) return null;
+  const labels = removedKeys.map((key) => fields.find((f) => f.fieldKey === key)?.label ?? key);
+  return (
+    <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      {t('form.hidden_removed').replace('{n}', String(removedKeys.length))} {labels.join(', ')}
+    </div>
+  );
+}
+
 // Regroupement visuel commun aux variables patient et rencontre. La section de
 // secours evite qu'une ancienne variable incomplete disparaisse du formulaire.
 export function SectionedFields({
@@ -91,6 +113,7 @@ export function EncounterFields({
   onChange,
   onRemove,
   prefilledKeys,
+  hiddenKeys,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -98,10 +121,14 @@ export function EncounterFields({
   onRemove: (key: string) => void;
   /** Cles preremplies par le jeu de variables et pas encore modifiees (L28). */
   prefilledKeys?: Set<string>;
+  /** Cles masquees par une regle d'affichage (L32) : elles ne sont pas rendues du tout. */
+  hiddenKeys?: ReadonlySet<string>;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
-  const visibleFields = fields.filter((field) => !companionKeys.has(field.fieldKey));
+  const visibleFields = fields.filter(
+    (field) => !companionKeys.has(field.fieldKey) && !hiddenKeys?.has(field.fieldKey),
+  );
   return (
     <SectionedFields
       fields={visibleFields}

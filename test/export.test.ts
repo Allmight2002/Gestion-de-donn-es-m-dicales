@@ -143,3 +143,34 @@ describe('raisons de valeur manquante : une seule liste (L33)', () => {
     expect(table.rows[0]['patient__nd_test']).toBe('non_documente');
   });
 });
+
+describe('variable masquee par une regle d\'affichage (L32)', () => {
+  // L'export n'evalue AUCUNE regle, et c'est voulu : une regle d'affichage ne peut pas etre
+  // ajoutee a une version de gabarit qui porte deja des donnees (`guard_validation_rule_inuse`),
+  // et une fiche finalisee ne peut pas porter la valeur d'un champ masque (controle serveur).
+  // La colonne masquee arrive donc simplement ABSENTE des donnees.
+  const imagerie: ExportField[] = [
+    { fieldKey: 'imagerie_faite', label: 'Imagerie faite', scope: 'encounter', section: 'paraclinique', type: 'boolean', unit: null, allowedValues: null, templateVersionIds: [v1] },
+    { fieldKey: 'imagerie_type', label: 'Type d imagerie', scope: 'encounter', section: 'paraclinique', type: 'text', unit: null, allowedValues: null, templateVersionIds: [v1] },
+  ];
+  const rows: ExportEncounter[] = [
+    { id: 'e-avec', patientCode: 'P-1', templateVersionId: v1, encounterDate: '2026-01-01', encounterType: 'consultation', data: { imagerie_faite: true, imagerie_type: 'scanner' } },
+    { id: 'e-sans', patientCode: 'P-1', templateVersionId: v1, encounterDate: '2026-01-02', encounterType: 'consultation', data: { imagerie_faite: false } },
+  ];
+
+  test('la colonne reste presente, et la cellule masquee est VIDE', () => {
+    const table = buildEncounterExport(rows, imagerie);
+    // La colonne ne disparait pas : d'autres fiches montrent la variable, et une forme de
+    // fichier qui change d'un export a l'autre casse le script d'analyse.
+    expect(table.columns).toContain('encounter__imagerie_type');
+    expect(table.rows.find((r) => r.encounter_id === 'e-avec')).toMatchObject({ encounter__imagerie_type: 'scanner' });
+    expect(table.rows.find((r) => r.encounter_id === 'e-sans')).toMatchObject({ encounter__imagerie_type: '' });
+  });
+
+  test('la cellule vide ne se confond pas avec un code de valeur manquante', () => {
+    const csv = toCsv(buildEncounterExport(rows, imagerie));
+    // Une cellule vide dit « sans objet » par construction ; elle ne doit pas emprunter le
+    // vocabulaire des raisons de valeur manquante, qui decrivent une saisie deliberee.
+    expect(csv).not.toMatch(/non_applicable|non_documente/);
+  });
+});
