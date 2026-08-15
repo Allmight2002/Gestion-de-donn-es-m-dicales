@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260814170000_template_field_missing_reasons.sql`
-- Tables : 41 · Policies RLS : 61 · Triggers : 60 · Fonctions : 245
+- Dernière migration incluse : `20260815090000_template_rule_visibility.sql`
+- Tables : 41 · Policies RLS : 61 · Triggers : 60 · Fonctions : 249
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -923,11 +923,13 @@ Triggers :
 | assert_curated_complete | — | INVOKER | plpgsql |
 | assert_data_valid | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_export_columns_safe | p_template_version_id uuid, p_columns text[] | INVOKER | plpgsql |
+| assert_no_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_no_unknown_fields | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_upload_path_scope | p_base_id uuid, p_bucket text, p_path text | DEFINER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
+| assert_visibility_acyclic | p_version_id uuid, p_rule jsonb, p_rule_id uuid | INVOKER | plpgsql |
 | base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid | DEFINER | plpgsql |
 | base_completeness_stats | p_base_id uuid, p_mode text | INVOKER | sql |
 | base_completion_queue | p_base_id uuid, p_limit integer | INVOKER | sql |
@@ -991,7 +993,7 @@ Triggers :
 | enforce_observation_model_on_base | — | DEFINER | plpgsql |
 | enforce_observation_model_on_template_field | — | DEFINER | plpgsql |
 | enforce_template_field_default_value | — | INVOKER | plpgsql |
-| enforce_template_field_missing_reasons | — | INVOKER | plpgsql |
+| enforce_template_field_missing_reasons | — | DEFINER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
@@ -1118,7 +1120,8 @@ Triggers :
 | rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |
 | rule_apply_op | op text, a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
-| rule_holds | rule jsonb, data jsonb | INVOKER | plpgsql |
+| rule_holds | rule jsonb, data jsonb | INVOKER | sql |
+| rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_value_present | v jsonb | INVOKER | sql |
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
 | scrub_client_error_text | p_value text, p_max_length integer | INVOKER | plpgsql |
@@ -1158,3 +1161,4 @@ Triggers :
 | value_cmp | a text, b text | INVOKER | plpgsql |
 | value_documented | v jsonb | INVOKER | sql |
 | value_missing_code | v jsonb | INVOKER | sql |
+| visibility_hidden_fields | p_version uuid, p_data jsonb | INVOKER | plpgsql |
