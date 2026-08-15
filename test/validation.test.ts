@@ -8,6 +8,8 @@ import {
   isMissing,
   missingCodeOf,
   allowedMissingReasons,
+  hiddenFieldKeys,
+  withoutHiddenValues,
 } from '../src/domain/validation';
 import type { TemplateField } from '../src/data/types';
 
@@ -140,5 +142,119 @@ describe('raisons de valeur manquante par variable (L33)', () => {
   test('l ordre canonique est impose, quel que soit l ordre de saisie', () => {
     const f = field({ fieldKey: 'x', type: 'text', missingReasons: ['non_documente', 'non_fait'] });
     expect(allowedMissingReasons(f)).toEqual(['non_fait', 'non_documente']);
+  });
+});
+
+// --- L32 : affichage conditionnel --------------------------------------------
+
+describe('hiddenFieldKeys (L32)', () => {
+  const show = (driver: string, target: string, value: unknown = true) => ({
+    rule: {
+      if: { field: driver, operator: 'equals', value },
+      then: { field: target, operator: 'visible' },
+    },
+  });
+
+  test('sans regle d\'affichage, rien n\'est masque', () => {
+    expect([...hiddenFieldKeys([], { a: 1 })]).toEqual([]);
+  });
+
+  test('condition non verifiable -> masque (formulaire vierge)', () => {
+    expect([...hiddenFieldKeys([show('imagerie_faite', 'imagerie_type')], {})]).toEqual(['imagerie_type']);
+  });
+
+  test('condition fausse -> masque ; condition vraie -> affiche', () => {
+    const rules = [show('imagerie_faite', 'imagerie_type')];
+    expect(hiddenFieldKeys(rules, { imagerie_faite: false }).has('imagerie_type')).toBe(true);
+    expect(hiddenFieldKeys(rules, { imagerie_faite: true }).has('imagerie_type')).toBe(false);
+  });
+
+  test('cascade : une variable pilote masquee est lue comme absente', () => {
+    const rules = [show('imagerie_faite', 'imagerie_type'), show('imagerie_type', 'imagerie_date', 'scanner')];
+    // `imagerie_type` porte une valeur mais reste masque : la date ne doit pas reapparaitre.
+    const hidden = hiddenFieldKeys(rules, { imagerie_type: 'scanner' });
+    expect(hidden.has('imagerie_type')).toBe(true);
+    expect(hidden.has('imagerie_date')).toBe(true);
+  });
+
+  test('plusieurs regles sur une meme variable se cumulent en ET', () => {
+    const rules = [show('a', 'cible'), show('b', 'cible')];
+    expect(hiddenFieldKeys(rules, { a: true }).has('cible')).toBe(true);
+    expect(hiddenFieldKeys(rules, { a: true, b: true }).has('cible')).toBe(false);
+  });
+
+  test('une valeur manquante codifiee ne verifie pas une condition', () => {
+    const rules = [show('imagerie_faite', 'imagerie_type')];
+    expect(hiddenFieldKeys(rules, { imagerie_faite: makeMissing('inconnu') }).has('imagerie_type')).toBe(true);
+  });
+
+  test('un cycle ne fait pas boucler l\'evaluation', () => {
+    // Refuse a l'enregistrement de la regle ; ici on verifie seulement que la saisie
+    // n'a pas a s'en defendre par une boucle infinie.
+    const hidden = hiddenFieldKeys([show('a', 'b'), show('b', 'a')], {});
+    expect([...hidden].sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('visibilite d\'abord, obligation ensuite (L32)', () => {
+  const requis = field({ fieldKey: 'imagerie_type', type: 'text', required: true });
+
+  test('un champ requis MASQUE n\'est pas reclame', () => {
+    expect(validateValues([requis], {}, true, new Set(['imagerie_type']))).toEqual([]);
+  });
+
+  test('le meme champ redevient obligatoire une fois affiche', () => {
+    expect(validateValues([requis], {}, true)).toEqual([
+      { fieldKey: 'imagerie_type', message: 'Champ obligatoire' },
+    ]);
+  });
+
+  test('une regle « obligatoire sous condition » visant un champ masque ne bloque pas', () => {
+    const rules = [{
+      rule: { if: { field: 'poids', operator: 'greater_than', value: 0 }, then: { field: 'imagerie_date', operator: 'required' } },
+      message: 'Date d imagerie requise',
+      severity: 'block' as const,
+    }];
+    expect(evaluateRules(rules, { poids: 70 }).blocking).toEqual(['Date d imagerie requise']);
+    expect(evaluateRules(rules, { poids: 70 }, new Set(['imagerie_date'])).blocking).toEqual([]);
+  });
+
+  test('une regle d\'affichage ne bloque jamais, meme enregistree en « bloquant »', () => {
+    const rules = [{
+      rule: { if: { field: 'a', operator: 'equals', value: true }, then: { field: 'b', operator: 'visible' } },
+      message: null,
+      severity: 'block' as const,
+    }];
+    expect(evaluateRules(rules, {}).blocking).toEqual([]);
+  });
+
+  test('une comparaison portant sur un champ masque devient inapplicable', () => {
+    const rules = [{
+      rule: { operator: 'greater_or_equal', left_field: 'sortie', right_field: 'admission' },
+      message: 'Sortie avant admission',
+      severity: 'block' as const,
+    }];
+    const values = { sortie: '2026-01-01', admission: '2026-02-01' };
+    expect(evaluateRules(rules, values).blocking).toEqual(['Sortie avant admission']);
+    expect(evaluateRules(rules, values, new Set(['sortie'])).blocking).toEqual([]);
+  });
+});
+
+describe('withoutHiddenValues (L32)', () => {
+  test('retire les valeurs masquees et NOMME ce qui disparait', () => {
+    const res = withoutHiddenValues({ a: 1, b: 2, c: 3 }, new Set(['b', 'c']));
+    expect(res.values).toEqual({ a: 1 });
+    expect(res.removed.sort()).toEqual(['b', 'c']);
+  });
+
+  test('une valeur manquante codifiee est une saisie deliberee : elle se compte', () => {
+    const res = withoutHiddenValues({ b: makeMissing('refus') }, new Set(['b']));
+    expect(res.removed).toEqual(['b']);
+  });
+
+  test('une cle vide ne se compte pas : il n\'y a rien a annoncer', () => {
+    const res = withoutHiddenValues({ b: '', c: [] }, new Set(['b', 'c']));
+    expect(res.values).toEqual({});
+    expect(res.removed).toEqual([]);
   });
 });

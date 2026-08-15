@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-13**
+- Établi le 2026-07-27 · **révisé le 2026-08-14**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -55,15 +55,15 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L8~~ | ~~Suppression et restauration de bases (P2)~~ | **Livré le 2026-08-01** | — |
 | ~~L9~~ | ~~Modèle d'observation d'une base~~ | **Livré le 2026-08-01** (migration + UI + release) | — |
 | ~~L10~~ | ~~Comptes de mission (P4)~~ | **Livré le 2026-07-29** | — |
-| **L11** | Observabilité des erreurs (P3) | migration, `ErrorBoundary.tsx`, nouvel écran admin | L4, L12, L13, L15 |
-| **L12** | Traitement des propositions | nouvel écran, `BaseLayout.tsx` | L4, L11, L13, L15 |
-| **L13** | Rafraîchissement de la copie locale | `terminologyCache.ts`, `TerminologyInput.tsx` | L11, L12, L15, L18 |
+| ~~L11~~ | ~~Observabilité des erreurs (P3)~~ | **Livré et promu sur `main`** (PR #176, #189, #192, #194) | — |
+| ~~L12~~ | ~~Traitement des propositions~~ | **Livré** (PR #172) | — |
+| ~~L13~~ | ~~Rafraîchissement de la copie locale~~ | **Livré** (PR #180, #181) | — |
 | **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
 | ~~L15~~ | ~~Comptes de mission : identifiant et mot de passe générés~~ | **Livré le 2026-08-11** (`009ed3c`) | — |
 | ~~L16~~ | ~~Compte de mission : création et correction de l'identité~~ | **Livré le 2026-08-11** (`dc90392`, base + interface) | — |
 | ~~L17~~ | ~~Messages d'erreur des Edge Functions~~ | **Livré** (`6a453b9`, `src/lib/edgeFunctionError.ts`) | — |
-| **L18** | Cohorte dynamique : compteur vivant et « Figer maintenant » | `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
-| **L19** | Archivage d'une cohorte | migration, `src/data/cohorts.ts`, `CohortBuilder.tsx` | L11, L12, L15, L16 |
+| ~~L18~~ | ~~Cohorte dynamique : compteur vivant et « Figer maintenant »~~ | **Livré** (PR #159, #160) | — |
+| ~~L19~~ | ~~Archivage d'une cohorte~~ | **Livré, preuve technique de production** (PR #179, #182, #184, #185, #187) | — |
 | **L20** | Listes de diagnostics : surface base | migration, `test/validation.test.ts`, `test/templates.admin.test.ts`, `src/data/types.ts`, `src/data/templates.ts` | **seul** (prérequis de L21 à L26) |
 | **L21** | Listes de diagnostics : saisie et constructeur | `TerminologyInput.tsx`, `FieldForm.tsx`, `FieldInput.tsx`, `ValueInput.tsx`, `src/domain/validation.ts` | L22, L24, L25 — **jamais avec L4 ni L13** |
 | **L22** | Listes de diagnostics : export | `exportContract.ts`, `handler.ts` et leurs tests Deno | L21, L23, L24, L25 |
@@ -559,34 +559,29 @@ avant ses lots.
 - **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
 - **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
 
-## Ordre suggéré — état au 2026-08-13
+## Ordre suggéré — état au 2026-08-14
 
-**Niveau atteint.** L4 (PR #169), L12 (PR #172, puis snapshot #174), L13 (PR #180), L18
-(PR #159) et L19 (PR #179, schema #184, promotion #185) sont intégrés. L19 a aussi sa preuve de
-production technique avec données fictives : staging `31709473891`, puis production `31711004972`
-pour le même SHA `3092302`. Avec L1–L10 et L15–L17, cela porte à **dix-huit lots livrés/intégrés**.
+**Niveau atteint.** L1–L19 sont livrés, à l'exception de L14. L11 a été intégré puis promu sur
+`main` (PR #176, #189, correctifs #192 et #194). Dans la famille moteur de formulaires, L27,
+L28, L29 et L33 sont également livrés (PR #191/#193, #197/#198, #199/#200 et #201–#204).
+Cela porte à **vingt-deux lots livrés/intégrés**.
 
-**Travail actif.** L11 (observabilité, PR #176) est le seul lot fonctionnel encore en travail
-local. Sa PR est actuellement `DIRTY` : résoudre d'abord les trois conflits de fusion
-(`docs/schema-etat-final.md`, `docs/suivi-execution-feuille-route.md`,
-`test/security-definer-acl.test.ts`) puis relancer la CI. L19 et son correctif E2E associé sont
-clos. Aucun lot de la famille formulaires ou diagnostics n'est encore lancé.
+**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
+`.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-L'ordre suivant reflète la priorité confirmée : **terminer les chantiers actifs, puis traiter la
-famille moteur de formulaires avant L13/L14 et avant la famille diagnostics.**
+L'ordre suivant reflète la priorité confirmée : terminer la famille moteur de formulaires, puis
+L14 seul, puis la famille diagnostics.
 
-1. **Terminer L11**. Il reste parallélisable avec la famille formulaires ; son prompt impose ses
-   décisions de confidentialité avant toute finalisation.
-2. **Famille « moteur de formulaires »**, avant les diagnostics :
+1. **Famille « moteur de formulaires »**, un lot à la fois :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
    2. ~~**L29**~~ — prévisualisation — **livré** ;
    3. ~~**L28**~~ — valeur proposée — **livré** ;
    4. ~~**L33**~~ — raisons de valeur manquante par variable — **livré le 2026-08-14** ;
-   5. **L32** — affichage conditionnel, après décision explicite sur les valeurs masquées ;
+   5. **L32** — affichage conditionnel, **prochain lot** après décision explicite sur les valeurs masquées ;
    6. **L30** — codes d'options, après le reste car il convertit des données existantes ;
    7. **L31** — sections personnalisables, dernier et plus lourd.
-3. **L14**, seul, après les autres ajouts de textes i18n.
-4. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
+2. **L14**, seul, après les autres ajouts de textes i18n.
+3. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
    1. **L20 seul** — surface base, prérequis de tous les autres ;
    2. puis en parallèle **L21, L22 et L24** — à condition que **L4 et L13** soient soldés ou non
       lancés ;
@@ -594,17 +589,15 @@ famille moteur de formulaires avant L13/L14 et avant la famille diagnostics.**
       qui ne dépend de rien ;
    4. **L26 seul, en dernier**, après sauvegarde vérifiée.
 
-> L13 et L19 sont déjà soldés : L21 peut suivre L20, et L23 peut suivre L20 sans attendre de
-> lot de cohorte.
-> Sinon la famille des listes de diagnostics immobilise quatre lots existants pendant toute sa
-> durée. L22, L24 et L25 restent lançables sans attendre : ils ne partagent aucun fichier avec le
-> reste du plan.
+> L13, L18 et L19 sont déjà soldés. Après L20, L21, L22 et L24 peuvent donc démarrer ensemble ;
+> L23 et L25 suivent ensuite. Cette famille reste reportée après les formulaires, car L21 et L22
+> partagent des fichiers avec cette dernière.
 
 > **Les deux familles se gênent aussi entre elles** : L21 et L27, L28, L30, L31, L33 touchent tous
 > `FieldForm.tsx` ; L22 et L27, L30, L31, L32, L33 touchent tous `exportContract.ts`. En pratique,
 > **une seule session à la fois sur le moteur de formulaires**, sauf L29 ; ne pas entamer L21/L22
-> avant la fin de cette file. Les lots vraiment parallélisables pendant ce temps sont L11, L14,
-> L23, L24, L25 et L29.
+> avant la fin de cette file. La priorité retenue exclut donc tout lancement de la famille
+> diagnostics avant L32, L30 et L31 ; L14 suit ensuite seul.
 
 ### Leçon des trois lots menés en parallèle
 

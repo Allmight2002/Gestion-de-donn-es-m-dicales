@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
-import { evaluateRules, validateValues } from '../../domain/validation';
+import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
 import { FieldInput } from '../member/FieldInput';
@@ -94,7 +94,13 @@ export function FormPreview({
 
   // Les champs compagnons « valeur proposee » sont rendus AVEC leur source, jamais isolement.
   const patientCompanions = proposalKeysOf(patientFields);
-  const patientVisible = patientFields.filter((f) => !patientCompanions.has(f.fieldKey));
+  // L32 — l'apercu montre EXACTEMENT ce que la saisie montrera, regles d'affichage comprises :
+  // c'est la seule facon de verifier une regle qu'on vient d'ecrire sans creer de fiche d'essai.
+  const patientHidden = useMemo(() => hiddenFieldKeys(rules, patientValues), [rules, patientValues]);
+  const encounterHidden = useMemo(() => hiddenFieldKeys(rules, encounterValues), [rules, encounterValues]);
+  const patientVisible = patientFields.filter(
+    (f) => !patientCompanions.has(f.fieldKey) && !patientHidden.has(f.fieldKey),
+  );
 
   /**
    * Rejoue les controles du formulaire de rencontre — `validateValues` et `evaluateRules`,
@@ -103,16 +109,20 @@ export function FormPreview({
    * aucun appel serveur, aucune ecriture.
    */
   function runChecks() {
-    const applicableData = Object.fromEntries(
-      Object.entries(encounterValues).filter(([k]) => applicable.some((f) => f.fieldKey === k)),
-    );
+    const applicableData = withoutHiddenValues(
+      Object.fromEntries(
+        Object.entries(encounterValues).filter(([k]) => applicable.some((f) => f.fieldKey === k)),
+      ),
+      encounterHidden,
+    ).values;
     const requireComplete = status === 'curated';
-    const fieldErrors = validateValues(applicable, applicableData, requireComplete).map(
+    const fieldErrors = validateValues(applicable, applicableData, requireComplete, encounterHidden).map(
       (fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`,
     );
     const ruleEval = evaluateRules(
       rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
       applicableData,
+      encounterHidden,
     );
     const blocking = [...fieldErrors, ...(requireComplete ? ruleEval.blocking : [])];
     if (!encounterDate) blocking.unshift(t('encounter.date'));
@@ -291,6 +301,7 @@ export function FormPreview({
                   <p className="text-sm text-slate-500">{t('preview.no_field_for_type')}</p>
                 ) : (
                   <EncounterFields
+                    hiddenKeys={encounterHidden}
                     fields={applicable}
                     values={encounterValues}
                     onChange={(k, v) => setEncounterValues((p) => ({ ...p, [k]: v }))}

@@ -1,18 +1,18 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Send } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import { getTemplateFields } from '../../data/templates';
-import type { TemplateField } from '../../data/types';
+import { hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
+import type { TemplateField, ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
-import { FieldLabel, SectionedFields } from './EncounterFields';
+import { FieldLabel, HiddenValuesNotice, SectionedFields } from './EncounterFields';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
@@ -41,6 +41,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const maySubmitToCuration = !isMissionAccount(profile);
 
   const [fields, setFields] = useState<TemplateField[]>([]);
+  const [rules, setRules] = useState<ValidationRule[]>([]);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [canViewIdentity, setCanViewIdentity] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -91,7 +92,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         setError(t('common.error'));
         return;
       }
-      const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
+      // L32 : les regles d'affichage voyagent avec les champs ; sans elles l'ecran de creation
+      // montrerait des variables que le formulaire de suivi masque.
+      const version = await templates.getVersion(base.base.currentTemplateVersionId);
+      const fields = version.fields;
+      setRules(version.rules);
       setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       setCanViewIdentity(base.role === 'owner' || base.permissions.canViewIdentity);
       const patientFields = fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder);
@@ -118,6 +123,13 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // L32 — une variable masquee ne se saisit pas et sa valeur ne part pas au serveur.
+  const { hidden, removed, data: permanentData } = useMemo(() => {
+    const hiddenKeys = hiddenFieldKeys(rules, permanent);
+    const stripped = withoutHiddenValues(permanent, hiddenKeys);
+    return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
+  }, [rules, permanent]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -173,7 +185,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         phone: canViewIdentity ? (phone || null) : null,
         address: canViewIdentity ? (address || null) : null,
         externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
-        permanentData: permanent,
+        permanentData,
       });
       toast(t('toast.patient_saved')); // UI-2
       navigate(`/bases/${baseId}/patients/${created.id}`);
@@ -198,7 +210,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   // Une proposition est toujours rendue avec sa source. Cela vaut aussi pour les donnees
   // permanentes : le texte libre reste dans le champ compagnon, jamais dans le diagnostic.
   const companionKeys = proposalKeysOf(fields);
-  const visibleFields = fields.filter((field) => !companionKeys.has(field.fieldKey));
+  const visibleFields = fields.filter(
+    (field) => !companionKeys.has(field.fieldKey) && !hidden.has(field.fieldKey),
+  );
 
   return (
     <section className="max-w-2xl space-y-5 sm:space-y-6">
@@ -343,6 +357,8 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             />
           )
         )}
+
+        {mode === 'manual' && <HiddenValuesNotice removedKeys={removed} fields={fields} />}
 
         <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">

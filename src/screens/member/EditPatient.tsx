@@ -1,13 +1,13 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
-import { validateValues, evaluateRules } from '../../domain/validation';
+import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
-import { EncounterFields } from './EncounterFields';
+import { EncounterFields, HiddenValuesNotice } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -65,13 +65,25 @@ export function EditPatient() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
+  const { hidden, removed, data: submittedData } = useMemo(() => {
+    const hiddenKeys = hiddenFieldKeys(rules, values);
+    const stripped = withoutHiddenValues(values, hiddenKeys);
+    return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
+  }, [rules, values]);
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!baseId || !patientId) return;
     const block = [
       // En brouillon : on n'exige PAS la completude (mais on valide les valeurs renseignees).
-      ...validateValues(fields, values, status !== 'draft').map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
-      ...evaluateRules(rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })), values).blocking,
+      ...validateValues(fields, submittedData, status !== 'draft', hidden)
+        .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
+      ...evaluateRules(
+        rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
+        submittedData,
+        hidden,
+      ).blocking,
     ];
     if (!reason.trim()) block.unshift(t('encounter.reason_required'));
     setBlocking(block);
@@ -79,7 +91,7 @@ export function EditPatient() {
 
     setBusy(true);
     try {
-      const saved = await patients.updatePatientData(patientId, values, status, reason.trim(), baseVersion);
+      const saved = await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
       setBaseVersion(saved.version);
       toast(t('toast.patient_saved')); // UI-2
       back();
@@ -122,6 +134,7 @@ export function EditPatient() {
           <EncounterFields
             fields={fields}
             values={values}
+            hiddenKeys={hidden}
             onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
             onRemove={(key) => setValues((current) => {
               const { [key]: _removed, ...remaining } = current;
@@ -129,6 +142,8 @@ export function EditPatient() {
             })}
           />
         )}
+
+        <HiddenValuesNotice removedKeys={removed} fields={fields} />
 
         <label className="flex flex-col text-sm">
           <span className="font-medium text-slate-700">{t('encounter.reason')} <span className="text-red-500">*</span></span>

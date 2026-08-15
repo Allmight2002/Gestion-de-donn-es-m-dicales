@@ -1,15 +1,17 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
 import { displayFieldValue, type TemplateField, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
-import { validateValues, evaluateRules, isMissing, missingCodeOf } from '../../domain/validation';
+import {
+  validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues, isMissing, missingCodeOf,
+} from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
-import { EncounterFields } from './EncounterFields';
+import { EncounterFields, HiddenValuesNotice } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
@@ -44,6 +46,13 @@ export function EditEncounter() {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
     return displayFieldValue(v, '—');
   };
+
+  // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
+  const { hidden, removed, data: submittedData } = useMemo(() => {
+    const hiddenKeys = hiddenFieldKeys(rules, values);
+    const stripped = withoutHiddenValues(values, hiddenKeys);
+    return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
+  }, [rules, values]);
 
   const load = useCallback(async () => {
     if (!baseId || !encounterId) return;
@@ -119,10 +128,12 @@ export function EditEncounter() {
     const requireComplete = status === 'curated';
     const ruleEval = evaluateRules(
       rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
-      values,
+      submittedData,
+      hidden,
     );
     const block = [
-      ...validateValues(fields, values, requireComplete).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
+      ...validateValues(fields, submittedData, requireComplete, hidden)
+        .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ...(requireComplete ? ruleEval.blocking : []),
     ];
     if (!reason.trim()) block.unshift(t('encounter.reason_required'));
@@ -136,11 +147,11 @@ export function EditEncounter() {
         // HORS-LIGNE : on met la correction en file d'attente (synchro au retour du reseau).
         await enqueueEncounterUpdate({
           baseId, patientId, encounterId,
-          data: values, reason: reason.trim(), validationStatus: status, baseUpdatedAt,
+          data: submittedData, reason: reason.trim(), validationStatus: status, baseUpdatedAt,
         });
       } else {
         // EN LIGNE : RPC validee, avec verrou optimiste (refuse si la rencontre a change).
-        await patients.updateEncounter(encounterId, values, status, reason.trim(), baseUpdatedAt);
+        await patients.updateEncounter(encounterId, submittedData, status, reason.trim(), baseUpdatedAt);
       }
       toast(t(online ? 'toast.encounter_saved' : 'toast.encounter_queued')); // UI-2
       navigate(`/bases/${baseId}/patients/${patientId}`);
@@ -185,12 +196,15 @@ export function EditEncounter() {
         <EncounterFields
           fields={fields}
           values={values}
+          hiddenKeys={hidden}
           onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
           onRemove={(key) => setValues((current) => {
             const { [key]: _removed, ...remaining } = current;
             return remaining;
           })}
         />
+
+        <HiddenValuesNotice removedKeys={removed} fields={fields} />
 
         <label className="flex flex-col text-sm">
           <span className="font-medium text-slate-700">

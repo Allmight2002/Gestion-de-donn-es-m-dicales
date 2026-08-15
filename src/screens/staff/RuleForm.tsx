@@ -4,6 +4,7 @@ import type { MessageKey } from '../../i18n/messages';
 import {
   COMPARISON_OPERATORS,
   CONDITION_OPERATORS,
+  findVisibilityCycle,
   parseRule,
   type ComparisonOperator,
   type ConditionOperator,
@@ -12,7 +13,7 @@ import {
 import type { RuleSeverity, TemplateField } from '../../data/types';
 import { Checkbox } from '../../components/Checkbox';
 
-type GuidedRuleKind = 'comparison' | 'conditional';
+type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
 type Translate = (key: MessageKey) => string;
 
 const OPERATOR_KEYS: Record<ComparisonOperator, MessageKey> = {
@@ -67,7 +68,14 @@ function ruleSentence(t: Translate, rule: TemplateRule, fields: TemplateField[])
   }
 
   const conditionField = fields.find((field) => field.fieldKey === rule.if.field);
-  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value)}, ${t('rule.then')} ${fieldLabel(fields, rule.then.field)} ${t('rule.required')}.`;
+  const verb = rule.then.operator === 'visible' ? t('rule.visible') : t('rule.required');
+  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value)}, ${t('rule.then')} ${fieldLabel(fields, rule.then.field)} ${verb}.`;
+}
+
+/** Une regle d'affichage ne bloque ni n'avertit : afficher une severite la decrirait mal. */
+export function ruleHasSeverity(rule: unknown): boolean {
+  const parsed = parseRule(serializeRule(rule));
+  return !parsed.ok || parsed.kind !== 'visibility';
 }
 
 function serializeRule(rule: unknown) {
@@ -103,10 +111,13 @@ export function RuleForm({
   fields,
   onSubmit,
   busy,
+  existingRules = [],
 }: {
   fields: TemplateField[];
   onSubmit: (rule: unknown, message: string, severity: RuleSeverity) => void;
   busy?: boolean;
+  /** Regles deja enregistrees sur cette version : sert a refuser un cycle d'affichage. */
+  existingRules?: readonly { rule: unknown }[];
 }) {
   const { t } = useI18n();
   const [kind, setKind] = useState<GuidedRuleKind>('comparison');
@@ -170,7 +181,7 @@ export function RuleForm({
 
     return JSON.stringify({
       if: { field: conditionField, operator: conditionOperator, value },
-      then: { field: requiredField, operator: 'required' },
+      then: { field: requiredField, operator: kind === 'visibility' ? 'visible' : 'required' },
     });
   }
 
@@ -183,8 +194,16 @@ export function RuleForm({
       setError(`${t('admin.rule_invalid')} : ${res.error}`);
       return;
     }
+    // Cycle d'affichage : refuse ici pour l'expliquer en clair, refuse a nouveau en base.
+    const cycle = findVisibilityCycle([...existingRules.map((r) => r.rule), res.value]);
+    if (cycle) {
+      setError(`${t('rule.cycle')} ${cycle.map((key) => fieldLabel(fields, key)).join(' → ')}`);
+      return;
+    }
     setError(null);
-    onSubmit(res.value, message, severity);
+    // Une regle d'affichage ne bloque ni n'avertit : sa severite n'a pas de sens et n'est pas
+    // demandee. On enregistre la valeur par defaut de la colonne, que l'evaluation ignore.
+    onSubmit(res.value, message, kind === 'visibility' ? 'block' : severity);
     resetRuleInputs();
     setMessage('');
   }
@@ -269,6 +288,7 @@ export function RuleForm({
   const canPreview = kind === 'comparison'
     ? comparisonOperator !== '' && leftField !== '' && rightField !== ''
     : conditionOperator !== '' && conditionField !== '' && hasConditionValue && requiredField !== '';
+  const isVisibility = kind === 'visibility';
 
   return (
     <form onSubmit={submit} className="card space-y-4 p-4">
@@ -280,8 +300,15 @@ export function RuleForm({
             <select className="input mt-1" value={kind} onChange={(e) => { setKind(e.target.value as GuidedRuleKind); setError(null); }}>
               <option value="comparison">{t('rule.kind_comparison')}</option>
               <option value="conditional">{t('rule.kind_conditional')}</option>
+              <option value="visibility">{t('rule.kind_visibility')}</option>
             </select>
           </label>
+
+          {isVisibility && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {t('rule.visibility_hint')}
+            </p>
+          )}
 
           {kind === 'comparison' ? (
             <div className="grid gap-3 md:grid-cols-3">
@@ -339,7 +366,7 @@ export function RuleForm({
               </div>
               {conditionValueInput()}
               <label className="flex flex-col text-xs text-slate-600">
-                {t('rule.required_field')}
+                {isVisibility ? t('rule.visible_field') : t('rule.required_field')}
                 <select className="input mt-1" value={requiredField} onChange={(e) => setRequiredField(e.target.value)}>
                   <option value="">{t('rule.choose')}</option>
                   {fieldOptions()}
@@ -361,13 +388,15 @@ export function RuleForm({
           {t('admin.message')}
           <input className="input" value={message} onChange={(e) => setMessage(e.target.value)} />
         </label>
-        <label className="flex flex-col text-xs text-slate-600">
-          {t('admin.severity')}
-          <select className="input" value={severity} onChange={(e) => setSeverity(e.target.value as RuleSeverity)}>
-            <option value="block">{t('severity.block')}</option>
-            <option value="warn">{t('severity.warn')}</option>
-          </select>
-        </label>
+        {!isVisibility && (
+          <label className="flex flex-col text-xs text-slate-600">
+            {t('admin.severity')}
+            <select className="input" value={severity} onChange={(e) => setSeverity(e.target.value as RuleSeverity)}>
+              <option value="block">{t('severity.block')}</option>
+              <option value="warn">{t('severity.warn')}</option>
+            </select>
+          </label>
+        )}
         <button type="submit" disabled={busy} className="btn-primary">
           {t('admin.add_rule')}
         </button>

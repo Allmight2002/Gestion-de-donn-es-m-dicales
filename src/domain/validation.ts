@@ -5,7 +5,12 @@
 //  * évaluation des règles de cohérence JSON (opérateurs whitelist, jamais exécutées
 //    comme du code) -> erreurs bloquantes (block) ou avertissements (warn).
 import { isTerminologyValue, type TemplateField } from '../data/types';
-import { COMPARISON_OPERATORS, CONDITION_OPERATORS, type ConditionOperator } from './templateRules';
+import {
+  COMPARISON_OPERATORS,
+  CONDITION_OPERATORS,
+  visibilityRulesOf,
+  type ConditionOperator,
+} from './templateRules';
 import { MISSING_CODES, sortMissingReasons, type MissingCode } from './export';
 
 // La liste des raisons n'est PAS recopiee ici : elle est importee du contrat d'export, qui
@@ -97,6 +102,9 @@ export interface FieldError {
   message: string;
 }
 
+/** Aucun champ masque : le comportement d'avant L32, et le defaut de tous les appelants. */
+const EMPTY_HIDDEN: ReadonlySet<string> = new Set<string>();
+
 /** Valide un champ ; renvoie un message d'erreur (bloquant) ou null.
  *  requireComplete=false (brouillon) : un champ requis VIDE n'est pas bloquant (completion plus tard) ;
  *  les valeurs RENSEIGNEES restent validees (bornes / type / liste). */
@@ -140,9 +148,20 @@ export function validateField(field: TemplateField, value: unknown, requireCompl
   return null;
 }
 
-export function validateValues(fields: TemplateField[], values: Record<string, unknown>, requireComplete = true): FieldError[] {
+/**
+ * `hidden` : cles MASQUEES par une regle d'affichage (L32). Elles sont sautees entierement —
+ * VISIBILITE D'ABORD, OBLIGATION ENSUITE. Sans cet ordre, un champ que personne ne voit
+ * rendrait la fiche impossible a valider.
+ */
+export function validateValues(
+  fields: TemplateField[],
+  values: Record<string, unknown>,
+  requireComplete = true,
+  hidden: ReadonlySet<string> = EMPTY_HIDDEN,
+): FieldError[] {
   const errors: FieldError[] = [];
   for (const f of fields) {
+    if (hidden.has(f.fieldKey)) continue;
     const e = validateField(f, values[f.fieldKey], requireComplete);
     if (e) errors.push({ fieldKey: f.fieldKey, message: e });
   }
@@ -187,16 +206,79 @@ function applyOp(op: string, a: unknown, b: unknown): boolean {
   }
 }
 
+/**
+ * Cles MASQUEES par les regles d'affichage (L32), pour ces valeurs.
+ *
+ * Trois proprietes tiennent tout le lot :
+ *  - une condition NON VERIFIABLE masque (variable pilote vide) : c'est la lecture stricte de
+ *    « ne montrer l'imagerie que si une imagerie a ete faite » ;
+ *  - plusieurs regles sur une meme variable se cumulent en ET : une seule non satisfaite masque ;
+ *  - une variable pilote elle-meme MASQUEE est lue comme absente, d'ou le point fixe : masquer
+ *    une variable masque en cascade celles qu'elle commande.
+ *
+ * L'ensemble ne fait que grandir a chaque passe et le nombre de passes est borne par le nombre
+ * de regles : la boucle termine meme si un gabarit incoherent avait echappe au controle de
+ * cycles pose a l'enregistrement de la regle.
+ */
+export function hiddenFieldKeys(
+  rules: readonly { rule: unknown }[],
+  values: Record<string, unknown>,
+): Set<string> {
+  const hidden = new Set<string>();
+  const visibility = visibilityRulesOf(rules.map((r) => r.rule));
+  if (visibility.length === 0) return hidden;
+
+  for (let pass = 0; pass <= visibility.length; pass += 1) {
+    let changed = false;
+    for (const rule of visibility) {
+      if (hidden.has(rule.then.field)) continue;
+      const driver = hidden.has(rule.if.field) ? undefined : values[rule.if.field];
+      if (!present(driver) || !applyOp(rule.if.operator, driver, rule.if.value)) {
+        hidden.add(rule.then.field);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return hidden;
+}
+
+/**
+ * Retire les valeurs des champs masques, et NOMME ce qui disparait. La decision du lot est
+ * l'effacement, jamais en silence : l'appelant annonce `removed.length` avant d'enregistrer et
+ * n'efface qu'a l'enregistrement — abandonner la saisie ne perd donc rien.
+ */
+export function withoutHiddenValues(
+  values: Record<string, unknown>,
+  hidden: ReadonlySet<string>,
+): { values: Record<string, unknown>; removed: string[] } {
+  const kept: Record<string, unknown> = {};
+  const removed: string[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    if (!hidden.has(key)) {
+      kept[key] = value;
+      continue;
+    }
+    // Une valeur manquante CODIFIEE (« refus ») est une saisie deliberee : elle se compte.
+    if (!isEmpty(value)) removed.push(key);
+  }
+  return { values: kept, removed };
+}
+
 /** true si la règle est SATISFAITE (pas de violation) pour ces valeurs. */
-function ruleHolds(rule: unknown, values: Record<string, unknown>): boolean {
+function ruleHolds(rule: unknown, values: Record<string, unknown>, hidden: ReadonlySet<string>): boolean {
   if (typeof rule !== 'object' || rule === null) return true;
   const r = rule as Record<string, unknown>;
 
-  // Conditionnelle : { if:{field,operator,value}, then:{field, operator:'required'} }
+  // Conditionnelle : { if:{field,operator,value}, then:{field, operator:'required'|'visible'} }
   if ('if' in r && 'then' in r) {
     const cond = r.if as { field: string; operator: ConditionOperator; value: unknown };
     const then = r.then as { field: string; operator: string };
+    // Une regle d'AFFICHAGE ne se viole pas : elle dit ce qu'on montre, elle n'exige rien.
+    if (then.operator === 'visible') return true;
     if (!CONDITION_OPERATORS.includes(cond.operator)) return true; // opérateur non whitelist -> ignorée
+    // VISIBILITE D'ABORD : ni la condition ni l'exigence ne portent sur un champ masque.
+    if (hidden.has(cond.field) || hidden.has(then.field)) return true;
     const conditionHolds = present(values[cond.field]) && applyOp(cond.operator, values[cond.field], cond.value);
     if (!conditionHolds) return true;
     if (then.operator === 'required') return present(values[then.field]);
@@ -207,6 +289,7 @@ function ruleHolds(rule: unknown, values: Record<string, unknown>): boolean {
   if ('operator' in r) {
     const op = r.operator as string;
     if (!COMPARISON_OPERATORS.includes(op as (typeof COMPARISON_OPERATORS)[number])) return true;
+    if (hidden.has(r.left_field as string) || hidden.has(r.right_field as string)) return true;
     const left = values[r.left_field as string];
     const right = values[r.right_field as string];
     if (!present(left) || !present(right)) return true; // règle inapplicable si un opérande absent
@@ -224,11 +307,12 @@ export interface RuleEvaluation {
 export function evaluateRules(
   rules: { rule: unknown; message: string | null; severity: 'block' | 'warn' }[],
   values: Record<string, unknown>,
+  hidden: ReadonlySet<string> = EMPTY_HIDDEN,
 ): RuleEvaluation {
   const blocking: string[] = [];
   const warnings: string[] = [];
   for (const r of rules) {
-    if (!ruleHolds(r.rule, values)) {
+    if (!ruleHolds(r.rule, values, hidden)) {
       (r.severity === 'block' ? blocking : warnings).push(r.message ?? 'Règle de cohérence non respectée');
     }
   }

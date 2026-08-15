@@ -158,3 +158,71 @@ describe('RuleSummary', () => {
     expect(screen.queryByText(/left_field/)).not.toBeInTheDocument();
   });
 });
+
+describe('RuleForm — regle d\'affichage (L32)', () => {
+  test('assemble une regle d\'affichage sans jamais montrer de JSON', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'intervention_type');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'Chirurgie');
+    await user.selectOptions(screen.getByLabelText('Variable affichée sous condition'), 'operative_report');
+
+    expect(screen.getByText(
+      'Si Type d’intervention est égal à « Chirurgie », alors Compte rendu opératoire est affichée.',
+    )).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        if: { field: 'intervention_type', operator: 'equals', value: 'Chirurgie' },
+        then: { field: 'operative_report', operator: 'visible' },
+      },
+      '',
+      'block',
+    );
+  });
+
+  test('annonce l\'effacement des valeurs, et ne demande pas de severite', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    expect(screen.getByLabelText('Sévérité')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    // Une regle d'affichage ne bloque ni n'avertit : lui demander une gravite serait faux.
+    expect(screen.queryByLabelText('Sévérité')).toBeNull();
+    expect(screen.getByText(/retirée à l’enregistrement/)).toBeInTheDocument();
+  });
+
+  test('refuse un cycle en nommant les variables, avant tout envoi', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm
+          fields={fields}
+          onSubmit={onSubmit}
+          existingRules={[{
+            rule: {
+              if: { field: 'operative_report', operator: 'equals', value: 'x' },
+              then: { field: 'intervention_type', operator: 'visible' },
+            },
+          }]}
+        />
+      </I18nProvider>,
+    );
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'intervention_type');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'Chirurgie');
+    await user.selectOptions(screen.getByLabelText('Variable affichée sous condition'), 'operative_report');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/circulaire/i);
+    expect(screen.getByRole('alert')).toHaveTextContent('Compte rendu opératoire');
+  });
+});
