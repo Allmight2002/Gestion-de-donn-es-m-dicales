@@ -109,6 +109,34 @@ export interface BaseProposalPage {
   hasMore: boolean;
 }
 
+/**
+ * L30 — apercu de la conversion des valeurs orphelines d'une liste.
+ *
+ * Une valeur orpheline est la sequelle d'un renommage anterieur au lot : la fiche porte
+ * une chaine qui ne figure plus dans la liste. `mappings` dit ce qui SERA fait,
+ * `blockingValues` ce qui ne peut pas l'etre -- et qui bloque sa fiche entiere.
+ */
+export interface OptionKeyRepairPreview {
+  records: { repairable: number; blocked: number };
+  fields: {
+    entity: 'patient' | 'encounter';
+    fieldKey: string;
+    label: string;
+    repairableRecords: number;
+    blockedRecords: number;
+    mappings: { from: string; to: string; occurrences: number }[];
+    blockingValues: { value: string; occurrences: number }[];
+  }[];
+}
+
+export interface OptionKeyRepairResult {
+  repairedRecords: number;
+  repairedFields: number;
+  blockedRecords: number;
+  skippedRecords: number;
+  failedRecords: number;
+}
+
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
   listDeletedBases(): Promise<DeletedBase[]>;
@@ -137,6 +165,10 @@ export interface BaseRepository {
   getCompletenessStats(baseId: string, mode?: 'historical' | 'current' | 'both'): Promise<CompletenessRow[]>;
   /** L12 : propositions de valeurs hors liste. RPC paginee reservee au proprietaire de la base. */
   getBaseProposalsPage(baseId: string, limit: number, offset: number): Promise<BaseProposalPage>;
+  /** L30 : apercu EN LECTURE SEULE de la conversion des options de liste. N'ecrit rien. */
+  previewOptionKeyRepair(baseId: string): Promise<OptionKeyRepairPreview>;
+  /** L30 : conversion opt-in. Le serveur refuse d'agir sans confirmation explicite. */
+  repairOptionKeys(baseId: string): Promise<OptionKeyRepairResult>;
 }
 
 type BaseRow = {
@@ -180,6 +212,8 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       softDeleteBase: fail, restoreDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
       setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail,
       getBaseProposalsPage: fail,
+      previewOptionKeyRepair: fail,
+      repairOptionKeys: fail,
     };
   }
 
@@ -367,6 +401,34 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         limit: page.limit ?? limit,
         offset: page.offset ?? offset,
         hasMore: page.hasMore ?? false,
+      };
+    },
+
+    async previewOptionKeyRepair(baseId) {
+      const { data, error } = await client.rpc('preview_option_key_repair', { p_base_id: baseId });
+      if (error) throw error;
+      const preview = (data ?? {}) as Partial<OptionKeyRepairPreview>;
+      return {
+        records: preview.records ?? { repairable: 0, blocked: 0 },
+        fields: preview.fields ?? [],
+      };
+    },
+
+    async repairOptionKeys(baseId) {
+      // La confirmation est portee par l'appel : le serveur refuse toute execution sans
+      // elle, et l'interface ne l'envoie qu'apres avoir montre l'apercu.
+      const { data, error } = await client.rpc('repair_option_keys', {
+        p_base_id: baseId,
+        p_confirm: true,
+      });
+      if (error) throw error;
+      const result = (data ?? {}) as Partial<OptionKeyRepairResult>;
+      return {
+        repairedRecords: result.repairedRecords ?? 0,
+        repairedFields: result.repairedFields ?? 0,
+        blockedRecords: result.blockedRecords ?? 0,
+        skippedRecords: result.skippedRecords ?? 0,
+        failedRecords: result.failedRecords ?? 0,
       };
     },
   };

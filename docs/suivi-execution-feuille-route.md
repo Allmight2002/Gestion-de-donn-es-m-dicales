@@ -1998,3 +1998,266 @@ raisons sur cinq : il devient « Accepter une valeur manquante ».
 Cette branche a aussi porté deux commits de documentation de **L28** (`5e9b542`, `c5effe1`) : son
 rapport était resté non committé dans la copie de travail, avec une section de preuves vide alors
 que le lot était déjà déployé.
+
+## L32 — Affichage conditionnel (2026-08-15)
+
+Le moteur de règles savait rendre une variable **obligatoire** sous condition, comparer deux
+variables et distinguer blocage et avertissement. Il ne savait pas **montrer ou masquer**. Une
+troisième forme de règle s'ajoute aux deux existantes, dans la **même structure JSON à liste
+blanche d'opérateurs**, jamais évaluée comme du code :
+
+```json
+{ "if":   { "field": "imagerie_faite", "operator": "equals", "value": true },
+  "then": { "field": "imagerie_type",  "operator": "visible" } }
+```
+
+`then.operator` n'accepte désormais que deux verbes, et toujours aucun autre : `required`
+(l'existant) et `visible` (ce lot).
+
+### La décision bloquante : la valeur d'un champ masqué est effacée, jamais en silence
+
+C'est le piège classique des systèmes de recueil clinique, et il ne se rattrape pas après coup.
+**Conserver** la valeur ferait raconter deux histoires différentes au formulaire et à l'export :
+une colonne pourrait porter une valeur que le médecin croit avoir retirée, et une analyse la
+compterait. L'incohérence serait silencieuse, donc plus dangereuse que la perte de saisie.
+
+La valeur est donc **effacée**, mais l'action est annoncée avant d'être produite. La variable
+disparaît de l'écran dès que la condition bascule ; la valeur, elle, n'est retirée qu'à
+**l'enregistrement**, après un bandeau qui nomme le nombre de valeurs concernées et les variables
+en cause (« 2 valeur(s) déjà saisie(s) seront retirées à l'enregistrement… »). Abandonner la saisie
+avant d'enregistrer ne perd donc rien. Une valeur manquante codifiée (« refus ») compte comme une
+saisie délibérée et se voit annoncée comme les autres ; une case restée vide n'est pas annoncée,
+puisqu'il n'y a rien à retirer.
+
+### Une condition non vérifiable vaut « masqué »
+
+Lecture stricte de « ne montrer les variables d'imagerie que si une imagerie a été faite » : sur
+une fiche vierge, les variables conditionnelles n'apparaissent pas, et surgissent quand la
+condition devient vraie. Trois propriétés complètent la règle, identiques côté navigateur et côté
+base :
+
+- plusieurs règles portant sur une même variable se cumulent en **ET** — une seule non satisfaite
+  masque ;
+- une variable pilote elle-même masquée est lue comme **absente**, d'où un **point fixe** : masquer
+  une variable masque en cascade celles qu'elle commande. Sans cela, une variable de second rang
+  réapparaîtrait toute seule parce que sa pilote garde une valeur qu'on est justement en train de
+  retirer ;
+- l'ensemble des variables masquées ne fait que grandir à chaque passe, et le nombre de passes est
+  borné par le nombre de règles : l'évaluation se termine même face à un gabarit incohérent.
+
+### Visibilité d'abord, obligation ensuite — imposé par la base
+
+Un champ masqué ne peut pas être obligatoire, sinon une fiche devient **impossible à valider pour
+un champ que personne ne voit**. L'ordre est imposé là où il ne peut pas être contourné :
+`assert_required_complete` et `assert_validation_rules` **gardent leur signature** et écartent les
+champs masqués. Leurs appelants — saisie directe, curation, import, déclencheur de finalisation —
+en héritent sans qu'une seule ligne change chez eux. Une règle « obligatoire sous condition » qui
+vise une variable masquée devient inapplicable, comme une comparaison dont un opérande manque ; et
+une règle d'affichage ne se « viole » pas : elle dit ce qu'on montre, elle n'exige rien.
+
+Le filet complémentaire est `assert_no_hidden_values`, appelé à la **finalisation** : une fiche
+`curated` portant encore la valeur d'un champ masqué est refusée. Ce contrôle ne remplace pas
+l'effacement produit par l'interface, il attrape ce qui a contourné le formulaire — appel API
+direct, instantané hors-ligne périmé. Il refuse au lieu d'effacer, pour ne pas réintroduire par la
+porte de derrière l'effacement silencieux que la décision écarte. Le message nomme le **libellé**
+de la variable et jamais son contenu, qui est une donnée de dossier.
+
+### Cycles refusés à l'enregistrement de la règle
+
+« A masqué par B, B masqué par A » rend les deux variables définitivement invisibles : aucune ne
+peut être renseignée, donc aucune ne peut satisfaire la condition de l'autre. Le graphe de
+dépendances est validé **quand la règle est écrite** — `assert_visibility_acyclic`, en remontant
+les dépendances depuis la variable pilote pour voir si l'on retombe sur la variable pilotée, les
+cycles indirects compris. Une fiche n'a jamais à se défendre contre un gabarit incohérent. Le
+constructeur refuse le même cycle avant l'envoi, en nommant les variables fautives ; la base reste
+seule juge.
+
+Deux autres refus structurels accompagnent celui-là : une variable ne peut pas commander son propre
+affichage, et les deux variables d'une règle d'affichage doivent appartenir à la **même fiche**
+(patient ou visite) — une condition portée par l'autre fiche n'est jamais vérifiable, donc
+masquerait la variable pour toujours sans que personne comprenne pourquoi.
+
+### L'export n'a aucune règle à évaluer, et c'est voulu
+
+`guard_validation_rule_inuse` interdit déjà d'ajouter une règle à une version de gabarit qui porte
+des données. Une règle d'affichage **ne peut donc pas masquer rétroactivement des fiches déjà
+saisies** : il faut une nouvelle version, et les anciennes fiches gardent la leur. Comme l'export
+ne lit que des fiches `curated`, et qu'une fiche `curated` ne peut pas porter la valeur d'un champ
+masqué, une variable masquée arrive simplement **absente des données**.
+
+La colonne reste donc **présente** — d'autres fiches montrent la variable, et une forme de fichier
+qui change d'un export à l'autre casserait le script d'analyse — et la cellule est **vide**. Elle
+n'emprunte pas le vocabulaire des raisons de valeur manquante, qui décrivent une saisie délibérée.
+Une troisième réimplémentation de l'évaluation des règles, en Deno cette fois, aurait été le vrai
+risque : elle aurait fini par diverger des deux autres.
+
+### Compatibilité descendante
+
+Le code d'avant ce lot — `rule_holds` en base comme le moteur React — répond « règle respectée » à
+toute clause `then` dont l'opérateur n'est pas `required`. Une PWA installée non rafraîchie ou un
+instantané hors-ligne déjà téléchargé **montrent** la variable au lieu de la masquer : ils
+n'échouent pas et n'effacent rien. Le serveur reste seul juge. La signature historique
+`rule_holds(rule, data)` est conservée et délègue à la nouvelle, sans masquage.
+
+### Interface
+
+Le constructeur guidé gagne un troisième type, « N'afficher une variable que sous condition », qui
+réutilise les champs de la forme conditionnelle et n'expose toujours aucun JSON. La **sévérité
+n'est pas demandée** pour une règle d'affichage : elle ne bloque ni n'avertit, et l'étiquette
+« Bloquant » la décrirait faux — la liste des règles la masque également. Un encart rappelle, au
+moment d'écrire la règle, ce qu'elle produira sur les valeurs déjà saisies.
+
+`EncounterFields` accepte les clés masquées et ne rend pas ces variables du tout. La visibilité est
+appliquée partout où l'on saisit : création et correction d'une rencontre, création et correction
+d'un patient, poste de curation — qui charge désormais les règles avec les champs, sans quoi il
+proposerait des variables que le serveur refusera à la finalisation — et l'aperçu du formulaire, où
+elle permet de vérifier une règle qu'on vient d'écrire sans créer de fiche d'essai. Dans le
+formulaire de rencontre, la visibilité s'évalue sur **exactement ce qui partira au serveur** — les
+champs applicables au type de visite —, sans quoi l'écran divergerait du serveur dès qu'une
+variable pilote cesse de s'appliquer au type choisi.
+
+### Preuves de validation
+
+## L30 — Options de liste : code interne stable (2026-08-15)
+
+Défaut consigné le 2026-07-22 dans [`idees-post-readiness.md`](idees-post-readiness.md) §4, jamais
+corrigé pour les listes ordinaires. Une option de `select` / `multiselect` était stockée **en
+texte** : la chaîne elle-même partait dans `patient.data` / `encounter.data`, et la validation la
+comparait à `allowed_values`. Corriger une option — `hematome` en `hématome` — rendait les fiches
+déjà saisies invalides à la prochaine écriture et scindait une modalité en **deux** dans les
+statistiques. Rien ne le signalait.
+
+C'est le problème que le référentiel de terminologie avait résolu pour les diagnostics
+(`20260726210000`). Le lot lui applique la même solution.
+
+### Ce qui a été trouvé en ouvrant le code, et qui change la forme du lot
+
+**Le serveur interdisait déjà le geste.** `guard_template_field_update` classait tout changement
+d'`allowed_values` comme sémantique et le refusait dès que la variable portait des données. Sur une
+base réelle, renommer une option n'échouait donc pas en silence : c'était **impossible**. La
+première pièce du lot est de rouvrir cette porte, précisément — et seulement pour les gestes qui ne
+peuvent invalider aucune fiche.
+
+**La valeur d'option ne vit pas que dans les fiches.** Elle est recopiée telle quelle dans les
+règles de cohérence (`{if: {field, operator, value}}`), dans les filtres de cohorte enregistrés et
+dans la valeur proposée de L28. Une conversion qui aurait changé les valeurs stockées devait les
+suivre toutes — faute de quoi une règle d'affichage conditionnel, livrée la veille, aurait cessé de
+se déclencher **sans erreur visible**.
+
+### Décision de fond : le code d'une option existante est la chaîne elle-même
+
+Retenue avec le porteur avant d'écrire une ligne. Le `value_key` d'une option **déjà en service**
+est le texte déjà stocké, verbatim. Conséquence recherchée : les fiches portent **déjà** leur code.
+Rien n'est réécrit — ni les données, ni les règles, ni les filtres de cohorte, ni les valeurs
+proposées. La reprise se résume à une requête qui remplit la nouvelle colonne à partir de
+l'ancienne.
+
+L'alternative — normaliser les codes en `hematome`, sans accent — aurait produit une colonne de
+code plus propre à l'export au prix d'une réécriture de **toutes** les fiches et de tout ce qui les
+référence. Le gain était cosmétique, le risque ne l'était pas.
+
+### `allowed_values` est conservée, en miroir
+
+`allowed_options` porte la vérité ; `allowed_values` devient le tableau de ses `value_key`, tenu à
+jour par un déclencheur. Même raisonnement qu'à L33 pour `allow_missing_codes`, et pour des raisons
+tout aussi concrètes :
+
+- `download_base_snapshot` a déjà déposé `allowed_values` sur des téléphones, et une PWA installée
+  garde son ancien JavaScript jusqu'au prochain rafraîchissement. Changer la forme de la colonne
+  sous elle aurait rendu « [object Object] » dans chaque menu déroulant — le défaut **D5**, déjà
+  payé une fois ;
+- `assert_data_valid`, `enforce_template_field_default_value` et toute la validation serveur
+  continuent de lire `allowed_values`. **Aucune ligne de validation n'est réécrite par ce lot**,
+  donc aucune fiche existante ne change de verdict.
+
+La réconciliation est bidirectionnelle : un client antérieur au lot n'envoie que la liste de clés,
+et le déclencheur **conserve les libellés déjà corrigés** pour les clés qu'il reconduit. Sans cela,
+une seule modification faite depuis un onglet non rafraîchi aurait effacé tous les libellés.
+
+### Une option désactivée reste valide à l'écriture
+
+C'est le point qui décide de « la fiche reste modifiable ». Une option retirée du formulaire sort
+de la saisie mais **reste dans `allowed_values`** : la validation reste **sans état**, elle ne
+compare jamais une fiche à son passé, et une fiche qui porte une option désactivée reste écrivable
+sans aucun cas particulier. Le même choix qu'à L33.
+
+Sur une variable **déjà utilisée** sont désormais autorisés : renommer un libellé, ajouter une
+option, en désactiver une, les réordonner. Restent refusés : **retirer** une option et **changer**
+un code — les deux seules opérations qui rendraient une fiche existante invalide. Le refus vit dans
+le déclencheur qui réconcilie les deux colonnes, et non dans le garde générique : deux déclencheurs
+`before update` s'exécutent par ordre alphabétique, et un garde placé ailleurs aurait vu une liste
+non encore réconciliée — donc un retrait invisible venant d'un client qui n'envoie que les clés.
+
+Un refus s'ajoute, non demandé mais nécessaire : **désactiver l'option qui sert de valeur proposée**
+est refusé, avec un message qui dit quoi faire. Sans lui, les nouvelles fiches auraient été
+préremplies avec une modalité qu'on venait de retirer de la saisie.
+
+### Conversion des données existantes
+
+Puisque rien n'est à réécrire, la conversion sert ce qu'elle doit servir : **réparer le dégât déjà
+commis**. Avant ce lot, un renommage laissait derrière lui des fiches portant l'ancienne chaîne,
+absente de la liste — invalides à la prochaine écriture, comptées comme une modalité distincte.
+
+`preview_option_key_repair(base)` **ne modifie rien** (fonction `stable` : le moteur refuserait
+toute écriture) et rend, variable par variable, les rapprochements proposés, les fiches
+convertibles et les valeurs bloquantes. `repair_option_keys(base, confirm)` refuse d'agir sans
+`confirm => true`. Les deux partagent **la même** fonction de plan : l'aperçu ne peut donc pas
+annoncer autre chose que ce qui sera fait.
+
+Une valeur orpheline n'est rattachée que si, après normalisation (minuscules, accents ramenés à la
+lettre de base — `terminology_normalize`, déjà présente, aucune extension nouvelle), elle
+correspond à **exactement une** option, par son libellé ou par son code. Zéro correspondance ou
+plusieurs : la fiche est **bloquée** et rapportée. Une seule valeur non rapprochable bloque la
+fiche entière, pour ne jamais laisser cohabiter deux codages dans le même enregistrement.
+
+Les exigences de L26 sont tenues : chaque fiche est traitée dans sa propre **sous-transaction**, la
+ligne est **verrouillée puis relue** avant écriture et laissée intacte si elle a bougé depuis
+l'aperçu, la fiche convertie repasse par `assert_data_valid`, et chaque changement est tracé dans
+`field_change_log` avec l'ancienne et la nouvelle valeur sous la source dédiée
+`option_key_repair`. L'**idempotence est portée par l'état** : une fiche dont la valeur est déjà un
+code connu n'apparaît pas au plan. Rejouer la conversion après une interruption ne reconvertit rien
+et ne journalise rien — il n'y avait donc pas de clé d'opération à inventer.
+
+L'élargissement du `check` sur `field_change_log.source` porte sur une table qui contient des
+données : la nouvelle liste est un surensemble, et la contrainte est posée `not valid` puis
+validée, pour ne pas tenir de verrou exclusif pendant le parcours.
+
+### Interface
+
+L'éditeur d'options remplace la zone de texte libre, qui confondait le libellé et la valeur
+stockée : ajouter, renommer, réordonner, désactiver, et le **code affiché en lecture seule** à côté
+de chaque option. Le montrer n'est pas un détail technique gratuit — c'est lui qui apparaîtra dans
+la colonne de code de l'export, donc dans l'analyse. L'éditeur **reste actif** sur une variable déjà
+utilisée ; seule la suppression d'une option en disparaît.
+
+À la saisie, les options inactives ne sont plus proposées, mais celle que la fiche porte déjà reste
+offerte — la retirer du menu aurait effacé sa valeur au premier enregistrement. Une valeur hors
+liste est conservée et montrée telle quelle, jamais remplacée en silence.
+
+Trois consommateurs ont été repris parce que les laisser aurait créé un bug silencieux : le
+constructeur de règles et le constructeur de cohortes proposent désormais le **libellé** et
+soumettent le **code** (une règle bâtie sur le libellé ne se serait jamais déclenchée), et les
+écrans de lecture — liste des patients, fiche patient — affichent le libellé de l'option au lieu
+du code. C'est la leçon de **D5**, déjà payée : un correctif appliqué à un seul appelant ne clôt
+pas ce genre de défaut.
+
+L'aperçu et la conversion sont posés dans les réglages de la base, réservés à qui peut corriger ses
+données. Analyser et convertir sont **deux boutons distincts** ; après conversion, l'aperçu est
+rejoué pour que ce qui reste affiché soit l'état réel, et non la photo d'avant.
+
+### Export
+
+Même convention que la terminologie, pour la même raison : la colonne principale porte le
+**libellé**, une colonne `option_code__<portée>__<clé>` porte le **code**. Elle est produite pour
+toute liste, y compris celles où code et libellé se confondent encore — la forme du fichier ne doit
+pas dépendre de l'historique des renommages d'une base. Le dictionnaire gagne la ligne de codes
+correspondante, décrit les options **inactives** comme telles, et unionne les listes d'une colonne
+qui traverse plusieurs versions de gabarit.
+
+### Limite connue, laissée hors périmètre
+
+Un import dont le fichier contient les **libellés** d'une liste dont les codes en diffèrent sera
+refusé par le serveur (« Valeur non autorisée pour X »). Le refus est visible et n'écrit rien, mais
+la correspondance libellé → code à l'import relève de **L24**, non de ce lot.
+
+### Preuves de validation

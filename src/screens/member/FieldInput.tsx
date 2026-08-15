@@ -1,4 +1,5 @@
 import type { TemplateField, TerminologyValue } from '../../data/types';
+import { isOrphanValue, selectableOptions } from '../../domain/fieldOptions';
 import { TerminologyInput } from './TerminologyInput';
 import { Checkbox } from '../../components/Checkbox';
 
@@ -57,36 +58,52 @@ export function FieldInput({
           onChange={(v: TerminologyValue | null) => onChange(v)}
         />
       );
+    // L30 : la valeur enregistree est le CODE de l'option, le libelle n'est qu'affiche.
+    // Corriger un libelle ne touche donc aucune fiche. Les options desactivees sortent de
+    // la saisie, mais celle que la fiche porte deja reste offerte : la retirer du menu
+    // effacerait sa valeur au premier enregistrement.
     case 'select': {
-      const opts = Array.isArray(field.allowedValues) ? field.allowedValues : [];
+      const opts = selectableOptions(field, value);
+      const orphan = isOrphanValue(field, value);
       return (
         <select className={cls} aria-label={field.label} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)}>
           <option value="">—</option>
+          {/* Valeur hors liste (sequelle d'un renommage anterieur a L30) : conservee et
+              montree telle quelle, jamais effacee ni remplacee en silence. */}
+          {orphan && <option value={value as string}>{String(value)}</option>}
           {opts.map((o) => (
-            <option key={String(o)} value={String(o)}>
-              {String(o)}
+            <option key={o.valueKey} value={o.valueKey}>
+              {o.label}
             </option>
           ))}
         </select>
       );
     }
     case 'multiselect': {
-      const opts = Array.isArray(field.allowedValues) ? field.allowedValues : [];
-      const arr = Array.isArray(value) ? (value as unknown[]).map(String) : [];
+      const arr = Array.isArray(value) ? (value as unknown[]).filter((v): v is string => typeof v === 'string') : [];
+      const opts = selectableOptions(field, arr);
+      const known = new Set(opts.map((o) => o.valueKey));
+      const orphans = arr.filter((v) => !known.has(v));
       return (
         <div className="flex flex-wrap gap-2">
-          {opts.map((o) => {
-            const s = String(o);
-            return (
-              <Checkbox
-                  key={s}
-                  checked={arr.includes(s)}
-                  onChange={(e) => onChange(e.target.checked ? [...arr, s] : arr.filter((x) => x !== s))}
-                  label={s}
-                  containerClassName="text-xs"
-                />
-            );
-          })}
+          {opts.map((o) => (
+            <Checkbox
+              key={o.valueKey}
+              checked={arr.includes(o.valueKey)}
+              onChange={(e) => onChange(e.target.checked ? [...arr, o.valueKey] : arr.filter((x) => x !== o.valueKey))}
+              label={o.label}
+              containerClassName="text-xs"
+            />
+          ))}
+          {orphans.map((v) => (
+            <Checkbox
+              key={v}
+              checked
+              onChange={(e) => onChange(e.target.checked ? [...arr, v] : arr.filter((x) => x !== v))}
+              label={v}
+              containerClassName="text-xs"
+            />
+          ))}
         </div>
       );
     }

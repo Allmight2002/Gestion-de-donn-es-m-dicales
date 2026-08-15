@@ -58,6 +58,12 @@ function mockBases(): BaseRepository {
     async getBaseProposalsPage() {
       return { items: [], total: 0, limit: 50, offset: 0, hasMore: false };
     },
+    async previewOptionKeyRepair() {
+      return { records: { repairable: 0, blocked: 0 }, fields: [] };
+    },
+    async repairOptionKeys() {
+      return { repairedRecords: 0, repairedFields: 0, blockedRecords: 0, skippedRecords: 0, failedRecords: 0 };
+    },
     async setInclusionTarget() {},
     async listTemplateModels() {
       return [{ versionId: 'v1', versionNumber: 1, templateId: 't1', name: 'Neurochirurgie', specialty: 'neuro', scope: 'global' as const }];

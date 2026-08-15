@@ -20,11 +20,12 @@ describe('inventaire SECURITY DEFINER', () => {
   test('classe chaque signature autorisee sans doublon', () => {
     const { inventory, signatures, serviceRoleSignatures } = loadFunctionPrivilegeInventory();
     expect(inventory.categories).toHaveLength(8);
-    // +1 (L33) : update_template_field portant p_missing_reasons. L'ANCIENNE signature reste
-    // listee et en service — un client non rafraichi doit continuer d'appeler la sienne.
-    expect(signatures).toHaveLength(105);
+    // +3 (L30) : les deux RPC de conversion des options, et update_template_field portant
+    // p_allowed_options. Les ANCIENNES signatures restent listees et en service — un client
+    // non rafraichi doit continuer d'appeler la sienne.
+    expect(signatures).toHaveLength(108);
     expect(serviceRoleSignatures).toHaveLength(11); // Edge seulement : fichiers, quarantaine et missions.
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(116);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(119);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
