@@ -25,7 +25,10 @@ export interface ExportField {
   section: string;
   type: string;
   unit: string | null;
+  /** Miroir des codes d'options (L30) : ce que contient reellement la colonne de donnees. */
   allowedValues: unknown[] | null;
+  /** Options de liste (L30) : `{value_key, label, is_active}`. Absent = instantane ancien. */
+  allowedOptions?: unknown[] | null;
   /** Raisons de valeur manquante proposees pour CETTE variable (L33). Absent = instantane ancien. */
   missingReasons?: readonly string[] | null;
   templateVersionIds?: string[];
@@ -93,6 +96,63 @@ export const columnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `${f
  */
 export const codeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `terminology_code__${columnId(field)}`;
 
+/**
+ * Colonne du CODE d'une liste controlee (L30) — meme convention que la terminologie, et
+ * pour la meme raison : le libelle part dans la colonne principale pour la lecture, le
+ * code dans celle-ci pour l'analyse. C'est le code qui reste stable quand un libelle est
+ * corrige, donc lui qui permet de regrouper sans scinder une modalite en deux.
+ */
+export const optionCodeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `option_code__${columnId(field)}`;
+
+const isOptionList = (field: Pick<ExportField, 'type'>) => field.type === 'select' || field.type === 'multiselect';
+
+interface RawOption { value_key?: unknown; label?: unknown; is_active?: unknown }
+
+/** Options d'une variable, avec repli sur les seuls codes pour un instantane ancien. */
+function optionsOf(field: ExportField): { key: string; label: string; isActive: boolean }[] {
+  if (Array.isArray(field.allowedOptions)) {
+    return field.allowedOptions.flatMap((raw) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+      const o = raw as RawOption;
+      if (typeof o.value_key !== 'string' || o.value_key === '') return [];
+      return [{
+        key: o.value_key,
+        label: typeof o.label === 'string' && o.label !== '' ? o.label : o.value_key,
+        isActive: o.is_active !== false,
+      }];
+    });
+  }
+  return (field.allowedValues ?? [])
+    .filter((v): v is string => typeof v === 'string' && v !== '')
+    .map((v) => ({ key: v, label: v, isActive: true }));
+}
+
+/** Libelle d'un code stocke. Un code inconnu est rendu TEL QUEL, jamais efface. */
+const labelOfOption = (field: ExportField, stored: unknown): string => {
+  if (typeof stored !== 'string') return '';
+  return optionsOf(field).find((o) => o.key === stored)?.label ?? stored;
+};
+
+/**
+ * Les deux cellules d'une liste controlee : le libelle pour la lecture, le code pour
+ * l'analyse. Un code de valeur manquante part dans la colonne principale, comme partout
+ * ailleurs, et laisse la colonne de code vide.
+ */
+function optionCells(field: ExportField, v: unknown): { label: string; code: string } {
+  const missing = missingCodeOf(v);
+  if (missing) return { label: missing, code: '' };
+  if (typeof v === 'object' && v !== null && !Array.isArray(v) && MISSING_KEY in v) {
+    throw new Error('Code de valeur manquante invalide');
+  }
+  if (v === null || v === undefined || v === '') return { label: '', code: '' };
+  if (Array.isArray(v)) {
+    const keys = v.filter((x): x is string => typeof x === 'string');
+    return { label: keys.map((k) => labelOfOption(field, k)).join('; '), code: keys.join('; ') };
+  }
+  if (typeof v !== 'string') return { label: formatValue(v), code: '' };
+  return { label: labelOfOption(field, v), code: v };
+}
+
 const isTerminologyValue = (v: unknown): v is { code: string; label: string } =>
   typeof v === 'object' && v !== null && !Array.isArray(v) &&
   typeof (v as { code?: unknown }).code === 'string' &&
@@ -115,9 +175,33 @@ const formatValue = (v: unknown): string => {
 
 const codeOf = (v: unknown): string => (isTerminologyValue(v) ? v.code : '');
 
-/** Colonnes d'un jeu de champs : un champ de terminologie en occupe deux. */
+/**
+ * Colonnes d'un jeu de champs : un champ de terminologie en occupe deux, une liste
+ * controlee aussi. La colonne de code est produite pour TOUTE liste, y compris celles ou
+ * code et libelle se confondent encore : la forme du fichier ne doit pas dependre de
+ * l'historique des renommages d'une base.
+ */
 export const columnsForFields = (fields: ExportField[]): string[] =>
-  fields.flatMap((f) => (f.type === 'terminology' ? [columnId(f), codeColumnId(f)] : [columnId(f)]));
+  fields.flatMap((f) => {
+    if (f.type === 'terminology') return [columnId(f), codeColumnId(f)];
+    if (isOptionList(f)) return [columnId(f), optionCodeColumnId(f)];
+    return [columnId(f)];
+  });
+
+/** Union de deux listes d'options sur le code, la premiere rencontree fixant le libelle. */
+function mergeOptionLists(a: unknown[] | null | undefined, b: unknown[] | null | undefined): unknown[] | null {
+  if (!Array.isArray(a)) return Array.isArray(b) ? b : (a ?? null);
+  if (!Array.isArray(b)) return a;
+  const seen = new Set(
+    a.map((o) => (o && typeof o === 'object' ? (o as RawOption).value_key : undefined))
+      .filter((k): k is string => typeof k === 'string'),
+  );
+  const extra = b.filter((o) => {
+    const key = o && typeof o === 'object' ? (o as RawOption).value_key : undefined;
+    return typeof key === 'string' && !seen.has(key);
+  });
+  return extra.length ? [...a, ...extra] : a;
+}
 
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
 export function mergeExportFields(input: ExportField[]): ExportField[] {
@@ -139,6 +223,10 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
         ...(previous.missingReasons ?? []),
         ...(field.missingReasons ?? []),
       ]);
+      // Meme raison pour les options : une colonne peut traverser plusieurs versions dont
+      // les listes different. Le dictionnaire doit couvrir TOUT ce que la colonne peut
+      // contenir, sinon un code lu dans une fiche ancienne ne s'explique nulle part.
+      previous.allowedOptions = mergeOptionLists(previous.allowedOptions, field.allowedOptions);
     } else {
       merged.set(key, {
         ...field,
@@ -171,10 +259,18 @@ function assignField(
   versionId: string | undefined,
   field: ExportField,
 ): void {
+  const applicable = Boolean(data) && belongsToField(versionId, field);
+  if (isOptionList(field)) {
+    // L30 : le libelle dans la colonne principale, le code dans la sienne. C'est le code
+    // qui reste stable quand un libelle est corrige, donc lui qui permet de compter.
+    const cells = applicable ? optionCells(field, data![field.fieldKey]) : { label: '', code: '' };
+    row[columnId(field)] = cells.label;
+    row[optionCodeColumnId(field)] = cells.code;
+    return;
+  }
   row[columnId(field)] = data ? valueFor(data, versionId, field) : '';
   if (field.type !== 'terminology') return;
-  const applicable = data && belongsToField(versionId, field);
-  row[codeColumnId(field)] = applicable ? codeOf(data[field.fieldKey]) : '';
+  row[codeColumnId(field)] = applicable ? codeOf(data![field.fieldKey]) : '';
 }
 
 const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_value', 'age_unit'];
@@ -254,19 +350,41 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
   return {
     columns,
     rows: mergeExportFields(fields).flatMap((f) => {
+      const options = isOptionList(f) ? optionsOf(f) : [];
       const common = {
         field_key: f.fieldKey,
         description: f.description ?? '',
         scope: f.scope,
         section: f.section,
         unit: f.unit ?? '',
-        allowed_values: Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
+        // Pour une liste, ce sont les LIBELLES qui sont decrits, avec la mention explicite
+        // des options retirees de la saisie : c'est ce qui explique qu'une modalite
+        // apparaisse dans les fiches anciennes et plus dans les recentes.
+        allowed_values: isOptionList(f)
+          ? options.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
+          : Array.isArray(f.allowedValues) ? f.allowedValues.join('; ') : '',
         // Les CODES bruts, comme ils apparaissent dans la colonne de donnees, et non les
         // libelles : c'est le code qui sera lu par l'analyse.
         missing_reasons: (f.missingReasons ?? []).join('; '),
         template_versions: (f.templateVersionIds ?? []).join('; '),
       };
       const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common };
+      if (isOptionList(f)) {
+        return [
+          valueRow,
+          {
+            ...common,
+            column_id: optionCodeColumnId(f),
+            label: `${f.label} — code`,
+            type: `${f.type}_code`,
+            unit: '',
+            // Les CODES bruts, tels qu'ils apparaissent dans la colonne : c'est sur eux
+            // que l'analyse regroupe, et eux qui survivent a une correction de libelle.
+            allowed_values: options.map((o) => o.key).join('; '),
+            missing_reasons: '',
+          },
+        ];
+      }
       if (f.type !== 'terminology') return [valueRow];
       return [
         valueRow,

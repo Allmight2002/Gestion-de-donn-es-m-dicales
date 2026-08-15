@@ -22,8 +22,18 @@ import {
 const PAGE_SIZE = 20;
 
 // Colonne affichee dans le tableau patients (sous-ensemble commun en ligne / hors-ligne).
-type Column = { id: string; fieldKey: string; label: string };
-const toColumn = (f: { id: string; fieldKey: string; label: string }): Column => ({ id: f.id, fieldKey: f.fieldKey, label: f.label });
+// L30 : `type` et les options voyagent avec elle pour que la liste affiche le LIBELLE de
+// l'option et non son code -- sinon un libelle corrige resterait invisible ici.
+type Column = {
+  id: string; fieldKey: string; label: string;
+  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+};
+const toColumn = (
+  f: { id: string; fieldKey: string; label: string; type?: string; allowedValues?: unknown; allowedOptions?: unknown },
+): Column => ({
+  id: f.id, fieldKey: f.fieldKey, label: f.label,
+  type: f.type, allowedValues: f.allowedValues, allowedOptions: f.allowedOptions,
+});
 const sortByOrder = <T extends { displayOrder: number }>(a: T, b: T) => a.displayOrder - b.displayOrder;
 // Patient du cache -> item de liste : identite TOUJOURS nulle hors-ligne (jamais mise en cache).
 const offlineItem = (p: OfflinePatient): PatientListItem => ({
@@ -330,7 +340,7 @@ export function BaseHome() {
                         </button>
                       </td>
                       {visibleFields.map((f) => (
-                        <td key={f.id}>{formatCell(p.data[f.fieldKey])}</td>
+                        <td key={f.id}>{formatCell(p.data[f.fieldKey], f)}</td>
                       ))}
                       <td className="text-right">
                         {canEdit && !isCrossSectional && (
@@ -378,7 +388,7 @@ export function BaseHome() {
   );
 }
 
-function formatCell(v: unknown): string {
+function formatCell(v: unknown, field?: Column): string {
   if (typeof v === 'boolean') return v ? '✓' : '✗';
-  return displayFieldValue(v, '—');
+  return displayFieldValue(v, '—', field);
 }

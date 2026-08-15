@@ -11,6 +11,7 @@ import {
   buildPatientExport,
   codeColumnId,
   columnId,
+  optionCodeColumnId,
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
@@ -156,4 +157,99 @@ Deno.test('terminologie en portee patient : libelle et code', () => {
   );
   assertEquals(table.rows[0][columnId(patientDiag)], 'Hypertension');
   assertEquals(table.rows[0][codeColumnId(patientDiag)], 'BA00');
+});
+
+// ---------------------------------------------------------------------------
+// L30 — listes controlees a code interne stable
+//
+// Meme raison d'etre que la colonne de code de la terminologie : le libelle se corrige,
+// le code ne bouge pas. Sans la colonne de code, corriger « hematome » en « hematome »
+// accentue scinderait la modalite en deux dans l'analyse, en silence.
+// ---------------------------------------------------------------------------
+
+const EVOLUTION = champ({
+  fieldKey: 'evolution',
+  type: 'select',
+  allowedValues: ['gueri', 'deces'],
+  allowedOptions: [
+    { value_key: 'gueri', label: 'Gueri', is_active: true },
+    { value_key: 'deces', label: 'Deces', is_active: false },
+  ],
+});
+
+Deno.test('liste : le libelle part en cellule, le code dans sa propre colonne', () => {
+  const table = buildEncounterExport([rencontre({ evolution: 'gueri' })], [EVOLUTION]);
+  assertEquals(table.columns.includes(optionCodeColumnId(EVOLUTION)), true);
+  assertEquals(table.rows[0][columnId(EVOLUTION)], 'Gueri');
+  assertEquals(table.rows[0][optionCodeColumnId(EVOLUTION)], 'gueri');
+});
+
+Deno.test('liste : une option desactivee reste lisible dans les fiches qui la portent', () => {
+  const table = buildEncounterExport([rencontre({ evolution: 'deces' })], [EVOLUTION]);
+  assertEquals(table.rows[0][columnId(EVOLUTION)], 'Deces');
+  assertEquals(table.rows[0][optionCodeColumnId(EVOLUTION)], 'deces');
+});
+
+Deno.test('liste : un code inconnu est rendu tel quel, jamais efface', () => {
+  // Sequelle d'un renommage anterieur au lot : la valeur ne correspond a aucune option.
+  const table = buildEncounterExport([rencontre({ evolution: 'hematome' })], [EVOLUTION]);
+  assertEquals(table.rows[0][columnId(EVOLUTION)], 'hematome');
+  assertEquals(table.rows[0][optionCodeColumnId(EVOLUTION)], 'hematome');
+});
+
+Deno.test('liste multiple : libelles et codes voyagent dans le meme ordre', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    type: 'multiselect',
+    allowedValues: ['fievre', 'toux'],
+    allowedOptions: [
+      { value_key: 'fievre', label: 'Fievre', is_active: true },
+      { value_key: 'toux', label: 'Toux', is_active: true },
+    ],
+  });
+  const table = buildEncounterExport([rencontre({ signes: ['toux', 'fievre'] })], [multi]);
+  assertEquals(table.rows[0][columnId(multi)], 'Toux; Fievre');
+  assertEquals(table.rows[0][optionCodeColumnId(multi)], 'toux; fievre');
+});
+
+Deno.test('liste : une raison de valeur manquante part dans la colonne du libelle, pas dans celle du code', () => {
+  const table = buildEncounterExport([rencontre({ evolution: { __missing__: 'inconnu' } })], [EVOLUTION]);
+  assertEquals(table.rows[0][columnId(EVOLUTION)], 'inconnu');
+  assertEquals(table.rows[0][optionCodeColumnId(EVOLUTION)], '');
+});
+
+Deno.test('liste sans options connues (instantane ancien) : le code stocke fait office de libelle', () => {
+  const ancien = champ({ fieldKey: 'sexe', type: 'select', allowedValues: ['M', 'F'] });
+  const table = buildEncounterExport([rencontre({ sexe: 'M' })], [ancien]);
+  assertEquals(table.rows[0][columnId(ancien)], 'M');
+  assertEquals(table.rows[0][optionCodeColumnId(ancien)], 'M');
+});
+
+Deno.test('dictionnaire : une ligne de libelles, une ligne de codes, les inactives signalees', () => {
+  const dict = buildDictionary([EVOLUTION]);
+  const valeurs = dict.rows.find((r) => r.column_id === columnId(EVOLUTION));
+  const codes = dict.rows.find((r) => r.column_id === optionCodeColumnId(EVOLUTION));
+  assertEquals(valeurs?.allowed_values, 'Gueri; Deces (inactif)');
+  assertEquals(codes?.allowed_values, 'gueri; deces');
+  assertEquals(codes?.type, 'select_code');
+});
+
+Deno.test('dictionnaire : une colonne traversant deux versions decrit TOUTES ses options', () => {
+  // Sinon un code lu dans une fiche ancienne ne s'explique nulle part.
+  const v1 = champ({
+    fieldKey: 'evolution', type: 'select', templateVersionIds: ['v1'],
+    allowedValues: ['gueri'],
+    allowedOptions: [{ value_key: 'gueri', label: 'Gueri', is_active: true }],
+  });
+  const v2 = champ({
+    fieldKey: 'evolution', type: 'select', templateVersionIds: ['v2'],
+    allowedValues: ['gueri', 'perdu'],
+    allowedOptions: [
+      { value_key: 'gueri', label: 'Gueri', is_active: true },
+      { value_key: 'perdu', label: 'Perdu de vue', is_active: true },
+    ],
+  });
+  const dict = buildDictionary([v1, v2]);
+  const codes = dict.rows.find((r) => r.column_id === optionCodeColumnId(v1));
+  assertEquals(codes?.allowed_values, 'gueri; perdu');
 });

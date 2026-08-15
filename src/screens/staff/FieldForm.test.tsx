@@ -3,7 +3,7 @@
 // entierement a la main — sinon l'utilisateur retombe sur du texte libre, donc sur des donnees
 // non analysables.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { FieldForm } from './FieldForm';
@@ -29,24 +29,28 @@ describe('FieldForm — jeux de valeurs (F4)', () => {
     expect(screen.getByRole('button', { name: 'Insérer' })).toBeInTheDocument();
   });
 
-  test('inserer une liste remplit les valeurs autorisees et les compte', async () => {
+  test('inserer une liste cree les options et les compte', async () => {
     renderForm();
     await chooseSelectType();
     await userEvent.selectOptions(screen.getByLabelText("Liste prête à l'emploi"), 'oui-non-inconnu');
     await userEvent.click(screen.getByRole('button', { name: 'Insérer' }));
 
-    expect(screen.getByLabelText('Valeurs autorisées')).toHaveValue('Oui\nNon\nInconnu');
+    expect(screen.getByLabelText('Libellé de l’option 1')).toHaveValue('Oui');
+    expect(screen.getByLabelText('Libellé de l’option 3')).toHaveValue('Inconnu');
     expect(screen.getByText('3 valeur(s) définie(s)')).toBeInTheDocument();
   });
 
   test('l insertion complete la saisie existante au lieu de l ecraser', async () => {
     renderForm();
     await chooseSelectType();
-    await userEvent.type(screen.getByLabelText('Valeurs autorisées'), 'Oui');
+    await userEvent.type(screen.getByLabelText('Ajouter l’option'), 'Oui');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter l’option' }));
     await userEvent.selectOptions(screen.getByLabelText("Liste prête à l'emploi"), 'oui-non-inconnu');
     await userEvent.click(screen.getByRole('button', { name: 'Insérer' }));
 
-    expect(screen.getByLabelText('Valeurs autorisées')).toHaveValue('Oui\nNon\nInconnu');
+    // Oui n'est pas dedouble ; Non et Inconnu s'ajoutent a la suite.
+    expect(screen.getByText('3 valeur(s) définie(s)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Libellé de l’option 1')).toHaveValue('Oui');
   });
 
   test('les valeurs inserees sont transmises au gabarit une par une', async () => {
@@ -58,10 +62,109 @@ describe('FieldForm — jeux de valeurs (F4)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Insérer' }));
     await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
 
+    // L30 : ce qui part en base est le CODE ; le libelle voyage a cote et reste modifiable.
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ fieldKey: 'issue', type: 'select', allowedValues: ['Oui', 'Non', 'Inconnu'] }),
+      expect.objectContaining({
+        fieldKey: 'issue', type: 'select', allowedValues: ['oui', 'non', 'inconnu'],
+        allowedOptions: [
+          { valueKey: 'oui', label: 'Oui', isActive: true },
+          { valueKey: 'non', label: 'Non', isActive: true },
+          { valueKey: 'inconnu', label: 'Inconnu', isActive: true },
+        ],
+      }),
       undefined,
     );
+  });
+});
+
+// L30 : le libelle se corrige, le code ne bouge pas. C'est ce qui permet de rattraper
+// une option mal orthographiee sans invalider les fiches deja saisies.
+describe('FieldForm — options a code stable (L30)', () => {
+  const listeEnService = {
+    fieldKey: 'evolution', label: 'Évolution', scope: 'encounter' as const, section: 'clinique' as const,
+    type: 'select' as const, required: false,
+    allowedValues: ['gueri', 'deces'],
+    allowedOptions: [
+      { valueKey: 'gueri', label: 'Gueri', isActive: true },
+      { valueKey: 'deces', label: 'Décès', isActive: true },
+    ],
+  };
+
+  function renderExisting(onSubmit = vi.fn(), locked = true) {
+    render(
+      <I18nProvider>
+        <FieldForm onSubmit={onSubmit} lockStructural={locked} initial={listeEnService} submitLabel="Enregistrer" />
+      </I18nProvider>,
+    );
+    return onSubmit;
+  }
+
+  test('renommer un libelle laisse le code intact', async () => {
+    const onSubmit = renderExisting();
+    const premier = screen.getByLabelText('Libellé de l’option 1');
+    await userEvent.clear(premier);
+    await userEvent.type(premier, 'Guéri');
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedValues: ['gueri', 'deces'],
+        allowedOptions: [
+          { valueKey: 'gueri', label: 'Guéri', isActive: true },
+          { valueKey: 'deces', label: 'Décès', isActive: true },
+        ],
+      }),
+      undefined,
+    );
+  });
+
+  test('sur une variable deja utilisee, supprimer une option n est pas offert — desactiver l est', async () => {
+    renderExisting();
+    expect(screen.queryByRole('button', { name: /^Supprimer/ })).toBeNull();
+    expect(screen.getAllByLabelText('Désactiver').length).toBe(2);
+    expect(screen.getByText(/ne peut plus être supprimée/)).toBeInTheDocument();
+  });
+
+  test('desactiver une option la transmet sans la retirer de la liste', async () => {
+    const onSubmit = renderExisting();
+    await userEvent.click(screen.getAllByLabelText('Désactiver')[1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedValues: ['gueri', 'deces'],
+        allowedOptions: [
+          { valueKey: 'gueri', label: 'Gueri', isActive: true },
+          { valueKey: 'deces', label: 'Décès', isActive: false },
+        ],
+      }),
+      undefined,
+    );
+  });
+
+  test('reordonner change l ordre des options, pas leurs codes', async () => {
+    const onSubmit = renderExisting();
+    await userEvent.click(screen.getByRole('button', { name: 'Descendre Gueri' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedValues: ['deces', 'gueri'] }),
+      undefined,
+    );
+  });
+
+  test('une option en double est refusee a l ajout', async () => {
+    renderExisting();
+    await userEvent.type(screen.getByLabelText('Ajouter l’option'), 'gueri');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter l’option' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('existe déjà');
+    expect(screen.getByText('2 valeur(s) définie(s)')).toBeInTheDocument();
+  });
+
+  test('la valeur proposee ne peut viser qu une option ACTIVE, et vaut le code', async () => {
+    renderExisting(vi.fn(), false);
+    await userEvent.click(screen.getAllByLabelText('Désactiver')[1]);
+    const proposee = screen.getByLabelText('Valeur proposée');
+    expect(within(proposee).queryByRole('option', { name: 'Décès' })).toBeNull();
+    expect(within(proposee).getByRole('option', { name: 'Gueri' })).toHaveValue('gueri');
   });
 });
 

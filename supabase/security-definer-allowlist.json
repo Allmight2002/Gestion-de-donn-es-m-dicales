@@ -110,7 +110,9 @@
         "delete_curation_request(p_task_id uuid, p_reason text, p_delete_patient boolean)",
         "finalize_curation_task(p_task_id uuid)",
         "finalize_patient(p_patient_id uuid)",
+        "preview_option_key_repair(p_base_id uuid)",
         "release_curation_task(p_task_id uuid)",
+        "repair_option_keys(p_base_id uuid, p_confirm boolean)",
         "request_clarification(p_task_id uuid, p_question text)",
         "save_curation_draft(p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint)",
         "soft_delete_encounter(p_encounter_id uuid, p_reason text)",
@@ -139,7 +141,8 @@
         "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean)",
         "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean)",
         "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean)",
-        "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text)"
+        "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text)",
+        "update_template_field(p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text)"
       ]
     },
     {

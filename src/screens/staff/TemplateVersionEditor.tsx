@@ -6,6 +6,7 @@ import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
+import { fieldOptions } from '../../domain/fieldOptions';
 import { FormPreview } from './FormPreview';
 import { RuleForm, RuleSummary, ruleHasSeverity } from './RuleForm';
 import { SkeletonList } from '../../components/Skeleton';
@@ -294,6 +295,9 @@ export function TemplateVersionEditor({
                 required: editing.required,
                 encounterTypes: editing.encounterTypes,
                 allowedValues: editing.allowedValues ? editing.allowedValues.map(String) : null,
+                // L30 : l'editeur travaille sur les options ; le repli sur les seules cles
+                // est assure par `fieldOptions` pour une variable anterieure au lot.
+                allowedOptions: fieldOptions(editing),
                 minValue: editing.minValue,
                 maxValue: editing.maxValue,
                 unit: editing.unit,

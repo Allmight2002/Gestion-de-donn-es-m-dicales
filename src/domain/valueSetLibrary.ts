@@ -67,32 +67,3 @@ export const VALUE_SET_LIBRARY: ValueSet[] = [
     values: ['complète', 'partielle', 'stable', 'progression'],
   },
 ];
-
-/**
- * Decoupe la saisie libre des valeurs autorisees.
- *
- * Une valeur par ligne : c'est le seul format qui autorise une valeur contenant une virgule
- * (« Traumatisme, membre inferieur ») et qui reste lisible au-dela de quelques items.
- * Compatibilite : une saisie tenant sur UNE seule ligne est encore decoupee sur les virgules,
- * afin de ne pas casser l'habitude ni la relecture des champs crees avant ce changement.
- */
-export function parseAllowedValues(raw: string): string[] {
-  const lines = raw.split('\n');
-  const parts = lines.length > 1 ? lines : raw.split(',');
-  return dedupe(parts.map((v) => v.trim()).filter(Boolean));
-}
-
-/** Fusionne des valeurs dans une liste existante sans creer de doublon ni changer l'ordre. */
-export function mergeValues(current: string[], added: string[]): string[] {
-  return dedupe([...current, ...added.map((v) => v.trim()).filter(Boolean)]);
-}
-
-function dedupe(values: string[]): string[] {
-  const seen = new Set<string>();
-  return values.filter((v) => {
-    const key = v.toLocaleLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}

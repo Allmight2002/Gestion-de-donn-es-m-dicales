@@ -1,6 +1,18 @@
 // DTO de l'admin gabarits (camelCase cote front).
 // Import de TYPE uniquement : efface a la compilation, donc aucun cycle a l'execution.
 import type { MissingCode } from '../domain/export';
+import { displayOptionValue, type FieldOption } from '../domain/fieldOptions';
+
+/**
+ * Ce dont `displayFieldValue` a besoin pour rendre le libellé d'une option (L30).
+ * `type` est optionnel : une colonne venant d'un instantané ancien peut ne pas le porter,
+ * et l'absence doit se lire comme « pas une liste », jamais comme une erreur.
+ */
+interface OptionCarrier {
+  type?: string;
+  allowedOptions?: unknown;
+  allowedValues?: unknown;
+}
 
 export type FieldScope = 'patient' | 'encounter';
 export type FieldSection = 'clinique' | 'biologie' | 'paraclinique';
@@ -37,9 +49,16 @@ export function isTerminologyValue(v: unknown): v is TerminologyValue {
  * Les codes de valeur manquante restent traités par l'appelant, qui seul dispose des
  * traductions.
  */
-export function displayFieldValue(v: unknown, vide = ''): string {
+export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier | null): string {
   if (v === null || v === undefined || v === '') return vide;
   if (isTerminologyValue(v)) return v.label;
+  // L30 : une liste controlee stocke le CODE de l'option. Sans ce passage par les
+  // options, l'ecran afficherait le code, et continuerait d'afficher l'ancien texte
+  // apres une correction de libelle -- la confusion meme que le lot supprime. Une valeur
+  // hors liste est rendue telle quelle par `displayOptionValue`, jamais masquee.
+  if (field && (field.type === 'select' || field.type === 'multiselect')) {
+    return displayOptionValue(field, v) || vide;
+  }
   if (Array.isArray(v)) return v.join(', ');
   return String(v);
 }
@@ -72,7 +91,14 @@ export interface TemplateField {
   section: FieldSection;
   type: FieldType;
   unit: string | null;
+  /** Miroir des codes d'options (L30). Conserve pour les instantanes et clients anterieurs. */
   allowedValues: unknown[] | null;
+  /**
+   * Options de liste (L30) : `{value_key, label, is_active}`, source de verite. Absente
+   * d'un instantane hors-ligne anterieur au lot : passer par `fieldOptions` du domaine
+   * plutot que de la lire directement.
+   */
+  allowedOptions?: unknown[] | null;
   required: boolean;
   minValue: number | null;
   maxValue: number | null;
@@ -110,8 +136,10 @@ export interface NewField {
   required: boolean;
   /** Types de rencontre concernes (vide/absent = tous). Ignore pour un champ 'patient'. */
   encounterTypes?: string[] | null;
-  /** Valeurs autorisees (select / multiselect). null/absent = libre. */
+  /** Codes autorises (select / multiselect). null/absent = libre. Miroir de `allowedOptions`. */
   allowedValues?: string[] | null;
+  /** Options de liste (L30). Quand elle est fournie, c'est elle qui fait foi cote serveur. */
+  allowedOptions?: FieldOption[] | null;
   /** Bornes numeriques (number / integer). */
   minValue?: number | null;
   maxValue?: number | null;

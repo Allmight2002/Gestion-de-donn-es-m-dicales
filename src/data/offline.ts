@@ -49,6 +49,9 @@ export interface OfflineField {
   defaultValue?: string | null;
   unit?: string | null;
   allowedValues?: string[] | null;
+  /** Options de liste (L30). Absente d'un instantane telecharge avant ce lot : repli sur
+   *  `allowedValues`, ou cle et libelle se confondent -- le comportement d'alors. */
+  allowedOptions?: unknown[] | null;
   required?: boolean;
   minValue?: number | null;
   maxValue?: number | null;
@@ -149,6 +152,9 @@ export function buildSnapshot(
       // §7.5 : metadonnees completes conservees (edition hors-ligne fidele a l'edition en ligne).
       section: f.section ?? null, description: f.description ?? null, defaultValue: f.defaultValue ?? null,
       unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
+      // Les DEUX formes, meme raison qu'a L33 : les cles pour une copie de l'appli
+      // anterieure au lot, les options pour les autres.
+      allowedOptions: f.allowedOptions ?? null,
       required: f.required ?? false, minValue: f.minValue ?? null, maxValue: f.maxValue ?? null,
       // Les DEUX sont conserves : le booleen pour une copie de l'appli anterieure a L33, la
       // liste pour les autres. Un instantane sans liste retombe sur les trois codes
