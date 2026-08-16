@@ -76,6 +76,14 @@ insert into public.template (id, name, specialty, owner_user_id, is_global) valu
 insert into public.template_version (id, template_id, version_number, status, created_by) values
   ('10000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', 1, 'draft', '22222222-2222-2222-2222-222222222222');
 
+-- L31 : les sections appartiennent a la version et se creent AVANT les variables, sinon
+-- le rattachement n'a rien a viser. Le seed s'executant apres les migrations, la reprise
+-- de la migration ne peut pas les lui poser : elles sont donc explicites ici.
+insert into public.template_section (template_version_id, section_key, label, display_order) values
+  ('10000000-0000-0000-0000-0000000000a1', 'clinique', 'Clinique', 0),
+  ('10000000-0000-0000-0000-0000000000a1', 'biologie', 'Biologie', 1),
+  ('10000000-0000-0000-0000-0000000000a1', 'paraclinique', 'Paraclinique', 2);
+
 insert into public.template_field
   (template_version_id, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order)
 values
@@ -109,6 +117,9 @@ insert into public.template (id, name, specialty, owner_user_id, is_global) valu
   ('10000000-0000-0000-0000-000000000002', 'Neurochirurgie (modele standard)', 'neurochirurgie', null, true);
 insert into public.template_version (id, template_id, version_number, status, created_by, published_at) values
   ('10000000-0000-0000-0000-0000000000a2', '10000000-0000-0000-0000-000000000002', 1, 'published', '1f111111-1111-1111-1111-111111111111', now());
+insert into public.template_section (template_version_id, section_key, label, display_order)
+select '10000000-0000-0000-0000-0000000000a2', section_key, label, display_order
+from public.template_section where template_version_id = '10000000-0000-0000-0000-0000000000a1';
 insert into public.template_field
   (template_version_id, field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types)
 select '10000000-0000-0000-0000-0000000000a2', field_key, label, scope, section, type, unit, allowed_values, required, min_value, max_value, allow_missing_codes, display_order, encounter_types

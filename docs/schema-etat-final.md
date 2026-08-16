@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260815161000_option_key_repair.sql`
-- Tables : 41 · Policies RLS : 61 · Triggers : 61 · Fonctions : 257
+- Dernière migration incluse : `20260815180000_template_section.sql`
+- Tables : 42 · Policies RLS : 63 · Triggers : 63 · Fonctions : 260
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -771,6 +771,7 @@ Policies :
 | default_value | text | oui |  |
 | missing_reasons | ARRAY | non | `ARRAY['non_fait'::text, 'inconnu'::text, 'non_applicable'::text]` |
 | allowed_options | jsonb | oui |  |
+| section_id | uuid | oui |  |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -781,6 +782,7 @@ Triggers :
 - `trg_template_field_default_value` — BEFORE INSERT/UPDATE → `enforce_template_field_default_value()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
+- `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
@@ -796,6 +798,24 @@ Triggers :
 | created_at | timestamp with time zone | non | `now()` |
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
+### template_section · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| template_version_id | uuid | non |  |
+| section_key | text | non |  |
+| label | text | non |  |
+| display_order | integer | non | `0` |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `ts_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
+- `ts_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
+
+Triggers :
+- `trg_template_section_write` — BEFORE INSERT/UPDATE/DELETE → `guard_template_section_write()`
 
 ### template_version · RLS activée
 
@@ -1031,6 +1051,7 @@ Triggers :
 | guard_template_field_delete | — | DEFINER | plpgsql |
 | guard_template_field_locked_insert | — | DEFINER | plpgsql |
 | guard_template_field_update | — | DEFINER | plpgsql |
+| guard_template_section_write | — | DEFINER | plpgsql |
 | guard_template_version_state | — | DEFINER | plpgsql |
 | guard_upload_ticket_attachment | — | DEFINER | plpgsql |
 | guard_validation_rule_inuse | — | INVOKER | plpgsql |
@@ -1115,6 +1136,7 @@ Triggers :
 | reject_cross_sectional_encounter_submission | — | DEFINER | plpgsql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
+| reorder_template_sections | p_version_id uuid, p_section_ids uuid[] | DEFINER | plpgsql |
 | repair_option_keys | p_base_id uuid, p_confirm boolean | DEFINER | plpgsql |
 | replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |
@@ -1142,6 +1164,7 @@ Triggers :
 | soft_delete_encounter | p_encounter_id uuid, p_reason text | DEFINER | plpgsql |
 | soft_delete_patient | p_patient_id uuid, p_reason text | DEFINER | plpgsql |
 | submit_curation_request | p_task_id uuid | DEFINER | plpgsql |
+| sync_template_field_section | — | DEFINER | plpgsql |
 | template_field_in_use | p_field_id uuid | DEFINER | sql |
 | template_field_option_keys | p_options jsonb | INVOKER | sql |
 | template_field_options_from_values | p_values jsonb, p_previous jsonb | INVOKER | sql |
