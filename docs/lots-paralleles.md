@@ -75,7 +75,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L28~~ | ~~Valeur par défaut et unicité~~ | **Livré le 2026-08-14** (valeur proposée ; `is_unique` écartée) | — |
 | **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
 | ~~L30~~ | ~~Options de liste : code interne stable~~ | **Livré le 2026-08-15** (`allowed_options` fait foi, `allowed_values` conservé en miroir) | — |
-| **L31** | Sections personnalisables | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `ImportData.tsx`, `TemplateFromFile.tsx`, `templateLibrary.ts`, `seed.sql`, `exportContract.ts` | L29 |
+| ~~L31~~ | ~~Sections personnalisables~~ | **Livré le 2026-08-15** (`template_section` rattachée à la version, `section` conservé en miroir du code) | — |
 | ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
 | ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
 
@@ -494,20 +494,28 @@ fiche et est rapportée. Détail dans
 un code. Corriger une option scindait une modalité en deux dans les statistiques, sans que rien ne
 le signale.
 
-### L31 — Sections personnalisables
+### L31 — Sections personnalisables — **livré**
 
-`section` est un `check (section in ('clinique','biologie','paraclinique'))`, et ces trois valeurs
-sont **répliquées dans neuf fichiers** : `types.ts`, `templateLibrary.ts`, `EncounterFields.tsx`,
-`ImportData.tsx`, `TemplateFromFile.tsx`, `FieldForm.tsx`, `seed.sql`, la migration d'origine et
-`20260711000200_template_transactionality.sql`.
+Livré le 2026-08-15. Une table `template_section` rattachée à `template_version` : une section est
+une structure de gabarit, elle suit le versionnement et le **gel des versions publiées**, comme les
+variables. `section` est **conservée en miroir** du code, comme `allowed_values` à L30 et
+`allow_missing_codes` à L33 — une PWA non rafraîchie et un instantané déjà téléchargé ne
+connaîtront jamais la nouvelle table.
 
-Le lot le plus lourd de la famille, et le seul dont le document d'orientation sous-estimait le
-coût en le qualifiant de « relativement localisé ». Une table `template_section` rattachée à
-`template_version`, avec une migration de repli conservant les trois sections actuelles comme
-sections par défaut de toute base existante.
+**Une seule notion a été retenue**, décision prise avec le porteur : la section est le regroupement
+visuel du formulaire. Aucune catégorie de donnée séparée n'est introduite — rien ne la lirait
+aujourd'hui, et l'ajouter reste additif plus tard.
 
-Ne pas confondre la **section** — le regroupement visuel du formulaire, propre à chaque base — avec
-la **catégorie de donnée** ; les deux peuvent coexister, et c'est même l'intérêt du lot.
+Toute base existante conserve ses trois sections, dans leur ordre, avec leurs codes : un client non
+rafraîchi voit exactement ce qu'il voyait. Le filet de `EncounterFields` est préservé et posé aussi
+au niveau des données — une variable dont la section est inconnue reste affichée sous « Autre ».
+Détail dans [`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md).
+
+**Le constat d'entrée sous-estimait la surface.** Trois sites de production supplémentaires
+portaient la liste en dur, dont `create_template_bundle` (recopie n° 3, dans
+`20260814090000`) et les trois fonctions de `20260815160000` qui transportent `section`. Avec
+`messages.ts` et `exportContract.ts`, la surface réelle est base + Edge + i18n + hors-ligne, pas
+« relativement localisé ».
 
 ### L32 — Affichage conditionnel — **livré**
 
@@ -583,13 +591,14 @@ avant ses lots.
 L28, L29, L33, L32 et L30 sont également livrés (PR #191/#193, #197/#198, #199/#200, #201–#204,
 #205–#206 et #207). Cela porte à **vingt-quatre lots livrés/intégrés**.
 
-**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
-`.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
+**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. La famille
+« moteur de formulaires » est **close** : L27 à L33 sont tous livrés. Le fichier `.freebuff/` non
+suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
 L'ordre suivant reflète la priorité confirmée : terminer la famille moteur de formulaires, puis
 L14 seul, puis la famille diagnostics.
 
-1. **Famille « moteur de formulaires »**, un lot à la fois :
+1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
    2. ~~**L29**~~ — prévisualisation — **livré** ;
    3. ~~**L28**~~ — valeur proposée — **livré** ;
@@ -599,7 +608,8 @@ L14 seul, puis la famille diagnostics.
    6. ~~**L30**~~ — codes d'options — **livré le 2026-08-15** ; la reprise est additive (le code
       d'une option en service est la chaîne elle-même), la conversion ne traite que les
       orphelines ;
-   7. **L31** — sections personnalisables, **prochain lot**, dernier et plus lourd.
+   7. ~~**L31**~~ — sections personnalisables — **livré le 2026-08-15** ; une seule notion (la
+      section visuelle), gel total sur version publiée, miroir sur le code.
 2. **L14**, seul, après les autres ajouts de textes i18n.
 3. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
    1. **L20 seul** — surface base, prérequis de tous les autres ;
