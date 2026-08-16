@@ -9,6 +9,7 @@ import type {
   RuleSeverity,
   Template,
   TemplateField,
+  TemplateSection,
   TemplateVersion,
   ValidationRule,
 } from './types';
@@ -21,9 +22,19 @@ export interface TemplateRepository {
   createPersonalTemplate(name: string, specialty: string | null): Promise<TemplateVersion>;
   /** Commande atomique de creation/clonage. Les champs et la base optionnelle sont persistés ensemble. */
   createTemplateBundle(input: TemplateBundleInput): Promise<TemplateBundleResult>;
-  getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>;
+  getVersion(versionId: string): Promise<{ version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[]; sections: TemplateSection[] }>;
   /** Lecture legere pour les ecrans qui n'ont besoin que d'afficher des champs. */
   getFields?(versionId: string): Promise<TemplateField[]>;
+  /** Sections de la version (L31). Lecture seule, dans l'ordre voulu par le proprietaire. */
+  getSections?(versionId: string): Promise<TemplateSection[]>;
+  /** Cree une section. Refusee sur une version publiee (garde serveur). */
+  addSection?(versionId: string, sectionKey: string, label: string): Promise<TemplateSection>;
+  /** Corrige le LIBELLE d'une section. Son code interne, lui, ne se modifie jamais (L31). */
+  renameSection?(sectionId: string, label: string): Promise<void>;
+  /** Supprime une section. Refusee si elle porte encore une variable (garde serveur). */
+  deleteSection?(sectionId: string): Promise<void>;
+  /** Reordonne les sections d'une version : `orderedIds` dans le nouvel ordre. */
+  reorderSections?(versionId: string, orderedIds: string[]): Promise<void>;
   /** Ajoute un champ et, le cas echeant, son compagnon dans la meme requete atomique. */
   addField(versionId: string, field: NewField, companion?: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
@@ -71,10 +82,34 @@ type FieldRow = {
   encounter_types: string[] | null;
 };
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
+type SectionRow = { id: string; section_key: string; label: string; display_order: number };
 
 const mapVersion = (r: VersionRow): TemplateVersion => ({
   id: r.id, templateId: r.template_id, versionNumber: r.version_number, status: r.status,
 });
+const mapSection = (r: SectionRow): TemplateSection => ({
+  id: r.id, sectionKey: r.section_key, label: r.label, displayOrder: r.display_order,
+});
+
+const SECTION_COLUMNS = 'id, section_key, label, display_order';
+
+/**
+ * Attache a chaque variable le libelle et le rang de SA section (L31), pour que les ecrans
+ * de saisie n'aient pas a charger les sections separement.
+ *
+ * Une variable dont la section n'est pas dans la liste ressort telle quelle : elle garde
+ * son code et retombe sur le filet a l'affichage, au lieu de disparaitre.
+ */
+const withSections = (fields: TemplateField[], sections: TemplateSection[]): TemplateField[] => {
+  if (sections.length === 0) return fields;
+  const bySectionKey = new Map(sections.map((s) => [s.sectionKey, s]));
+  return fields.map((field) => {
+    const section = bySectionKey.get(field.section);
+    return section
+      ? { ...field, sectionId: section.id, sectionLabel: section.label, sectionOrder: section.displayOrder }
+      : field;
+  });
+};
 const mapField = (r: FieldRow): TemplateField => ({
   id: r.id, fieldKey: r.field_key, label: r.label, description: r.description, defaultValue: r.default_value,
   scope: r.scope, section: r.section, type: r.type,
@@ -99,6 +134,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     };
     return {
       listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, createTemplateBundle: fail, getVersion: fail, addField: fail, updateField: fail,
+      getSections: fail, addSection: fail, renameSection: fail, deleteSection: fail, reorderSections: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
@@ -107,7 +143,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
 
   // Cache de SESSION des versions (gabarits quasi-immuables) : evite de recharger fields+rules a
   // chaque ecran. Vide des qu'une ecriture de gabarit a lieu (clearVersionCache dans les writes).
-  const versionCache = new Map<string, { version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[] }>();
+  const versionCache = new Map<string, { version: TemplateVersion; fields: TemplateField[]; rules: ValidationRule[]; sections: TemplateSection[] }>();
   const fieldsCache = new Map<string, TemplateField[]>();
   const clearVersionCache = () => { versionCache.clear(); fieldsCache.clear(); };
 
@@ -165,24 +201,31 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     async getVersion(versionId) {
       const cached = versionCache.get(versionId);
       if (cached) return cached;
-      // Les 4 lectures sont INDEPENDANTES -> en parallele (1 aller-retour au lieu de 4).
-      const [vRes, fRes, rRes, uRes] = await Promise.all([
+      // Les 5 lectures sont INDEPENDANTES -> en parallele (1 aller-retour au lieu de 5).
+      const [vRes, fRes, rRes, uRes, sRes] = await Promise.all([
         client.from('template_version').select('id, template_id, version_number, status').eq('id', versionId).single(),
         client.from('template_field').select('*').eq('template_version_id', versionId).order('display_order', { ascending: true }),
         client.from('validation_rule').select('id, rule, message, severity').eq('template_version_id', versionId),
         client.rpc('template_version_fields_in_use', { p_version_id: versionId }),
+        client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),
       ]);
       if (vRes.error) throw vRes.error;
       if (fRes.error) throw fRes.error;
       if (rRes.error) throw rRes.error;
       if (uRes.error) throw uRes.error;
+      if (sRes.error) throw sRes.error;
       const used = new Set(
         ((uRes.data ?? []) as (string | { id?: string })[]).map((x) => (typeof x === 'string' ? x : x.id ?? '')),
       );
+      const sections = ((sRes.data as SectionRow[]) ?? []).map(mapSection);
       const result = {
         version: mapVersion(vRes.data as VersionRow),
-        fields: ((fRes.data as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
+        fields: withSections(
+          ((fRes.data as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
+          sections,
+        ),
         rules: ((rRes.data as RuleRow[]) ?? []).map(mapRule),
+        sections,
       };
       versionCache.set(versionId, result);
       fieldsCache.set(versionId, result.fields);
@@ -194,15 +237,79 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (cachedVersion) return cachedVersion.fields;
       const cachedFields = fieldsCache.get(versionId);
       if (cachedFields) return cachedFields;
+      const [fRes, sRes] = await Promise.all([
+        client
+          .from('template_field')
+          .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, display_order, encounter_types')
+          .eq('template_version_id', versionId)
+          .order('display_order', { ascending: true }),
+        client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),
+      ]);
+      if (fRes.error) throw fRes.error;
+      if (sRes.error) throw sRes.error;
+      const fields = withSections(
+        ((fRes.data as FieldRow[]) ?? []).map(mapField),
+        ((sRes.data as SectionRow[]) ?? []).map(mapSection),
+      );
+      fieldsCache.set(versionId, fields);
+      return fields;
+    },
+
+    async getSections(versionId) {
       const { data, error } = await client
-        .from('template_field')
-        .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, display_order, encounter_types')
+        .from('template_section')
+        .select(SECTION_COLUMNS)
         .eq('template_version_id', versionId)
         .order('display_order', { ascending: true });
       if (error) throw error;
-      const fields = ((data as FieldRow[]) ?? []).map(mapField);
-      fieldsCache.set(versionId, fields);
-      return fields;
+      return ((data as SectionRow[]) ?? []).map(mapSection);
+    },
+
+    async addSection(versionId, sectionKey, label) {
+      // Nouvelles sections EN FIN de liste, comme les variables.
+      const { data: last } = await client
+        .from('template_section')
+        .select('display_order')
+        .eq('template_version_id', versionId)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const { data, error } = await client
+        .from('template_section')
+        .insert({
+          template_version_id: versionId,
+          section_key: sectionKey,
+          label,
+          display_order: ((last?.display_order as number | undefined) ?? -1) + 1,
+        })
+        .select(SECTION_COLUMNS)
+        .single();
+      if (error) throw error;
+      clearVersionCache();
+      return mapSection(data as SectionRow);
+    },
+
+    async renameSection(sectionId, label) {
+      // SEUL le libelle part : le code interne est la reference stable des variables et
+      // des instantanes hors-ligne, et le declencheur serveur refuse de le voir changer.
+      const { error } = await client.from('template_section').update({ label }).eq('id', sectionId);
+      if (error) throw error;
+      clearVersionCache();
+    },
+
+    async deleteSection(sectionId) {
+      const { error } = await client.from('template_section').delete().eq('id', sectionId);
+      if (error) throw error;
+      clearVersionCache();
+    },
+
+    async reorderSections(versionId, orderedIds) {
+      const { error } = await client.rpc('reorder_template_sections', {
+        p_version_id: versionId,
+        p_section_ids: orderedIds,
+      });
+      if (error) throw error;
+      clearVersionCache();
     },
 
     async addField(versionId, field, companion) {

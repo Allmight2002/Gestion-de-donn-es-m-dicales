@@ -15,7 +15,15 @@ interface OptionCarrier {
 }
 
 export type FieldScope = 'patient' | 'encounter';
-export type FieldSection = 'clinique' | 'biologie' | 'paraclinique';
+/**
+ * Code interne d'une section (L31). LIBRE : chaque base definit les siennes, un registre
+ * de traumatisme cranien n'ayant pas les memes regroupements qu'un registre de cardiologie.
+ *
+ * Ce n'est PAS une categorie de donnee : c'est le regroupement visuel du formulaire. Le
+ * libelle affiche vient de `TemplateSection`, jamais de ce code — sauf pour les trois codes
+ * historiques, qui restent traduits (voir `domain/templateSections`).
+ */
+export type FieldSection = string;
 export type FieldType =
   | 'number' | 'integer' | 'text' | 'date' | 'datetime' | 'boolean' | 'select' | 'multiselect'
   // Valeurs resolues dans le referentiel plutot que recopiees dans le gabarit.
@@ -89,6 +97,15 @@ export interface TemplateField {
   defaultValue?: string | null;
   scope: FieldScope;
   section: FieldSection;
+  /**
+   * Lien vers la section (L31). Nul = section inconnue ou detachee : la variable retombe
+   * sur la section de secours et RESTE VISIBLE. C'est un filet, pas un detail.
+   */
+  sectionId?: string | null;
+  /** Libelle de la section, joint a la lecture. Absent d'un instantane anterieur au lot. */
+  sectionLabel?: string | null;
+  /** Rang de la section voulu par le proprietaire. Absent -> ordre historique. */
+  sectionOrder?: number | null;
   type: FieldType;
   unit: string | null;
   /** Miroir des codes d'options (L30). Conserve pour les instantanes et clients anterieurs. */
@@ -114,6 +131,20 @@ export interface TemplateField {
   encounterTypes?: string[] | null;
   /** Au moins une donnee patient/rencontre porte deja cette cle -> nom/type verrouilles. */
   inUse?: boolean;
+}
+
+/**
+ * Regroupement visuel du formulaire (L31), rattache a UNE VERSION de gabarit : une section
+ * suit le versionnement et le gel des versions publiees, exactement comme une variable.
+ *
+ * `sectionKey` est le code interne STABLE — jamais reecrit, c'est lui que portent les
+ * fiches, le miroir serveur et les instantanes hors-ligne. `label` seul est corrigeable.
+ */
+export interface TemplateSection {
+  id: string;
+  sectionKey: string;
+  label: string;
+  displayOrder: number;
 }
 
 export interface ValidationRule {

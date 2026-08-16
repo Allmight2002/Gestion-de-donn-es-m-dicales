@@ -6,12 +6,12 @@ import { OptionsEditor } from './OptionsEditor';
 import { makeProposalField } from '../../domain/proposalField';
 import { NOW_TOKEN, TODAY_TOKEN, defaultValueRisk, supportsDefaultValue } from '../../domain/fieldDefaults';
 import { HISTORIC_MISSING_CODES, MISSING_CODES, allowedMissingReasons, type MissingCode } from '../../domain/validation';
-import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
+import type { FieldScope, FieldSection, FieldType, NewField, TemplateSection } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
+import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections';
 import { Checkbox } from '../../components/Checkbox';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
-const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
 const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'boolean', 'select', 'multiselect', 'terminology'];
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 
@@ -25,6 +25,7 @@ export function FieldForm({
   submitLabel,
   onCancel,
   observationModel = 'longitudinal',
+  sections,
 }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
@@ -36,15 +37,26 @@ export function FieldForm({
   submitLabel?: string;
   onCancel?: () => void;
   observationModel?: ObservationModel;
+  /** Sections de la version (L31). Absentes -> les trois codes historiques, comme avant le lot. */
+  sections?: readonly TemplateSection[] | null;
 }) {
   const { t } = useI18n();
   const editing = !!initial;
   const isCrossSectional = observationModel === 'cross_sectional';
+  // Un ecran sans liste chargee reste utilisable : il propose les trois sections
+  // historiques, exactement ce qu'il proposait avant le lot.
+  const sectionChoices: { sectionKey: string; label: string }[] = sections?.length
+    ? sections.map((s) => ({ sectionKey: s.sectionKey, label: s.label }))
+    : LEGACY_SECTION_KEYS.map((key) => ({ sectionKey: key, label: key }));
   const [fieldKey, setFieldKey] = useState(initial?.fieldKey ?? '');
   const [label, setLabel] = useState(initial?.label ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [scope, setScope] = useState<FieldScope>(isCrossSectional ? 'patient' : (initial?.scope ?? 'encounter'));
-  const [section, setSection] = useState<FieldSection>(initial?.section ?? 'clinique');
+  // Une base qui a supprime « clinique » ne doit pas se voir proposer une section qui
+  // n'existe plus : a defaut de valeur initiale, on prend la PREMIERE de la version.
+  const [section, setSection] = useState<FieldSection>(
+    initial?.section ?? sections?.[0]?.sectionKey ?? 'clinique',
+  );
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
   const [encounterTypes, setEncounterTypes] = useState<string[]>(initial?.encounterTypes ?? []);
@@ -208,9 +220,9 @@ export function FieldForm({
       <label className="form-label">
         {t('admin.section')}
         <select className={inputCls} value={section} onChange={(e) => setSection(e.target.value as FieldSection)}>
-          {SECTIONS.map((s) => (
-            <option key={s} value={s}>
-              {t(`section.${s}`)}
+          {sectionChoices.map((s) => (
+            <option key={s.sectionKey} value={s.sectionKey}>
+              {sectionLabel(t, s)}
             </option>
           ))}
         </select>

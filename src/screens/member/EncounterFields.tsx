@@ -1,17 +1,11 @@
 import { Fragment, useId, useState, type ReactNode } from 'react';
 import { CircleHelp } from 'lucide-react';
-import type { FieldSection, TemplateField } from '../../data/types';
+import type { TemplateField, TemplateSection } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
+import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
-
-const DEFINED_SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
-const SECTIONS = [...DEFINED_SECTIONS, 'other'] as const;
-type DisplaySection = (typeof SECTIONS)[number];
-
-const displaySectionOf = (section: unknown): DisplaySection =>
-  DEFINED_SECTIONS.includes(section as FieldSection) ? section as FieldSection : 'other';
 
 export function FieldLabel({ field, prefilled = false }: { field: TemplateField; prefilled?: boolean }) {
   const { t } = useI18n();
@@ -82,31 +76,36 @@ export function HiddenValuesNotice({
 export function SectionedFields({
   fields,
   renderField,
+  sections,
 }: {
   fields: TemplateField[];
   renderField: (field: TemplateField) => ReactNode;
+  /**
+   * Sections de la version (L31). Facultatives : sans elles, l'ordre et les libelles
+   * retombent sur ceux que portent les variables, puis sur l'ordre historique. Un ecran
+   * qui ne les a pas affiche donc exactement ce qu'il affichait avant le lot.
+   */
+  sections?: readonly TemplateSection[] | null;
 }) {
   const { t } = useI18n();
   return (
     <>
-      {SECTIONS.map((section) => {
-        const sectionFields = fields.filter((field) => displaySectionOf(field.section) === section);
-        if (sectionFields.length === 0) return null;
-        return (
-          <fieldset key={section} className="card space-y-3 p-4">
-            <legend className="px-1 text-sm font-semibold text-slate-700">{t(`section.${section}`)}</legend>
-            {sectionFields.map((field) => (
-              <Fragment key={field.id}>{renderField(field)}</Fragment>
-            ))}
-          </fieldset>
-        );
-      })}
+      {groupFieldsBySection(fields, sections).map((group) => (
+        <fieldset key={group.key} className="card space-y-3 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-700">
+            {sectionLabel(t, { sectionKey: group.key, label: group.label })}
+          </legend>
+          {group.fields.map((field) => (
+            <Fragment key={field.id}>{renderField(field)}</Fragment>
+          ))}
+        </fieldset>
+      ))}
     </>
   );
 }
 
-// Rendu des champs de rencontre par section (clinique / biologie / paraclinique),
-// reutilise par la creation et l'edition.
+// Rendu des champs de rencontre par section, reutilise par la creation et l'edition.
+// Les sections sont celles de la version du gabarit (L31), pas une liste figee.
 export function EncounterFields({
   fields,
   values,
@@ -114,6 +113,7 @@ export function EncounterFields({
   onRemove,
   prefilledKeys,
   hiddenKeys,
+  sections,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -123,6 +123,8 @@ export function EncounterFields({
   prefilledKeys?: Set<string>;
   /** Cles masquees par une regle d'affichage (L32) : elles ne sont pas rendues du tout. */
   hiddenKeys?: ReadonlySet<string>;
+  /** Sections de la version (L31). Facultatives : voir `SectionedFields`. */
+  sections?: readonly TemplateSection[] | null;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -132,6 +134,7 @@ export function EncounterFields({
   return (
     <SectionedFields
       fields={visibleFields}
+      sections={sections}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
