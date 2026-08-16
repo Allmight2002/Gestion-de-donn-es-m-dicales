@@ -5,7 +5,8 @@ import { CheckCircle2, Columns3, FileSpreadsheet, Settings2, ShieldAlert, Upload
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { getTemplateFields } from '../../data/templates';
-import type { FieldScope, FieldSection, FieldType, TemplateField } from '../../data/types';
+import type { FieldScope, FieldSection, FieldType, TemplateField, TemplateSection } from '../../data/types';
+import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
   type ColumnMapping, type ImportReport, type ImportTarget,
@@ -21,7 +22,6 @@ import { WorkflowSteps } from '../../components/WorkflowSteps';
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
 const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
-const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
 const MAX_ROWS = 5000;
 const MAX_FILE_BYTES = 15 * 1024 * 1024; // §5.3 : borne de TAILLE avant lecture (anti fichier hostile)
 const CHUNK = 300; // taille des lots (au-dela, import par lots avec progression)
@@ -53,6 +53,9 @@ export function ImportData() {
   const { toast } = useToast();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
+  // L31 : les sections de la version, y compris celles encore vides. Les deduire des
+  // variables chargees masquerait justement les sections ou rien n'a encore ete range.
+  const [sections, setSections] = useState<TemplateSection[]>([]);
   const [versionId, setVersionId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [draft, setDraft] = useState<NewVarDraft | null>(null); // V2 : variable en cours de creation
@@ -75,6 +78,12 @@ export function ImportData() {
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
+  // Sans liste chargee, l'ecran propose les trois sections historiques : c'est ce qu'il
+  // proposait avant le lot, donc aucune regression pour une base qui n'a rien change.
+  const sectionChoices: { sectionKey: string; label: string }[] = sections.length
+    ? sections.map((s) => ({ sectionKey: s.sectionKey, label: s.label }))
+    : LEGACY_SECTION_KEYS.map((key) => ({ sectionKey: key, label: key }));
+
   const load = useCallback(async () => {
     if (!baseId) return;
     try {
@@ -83,6 +92,7 @@ export function ImportData() {
       if (base?.base.currentTemplateVersionId) {
         setVersionId(base.base.currentTemplateVersionId);
         setFields(await getTemplateFields(templates, base.base.currentTemplateVersionId));
+        setSections((await templates.getSections?.(base.base.currentTemplateVersionId)) ?? []);
       }
     } catch (e) {
       setError(msg(e));
@@ -298,7 +308,9 @@ export function ImportData() {
       label: header,
       type: proposal?.type ?? 'text',
       scope: proposal?.scope ?? 'patient',
-      section: proposal?.section ?? 'clinique',
+      // Une base qui a renomme ou retire « clinique » ne doit pas se voir proposer une
+      // section qui n'existe plus : a defaut, la PREMIERE section de la version.
+      section: proposal?.section ?? sections[0]?.sectionKey ?? 'clinique',
       allowedValues: proposal?.allowedValues ?? null,
     });
   }
@@ -412,7 +424,7 @@ export function ImportData() {
                         <label className="form-label">{t('admin.label')}<input className="input" value={draft.label} onChange={(event) => setDraft({ ...draft, label: event.target.value })} /></label>
                         <label className="form-label">{t('admin.type')}<select className="input" value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as FieldType })}>{TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
                         <label className="form-label">{t('admin.scope')}<select className="input" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as FieldScope })}><option value="patient">{t('scope.patient')}</option><option value="encounter">{t('scope.encounter')}</option></select></label>
-                        <label className="form-label">{t('admin.section')}<select className="input" value={draft.section} onChange={(event) => setDraft({ ...draft, section: event.target.value as FieldSection })}>{SECTIONS.map((section) => <option key={section} value={section}>{t(`section.${section}`)}</option>)}</select></label>
+                        <label className="form-label">{t('admin.section')}<select className="input" value={draft.section} onChange={(event) => setDraft({ ...draft, section: event.target.value as FieldSection })}>{sectionChoices.map((section) => <option key={section.sectionKey} value={section.sectionKey}>{sectionLabel(t, section)}</option>)}</select></label>
                       </div>
                       {(draft.type === 'select' || draft.type === 'multiselect') && draft.allowedValues && draft.allowedValues.length > 0 && (
                         <p className="helper-text">{t('admin.allowed_values')} : {draft.allowedValues.join(', ')}</p>

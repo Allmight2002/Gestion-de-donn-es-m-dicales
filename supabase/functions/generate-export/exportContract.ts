@@ -22,7 +22,10 @@ export interface ExportField {
   label: string;
   description?: string | null;
   scope: 'patient' | 'encounter';
+  /** CODE de la section (L31) : stable, c'est lui qui survit a une correction de libelle. */
   section: string;
+  /** Libelle de la section, lisible. Absent = version anterieure au lot, ou section detachee. */
+  sectionLabel?: string | null;
   type: string;
   unit: string | null;
   /** Miroir des codes d'options (L30) : ce que contient reellement la colonne de donnees. */
@@ -231,6 +234,10 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // les listes different. Le dictionnaire doit couvrir TOUT ce que la colonne peut
       // contenir, sinon un code lu dans une fiche ancienne ne s'explique nulle part.
       previous.allowedOptions = mergeOptionLists(previous.allowedOptions, field.allowedOptions);
+      // L31 : une colonne peut traverser des versions dont l'une seulement porte le libelle
+      // de section (version anterieure au lot, ou section detachee). On garde le premier
+      // libelle connu plutot que de laisser la colonne sans nom lisible.
+      previous.sectionLabel = previous.sectionLabel ?? field.sectionLabel;
     } else {
       merged.set(key, {
         ...field,
@@ -342,7 +349,11 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
     'label',
     'description',
     'scope',
+    // L31 : le CODE de la section, inchange pour une base qui n'a pas touche aux siennes,
+    // et son LIBELLE — sans quoi une section personnalisee n'apparaitrait au dictionnaire
+    // que sous forme de code, illisible pour qui relit l'export.
     'section',
+    'section_label',
     'type',
     'unit',
     'allowed_values',
@@ -360,6 +371,7 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
         description: f.description ?? '',
         scope: f.scope,
         section: f.section,
+        section_label: f.sectionLabel ?? '',
         unit: f.unit ?? '',
         // Pour une liste, ce sont les LIBELLES qui sont decrits, avec la mention explicite
         // des options retirees de la saisie : c'est ce qui explique qu'une modalite

@@ -14,6 +14,7 @@ import {
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
+  mergeExportFields,
   optionCodeColumnId,
 } from './exportContract.ts';
 
@@ -77,6 +78,7 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       field_key: 'diagnostic',
       scope: 'encounter',
       section: 'clinique',
+      section_label: '',
       unit: '',
       allowed_values: '',
       missing_reasons: '',
@@ -90,6 +92,7 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       field_key: 'diagnostic',
       scope: 'encounter',
       section: 'clinique',
+      section_label: '',
       unit: '',
       allowed_values: '',
       missing_reasons: '',
@@ -256,4 +259,39 @@ Deno.test('dictionnaire : une colonne traversant deux versions decrit TOUTES ses
   const dict = buildDictionary([v1, v2]);
   const codes = dict.rows.find((r) => r.column_id === optionCodeColumnId(v1));
   assertEquals(codes?.allowed_values, 'gueri; perdu');
+});
+
+// L31 — une section personnalisee doit apparaitre au dictionnaire. Le CODE reste dans la
+// colonne `section` (inchangee pour une base qui n'a pas touche aux siennes) et le libelle
+// occupe la sienne : sans lui, « imagerie_cerebrale » serait tout ce que verrait la
+// personne qui relit l'export.
+Deno.test('le dictionnaire nomme une section personnalisee', () => {
+  const dictionary = buildDictionary([
+    champ({
+      fieldKey: 'tdm_realisee',
+      type: 'boolean',
+      section: 'imagerie_cerebrale',
+      sectionLabel: 'Imagerie cérébrale',
+    }),
+  ]);
+  assertEquals(dictionary.columns.includes('section_label'), true);
+  assertEquals(dictionary.rows[0].section, 'imagerie_cerebrale');
+  assertEquals(dictionary.rows[0].section_label, 'Imagerie cérébrale');
+});
+
+// Une colonne qui traverse deux versions dont l'une seulement porte le libelle ne doit pas
+// perdre son nom lisible : le premier libelle connu tient.
+Deno.test('le libelle de section survit a la fusion entre versions', () => {
+  const merged = mergeExportFields([
+    champ({ fieldKey: 'tdm', type: 'boolean', section: 'imagerie', sectionLabel: null, templateVersionIds: ['v1'] }),
+    champ({
+      fieldKey: 'tdm',
+      type: 'boolean',
+      section: 'imagerie',
+      sectionLabel: 'Imagerie',
+      templateVersionIds: ['v2'],
+    }),
+  ]);
+  assertEquals(merged.length, 1);
+  assertEquals(merged[0].sectionLabel, 'Imagerie');
 });

@@ -3,7 +3,7 @@ import { Monitor, Smartphone } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
-import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
+import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
@@ -65,11 +65,14 @@ export function FormPreview({
   version,
   fields,
   rules,
+  sections,
   onClose,
 }: {
   version: TemplateVersion;
   fields: TemplateField[];
   rules: ValidationRule[];
+  /** Sections de la version (L31) : l'apercu doit montrer les regroupements REELS. */
+  sections?: readonly TemplateSection[] | null;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -219,6 +222,7 @@ export function FormPreview({
                   // NewPatient doit etre reportee ici.
                   <SectionedFields
                     fields={patientVisible}
+                    sections={sections}
                     renderField={(field) => {
                       const proposal = isProposalSource(field) ? findProposalField(patientFields, field) : undefined;
                       return (
@@ -303,6 +307,7 @@ export function FormPreview({
                   <EncounterFields
                     hiddenKeys={encounterHidden}
                     fields={applicable}
+                    sections={sections}
                     values={encounterValues}
                     onChange={(k, v) => setEncounterValues((p) => ({ ...p, [k]: v }))}
                     onRemove={(key) => setEncounterValues((current) => {

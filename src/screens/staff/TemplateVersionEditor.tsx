@@ -3,18 +3,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Eye } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
-import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
+import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
 import { fieldOptions } from '../../domain/fieldOptions';
+import { sectionLabel } from '../../domain/templateSections';
 import { FormPreview } from './FormPreview';
 import { RuleForm, RuleSummary, ruleHasSeverity } from './RuleForm';
+import { SectionsEditor } from './SectionsEditor';
 import { SkeletonList } from '../../components/Skeleton';
 
 interface Loaded {
   version: TemplateVersion;
   fields: TemplateField[];
   rules: ValidationRule[];
+  sections: TemplateSection[];
 }
 
 export function TemplateVersionEditor({
@@ -78,14 +81,14 @@ export function TemplateVersionEditor({
   if (loading && !data) return <SkeletonList rows={5} label={t('common.loading')} />;
   if (!data) return <p className="text-red-600">{error}</p>;
 
-  const { version, fields, rules } = data;
+  const { version, fields, rules, sections } = data;
 
   // L29 : l'apercu prend tout l'ecran et se sert des donnees DEJA chargees ici — pas de
   // route dediee, sinon le meme ecran devrait franchir deux zones de garde differentes
   // (`member` pour /bases/:id/template et /templates, `admin` pour /admin) alors qu'il ne
   // fait que reafficher ce que l'editeur a en main.
   if (previewing) {
-    return <FormPreview version={version} fields={fields} rules={rules} onClose={() => setPreviewing(false)} />;
+    return <FormPreview version={version} fields={fields} rules={rules} sections={data.sections} onClose={() => setPreviewing(false)} />;
   }
 
   const editable = version.status === 'draft';
@@ -172,6 +175,20 @@ export function TemplateVersionEditor({
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {!editable && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{t('admin.published_readonly')}</p>}
 
+      {/* L31 : les sections avant les variables — on choisit ses regroupements, puis on
+          range ses variables dedans. Gelees avec la version, donc invisibles hors brouillon. */}
+      {editable && (
+        <SectionsEditor
+          sections={sections}
+          fields={fields}
+          busy={busy}
+          onAdd={(sectionKey, label) => void run(() => repo.addSection!(version.id, sectionKey, label))}
+          onRename={(sectionId, label) => void run(() => repo.renameSection!(sectionId, label))}
+          onDelete={(sectionId) => void run(() => repo.deleteSection!(sectionId))}
+          onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}
+        />
+      )}
+
       <div>
         <h3 className="mb-3 text-sm font-semibold text-slate-700">{t('admin.fields')}</h3>
         <div className="card overflow-hidden" role="table" aria-label={t('admin.fields')}>
@@ -243,7 +260,7 @@ export function TemplateVersionEditor({
                   </div>
                   <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm xl:block">
                     <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.section')}</span>
-                    <span>{t(`section.${f.section}`)}</span>
+                    <span>{sectionLabel(t, { sectionKey: f.section, label: f.sectionLabel })}</span>
                   </div>
                   <div role="cell" className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm xl:block">
                     <span className="text-xs font-medium text-slate-500 xl:hidden">{t('admin.type')}</span>
@@ -308,6 +325,7 @@ export function TemplateVersionEditor({
               submitLabel={t('admin.save')}
               onCancel={() => setEditing(null)}
               observationModel={observationModel}
+              sections={sections}
               onSubmit={(f) =>
                 void run(() => repo.updateField(editing.id, f)).then((ok) => {
                   if (ok) setEditing(null);
@@ -321,6 +339,7 @@ export function TemplateVersionEditor({
             <FieldForm
               busy={busy}
               observationModel={observationModel}
+              sections={sections}
               onSubmit={async (f, companion) => {
                 // Ne jamais promettre une soupape qui n'a pas pu etre creee. Un conflit est
                 // signale avant toute ecriture et le formulaire reste rempli pour correction.

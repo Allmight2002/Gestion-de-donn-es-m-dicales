@@ -23,9 +23,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // +3 (L30) : les deux RPC de conversion des options, et update_template_field portant
     // p_allowed_options. Les ANCIENNES signatures restent listees et en service — un client
     // non rafraichi doit continuer d'appeler la sienne.
-    expect(signatures).toHaveLength(108);
+    // +1 (L31) : reorder_template_sections. Le reordonnancement passe par une RPC parce que
+    // la liste doit contenir EXACTEMENT les sections de la version, ce qu'une ecriture
+    // directe ne saurait garantir.
+    expect(signatures).toHaveLength(109);
     expect(serviceRoleSignatures).toHaveLength(11); // Edge seulement : fichiers, quarantaine et missions.
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(119);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(120);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
