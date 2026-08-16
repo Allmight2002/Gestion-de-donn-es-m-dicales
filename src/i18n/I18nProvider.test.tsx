@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { I18nProvider } from './I18nProvider';
 import { useI18n } from './useI18n';
