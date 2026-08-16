@@ -38,6 +38,7 @@ export const EXPORT_LIMITS = {
   patients: 10_000,
   encounters: 50_000,
   dictionaryFields: 25_000,
+  dictionarySections: 5_000,
   cells: 1_000_000,
   csvColumns: 1_000,
   xlsxColumns: 256,
@@ -323,6 +324,12 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       missing_reasons: string[] | null;
       display_order: number;
     }
+    interface TemplateSectionRow {
+      id: string;
+      template_version_id: string;
+      section_key: string;
+      label: string;
+    }
 
     const cm = await readAllPages<CohortMemberRow>({
       resource: 'patients',
@@ -520,6 +527,29 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         return { data: result.data as TemplateFieldRow[] | null, error: result.error, count: result.count };
       },
     });
+    // L31 : le dictionnaire doit nommer une section personnalisee, pas seulement la coder.
+    // Les sections sont lues PAR VERSION, comme les champs : deux versions peuvent donner
+    // deux libelles au meme code, et c'est celui de la version de la fiche qui fait foi.
+    const rawSections = await readInChunks<TemplateSectionRow>({
+      values: templateVersions,
+      resource: 'dictionary_sections',
+      limit: EXPORT_LIMITS.dictionarySections,
+      keyOf: (row) => row.id,
+      fetchPage: async (chunk, from, to) => {
+        const result = await admin.from('template_section')
+          .select('id, template_version_id, section_key, label', { count: 'exact' })
+          .in('template_version_id', chunk)
+          .order('template_version_id', { ascending: true })
+          .order('display_order', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
+        return { data: result.data as TemplateSectionRow[] | null, error: result.error, count: result.count };
+      },
+    });
+    const sectionLabels = new Map(
+      rawSections.map((s) => [`${s.template_version_id} ${s.section_key}`, s.label]),
+    );
+
     const fields = mergeExportFields(
       rawFields.map((f) => ({
         fieldKey: f.field_key,
@@ -527,6 +557,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         description: f.description,
         scope: f.scope,
         section: f.section,
+        sectionLabel: sectionLabels.get(`${f.template_version_id} ${f.section}`) ?? null,
         type: f.type,
         unit: f.unit,
         allowedValues: f.allowed_values,
