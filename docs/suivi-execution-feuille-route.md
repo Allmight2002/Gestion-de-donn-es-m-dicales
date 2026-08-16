@@ -2261,3 +2261,137 @@ refusé par le serveur (« Valeur non autorisée pour X »). Le refus est visibl
 la correspondance libellé → code à l'import relève de **L24**, non de ce lot.
 
 ### Preuves de validation
+
+## L31 — Sections personnalisables (2026-08-15)
+
+`template_field.section` était un `check (section in ('clinique','biologie','paraclinique'))`. Un
+registre de traumatisme crânien ne se structure pas ainsi : il lui faut « identification /
+circonstances / examen initial / imagerie / prise en charge / évolution », créées, renommées et
+réordonnées par le propriétaire de la base.
+
+### Le constat d'entrée était incomplet
+
+Le document d'orientation annonçait neuf fichiers. Vérification faite avant d'écrire une ligne,
+**trois sites de production supplémentaires** portaient la même liste en dur, et deux d'entre eux
+étaient les plus dangereux :
+
+- `20260814090000_template_field_default_value.sql` — la liste des trois valeurs avait été
+  **recopiée une troisième fois** dans `create_template_bundle`. C'est cette copie qui était en
+  vigueur, pas celle de `20260711000200` citée par le constat.
+- `20260815160000_template_field_option_codes.sql` — `copy_template_fields`, `update_template_field`
+  et `download_base_snapshot` transportent tous `section`. Une structure oubliée là se perd **en
+  silence** à la duplication d'un gabarit : leçon déjà payée à L28, L30 et L33.
+- `templateFromSheet.ts:75` et `EditEncounter.tsx:81` — deux replis en dur sur `'clinique'`.
+
+S'y ajoutaient `messages.ts` (deux langues) et `exportContract.ts`. La qualification de « lot
+relativement localisé » était fausse : la surface réelle est base + Edge + i18n + hors-ligne.
+
+### Quatre décisions prises avec le porteur avant d'écrire
+
+**Une seule notion.** La section est le regroupement **visuel** du formulaire. Aucune « catégorie de
+donnée » séparée n'est introduite : rien dans le produit ne la lirait aujourd'hui, elle imposerait
+un second menu obligatoire dans quatre écrans de création, et l'ajouter plus tard reste additif.
+
+**Gel total sur une version publiée.** La section pend à `template_version` : elle hérite
+mécaniquement du verrou existant. Autoriser le renommage aurait exigé une **dérogation délibérée**
+dans la garde — c'était l'exception, pas le défaut. Le gel est aussi le régime réel des variables :
+contrairement à ce qui avait été avancé d'abord dans la discussion, une version publiée refuse
+**toute** modification de ses variables, libellé compris (`20260815160000:266`). Le lot s'aligne au
+lieu d'inventer un second régime.
+
+**Le miroir porte le code de la section.** Le `check` devient un contrôle de **forme**. Une PWA non
+rafraîchie et un instantané hors-ligne déjà téléchargé ne connaîtront jamais la nouvelle table :
+ils lisent la colonne texte. Les trois sections existantes **gardent leurs codes**, donc un client
+non rafraîchi voit exactement ce qu'il voyait. Une section créée après le déploiement tombe chez lui
+dans « Autre » — dégradation honnête plutôt qu'affichage faux.
+
+**Liste de sections partagée** entre variables patient et variables rencontre. Chaque écran n'affiche
+que les sections non vides, ce qui était déjà le comportement de `SectionedFields`.
+
+### Le repli, et ce qu'il garantit
+
+`20260815180000_template_section.sql` crée `template_section` (rattachée à `template_version`,
+`section_key` + `label` + `display_order`), ajoute `template_field.section_id` **nullable**, relâche
+le `check`, puis dote **chaque version existante** des trois sections historiques dans leur ordre et
+rattache chaque variable à celle de même code. Aucune variable ne change de section, aucun libellé
+affiché ne change — le front préfère la **traduction** pour ces trois codes, de sorte qu'un lecteur
+anglophone garde « Clinical » et non le « Clinique » stocké par la migration.
+
+### Le miroir marche dans les deux sens
+
+Deux familles de clients écrivent la table, et la bascule ne devait avoir aucune fenêtre : un client
+à jour envoie `section_id` et le code texte en est déduit ; un client non rafraîchi n'envoie que le
+code et le lien est retrouvé dans la même version. Sur `UPDATE`, c'est **celui des deux qui a
+changé** qui fait foi — sans cette distinction, une écriture ancienne aurait été silencieusement
+annulée par l'ancien lien.
+
+### Le filet, préservé et durci
+
+Un code non rapprochable **ne fait pas échouer l'écriture** : `section_id` reste nul et la variable
+retombe sur « Autre ». Refuser aurait fait disparaître la variable du formulaire — un champ
+invisible n'est jamais saisi, et personne ne s'en aperçoit. Le filet est aussi posé **au niveau des
+données** (`on delete set null`), et il ferme toujours la marche à l'affichage, quel que soit
+l'ordre nominal des sections.
+
+### Deux trous trouvés par les tests, pas par la relecture
+
+**`seed.sql` s'exécute après les migrations.** La reprise de la migration ne pouvait donc pas doter
+ses versions de sections : la base de démonstration naissait sans aucune section, et 7 tests sur 16
+tombaient. Les sections y sont désormais explicites, créées **avant** les variables.
+
+**Une table neuve ne reçoit aucun privilège.** Le `grant ... on all tables` de
+`20260616090400_rls.sql` ne couvre que les tables existantes à cette date : sans `grant` propre,
+la RLS n'est jamais atteinte et tout client reçoit « permission denied ». Même piège que
+`research_group` et `terminology_reference` avant elle.
+
+### Interface
+
+Un gestionnaire de sections (`SectionsEditor.tsx`) ouvre le constructeur, **avant** la liste des
+variables : on choisit ses regroupements, puis on range. Créer, renommer, réordonner ; le **code
+interne est affiché en lecture seule** — c'est lui que portent les fiches et les instantanés. Une
+section encore peuplée n'est pas supprimable, et l'écran le dit avant le clic plutôt que de laisser
+le serveur refuser. L'ensemble disparaît hors brouillon, comme le reste de l'édition.
+
+`FieldForm`, `ImportData` et `TemplateFromFile` proposent désormais les sections **de la version**
+au lieu des trois valeurs figées, et retombent sur les trois historiques quand aucune liste n'est
+chargée. Leur valeur par défaut est la **première section de la version** : une base qui a retiré
+« clinique » ne se voit plus proposer une section qui n'existe plus.
+
+### Export
+
+Le dictionnaire garde la colonne `section` portant le **code** — inchangée pour une base qui n'a pas
+touché aux siennes — et gagne `section_label`. Sans lui, une section personnalisée n'apparaîtrait
+que sous forme de code. Les sections sont lues **par version**, comme les champs : deux versions
+peuvent nommer différemment le même code, et c'est celui de la version de la fiche qui fait foi. À
+la fusion d'une colonne traversant plusieurs versions, le premier libellé connu tient.
+
+L'instantané hors-ligne émet `sections` et `sectionsByVersion`, en plus du `section` de chaque
+variable conservé tel quel.
+
+### Preuves de validation
+
+Exécutées sur cette branche, le 2026-08-15 :
+
+- `npm run typecheck` · `npm run lint` — sans erreur ni avertissement.
+- `npm test` — **1167 tests, 125 fichiers, tous verts**, dont `test/template-sections.test.ts`
+  (**23 tests** propres au lot).
+- `npm run db:verify` — le jeu de **127 migrations** s'applique proprement depuis zéro (10,3 s) ;
+  42 tables, 63 policies, 64 triggers.
+- `deno test supabase/functions/generate-export/` — **43 tests verts**, dont deux ajoutés pour la
+  section personnalisée au dictionnaire et la survie du libellé à la fusion entre versions.
+- `npm run edge:fmt` · `npm run edge:lint` · `npm run edge:check` · `npm run release:edge:check` —
+  verts (7 fonctions découvertes).
+- `npm run build` — vert. Le refus initial venait du garde-fou d'environnement
+  `VITE_USE_SIGNED_READ`, sans rapport avec le lot ; le build passe dès qu'il est fourni.
+- `npm run schema` — instantané régénéré jusqu'à `20260815180000_template_section.sql`.
+
+Ce que les tests ont réellement attrapé, et que la relecture n'avait pas vu : les deux trous
+ci-dessus (`seed.sql` et les privilèges de table), plus l'inventaire `SECURITY DEFINER` à compléter
+pour `reorder_template_sections`. Le contrôle n'a pas été contourné : la signature a été **ajoutée à
+l'allowlist** et les compteurs mis à jour.
+
+Un risque identifié à la relecture a été éprouvé plutôt que supposé : `template_section` et
+`template_field` pendent tous deux à la version avec `on delete cascade`, et l'ordre des cascades
+n'est pas garanti — si les sections partaient en premier, la garde « section non vide » aurait fait
+échouer la suppression d'une version légitime. Le comportement est correct, et deux tests de
+non-régression le figent.

@@ -73,6 +73,13 @@ const FIELDS = [
   },
 ];
 
+// L31 : les sections de la version. Le dictionnaire les nomme ; sans elles, la lecture
+// echoue franchement plutot que de produire un dictionnaire aux sections anonymes.
+const SECTIONS = [
+  { id: 's1', template_version_id: TV, section_key: 'vitals', label: 'Constantes', display_order: 0 },
+  { id: 's2', template_version_id: TV, section_key: 'x', label: 'Divers', display_order: 1 },
+];
+
 interface Opts {
   user?: { data: { user: { id: string } | null }; error?: unknown };
   cohort?: unknown;
@@ -147,6 +154,8 @@ function deps(opts: Opts = {}): GenerateExportDeps {
           return queriedRows(call, (opts.encounterRows ?? [ENCOUNTER]) as Array<Record<string, unknown>>, 'id');
         case 'template_field':
           return queriedRows(call, FIELDS, 'id');
+        case 'template_section':
+          return queriedRows(call, SECTIONS, 'id');
         case 'export_log':
           return opts.insertError ? errorResult(opts.insertError) : okResult({
             id: 'exp1',
@@ -521,6 +530,8 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
           return okResult([ENCOUNTER]);
         case 'template_field':
           return okResult(FIELDS);
+        case 'template_section':
+          return okResult(SECTIONS);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'csv' });
       }

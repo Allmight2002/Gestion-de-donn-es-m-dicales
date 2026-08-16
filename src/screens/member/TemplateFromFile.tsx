@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldScope, FieldSection, FieldType, NewField } from '../../data/types';
+import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { proposeFieldsFromSheet, type ProposedField } from '../../domain/templateFromSheet';
 import { useToast } from '../../components/Toast';
@@ -12,7 +13,10 @@ import { Checkbox } from '../../components/Checkbox';
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 Mo : on ne lit qu'une STRUCTURE, pas un gros jeu de donnees
 const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
-const SECTIONS: FieldSection[] = ['clinique', 'biologie', 'paraclinique'];
+// L31 : le jeu de variables n'existe pas encore, donc ses sections non plus. L'assistant
+// part des trois sections historiques, que le constructeur permettra ensuite de renommer,
+// reordonner et completer — c'est exactement ce qu'il proposait avant le lot.
+const SECTIONS: FieldSection[] = [...LEGACY_SECTION_KEYS];
 
 // F1 — Assistant « creer un jeu de variables depuis mon Excel » : on lit le fichier existant du
 // medecin, on propose les variables detectees (type infere), il ajuste et valide -> un jeu personnel.
@@ -148,7 +152,7 @@ export function TemplateFromFile() {
                     </td>
                     <td className="px-2 py-1">
                       <select className="input py-1" value={f.section} onChange={(e) => patch(i, { section: e.target.value as FieldSection })}>
-                        {SECTIONS.map((x) => <option key={x} value={x}>{t(`section.${x}`)}</option>)}
+                        {SECTIONS.map((x) => <option key={x} value={x}>{sectionLabel(t, { sectionKey: x })}</option>)}
                       </select>
                     </td>
                     <td className="px-2 py-1 text-slate-400">{f.samples.join(', ')}{f.type === 'select' && f.allowedValues ? ` (${f.allowedValues.length})` : ''}</td>

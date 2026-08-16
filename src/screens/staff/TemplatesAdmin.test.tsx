@@ -30,7 +30,7 @@ function statefulMock(status: VersionStatus): TemplateRepository {
       return { templateId: 'tbundle', versionId: 'vbundle', baseId: null };
     },
     async getVersion() {
-      return { version, fields: [...fields], rules: [] };
+      return { version, fields: [...fields], rules: [], sections: [] };
     },
     async addField(_v, f, companion) {
       const add = (item: typeof f) => {
@@ -299,6 +299,7 @@ describe('TemplateVersionEditor (brouillon)', () => {
           version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' },
           fields: [lockedField],
           rules: [],
+          sections: [],
         };
       },
     });
