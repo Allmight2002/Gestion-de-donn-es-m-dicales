@@ -67,7 +67,14 @@ export default defineConfig(({ mode }) => {
         // le tenir pret hors-ligne. Les deux fichiers restent servis normalement par le reseau au
         // moment ou l'utilisateur depose un fichier.
         workbox: {
-          globIgnores: ['**/xlsx-*.js'],
+          globIgnores: ['**/xlsx-*.js', '**/messages.fr-*.js', '**/messages.en-*.js'],
+          runtimeCaching: [
+            {
+              urlPattern: /\/assets\/messages\.(?:fr|en)-[^/]+\.js$/,
+              handler: 'CacheFirst',
+              options: { cacheName: 'meddata-i18n' },
+            },
+          ],
         },
         manifest: {
           name: 'Registre clinique',
