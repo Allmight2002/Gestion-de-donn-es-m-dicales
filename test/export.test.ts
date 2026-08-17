@@ -29,15 +29,15 @@ describe('contrat export partage avec generate-export', () => {
     const table = buildPatientExport(patients, encounters, fields, 'last');
     expect(table.columns).toEqual(expect.arrayContaining(['patient__retired', 'patient__weight', 'encounter__score_a', 'encounter__score_b', 'age_value', 'age_unit']));
     expect(new Set(table.columns).size).toBe(table.columns.length);
-    expect(table.rows.find((r) => r.patient_code === 'P-v1')).toMatchObject({ patient__retired: 'preservee', patient__weight: '70', age_value: '42', age_unit: 'years', encounter__score_a: '2', encounter__score_b: '3' });
-    expect(table.rows.find((r) => r.patient_code === 'P-v2')).toMatchObject({ patient__retired: '', patient__weight: '71', age_value: '6', age_unit: 'months', encounter__score_a: '5', encounter__score_b: '' });
+    expect(table.rows.find((r) => r.patient_code === 'P-v1')).toMatchObject({ patient__retired: 'preservee', patient__weight: 70, age_value: 42, age_unit: 'years', encounter__score_a: 2, encounter__score_b: 3 });
+    expect(table.rows.find((r) => r.patient_code === 'P-v2')).toMatchObject({ patient__retired: '', patient__weight: 71, age_value: 6, age_unit: 'months', encounter__score_a: 5, encounter__score_b: '' });
     const dictionary = buildDictionary(fields);
     expect(dictionary.rows.find((r) => r.column_id === 'patient__weight')).toMatchObject({ label: 'Poids initial', template_versions: `${v1}; ${v2}` });
   });
 
   test('CSV et XLSX sont reproductibles et portent age_value + age_unit', () => {
     const table = buildEncounterExport([...encounters].reverse(), [...fields].reverse());
-    expect(table.rows.map((r) => [r.age_value, r.age_unit])).toEqual([[ '42', 'years' ], [ '12', 'days' ], [ '6', 'months' ]]);
+    expect(table.rows.map((r) => [r.age_value, r.age_unit])).toEqual([[ 42, 'years' ], [ 12, 'days' ], [ 6, 'months' ]]);
     const csv = toCsv(table);
     expect(csv).toContain('age_value,age_unit');
     const wb = XLSX.utils.book_new();
