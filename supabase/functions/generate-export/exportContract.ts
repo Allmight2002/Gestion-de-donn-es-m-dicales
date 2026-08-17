@@ -27,6 +27,8 @@ export interface ExportField {
   /** Libelle de la section, lisible. Absent = version anterieure au lot, ou section detachee. */
   sectionLabel?: string | null;
   type: string;
+  /** Variable multivaluee (L22) : accepte une liste ordonnee de couples terminologiques. */
+  isMultiple?: boolean | null;
   unit: string | null;
   /** Miroir des codes d'options (L30) : ce que contient reellement la colonne de donnees. */
   allowedValues: unknown[] | null;
@@ -100,6 +102,11 @@ export const columnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `${f
 export const codeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `terminology_code__${columnId(field)}`;
 
 /**
+ * Colonne du NOMBRE d'elements d'une variable multivaluee (L22).
+ */
+export const nbColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `nb__${columnId(field)}`;
+
+/**
  * Colonne du CODE d'une liste controlee (L30) — meme convention que la terminologie, et
  * pour la meme raison : le libelle part dans la colonne principale pour la lecture, le
  * code dans celle-ci pour l'analyse. C'est le code qui reste stable quand un libelle est
@@ -156,7 +163,7 @@ function optionCells(field: ExportField, v: unknown): { label: string; code: str
     const keys = v.filter((x): x is string => typeof x === 'string');
     return { label: keys.map((k) => labelOfOption(field, k)).join('; '), code: keys.join('; ') };
   }
-  if (typeof v !== 'string') return { label: formatValue(v), code: '' };
+  if (typeof v !== 'string') return { label: formatValue(v, field.type) as string, code: '' };
   return { label: labelOfOption(field, v), code: v };
 }
 
@@ -165,32 +172,57 @@ const isTerminologyValue = (v: unknown): v is { code: string; label: string } =>
   typeof (v as { code?: unknown }).code === 'string' &&
   typeof (v as { label?: unknown }).label === 'string';
 
-const formatValue = (v: unknown): string => {
+const isTerminologyList = (v: unknown): v is { code: string; label: string }[] =>
+  Array.isArray(v) && v.length > 0 && v.every(isTerminologyValue);
+
+export const formatValue = (v: unknown, type?: string): unknown => {
   if (v === null || v === undefined) return '';
   const missingCode = missingCodeOf(v);
   if (missingCode) return missingCode;
   if (typeof v === 'object' && v !== null && MISSING_KEY in v) {
     throw new Error('Code de valeur manquante invalide');
   }
-  // Un diagnostic est un couple code + libelle : sans ce cas, `String(v)` rendait
-  // « [object Object] » dans toute la colonne, rendant l'export inexploitable.
+  // Un diagnostic est un couple code + libelle (ou une liste de couples pour L22) :
+  // sans ce cas, `String(v)` rendait « [object Object] » dans toute la colonne.
   if (isTerminologyValue(v)) return v.label;
+  if (isTerminologyList(v)) return v.map((item) => item.label).join('; ');
   if (Array.isArray(v)) return v.join('; ');
   if (typeof v === 'boolean') return v ? '1' : '0';
+  // D14 : conserver les nombres natifs JS pour que SheetJS produise des cellules type=n
+  if (typeof v === 'number') return v;
+  if ((type === 'integer' || type === 'number') && typeof v === 'string' && v !== '' && NUMERIC_LITERAL.test(v)) {
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
   return String(v);
 };
 
-const codeOf = (v: unknown): string => (isTerminologyValue(v) ? v.code : '');
+const codeOf = (v: unknown): string => {
+  if (isTerminologyValue(v)) return v.code;
+  if (isTerminologyList(v)) return v.map((item) => item.code).join('; ');
+  return '';
+};
+
+const nbOf = (v: unknown): number | '' => {
+  if (v === null || v === undefined || v === '') return '';
+  if (missingCodeOf(v)) return '';
+  if (isTerminologyList(v)) return v.length;
+  if (isTerminologyValue(v)) return 1;
+  return '';
+};
 
 /**
- * Colonnes d'un jeu de champs : un champ de terminologie en occupe deux, une liste
- * controlee aussi. La colonne de code est produite pour TOUTE liste, y compris celles ou
- * code et libelle se confondent encore : la forme du fichier ne doit pas dependre de
- * l'historique des renommages d'une base.
+ * Colonnes d'un jeu de champs : un champ de terminologie en occupe deux (ou trois si multivalué),
+ * une liste contrôlée deux.
  */
 export const columnsForFields = (fields: ExportField[]): string[] =>
   fields.flatMap((f) => {
-    if (f.type === 'terminology') return [columnId(f), codeColumnId(f)];
+    if (f.type === 'terminology') {
+      if (f.isMultiple) {
+        return [columnId(f), codeColumnId(f), nbColumnId(f)];
+      }
+      return [columnId(f), codeColumnId(f)];
+    }
     if (isOptionList(f)) return [columnId(f), optionCodeColumnId(f)];
     return [columnId(f)];
   });
@@ -212,9 +244,12 @@ function mergeOptionLists(a: unknown[] | null | undefined, b: unknown[] | null |
 
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
 export function mergeExportFields(input: ExportField[]): ExportField[] {
+  // D13 : préserver l'ordre du formulaire (scope -> display_order -> fieldKey)
   const sorted = [...input].sort((a, b) =>
-    a.scope.localeCompare(b.scope) || a.fieldKey.localeCompare(b.fieldKey) ||
-    (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.label.localeCompare(b.label)
+    a.scope.localeCompare(b.scope) ||
+    (a.displayOrder ?? 0) - (b.displayOrder ?? 0) ||
+    a.fieldKey.localeCompare(b.fieldKey) ||
+    a.label.localeCompare(b.label)
   );
   const merged = new Map<string, ExportField>();
   for (const field of sorted) {
@@ -223,6 +258,7 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
     const previous = merged.get(key);
     if (previous) {
       previous.templateVersionIds = [...new Set([...(previous.templateVersionIds ?? []), ...versions])].sort();
+      previous.isMultiple = Boolean(previous.isMultiple || field.isMultiple);
       // Une colonne peut traverser plusieurs versions dont les raisons different. Le
       // dictionnaire doit couvrir TOUT ce que la colonne peut contenir, sinon il decrit
       // une version et laisse un code inexplique en face d'une fiche plus ancienne.
@@ -241,12 +277,18 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
     } else {
       merged.set(key, {
         ...field,
+        isMultiple: Boolean(field.isMultiple),
         templateVersionIds: [...new Set(versions)].sort(),
         missingReasons: field.missingReasons ? sortMissingReasons(field.missingReasons) : field.missingReasons,
       });
     }
   }
-  return [...merged.values()].sort((a, b) => a.scope.localeCompare(b.scope) || a.fieldKey.localeCompare(b.fieldKey));
+  // D13 : tri final respectant l'ordre d'affichage
+  return [...merged.values()].sort((a, b) =>
+    a.scope.localeCompare(b.scope) ||
+    (a.displayOrder ?? 0) - (b.displayOrder ?? 0) ||
+    a.fieldKey.localeCompare(b.fieldKey)
+  );
 }
 
 export function referencedTemplateVersions(patients: ExportPatient[], encounters: ExportEncounter[]): string[] {
@@ -261,7 +303,7 @@ export function referencedTemplateVersions(patients: ExportPatient[], encounters
 const belongsToField = (versionId: string | undefined, field: ExportField) =>
   !versionId || !field.templateVersionIds?.length || field.templateVersionIds.includes(versionId);
 const valueFor = (data: Record<string, unknown>, versionId: string | undefined, field: ExportField) =>
-  belongsToField(versionId, field) ? formatValue(data[field.fieldKey]) : '';
+  belongsToField(versionId, field) ? formatValue(data[field.fieldKey], field.type) : '';
 
 /** Renseigne la colonne du champ, et celle du code lorsqu'il s'agit d'une terminologie. */
 function assignField(
@@ -282,12 +324,109 @@ function assignField(
   row[columnId(field)] = data ? valueFor(data, versionId, field) : '';
   if (field.type !== 'terminology') return;
   row[codeColumnId(field)] = applicable ? codeOf(data![field.fieldKey]) : '';
+  if (field.isMultiple) {
+    row[nbColumnId(field)] = applicable ? nbOf(data![field.fieldKey]) : '';
+  }
 }
+
+const formatAgeValue = (raw: unknown): unknown => {
+  if (raw === null || raw === undefined || raw === '') return '';
+  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'string' && NUMERIC_LITERAL.test(raw)) {
+    const n = Number(raw);
+    if (!Number.isNaN(n)) return n;
+  }
+  return formatValue(raw);
+};
+
+export const MAX_INDICATOR_CODES = 100;
+
+export function normalizeIndicatorSuffix(code: string): string {
+  return code.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'code';
+}
+
+export interface IndicatorMeta {
+  columnId: string;
+  field: ExportField;
+  code: string;
+  label: string;
+}
+
+export function extractMultivalueCodes(
+  fields: ExportField[],
+  dataRows: Array<{ data?: Record<string, unknown> | null; templateVersionId?: string }>,
+): { indicatorsByField: Map<string, IndicatorMeta[]>; omittedFieldKeys: Set<string> } {
+  const indicatorsByField = new Map<string, IndicatorMeta[]>();
+  const omittedFieldKeys = new Set<string>();
+
+  for (const f of fields.filter((field) => field.isMultiple)) {
+    const rawCodes: string[] = [];
+    const labelByCode = new Map<string, string>();
+
+    for (const row of dataRows) {
+      if (!row.data) continue;
+      const val = row.data[f.fieldKey];
+      if (isTerminologyList(val)) {
+        for (const item of val) {
+          rawCodes.push(item.code);
+          if (!labelByCode.has(item.code)) labelByCode.set(item.code, item.label);
+        }
+      } else if (isTerminologyValue(val)) {
+        rawCodes.push(val.code);
+        if (!labelByCode.has(val.code)) labelByCode.set(val.code, val.label);
+      }
+    }
+
+    const uniqueCodes = [...new Set(rawCodes)].sort();
+    if (uniqueCodes.length > MAX_INDICATOR_CODES) {
+      omittedFieldKeys.add(f.fieldKey);
+      indicatorsByField.set(f.fieldKey, []);
+    } else if (uniqueCodes.length > 0) {
+      const indicators: IndicatorMeta[] = [];
+      const seenSuffixes = new Map<string, number>();
+
+      for (const code of uniqueCodes) {
+        const baseNorm = normalizeIndicatorSuffix(code);
+        const count = seenSuffixes.get(baseNorm) ?? 0;
+        const norm = count > 0 ? `${baseNorm}_${count + 1}` : baseNorm;
+        seenSuffixes.set(baseNorm, count + 1);
+
+        indicators.push({
+          columnId: `has__${columnId(f)}__${norm}`,
+          field: f,
+          code,
+          label: labelByCode.get(code) ?? code,
+        });
+      }
+      indicatorsByField.set(f.fieldKey, indicators);
+    } else {
+      indicatorsByField.set(f.fieldKey, []);
+    }
+  }
+
+  return { indicatorsByField, omittedFieldKeys };
+}
+
+const hasCodeInValue = (v: unknown, targetCode: string): boolean => {
+  if (isTerminologyList(v)) return v.some((item) => item.code === targetCode);
+  if (isTerminologyValue(v)) return v.code === targetCode;
+  return false;
+};
 
 const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_value', 'age_unit'];
 export function buildEncounterExport(encounters: ExportEncounter[], fields: ExportField[]): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
-  const columns = [...ENCOUNTER_META, ...columnsForFields(encFields)];
+  const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
+
+  const columns = [
+    ...ENCOUNTER_META,
+    ...encFields.flatMap((f) => {
+      const base = columnsForFields([f]);
+      const inds = (indicatorsByField.get(f.fieldKey) ?? []).map((i) => i.columnId);
+      return [...base, ...inds];
+    }),
+  ];
+
   const rows = [...encounters].sort((a, b) =>
     a.patientCode.localeCompare(b.patientCode) || a.encounterDate.localeCompare(b.encounterDate) ||
     a.id.localeCompare(b.id)
@@ -297,10 +436,23 @@ export function buildEncounterExport(encounters: ExportEncounter[], fields: Expo
       encounter_id: e.id,
       encounter_date: e.encounterDate,
       encounter_type: e.encounterType,
-      age_value: formatValue(e.ageValue ?? e.data.age_at_encounter),
+      age_value: formatAgeValue(e.ageValue ?? e.data.age_at_encounter),
       age_unit: e.ageUnit ?? '',
     };
-    for (const f of encFields) assignField(row, e.data, e.templateVersionId, f);
+    for (const f of encFields) {
+      assignField(row, e.data, e.templateVersionId, f);
+      const indicators = indicatorsByField.get(f.fieldKey) ?? [];
+      const applicable = Boolean(e.data) && belongsToField(e.templateVersionId, f);
+      for (const ind of indicators) {
+        if (!applicable || !e.data || e.data[f.fieldKey] === undefined) {
+          row[ind.columnId] = '';
+        } else if (missingCodeOf(e.data[f.fieldKey])) {
+          row[ind.columnId] = 0;
+        } else {
+          row[ind.columnId] = hasCodeInValue(e.data[f.fieldKey], ind.code) ? 1 : 0;
+        }
+      }
+    }
     return row;
   });
   return { columns, rows };
@@ -321,68 +473,174 @@ export function buildPatientExport(
   const all = mergeExportFields(fields);
   const patientFields = all.filter((f) => f.scope === 'patient');
   const encounterFields = all.filter((f) => f.scope === 'encounter');
+
+  const { indicatorsByField: patIndicators } = extractMultivalueCodes(patientFields, patients);
+  const { indicatorsByField: encIndicators } = extractMultivalueCodes(encounterFields, encounters);
+
+  const patientCols = patientFields.flatMap((f) => {
+    const base = columnsForFields([f]);
+    const inds = (patIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
+    return [...base, ...inds];
+  });
+  const encounterCols = encounterFields.flatMap((f) => {
+    const base = columnsForFields([f]);
+    const inds = (encIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
+    return [...base, ...inds];
+  });
+
   const columns = [
     'patient_code',
-    ...columnsForFields(patientFields),
+    ...patientCols,
     'age_value',
     'age_unit',
-    ...columnsForFields(encounterFields),
+    ...encounterCols,
   ];
+
   const byPatient = new Map<string, ExportEncounter[]>();
   for (const e of encounters) byPatient.set(e.patientCode, [...(byPatient.get(e.patientCode) ?? []), e]);
   const rows = [...patients].sort((a, b) => a.code.localeCompare(b.code)).map((p) => {
     const row: Record<string, unknown> = { patient_code: p.code };
-    for (const f of patientFields) assignField(row, p.data, p.templateVersionId, f);
+    for (const f of patientFields) {
+      assignField(row, p.data, p.templateVersionId, f);
+      const indicators = patIndicators.get(f.fieldKey) ?? [];
+      const applicable = Boolean(p.data) && belongsToField(p.templateVersionId, f);
+      for (const ind of indicators) {
+        if (!applicable || !p.data || p.data[f.fieldKey] === undefined) {
+          row[ind.columnId] = '';
+        } else if (missingCodeOf(p.data[f.fieldKey])) {
+          row[ind.columnId] = 0;
+        } else {
+          row[ind.columnId] = hasCodeInValue(p.data[f.fieldKey], ind.code) ? 1 : 0;
+        }
+      }
+    }
     const e = pickEncounter(byPatient.get(p.code) ?? [], rule);
-    row.age_value = e ? formatValue(e.ageValue ?? e.data.age_at_encounter) : '';
+    row.age_value = e ? formatAgeValue(e.ageValue ?? e.data.age_at_encounter) : '';
     row.age_unit = e?.ageUnit ?? '';
-    for (const f of encounterFields) assignField(row, e ? e.data : null, e?.templateVersionId, f);
+    for (const f of encounterFields) {
+      assignField(row, e ? e.data : null, e?.templateVersionId, f);
+      const indicators = encIndicators.get(f.fieldKey) ?? [];
+      const applicable = Boolean(e?.data) && belongsToField(e?.templateVersionId, f);
+      for (const ind of indicators) {
+        if (!applicable || !e || !e.data || e.data[f.fieldKey] === undefined) {
+          row[ind.columnId] = '';
+        } else if (missingCodeOf(e.data[f.fieldKey])) {
+          row[ind.columnId] = 0;
+        } else {
+          row[ind.columnId] = hasCodeInValue(e.data[f.fieldKey], ind.code) ? 1 : 0;
+        }
+      }
+    }
     return row;
   });
   return { columns, rows };
 }
 
-export function buildDictionary(fields: ExportField[]): ExportTable {
+/**
+ * Construit la feuille dédiée pour un champ multivalué (L22 §7.3).
+ */
+export function buildMultivalueTable(
+  field: ExportField,
+  patients: ExportPatient[],
+  encounters: ExportEncounter[],
+): ExportTable {
+  const columns = ['patient_code', 'encounter_id', 'rang', 'code', 'label'];
+  const rows: Record<string, unknown>[] = [];
+
+  if (field.scope === 'patient') {
+    const sortedPatients = [...patients].sort((a, b) => a.code.localeCompare(b.code));
+    for (const p of sortedPatients) {
+      const raw = p.data ? p.data[field.fieldKey] : null;
+      if (isTerminologyList(raw)) {
+        raw.forEach((item, index) => {
+          rows.push({
+            patient_code: p.code,
+            encounter_id: '',
+            rang: index + 1,
+            code: item.code,
+            label: item.label,
+          });
+        });
+      } else if (isTerminologyValue(raw)) {
+        rows.push({
+          patient_code: p.code,
+          encounter_id: '',
+          rang: 1,
+          code: raw.code,
+          label: raw.label,
+        });
+      }
+    }
+  } else {
+    const sortedEncounters = [...encounters].sort((a, b) =>
+      a.patientCode.localeCompare(b.patientCode) || a.encounterDate.localeCompare(b.encounterDate) ||
+      a.id.localeCompare(b.id)
+    );
+    for (const e of sortedEncounters) {
+      const raw = e.data ? e.data[field.fieldKey] : null;
+      if (isTerminologyList(raw)) {
+        raw.forEach((item, index) => {
+          rows.push({
+            patient_code: e.patientCode,
+            encounter_id: e.id,
+            rang: index + 1,
+            code: item.code,
+            label: item.label,
+          });
+        });
+      } else if (isTerminologyValue(raw)) {
+        rows.push({
+          patient_code: e.patientCode,
+          encounter_id: e.id,
+          rang: 1,
+          code: raw.code,
+          label: raw.label,
+        });
+      }
+    }
+  }
+
+  return { columns, rows };
+}
+
+export interface DictionaryOptions {
+  indicatorsByField?: Map<string, IndicatorMeta[]>;
+  omittedFieldKeys?: Set<string>;
+}
+
+export function buildDictionary(fields: ExportField[], options?: DictionaryOptions): ExportTable {
   const columns = [
     'column_id',
     'field_key',
     'label',
     'description',
     'scope',
-    // L31 : le CODE de la section, inchange pour une base qui n'a pas touche aux siennes,
-    // et son LIBELLE — sans quoi une section personnalisee n'apparaitrait au dictionnaire
-    // que sous forme de code, illisible pour qui relit l'export.
     'section',
     'section_label',
     'type',
+    'is_multiple',
     'unit',
     'allowed_values',
-    // Sans cette colonne, un `refus` lu dans une colonne de donnees ne s'explique nulle part
-    // et ne se distingue pas d'une valeur libre du meme nom.
     'missing_reasons',
     'template_versions',
   ];
   return {
     columns,
     rows: mergeExportFields(fields).flatMap((f) => {
-      const options = isOptionList(f) ? optionsOf(f) : [];
+      const optionsList = isOptionList(f) ? optionsOf(f) : [];
       const common = {
         field_key: f.fieldKey,
         description: f.description ?? '',
         scope: f.scope,
         section: f.section,
         section_label: f.sectionLabel ?? '',
+        is_multiple: f.isMultiple ? 'true' : 'false',
         unit: f.unit ?? '',
-        // Pour une liste, ce sont les LIBELLES qui sont decrits, avec la mention explicite
-        // des options retirees de la saisie : c'est ce qui explique qu'une modalite
-        // apparaisse dans les fiches anciennes et plus dans les recentes.
         allowed_values: isOptionList(f)
-          ? options.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
+          ? optionsList.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
           : Array.isArray(f.allowedValues)
           ? f.allowedValues.join('; ')
           : '',
-        // Les CODES bruts, comme ils apparaissent dans la colonne de donnees, et non les
-        // libelles : c'est le code qui sera lu par l'analyse.
         missing_reasons: (f.missingReasons ?? []).join('; '),
         template_versions: (f.templateVersionIds ?? []).join('; '),
       };
@@ -395,29 +653,66 @@ export function buildDictionary(fields: ExportField[]): ExportTable {
             column_id: optionCodeColumnId(f),
             label: `${f.label} — code`,
             type: `${f.type}_code`,
+            is_multiple: 'false',
             unit: '',
-            // Les CODES bruts, tels qu'ils apparaissent dans la colonne : c'est sur eux
-            // que l'analyse regroupe, et eux qui survivent a une correction de libelle.
-            allowed_values: options.map((o) => o.key).join('; '),
+            allowed_values: optionsList.map((o) => o.key).join('; '),
             missing_reasons: '',
           },
         ];
       }
       if (f.type !== 'terminology') return [valueRow];
-      return [
+      const result = [
         valueRow,
         {
           ...common,
           column_id: codeColumnId(f),
           label: `${f.label} — code`,
           type: 'terminology_code',
+          is_multiple: 'false',
           unit: '',
           allowed_values: '',
-          // Une raison manquante part dans la colonne du LIBELLE ; celle du code reste vide
-          // (`codeOf` ne rend un code que pour un vrai couple terminologique).
           missing_reasons: '',
         },
       ];
+      if (f.isMultiple) {
+        result.push({
+          ...common,
+          column_id: nbColumnId(f),
+          label: `${f.label} — nombre`,
+          type: 'computed_count',
+          is_multiple: 'false',
+          unit: '',
+          allowed_values: '',
+          missing_reasons: '',
+        });
+
+        const indicators = options?.indicatorsByField?.get(f.fieldKey) ?? [];
+        for (const ind of indicators) {
+          result.push({
+            ...common,
+            column_id: ind.columnId,
+            label: `${f.label} — ${ind.code}`,
+            type: 'computed_indicator',
+            is_multiple: 'false',
+            unit: '',
+            allowed_values: ind.code,
+            missing_reasons: '',
+          });
+        }
+        if (options?.omittedFieldKeys?.has(f.fieldKey)) {
+          result.push({
+            ...common,
+            column_id: `has__${columnId(f)}`,
+            label: `${f.label} — indicateurs (>100 codes, voir feuille dédiée)`,
+            type: 'computed_indicator_omitted',
+            is_multiple: 'false',
+            unit: '',
+            allowed_values: '',
+            missing_reasons: '',
+          });
+        }
+      }
+      return result;
     }),
   };
 }

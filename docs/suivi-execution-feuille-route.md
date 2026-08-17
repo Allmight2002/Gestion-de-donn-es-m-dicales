@@ -2395,3 +2395,32 @@ Un risque identifié à la relecture a été éprouvé plutôt que supposé : `t
 n'est pas garanti — si les sections partaient en premier, la garde « section non vide » aurait fait
 échouer la suppression d'une version légitime. Le comportement est correct, et deux tests de
 non-régression le figent.
+
+## Lot L14 — Chargement de la seule langue active (branche d'intégration, 2026-08-16)
+
+Les dictionnaires français et anglais sont maintenant deux modules dynamiques distincts. Au
+premier affichage, seul le dictionnaire choisi dans `registre.lang` est demandé. Lors d'une
+bascule, l'écran courant reste rendu pendant le chargement puis le contenu, la langue du document
+et la préférence locale changent ensemble. Les modules de langue sont exclus du précache initial
+et mis en cache à leur premier usage.
+
+### Mesure avant / après
+
+- fichier applicatif principal : **220 498 → 124 248 octets** ;
+- dictionnaire français à la demande : **51 395 octets** ;
+- dictionnaire anglais à la demande : **45 967 octets** ;
+- précache PWA : **1 023,70 → 929,71 Kio** ;
+- entrées du précache : **73 → 73** ; aucune référence à un dictionnaire dans `sw.js`.
+
+### Validation locale — niveau 1
+
+- test ciblé de bascule atomique : **1/1 vert** ;
+- `npm run typecheck` et `npm run lint` : verts ;
+- `npm run test:web` : **402 tests, 59 fichiers, tous verts** ;
+- tests de configuration/build ciblés : **15/15 verts** ;
+- build de production avec `VITE_USE_SIGNED_READ=true` : vert ;
+- contrôle des chunks : aucun dictionnaire dans le fichier principal et aucune langue croisée
+  entre les deux chunks.
+
+La publication et la vérification multi-écrans en staging puis en production restent volontairement
+reportées à la release unique de la branche d'intégration.
