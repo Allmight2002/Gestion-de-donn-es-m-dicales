@@ -109,6 +109,7 @@
 | [decision-rpo-rto-staging-2026-07-25.md](decision-rpo-rto-staging-2026-07-25.md) | 2026-07-25 | Décision de continuité (RPO/RTO) |
 | [decision-environnement-production-tests-2026-07-29.md](decision-environnement-production-tests-2026-07-29.md) | 2026-07-29 | Décision sur l'environnement `production` persistant |
 | [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md) | 2026-08-12 | Décision de mise en pause du parcours antivirus (ClamAV non requis) |
+| [decision-export-simple-2026-08-17.md](decision-export-simple-2026-08-17.md) | 2026-08-17 | Décision de simplification de l'export (statut non gating, complétude, écran par modèle d'observation) |
 
 ## 8. Cadre juridique
 
@@ -137,5 +138,5 @@
 
 ---
 
-*Index vérifié le 11 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
+*Index vérifié le 17 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
 dans `docs/`.*
