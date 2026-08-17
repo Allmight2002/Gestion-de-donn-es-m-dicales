@@ -39,9 +39,7 @@ export function ConfirmDialog({ open, title, body, children, confirmLabel, confi
           <button
             onClick={onConfirm}
             disabled={busy || confirmDisabled}
-            className={danger
-              ? 'inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60'
-              : 'btn-primary'}
+            className={(danger ? 'btn-danger' : 'btn-primary') + (busy ? ' btn-pending' : '')}
           >
             {confirmLabel ?? t('common.confirm')}
           </button>

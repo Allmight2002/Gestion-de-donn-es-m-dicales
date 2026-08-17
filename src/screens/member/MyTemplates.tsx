@@ -7,6 +7,7 @@ import { useAuth } from '../../auth/useAuth';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
 import { useToast } from '../../components/Toast';
+import { Menu, MenuItem } from '../../components/Menu';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
@@ -156,7 +157,7 @@ export function MyTemplates() {
                   <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t('admin.name')} />
                   <input className="input" value={editSpec} onChange={(e) => setEditSpec(e.target.value)} aria-label={t('admin.specialty')} placeholder={t('admin.specialty')} />
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => void saveEdit()} disabled={busy} className="btn-primary">{t('admin.save')}</button>
+                    <button onClick={() => void saveEdit()} disabled={busy} className={busy ? 'btn-primary btn-pending' : 'btn-primary'}>{t('admin.save')}</button>
                     <button onClick={() => setEditId(null)} className="btn-secondary">{t('common.cancel')}</button>
                   </div>
                 </div>
@@ -167,27 +168,19 @@ export function MyTemplates() {
                 </div>
               )}
               {editId !== tpl.id && (
-                <details className="relative shrink-0">
-                  <summary role="button" className="icon-button h-11 w-11 cursor-pointer list-none" aria-label={`${t('common.actions')} · ${tpl.name}`}>
-                    <MoreHorizontal size={20} aria-hidden />
-                  </summary>
-                  <div className="card absolute right-0 z-10 mt-2 w-48 space-y-1 p-2 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); startEdit(tpl); }}
-                      className="btn-ghost w-full justify-start"
-                    >
-                      {t('admin.rename')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); setConfirmId(tpl.id); }}
-                      className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50"
-                    >
-                      {t('admin.delete_template')}
-                    </button>
-                  </div>
-                </details>
+                <Menu
+                  triggerLabel={`${t('common.actions')} · ${tpl.name}`}
+                  triggerClassName="icon-button h-11 w-11 cursor-pointer"
+                  triggerContent={<MoreHorizontal size={20} aria-hidden />}
+                  panelClassName="card absolute right-0 z-10 mt-2 w-48 space-y-1 p-2 shadow-lg"
+                >
+                  <MenuItem onSelect={() => startEdit(tpl)} className="btn-ghost w-full justify-start">
+                    {t('admin.rename')}
+                  </MenuItem>
+                  <MenuItem onSelect={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">
+                    {t('admin.delete_template')}
+                  </MenuItem>
+                </Menu>
               )}
             </div>
             {confirmId === tpl.id && (

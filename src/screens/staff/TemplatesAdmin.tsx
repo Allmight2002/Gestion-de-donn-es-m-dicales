@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
 import { useToast } from '../../components/Toast';
+import { Menu, MenuItem } from '../../components/Menu';
 import { TemplateVersionEditor } from './TemplateVersionEditor';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
@@ -145,7 +146,7 @@ export function TemplatesAdmin() {
             onChange={(e) => setSpecialty(e.target.value)}
           />
         </label>
-        <button type="submit" disabled={busy} className="btn-primary w-full">
+        <button type="submit" disabled={busy} className={busy ? 'btn-primary btn-pending w-full' : 'btn-primary w-full'}>
           {t('admin.new_template')}
         </button>
       </form>
@@ -163,7 +164,7 @@ export function TemplatesAdmin() {
                   <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t('admin.name')} />
                   <input className="input" value={editSpec} onChange={(e) => setEditSpec(e.target.value)} aria-label={t('admin.specialty')} placeholder={t('admin.specialty')} />
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => void saveEdit()} disabled={busy} className="btn-primary">{t('admin.save')}</button>
+                    <button onClick={() => void saveEdit()} disabled={busy} className={busy ? 'btn-primary btn-pending' : 'btn-primary'}>{t('admin.save')}</button>
                     <button onClick={() => setEditId(null)} className="btn-secondary">{t('common.cancel')}</button>
                   </div>
                 </div>
@@ -177,20 +178,20 @@ export function TemplatesAdmin() {
                 </div>
               )}
               {editId !== tpl.id && (
-                <details className="relative shrink-0">
-                  <summary role="button" className="icon-button h-11 w-11 cursor-pointer list-none" aria-label={`${t('common.actions')} · ${tpl.name}`}>
-                    <MoreHorizontal size={20} aria-hidden />
-                  </summary>
-                  <div className="card absolute right-0 z-10 mt-2 w-56 space-y-1 p-2 shadow-lg">
-                    {!tpl.isGlobal && (
-                      <button type="button" onClick={() => void run(() => repo.promoteToGlobal(tpl.id))} disabled={busy} className="btn-ghost w-full justify-start text-teal-700">
-                        {t('admin.promote_global')}
-                      </button>
-                    )}
-                    <button type="button" onClick={() => startEdit(tpl)} className="btn-ghost w-full justify-start">{t('admin.rename')}</button>
-                    <button type="button" onClick={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">{t('admin.delete_template')}</button>
-                  </div>
-                </details>
+                <Menu
+                  triggerLabel={`${t('common.actions')} · ${tpl.name}`}
+                  triggerClassName="icon-button h-11 w-11 cursor-pointer"
+                  triggerContent={<MoreHorizontal size={20} aria-hidden />}
+                  panelClassName="card absolute right-0 z-10 mt-2 w-56 space-y-1 p-2 shadow-lg"
+                >
+                  {!tpl.isGlobal && (
+                    <MenuItem onSelect={() => void run(() => repo.promoteToGlobal(tpl.id))} disabled={busy} className="btn-ghost w-full justify-start text-teal-700">
+                      {t('admin.promote_global')}
+                    </MenuItem>
+                  )}
+                  <MenuItem onSelect={() => startEdit(tpl)} className="btn-ghost w-full justify-start">{t('admin.rename')}</MenuItem>
+                  <MenuItem onSelect={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">{t('admin.delete_template')}</MenuItem>
+                </Menu>
               )}
             </div>
             {confirmId === tpl.id && (
