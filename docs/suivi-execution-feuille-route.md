@@ -2424,3 +2424,40 @@ et mis en cache à leur premier usage.
 
 La publication et la vérification multi-écrans en staging puis en production restent volontairement
 reportées à la release unique de la branche d'intégration.
+
+## Lot D9/D12 — menus flottants et retour visuel des boutons (2026-08-18)
+
+Lot de correction des défauts D9 et D12 de la file d'idées post-readiness, sur la branche de
+travail locale `codex/lot-d9-d12`. Niveau A : aucun commit effectué, publication non engagée.
+
+### D9 — fermeture des menus flottants
+
+Le composant partagé `src/components/Menu.tsx` (avec `MenuItem`) remplace les trois `<details>`
+flottants (`MyTemplates.tsx`, `TemplatesAdmin.tsx`, sélecteur de colonnes de `BaseHome.tsx`) :
+fermeture au `pointerdown` extérieur, à Échap (focus restitué au déclencheur) et à la sélection ;
+un seul menu peut rester ouvert à la fois. `popover="auto"` est écarté (non garanti sur téléphones
+anciens) ; les entrées restent des boutons tabulables, sans `role="menu"`, pour préserver les tests
+existants. Les dépliants en flux et la liste de suggestions de terminologie sont laissés intacts,
+comme prescrit. Cinq tests dédiés (`src/components/Menu.test.tsx`).
+
+### D12 — retour visuel des boutons
+
+Chaque `hover:` des cinq primitives est doublé d'un `active:` de même intention (clair et sombre) ;
+`disabled:opacity-60` complète `.btn-ghost` et `.icon-button`. La primitive `.btn-pending` (anneau
+`currentColor`, `pointer-events-none`, rotation coupée sous `prefers-reduced-motion`) marque
+l'attente des actions longues : création et sauvegarde de gabarits, confirmation de
+`ConfirmDialog.tsx` (dont le bouton danger reprend la primitive `btn-danger` au lieu du style
+inline).
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **60 fichiers, 407/407 tests verts**, dont 5 nouveaux pour `Menu` ;
+- build de production avec `VITE_USE_SIGNED_READ=true` : vert (4,64 s), PWA régénérée
+  (74 entrées précachées) ;
+- contrôle du CSS compilé dans `dist/` : états `:active`/`:disabled` et `.btn-pending` présents
+  dans le bundle.
+
+La publication (commit, PR, staging) reste volontairement non engagée : niveau A — s'arrête avant
+le commit, en attente de la validation du porteur.

@@ -290,17 +290,17 @@ D6, D7, D8 et les chantiers liés aux comptes de mission sont repris avec leurs 
 
 ### Lot de retours d'usage du 2026-08-13 (D9 à D12)
 
-Signalés par le porteur à l'usage et par des testeurs. **Consignés, pas à corriger dans l'immédiat.**
-Chaque symptôme a été vérifié dans le code avant d'être écrit ici : les quatre sont réels, et trois
-d'entre eux sont **transverses** — ils ne se corrigent proprement qu'une fois, dans une primitive
-partagée, jamais écran par écran.
+Signalés par le porteur à l'usage et par des testeurs. **D9 et D12 corrigés le 2026-08-18**
+(lot D9/D12) ; **D10 et D11 restent consignés.** Chaque symptôme a été vérifié dans le code avant
+d'être écrit ici : les quatre sont réels, et trois d'entre eux sont **transverses** — ils ne se
+corrigent proprement qu'une fois, dans une primitive partagée, jamais écran par écran.
 
 | # | Défaut | Cause | Ampleur | Statut |
 |---|---|---|---|---|
-| D9 | **Les menus déroulants ne se ferment pas quand on clique ailleurs** : il faut re-cliquer sur le bouton qui les a ouverts. Source de confusion répétée | Les trois menus flottants sont des `<details>/<summary>` natifs (`src/screens/member/MyTemplates.tsx:170`, `src/screens/staff/TemplatesAdmin.tsx:180`, `src/screens/member/BaseHome.tsx:273`). L'élément natif n'offre **ni fermeture au clic extérieur, ni fermeture à Échap**, et rien ne l'ajoute : aucun écouteur `mousedown`/`pointerdown` n'existe dans `src/` | Petite (front, composant partagé) | Signalé 2026-08-13 |
+| D9 | **Les menus déroulants ne se ferment pas quand on clique ailleurs** : il faut re-cliquer sur le bouton qui les a ouverts. Source de confusion répétée | Les trois menus flottants sont des `<details>/<summary>` natifs (`src/screens/member/MyTemplates.tsx:170`, `src/screens/staff/TemplatesAdmin.tsx:180`, `src/screens/member/BaseHome.tsx:273`). L'élément natif n'offre **ni fermeture au clic extérieur, ni fermeture à Échap**, et rien ne l'ajoute : aucun écouteur `mousedown`/`pointerdown` n'existe dans `src/` | Petite (front, composant partagé) | **Corrigé le 2026-08-18** (lot D9/D12) |
 | D10 | **Une base mise à la corbeille ne peut jamais être supprimée définitivement** par son propriétaire — alors que l'interface annonce une « purge manuelle » à une date précise | La corbeille n'offre que « Restaurer » (`src/screens/member/Dashboard.tsx:286`). `list_deleted_bases()` calcule `purge_eligible_at = deleted_at + interval '1 year'` (`20260801140238_restore_deleted_base.sql:168`), rendu par le libellé « Purge manuelle possible à partir du {date} » (`src/i18n/messages.ts:822`). Or **aucune purge n'existe** : pas de RPC de suppression dure (le dépôt n'expose que `softDeleteBase`, `restoreDeletedBase`, `listDeletedBases`, `src/data/bases.ts:99`), et aucune tâche planifiée (les seuls crons sont la sauvegarde et le moniteur) | Moyenne (base + front + décision de conservation) | Signalé 2026-08-13 |
 | D11 | **Un message d'erreur peut rester hors de l'écran** : il s'affiche en haut de page alors que l'action a été déclenchée en bas. L'utilisateur voit une action qui « ne fait rien » | Motif général : 51 blocs `role="alert"` répartis sur 40 fichiers d'interface (hors tests), la plupart rendus en tête d'écran ou de section, et **rien ne ramène l'utilisateur vers eux** (aucun `scrollIntoView` ni `window.scrollTo` dans `src/`). Le toast existe (`src/components/Toast.tsx`) mais n'a que les variantes `success` et `warning`, et n'est employé que par une dizaine d'écrans | Moyenne (front, **transverse**) | Signalé 2026-08-13 |
-| D12 | **Les boutons ne changent pas de couleur quand on les presse**, en particulier au doigt | `src/index.css:126-134` et `:186-190` ne définissent que des états `hover:` pour `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger` et `.icon-button` ; le seul retour à l'appui est `active:translate-y-px` sur `.btn-primary` — un décalage d'un pixel, sans couleur. Or Tailwind v4 (`package.json:89`) conditionne `hover:` à `@media (hover: hover)` : **sur écran tactile ces styles ne s'appliquent jamais**. Le focus clavier, lui, est correct (contour global `:focus-visible`, `src/index.css:38`) | Petite (front, primitives CSS) | Signalé 2026-08-13 |
+| D12 | **Les boutons ne changent pas de couleur quand on les presse**, en particulier au doigt | `src/index.css:126-134` et `:186-190` ne définissent que des états `hover:` pour `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger` et `.icon-button` ; le seul retour à l'appui est `active:translate-y-px` sur `.btn-primary` — un décalage d'un pixel, sans couleur. Or Tailwind v4 (`package.json:89`) conditionne `hover:` à `@media (hover: hover)` : **sur écran tactile ces styles ne s'appliquent jamais**. Le focus clavier, lui, est correct (contour global `:focus-visible`, `src/index.css:38`) | Petite (front, primitives CSS) | **Corrigé le 2026-08-18** (lot D9/D12) |
 
 #### D9 — fermeture des menus
 
@@ -326,6 +326,21 @@ natif y est le bon choix.
 Même famille, à traiter dans le même lot : la liste de suggestions de terminologie
 (`TerminologyInput.tsx:145`) ne se referme que sur choix ou vidage du champ. Elle est en flux et non
 superposée, donc bien moins déroutante.
+
+**Correction appliquée le 2026-08-18.** Le composant partagé `src/components/Menu.tsx` (avec son
+entrée `MenuItem`) remplace les trois `<details>` flottants : menus d'actions de `MyTemplates.tsx`
+et `TemplatesAdmin.tsx`, sélecteur de colonnes de `BaseHome.tsx`. Il ferme au `pointerdown`
+extérieur, à Échap — avec retour du focus sur le bouton déclencheur — et à la sélection d'une
+entrée ; un seul menu peut rester ouvert à la fois (le pointeur qui ouvre un second menu tombe hors
+du premier, qui se ferme avant que le second ne s'ouvre). `popover="auto"` est écarté : son
+*light-dismiss* natif n'est pas garanti sur les téléphones anciens de la cible d'usage. Les entrées
+restent des `<button>` tabulables, sans `role="menu"`/`menuitem` — une sémantique de menu sans
+navigation par flèches serait moins accessible — et les tests existants
+(`getByRole('button', { name: 'Renommer' })`) sont préservés. Les trois dépliants en flux
+(`AccessManagement.tsx`, `Dashboard.tsx`, `SyncCenter.tsx`) et la liste de suggestions de
+`TerminologyInput` sont laissés intacts, comme prescrit. Cinq tests couvrent le composant
+(`src/components/Menu.test.tsx`) : ouverture/bascule, fermeture au clic extérieur, Échap avec
+retour du focus, sélection, unicité d'ouverture.
 
 #### D10 — purge définitive d'une base
 
@@ -394,6 +409,17 @@ primitives, compléter `disabled:` là où il manque, et prévoir un état « en
 boutons d'action longue. Recoupe l'**idée 10** (finition de l'interface) et se traite dans le même
 lot ; une couleur d'appui n'est pas une animation, le garde-fou `prefers-reduced-motion` n'a pas
 d'objet ici.
+
+**Correction appliquée le 2026-08-18.** Chaque `hover:` des cinq primitives (`.btn-primary`,
+`.btn-secondary`, `.btn-ghost`, `.btn-danger`, `.icon-button`) est doublé d'un `active:` de même
+intention, en clair et en sombre (`src/index.css`) ; `disabled:opacity-60` complète `.btn-ghost` et
+`.icon-button`, qui en étaient dépourvus. L'état « en cours » attendu est la primitive
+`.btn-pending` : un anneau en `currentColor` (`::after`, rotation `btn-pending-spin`) et
+`pointer-events-none` qui coupe les clics ; l'anneau reste visible sans rotation sous
+`prefers-reduced-motion` — c'est l'animation de l'anneau qui relève du garde-fou, pas la couleur
+d'appui. Appliquée aux actions longues : création et sauvegarde de gabarits (`TemplatesAdmin.tsx`,
+`MyTemplates.tsx`) et bouton de confirmation de `ConfirmDialog.tsx` (qui reprend désormais les
+primitives `btn-primary`/`btn-danger` au lieu du style danger inline).
 
 ### Lot « export et analyse » du 2026-08-15 (D13 à D16)
 
