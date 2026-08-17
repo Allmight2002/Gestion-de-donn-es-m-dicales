@@ -2,6 +2,8 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
+import { useAuth } from '../../auth/useAuth';
+import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
@@ -24,6 +26,7 @@ export function EditPatient() {
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -76,8 +79,10 @@ export function EditPatient() {
     e.preventDefault();
     if (!baseId || !patientId) return;
     const block = [
-      // En brouillon : on n'exige PAS la completude (mais on valide les valeurs renseignees).
-      ...validateValues(fields, submittedData, status !== 'draft', hidden)
+      // En brouillon : le MEDECIN n'exige pas la completude (mais valide les valeurs
+      // renseignees) ; un compte de mission, lui, ne peut jamais enregistrer de brouillon
+      // partiel -- comme des la sortie du brouillon ('complete') pour tous les comptes.
+      ...validateValues(fields, submittedData, isMissionAccount(profile) || status !== 'draft', hidden)
         .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ...evaluateRules(
         rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),

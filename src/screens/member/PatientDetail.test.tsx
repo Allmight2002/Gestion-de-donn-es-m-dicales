@@ -17,6 +17,12 @@ import type { AttachmentRepository } from '../../data/attachments';
 import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
 
+// EditPatient / EditEncounter lisent le role global (profil de medecin par defaut
+// pour ces tests de correction).
+vi.mock('../../auth/useAuth', () => ({
+  useAuth: () => ({ profile: { id: 'u', fullName: 'M', globalRole: 'medecin', language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+}));
+
 const stubAttachments = { async listAttachments() { return []; }, async addImage() { return { id: '' }; } } as unknown as AttachmentRepository;
 
 const ALL_PERMS = {
@@ -373,6 +379,32 @@ describe('EditEncounter (correction)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
     await waitFor(() => expect(updateEncounter).toHaveBeenCalledTimes(1));
     expect(updateEncounter.mock.calls[0][2]).toBe('curated');
+  });
+
+  test('le passage draft vers complete est bloque tant que la saisie est incomplete', async () => {
+    const updateEncounter = vi.fn(
+      async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }),
+    );
+    renderAt(
+      '/bases/b1/patients/p1/encounters/e1/edit',
+      makePatients({
+        getEncounter: async () => ({ ...encounter, validationStatus: 'draft', data: {} }),
+        updateEncounter,
+      }),
+    );
+
+    // La soumission ('complete') exige desormais la completude, comme 'curated'.
+    await screen.findByLabelText('Glasgow');
+    fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'complete' } });
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'soumission' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(updateEncounter).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '12' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(updateEncounter).toHaveBeenCalledTimes(1));
+    expect(updateEncounter.mock.calls[0][2]).toBe('complete');
   });
 });
 

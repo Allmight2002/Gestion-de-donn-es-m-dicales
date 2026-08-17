@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import { hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
+import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -62,6 +62,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [ackDuplicate, setAckDuplicate] = useState(false); // B5 : confirmation « patient different »
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
+  const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
 
   // Detection de doublon (confort) : des que nom + date de naissance sont saisis, on cherche
   // un patient existant a la meme identite. Non bloquant ; on propose d'ouvrir sa fiche ou
@@ -138,6 +139,16 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     if (mode === 'submit' && (!fullName.trim() || !dob)) {
       setError(t('patient.identity_required'));
       return;
+    }
+    // Compte de mission : aucun brouillon partiel (regle B) -- le serveur refuse aussi
+    // un patient sans ses champs requis du gabarit.
+    if (isMissionAccount(profile)) {
+      const requiredMissing = validateValues(fields, permanentData, true, hidden)
+        .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
+      if (requiredMissing.length > 0) {
+        setError(requiredMissing.join(' · '));
+        return;
+      }
     }
     const patientCurationInput = mode === 'submit' ? {
       code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,

@@ -88,9 +88,9 @@ beforeAll(async () => {
   ).rows[0];
   alicePatientId = patient.id;
 
-  // Une rencontre SOUMISE, creee par Alice : l'etudiant ne doit jamais pouvoir y toucher.
+  // Une rencontre SOUMISE et COMPLETE, creee par Alice : l'etudiant ne doit jamais pouvoir y toucher.
   aliceEncounterId = (
-    await rowsAs(aliceId, CREATE_ENCOUNTER, [alicePatientId, 'consultation', '2024-05-01', 'complete', '{}', 'years'])
+    await rowsAs(aliceId, CREATE_ENCOUNTER, [alicePatientId, 'consultation', '2024-05-01', 'complete', '{"diagnosis":"TC","glasgow_score":12}', 'years'])
   )[0].id;
 
   studentId = await createAuthUser('etudiant@demo.test', { global_role: 'saisisseur' });
@@ -144,9 +144,12 @@ describe('saisie : ce que le compte de mission PEUT faire', () => {
     ).toBeGreaterThan(0);
   });
 
-  test('il cree un patient MINIMAL : le code passe, aucun champ nominatif n est ecrit', async () => {
+  test('il cree un patient MINIMAL : le code et les champs requis passent, aucun champ nominatif n est ecrit', async () => {
+    // « Minimal » porte sur l'identite : AUCUNE donnee nominative. Les champs REQUIS du
+    // gabarit (sexe, birth_year) restent exigibles : aucun brouillon partiel pour un compte
+    // de mission (regle B).
     const created = await rowsAs(studentId, CREATE_PATIENT, [
-      baseId, 'MIS-001', null, null, null, null, null, '{}',
+      baseId, 'MIS-001', null, null, null, null, null, '{"sexe":"M","birth_year":1990}',
     ]);
     expect(created).toHaveLength(1);
     const identity = (
@@ -162,29 +165,48 @@ describe('saisie : ce que le compte de mission PEUT faire', () => {
     expect(identity.external_identifier).toBeNull();
   });
 
-  test('il cree une rencontre en brouillon, la corrige, puis la soumet', async () => {
-    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002', null, null, null, null, null, '{}']))[0].id;
+  test('il cree une rencontre complete en brouillon, la corrige, puis la soumet', async () => {
+    // Regle B : meme un 'draft' du compte de mission doit porter les champs requis.
+    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002', null, null, null, null, null, '{"sexe":"M","birth_year":1990}']))[0].id;
     const draft = (
-      await rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-01', 'draft', '{}', 'years'])
+      await rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-01', 'draft', '{"diagnosis":"TC","glasgow_score":12}', 'years'])
     )[0];
     expect(draft.validation_status).toBe('draft');
 
     const corrected = (
-      await rowsAs(studentId, UPDATE_ENCOUNTER, [draft.id, JSON.stringify({}), 'draft', 'faute de frappe', null])
+      await rowsAs(studentId, UPDATE_ENCOUNTER, [draft.id, JSON.stringify({ diagnosis: 'TC', glasgow_score: 12 }), 'draft', 'faute de frappe', null])
     )[0];
     expect(corrected.validation_status).toBe('draft');
 
     const submitted = (
-      await rowsAs(studentId, UPDATE_ENCOUNTER, [draft.id, JSON.stringify({}), 'complete', 'soumission', null])
+      await rowsAs(studentId, UPDATE_ENCOUNTER, [draft.id, JSON.stringify({ diagnosis: 'TC', glasgow_score: 12 }), 'complete', 'soumission', null])
     )[0];
     expect(submitted.validation_status).toBe('complete');
   });
 
+  test('regle B : un brouillon incomplet est refuse (patient comme rencontre)', async () => {
+    // Aucun brouillon partiel pour un compte de mission : chaque enregistrement doit
+    // porter les champs requis du gabarit (le MEDECIN, lui, peut ouvrir un brouillon vide).
+    await expect(
+      rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002B', null, null, null, null, null, '{}']),
+    ).rejects.toThrow(/requis|manquant/i);
+    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002C', null, null, null, null, null, '{"sexe":"F","birth_year":1995}']))[0].id;
+    await expect(
+      rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'draft', '{}', 'years']),
+    ).rejects.toThrow(/requis|manquant/i);
+    // La soumission ('complete') est soumise a la meme completude (regle A).
+    await expect(
+      rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'complete', '{"glasgow_score":12}', 'years']),
+    ).rejects.toThrow(/requis|manquant/i);
+    // Le medecin conserve ses brouillons partiels.
+    expect((await rowsAs(aliceId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'draft', '{}', 'years']))[0].validation_status).toBe('draft');
+  });
+
   test('il corrige son propre brouillon de patient, verrou optimiste compris', async () => {
-    const patient = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-003', null, null, null, null, null, '{}']))[0];
+    const patient = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-003', null, null, null, null, null, '{"sexe":"M","birth_year":1990}']))[0];
     const updated = (
       await rowsAs(studentId, 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)', [
-        patient.id, JSON.stringify({}), 'draft', 'correction', patient.row_version,
+        patient.id, JSON.stringify({ sexe: 'M', birth_year: 1990 }), 'draft', 'correction', patient.row_version,
       ])
     )[0];
     expect(updated.row_version).toBe(String(Number(patient.row_version) + 1));
@@ -194,9 +216,9 @@ describe('saisie : ce que le compte de mission PEUT faire', () => {
 // =============================================================================
 describe('immuabilite apres soumission', () => {
   test('il ne peut plus modifier SA saisie une fois soumise', async () => {
-    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-010', null, null, null, null, null, '{}']))[0].id;
+    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-010', null, null, null, null, null, '{"sexe":"M","birth_year":1990}']))[0].id;
     const enc = (
-      await rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-01', 'complete', '{}', 'years'])
+      await rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-01', 'complete', '{"diagnosis":"TC","glasgow_score":12}', 'years'])
     )[0];
     await expect(
       rowsAs(studentId, UPDATE_ENCOUNTER, [enc.id, JSON.stringify({}), 'complete', 'apres coup', null]),
@@ -210,7 +232,7 @@ describe('immuabilite apres soumission', () => {
   });
 
   test('il ne peut pas promouvoir une saisie en curated', async () => {
-    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-011', null, null, null, null, null, '{}']))[0].id;
+    const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-011', null, null, null, null, null, '{"sexe":"M","birth_year":1990}']))[0].id;
     await expect(
       rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-01', 'curated', '{}', 'years']),
     ).rejects.toThrow(/Acces refuse/i);
@@ -278,7 +300,7 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
         '+235 60 00 00 01',
         'Quartier Exemple, N Djamena',
         'DOS-FICTIF-022',
-        '{}',
+        '{"sexe":"F","birth_year":1992}',
       ])
     )[0];
     const identity = (
@@ -305,7 +327,7 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     const patient = (
       await rowsAs(studentId, CREATE_PATIENT, [
         baseId, 'MIS-023', 'Nom Initial Fictif', '1990-01-01', '+235 60 00 00 02',
-        'Adresse initiale fictive', 'DOS-FICTIF-023-A', '{}',
+        'Adresse initiale fictive', 'DOS-FICTIF-023-A', '{"sexe":"M","birth_year":1990}',
       ])
     )[0];
 
@@ -363,7 +385,7 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     await resetMission(true, 'Inclusion directe sans support papier stable');
     const patient = (
       await rowsAs(studentId, CREATE_PATIENT, [
-        baseId, 'MIS-024', 'Version Fictive', '1991-01-01', null, null, null, '{}',
+        baseId, 'MIS-024', 'Version Fictive', '1991-01-01', null, null, null, '{"sexe":"F","birth_year":1991}',
       ])
     )[0];
     await expect(
@@ -383,12 +405,12 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     await resetMission(true, 'Inclusion directe sans support papier stable');
     const patient = (
       await rowsAs(studentId, CREATE_PATIENT, [
-        baseId, 'MIS-025', 'Soumise Fictive', '1993-01-01', null, null, null, '{}',
+        baseId, 'MIS-025', 'Soumise Fictive', '1993-01-01', null, null, null, '{"sexe":"M","birth_year":1993}',
       ])
     )[0];
     const submitted = (
       await rowsAs(studentId, 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)', [
-        patient.id, '{}', 'complete', 'Soumission du brouillon', patient.row_version,
+        patient.id, '{"sexe":"M","birth_year":1993}', 'complete', 'Soumission du brouillon', patient.row_version,
       ])
     )[0];
     await expect(
@@ -403,7 +425,7 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     await resetMission(true, 'Inclusion directe sans support papier stable');
     const patient = (
       await rowsAs(studentId, CREATE_PATIENT, [
-        baseId, 'MIS-026', 'Mission Fictive', '1994-01-01', null, null, null, '{}',
+        baseId, 'MIS-026', 'Mission Fictive', '1994-01-01', null, null, null, '{"sexe":"F","birth_year":1994}',
       ])
     )[0];
     await db.admin.query(
@@ -442,7 +464,7 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     ).rejects.toThrow(/Acces refuse/i);
 
     await rowsAs(studentId, CREATE_PATIENT, [
-      baseId, 'MIS-027', 'Directe Fictive', '1995-01-01', null, null, null, '{}',
+      baseId, 'MIS-027', 'Directe Fictive', '1995-01-01', null, null, null, '{"sexe":"M","birth_year":1995}',
     ]);
     const direct = await rowsAs(
       studentId,
@@ -464,12 +486,12 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     await resetMission(true, 'Inclusion directe sans support papier stable');
     const patient = (
       await rowsAs(studentId, CREATE_PATIENT, [
-        baseId, 'MIS-028', 'Medecin Fictive', '1996-01-01', null, null, null, '{}',
+        baseId, 'MIS-028', 'Medecin Fictive', '1996-01-01', null, null, null, '{"sexe":"F","birth_year":1996}',
       ])
     )[0];
     const submitted = (
       await rowsAs(studentId, 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)', [
-        patient.id, '{}', 'complete', 'Soumission du brouillon', patient.row_version,
+        patient.id, '{"sexe":"F","birth_year":1996}', 'complete', 'Soumission du brouillon', patient.row_version,
       ])
     )[0];
     const ownerCorrection = (
@@ -744,7 +766,7 @@ describe('compatibilite du socle existant', () => {
     expect(identity.full_name).toBe('Marie Test');
 
     const enc = (
-      await rowsAs(editorId, CREATE_ENCOUNTER, [patient.id, 'consultation', '2024-06-01', 'complete', '{}', 'years'])
+      await rowsAs(editorId, CREATE_ENCOUNTER, [patient.id, 'consultation', '2024-06-01', 'complete', '{"diagnosis":"TC","glasgow_score":12}', 'years'])
     )[0];
     expect(enc.validation_status).toBe('complete');
   });
