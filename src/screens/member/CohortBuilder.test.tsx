@@ -227,7 +227,7 @@ describe('CohortBuilder — variables multivaluees (L23)', () => {
   });
 
   test('le critere enregistre porte les CODES choisis dans le referentiel', async () => {
-    const preview = vi.fn(async () => ({ patientCount: 3, encounterCount: 4 }));
+    const preview = vi.fn(async (_b: string, _f: FilterDefinition) => ({ patientCount: 3, encounterCount: 4 }));
     renderBuilder(makeCohorts({ preview }));
     await chooseField('diagnostics');
 
@@ -248,7 +248,7 @@ describe('CohortBuilder — variables multivaluees (L23)', () => {
   // changement de variable. Si la PREMIERE variable de la base est un diagnostic multivalue,
   // l'ecran doit quand meme produire un critere de presence.
   test('quand la premiere variable est multivaluee, le critere reste un critere de presence', async () => {
-    const preview = vi.fn(async () => ({ patientCount: 1, encounterCount: 1 }));
+    const preview = vi.fn(async (_b: string, _f: FilterDefinition) => ({ patientCount: 1, encounterCount: 1 }));
     renderBuilder(makeCohorts({ preview }), makeTemplates([DIAGNOSTICS]));
     await screen.findByRole('heading', { name: 'Cohortes' });
 
