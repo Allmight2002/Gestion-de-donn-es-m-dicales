@@ -26,9 +26,10 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 (L31) : reorder_template_sections. Le reordonnancement passe par une RPC parce que
     // la liste doit contenir EXACTEMENT les sections de la version, ce qu'une ecriture
     // directe ne saurait garantir.
-    expect(signatures).toHaveLength(109);
-    expect(serviceRoleSignatures).toHaveLength(11); // Edge seulement : fichiers, quarantaine et missions.
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(120);
+    // +1 (L20) : nouvelle surcharge update_template_field avec p_is_multiple.
+    expect(signatures).toHaveLength(110);
+    expect(serviceRoleSignatures).toHaveLength(11);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(121);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
