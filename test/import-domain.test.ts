@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
+  findTerminologyColumns, terminologyTargetField,
   type ColumnMapping, type ImportRow,
 } from '../src/domain/import';
 import type { TemplateField } from '../src/data/types';
@@ -15,6 +16,11 @@ const fields: TemplateField[] = [
   f('sexe', 'Sexe', 'patient'),
   f('glasgow_score', 'Score de Glasgow', 'encounter', 'integer'),
 ];
+
+// L24 : l'import ne resout aucun champ `terminology`, a valeur MULTIPLE comme a valeur UNIQUE.
+const diagnostics = { ...f('diagnostics', 'Diagnostics', 'encounter', 'terminology'), isMultiple: true };
+const diagnosticPrincipal = f('diagnostic_principal', 'Diagnostic principal', 'patient', 'terminology');
+const withTerminology: TemplateField[] = [...fields, diagnostics, diagnosticPrincipal];
 
 describe('autoMapColumns (par index)', () => {
   test('reconnait meta, identite et champs ; en-tete vide -> ignore', () => {
@@ -34,6 +40,53 @@ describe('autoMapColumns (par index)', () => {
     expect(m[0]).toBe('patient_code');
     expect(m[1]).toBe('patient_code');
     expect(duplicateTargets(m)).toEqual(['patient_code']); // conflit detecte
+  });
+});
+
+describe('cibles de terminologie refusees a l import (L24)', () => {
+  test('une colonne visant un champ terminology n est PAS proposee, multivaluee ou non', () => {
+    const m = autoMapColumns(['Code patient', 'Diagnostics', 'Diagnostic principal', 'Sexe'], withTerminology);
+    expect(m[0]).toBe('patient_code');
+    expect(m[1]).toBe('ignore'); // multivaluee
+    expect(m[2]).toBe('ignore'); // valeur unique : meme manque
+    expect(m[3]).toBe('patient:sexe'); // le reste du fichier se mappe normalement
+  });
+
+  test('la cle de la variable est reconnue au meme titre que son libelle', () => {
+    const m = autoMapColumns(['diagnostics', 'diagnostic_principal'], withTerminology);
+    expect(m[0]).toBe('ignore');
+    expect(m[1]).toBe('ignore');
+  });
+
+  test('findTerminologyColumns nomme la colonne ET la variable visee', () => {
+    const found = findTerminologyColumns(['Code patient', 'Diagnostics', 'Sexe', 'Diagnostic principal'], withTerminology);
+    expect(found).toEqual([
+      { index: 1, header: 'Diagnostics', fieldLabel: 'Diagnostics' },
+      { index: 3, header: 'Diagnostic principal', fieldLabel: 'Diagnostic principal' },
+    ]);
+  });
+
+  test('sans champ de terminologie, rien n est signale', () => {
+    expect(findTerminologyColumns(['Code patient', 'Sexe', 'xyz'], fields)).toEqual([]);
+  });
+
+  test('un alias meta garde la priorite sur un champ de terminologie homonyme', () => {
+    const dateDiag = f('date', 'Date', 'encounter', 'terminology');
+    const m = autoMapColumns(['Date'], [dateDiag]);
+    expect(m[0]).toBe('encounter_date');
+    expect(findTerminologyColumns(['Date'], [dateDiag])).toEqual([]);
+  });
+
+  test('terminologyTargetField : refuse les deux portees, laisse passer le reste', () => {
+    expect(terminologyTargetField('encounter:diagnostics', withTerminology)).toBe(diagnostics);
+    expect(terminologyTargetField('patient:diagnostic_principal', withTerminology)).toBe(diagnosticPrincipal);
+    expect(terminologyTargetField('patient:sexe', withTerminology)).toBeNull();
+    expect(terminologyTargetField('patient_code', withTerminology)).toBeNull();
+    expect(terminologyTargetField('ignore', withTerminology)).toBeNull();
+    // Cible visant une variable absente du gabarit : rien a refuser, rien a supposer.
+    expect(terminologyTargetField('encounter:inconnu', withTerminology)).toBeNull();
+    // La portee compte : la variable existe, mais pas dans celle-ci.
+    expect(terminologyTargetField('patient:diagnostics', withTerminology)).toBeNull();
   });
 });
 

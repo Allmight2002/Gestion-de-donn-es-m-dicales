@@ -9,7 +9,8 @@ import type { FieldScope, FieldSection, FieldType, TemplateField, TemplateSectio
 import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
-  type ColumnMapping, type ImportReport, type ImportTarget,
+  findTerminologyColumns, terminologyTargetField,
+  type ColumnMapping, type ImportReport, type ImportTarget, type TerminologyColumn,
 } from '../../domain/import';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { normalizeKey, proposeFieldsFromSheet } from '../../domain/templateFromSheet';
@@ -65,6 +66,10 @@ export function ImportData() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<unknown[][]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
+  // L24 : colonnes qu'on a TENTE de mapper sur une variable de terminologie (index -> libelle
+  // vise). Le mappage est refuse, mais la tentative est retenue : sans elle, la colonne se
+  // fondrait dans les colonnes ignorees ordinaires et le rapport n'en dirait rien.
+  const [refusedTerminology, setRefusedTerminology] = useState<Record<number, string>>({});
   const [status, setStatus] = useState<string>('draft');
   const [conflict, setConflict] = useState<'fill' | 'overwrite' | 'skip'>('fill');
   const [report, setReport] = useState<ImportReport | null>(null);
@@ -129,6 +134,7 @@ export function ImportData() {
       // choix manuels : sans ce reset, ceux de l'ancien fichier survivraient par index).
       setDraft(null);
       setMapping({});
+      setRefusedTerminology({});
       setHeaders(head);
       setRawRows(rows);
       // La correspondance est (re)calculee par un effet sur [headers, fields] -> robuste si les
@@ -144,6 +150,7 @@ export function ImportData() {
   useEffect(() => {
     if (headers.length === 0) {
       setMapping({});
+      setRefusedTerminology({});
       return;
     }
     const auto = autoMapColumns(headers, fields);
@@ -166,6 +173,33 @@ export function ImportData() {
   const inFileDuplicates = useMemo(() => findInFileEncounterDuplicates(rows), [rows]);
   const hasPatientCode = Object.values(mapping).includes('patient_code');
   const dups = useMemo(() => duplicateTargets(mapping), [mapping]);
+  // L24 : colonnes ecartees parce qu'elles visent une variable de terminologie. Deux sources —
+  // l'en-tete reconnu (ce qu'autoMapColumns aurait mappe) et la tentative manuelle refusee — et
+  // une seule regle de sortie : la colonne n'est citee que si elle est bien restee ignoree.
+  const terminologyColumns = useMemo(() => findTerminologyColumns(headers, fields), [headers, fields]);
+  const ignoredTerminology = useMemo<TerminologyColumn[]>(() => {
+    const byIndex = new Map<number, TerminologyColumn>();
+    for (const column of terminologyColumns) byIndex.set(column.index, column);
+    for (const [key, fieldLabel] of Object.entries(refusedTerminology)) {
+      const index = Number(key);
+      if (index >= headers.length) continue;
+      byIndex.set(index, { index, header: headers[index] ?? '', fieldLabel });
+    }
+    return [...byIndex.values()]
+      .filter((column) => (mapping[column.index] ?? 'ignore') === 'ignore')
+      .sort((a, b) => a.index - b.index);
+  }, [terminologyColumns, refusedTerminology, headers, mapping]);
+  // Colonnes dont l'en-tete designe DEJA une variable de terminologie : leur proposer « creer
+  // la variable » inviterait a fabriquer un doublon de celle qui existe.
+  const recognizedTerminology = useMemo(
+    () => new Set(terminologyColumns.map((column) => column.index)),
+    [terminologyColumns],
+  );
+  const headerLabel = (index: number, header: string) => header.trim()
+    || t('import.column_n').replace('{n}', String(index + 1));
+  const columnLabel = (column: TerminologyColumn) => t('import.terminology_col')
+    .replace('{col}', headerLabel(column.index, column.header))
+    .replace('{field}', column.fieldLabel);
   const canRun = hasPatientCode && dups.length === 0;
 
   async function run(dryRun: boolean) {
@@ -295,7 +329,25 @@ export function ImportData() {
     }
   }
 
-  const setCol = (i: number, target: ImportTarget) => setMapping((m) => ({ ...m, [i]: target }));
+  // L24 : une cible de terminologie est REFUSEE, et l'ecran dit ce qui se passe et quoi faire.
+  // L'import ne sait pas resoudre un diagnostic dans le referentiel ; accepter la cible ne
+  // ferait que reporter l'echec a la fin de l'import, cote serveur et en termes techniques.
+  const setCol = (i: number, target: ImportTarget) => {
+    const refused = terminologyTargetField(target, fields);
+    if (refused) {
+      // Refuser, c'est NE RIEN CHANGER : la colonne garde le mappage qu'elle avait. L'ecraser
+      // par « ignorer » ferait perdre une colonne valide a cause d'un choix refuse.
+      setRefusedTerminology((previous) => ({ ...previous, [i]: refused.label }));
+      return;
+    }
+    setRefusedTerminology((previous) => {
+      if (!(i in previous)) return previous;
+      const next = { ...previous };
+      delete next[i];
+      return next;
+    });
+    setMapping((m) => ({ ...m, [i]: target }));
+  };
 
   // V2 : ouvre le mini-formulaire « creer la variable », pre-rempli par INFERENCE sur les
   // valeurs de la colonne (meme moteur que « jeu de variables depuis un fichier », F1).
@@ -408,12 +460,19 @@ export function ImportData() {
                         ))}
                       </optgroup>
                     </select>
-                    {isOwner && (mapping[index] ?? 'ignore') === 'ignore' && header.trim() !== '' && draft?.col !== index ? (
+                    {isOwner && (mapping[index] ?? 'ignore') === 'ignore' && header.trim() !== '' && !recognizedTerminology.has(index) && draft?.col !== index ? (
                       <button type="button" onClick={() => startCreate(index)} className="btn-secondary whitespace-nowrap">
                         {t('import.create_var')}
                       </button>
                     ) : <span />}
                   </div>
+                  {refusedTerminology[index] !== undefined && (
+                    <p role="status" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      {t('import.terminology_refused')
+                        .replace('{col}', headerLabel(index, header))
+                        .replace('{field}', refusedTerminology[index])}
+                    </p>
+                  )}
                   {draft?.col === index && (
                     <div className="mt-3 space-y-3 rounded-xl border border-teal-200 bg-teal-50/50 p-4">
                       <div>
@@ -440,6 +499,15 @@ export function ImportData() {
             </div>
             {!hasPatientCode && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{t('import.need_code')}</p>}
             {dups.length > 0 && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{t('import.dup_target')}</p>}
+            {ignoredTerminology.length > 0 && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="font-medium">{t('import.terminology_title')}</p>
+                <p className="mt-1">{t('import.terminology_hint')}</p>
+                <ul className="mt-2 space-y-0.5">
+                  {ignoredTerminology.map((column) => <li key={column.index}>{columnLabel(column)}</li>)}
+                </ul>
+              </div>
+            )}
           </SectionCard>
 
           <SectionCard title={t('import.options_title')} description={t('import.options_hint')} icon={Settings2}>
@@ -487,6 +555,15 @@ export function ImportData() {
                 <p className="font-medium">{t('import.duplicates_warning').replace('{n}', String(warnings.length))}</p>
                 <p className="mt-1">{t('import.duplicates_hint')}</p>
                 <div className="mt-2 max-h-32 overflow-auto">{warnings.map((warning, index) => <div key={index}>{t('import.line')} {warning.row} ({warning.patientCode}) : {warning.encounterType} · {warning.encounterDate}</div>)}</div>
+              </div>
+            )}
+            {ignoredTerminology.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-medium">{t('import.terminology_report').replace('{n}', String(ignoredTerminology.length))}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {ignoredTerminology.map((column) => <li key={column.index}>{columnLabel(column)}</li>)}
+                </ul>
+                <p className="mt-2">{t('import.terminology_hint')}</p>
               </div>
             )}
             {!committed && report.error_count === 0 && <p className="text-sm text-teal-700">{t('import.ready')}</p>}

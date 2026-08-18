@@ -222,6 +222,14 @@ Conséquence à assumer explicitement : une colonne mappée sur un champ multiva
 **refusée au mappage** avec un message clair, plutôt que produire un échec serveur opaque en fin
 d'import.
 
+> ✅ **Ce refus est livré par L24 le 2026-08-18.** `autoMapColumns` ne propose plus aucune cible de
+> type `terminology`, à valeur unique comme multiple ; le choix manuel de cette cible ne prend pas,
+> et la colonne garde le mappage qu'elle avait ; l'étape de correspondance **et** le rapport
+> d'import nomment les colonnes écartées pour ce motif, distinctement des colonnes ignorées
+> ordinaires. L'import lui-même reste **hors périmètre** : rien ne résout un concept, et
+> `buildImportRows` est inchangé — un chemin qui contournerait l'écran obtiendrait toujours le refus
+> du serveur, ce qui est la place correcte pour cette garantie.
+
 Deux points sont à noter pour la version ultérieure qui traitera l'import :
 
 - le format d'entrée naturel est celui de la sortie — libellés séparés par `; ` dans une colonne
