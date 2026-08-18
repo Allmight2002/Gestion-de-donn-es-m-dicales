@@ -1,7 +1,8 @@
 # Spécification — Variables à valeurs multiples
 
-- Statut : ⚠️ **proposition non implémentée** (étude de conception, rédigée le 2026-08-11)
-- Migrations : aucune à ce jour ; celles décrites ici restent à créer
+- Statut : 🚧 **implémentation en cours** — socle PostgreSQL L20 livré localement le 2026-08-16 ;
+  saisie, export, import, cohortes, conflit hors-ligne et conversion L21 à L26 encore à livrer
+- Migration : `20260818045033_multivalue_terminology_foundation.sql`
 - Surface serveur : `assert_data_valid`, `jsonb_matches`, `base_completeness_stats`,
   Edge Function `generate-export`
 - Surface web : `FieldForm`, `FieldInput` / `ValueInput`, `TerminologyInput`, `CohortBuilder`
@@ -336,5 +337,5 @@ pas de meilleur moment.
 
 ---
 
-*Cette spécification décrit une cible, pas un état. Tant qu'elle porte le statut « proposition non
-implémentée », le code et les migrations font foi contre elle.*
+*Cette spécification décrit la cible complète. Pendant l'exécution séquentielle de L20 à L26, le
+statut en tête et les migrations indiquent la partie réellement disponible.*
