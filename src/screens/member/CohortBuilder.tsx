@@ -18,8 +18,11 @@ import { useBaseRepository, useCohortRepository, useTemplateRepository } from '.
 import type { CohortSummary, FilterCondition, FilterDefinition, FilterOp } from '../../data/cohorts';
 import { getTemplateFields } from '../../data/templates';
 import { fieldOptions } from '../../domain/fieldOptions';
-import type { TemplateField } from '../../data/types';
+import { isMultipleTerminology, type TemplateField, type TerminologyValue } from '../../data/types';
 import type { MessageKey } from '../../i18n/messages';
+// L23 : le meme composant de recherche que la saisie, en mode multivalue -- aucun second
+// selecteur de diagnostic a maintenir, et la meme fenetre sur le referentiel.
+import { TerminologyInput } from './TerminologyInput';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -30,6 +33,9 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 const ALL_OPS: FilterOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'between'];
 const SIMPLE_OPS: FilterOp[] = ['eq', 'neq'];
 const TEXT_OPS: FilterOp[] = ['eq', 'neq', 'in'];
+/** L23 — une liste de diagnostics se filtre par PRESENCE, jamais par egalite. */
+const MULTI_OPS: FilterOp[] = ['has_any', 'has_none'];
+const NO_OPS: FilterOp[] = [];
 
 interface FreezeCandidate {
   cohort: CohortSummary;
@@ -46,6 +52,15 @@ interface SnapshotWarning {
 
 function operatorsFor(field: TemplateField | undefined): FilterOp[] {
   if (!field) return SIMPLE_OPS;
+  // L23 — une liste de diagnostics n'accepte QUE la presence. Laisser `eq` ici produirait un
+  // resultat faux SANS LE SIGNALER : la comparaison porterait sur la representation JSON du
+  // tableau entier. Une cohorte fausse ne se voit pas, elle se publie.
+  if (isMultipleTerminology(field)) return MULTI_OPS;
+  // Un diagnostic UNITAIRE n'est filtrable par aucun operateur existant : sa valeur est un
+  // couple { code, libelle }, et `->>` en rend le JSON complet -- « n'est pas » serait donc
+  // vrai pour tout le monde. Le rendre juste demande un operateur serveur, donc une migration.
+  // En attendant, on n'offre rien plutot qu'un filtre qui ne peut que mentir.
+  if (field.type === 'terminology') return NO_OPS;
   if (['number', 'integer', 'date', 'datetime'].includes(field.type)) return ALL_OPS;
   if (field.type === 'select' || field.type === 'boolean') return SIMPLE_OPS;
   return TEXT_OPS;
@@ -67,6 +82,10 @@ export function CohortBuilder() {
   const [draftOp, setDraftOp] = useState<FilterOp>('eq');
   const [draftValue, setDraftValue] = useState('');
   const [draftValue2, setDraftValue2] = useState('');
+  // L23 : la valeur d'un critere `has_any`/`has_none` n'est pas du texte mais une liste de
+  // concepts choisis dans le referentiel. Les couples servent a l'affichage pendant la
+  // saisie ; seuls les CODES partent dans le filtre, car c'est sur eux que le serveur compare.
+  const [draftConcepts, setDraftConcepts] = useState<TerminologyValue[]>([]);
   const [counts, setCounts] = useState<{ patientCount: number; encounterCount: number } | null>(null);
   const [name, setName] = useState('');
   const [cohortType, setCohortType] = useState<'dynamic' | 'snapshot'>('snapshot');
@@ -81,6 +100,10 @@ export function CohortBuilder() {
   const msg = (value: unknown) => errorMessage(value, t('common.error'));
   const selectedField = fields.find((field) => field.fieldKey === draftField);
   const availableOps = operatorsFor(selectedField);
+  const isPresenceOp = draftOp === 'has_any' || draftOp === 'has_none';
+  /** Une variable sans aucun operateur offert n'est pas filtrable : voir `operatorsFor`. */
+  const filterable = availableOps.length > 0;
+  const hasDraftValue = isPresenceOp ? draftConcepts.length > 0 : draftValue.trim() !== '';
   const labelOf = (key: string) => fields.find((field) => field.fieldKey === key)?.label ?? key;
   const currentStep = counts ? 3 : conditions.length > 0 ? 2 : 1;
 
@@ -109,10 +132,21 @@ export function CohortBuilder() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Le premier chargement fixe la variable SANS passer par `onFieldChange`. Sans cette
+  // resynchronisation, une base dont la premiere variable est un diagnostic multivalue
+  // afficherait « porte au moins un de » pendant que l'etat dit encore `eq` -- et c'est un
+  // `eq` qui partirait dans le critere, silencieusement faux.
+  const opsKey = availableOps.join(',');
+  useEffect(() => {
+    if (availableOps.length > 0 && !availableOps.includes(draftOp)) setDraftOp(availableOps[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opsKey]);
+
   function resetBuilder() {
     setConditions([]);
     setDraftValue('');
     setDraftValue2('');
+    setDraftConcepts([]);
     setCounts(null);
     setName('');
     setCohortType('snapshot');
@@ -133,14 +167,33 @@ export function CohortBuilder() {
   function onFieldChange(fieldKey: string) {
     const field = fields.find((item) => item.fieldKey === fieldKey);
     setDraftField(fieldKey);
-    setDraftOp(operatorsFor(field)[0]);
+    // Une variable non filtrable n'offre aucun operateur : la valeur retenue ici n'est jamais
+    // utilisee, le bloc de saisie etant remplace par son explication.
+    setDraftOp(operatorsFor(field)[0] ?? 'eq');
     setDraftValue('');
     setDraftValue2('');
+    setDraftConcepts([]);
   }
 
   function addCondition() {
     const field = fields.find((item) => item.fieldKey === draftField);
-    if (!field || !draftValue.trim() || (draftOp === 'between' && !draftValue2.trim())) return;
+    if (!field) return;
+    // L23 — critere de PRESENCE : la valeur est un tableau de codes issus du referentiel.
+    // Aucun controle de forme n'a lieu d'etre ici, rien n'ayant ete tape a la main.
+    if (isPresenceOp) {
+      if (draftConcepts.length === 0) return;
+      setConditions((current) => [...current, {
+        scope: field.scope,
+        field: field.fieldKey,
+        op: draftOp,
+        value: draftConcepts.map((concept) => concept.code),
+      }]);
+      setDraftConcepts([]);
+      setCounts(null);
+      setError(null);
+      return;
+    }
+    if (!draftValue.trim() || (draftOp === 'between' && !draftValue2.trim())) return;
 
     const toCheck = draftOp === 'in'
       ? draftValue.split(',').map((item) => item.trim()).filter(Boolean)
@@ -287,6 +340,18 @@ export function CohortBuilder() {
   }
 
   function renderDraftValue(label: string, value: string, onChange: (value: string) => void) {
+    // L23 : MEME composant que la saisie d'une fiche, en mode multivalue. Les diagnostics
+    // recherches viennent donc du referentiel, jamais d'une frappe libre, et un code retire
+    // ici ne laisse pas de liste vide -- elle est simplement sans critere tant qu'elle l'est.
+    if (isPresenceOp) {
+      return (
+        <TerminologyInput
+          field={{ label, isMultiple: true }}
+          value={draftConcepts}
+          onChange={(next) => setDraftConcepts(Array.isArray(next) ? next : next ? [next] : [])}
+        />
+      );
+    }
     if (draftOp === 'in') {
       return <input className="input" aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} />;
     }
@@ -400,32 +465,43 @@ export function CohortBuilder() {
                     ))}
                   </select>
                 </label>
-                <label className="form-label md:col-span-3">
-                  {t('cohort.op')}
-                  <select className="input" value={draftOp} onChange={(event) => { setDraftOp(event.target.value as FilterOp); setDraftValue2(''); }}>
-                    {availableOps.map((operator) => <option key={operator} value={operator}>{t(`op.${operator}` as MessageKey)}</option>)}
-                  </select>
-                </label>
-                <label className={`form-label ${draftOp === 'between' ? 'md:col-span-2' : 'md:col-span-3'}`}>
-                  {t('cohort.value')}
-                  {renderDraftValue(t('cohort.value'), draftValue, setDraftValue)}
-                </label>
-                {draftOp === 'between' && (
-                  <label className="form-label md:col-span-2">
-                    {t('cohort.value2')}
-                    {renderDraftValue(t('cohort.value2'), draftValue2, setDraftValue2)}
-                  </label>
+                {/* Une variable non filtrable ne montre NI comparaison NI valeur : offrir un
+                    filtre qui ne peut que mentir serait pire que ne rien offrir. */}
+                {filterable ? (
+                  <>
+                    <label className="form-label md:col-span-3">
+                      {t('cohort.op')}
+                      <select className="input" value={draftOp} onChange={(event) => { setDraftOp(event.target.value as FilterOp); setDraftValue2(''); }}>
+                        {availableOps.map((operator) => <option key={operator} value={operator}>{t(`op.${operator}` as MessageKey)}</option>)}
+                      </select>
+                    </label>
+                    <label className={`form-label ${draftOp === 'between' ? 'md:col-span-2' : 'md:col-span-3'}`}>
+                      {t('cohort.value')}
+                      {renderDraftValue(t('cohort.value'), draftValue, setDraftValue)}
+                    </label>
+                    {draftOp === 'between' && (
+                      <label className="form-label md:col-span-2">
+                        {t('cohort.value2')}
+                        {renderDraftValue(t('cohort.value2'), draftValue2, setDraftValue2)}
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      onClick={addCondition}
+                      disabled={!hasDraftValue || (draftOp === 'between' && !draftValue2.trim())}
+                      className="btn-secondary md:col-span-2"
+                    >
+                      <Plus size={16} aria-hidden /> {t('cohort.add_condition')}
+                    </button>
+                  </>
+                ) : (
+                  <p role="status" className="text-xs text-amber-700 md:col-span-8">
+                    {t('cohort.not_filterable')}
+                  </p>
                 )}
-                <button
-                  type="button"
-                  onClick={addCondition}
-                  disabled={!draftValue.trim() || (draftOp === 'between' && !draftValue2.trim())}
-                  className="btn-secondary md:col-span-2"
-                >
-                  <Plus size={16} aria-hidden /> {t('cohort.add_condition')}
-                </button>
               </div>
               {draftOp === 'in' && <p className="helper-text">{t('cohort.in_hint')}</p>}
+              {filterable && isPresenceOp && <p className="helper-text">{t('cohort.presence_hint')}</p>}
             </div>
           </SectionCard>
 

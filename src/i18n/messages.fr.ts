@@ -292,6 +292,12 @@ export const messages = {
     'import.conflict_overwrite': 'Remplacer (les écrasements sont journalisés)',
     'import.conflict_skip': 'Ne pas toucher au patient (ajouter seulement les rencontres)',
     'import.dup_target': 'Deux colonnes pointent vers la même cible : corrigez avant d’importer.',
+    'import.column_n': 'colonne {n}',
+    'import.terminology_refused': 'La variable « {field} » ne peut pas encore être importée : l’import ne sait pas retrouver un diagnostic du référentiel à partir du texte d’un fichier. La colonne « {col} » n’y a donc pas été associée ; ces diagnostics sont à saisir à la main sur la fiche de chaque patient, après l’import.',
+    'import.terminology_title': 'Colonnes que l’import ne peut pas encore traiter',
+    'import.terminology_hint': 'Ces variables se remplissent en choisissant un diagnostic dans le référentiel, et l’import ne sait pas encore faire cette recherche. Les colonnes ci-dessous sont ignorées : le reste du fichier s’importe normalement, et ces diagnostics sont à saisir à la main sur la fiche de chaque patient.',
+    'import.terminology_col': '« {col} » → variable « {field} »',
+    'import.terminology_report': '{n} colonne(s) ignorée(s) parce qu’elles visent une variable de diagnostic :',
     'import.create_var': 'Créer la variable',
     'import.create_var_title': 'Nouvelle variable pour la colonne « {col} »',
     'import.create_var_hint': 'Type détecté depuis les valeurs de la colonne — ajustez si besoin.',
@@ -328,6 +334,9 @@ export const messages = {
     'admin.section': 'Section',
     'admin.type': 'Type',
     'admin.required': 'Obligatoire',
+    'admin.field_multiple': 'Accepte plusieurs valeurs',
+    'admin.field_multiple_hint':
+      'La saisie proposera autant de diagnostics que nécessaire, dans l’ordre choisi : le premier est le diagnostic principal.',
     'admin.allowed_values': 'Valeurs autorisées',
     'admin.values_count': 'valeur(s) définie(s)',
     'admin.value_set': "Liste prête à l'emploi",
@@ -343,6 +352,8 @@ export const messages = {
     'terminology.searching': 'Recherche…',
     'terminology.no_result': 'Aucun diagnostic trouvé pour cette recherche.',
     'terminology.change': 'Changer',
+    'terminology.remove': 'Retirer',
+    'terminology.rank_hint': 'Le premier diagnostic de la liste est le diagnostic principal.',
     'terminology.download': 'Télécharger pour rechercher hors connexion',
     'terminology.downloading': 'Téléchargement des diagnostics…',
     'terminology.local_ready': 'Recherche hors connexion disponible.',
@@ -762,7 +773,11 @@ export const messages = {
     'sync.conflict_explain': 'La rencontre a été modifiée côté serveur depuis votre copie hors-ligne. Choisissez la version à conserver.',
     'sync.mine': 'Ma version (hors-ligne)',
     'sync.server': 'Version serveur',
+    'sync.merged': 'Résultat de la fusion',
+    'sync.keep_both_explain': 'Les diagnostics des deux versions sont réunis, sans doublon : les vôtres d\'abord, puis ceux ajoutés côté serveur. Les autres variables gardent votre valeur.',
+    'sync.keep_both_recovered': 'Valeurs récupérées',
     'sync.keep_mine': 'Garder ma version',
+    'sync.keep_both': 'Garder les deux',
     'sync.keep_server': 'Garder la version serveur',
     'sync.syncing': 'Synchronisation en cours',
     'sync.rejected': 'Rejets definitifs',
@@ -939,6 +954,13 @@ export const messages = {
     'options.repair_done': 'Conversion terminée',
     'options.repair_result':
       '{repaired} fiche(s) converties, {blocked} bloquée(s), {skipped} ignorée(s), {failed} en échec.',
+    // L23 — cohortes sur variables multivaluées.
+    'op.has_any': 'porte au moins un de',
+    'op.has_none': 'ne porte aucun de',
+    'cohort.presence_hint':
+      'Choisissez un ou plusieurs diagnostics : la cohorte retiendra les fiches selon leur présence dans la liste, quel que soit leur rang.',
+    'cohort.not_filterable':
+      'Cette variable n’est pas filtrable en l’état : un diagnostic à valeur unique ne peut être comparé sans risque de résultat faux. Utilisez une variable acceptant plusieurs valeurs.',
   } as const;
 
 export type MessageKey = keyof typeof messages;

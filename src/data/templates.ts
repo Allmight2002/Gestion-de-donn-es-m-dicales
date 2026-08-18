@@ -75,7 +75,8 @@ type FieldRow = {
   id: string; field_key: string; label: string; scope: TemplateField['scope']; section: TemplateField['section'];
   description: string | null;
   default_value: string | null;
-  type: TemplateField['type']; unit: string | null; allowed_values: unknown[] | null;
+  type: TemplateField['type']; is_multiple: boolean | null;
+  unit: string | null; allowed_values: unknown[] | null;
   allowed_options: unknown[] | null; required: boolean;
   min_value: number | null; max_value: number | null; allow_missing_codes: boolean;
   missing_reasons: MissingCode[] | null; display_order: number;
@@ -112,7 +113,7 @@ const withSections = (fields: TemplateField[], sections: TemplateSection[]): Tem
 };
 const mapField = (r: FieldRow): TemplateField => ({
   id: r.id, fieldKey: r.field_key, label: r.label, description: r.description, defaultValue: r.default_value,
-  scope: r.scope, section: r.section, type: r.type,
+  scope: r.scope, section: r.section, type: r.type, isMultiple: r.is_multiple ?? false,
   unit: r.unit, allowedValues: r.allowed_values, allowedOptions: r.allowed_options,
   required: r.required, minValue: r.min_value,
   maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, missingReasons: r.missing_reasons,
@@ -335,6 +336,10 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           scope: item.scope,
           section: item.section,
           type: item.type,
+          // L21 : la cardinalite n'est LEGITIME que sur un diagnostic. Le champ compagnon
+          // « valeur proposee » est de type texte : il repart donc toujours a faux, comme la
+          // contrainte serveur `template_field_multiple_terminology_only` l'exige.
+          is_multiple: item.type === 'terminology' && item.isMultiple === true,
           required: item.required,
           display_order: nextOrder + index,
           encounter_types: item.scope === 'encounter' ? item.encounterTypes ?? null : null,
@@ -371,6 +376,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_section: field.section,
         p_type: field.type,
         p_required: field.required,
+        // `p_is_multiple` selectionne la surcharge L21 de la RPC. Sans cette cle, PostgREST
+        // resout la signature anterieure et la cardinalite ne serait jamais ecrite.
+        p_is_multiple: field.type === 'terminology' && field.isMultiple === true,
         p_encounter_types: field.scope === 'encounter' ? field.encounterTypes ?? null : null,
         // `p_allowed_options` selectionne la surcharge L30 de la RPC ; le serveur en deduit
         // lui-meme le miroir `allowed_values`.

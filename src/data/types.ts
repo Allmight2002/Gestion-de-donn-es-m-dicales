@@ -47,6 +47,21 @@ export function isTerminologyValue(v: unknown): v is TerminologyValue {
 }
 
 /**
+ * Liste de diagnostics (L21) : l'ORDRE est le rang, et le premier porte la convention
+ * « diagnostic principal ». Le tableau VIDE n'en est pas une : « pas de valeur » a une seule
+ * representation — la cle absente, ou un code de donnee manquante. Le serveur refuse `[]`
+ * deliberement, c'est donc au client de ne jamais l'ecrire.
+ */
+export function isTerminologyList(v: unknown): v is TerminologyValue[] {
+  return Array.isArray(v) && v.length > 0 && v.every(isTerminologyValue);
+}
+
+/** Champ acceptant PLUSIEURS diagnostics (L21). Reserve au type `terminology` cote base. */
+export function isMultipleTerminology(field: { type: string; isMultiple?: boolean }): boolean {
+  return field.type === 'terminology' && field.isMultiple === true;
+}
+
+/**
  * Rendu LISIBLE d'une valeur de champ, hors formulaire de saisie : listes, fiches, écrans
  * de relecture.
  *
@@ -67,6 +82,10 @@ export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier |
   if (field && (field.type === 'select' || field.type === 'multiselect')) {
     return displayOptionValue(field, v) || vide;
   }
+  // L21 : AVANT le cas general des tableaux. `join` appellerait `String()` sur chaque couple
+  // et rendrait « [object Object] » sur toute la colonne -- exactement la regression que la
+  // spec signale pour l'export. Separateur `; `, le meme que l'export.
+  if (isTerminologyList(v)) return v.map((x) => x.label).join('; ');
   if (Array.isArray(v)) return v.join(', ');
   return String(v);
 }
@@ -107,6 +126,11 @@ export interface TemplateField {
   /** Rang de la section voulu par le proprietaire. Absent -> ordre historique. */
   sectionOrder?: number | null;
   type: FieldType;
+  /**
+   * Accepte PLUSIEURS valeurs (L21) : reserve au type `terminology`. Absent d'un instantane
+   * hors-ligne anterieur au lot -> unitaire, exactement le comportement d'alors.
+   */
+  isMultiple?: boolean;
   unit: string | null;
   /** Miroir des codes d'options (L30). Conserve pour les instantanes et clients anterieurs. */
   allowedValues: unknown[] | null;
@@ -165,6 +189,8 @@ export interface NewField {
   section: FieldSection;
   type: FieldType;
   required: boolean;
+  /** Accepte plusieurs valeurs (L21). Reserve au type `terminology` : la base refuse le reste. */
+  isMultiple?: boolean;
   /** Types de rencontre concernes (vide/absent = tous). Ignore pour un champ 'patient'. */
   encounterTypes?: string[] | null;
   /** Codes autorises (select / multiselect). null/absent = libre. Miroir de `allowedOptions`. */

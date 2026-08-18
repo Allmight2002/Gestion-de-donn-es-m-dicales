@@ -2536,3 +2536,389 @@ hors-ligne conservent tous `isMultiple`.
 
 D├®cision du contr├┤le de lot : **pr├¬t pour la suite s├®quentielle L21**, sous r├®serve de la validation
 ind├®pendante commune avant publication.
+
+## Incident de séquence — D13/D14 livrés hors lot, L22 annulé, L20 livré (2026-08-18)
+
+Entrée consignée après coup, à la demande du porteur. **Aucun code n'a été modifié pour la
+produire** : elle existe parce que trois commits successifs ont laissé le dépôt dans un état que ni
+la file d'idées ni la carte des lots ne décrivaient plus, et qu'un prochain agent l'aurait
+redécouvert à ses frais.
+
+### Ce qui s'est passé
+
+| Commit | Date | Contenu |
+|---|---|---|
+| `68adb9e` | 2026-08-15 | D13 à D16 consignés, avec la consigne « ne pas traiter D13/D14/D15 tant que L22 n'est pas livré » |
+| `7e83a3f` (PR #215) | 2026-08-17 | **D13, D14 et L22 dans un seul commit** — L22 livré sans son prérequis L20 |
+| `6775a91` (PR #221) | 2026-08-18 | **Annulation de la seule part L22** ; D13 et D14 conservés |
+| `cde3170` (PR #222) | 2026-08-18 | L20 livré (`20260818045033_multivalue_terminology_foundation.sql`) |
+| `0d94a23` (PR #223) | 2026-08-18 | L'ensemble sur `main` |
+
+L'ordre prévu est donc rétabli pour la famille « listes de diagnostics » : L20 est livré, L21 et
+L22 restent à faire **ensemble**. Ce qui n'a pas été remis dans l'ordre, ce sont **D13 et D14** :
+livrés hors de leur lot, et restés silencieux dans la documentation jusqu'à cette entrée.
+
+### État réel du code
+
+- **D13 livré** : `mergeExportFields` trie par `displayOrder` puis par clé (`exportContract.ts:230`
+  et `:269`), et non plus alphabétiquement. Test : `exportContract_test.ts:299`.
+- **D14 livré, mais partiel** : `formatValue` renvoie un nombre natif pour `number` et `integer`
+  (`:183`), `formatAgeValue` de même pour `age_value` (`:310`). Tests : `exportContract_test.ts:313`
+  et `:328`. **Les booléens n'ont pas été convertis** (`:180` renvoie toujours `'1'` / `'0'`) alors
+  que la correction attendue les citait.
+- **D15 non livré, et devenu bloquant** : la raison de valeur manquante est renvoyée avant la
+  branche numérique (`:171-183`), si bien qu'une colonne numérique mélange désormais des cellules
+  `t='n'` et `t='s'`. Avant D14 elle était uniformément en texte. Le bénéfice de D14 ne tient donc
+  que pour les variables où aucune raison n'a jamais été saisie. Aucun test ne couvre ce cas, et la
+  correction demande une décision du porteur sur la forme du fichier.
+- **L22 absent** : aucune trace de `is_multiple` dans `exportContract.ts` ni dans le `select` de
+  `handler.ts:517`.
+- **L20 présent** : la base accepte les listes de 1 à 50 couples `code`/`label`.
+
+### Ce qu'un prochain agent doit en faire
+
+1. **Travailler sur `origin/main`** et vérifier l'état de L20 et de L22 dans le code, pas dans un
+   répertoire de travail local : plusieurs copies de ce dépôt sont restées en arrière de la
+   séquence ci-dessus et contiennent encore le code L22 annulé.
+2. **Ne pas recorriger D13 ni D14** : livrés, verrouillés par tests.
+3. **Reprendre L22 par `git revert 6775a91`**, pas par réécriture — le code restitué est déjà
+   cohérent avec D13 et D14. Restent ensuite deux réconciliations, détaillées dans
+   [`lots-paralleles.md`](lots-paralleles.md) : aligner le contrat export sur les règles que L20
+   impose côté serveur, et remettre `is_multiple` dans le `select` de `handler.ts:517`.
+4. **Ne pas fusionner L21 sans L22.** La phrase « prêt pour la suite séquentielle L21 » de l'entrée
+   L20 ci-dessus ne veut pas dire *L21 seul* : la base accepte désormais des listes que l'export ne
+   sait plus lire, et une variable multivaluée saisie sans L22 sortirait en `[object Object]`, code
+   vide, sans erreur ni avertissement. Les deux lots ne partagent aucun fichier et se développent en
+   parallèle ; c'est leur mise en ligne qui doit être commune.
+5. **Traiter D15 comme une condition du bénéfice de D14**, pas comme un défaut indépendant.
+
+### Restauration de L22 (2026-08-18, `2cf39f8`)
+
+Faite dans la foulée, à la demande du porteur, sur la branche
+`codex/l22-restore-multivalue-export` : `git revert 6775a91`, appliqué sans conflit, aucun fichier
+réécrit à la main. Les deux réconciliations annoncées plus haut ont été **vérifiées, et aucune n'a
+demandé de code supplémentaire** :
+
+- `is_multiple` est revenu de lui-même dans le `select` de `handler.ts:521` — c'est l'annulation
+  qui l'avait retiré, le revert le remet ;
+- le contrat export est déjà cohérent avec les règles serveur de L20 : `isTerminologyList` exige
+  une liste **non vide** de couples `code`/`label` stricts, `nbOf` rend vide sur une raison de
+  valeur manquante — jamais `0`, qui signifierait « aucun diagnostic » — et `1` sur une valeur
+  unitaire ancienne, ce qui couvre l'export mixte d'une variable devenue multivaluée entre deux
+  versions de gabarit ; `formatValue` traite la liste **avant** la branche `Array` générique.
+
+D13 et D14 sont ressortis intacts de l'opération, avec leurs trois tests.
+
+Portes exécutées : `deno test supabase/functions/generate-export/` **54/54**, `npm run edge:test`
+**123/123**, `npm run edge:check`, `npm run edge:lint`, `npm run edge:fmt`,
+`npm run release:edge:check` (7 fonctions découvertes) — toutes vertes.
+
+Non exécuté, et volontairement : `typecheck`, `lint`, `test:web` et `build`. Une autre session
+écrivait L21 dans le même répertoire de travail au même moment ; leurs résultats auraient porté sur
+du code en cours d'écriture, pas sur ce lot. La surface Deno, elle, est isolée de L21 — aucun
+fichier commun. Ces portes restent à passer sur la branche d'intégration, quand L21 et L22 s'y
+retrouveront.
+
+**Publication non engagée** : commit fait, ni poussé ni fusionné.
+
+### Défaut d'encodage à corriger
+
+L'entrée « Lot L20 » qui précède a été écrite avec un encodage erroné (`ÔÇö` pour `—`, `├®` pour
+`é`). La corruption est **non réversible automatiquement** : la remettre d'aplomb suppose de
+retaper le texte. Le fond reste exact ; seule la lecture est pénible.
+
+## Lot L21 — Listes de diagnostics : saisie et constructeur (2026-08-18)
+
+Front seul, aucune migration. Le socle L20 (`20260818045033_multivalue_terminology_foundation.sql`)
+était fusionné et vérifié avant de commencer : `template_field.is_multiple`, contrainte de type,
+surcharge `update_template_field(..., p_is_multiple, ...)` et `isMultiple` dans
+`download_base_snapshot`.
+
+### Ce qui est livré
+
+- **Constructeur** (`FieldForm.tsx`) : case « Accepte plusieurs valeurs », rendue pour le seul type
+  `terminology` et soumise à `lockStructural` comme le type et la portée. Revenir à un autre type
+  dépose la cardinalité en chemin, plutôt que de provoquer le refus de la contrainte serveur.
+- **Saisie** (`TerminologyInput.tsx`) : mode multivalué. Étiquettes **numérotées** — le numéro est le
+  rang, et c'est lui qui porte « le premier est le diagnostic principal » — bouton de retrait nommé,
+  et **la zone de recherche reste visible en dessous**. Un concept déjà choisi sort des résultats.
+  L'ordre est celui de la saisie : ni l'écran ni le serveur ne retrient.
+- **Retrait de la dernière valeur** : le composant émet `null`, jamais `[]`, et les conteneurs
+  (`EncounterFields.tsx`, `NewPatient.tsx`) **suppriment la clé** via le mécanisme `onRemove` qui
+  existait déjà. `ChoiceWithProposal` traitait déjà ce cas et n'a pas été touché.
+- **Validation** (`domain/validation.ts`) : le partage est conservé. En multivalué, on vérifie que
+  c'est un tableau de couples bien formés — rien de plus. Existence des concepts, doublons et borne
+  de 50 restent au serveur.
+- **`ValueInput.tsx` inchangé** : un code de donnée manquante remplace la liste, il ne s'y ajoute
+  pas. Point couvert par test, pas par modification.
+- **Câblage** : `isMultiple` traverse `TemplateField`/`NewField`, `mapField`, l'insertion de
+  `addField` et la RPC de `updateField` — c'est la clé `p_is_multiple` qui sélectionne la surcharge
+  L20 ; sans elle, PostgREST résout la signature antérieure et la cardinalité n'est jamais écrite.
+
+### Deux points hors des cinq demandés, validés par le porteur
+
+- `displayFieldValue` testait `isTerminologyValue` avant `Array.isArray` : un tableau de couples
+  tombait dans `join(', ')` et aurait affiché « [object Object] » dans `BaseHome`, `PatientDetail` et
+  `EditEncounter` — la régression que la spécification signale pour l'export, dans un autre fichier.
+- `OfflineField` ne transportait pas `isMultiple` alors que `download_base_snapshot` l'émet déjà :
+  hors connexion, une liste se serait ouverte dans le formulaire unitaire, ses valeurs invisibles, et
+  la première saisie aurait produit un couple unique refusé à la synchronisation.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **63 fichiers, 437/437 tests verts**, dont 20 nouveaux pour ce lot
+  (`TerminologyInput`, `FieldForm`, `EncounterFields`, et deux fichiers créés :
+  `domain/validation.test.tsx`, `data/types.test.tsx`) ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (73 entrées préchargées).
+
+La suite RLS/PostgreSQL embarquée n'est pas touchée par ce lot front ; la CI la joue sur la PR.
+
+### Publication
+
+PR ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+
+Incident sans conséquence sur le contenu livré : le répertoire de travail est partagé avec une autre
+session, qui y a basculé la branche `codex/l22-restore-multivalue-export` en cours de lot. Le lot L21
+a donc été committé depuis un `git worktree` dédié, à partir de `develop`, et les fichiers L21 ont
+été retirés du répertoire partagé pour ne pas polluer le travail L22.
+
+### Ce qui reste aux lots suivants
+
+L23 (`has_any`/`has_none` dans `CohortBuilder`), L24 (refus au mappage d'import), L26 (regroupement
+de `diagnostic_1/2/3`). L22 (export) a été fusionné le même jour par la session voisine (PR #225) :
+`develop` porte donc le socle, l'export et la saisie dès que cette PR sera fusionnée à son tour. Le réordonnancement des étiquettes n'est pas offert : la
+spécification fixe l'ordre à celui de la saisie.
+
+## Lot L23 — Listes de diagnostics : cohortes (2026-08-18)
+
+Front seul, aucune migration. Dernier maillon de la chaîne : L20 a livré les opérateurs serveur,
+L21 la saisie, L22 l'export — il manquait de quoi **filtrer** ces listes, c'est-à-dire de quoi les
+exploiter.
+
+### Ce qui est livré
+
+- **`operatorsFor` ne propose plus que « porte au moins un de » et « ne porte aucun de »** sur une
+  variable multivaluée. Retirer l'égalité n'est pas cosmétique : sur une liste, la comparaison
+  porterait sur la représentation JSON du tableau entier, et « n'est pas » serait vrai pour tout le
+  monde. Une cohorte fausse ne se voit pas — elle se publie.
+- **La valeur du critère est une liste de concepts du référentiel**, saisie par le MÊME composant que
+  la fiche patient (`TerminologyInput` en mode multivalué, livré par L21). Aucun second sélecteur
+  n'a été écrit. Seuls les **codes** partent dans le filtre, car c'est sur eux que `jsonb_matches`
+  compare ; le critère enregistré les affiche tels quels, comme le font déjà les listes à choix.
+
+### Deux pièges rencontrés en chemin
+
+- `draftOp` valait `eq` à l'initialisation et n'était recalculé que par le changement de variable.
+  Une base dont la **première** variable est un diagnostic multivalué affichait donc « porte au moins
+  un de » pendant que l'état disait `eq` — et c'est un `eq` qui serait parti dans le critère. Un test
+  dédié couvre ce cas.
+- Une variable de terminologie **unitaire** se voyait offrir « est », « n'est pas » et « figure dans
+  la liste », qui ne peuvent pas fonctionner sur un couple `{code, libellé}`. Aucun opérateur n'est
+  plus proposé pour ce cas, et l'écran explique pourquoi. Le rendre juste demanderait un opérateur
+  serveur, donc une migration : **candidat pour un lot ultérieur**, hors périmètre ici.
+
+### Aperçu et figeage — le point 4 du lot
+
+`cohort_preview` et `create_cohort_snapshot` sont deux fonctions distinctes qui découpent les
+conditions par portée avec la même expression et appellent la même `jsonb_matches` : les deux
+héritent donc ensemble des opérateurs de L20. Mais rien dans le schéma n'empêche l'une de dériver de
+l'autre, et un filtre qui marcherait à l'aperçu sans marcher au figeage produirait une cohorte
+silencieusement différente de celle qui a été montrée. `test/cohort-multivalue.test.ts` verrouille
+l'égalité : effectifs **et** identité des patients, pas seulement le compte.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **63 fichiers, 442/442 tests verts** (437 avant ce lot) ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (74 entrées préchargées).
+
+La suite base de données a été lancée localement mais n'a pas pu aboutir dans un délai utile : une
+session voisine occupait la machine avec dix-neuf instances PostgreSQL embarquées simultanées. C'est
+la CI qui joue `npm test`, donc le test ci-dessus, sur la PR.
+
+**Incident de vérification, à retenir.** Le premier passage de CI est parti rouge sur `typecheck` :
+deux mocks de ce lot étaient déclarés sans paramètres, et `tsc` était le seul des trois outils à le
+voir. La cause est un ordre de vérification fautif — `typecheck` avait été lancé **avant** l'écriture
+des tests, puis seulement `vitest` et `eslint` après. Relancer `typecheck` après TOUTE écriture de
+test, y compris quand le test passe.
+
+### Publication
+
+PR #226 ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+
+### Ce qui reste
+
+L24 (refus au mappage d'import) et L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en
+dernier). S'y ajoute le filtrage des diagnostics unitaires, qui demande un opérateur serveur.
+
+## Lot L24 — Listes de diagnostics : refus au mappage d'import (2026-08-18)
+
+Front seul, aucune migration. Ce lot **n'ajoute pas** l'import des diagnostics : il pose un refus
+honnête à la place d'un échec tardif.
+
+### Le constat, et ce qu'il n'est pas
+
+L'import ne prend en charge **aucun** champ de type `terminology`, même à valeur unique :
+`src/domain/import.ts` transmet la cellule telle quelle, et la validation serveur rejette une chaîne
+là où elle attend un couple `{code, libellé}`. Ce n'est pas une régression de L21 — c'est un manque
+**antérieur**, que L21 rend simplement visible : dès qu'une variable multivaluée existe, elle
+apparaît dans la liste des cibles de mappage. Le lot traite donc les deux cardinalités, pas
+seulement la nouvelle.
+
+### Ce qui est livré
+
+- **`autoMapColumns` ne propose plus une cible de terminologie.** La résolution d'un en-tête est
+  passée par une fonction unique, `matchColumn`, qui distingue trois issues : cible utilisable,
+  variable de terminologie, ou rien. Les priorités d'avant sont conservées telles quelles — alias
+  méta d'abord, puis champ patient, puis champ rencontre — et un test verrouille le cas d'une
+  variable de terminologie nommée « Date », que l'alias méta continue de gagner.
+- **Le choix manuel est refusé, et refuser ne change rien.** Tenter cette cible sur une colonne
+  déjà mappée ne l'écrase pas : la colonne garde son mappage. Écraser par « ignorer » ferait perdre
+  une colonne valide à cause d'une action refusée — une perte de données provoquée par un
+  garde-fou. Le message dit ce qui se passe et quoi faire, sans terme technique : la variable ne
+  peut pas encore être importée, l'import ne sait pas retrouver un diagnostic du référentiel à
+  partir du texte d'un fichier, ces diagnostics sont à saisir à la main sur la fiche du patient.
+- **Le rapport nomme les colonnes écartées pour ce motif**, au lieu de les fondre dans les colonnes
+  ignorées ordinaires — c'est le point qui manquait le plus : un utilisateur qui importe un fichier
+  contenant une colonne « Diagnostic » doit comprendre pourquoi elle n'est pas arrivée. La liste
+  réunit deux sources, les en-têtes reconnus et les tentatives manuelles refusées, et n'y garde que
+  les colonnes **réellement restées ignorées** : une colonne qui a conservé un mappage valide n'y
+  figure pas, sinon le rapport mentirait dans l'autre sens. Elle apparaît à l'étape de
+  correspondance (donc **avant** de lancer quoi que ce soit) et dans la carte de résultat, aperçu
+  comme import.
+
+### Deux détails qui n'étaient pas dans la consigne
+
+- Le bouton « Créer la variable » disparaît sur une colonne dont l'en-tête désigne **déjà** une
+  variable de terminologie : à côté d'un message disant que cette variable se saisit à la main,
+  proposer de la créer inviterait à fabriquer un doublon. Il reste en place sur une colonne
+  inconnue, même après une tentative refusée : un refus ne doit pas priver la colonne de ses
+  options normales.
+- **`buildImportRows` est laissé intact.** Y filtrer les valeurs de terminologie aurait fait
+  disparaître des cellules en silence sur un chemin qui contourne l'écran. Le refus vit au mappage,
+  où il s'explique ; le rejet de dernier recours reste au serveur, où il est la source de vérité.
+
+### À noter pour le lot qui traitera vraiment l'import
+
+Rien de tout cela n'est implémenté ici : le format d'entrée naturel sera celui de la sortie —
+libellés séparés par `; ` dans une colonne unique — et la route « plusieurs colonnes vers un même
+champ » reste bloquée par `duplicateTargets`, qui traite toute cible assignée deux fois comme un
+conflit.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert, relancé **après** l'écriture des tests (leçon de L23) ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **63 fichiers, 443/443 tests verts** (442 avant ce lot) ;
+- `npx vitest run --project db test/import-domain.test.ts` : **13/13** (6 avant ce lot) — test pur,
+  sans base ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (74 entrées préchargées).
+
+La suite base de données complète n'a pas été relancée : le lot ne touche ni SQL, ni RPC, ni RLS.
+C'est la CI qui joue `npm test` sur la PR.
+
+### Publication
+
+Travail mené dans un `git worktree` dédié, par précaution contre les détournements de branche déjà
+constatés en session parallèle. PR ouverte vers `develop` ; la fusion revient au porteur.
+
+### Ce qui reste
+
+L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), l'import réel des
+diagnostics, et le filtrage des diagnostics unitaires nommé pendant L23 (L34). La ligne « Statut »
+en tête de `spec-variables-multivaluees.md` cite encore L21 à L26 comme « à livrer » : elle sera à
+rafraîchir d'un coup quand la famille sera close, pas lot par lot.
+
+## Lot L25 — Conflit hors-ligne : issue « garder les deux » (2026-08-18)
+
+Front seul, aucune migration. Lot **séparable** : rien n'en dépend et son absence ne produisait
+aucune perte silencieuse — le conflit était déjà correctement détecté par le jeton optimiste. Le
+lot améliore une résolution, il ne répare pas un trou.
+
+Deux appareils hors ligne ajoutent chacun un diagnostic à la même rencontre. Le premier
+synchronise ; le second voit son `baseUpdatedAt` périmé et le conflit remonte. La résolution était
+binaire : garder la sienne écrasait le diagnostic ajouté par l'autre.
+
+### Ce qui est livré
+
+- **`mergeKeepBoth` (`src/domain/conflictMerge.ts`)** : fonction de domaine **pure**, testée sans
+  base, sans navigateur et sans IndexedDB. Union des listes de terminologie par `code`, ordre
+  local puis nouveautés serveur. L'union n'est possible que parce que chaque valeur porte un
+  identifiant stable — son code ; sur un champ à valeur unique, deux versions ne se fusionnent pas.
+- **La fusion est une variante de « garder ma version »**, pas un troisième arbitrage : toutes les
+  clés viennent de ma version, seules les clés portant une liste **des deux côtés** sont unies. Le
+  libellé d'un code partagé reste le mien — le code est l'identité, le libellé n'est que
+  l'instantané pris à la saisie. Une liste face à un code de donnée manquante n'a rien à unir, et
+  une clé présente seulement côté serveur n'est pas reprise : sans valeur de base, un ajout de
+  l'autre appareil ne se distingue pas d'une suppression de ma part.
+- **`resolveKeepBoth` (`src/data/offline.ts`)** appelle la fonction de domaine et rien de plus.
+  `resolveKeepMine` et elle partagent désormais `applyResolution` — un seul chemin d'écriture,
+  donc pas de divergence possible entre les deux issues.
+- **`SyncCenter.tsx`** : le bouton, plus un **aperçu du résultat fusionné** à côté des deux
+  versions, avec le nombre de valeurs récupérées. L'écran ne réimplémente aucune règle : il
+  affiche exactement ce que l'action écrira.
+
+### Le point 3 : quand l'issue a-t-elle un sens
+
+Le bouton n'apparaît **que si la fusion change quelque chose**, c'est-à-dire si elle sauve au moins
+une valeur que « garder ma version » détruirait. Un conflit qui ne porte que sur des champs à
+valeur unique n'a rien à fusionner ; proposer une fusion impossible serait pire que ne rien
+proposer, parce que le bouton promettrait un sauvetage qui n'a pas lieu. Le cas « la liste serveur
+est déjà incluse dans la mienne » tombe sous la même règle.
+
+La visibilité est **dérivée de la fusion elle-même** (`mergedKeys` non vide), jamais d'un prédicat
+parallèle : le bouton et l'action ne peuvent pas se contredire. Aucun dictionnaire de champs n'est
+requis — la forme de la valeur suffit, ce qui vaut aussi hors connexion et pour une rencontre
+saisie sous une version de gabarit antérieure.
+
+### Le point 4 : idempotence du rejeu, vérifiée
+
+`OutboxEntry` est inchangé — c'est cette forme, l'objet `data` complet sous garde de
+`baseUpdatedAt` et d'un `operationId`, qui a fait que les listes de diagnostics n'ont demandé aucun
+travail hors-ligne.
+
+L'empreinte serveur (`replay_encounter_update`) porte sur `encounter_id + data + validation_status
++ reason + expected_updated_at`. Réutiliser l'`operationId` avec une charge différente lèverait
+`OFFLINE_OPERATION_MISMATCH` — **sauf que la tentative en conflit a été intégralement annulée** :
+l'insertion de l'accusé et `update_encounter` sont dans la même transaction, donc aucune ligne ne
+survit à un conflit et la clé est libre. C'est déjà ce qui autorise `resolveKeepMine` à rejouer
+sous la même clé en passant `expected` de `baseUpdatedAt` à `null`.
+
+Reste la vraie garantie : si le commit réussit et que la réponse réseau se perd, un rejeu doit
+retrouver l'accusé au lieu de réécrire. Cela exige une charge **déterministe** — d'où la fonction
+pure, calculée depuis la seule entrée d'outbox et jamais depuis un nouvel appel réseau. Trois tests
+le verrouillent : deux appels produisent la même charge à l'octet près ; refusionner un résultat
+déjà fusionné ne le change plus ; un second déclenchement ne rejoue rien, l'entrée ayant disparu.
+
+**Limite assumée**, conforme à la décision prise avant l'écriture : l'écriture est forcée
+(`expected = null`), comme « garder ma version ». Une écriture d'un troisième appareil survenue
+entre la détection du conflit et le clic serait écrasée. La rendre détectable demanderait de
+conserver le jeton serveur sur l'entrée et d'écrire un chemin de re-conflit — c'est un autre lot.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert (relancé **après** l'écriture des tests, leçon de L23) ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **65 fichiers, 466/466 tests verts** (442 avant ce lot, +24) ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (74 entrées préchargées).
+
+La suite PostgreSQL/RLS n'est pas touchée : ce lot ne crée ni table, ni politique, ni migration.
+C'est la CI qui joue `npm test` sur la PR.
+
+### Publication
+
+PR #229 ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+Lot mené dans un `git worktree` dédié dès le départ — le répertoire de travail est partagé avec
+d'autres sessions, et L24 y était en cours. L24 ayant été fusionné (PR #228) pendant la CI de
+celle-ci, la branche a intégré `develop` : le seul conflit portait sur la fin de ce document, où
+les deux lots ajoutaient leur compte rendu.
+
+### Ce qui reste
+
+L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), seul lot de la famille
+encore ouvert après L24. S'y ajoutent le filtrage des diagnostics unitaires (L34, opérateur
+serveur), l'import réel des diagnostics, et — pour qui voudra le pousser — la détection d'un
+troisième écrivain à la résolution d'un conflit.

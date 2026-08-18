@@ -6,6 +6,7 @@
 // analytiques, meme si on lui passe un patient complet -> garantie par construction. L'identite
 // reste accessible UNIQUEMENT en ligne (via la RLS).
 import { useEffect, useState } from 'react';
+import { mergeKeepBoth } from '../domain/conflictMerge';
 
 export interface OfflineEncounter {
   id: string;
@@ -39,6 +40,13 @@ export interface OfflineField {
   label: string;
   scope: string; // 'patient' | 'encounter'
   type: string;
+  /**
+   * Cardinalite du champ (L21). `download_base_snapshot` la transporte deja ; sans elle, une
+   * liste de diagnostics s'ouvrirait hors connexion dans le formulaire UNITAIRE : les valeurs
+   * deja saisies seraient invisibles et la premiere saisie les remplacerait.
+   * Absente d'un instantane telecharge avant ce lot -> unitaire.
+   */
+  isMultiple?: boolean;
   displayOrder: number;
   // §7.5 : metadonnees COMPLETES pour editer hors-ligne comme en ligne (groupage par section,
   // unite, liste de valeurs, caractere requis, bornes, codes manquants, types de rencontre).
@@ -148,7 +156,8 @@ export function buildSnapshot(
     baseName: base.name,
     templateVersionId: base.templateVersionId,
     fields: fields.map((f) => ({
-      id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder,
+      id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type,
+      isMultiple: f.isMultiple ?? false, displayOrder: f.displayOrder,
       // §7.5 : metadonnees completes conservees (edition hors-ligne fidele a l'edition en ligne).
       section: f.section ?? null, description: f.description ?? null, defaultValue: f.defaultValue ?? null,
       unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
@@ -557,14 +566,40 @@ export async function initializeOfflineForUser(
   return report;
 }
 
+// Applique une resolution de conflit : rejeu FORCE (expected=null) de la charge retenue, puis
+// nettoyage de l'outbox et du cache.
+//
+// L'`operationId` reste celui de l'entree, MEME si la charge a change. La tentative qui a leve le
+// conflit a ete integralement ANNULEE cote serveur -- l'accuse d'idempotence et l'ecriture sont
+// dans la meme transaction -- donc la cle est libre et aucune empreinte ne s'y oppose. En
+// revanche, si le commit reussit et que la reponse reseau se perd, un rejeu de la MEME charge
+// retrouve l'accuse et ne reecrit pas. D'ou l'exigence : la charge doit etre DETERMINISTE,
+// calculee depuis la seule entree d'outbox, jamais depuis un nouvel appel reseau.
+async function applyResolution(e: OutboxEntry, data: Record<string, unknown>, deps: FlushDeps): Promise<void> {
+  await deps.updateEncounter(e.encounterId, data, e.validationStatus, e.reason, null, e.id);
+  await outbox.remove(e.id);
+  const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
+  await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, data, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
+}
+
 // Resolution « garder ma version » : reapplique en FORCANT (expected=null) puis nettoie.
 export async function resolveKeepMine(entryId: string, deps: FlushDeps): Promise<void> {
   const e = await outbox.get(entryId);
   if (!e) return;
-  await deps.updateEncounter(e.encounterId, e.data, e.validationStatus, e.reason, null, e.id);
-  await outbox.remove(entryId);
-  const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
-  await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, data: e.data, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
+  await applyResolution(e, e.data, deps);
+}
+
+// Resolution « garder les deux » (L25) : union des listes de diagnostics par code -- ordre local,
+// puis nouveautes serveur -- le reste de la charge restant ma version. La decision est prise par
+// une fonction de domaine PURE ; ici on ne fait que la rejouer.
+//
+// Aucun cas particulier quand il n'y a rien a unir : la fusion vaut alors exactement ma version,
+// donc l'appel se confond avec « garder ma version ». L'ecran, lui, n'offre l'issue que lorsqu'elle
+// change quelque chose (`mergedKeys` non vide).
+export async function resolveKeepBoth(entryId: string, deps: FlushDeps): Promise<void> {
+  const e = await outbox.get(entryId);
+  if (!e) return;
+  await applyResolution(e, mergeKeepBoth(e.data, e.serverData).data, deps);
 }
 
 // Resolution « garder la version serveur » : abandonne ma modif, restaure la valeur serveur.

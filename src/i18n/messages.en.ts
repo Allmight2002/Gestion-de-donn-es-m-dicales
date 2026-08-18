@@ -294,6 +294,12 @@ export const messages = {
     'import.conflict_overwrite': 'Overwrite (changes are logged)',
     'import.conflict_skip': 'Leave the patient untouched (only add encounters)',
     'import.dup_target': 'Two columns map to the same target: fix before importing.',
+    'import.column_n': 'column {n}',
+    'import.terminology_refused': 'The “{field}” variable cannot be imported yet: the import cannot match a diagnosis from the reference list against the text in a file. Column “{col}” was therefore not mapped to it; these diagnoses have to be entered by hand on each patient record, after the import.',
+    'import.terminology_title': 'Columns the import cannot handle yet',
+    'import.terminology_hint': 'These variables are filled by picking a diagnosis from the reference list, and the import cannot run that search yet. The columns below are ignored: the rest of the file imports normally, and these diagnoses have to be entered by hand on each patient record.',
+    'import.terminology_col': '“{col}” → variable “{field}”',
+    'import.terminology_report': '{n} column(s) ignored because they target a diagnosis variable:',
     'import.create_var': 'Create variable',
     'import.create_var_title': 'New variable for column “{col}”',
     'import.create_var_hint': 'Type detected from the column values — adjust if needed.',
@@ -329,6 +335,9 @@ export const messages = {
     'admin.section': 'Section',
     'admin.type': 'Type',
     'admin.required': 'Required',
+    'admin.field_multiple': 'Accepts several values',
+    'admin.field_multiple_hint':
+      'Data entry will offer as many diagnoses as needed, in the chosen order: the first one is the main diagnosis.',
     'admin.allowed_values': 'Allowed values',
     'admin.values_count': 'value(s) defined',
     'admin.value_set': 'Ready-made list',
@@ -344,6 +353,8 @@ export const messages = {
     'terminology.searching': 'Searching…',
     'terminology.no_result': 'No diagnosis found for this search.',
     'terminology.change': 'Change',
+    'terminology.remove': 'Remove',
+    'terminology.rank_hint': 'The first diagnosis in the list is the main diagnosis.',
     'terminology.download': 'Download for offline search',
     'terminology.downloading': 'Downloading diagnoses…',
     'terminology.local_ready': 'Offline search available.',
@@ -762,7 +773,11 @@ export const messages = {
     'sync.conflict_explain': 'The encounter changed on the server since your offline copy. Choose which version to keep.',
     'sync.mine': 'My version (offline)',
     'sync.server': 'Server version',
+    'sync.merged': 'Merged result',
+    'sync.keep_both_explain': 'Diagnoses from both versions are merged, with no duplicates: yours first, then those added on the server. Other variables keep your value.',
+    'sync.keep_both_recovered': 'Recovered values',
     'sync.keep_mine': 'Keep my version',
+    'sync.keep_both': 'Keep both',
     'sync.keep_server': 'Keep server version',
     'sync.syncing': 'Syncing',
     'sync.rejected': 'Permanent rejections',
@@ -939,4 +954,11 @@ export const messages = {
     'options.repair_done': 'Conversion finished',
     'options.repair_result':
       '{repaired} record(s) converted, {blocked} blocked, {skipped} skipped, {failed} failed.',
+    // L23 — cohorts on multi-value variables.
+    'op.has_any': 'carries at least one of',
+    'op.has_none': 'carries none of',
+    'cohort.presence_hint':
+      'Pick one or more diagnoses: the cohort keeps records based on their presence in the list, whatever their rank.',
+    'cohort.not_filterable':
+      'This variable cannot be filtered as it stands: a single-value diagnosis cannot be compared without risking a wrong result. Use a variable that accepts several values.',
   } as const satisfies MessageDictionary;

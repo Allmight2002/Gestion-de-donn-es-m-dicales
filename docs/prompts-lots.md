@@ -1482,7 +1482,16 @@ docs/spec-variables-multivaluees.md §6.
 
 PRÉREQUIS : le lot L20 doit être fusionné. Vérifie que template_field porte
 is_multiple avant de commencer ; sinon la base refusera tout ce que cette
-interface écrit.
+interface écrit. L20 est fusionné depuis le 2026-08-18 (cde3170).
+
+NE FUSIONNE PAS CE LOT SANS L22. L22 avait été annulé après avoir été livré
+trop tôt ; il est restauré depuis le 2026-08-18 (commit 2cf39f8, branche
+codex/l22-restore-multivalue-export) mais pas encore fusionné. Tant qu'il ne
+l'est pas, la base accepte les listes et l'export ne sait pas les lire : le jour
+où cette interface permet d'en saisir une, chaque export sort « [object
+Object] » dans la colonne concernée, code vide, sans erreur ni avertissement.
+Les deux lots ne partagent aucun fichier et se développent en parallèle sans se
+gêner ; c'est leur mise en ligne qui doit être commune.
 
 PÉRIMÈTRE — front seul, aucune migration.
 
@@ -1556,9 +1565,18 @@ Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
 dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
 docs/spec-variables-multivaluees.md §7.
 
+CE LOT EST LIVRÉ DEPUIS LE 2026-08-18 (commit 2cf39f8). Le prompt ci-dessous
+est conservé pour mémoire, pas pour être rejoué. Histoire courte : 7e83a3f
+(2026-08-17) avait livré L22 avant son prérequis L20, dans le même commit que
+D13 et D14 ; 6775a91 (PR #221) a annulé la seule part L22 ; L20 est arrivé
+ensuite (cde3170, PR #222) ; la restauration s'est faite par
+« git revert 6775a91 », avec vérification que le contrat export est cohérent
+avec les règles serveur de L20. NE RETOUCHE NI D13 NI D14 : livrés et
+verrouillés par trois tests (exportContract_test.ts:299, :313, :328).
+
 COMMENCE PAR LE TEST DE NON-RÉGRESSION, avant toute autre chose.
-supabase/functions/generate-export/exportContract.ts:82 formatValue teste
-isTerminologyValue AVANT Array.isArray (ligne 92). Une liste de diagnostics
+supabase/functions/generate-export/exportContract.ts:168 formatValue teste
+isTerminologyValue AVANT Array.isArray (ligne 179). Une liste de diagnostics
 tomberait donc dans v.join('; ') et rendrait « [object Object] » sur TOUTE la
 colonne. Ce défaut a déjà frappé trois fois dans ce dépôt : sur les codes
 manquants, sur la liste des patients (lot L1), et sur les messages des Edge
@@ -1569,7 +1587,7 @@ PÉRIMÈTRE — surface Deno isolée, aucun fichier commun avec les lots front.
 
 1. FEUILLE PRINCIPALE, pour un champ multivalué : la colonne principale porte les
    libellés joints par « ; », la colonne terminology_code__… (codeColumnId, ligne
-   75) porte les codes joints par « ; », et une colonne nb__… porte le nombre de
+   100) porte les codes joints par « ; », et une colonne nb__… porte le nombre de
    valeurs. Un code de donnée manquante remplit la colonne principale avec son
    code et laisse nb__… VIDE — jamais 0, qui signifierait « aucun diagnostic ».
 
@@ -1585,10 +1603,10 @@ PÉRIMÈTRE — surface Deno isolée, aucun fichier commun avec les lots front.
 3. FEUILLE DÉDIÉE, une par champ multivalué, nommée d'après son libellé, une
    ligne par valeur : patient_code, encounter_id (vide pour un champ de portée
    patient), rang à partir de 1, code, label. C'est la forme sans perte : elle
-   survit au seuil de 100 et sert les analyses par diagnostic. handler.ts:549
+   survit au seuil de 100 et sert les analyses par diagnostic. handler.ts:586
    montre comment les feuilles sont assemblées aujourd'hui.
 
-4. DICTIONNAIRE, buildDictionary ligne 206 : une colonne is_multiple, et une ligne
+4. DICTIONNAIRE, buildDictionary ligne 381 : une colonne is_multiple, et une ligne
    par colonne dérivée (nb__…, has__…) documentant sa nature calculée et son code
    d'origine.
 
@@ -2399,6 +2417,118 @@ TERMINÉ SIGNIFIE : le changement est en production, une fiche portant un ancien
 code manquant reste lisible et modifiable, et une variable peut proposer « refus »
 sans que « non réalisé » lui soit imposé. Tu ne t'arrêtes pas avant. Si une
 commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L34 — Filtre d'une variable Diagnostic à valeur unique
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
+docs/spec-variables-multivaluees.md §8 et le compte rendu du lot L23 à la fin de
+docs/suivi-execution-feuille-route.md.
+
+CE LOT RÉPARE UN DÉFAUT ANTÉRIEUR à la famille L20-L26, pas une régression de
+celle-ci. Il touche la base : il lui faut une migration, et la procédure
+meddata-db-safety.
+
+CONSTAT, vérifié dans le code. jsonb_matches — dernière définition dans
+supabase/migrations/20260818045033_multivalue_terminology_foundation.sql, appelée
+aussi bien par cohort_preview que par create_cohort_snapshot — compare
+« p_data ->> field ». Or, pour une variable Diagnostic à VALEUR UNIQUE, ce qui est
+enregistré n'est pas une chaîne mais un COUPLE {code, label} : « ->> » en rend la
+représentation JSON complète, et la comparaison porte donc sur le couple entier
+face au seul code fourni. Sur ce type de variable :
+
+  - « est »            -> aucun patient, jamais ;
+  - « figure dans »    -> aucun patient, jamais ;
+  - « n'est pas »      -> TOUS les patients, y compris ceux qui portent le
+                          diagnostic censé être exclu.
+
+La troisième est la dangereuse, parce qu'elle ne se voit pas : le compte est
+plausible, la cohorte se publie, et l'analyse est fausse.
+
+L23 a posé un GARDE-FOU, pas une réparation : operatorsFor
+(src/screens/member/CohortBuilder.tsx) n'offre plus aucun opérateur pour ce type
+de variable, et l'écran affiche à la place la clé cohort.not_filterable. Ce lot
+remplace le garde-fou par un filtre qui fonctionne.
+
+LA DÉCISION À PRENDRE AVANT DE CODER — pose-la-moi, ne tranche pas seul. Les deux
+voies ne se valent pas :
+
+  A. Apprendre à « eq », « neq » et « in » à regarder À L'INTÉRIEUR du couple
+     quand la valeur enregistrée est un objet portant une clé « code ». Aucune
+     définition de filtre déjà enregistrée ne change de forme, et les cohortes
+     fausses deviennent justes. MAIS une cohorte DYNAMIQUE existante voit sa
+     population changer sans que personne n'ait touché son critère.
+
+  B. Ajouter des opérateurs distincts et laisser « eq », « neq » et « in »
+     inchangés. Rien ne bouge sous les pieds de l'existant, mais deux façons
+     d'exprimer la même chose cohabitent, et les cohortes déjà fausses le restent.
+
+PÉRIMÈTRE.
+
+1. MIGRATION ADDITIVE redéfinissant jsonb_matches (create or replace). Ne modifie
+   JAMAIS la migration L20 : elle est appliquée en production depuis le
+   2026-08-18.
+
+2. Un code de donnée manquante ({"__missing__": "..."}) ne doit correspondre à
+   aucune comparaison de code. Une fiche « non fait » n'est pas une fiche qui
+   porte un autre diagnostic.
+
+3. Les variables MULTIVALUÉES ne changent pas : has_any et has_none restent leurs
+   deux seuls opérateurs, à l'écran comme au serveur. Ne leur rouvre pas « eq ».
+
+4. FRONT : operatorsFor rend à ce type de variable les opérateurs retenus, la
+   valeur se choisit dans le référentiel — réutilise TerminologyInput, comme L23,
+   n'écris pas un second sélecteur — et la clé cohort.not_filterable disparaît
+   avec le message qu'elle portait.
+
+5. INVENTAIRE, EN LECTURE SEULE : rends la liste des cohortes enregistrées dont
+   un critère porte sur une variable Diagnostic. Leur population a été calculée
+   avec le défaut, le porteur doit savoir lesquelles revoir. Ne les modifie pas,
+   ne les supprime pas.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - base : « est », « n'est pas » et « figure dans » sur une variable à valeur
+    unique — avec le diagnostic, sans lui, clé absente, et code de donnée
+    manquante ;
+  - une cohorte FIGÉE ne bouge pas après la migration : l'immuabilité se prouve,
+    elle ne se suppose pas ;
+  - l'aperçu et le figeage rendent la même population — test/cohort-multivalue.test.ts
+    livré par L23 est le modèle à suivre ;
+  - web : les opérateurs réapparaissent pour ce type de variable, et une variable
+    multivaluée n'offre toujours que has_any et has_none.
+
+Parallélisable avec L24 et L25. JAMAIS avec L26, ni avec un lot qui modifie
+CohortBuilder.tsx.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin, à commencer
+par la décision A/B ci-dessus. Ne code rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as construit sur
+l'application déployée une cohorte « Diagnostic n'est pas X » sur une variable à
+valeur unique, puis vérifié qu'elle EXCLUT les patients portant X — exactement le
+cas qui, avant ce lot, les incluait tous en silence. Tu ne t'arrêtes pas avant.
+Si une commande t'est refusée, donne-la-moi telle quelle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```

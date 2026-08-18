@@ -222,6 +222,14 @@ Conséquence à assumer explicitement : une colonne mappée sur un champ multiva
 **refusée au mappage** avec un message clair, plutôt que produire un échec serveur opaque en fin
 d'import.
 
+> ✅ **Ce refus est livré par L24 le 2026-08-18.** `autoMapColumns` ne propose plus aucune cible de
+> type `terminology`, à valeur unique comme multiple ; le choix manuel de cette cible ne prend pas,
+> et la colonne garde le mappage qu'elle avait ; l'étape de correspondance **et** le rapport
+> d'import nomment les colonnes écartées pour ce motif, distinctement des colonnes ignorées
+> ordinaires. L'import lui-même reste **hors périmètre** : rien ne résout un concept, et
+> `buildImportRows` est inchangé — un chemin qui contournerait l'écran obtiendrait toujours le refus
+> du serveur, ce qui est la place correcte pour cette garantie.
+
 Deux points sont à noter pour la version ultérieure qui traitera l'import :
 
 - le format d'entrée naturel est celui de la sortie — libellés séparés par `; ` dans une colonne
@@ -237,14 +245,36 @@ l'`OutboxEntry` transporte déjà l'objet `data` complet, sous garde de `baseUpd
 optimiste) et d'un `operationId` (idempotence du rejeu). Le snapshot hors-ligne et le cache de
 terminologie sont inchangés.
 
-**Amélioration recommandée, séparable.** Deux appareils hors ligne qui ajoutent chacun un
-diagnostic produisent un conflit correctement détecté, mais dont la résolution actuelle est
-binaire : `resolveKeepMine` écrase la valeur de l'autre. Une troisième issue, **« garder les
-deux »**, réalise l'union des deux listes par `code` en préservant l'ordre local puis les
-nouveautés serveur. C'est une fonction de domaine pure, testable sans base, et elle ne devient
-possible que parce que chaque valeur porte un identifiant stable — son code.
+**Amélioration livrée par L25 (2026-08-18).** Deux appareils hors ligne qui ajoutent chacun un
+diagnostic produisent un conflit correctement détecté, mais dont la résolution était binaire :
+`resolveKeepMine` écrasait la valeur de l'autre. Une troisième issue, **« garder les deux »**,
+réalise l'union des deux listes par `code`. Elle n'est possible que parce que chaque valeur porte
+un identifiant stable — son code.
 
-Cette amélioration peut être livrée après le reste sans rien invalider.
+`mergeKeepBoth` (`src/domain/conflictMerge.ts`) est une fonction de domaine **pure**, testable
+sans base ni navigateur, appelée par `resolveKeepBoth` :
+
+- toutes les clés viennent de **ma** version ; seules les clés portant une liste de terminologie
+  **des deux côtés** sont unies — ordre local d'abord, puis les nouveautés serveur, sans doublon
+  de code. C'est « garder ma version sans écraser les ajouts de l'autre », pas un troisième
+  arbitrage qui rendrait les champs à valeur unique au serveur sans le dire ;
+- le libellé d'un code présent des deux côtés reste le mien : le code est l'identité ;
+- une liste face à un code de donnée manquante n'a rien à unir — ce sont deux représentations
+  contradictoires. Une clé présente seulement côté serveur n'est pas reprise : sans valeur de
+  base, un ajout de l'autre appareil ne se distingue pas d'une suppression de ma part ;
+- **l'issue n'est proposée que lorsqu'elle change quelque chose** — au moins une valeur serveur
+  sauvée. Un conflit qui ne porte que sur des champs à valeur unique n'a rien à fusionner, et un
+  bouton qui promettrait un sauvetage sans l'accomplir serait pire que pas de bouton. La
+  visibilité est dérivée de la fusion elle-même, donc l'écran et l'action ne peuvent pas diverger.
+
+`OutboxEntry` est inchangé. Le rejeu réutilise l'`operationId` de l'entrée : la tentative qui a
+levé le conflit a été intégralement annulée côté serveur — l'accusé d'idempotence et l'écriture
+sont dans la même transaction — donc aucune empreinte ne s'y oppose. Comme la charge fusionnée est
+**déterministe**, calculée depuis la seule entrée d'outbox et jamais depuis un nouvel appel réseau,
+un rejeu après réponse réseau perdue retrouve l'accusé et n'écrit pas une seconde fois.
+
+Limite assumée : l'écriture est **forcée** (`expected = null`), comme « garder ma version ». Une
+écriture d'un troisième appareil survenue entre la détection du conflit et le clic serait écrasée.
 
 ## 11. Versionnement
 
@@ -331,7 +361,7 @@ pas de meilleur moment.
 |---|---|
 | `[object Object]` à l'export | Test de non-régression écrit **avant** l'implémentation |
 | Explosion du nombre de colonnes indicatrices | Seuil de 100, feuille dédiée exhaustive en repli |
-| Perte d'une valeur lors d'une synchronisation concurrente | Conflit déjà détecté ; issue « garder les deux » recommandée |
+| Perte d'une valeur lors d'une synchronisation concurrente | Conflit déjà détecté ; issue « garder les deux » livrée par L25 |
 | Conversion des données historiques | Aperçu obligatoire, opt-in, idempotente, journalisée, sauvegarde préalable |
 | Confusion avec les groupes répétables | Critère de bascule fixé au §2 ; spécification distincte à venir |
 
