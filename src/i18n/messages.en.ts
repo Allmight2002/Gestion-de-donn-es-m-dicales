@@ -944,4 +944,11 @@ export const messages = {
     'options.repair_done': 'Conversion finished',
     'options.repair_result':
       '{repaired} record(s) converted, {blocked} blocked, {skipped} skipped, {failed} failed.',
+    // L23 — cohorts on multi-value variables.
+    'op.has_any': 'carries at least one of',
+    'op.has_none': 'carries none of',
+    'cohort.presence_hint':
+      'Pick one or more diagnoses: the cohort keeps records based on their presence in the list, whatever their rank.',
+    'cohort.not_filterable':
+      'This variable cannot be filtered as it stands: a single-value diagnosis cannot be compared without risking a wrong result. Use a variable that accepts several values.',
   } as const satisfies MessageDictionary;

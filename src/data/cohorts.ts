@@ -3,7 +3,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 export type FilterScope = 'patient' | 'encounter';
-export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'between';
+export type FilterOp =
+  | 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'between'
+  // L21/L23 — variables MULTIVALUEES. La valeur du critere est un tableau de CODES, et
+  // `jsonb_matches` cherche ces codes dans la liste enregistree. Une egalite sur une liste
+  // ne compare rien d'utile : ces deux operateurs sont les seuls offerts dans ce cas.
+  | 'has_any' | 'has_none';
 
 export interface FilterCondition {
   scope: FilterScope;

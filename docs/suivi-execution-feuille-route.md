@@ -2690,3 +2690,66 @@ L23 (`has_any`/`has_none` dans `CohortBuilder`), L24 (refus au mappage d'import)
 de `diagnostic_1/2/3`). L22 (export) a été fusionné le même jour par la session voisine (PR #225) :
 `develop` porte donc le socle, l'export et la saisie dès que cette PR sera fusionnée à son tour. Le réordonnancement des étiquettes n'est pas offert : la
 spécification fixe l'ordre à celui de la saisie.
+
+## Lot L23 — Listes de diagnostics : cohortes (2026-08-18)
+
+Front seul, aucune migration. Dernier maillon de la chaîne : L20 a livré les opérateurs serveur,
+L21 la saisie, L22 l'export — il manquait de quoi **filtrer** ces listes, c'est-à-dire de quoi les
+exploiter.
+
+### Ce qui est livré
+
+- **`operatorsFor` ne propose plus que « porte au moins un de » et « ne porte aucun de »** sur une
+  variable multivaluée. Retirer l'égalité n'est pas cosmétique : sur une liste, la comparaison
+  porterait sur la représentation JSON du tableau entier, et « n'est pas » serait vrai pour tout le
+  monde. Une cohorte fausse ne se voit pas — elle se publie.
+- **La valeur du critère est une liste de concepts du référentiel**, saisie par le MÊME composant que
+  la fiche patient (`TerminologyInput` en mode multivalué, livré par L21). Aucun second sélecteur
+  n'a été écrit. Seuls les **codes** partent dans le filtre, car c'est sur eux que `jsonb_matches`
+  compare ; le critère enregistré les affiche tels quels, comme le font déjà les listes à choix.
+
+### Deux pièges rencontrés en chemin
+
+- `draftOp` valait `eq` à l'initialisation et n'était recalculé que par le changement de variable.
+  Une base dont la **première** variable est un diagnostic multivalué affichait donc « porte au moins
+  un de » pendant que l'état disait `eq` — et c'est un `eq` qui serait parti dans le critère. Un test
+  dédié couvre ce cas.
+- Une variable de terminologie **unitaire** se voyait offrir « est », « n'est pas » et « figure dans
+  la liste », qui ne peuvent pas fonctionner sur un couple `{code, libellé}`. Aucun opérateur n'est
+  plus proposé pour ce cas, et l'écran explique pourquoi. Le rendre juste demanderait un opérateur
+  serveur, donc une migration : **candidat pour un lot ultérieur**, hors périmètre ici.
+
+### Aperçu et figeage — le point 4 du lot
+
+`cohort_preview` et `create_cohort_snapshot` sont deux fonctions distinctes qui découpent les
+conditions par portée avec la même expression et appellent la même `jsonb_matches` : les deux
+héritent donc ensemble des opérateurs de L20. Mais rien dans le schéma n'empêche l'une de dériver de
+l'autre, et un filtre qui marcherait à l'aperçu sans marcher au figeage produirait une cohorte
+silencieusement différente de celle qui a été montrée. `test/cohort-multivalue.test.ts` verrouille
+l'égalité : effectifs **et** identité des patients, pas seulement le compte.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **63 fichiers, 442/442 tests verts** (437 avant ce lot) ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (74 entrées préchargées).
+
+La suite base de données a été lancée localement mais n'a pas pu aboutir dans un délai utile : une
+session voisine occupait la machine avec dix-neuf instances PostgreSQL embarquées simultanées. C'est
+la CI qui joue `npm test`, donc le test ci-dessus, sur la PR.
+
+**Incident de vérification, à retenir.** Le premier passage de CI est parti rouge sur `typecheck` :
+deux mocks de ce lot étaient déclarés sans paramètres, et `tsc` était le seul des trois outils à le
+voir. La cause est un ordre de vérification fautif — `typecheck` avait été lancé **avant** l'écriture
+des tests, puis seulement `vitest` et `eslint` après. Relancer `typecheck` après TOUTE écriture de
+test, y compris quand le test passe.
+
+### Publication
+
+PR #226 ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+
+### Ce qui reste
+
+L24 (refus au mappage d'import) et L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en
+dernier). S'y ajoute le filtrage des diagnostics unitaires, qui demande un opérateur serveur.

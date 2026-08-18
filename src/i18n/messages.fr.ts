@@ -944,6 +944,13 @@ export const messages = {
     'options.repair_done': 'Conversion terminée',
     'options.repair_result':
       '{repaired} fiche(s) converties, {blocked} bloquée(s), {skipped} ignorée(s), {failed} en échec.',
+    // L23 — cohortes sur variables multivaluées.
+    'op.has_any': 'porte au moins un de',
+    'op.has_none': 'ne porte aucun de',
+    'cohort.presence_hint':
+      'Choisissez un ou plusieurs diagnostics : la cohorte retiendra les fiches selon leur présence dans la liste, quel que soit leur rang.',
+    'cohort.not_filterable':
+      'Cette variable n’est pas filtrable en l’état : un diagnostic à valeur unique ne peut être comparé sans risque de résultat faux. Utilisez une variable acceptant plusieurs valeurs.',
   } as const;
 
 export type MessageKey = keyof typeof messages;
