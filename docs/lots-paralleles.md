@@ -401,6 +401,10 @@ serveur opaque en fin d'import.
 Petit lot, isolé, à faible risque. Il évite une régression d'usage introduite par L21 : dès qu'une
 variable multivaluée existe, elle apparaît dans la liste des cibles d'import.
 
+> ✅ **L24 est livré le 2026-08-18** (PR vers `develop`). Le refus couvre les champs `terminology`
+> **à valeur unique comme multiple** — le manque est antérieur à la famille L20-L26, L21 le rend
+> seulement visible. Front seul, aucune migration.
+
 ### L25 — Conflit hors-ligne : issue « garder les deux »
 
 §10 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). **Séparable** : rien
