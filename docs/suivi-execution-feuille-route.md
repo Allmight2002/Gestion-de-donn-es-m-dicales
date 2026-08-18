@@ -2626,3 +2626,67 @@ retrouveront.
 L'entrée « Lot L20 » qui précède a été écrite avec un encodage erroné (`ÔÇö` pour `—`, `├®` pour
 `é`). La corruption est **non réversible automatiquement** : la remettre d'aplomb suppose de
 retaper le texte. Le fond reste exact ; seule la lecture est pénible.
+
+## Lot L21 — Listes de diagnostics : saisie et constructeur (2026-08-18)
+
+Front seul, aucune migration. Le socle L20 (`20260818045033_multivalue_terminology_foundation.sql`)
+était fusionné et vérifié avant de commencer : `template_field.is_multiple`, contrainte de type,
+surcharge `update_template_field(..., p_is_multiple, ...)` et `isMultiple` dans
+`download_base_snapshot`.
+
+### Ce qui est livré
+
+- **Constructeur** (`FieldForm.tsx`) : case « Accepte plusieurs valeurs », rendue pour le seul type
+  `terminology` et soumise à `lockStructural` comme le type et la portée. Revenir à un autre type
+  dépose la cardinalité en chemin, plutôt que de provoquer le refus de la contrainte serveur.
+- **Saisie** (`TerminologyInput.tsx`) : mode multivalué. Étiquettes **numérotées** — le numéro est le
+  rang, et c'est lui qui porte « le premier est le diagnostic principal » — bouton de retrait nommé,
+  et **la zone de recherche reste visible en dessous**. Un concept déjà choisi sort des résultats.
+  L'ordre est celui de la saisie : ni l'écran ni le serveur ne retrient.
+- **Retrait de la dernière valeur** : le composant émet `null`, jamais `[]`, et les conteneurs
+  (`EncounterFields.tsx`, `NewPatient.tsx`) **suppriment la clé** via le mécanisme `onRemove` qui
+  existait déjà. `ChoiceWithProposal` traitait déjà ce cas et n'a pas été touché.
+- **Validation** (`domain/validation.ts`) : le partage est conservé. En multivalué, on vérifie que
+  c'est un tableau de couples bien formés — rien de plus. Existence des concepts, doublons et borne
+  de 50 restent au serveur.
+- **`ValueInput.tsx` inchangé** : un code de donnée manquante remplace la liste, il ne s'y ajoute
+  pas. Point couvert par test, pas par modification.
+- **Câblage** : `isMultiple` traverse `TemplateField`/`NewField`, `mapField`, l'insertion de
+  `addField` et la RPC de `updateField` — c'est la clé `p_is_multiple` qui sélectionne la surcharge
+  L20 ; sans elle, PostgREST résout la signature antérieure et la cardinalité n'est jamais écrite.
+
+### Deux points hors des cinq demandés, validés par le porteur
+
+- `displayFieldValue` testait `isTerminologyValue` avant `Array.isArray` : un tableau de couples
+  tombait dans `join(', ')` et aurait affiché « [object Object] » dans `BaseHome`, `PatientDetail` et
+  `EditEncounter` — la régression que la spécification signale pour l'export, dans un autre fichier.
+- `OfflineField` ne transportait pas `isMultiple` alors que `download_base_snapshot` l'émet déjà :
+  hors connexion, une liste se serait ouverte dans le formulaire unitaire, ses valeurs invisibles, et
+  la première saisie aurait produit un couple unique refusé à la synchronisation.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **63 fichiers, 437/437 tests verts**, dont 20 nouveaux pour ce lot
+  (`TerminologyInput`, `FieldForm`, `EncounterFields`, et deux fichiers créés :
+  `domain/validation.test.tsx`, `data/types.test.tsx`) ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (73 entrées préchargées).
+
+La suite RLS/PostgreSQL embarquée n'est pas touchée par ce lot front ; la CI la joue sur la PR.
+
+### Publication
+
+PR ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+
+Incident sans conséquence sur le contenu livré : le répertoire de travail est partagé avec une autre
+session, qui y a basculé la branche `codex/l22-restore-multivalue-export` en cours de lot. Le lot L21
+a donc été committé depuis un `git worktree` dédié, à partir de `develop`, et les fichiers L21 ont
+été retirés du répertoire partagé pour ne pas polluer le travail L22.
+
+### Ce qui reste aux lots suivants
+
+L23 (`has_any`/`has_none` dans `CohortBuilder`), L24 (refus au mappage d'import), L26 (regroupement
+de `diagnostic_1/2/3`). L22 (export) a été fusionné le même jour par la session voisine (PR #225) :
+`develop` porte donc le socle, l'export et la saisie dès que cette PR sera fusionnée à son tour. Le réordonnancement des étiquettes n'est pas offert : la
+spécification fixe l'ordre à celui de la saisie.

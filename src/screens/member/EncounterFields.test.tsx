@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
+import { RepositoryProvider } from '../../data/RepositoryProvider';
+import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField } from '../../data/types';
 import { EncounterFields, HiddenValuesNotice } from './EncounterFields';
 
@@ -229,5 +231,63 @@ describe('EncounterFields — sections personnalisables (L31)', () => {
     const groups = screen.getAllByRole('group').map((g) => g.textContent ?? '');
     expect(groups[0]).toContain('Symptome');
     expect(groups[1]).toContain('Orpheline');
+  });
+});
+
+// L21 — « pas de valeur » n'a qu'UNE representation : la cle absente, ou un code de donnee
+// manquante. Le tableau vide est refuse par la base, deliberement ; c'est au client de ne
+// jamais le produire.
+describe('EncounterFields — listes de diagnostics (L21)', () => {
+  const CHOLERA = { code: '1A00', label: 'Cholera' };
+  const DIABETE = { code: '5A11', label: 'Diabete de type 2' };
+  const INERTE = {
+    search: async () => [],
+    activeRelease: async () => null,
+    listEntries: async () => ({ entries: [], total: 0 }),
+  } as unknown as TerminologyRepository;
+
+  const diagnostic: TemplateField = {
+    id: 'diagnostic', fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'encounter',
+    section: 'clinique', type: 'terminology', isMultiple: true, unit: null, allowedValues: null,
+    required: false, minValue: null, maxValue: null, allowMissingCodes: true,
+    missingReasons: ['non_fait'], displayOrder: 0,
+  };
+
+  function renderFields(values: Record<string, unknown>) {
+    const onChange = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <I18nProvider>
+        <RepositoryProvider terminology={INERTE}>
+          <EncounterFields fields={[diagnostic]} values={values} onChange={onChange} onRemove={onRemove} />
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    return { onChange, onRemove };
+  }
+
+  test('retirer la derniere valeur supprime la CLE, sans ecrire de tableau vide', async () => {
+    const { onChange, onRemove } = renderFields({ diagnostic: [CHOLERA] });
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+
+    expect(onRemove).toHaveBeenCalledWith('diagnostic');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test('retirer une valeur parmi deux enregistre la liste restante', async () => {
+    const { onChange, onRemove } = renderFields({ diagnostic: [CHOLERA, DIABETE] });
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+
+    expect(onChange).toHaveBeenCalledWith('diagnostic', [DIABETE]);
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  // ValueInput est conserve tel quel : un code de donnee manquante REMPLACE la liste, il ne
+  // s'y ajoute pas.
+  test('un code de donnee manquante remplace la liste', async () => {
+    const { onChange } = renderFields({ diagnostic: [CHOLERA] });
+    await userEvent.selectOptions(screen.getByLabelText('Diagnostic — valeur manquante'), 'non_fait');
+
+    expect(onChange).toHaveBeenCalledWith('diagnostic', { __missing__: 'non_fait' });
   });
 });

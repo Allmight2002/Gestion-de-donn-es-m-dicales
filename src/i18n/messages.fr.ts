@@ -328,6 +328,9 @@ export const messages = {
     'admin.section': 'Section',
     'admin.type': 'Type',
     'admin.required': 'Obligatoire',
+    'admin.field_multiple': 'Accepte plusieurs valeurs',
+    'admin.field_multiple_hint':
+      'La saisie proposera autant de diagnostics que nécessaire, dans l’ordre choisi : le premier est le diagnostic principal.',
     'admin.allowed_values': 'Valeurs autorisées',
     'admin.values_count': 'valeur(s) définie(s)',
     'admin.value_set': "Liste prête à l'emploi",
@@ -343,6 +346,8 @@ export const messages = {
     'terminology.searching': 'Recherche…',
     'terminology.no_result': 'Aucun diagnostic trouvé pour cette recherche.',
     'terminology.change': 'Changer',
+    'terminology.remove': 'Retirer',
+    'terminology.rank_hint': 'Le premier diagnostic de la liste est le diagnostic principal.',
     'terminology.download': 'Télécharger pour rechercher hors connexion',
     'terminology.downloading': 'Téléchargement des diagnostics…',
     'terminology.local_ready': 'Recherche hors connexion disponible.',

@@ -59,6 +59,9 @@ export function FieldForm({
   );
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
+  // L21 : cardinalite du champ. Structurelle, donc soumise a `lockStructural` comme le type
+  // et la portee -- une variable deja utilisee ne bascule pas entre valeur unique et liste.
+  const [isMultiple, setIsMultiple] = useState(initial?.isMultiple ?? false);
   const [encounterTypes, setEncounterTypes] = useState<string[]>(initial?.encounterTypes ?? []);
   // L30 : la liste n'est plus du texte libre mais des options { code, libelle, actif }.
   // `fieldOptions` retombe sur l'ancienne liste de chaines quand la variable est
@@ -142,6 +145,9 @@ export function FieldForm({
     const listed = isChoice && options.length > 0 ? options : null;
     const built: NewField = {
       fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null, scope: isCrossSectional ? 'patient' : scope, section, type, required,
+      // Un retour vers un autre type n'emporte JAMAIS la cardinalite : la base refuse
+      // `is_multiple` hors terminologie, et l'ecran ne doit pas provoquer ce refus.
+      isMultiple: type === 'terminology' && isMultiple,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
       encounterTypes: !isCrossSectional && scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
       // Les DEUX partent : les options font foi, le miroir des codes garde lisible une
@@ -174,6 +180,7 @@ export function FieldForm({
       setMissingReasons([]);
       setDefaultValue('');
       setWithProposal(false);
+      setIsMultiple(false);
     }
   }
 
@@ -249,6 +256,20 @@ export function FieldForm({
         onChange={(e) => setRequired(e.target.checked)}
         containerClassName="sm:self-end"
       />
+
+      {/* L21 : reservee au diagnostic. Une liste FERMEE recopiee dans le gabarit reste du
+          ressort de `multiselect` ; deux facons de faire la meme chose seraient une dette. */}
+      {type === 'terminology' && (
+        <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-3">
+          <Checkbox
+            label={t('admin.field_multiple')}
+            checked={isMultiple}
+            disabled={lockStructural}
+            onChange={(e) => setIsMultiple(e.target.checked)}
+          />
+          <span className="helper-text">{t('admin.field_multiple_hint')}</span>
+        </div>
+      )}
 
       {/* L30 : l'editeur reste ACTIF sur une variable deja utilisee -- c'est tout l'objet
           du lot. Seule la suppression d'une option y est retiree ; renommer, ajouter,

@@ -1,4 +1,4 @@
-import type { TemplateField, TerminologyValue } from '../../data/types';
+import type { TemplateField } from '../../data/types';
 import { isOrphanValue, selectableOptions } from '../../domain/fieldOptions';
 import { TerminologyInput } from './TerminologyInput';
 import { Checkbox } from '../../components/Checkbox';
@@ -55,7 +55,7 @@ export function FieldInput({
         <TerminologyInput
           field={field}
           value={value}
-          onChange={(v: TerminologyValue | null) => onChange(v)}
+          onChange={(v) => onChange(v)}
         />
       );
     // L30 : la valeur enregistree est le CODE de l'option, le libelle n'est qu'affiche.
