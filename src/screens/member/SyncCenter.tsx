@@ -1,13 +1,14 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { usePatientRepository } from '../../data/RepositoryProvider';
 import {
-  discardOutboxEntry, flushOutbox, offlineCache, resolveKeepMine, resolveKeepServer,
+  discardOutboxEntry, flushOutbox, offlineCache, resolveKeepBoth, resolveKeepMine, resolveKeepServer,
   retryOutboxEntry, useOnline, useOutbox,
   type FlushDeps, type FlushReport, type OfflineMeta, type OutboxEntry,
 } from '../../data/offline';
+import { mergeKeepBoth } from '../../domain/conflictMerge';
 import { recentClientErrors } from '../../lib/reportError';
 
 // Centre de synchronisation (§13, Phases 2/3) : modifications hors-ligne en attente +
@@ -247,6 +248,10 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
     catch (e) { onError(errorMessage(e, t('common.error'))); }
     finally { setBusy(false); }
   };
+  // L25 : la troisieme issue n'est PROPOSEE que si elle change quelque chose. La decision vient de
+  // la fonction de domaine, pas de l'ecran : le bouton montre exactement ce que l'action ecrira.
+  const merge = useMemo(() => mergeKeepBoth(entry.data, entry.serverData), [entry.data, entry.serverData]);
+  const mergeable = merge.mergedKeys.length > 0;
 
   return (
     <div className="card border-red-200 p-4 text-sm">
@@ -262,10 +267,24 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
           <pre className="overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-700">{entry.serverData ? JSON.stringify(entry.serverData, null, 2) : '—'}</pre>
         </div>
       </div>
-      <div className="mt-3 flex gap-2">
+      {mergeable && (
+        <div className="mt-3">
+          <div className="mb-1 text-xs font-semibold text-slate-500">
+            {t('sync.merged')} · {t('sync.keep_both_recovered')} : {merge.recovered}
+          </div>
+          <pre className="overflow-x-auto rounded bg-amber-50 p-2 text-xs text-slate-700">{JSON.stringify(merge.data, null, 2)}</pre>
+          <p className="mt-1 text-xs text-slate-500">{t('sync.keep_both_explain')}</p>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
         <button disabled={busy} onClick={() => void run(() => resolveKeepMine(entry.id, deps))} className="btn-secondary">
           {t('sync.keep_mine')}
         </button>
+        {mergeable && (
+          <button disabled={busy} onClick={() => void run(() => resolveKeepBoth(entry.id, deps))} className="btn-secondary">
+            {t('sync.keep_both')}
+          </button>
+        )}
         <button disabled={busy} onClick={() => void run(() => resolveKeepServer(entry.id))} className="btn-secondary">
           {t('sync.keep_server')}
         </button>

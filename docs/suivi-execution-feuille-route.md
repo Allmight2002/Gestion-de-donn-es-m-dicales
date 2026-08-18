@@ -2831,3 +2831,94 @@ L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), l'import
 diagnostics, et le filtrage des diagnostics unitaires nommé pendant L23 (L34). La ligne « Statut »
 en tête de `spec-variables-multivaluees.md` cite encore L21 à L26 comme « à livrer » : elle sera à
 rafraîchir d'un coup quand la famille sera close, pas lot par lot.
+
+## Lot L25 — Conflit hors-ligne : issue « garder les deux » (2026-08-18)
+
+Front seul, aucune migration. Lot **séparable** : rien n'en dépend et son absence ne produisait
+aucune perte silencieuse — le conflit était déjà correctement détecté par le jeton optimiste. Le
+lot améliore une résolution, il ne répare pas un trou.
+
+Deux appareils hors ligne ajoutent chacun un diagnostic à la même rencontre. Le premier
+synchronise ; le second voit son `baseUpdatedAt` périmé et le conflit remonte. La résolution était
+binaire : garder la sienne écrasait le diagnostic ajouté par l'autre.
+
+### Ce qui est livré
+
+- **`mergeKeepBoth` (`src/domain/conflictMerge.ts`)** : fonction de domaine **pure**, testée sans
+  base, sans navigateur et sans IndexedDB. Union des listes de terminologie par `code`, ordre
+  local puis nouveautés serveur. L'union n'est possible que parce que chaque valeur porte un
+  identifiant stable — son code ; sur un champ à valeur unique, deux versions ne se fusionnent pas.
+- **La fusion est une variante de « garder ma version »**, pas un troisième arbitrage : toutes les
+  clés viennent de ma version, seules les clés portant une liste **des deux côtés** sont unies. Le
+  libellé d'un code partagé reste le mien — le code est l'identité, le libellé n'est que
+  l'instantané pris à la saisie. Une liste face à un code de donnée manquante n'a rien à unir, et
+  une clé présente seulement côté serveur n'est pas reprise : sans valeur de base, un ajout de
+  l'autre appareil ne se distingue pas d'une suppression de ma part.
+- **`resolveKeepBoth` (`src/data/offline.ts`)** appelle la fonction de domaine et rien de plus.
+  `resolveKeepMine` et elle partagent désormais `applyResolution` — un seul chemin d'écriture,
+  donc pas de divergence possible entre les deux issues.
+- **`SyncCenter.tsx`** : le bouton, plus un **aperçu du résultat fusionné** à côté des deux
+  versions, avec le nombre de valeurs récupérées. L'écran ne réimplémente aucune règle : il
+  affiche exactement ce que l'action écrira.
+
+### Le point 3 : quand l'issue a-t-elle un sens
+
+Le bouton n'apparaît **que si la fusion change quelque chose**, c'est-à-dire si elle sauve au moins
+une valeur que « garder ma version » détruirait. Un conflit qui ne porte que sur des champs à
+valeur unique n'a rien à fusionner ; proposer une fusion impossible serait pire que ne rien
+proposer, parce que le bouton promettrait un sauvetage qui n'a pas lieu. Le cas « la liste serveur
+est déjà incluse dans la mienne » tombe sous la même règle.
+
+La visibilité est **dérivée de la fusion elle-même** (`mergedKeys` non vide), jamais d'un prédicat
+parallèle : le bouton et l'action ne peuvent pas se contredire. Aucun dictionnaire de champs n'est
+requis — la forme de la valeur suffit, ce qui vaut aussi hors connexion et pour une rencontre
+saisie sous une version de gabarit antérieure.
+
+### Le point 4 : idempotence du rejeu, vérifiée
+
+`OutboxEntry` est inchangé — c'est cette forme, l'objet `data` complet sous garde de
+`baseUpdatedAt` et d'un `operationId`, qui a fait que les listes de diagnostics n'ont demandé aucun
+travail hors-ligne.
+
+L'empreinte serveur (`replay_encounter_update`) porte sur `encounter_id + data + validation_status
++ reason + expected_updated_at`. Réutiliser l'`operationId` avec une charge différente lèverait
+`OFFLINE_OPERATION_MISMATCH` — **sauf que la tentative en conflit a été intégralement annulée** :
+l'insertion de l'accusé et `update_encounter` sont dans la même transaction, donc aucune ligne ne
+survit à un conflit et la clé est libre. C'est déjà ce qui autorise `resolveKeepMine` à rejouer
+sous la même clé en passant `expected` de `baseUpdatedAt` à `null`.
+
+Reste la vraie garantie : si le commit réussit et que la réponse réseau se perd, un rejeu doit
+retrouver l'accusé au lieu de réécrire. Cela exige une charge **déterministe** — d'où la fonction
+pure, calculée depuis la seule entrée d'outbox et jamais depuis un nouvel appel réseau. Trois tests
+le verrouillent : deux appels produisent la même charge à l'octet près ; refusionner un résultat
+déjà fusionné ne le change plus ; un second déclenchement ne rejoue rien, l'entrée ayant disparu.
+
+**Limite assumée**, conforme à la décision prise avant l'écriture : l'écriture est forcée
+(`expected = null`), comme « garder ma version ». Une écriture d'un troisième appareil survenue
+entre la détection du conflit et le clic serait écrasée. La rendre détectable demanderait de
+conserver le jeton serveur sur l'entrée et d'écrire un chemin de re-conflit — c'est un autre lot.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert (relancé **après** l'écriture des tests, leçon de L23) ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **65 fichiers, 466/466 tests verts** (442 avant ce lot, +24) ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (74 entrées préchargées).
+
+La suite PostgreSQL/RLS n'est pas touchée : ce lot ne crée ni table, ni politique, ni migration.
+C'est la CI qui joue `npm test` sur la PR.
+
+### Publication
+
+PR #229 ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+Lot mené dans un `git worktree` dédié dès le départ — le répertoire de travail est partagé avec
+d'autres sessions, et L24 y était en cours. L24 ayant été fusionné (PR #228) pendant la CI de
+celle-ci, la branche a intégré `develop` : le seul conflit portait sur la fin de ce document, où
+les deux lots ajoutaient leur compte rendu.
+
+### Ce qui reste
+
+L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), seul lot de la famille
+encore ouvert après L24. S'y ajoutent le filtrage des diagnostics unitaires (L34, opérateur
+serveur), l'import réel des diagnostics, et — pour qui voudra le pousser — la détection d'un
+troisième écrivain à la résolution d'un conflit.

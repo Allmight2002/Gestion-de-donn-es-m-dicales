@@ -76,3 +76,55 @@ describe('SyncCenter — état du système (E3)', () => {
     setOfflineUser(null);
   });
 });
+
+// L25 : la troisieme issue n'est PROPOSEE que lorsqu'elle change quelque chose. Un conflit qui ne
+// porte que sur des champs a valeur unique n'a rien a fusionner, et un bouton qui promettrait un
+// sauvetage sans l'accomplir serait pire que pas de bouton du tout.
+describe('SyncCenter — issue « garder les deux » (L25)', () => {
+  const HED = { code: 'S06.4', label: 'Hematome extradural' };
+  const FEMUR = { code: 'S72.0', label: 'Fracture du femur' };
+
+  const conflit = (
+    data: Record<string, unknown>,
+    serverData: Record<string, unknown>,
+  ): OutboxEntry => ({
+    dataType: 'analytic_outbox', id: 'ui-keep-both', baseId: 'base-ui', patientId: 'patient-ui',
+    encounterId: 'encounter-ui', data, serverData, reason: 'test UI', validationStatus: 'curated',
+    baseUpdatedAt: null, createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+    state: 'conflict', ownerUserId: 'sync-ui-user',
+  });
+
+  test('proposee, avec un apercu, quand les deux listes de diagnostics different', async () => {
+    await purgeAllOfflineData();
+    setOfflineUser('sync-ui-user');
+    await outbox.put(conflit({ diagnostic: [HED], glasgow_score: 12 }, { diagnostic: [FEMUR], glasgow_score: 14 }));
+
+    renderSync();
+
+    expect(await screen.findByRole('button', { name: 'Garder les deux' })).toBeInTheDocument();
+    // L'apercu montre exactement ce que l'action ecrira : les deux codes, et MON glasgow.
+    const titre = screen.getByText(/Résultat de la fusion/);
+    expect(titre.textContent).toMatch(/Valeurs récupérées : 1/);
+    const apercu = titre.parentElement?.textContent ?? '';
+    expect(apercu).toMatch(/S06\.4/);
+    expect(apercu).toMatch(/S72\.0/);
+    expect(apercu).toMatch(/"glasgow_score": 12/);
+    await purgeAllOfflineData();
+    setOfflineUser(null);
+  });
+
+  test('absente quand le conflit ne porte que sur des champs a valeur unique', async () => {
+    await purgeAllOfflineData();
+    setOfflineUser('sync-ui-user');
+    await outbox.put(conflit({ glasgow_score: 12 }, { glasgow_score: 14 }));
+
+    renderSync();
+
+    expect(await screen.findByRole('button', { name: 'Garder ma version' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Garder la version serveur' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Garder les deux' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Résultat de la fusion/)).not.toBeInTheDocument();
+    await purgeAllOfflineData();
+    setOfflineUser(null);
+  });
+});
