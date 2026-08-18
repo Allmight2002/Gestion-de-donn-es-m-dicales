@@ -78,6 +78,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L31~~ | ~~Sections personnalisables~~ | **Livré le 2026-08-15** (`template_section` rattachée à la version, `section` conservé en miroir du code) | — |
 | ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
 | ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
+| **L34** | Filtre d'une variable Diagnostic à valeur unique | migration (`jsonb_matches`), `CohortBuilder.tsx` | L24, L25 — **jamais avec L26** |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
 > L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
@@ -576,6 +577,25 @@ manquent à un registre clinique : **refus** du patient et **non documenté** �
 
 Les codes existants ne changent ni de nom ni de sens : la migration est additive et les données
 déjà saisies restent lisibles telles quelles.
+
+### L34 — Filtre d'une variable Diagnostic à valeur unique
+
+Défaut **antérieur** à la famille L20-L26, nommé pendant L23 le 2026-08-18 et volontairement non
+corrigé par lui. `jsonb_matches` compare `p_data ->> field` ; or une variable Diagnostic à valeur
+unique enregistre un couple `{code, label}`, si bien que la comparaison porte sur sa représentation
+JSON entière. « est » et « figure dans » ne renvoient donc jamais personne, et surtout **« n'est
+pas » renvoie tout le monde — y compris les patients portant le diagnostic censé être exclu**, sans
+que rien ne le signale.
+
+L23 a retiré ces opérateurs de l'interface : c'est un garde-fou, pas une réparation. Ce lot les
+rétablit en les rendant justes, ce qui **exige une migration** — d'où sa sortie du périmètre « front
+seul » de L23.
+
+**La décision à trancher avant de coder** : corriger `eq`/`neq`/`in` en place, auquel cas les
+cohortes dynamiques existantes changent de population sans que leur critère ait bougé ; ou ajouter
+des opérateurs distincts, auquel cas rien ne bouge mais deux syntaxes cohabitent. Le lot impose par
+ailleurs un **inventaire en lecture seule** des cohortes bâties sur une variable Diagnostic : leur
+population a été calculée avec le défaut.
 
 ## Deux chantiers volontairement laissés hors des lots
 
