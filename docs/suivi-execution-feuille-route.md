@@ -2500,3 +2500,39 @@ inline).
 
 La publication (commit, PR, staging) reste volontairement non engagée : niveau A — s'arrête avant
 le commit, en attente de la validation du porteur.
+
+## Lot L20 ÔÇö Socle PostgreSQL des listes de diagnostics (branche d'int├®gration, 2026-08-16)
+
+La migration additive `20260818045033_multivalue_terminology_foundation.sql` ajoute
+`template_field.is_multiple`, faux par d├®faut et r├®serv├® au type `terminology`. Une liste valide
+porte de 1 ├á 50 couples `code`/`label`, sans code r├®p├®t├® ; chaque couple est v├®rifi├® dans toutes les
+publications conserv├®es. Une raison de valeur manquante continue de remplacer la liste.
+
+`jsonb_matches` comprend d├®sormais `has_any` et `has_none`. La compl├®tude n'a pas ├®t├® r├®├®crite :
+sa d├®finition actuelle utilise d├®j├á `rule_value_present`, qui distingue correctement `[]` d'une
+liste non vide. La duplication de version, la nouvelle surcharge de modification et l'instantan├®
+hors-ligne conservent tous `isMultiple`.
+
+### Synth├¿se `meddata-db-safety`
+
+- compatibilit├® : les champs et donn├®es existants restent unitaires par d├®faut ; aucune donn├®e
+  clinique n'est convertie par L20 ;
+- int├®grit├® : contrainte de type, cardinalit├®, forme stricte, unicit├® des codes et validation du
+  r├®f├®rentiel sont impos├®es c├┤t├® serveur ;
+- RLS et privil├¿ges : aucune table ni policy nouvelle ; **42 tables et 63 policies inchang├®es** ;
+  la nouvelle RPC reste refus├®e ├á `anon` et accord├®e ├á `authenticated` ;
+- concurrence et idempotence : aucune ├®criture de donn├®es ni traitement de reprise ; la migration
+  est transactionnelle et sa valeur par d├®faut constante n'impose pas de conversion ;
+- sauvegarde et r├®cup├®ration : aucune sauvegarde de donn├®es requise pour ce lot non destructif ;
+  toute correction ult├®rieure doit rester additive. Aucune migration distante n'a ├®t├® appliqu├®e.
+
+### Validation locale ÔÇö niveau 1
+
+- tests L20 : **10/10 verts** ;
+- non-r├®gression terminologie, statistiques et cohortes : **30/30 verts** ;
+- `npm run db:verify` : **128 migrations** appliqu├®es depuis z├®ro, 42 tables, 63 policies et
+  64 triggers ;
+- `npm run typecheck` et `npm run lint` : verts.
+
+D├®cision du contr├┤le de lot : **pr├¬t pour la suite s├®quentielle L21**, sous r├®serve de la validation
+ind├®pendante commune avant publication.
