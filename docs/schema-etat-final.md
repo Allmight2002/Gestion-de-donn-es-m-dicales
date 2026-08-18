@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260815180000_template_section.sql`
-- Tables : 42 · Policies RLS : 63 · Triggers : 63 · Fonctions : 260
+- Dernière migration incluse : `20260818045033_multivalue_terminology_foundation.sql`
+- Tables : 42 · Policies RLS : 63 · Triggers : 63 · Fonctions : 261
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -772,6 +772,7 @@ Policies :
 | missing_reasons | ARRAY | non | `ARRAY['non_fait'::text, 'inconnu'::text, 'non_applicable'::text]` |
 | allowed_options | jsonb | oui |  |
 | section_id | uuid | oui |  |
+| is_multiple | boolean | non | `false` |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -1185,6 +1186,7 @@ Triggers :
 | update_patient_identity | p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
+| update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_is_multiple boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |

@@ -139,6 +139,23 @@ describe('EncounterForm', () => {
     expect(createEncounter.mock.calls[0][1]).toEqual(expect.objectContaining({ validationStatus: 'curated' }));
   });
 
+  test('complete incomplet est refuse et complete conforme est accepte', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderForm(makePatientRepo(createEncounter));
+    await screen.findByText('Glasgow');
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    // La soumission ('complete') exige desormais la completude, comme 'curated'.
+    fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'complete' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(createEncounter).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(createEncounter.mock.calls[0][1]).toEqual(expect.objectContaining({ validationStatus: 'complete' }));
+  });
+
   test('A2 : Ctrl+Entrée enregistre la rencontre depuis le clavier', async () => {
     const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
     const { container } = renderForm(makePatientRepo(createEncounter));

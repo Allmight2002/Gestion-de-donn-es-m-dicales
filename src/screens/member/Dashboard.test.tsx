@@ -193,34 +193,6 @@ describe('Dashboard', () => {
     await screen.findByRole('button', { name: /Nouvelle base/ });
     expect(screen.queryByText('Mission terminée')).toBeNull();
   });
-
-  test('restaure une base depuis la corbeille sans remettre les acces partages', async () => {
-    const user = userEvent.setup();
-    const restoreDeletedBase = vi.fn(async () => undefined);
-    const repo = {
-      ...mockBases(),
-      async listDeletedBases() {
-        return [{
-          id: 'deleted-1', name: 'Registre clos', deletionReason: 'Création par erreur',
-          deletedAt: '2026-08-01T10:00:00.000Z', purgeEligibleAt: '2027-08-01T10:00:00.000Z',
-        }];
-      },
-      restoreDeletedBase,
-    } as BaseRepository;
-
-    renderApp(repo);
-    const trashTitle = await screen.findByText(/Corbeille/);
-    expect(screen.getByText('Retrouvez ici vos bases supprimées.')).toBeInTheDocument();
-    expect(trashTitle.closest('details')).not.toHaveAttribute('open');
-    await user.click(trashTitle);
-    expect(trashTitle.closest('details')).toHaveAttribute('open');
-    expect(await screen.findByText('Registre clos')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Restaurer' }));
-    expect(screen.getByRole('dialog', { name: 'Restaurer cette base ?' })).toBeInTheDocument();
-    expect(screen.getByText(/Les personnes précédemment invitées devront être invitées à nouveau/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Restaurer la base' }));
-    expect(restoreDeletedBase).toHaveBeenCalledWith('deleted-1');
-  });
 });
 
 describe('BaseHome', () => {

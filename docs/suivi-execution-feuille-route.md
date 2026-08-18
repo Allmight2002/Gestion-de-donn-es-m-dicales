@@ -2424,3 +2424,115 @@ et mis en cache à leur premier usage.
 
 La publication et la vérification multi-écrans en staging puis en production restent volontairement
 reportées à la release unique de la branche d'intégration.
+
+## Corbeille des bases dans la barre latérale (2026-08-18)
+
+Demande du porteur, hors file des défauts : déplacer la corbeille des bases de l'écran d'accueil
+vers la barre latérale. Branche de travail locale `codex/lot-d9-d12` (niveau A : aucun commit
+effectué pour ce chantier).
+
+### Réalisation
+
+- page `src/screens/member/Trash.tsx` (route `/trash`, `ProtectedRoute` réservée au rôle
+  `medecin` — seul rôle à créer/posséder des bases, `canCreateBase`) : liste des bases supprimées
+  avec motif, dates de suppression et d'éligibilité à la purge, restauration via la modale de
+  confirmation existante ; états vide et hors-ligne ;
+- entrée « Corbeille » dans la barre latérale du médecin (`AppShell.tsx`), avec badge du nombre
+  chargé par `list_deleted_bases` au montage et au retour de focus de la fenêtre ; un échec réseau
+  laisse le badge à zéro sans faire échouer la coquille ; jamais de chargement hors-ligne ni hors
+  du rôle ;
+- suppression de la section `<details>` et de son chargement (`listDeletedBases`,
+  `restoreTarget`, `ConfirmDialog`) dans `Dashboard.tsx` — l'accueil ne porte plus que les bases
+  actives et la copie hors-ligne ;
+- clés i18n ajoutées : `nav.trash`, `base.trash_offline` (fr + en).
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **61 fichiers, 409/409 tests verts** — test corbeille déplacé de
+  `Dashboard.test.tsx` vers `Trash.test.tsx` (3 tests : liste, restauration après confirmation,
+  état vide) ; assertions sidebar ajoutées à `AppShell.test.tsx` (médecin voit l'entrée, curateur
+  et saisisseur ne la voient pas) ;
+- build de production avec `VITE_USE_SIGNED_READ=true` : vert, `Trash` en chunk différé
+  (2,1 kB), PWA régénérée (73 entrées précachées).
+
+### Limites
+
+La corbeille reste vide hors-ligne (RPC serveur). Le libellé « Purge manuelle possible à partir du
+{date} » reste affiché sans action correspondante : c'est D10, toujours ouvert, qui exige une
+décision produit avant tout travail. Publication non engagée : niveau A — s'arrête avant le commit,
+en attente de la validation du porteur.
+
+## Lot D9/D12 — menus flottants et retour visuel des boutons (2026-08-18)
+
+Lot de correction des défauts D9 et D12 de la file d'idées post-readiness, sur la branche de
+travail locale `codex/lot-d9-d12`. Niveau A : aucun commit effectué, publication non engagée.
+
+### D9 — fermeture des menus flottants
+
+Le composant partagé `src/components/Menu.tsx` (avec `MenuItem`) remplace les trois `<details>`
+flottants (`MyTemplates.tsx`, `TemplatesAdmin.tsx`, sélecteur de colonnes de `BaseHome.tsx`) :
+fermeture au `pointerdown` extérieur, à Échap (focus restitué au déclencheur) et à la sélection ;
+un seul menu peut rester ouvert à la fois. `popover="auto"` est écarté (non garanti sur téléphones
+anciens) ; les entrées restent des boutons tabulables, sans `role="menu"`, pour préserver les tests
+existants. Les dépliants en flux et la liste de suggestions de terminologie sont laissés intacts,
+comme prescrit. Cinq tests dédiés (`src/components/Menu.test.tsx`).
+
+### D12 — retour visuel des boutons
+
+Chaque `hover:` des cinq primitives est doublé d'un `active:` de même intention (clair et sombre) ;
+`disabled:opacity-60` complète `.btn-ghost` et `.icon-button`. La primitive `.btn-pending` (anneau
+`currentColor`, `pointer-events-none`, rotation coupée sous `prefers-reduced-motion`) marque
+l'attente des actions longues : création et sauvegarde de gabarits, confirmation de
+`ConfirmDialog.tsx` (dont le bouton danger reprend la primitive `btn-danger` au lieu du style
+inline).
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **60 fichiers, 407/407 tests verts**, dont 5 nouveaux pour `Menu` ;
+- build de production avec `VITE_USE_SIGNED_READ=true` : vert (4,64 s), PWA régénérée
+  (74 entrées précachées) ;
+- contrôle du CSS compilé dans `dist/` : états `:active`/`:disabled` et `.btn-pending` présents
+  dans le bundle.
+
+La publication (commit, PR, staging) reste volontairement non engagée : niveau A — s'arrête avant
+le commit, en attente de la validation du porteur.
+
+## Lot L20 ÔÇö Socle PostgreSQL des listes de diagnostics (branche d'int├®gration, 2026-08-16)
+
+La migration additive `20260818045033_multivalue_terminology_foundation.sql` ajoute
+`template_field.is_multiple`, faux par d├®faut et r├®serv├® au type `terminology`. Une liste valide
+porte de 1 ├á 50 couples `code`/`label`, sans code r├®p├®t├® ; chaque couple est v├®rifi├® dans toutes les
+publications conserv├®es. Une raison de valeur manquante continue de remplacer la liste.
+
+`jsonb_matches` comprend d├®sormais `has_any` et `has_none`. La compl├®tude n'a pas ├®t├® r├®├®crite :
+sa d├®finition actuelle utilise d├®j├á `rule_value_present`, qui distingue correctement `[]` d'une
+liste non vide. La duplication de version, la nouvelle surcharge de modification et l'instantan├®
+hors-ligne conservent tous `isMultiple`.
+
+### Synth├¿se `meddata-db-safety`
+
+- compatibilit├® : les champs et donn├®es existants restent unitaires par d├®faut ; aucune donn├®e
+  clinique n'est convertie par L20 ;
+- int├®grit├® : contrainte de type, cardinalit├®, forme stricte, unicit├® des codes et validation du
+  r├®f├®rentiel sont impos├®es c├┤t├® serveur ;
+- RLS et privil├¿ges : aucune table ni policy nouvelle ; **42 tables et 63 policies inchang├®es** ;
+  la nouvelle RPC reste refus├®e ├á `anon` et accord├®e ├á `authenticated` ;
+- concurrence et idempotence : aucune ├®criture de donn├®es ni traitement de reprise ; la migration
+  est transactionnelle et sa valeur par d├®faut constante n'impose pas de conversion ;
+- sauvegarde et r├®cup├®ration : aucune sauvegarde de donn├®es requise pour ce lot non destructif ;
+  toute correction ult├®rieure doit rester additive. Aucune migration distante n'a ├®t├® appliqu├®e.
+
+### Validation locale ÔÇö niveau 1
+
+- tests L20 : **10/10 verts** ;
+- non-r├®gression terminologie, statistiques et cohortes : **30/30 verts** ;
+- `npm run db:verify` : **128 migrations** appliqu├®es depuis z├®ro, 42 tables, 63 policies et
+  64 triggers ;
+- `npm run typecheck` et `npm run lint` : verts.
+
+D├®cision du contr├┤le de lot : **pr├¬t pour la suite s├®quentielle L21**, sous r├®serve de la validation
+ind├®pendante commune avant publication.

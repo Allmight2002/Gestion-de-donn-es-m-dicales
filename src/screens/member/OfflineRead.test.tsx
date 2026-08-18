@@ -18,6 +18,11 @@ import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository } from '../../data/patients';
 import type { AttachmentRepository } from '../../data/attachments';
 
+// EditEncounter lit le role global (profil de medecin par defaut pour ces tests).
+vi.mock('../../auth/useAuth', () => ({
+  useAuth: () => ({ profile: { id: 'u', fullName: 'M', globalRole: 'medecin', language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+}));
+
 // Repos qui ECHOUENT a tout appel : hors-ligne, aucune lecture reseau ne doit avoir lieu.
 const forbidNetwork = new Proxy(
   {},

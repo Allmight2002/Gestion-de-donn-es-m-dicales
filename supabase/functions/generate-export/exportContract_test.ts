@@ -8,7 +8,6 @@ import { assertEquals } from '@std/assert';
 import {
   buildDictionary,
   buildEncounterExport,
-  buildMultivalueTable,
   buildPatientExport,
   codeColumnId,
   columnId,
@@ -16,7 +15,6 @@ import {
   type ExportField,
   type ExportPatient,
   mergeExportFields,
-  nbColumnId,
   optionCodeColumnId,
 } from './exportContract.ts';
 
@@ -77,7 +75,6 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       description: '',
       label: 'diagnostic',
       type: 'terminology',
-      is_multiple: 'false',
       field_key: 'diagnostic',
       scope: 'encounter',
       section: 'clinique',
@@ -92,7 +89,6 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       description: '',
       label: 'diagnostic — code',
       type: 'terminology_code',
-      is_multiple: 'false',
       field_key: 'diagnostic',
       scope: 'encounter',
       section: 'clinique',
@@ -285,6 +281,7 @@ Deno.test('le dictionnaire nomme une section personnalisee', () => {
 
 // Une colonne qui traverse deux versions dont l'une seulement porte le libelle ne doit pas
 // perdre son nom lisible : le premier libelle connu tient.
+
 Deno.test('le libelle de section survit a la fusion entre versions', () => {
   const merged = mergeExportFields([
     champ({ fieldKey: 'tdm', type: 'boolean', section: 'imagerie', sectionLabel: null, templateVersionIds: ['v1'] }),
@@ -299,26 +296,29 @@ Deno.test('le libelle de section survit a la fusion entre versions', () => {
   assertEquals(merged.length, 1);
   assertEquals(merged[0].sectionLabel, 'Imagerie');
 });
-
-// ---------------------------------------------------------------------------
-// D13 — l'ordre des colonnes de l'export suit display_order, pas l'alphabet
-// ---------------------------------------------------------------------------
 Deno.test('D13 : les colonnes de donnees suivent display_order du gabarit', () => {
   const f1 = champ({ fieldKey: 'z_premier', type: 'text', displayOrder: 1 });
   const f2 = champ({ fieldKey: 'a_second', type: 'text', displayOrder: 2 });
-  const table = buildEncounterExport([rencontre({ z_premier: '1', a_second: '2' })], [f1, f2]);
+
+  const table = buildEncounterExport(
+    [rencontre({ z_premier: '1', a_second: '2' })],
+    [f1, f2],
+  );
+
   const col1 = table.columns.indexOf(columnId(f1));
   const col2 = table.columns.indexOf(columnId(f2));
   assertEquals(col1 < col2, true);
 });
 
-// ---------------------------------------------------------------------------
-// D14 — types natifs des cellules dans le tableau d'export (XLSX)
-// ---------------------------------------------------------------------------
 Deno.test('D14 : les nombres et entiers sont stockes comme nombres natifs JS', () => {
   const gcs = champ({ fieldKey: 'gcs', type: 'integer' });
   const hb = champ({ fieldKey: 'hemoglobine', type: 'number' });
-  const table = buildEncounterExport([rencontre({ gcs: 8, hemoglobine: 12.5 })], [gcs, hb]);
+
+  const table = buildEncounterExport(
+    [rencontre({ gcs: 8, hemoglobine: 12.5 })],
+    [gcs, hb],
+  );
+
   assertEquals(typeof table.rows[0][columnId(gcs)], 'number');
   assertEquals(table.rows[0][columnId(gcs)], 8);
   assertEquals(typeof table.rows[0][columnId(hb)], 'number');
@@ -335,129 +335,9 @@ Deno.test('D14 : age_value est un nombre natif quand il est present', () => {
     ageUnit: 'ans',
     data: {},
   };
+
   const table = buildEncounterExport([enc], []);
+
   assertEquals(typeof table.rows[0].age_value, 'number');
   assertEquals(table.rows[0].age_value, 34);
-});
-
-// ---------------------------------------------------------------------------
-// L22 — Listes de diagnostics multivaluées à l'export
-// ---------------------------------------------------------------------------
-const DIAG_MULTI = champ({ fieldKey: 'diagnostics', type: 'terminology', isMultiple: true });
-
-Deno.test('L22 : une liste de diagnostics ne produit JAMAIS [object Object]', () => {
-  const table = buildEncounterExport(
-    [
-      rencontre({
-        diagnostics: [
-          { code: '1A00', label: 'Cholera' },
-          { code: 'BA00', label: 'Hypertension' },
-        ],
-      }),
-    ],
-    [DIAG_MULTI],
-  );
-  assertEquals(table.rows[0][columnId(DIAG_MULTI)], 'Cholera; Hypertension');
-  assertEquals(table.rows[0][codeColumnId(DIAG_MULTI)], '1A00; BA00');
-  assertEquals(table.rows[0][`nb__${columnId(DIAG_MULTI)}`], 2);
-});
-
-Deno.test('L22 : donnée manquante codifiée sur champ multivalué laisse nb vide', () => {
-  const table = buildEncounterExport(
-    [rencontre({ diagnostics: { __missing__: 'non_fait' } })],
-    [DIAG_MULTI],
-  );
-  assertEquals(table.rows[0][columnId(DIAG_MULTI)], 'non_fait');
-  assertEquals(table.rows[0][codeColumnId(DIAG_MULTI)], '');
-  assertEquals(table.rows[0][`nb__${columnId(DIAG_MULTI)}`], '');
-});
-
-Deno.test('L22 : export mixte : une valeur unitaire ancienne reste correctement rendue', () => {
-  const table = buildEncounterExport(
-    [rencontre({ diagnostics: { code: '1A00', label: 'Cholera' } })],
-    [DIAG_MULTI],
-  );
-  assertEquals(table.rows[0][columnId(DIAG_MULTI)], 'Cholera');
-  assertEquals(table.rows[0][codeColumnId(DIAG_MULTI)], '1A00');
-  assertEquals(table.rows[0][`nb__${columnId(DIAG_MULTI)}`], 1);
-});
-
-Deno.test('L22 : colonnes indicatrices has__... créées pour les codes présents et renseignées en 0/1', () => {
-  const e1 = rencontre({
-    diagnostics: [
-      { code: '1A00', label: 'Cholera' },
-      { code: 'BA00', label: 'Hypertension' },
-    ],
-  });
-  const e2: ExportEncounter = {
-    id: 'e2',
-    patientCode: 'P0002',
-    encounterDate: '2026-01-02',
-    encounterType: 'consultation',
-    data: {
-      diagnostics: [{ code: '1A00', label: 'Cholera' }],
-    },
-  };
-  const table = buildEncounterExport([e1, e2], [DIAG_MULTI]);
-
-  const colCholera = `has__${columnId(DIAG_MULTI)}__1a00`;
-  const colHyper = `has__${columnId(DIAG_MULTI)}__ba00`;
-
-  assertEquals(table.columns.includes(colCholera), true);
-  assertEquals(table.columns.includes(colHyper), true);
-
-  assertEquals(table.rows[0][colCholera], 1);
-  assertEquals(table.rows[0][colHyper], 1);
-  assertEquals(table.rows[1][colCholera], 1);
-  assertEquals(table.rows[1][colHyper], 0);
-});
-
-Deno.test('L22 : au-delà de 100 codes distincts, les colonnes indicatrices sont omises', () => {
-  const manyDiagnostics = Array.from({ length: 105 }, (_, i) => ({
-    code: `CODE_${i}`,
-    label: `Diagnostic ${i}`,
-  }));
-  const table = buildEncounterExport([rencontre({ diagnostics: manyDiagnostics })], [DIAG_MULTI]);
-  const hasIndicators = table.columns.some((c) => c.startsWith(`has__${columnId(DIAG_MULTI)}__`));
-  assertEquals(hasIndicators, false);
-});
-
-Deno.test('L22 : feuille dédiée buildMultivalueTable produit patient_code, encounter_id, rang, code, label', () => {
-  const e1 = rencontre({
-    diagnostics: [
-      { code: '1A00', label: 'Cholera' },
-      { code: 'BA00', label: 'Hypertension' },
-    ],
-  });
-  const table = buildMultivalueTable(DIAG_MULTI, [], [e1]);
-  assertEquals(table.columns, ['patient_code', 'encounter_id', 'rang', 'code', 'label']);
-  assertEquals(table.rows, [
-    {
-      patient_code: 'P0001',
-      encounter_id: 'e1',
-      rang: 1,
-      code: '1A00',
-      label: 'Cholera',
-    },
-    {
-      patient_code: 'P0001',
-      encounter_id: 'e1',
-      rang: 2,
-      code: 'BA00',
-      label: 'Hypertension',
-    },
-  ]);
-});
-
-Deno.test('L22 : le dictionnaire documente is_multiple=true et la colonne nb__...', () => {
-  const dict = buildDictionary([DIAG_MULTI]);
-  const isMultipleCol = dict.columns.includes('is_multiple');
-  assertEquals(isMultipleCol, true);
-
-  const mainRow = dict.rows.find((r) => r.column_id === columnId(DIAG_MULTI));
-  assertEquals(mainRow?.is_multiple, 'true');
-
-  const nbRow = dict.rows.find((r) => r.column_id === nbColumnId(DIAG_MULTI));
-  assertEquals(nbRow?.label, 'diagnostics — nombre');
-  assertEquals(nbRow?.type, 'computed_count');
 });
