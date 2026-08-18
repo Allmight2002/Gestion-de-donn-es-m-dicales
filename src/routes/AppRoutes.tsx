@@ -35,6 +35,7 @@ const BaseSettings = lazy(() => import('../screens/member/BaseSettings').then((m
 const GroupList = lazy(() => import('../screens/member/GroupList').then((m) => ({ default: m.GroupList })));
 const GroupDetail = lazy(() => import('../screens/member/GroupDetail').then((m) => ({ default: m.GroupDetail })));
 const SyncCenter = lazy(() => import('../screens/member/SyncCenter').then((m) => ({ default: m.SyncCenter })));
+const Trash = lazy(() => import('../screens/member/Trash').then((m) => ({ default: m.Trash })));
 const CurationBoard = lazy(() => import('../screens/member/CurationBoard').then((m) => ({ default: m.CurationBoard })));
 const CurationPool = lazy(() => import('../screens/member/CurationPool').then((m) => ({ default: m.CurationPool })));
 const CurationTask = lazy(() => import('../screens/member/CurationTask').then((m) => ({ default: m.CurationTask })));
@@ -147,6 +148,16 @@ export function AppRoutes() {
         element={
           <ProtectedRoute area="member">
             <SyncCenter />
+          </ProtectedRoute>
+        }
+      />
+      {/* Corbeille des bases : la creation/possession de bases est reservee au medecin,
+          la corbeille ne le concerne donc que lui (meme regle que `canCreateBase`). */}
+      <Route
+        path="/trash"
+        element={
+          <ProtectedRoute area="member" globalRoles={['medecin']}>
+            <Trash />
           </ProtectedRoute>
         }
       />

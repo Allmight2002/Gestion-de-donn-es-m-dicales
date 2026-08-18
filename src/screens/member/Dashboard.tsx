@@ -1,18 +1,17 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronDown, Database, Plus, X } from 'lucide-react';
+import { Database, Plus, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { canCreateBase, isMissionAccount } from '../../auth/logic';
 import { useBaseRepository } from '../../data/RepositoryProvider';
-import type { BaseListing, DeletedBase, ObservationModel, PublishedTemplateOption } from '../../data/bases';
+import type { BaseListing, ObservationModel, PublishedTemplateOption } from '../../data/bases';
 import { offlineCache, useOnline, type OfflineMeta } from '../../data/offline';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
-import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 // Tableau de bord (cahier §8.3) : bases possedees + partagees. La creation de base est
 // reservee au role MEDECIN (le staff voit seulement les bases auxquelles il a acces).
@@ -25,7 +24,6 @@ export function Dashboard() {
   const isMission = isMissionAccount(profile);
   const navigate = useNavigate();
   const [bases, setBases] = useState<BaseListing[]>([]);
-  const [deletedBases, setDeletedBases] = useState<DeletedBase[]>([]);
   const [offlineBases, setOfflineBases] = useState<OfflineMeta[]>([]);
   const [templates, setTemplates] = useState<PublishedTemplateOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,8 +34,6 @@ export function Dashboard() {
   const [observationModel, setObservationModel] = useState<ObservationModel>('longitudinal');
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [restoreTarget, setRestoreTarget] = useState<DeletedBase | null>(null);
-  const [restoring, setRestoring] = useState(false);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -47,17 +43,14 @@ export function Dashboard() {
       if (!online) {
         // HORS-LIGNE : seules les bases enregistrees localement sont consultables.
         setOfflineBases(await offlineCache.list());
-        setDeletedBases([]);
         setError(null);
         return;
       }
-      const [b, tpl, deleted] = await Promise.all([
+      const [b, tpl] = await Promise.all([
         repo.listMyBases(),
         repo.listTemplateModels(),
-        mayCreate ? repo.listDeletedBases() : Promise.resolve([]),
       ]);
       setBases(b);
-      setDeletedBases(deleted);
       setTemplates(tpl);
       setVersionId((prev) => prev || tpl[0]?.versionId || '');
       void offlineCache.list().then(setOfflineBases).catch(() => {});
@@ -68,7 +61,7 @@ export function Dashboard() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, online, mayCreate]);
+  }, [repo, online]);
 
   useEffect(() => {
     void reload();
@@ -92,31 +85,8 @@ export function Dashboard() {
     }
   }
 
-  async function restoreBase() {
-    if (!restoreTarget) return;
-    setRestoring(true);
-    try {
-      await repo.restoreDeletedBase(restoreTarget.id);
-      setRestoreTarget(null);
-      await reload();
-    } catch (e) {
-      setError(msg(e));
-    } finally {
-      setRestoring(false);
-    }
-  }
-
   return (
     <section className="space-y-6 sm:space-y-8">
-      <ConfirmDialog
-        open={restoreTarget !== null}
-        title={t('base.restore_title')}
-        body={t('base.restore_body')}
-        confirmLabel={t('base.restore_confirm')}
-        busy={restoring}
-        onCancel={() => setRestoreTarget(null)}
-        onConfirm={() => void restoreBase()}
-      />
       {/* Les comptes de mission vivent dans la barre laterale (destination globale) : les
           rappeler ici ne ferait que disputer la place a l'action propre de cet ecran. */}
       <PageHeader
@@ -255,46 +225,6 @@ export function Dashboard() {
       </div>
       )}
 
-      {online && mayCreate && !loading && (
-        <details className="group surface-muted overflow-hidden">
-          <summary role="button" className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 sm:px-5">
-            <span className="min-w-0">
-              <span className="section-title block">{t('base.trash_title')}</span>
-              <span className="mt-0.5 block text-sm text-slate-500">{t('base.trash_hint')}</span>
-            </span>
-            <span className="flex shrink-0 items-center gap-2">
-              <span className="badge" aria-label={t('dashboard.bases_count').replace('{n}', String(deletedBases.length))}>{deletedBases.length}</span>
-              <ChevronDown size={18} className="text-slate-500 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
-            </span>
-          </summary>
-          <div className="border-t border-slate-200 p-4 dark:border-slate-800 sm:p-5">
-            {deletedBases.length === 0 ? (
-              <p className="text-sm text-slate-500">{t('base.trash_empty')}</p>
-            ) : (
-              <ul className="space-y-3">
-                {deletedBases.map((base) => (
-                  <li key={base.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{base.name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">{base.deletionReason}</p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {t('base.deleted_on').replace('{date}', new Date(base.deletedAt).toLocaleDateString())}
-                        {' · '}
-                        {t('base.purge_eligible').replace('{date}', new Date(base.purgeEligibleAt).toLocaleDateString())}
-                      </p>
-                    </div>
-                    <button type="button" className="btn-secondary" onClick={() => setRestoreTarget(base)}>
-                      {t('base.restore')}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </details>
-      )}
-
-      {/* Bases disponibles hors-ligne (consultables sans reseau, donnees analytiques uniquement). */}
       {(!online || offlineBases.length > 0) && (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-700">{t('offline.bases_title')}</h2>
