@@ -1484,12 +1484,14 @@ PRÉREQUIS : le lot L20 doit être fusionné. Vérifie que template_field porte
 is_multiple avant de commencer ; sinon la base refusera tout ce que cette
 interface écrit. L20 est fusionné depuis le 2026-08-18 (cde3170).
 
-NE FUSIONNE PAS CE LOT SANS L22. L22 a été annulé après avoir été livré trop
-tôt : la base accepte les listes, l'export ne sait plus les lire. Le jour où
-cette interface permet d'en saisir une, chaque export sort « [object Object] »
-dans la colonne concernée, code vide, sans erreur ni avertissement. Les deux
-lots ne partagent aucun fichier et se développent en parallèle sans se gêner ;
-c'est leur mise en ligne qui doit être commune.
+NE FUSIONNE PAS CE LOT SANS L22. L22 avait été annulé après avoir été livré
+trop tôt ; il est restauré depuis le 2026-08-18 (commit 2cf39f8, branche
+codex/l22-restore-multivalue-export) mais pas encore fusionné. Tant qu'il ne
+l'est pas, la base accepte les listes et l'export ne sait pas les lire : le jour
+où cette interface permet d'en saisir une, chaque export sort « [object
+Object] » dans la colonne concernée, code vide, sans erreur ni avertissement.
+Les deux lots ne partagent aucun fichier et se développent en parallèle sans se
+gêner ; c'est leur mise en ligne qui doit être commune.
 
 PÉRIMÈTRE — front seul, aucune migration.
 
@@ -1563,19 +1565,14 @@ Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
 dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
 docs/spec-variables-multivaluees.md §7.
 
-CE LOT A DÉJÀ ÉTÉ ÉCRIT UNE FOIS, PUIS ANNULÉ. NE LE RÉÉCRIS PAS. Le commit
-7e83a3f (2026-08-17) l'a livré avant son prérequis L20, dans le même commit que
-les défauts D13 et D14 ; le commit 6775a91 (PR #221) a annulé la seule part L22
-et conservé D13 et D14 ; L20 est arrivé ensuite (cde3170, PR #222). Reprends par
-« git revert 6775a91 », qui restitue un code déjà cohérent avec D13 et D14, puis
-fais les deux réconciliations que ce code ne pouvait pas connaître :
-  - aligner le contrat export sur ce que L20 impose côté serveur — cardinalité 1
-    à 50, unicité des codes, raison de valeur manquante remplaçant toute la
-    liste ;
-  - remettre is_multiple dans le select de handler.ts:517, que l'annulation a
-    retiré ; sans lui la fonction ignore quelle variable est multivaluée.
-NE RETOUCHE NI D13 NI D14 : ils sont livrés et verrouillés par trois tests
-(exportContract_test.ts:299, :313, :328).
+CE LOT EST LIVRÉ DEPUIS LE 2026-08-18 (commit 2cf39f8). Le prompt ci-dessous
+est conservé pour mémoire, pas pour être rejoué. Histoire courte : 7e83a3f
+(2026-08-17) avait livré L22 avant son prérequis L20, dans le même commit que
+D13 et D14 ; 6775a91 (PR #221) a annulé la seule part L22 ; L20 est arrivé
+ensuite (cde3170, PR #222) ; la restauration s'est faite par
+« git revert 6775a91 », avec vérification que le contrat export est cohérent
+avec les règles serveur de L20. NE RETOUCHE NI D13 NI D14 : livrés et
+verrouillés par trois tests (exportContract_test.ts:299, :313, :328).
 
 COMMENCE PAR LE TEST DE NON-RÉGRESSION, avant toute autre chose.
 supabase/functions/generate-export/exportContract.ts:168 formatValue teste

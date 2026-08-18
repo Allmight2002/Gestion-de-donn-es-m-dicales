@@ -2592,6 +2592,35 @@ livrés hors de leur lot, et restés silencieux dans la documentation jusqu'à c
    parallèle ; c'est leur mise en ligne qui doit être commune.
 5. **Traiter D15 comme une condition du bénéfice de D14**, pas comme un défaut indépendant.
 
+### Restauration de L22 (2026-08-18, `2cf39f8`)
+
+Faite dans la foulée, à la demande du porteur, sur la branche
+`codex/l22-restore-multivalue-export` : `git revert 6775a91`, appliqué sans conflit, aucun fichier
+réécrit à la main. Les deux réconciliations annoncées plus haut ont été **vérifiées, et aucune n'a
+demandé de code supplémentaire** :
+
+- `is_multiple` est revenu de lui-même dans le `select` de `handler.ts:521` — c'est l'annulation
+  qui l'avait retiré, le revert le remet ;
+- le contrat export est déjà cohérent avec les règles serveur de L20 : `isTerminologyList` exige
+  une liste **non vide** de couples `code`/`label` stricts, `nbOf` rend vide sur une raison de
+  valeur manquante — jamais `0`, qui signifierait « aucun diagnostic » — et `1` sur une valeur
+  unitaire ancienne, ce qui couvre l'export mixte d'une variable devenue multivaluée entre deux
+  versions de gabarit ; `formatValue` traite la liste **avant** la branche `Array` générique.
+
+D13 et D14 sont ressortis intacts de l'opération, avec leurs trois tests.
+
+Portes exécutées : `deno test supabase/functions/generate-export/` **54/54**, `npm run edge:test`
+**123/123**, `npm run edge:check`, `npm run edge:lint`, `npm run edge:fmt`,
+`npm run release:edge:check` (7 fonctions découvertes) — toutes vertes.
+
+Non exécuté, et volontairement : `typecheck`, `lint`, `test:web` et `build`. Une autre session
+écrivait L21 dans le même répertoire de travail au même moment ; leurs résultats auraient porté sur
+du code en cours d'écriture, pas sur ce lot. La surface Deno, elle, est isolée de L21 — aucun
+fichier commun. Ces portes restent à passer sur la branche d'intégration, quand L21 et L22 s'y
+retrouveront.
+
+**Publication non engagée** : commit fait, ni poussé ni fusionné.
+
 ### Défaut d'encodage à corriger
 
 L'entrée « Lot L20 » qui précède a été écrite avec un encodage erroné (`ÔÇö` pour `—`, `├®` pour
