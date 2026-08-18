@@ -167,9 +167,10 @@ export function EncounterForm() {
     // que l'effacement decide par le lot a lieu, apres l'annonce faite a l'ecran.
     const applicable = applicableFields;
     const applicableData = submittedData;
-    // Le serveur valide toujours les valeurs renseignees, mais n'impose la completude et les
-    // regles bloquantes qu'au statut curated. Le frontend reproduit exactement cette frontiere.
-    const requireComplete = status === 'curated';
+    // Le serveur exige la completude des la sortie du brouillon ('complete') pour tous les
+    // comptes, et a CHAQUE enregistrement pour un compte de mission (aucun brouillon partiel).
+    // Le frontend reproduit exactement cette frontiere (regles bloquantes : finalisation seule).
+    const requireComplete = isMissionAccount(profile) || status !== 'draft';
     const fieldErrors = validateValues(applicable, applicableData, requireComplete, hidden).map((fe) =>
       `${labelOf(fe.fieldKey)} : ${fe.message}`
     );

@@ -73,7 +73,7 @@ afterAll(async () => {
 
 describe('age calcule (jamais saisi)', () => {
   test('le proprietaire cree une rencontre : age calcule, DOB absente des donnees, version par enregistrement', async () => {
-    const r = await rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }));
+    const r = await rowsAs(aliceId, CALL, encArgs({ diagnosis: 'TC', glasgow_score: 12 }));
     expect(r).toHaveLength(1);
     // v3.0 : l'age est en COLONNE (age_value/age_unit), jamais dans data.
     expect(r[0].age_value).toBe(expectedAge);
@@ -85,7 +85,7 @@ describe('age calcule (jamais saisi)', () => {
   });
 
   test("un editor SANS acces identite obtient l'age calcule sans voir la date de naissance (§4.1)", async () => {
-    const r = await rowsAs(bobId, CALL, encArgs({ glasgow_score: 9 }));
+    const r = await rowsAs(bobId, CALL, encArgs({ diagnosis: 'TC', glasgow_score: 9 }));
     expect(r[0].age_value).toBe(expectedAge);
     // Preuve : Bob ne peut PAS lire la date de naissance.
     const ident = await rowsAs(bobId, 'select date_of_birth from public.patient_identity where base_id=$1', [baseId]);
@@ -93,7 +93,7 @@ describe('age calcule (jamais saisi)', () => {
   });
 
   test("l'age fourni par le client est ignore (recalcule serveur, sorti des donnees)", async () => {
-    const r = await rowsAs(bobId, CALL, encArgs({ age_at_encounter: 999, glasgow_score: 7 }));
+    const r = await rowsAs(bobId, CALL, encArgs({ age_at_encounter: 999, diagnosis: 'TC', glasgow_score: 7 }));
     expect(r[0].age_value).toBe(expectedAge); // 999 ecrase
     expect('age_at_encounter' in r[0].data).toBe(false); // retire des donnees
     expect(r[0].data.glasgow_score).toBe(7);
@@ -102,7 +102,7 @@ describe('age calcule (jamais saisi)', () => {
 
 describe('validation serveur (§5.4/§5.5)', () => {
   test('une valeur hors bornes (Glasgow=78) est refusee cote serveur', async () => {
-    await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 78 }))).rejects.toThrow(/maximum|glasgow/i);
+    await expect(rowsAs(aliceId, CALL, encArgs({ diagnosis: 'TC', glasgow_score: 78 }))).rejects.toThrow(/maximum|glasgow/i);
   });
 });
 
@@ -128,9 +128,16 @@ describe('promotion directe en curated : completude imposee (4.3)', () => {
     );
   });
 
-  test('curated avec un champ requis manquant -> refus ; complet -> accepte', async () => {
-    // 'complete' reste libre (brouillon avance) : OK meme partiel.
-    expect((await rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'complete')))[0].validation_status).toBe('complete');
+  test('complete incomplet refuse (RPC et trigger) ; curated incomplet refuse ; complets acceptes', async () => {
+    // 'complete' est une saisie SOUMISE : desormais soumise a la completude, comme 'curated'.
+    await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'complete'))).rejects.toThrow(/requis|manquant/i);
+    // 'complete' complet -> accepte.
+    expect((await rowsAs(aliceId, CALL, encArgs({ diagnosis: 'TC grave', glasgow_score: 12 }, 'complete')))[0].validation_status).toBe('complete');
+    // Voie directe (ecriture privilegiee, hors RPC) : le trigger ferme aussi la porte vers 'complete'.
+    const direct = (await rowsAs(aliceId, CALL, encArgs({}, 'draft')))[0];
+    await expect(
+      db.admin.query("update public.encounter set validation_status='complete' where id=$1", [direct.id]),
+    ).rejects.toThrow(/requis|manquant/i);
     // 'curated' incomplet (manque diagnosis requis) -> refuse.
     await expect(rowsAs(aliceId, CALL, encArgs({ glasgow_score: 12 }, 'curated'))).rejects.toThrow(/requis|manquant/i);
     // 'curated' complet -> accepte.

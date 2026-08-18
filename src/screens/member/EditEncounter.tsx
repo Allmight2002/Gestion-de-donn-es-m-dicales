@@ -2,6 +2,8 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
+import { useAuth } from '../../auth/useAuth';
+import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
 import { displayFieldValue, type TemplateField, type ValidationRule } from '../../data/types';
@@ -27,6 +29,7 @@ export function EditEncounter() {
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -125,7 +128,10 @@ export function EditEncounter() {
     e.preventDefault();
     if (!baseId || !patientId || !encounterId) return;
 
-    const requireComplete = status === 'curated';
+    // Completude exigee des la sortie du brouillon ('complete') pour tous les comptes, et a
+    // CHAQUE enregistrement pour un compte de mission (aucun brouillon partiel). Regles
+    // bloquantes : finalisation seule.
+    const requireComplete = isMissionAccount(profile) || status !== 'draft';
     const ruleEval = evaluateRules(
       rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
       submittedData,
