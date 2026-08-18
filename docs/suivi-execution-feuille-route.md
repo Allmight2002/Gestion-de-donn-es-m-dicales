@@ -2425,6 +2425,45 @@ et mis en cache à leur premier usage.
 La publication et la vérification multi-écrans en staging puis en production restent volontairement
 reportées à la release unique de la branche d'intégration.
 
+## Corbeille des bases dans la barre latérale (2026-08-18)
+
+Demande du porteur, hors file des défauts : déplacer la corbeille des bases de l'écran d'accueil
+vers la barre latérale. Branche de travail locale `codex/lot-d9-d12` (niveau A : aucun commit
+effectué pour ce chantier).
+
+### Réalisation
+
+- page `src/screens/member/Trash.tsx` (route `/trash`, `ProtectedRoute` réservée au rôle
+  `medecin` — seul rôle à créer/posséder des bases, `canCreateBase`) : liste des bases supprimées
+  avec motif, dates de suppression et d'éligibilité à la purge, restauration via la modale de
+  confirmation existante ; états vide et hors-ligne ;
+- entrée « Corbeille » dans la barre latérale du médecin (`AppShell.tsx`), avec badge du nombre
+  chargé par `list_deleted_bases` au montage et au retour de focus de la fenêtre ; un échec réseau
+  laisse le badge à zéro sans faire échouer la coquille ; jamais de chargement hors-ligne ni hors
+  du rôle ;
+- suppression de la section `<details>` et de son chargement (`listDeletedBases`,
+  `restoreTarget`, `ConfirmDialog`) dans `Dashboard.tsx` — l'accueil ne porte plus que les bases
+  actives et la copie hors-ligne ;
+- clés i18n ajoutées : `nav.trash`, `base.trash_offline` (fr + en).
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **61 fichiers, 409/409 tests verts** — test corbeille déplacé de
+  `Dashboard.test.tsx` vers `Trash.test.tsx` (3 tests : liste, restauration après confirmation,
+  état vide) ; assertions sidebar ajoutées à `AppShell.test.tsx` (médecin voit l'entrée, curateur
+  et saisisseur ne la voient pas) ;
+- build de production avec `VITE_USE_SIGNED_READ=true` : vert, `Trash` en chunk différé
+  (2,1 kB), PWA régénérée (73 entrées précachées).
+
+### Limites
+
+La corbeille reste vide hors-ligne (RPC serveur). Le libellé « Purge manuelle possible à partir du
+{date} » reste affiché sans action correspondante : c'est D10, toujours ouvert, qui exige une
+décision produit avant tout travail. Publication non engagée : niveau A — s'arrête avant le commit,
+en attente de la validation du porteur.
+
 ## Lot D9/D12 — menus flottants et retour visuel des boutons (2026-08-18)
 
 Lot de correction des défauts D9 et D12 de la file d'idées post-readiness, sur la branche de

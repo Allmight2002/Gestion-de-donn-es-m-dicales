@@ -319,9 +319,10 @@ un seul menu ouvert à la fois. L'API native `popover="auto"` + `popovertarget` 
 *light-dismiss* sans code ; à retenir seulement après vérification sur les navigateurs visés, la cible
 d'usage comprenant des téléphones anciens.
 
-**Ne pas toucher** aux trois autres `<details>` : `AccessManagement.tsx:246`, `Dashboard.tsx:259`
-(la corbeille) et `SyncCenter.tsx:110` sont des dépliants en flux, pas des menus flottants — l'élément
-natif y est le bon choix.
+**Ne pas toucher** aux autres `<details>` : `AccessManagement.tsx:246` et `SyncCenter.tsx:110`
+sont des dépliants en flux, pas des menus flottants — l'élément natif y est le bon choix. Le
+troisième, la corbeille de `Dashboard.tsx:259`, a été déplacé le 2026-08-18 vers sa propre page
+`/trash` à la demande du porteur (voir [plus bas](#corbeille-des-bases--dans-la-barre-latérale-2026-08-18)).
 
 Même famille, à traiter dans le même lot : la liste de suggestions de terminologie
 (`TerminologyInput.tsx:145`) ne se referme que sur choix ou vidage du champ. Elle est en flux et non
@@ -420,6 +421,25 @@ intention, en clair et en sombre (`src/index.css`) ; `disabled:opacity-60` compl
 d'appui. Appliquée aux actions longues : création et sauvegarde de gabarits (`TemplatesAdmin.tsx`,
 `MyTemplates.tsx`) et bouton de confirmation de `ConfirmDialog.tsx` (qui reprend désormais les
 primitives `btn-primary`/`btn-danger` au lieu du style danger inline).
+
+### Corbeille des bases — dans la barre latérale (2026-08-18)
+
+Demande du porteur, hors file des défauts : **déplacer la corbeille des bases de l'écran d'accueil
+vers la barre latérale.** La corbeille est un état global du compte (pas un contenu de l'accueil) ;
+l'accueil est dense (création, bases actives, corbeille, hors-ligne) et la barre latérale a déjà
+l'infrastructure des destinations globales avec badge (`/sync`). Fait le 2026-08-18 :
+
+- nouvelle page `/trash` (`src/screens/member/Trash.tsx`), route protégée réservée au rôle
+  `medecin` — le seul à créer/posséder des bases (`canCreateBase`) — reprenant la liste des bases
+  supprimées, la modale de restauration et les libellés existants ;
+- entrée « Corbeille » dans la barre latérale du médecin, avec **badge du nombre** de bases
+  supprimées, chargé via `list_deleted_bases` au montage et au retour de focus de la fenêtre
+  (comme le badge de synchronisation), jamais en hors-ligne ni hors du rôle ;
+- la section `<details>` et son chargement disparaissent du tableau de bord.
+
+Limites assumées : la corbeille reste vide hors-ligne (la RPC est serveur) ; le libellé « Purge
+manuelle possible à partir du {date} » annonce toujours une purge inexistante — c'est **D10**, qui
+reste ouvert et nécessite une décision produit avant tout travail.
 
 ### Lot « export et analyse » du 2026-08-15 (D13 à D16)
 
