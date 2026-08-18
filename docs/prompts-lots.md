@@ -1482,7 +1482,14 @@ docs/spec-variables-multivaluees.md §6.
 
 PRÉREQUIS : le lot L20 doit être fusionné. Vérifie que template_field porte
 is_multiple avant de commencer ; sinon la base refusera tout ce que cette
-interface écrit.
+interface écrit. L20 est fusionné depuis le 2026-08-18 (cde3170).
+
+NE FUSIONNE PAS CE LOT SANS L22. L22 a été annulé après avoir été livré trop
+tôt : la base accepte les listes, l'export ne sait plus les lire. Le jour où
+cette interface permet d'en saisir une, chaque export sort « [object Object] »
+dans la colonne concernée, code vide, sans erreur ni avertissement. Les deux
+lots ne partagent aucun fichier et se développent en parallèle sans se gêner ;
+c'est leur mise en ligne qui doit être commune.
 
 PÉRIMÈTRE — front seul, aucune migration.
 
@@ -1556,9 +1563,23 @@ Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
 dans le répertoire de travail. Lis d'abord CLAUDE.md, puis
 docs/spec-variables-multivaluees.md §7.
 
+CE LOT A DÉJÀ ÉTÉ ÉCRIT UNE FOIS, PUIS ANNULÉ. NE LE RÉÉCRIS PAS. Le commit
+7e83a3f (2026-08-17) l'a livré avant son prérequis L20, dans le même commit que
+les défauts D13 et D14 ; le commit 6775a91 (PR #221) a annulé la seule part L22
+et conservé D13 et D14 ; L20 est arrivé ensuite (cde3170, PR #222). Reprends par
+« git revert 6775a91 », qui restitue un code déjà cohérent avec D13 et D14, puis
+fais les deux réconciliations que ce code ne pouvait pas connaître :
+  - aligner le contrat export sur ce que L20 impose côté serveur — cardinalité 1
+    à 50, unicité des codes, raison de valeur manquante remplaçant toute la
+    liste ;
+  - remettre is_multiple dans le select de handler.ts:517, que l'annulation a
+    retiré ; sans lui la fonction ignore quelle variable est multivaluée.
+NE RETOUCHE NI D13 NI D14 : ils sont livrés et verrouillés par trois tests
+(exportContract_test.ts:299, :313, :328).
+
 COMMENCE PAR LE TEST DE NON-RÉGRESSION, avant toute autre chose.
-supabase/functions/generate-export/exportContract.ts:82 formatValue teste
-isTerminologyValue AVANT Array.isArray (ligne 92). Une liste de diagnostics
+supabase/functions/generate-export/exportContract.ts:168 formatValue teste
+isTerminologyValue AVANT Array.isArray (ligne 179). Une liste de diagnostics
 tomberait donc dans v.join('; ') et rendrait « [object Object] » sur TOUTE la
 colonne. Ce défaut a déjà frappé trois fois dans ce dépôt : sur les codes
 manquants, sur la liste des patients (lot L1), et sur les messages des Edge
@@ -1569,7 +1590,7 @@ PÉRIMÈTRE — surface Deno isolée, aucun fichier commun avec les lots front.
 
 1. FEUILLE PRINCIPALE, pour un champ multivalué : la colonne principale porte les
    libellés joints par « ; », la colonne terminology_code__… (codeColumnId, ligne
-   75) porte les codes joints par « ; », et une colonne nb__… porte le nombre de
+   100) porte les codes joints par « ; », et une colonne nb__… porte le nombre de
    valeurs. Un code de donnée manquante remplit la colonne principale avec son
    code et laisse nb__… VIDE — jamais 0, qui signifierait « aucun diagnostic ».
 
@@ -1585,10 +1606,10 @@ PÉRIMÈTRE — surface Deno isolée, aucun fichier commun avec les lots front.
 3. FEUILLE DÉDIÉE, une par champ multivalué, nommée d'après son libellé, une
    ligne par valeur : patient_code, encounter_id (vide pour un champ de portée
    patient), rang à partir de 1, code, label. C'est la forme sans perte : elle
-   survit au seuil de 100 et sert les analyses par diagnostic. handler.ts:549
+   survit au seuil de 100 et sert les analyses par diagnostic. handler.ts:586
    montre comment les feuilles sont assemblées aujourd'hui.
 
-4. DICTIONNAIRE, buildDictionary ligne 206 : une colonne is_multiple, et une ligne
+4. DICTIONNAIRE, buildDictionary ligne 381 : une colonne is_multiple, et une ligne
    par colonne dérivée (nb__…, has__…) documentant sa nature calculée et son code
    d'origine.
 

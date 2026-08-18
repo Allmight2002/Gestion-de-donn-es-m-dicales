@@ -367,6 +367,18 @@ Puis les colonnes `nb__…`, les colonnes indicatrices `has__…` avec leur seui
 distincts et leur règle de normalisation, la feuille dédiée, et les lignes de dictionnaire des
 colonnes dérivées.
 
+> ⚠️ **L22 a déjà été implémenté une fois, puis annulé. Ne pas le réécrire.** Le commit `7e83a3f`
+> (2026-08-17) l'a livré **avant son prérequis L20**, dans le même commit que D13 et D14. Le commit
+> `6775a91` (PR #221) a annulé la seule part L22 et conservé D13 et D14 ; L20 est arrivé ensuite
+> (`cde3170`, PR #222). **La reprise se fait par `git revert 6775a91`**, qui restitue un code déjà
+> cohérent avec D13 et D14 — pas par une réécriture. Deux réconciliations restent alors à faire,
+> parce que ce code avait été écrit avant L20 :
+>
+> - **aligner le contrat export sur ce que L20 impose réellement côté serveur** : cardinalité 1 à
+>   50, unicité des codes, raison de valeur manquante qui remplace toute la liste ;
+> - **remettre `is_multiple` dans le `select` de `handler.ts:517`**, que l'annulation a retiré —
+>   sans lui, l'Edge Function ne sait pas quelle variable est multivaluée.
+
 ### L23 — Listes de diagnostics : cohortes
 
 §8 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Front seul : les
@@ -622,6 +634,15 @@ L14 seul, puis la famille diagnostics.
 > L13, L18 et L19 sont déjà soldés. Après L20, L21, L22 et L24 peuvent donc démarrer ensemble ;
 > L23 et L25 suivent ensuite. Cette famille reste reportée après les formulaires, car L21 et L22
 > partagent des fichiers avec cette dernière.
+
+> **État au 2026-08-18 : L20 est livré** (`cde3170`, migration
+> `20260818045033_multivalue_terminology_foundation.sql`). La suite est donc **L21 et L22
+> ensemble**, comme prévu — et non L21 seul, malgré la formule « prêt pour la suite séquentielle
+> L21 » du journal d'exécution. La raison n'est pas un conflit de fichiers (il n'y en a aucun entre
+> les deux) mais l'asymétrie laissée par l'annulation de L22 : la base accepte désormais les
+> listes, l'export ne sait plus les lire. Une variable multivaluée saisie sans L22 sortirait en
+> `[object Object]` dans la colonne principale, code vide, sans erreur ni avertissement. Sans L21
+> l'interface n'en crée aucune, donc **le trou ne s'ouvre que le jour où L21 est fusionné**.
 
 > **Les deux familles se gênent aussi entre elles** : L21 et L27, L28, L30, L31, L33 touchent tous
 > `FieldForm.tsx` ; L22 et L27, L30, L31, L32, L33 touchent tous `exportContract.ts`. En pratique,
