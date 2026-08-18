@@ -367,6 +367,20 @@ Puis les colonnes `nb__…`, les colonnes indicatrices `has__…` avec leur seui
 distincts et leur règle de normalisation, la feuille dédiée, et les lignes de dictionnaire des
 colonnes dérivées.
 
+> ✅ **L22 est restauré depuis le 2026-08-18** (`2cf39f8`), par `git revert 6775a91` et non par
+> réécriture. Historique, pour comprendre l'encadré si vous le relisez : `7e83a3f` (2026-08-17)
+> avait livré L22 **avant son prérequis L20**, dans le même commit que D13 et D14 ; `6775a91`
+> (PR #221) a annulé la seule part L22 en conservant D13 et D14 ; L20 est arrivé ensuite
+> (`cde3170`, PR #222) ; la restauration a suivi une fois L20 en place.
+>
+> Les deux réconciliations qu'on croyait dues à l'écart avec L20 ont été **vérifiées, et aucune
+> n'a demandé de code supplémentaire** : `is_multiple` est revenu de lui-même dans le `select` de
+> `handler.ts` avec le revert, et le contrat export est déjà cohérent avec les règles serveur de
+> L20 — `isTerminologyList` exige une liste non vide de couples `code`/`label` stricts, `nbOf` rend
+> vide sur une raison de valeur manquante et `1` sur une valeur unitaire ancienne. Portes vertes :
+> `deno test generate-export` 54/54, `edge:test` 123/123, `edge:check`, `edge:lint`, `edge:fmt`,
+> `release:edge:check`.
+
 ### L23 — Listes de diagnostics : cohortes
 
 §8 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Front seul : les
@@ -622,6 +636,17 @@ L14 seul, puis la famille diagnostics.
 > L13, L18 et L19 sont déjà soldés. Après L20, L21, L22 et L24 peuvent donc démarrer ensemble ;
 > L23 et L25 suivent ensuite. Cette famille reste reportée après les formulaires, car L21 et L22
 > partagent des fichiers avec cette dernière.
+
+> **État au 2026-08-18 : L20 est livré** (`cde3170`, migration
+> `20260818045033_multivalue_terminology_foundation.sql`). La suite est donc **L21 et L22
+> ensemble**, comme prévu — et non L21 seul, malgré la formule « prêt pour la suite séquentielle
+> L21 » du journal d'exécution. La raison n'est pas un conflit de fichiers (il n'y en a aucun entre
+> les deux) mais l'asymétrie laissée par l'annulation de L22 : la base accepte désormais les
+> listes, l'export ne savait plus les lire. Une variable multivaluée saisie sans L22 sortirait en
+> `[object Object]` dans la colonne principale, code vide, sans erreur ni avertissement. Sans L21
+> l'interface n'en crée aucune, donc **le trou ne s'ouvre que le jour où L21 est fusionné**.
+> **L22 est restauré depuis le 2026-08-18** (`2cf39f8`) mais pas encore fusionné : la règle tient
+> donc jusqu'à ce que les deux soient en ligne.
 
 > **Les deux familles se gênent aussi entre elles** : L21 et L27, L28, L30, L31, L33 touchent tous
 > `FieldForm.tsx` ; L22 et L27, L30, L31, L32, L33 touchent tous `exportContract.ts`. En pratique,

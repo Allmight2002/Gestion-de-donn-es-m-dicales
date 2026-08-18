@@ -2536,3 +2536,93 @@ hors-ligne conservent tous `isMultiple`.
 
 D├®cision du contr├┤le de lot : **pr├¬t pour la suite s├®quentielle L21**, sous r├®serve de la validation
 ind├®pendante commune avant publication.
+
+## Incident de séquence — D13/D14 livrés hors lot, L22 annulé, L20 livré (2026-08-18)
+
+Entrée consignée après coup, à la demande du porteur. **Aucun code n'a été modifié pour la
+produire** : elle existe parce que trois commits successifs ont laissé le dépôt dans un état que ni
+la file d'idées ni la carte des lots ne décrivaient plus, et qu'un prochain agent l'aurait
+redécouvert à ses frais.
+
+### Ce qui s'est passé
+
+| Commit | Date | Contenu |
+|---|---|---|
+| `68adb9e` | 2026-08-15 | D13 à D16 consignés, avec la consigne « ne pas traiter D13/D14/D15 tant que L22 n'est pas livré » |
+| `7e83a3f` (PR #215) | 2026-08-17 | **D13, D14 et L22 dans un seul commit** — L22 livré sans son prérequis L20 |
+| `6775a91` (PR #221) | 2026-08-18 | **Annulation de la seule part L22** ; D13 et D14 conservés |
+| `cde3170` (PR #222) | 2026-08-18 | L20 livré (`20260818045033_multivalue_terminology_foundation.sql`) |
+| `0d94a23` (PR #223) | 2026-08-18 | L'ensemble sur `main` |
+
+L'ordre prévu est donc rétabli pour la famille « listes de diagnostics » : L20 est livré, L21 et
+L22 restent à faire **ensemble**. Ce qui n'a pas été remis dans l'ordre, ce sont **D13 et D14** :
+livrés hors de leur lot, et restés silencieux dans la documentation jusqu'à cette entrée.
+
+### État réel du code
+
+- **D13 livré** : `mergeExportFields` trie par `displayOrder` puis par clé (`exportContract.ts:230`
+  et `:269`), et non plus alphabétiquement. Test : `exportContract_test.ts:299`.
+- **D14 livré, mais partiel** : `formatValue` renvoie un nombre natif pour `number` et `integer`
+  (`:183`), `formatAgeValue` de même pour `age_value` (`:310`). Tests : `exportContract_test.ts:313`
+  et `:328`. **Les booléens n'ont pas été convertis** (`:180` renvoie toujours `'1'` / `'0'`) alors
+  que la correction attendue les citait.
+- **D15 non livré, et devenu bloquant** : la raison de valeur manquante est renvoyée avant la
+  branche numérique (`:171-183`), si bien qu'une colonne numérique mélange désormais des cellules
+  `t='n'` et `t='s'`. Avant D14 elle était uniformément en texte. Le bénéfice de D14 ne tient donc
+  que pour les variables où aucune raison n'a jamais été saisie. Aucun test ne couvre ce cas, et la
+  correction demande une décision du porteur sur la forme du fichier.
+- **L22 absent** : aucune trace de `is_multiple` dans `exportContract.ts` ni dans le `select` de
+  `handler.ts:517`.
+- **L20 présent** : la base accepte les listes de 1 à 50 couples `code`/`label`.
+
+### Ce qu'un prochain agent doit en faire
+
+1. **Travailler sur `origin/main`** et vérifier l'état de L20 et de L22 dans le code, pas dans un
+   répertoire de travail local : plusieurs copies de ce dépôt sont restées en arrière de la
+   séquence ci-dessus et contiennent encore le code L22 annulé.
+2. **Ne pas recorriger D13 ni D14** : livrés, verrouillés par tests.
+3. **Reprendre L22 par `git revert 6775a91`**, pas par réécriture — le code restitué est déjà
+   cohérent avec D13 et D14. Restent ensuite deux réconciliations, détaillées dans
+   [`lots-paralleles.md`](lots-paralleles.md) : aligner le contrat export sur les règles que L20
+   impose côté serveur, et remettre `is_multiple` dans le `select` de `handler.ts:517`.
+4. **Ne pas fusionner L21 sans L22.** La phrase « prêt pour la suite séquentielle L21 » de l'entrée
+   L20 ci-dessus ne veut pas dire *L21 seul* : la base accepte désormais des listes que l'export ne
+   sait plus lire, et une variable multivaluée saisie sans L22 sortirait en `[object Object]`, code
+   vide, sans erreur ni avertissement. Les deux lots ne partagent aucun fichier et se développent en
+   parallèle ; c'est leur mise en ligne qui doit être commune.
+5. **Traiter D15 comme une condition du bénéfice de D14**, pas comme un défaut indépendant.
+
+### Restauration de L22 (2026-08-18, `2cf39f8`)
+
+Faite dans la foulée, à la demande du porteur, sur la branche
+`codex/l22-restore-multivalue-export` : `git revert 6775a91`, appliqué sans conflit, aucun fichier
+réécrit à la main. Les deux réconciliations annoncées plus haut ont été **vérifiées, et aucune n'a
+demandé de code supplémentaire** :
+
+- `is_multiple` est revenu de lui-même dans le `select` de `handler.ts:521` — c'est l'annulation
+  qui l'avait retiré, le revert le remet ;
+- le contrat export est déjà cohérent avec les règles serveur de L20 : `isTerminologyList` exige
+  une liste **non vide** de couples `code`/`label` stricts, `nbOf` rend vide sur une raison de
+  valeur manquante — jamais `0`, qui signifierait « aucun diagnostic » — et `1` sur une valeur
+  unitaire ancienne, ce qui couvre l'export mixte d'une variable devenue multivaluée entre deux
+  versions de gabarit ; `formatValue` traite la liste **avant** la branche `Array` générique.
+
+D13 et D14 sont ressortis intacts de l'opération, avec leurs trois tests.
+
+Portes exécutées : `deno test supabase/functions/generate-export/` **54/54**, `npm run edge:test`
+**123/123**, `npm run edge:check`, `npm run edge:lint`, `npm run edge:fmt`,
+`npm run release:edge:check` (7 fonctions découvertes) — toutes vertes.
+
+Non exécuté, et volontairement : `typecheck`, `lint`, `test:web` et `build`. Une autre session
+écrivait L21 dans le même répertoire de travail au même moment ; leurs résultats auraient porté sur
+du code en cours d'écriture, pas sur ce lot. La surface Deno, elle, est isolée de L21 — aucun
+fichier commun. Ces portes restent à passer sur la branche d'intégration, quand L21 et L22 s'y
+retrouveront.
+
+**Publication non engagée** : commit fait, ni poussé ni fusionné.
+
+### Défaut d'encodage à corriger
+
+L'entrée « Lot L20 » qui précède a été écrite avec un encodage erroné (`ÔÇö` pour `—`, `├®` pour
+`é`). La corruption est **non réversible automatiquement** : la remettre d'aplomb suppose de
+retaper le texte. Le fond reste exact ; seule la lecture est pénible.
