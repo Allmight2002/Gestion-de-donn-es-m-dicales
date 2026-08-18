@@ -345,4 +345,62 @@ describe('ImportData (ecran d import)', () => {
     expect(importRecords).toHaveBeenCalledTimes(previewCallCount); // aucun chunk de commit
     expect(completeImportBatch).not.toHaveBeenCalled();
   });
+
+  // L24 : l'import ne resout AUCUN champ `terminology` (spec §9). L'ecran doit le DIRE — refuser
+  // la cible et nommer les colonnes ecartees — plutot que laisser le serveur echouer en fin
+  // d'import sur une chaine la ou il attend un couple {code, libelle}.
+  test('cible de terminologie : jamais proposee, refusee a la main, et citee dans le rapport', async () => {
+    const report: ImportReport = { dry_run: true, status: 'draft', patients_new: 1, patients_updated: 0, encounters: 1, error_count: 0, errors: [] };
+    const importRecords = vi.fn(async (_b: string, _rows: ImportRow[], _o: ImportOptions) => report);
+    const withTerminology: TemplateField[] = [
+      ...FIELDS,
+      { ...field('diagnostics', 'Diagnostics', 'encounter', 'terminology'), isMultiple: true },
+      field('diagnostic_principal', 'Diagnostic principal', 'patient', 'terminology'),
+    ];
+    const templates = {
+      getVersion: async () => ({ version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const }, fields: withTerminology, rules: [] }),
+    } as unknown as TemplateRepository;
+    renderImport(importRecords, templates);
+
+    upload('Code patient,Sexe,Diagnostics,Diagnostic principal,Commentaire,Date\nP1,M,Cholera; Paludisme,Cholera,RAS,2024-01-05\n');
+    expect(await screen.findByText(/correspondance des colonnes/i)).toBeInTheDocument();
+    await waitFor(() => expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('patient:sexe'));
+
+    // 1. Aucune des deux colonnes de diagnostic n'est proposee — a valeur multiple comme unique.
+    expect((screen.getAllByRole('combobox')[2] as HTMLSelectElement).value).toBe('ignore');
+    expect((screen.getAllByRole('combobox')[3] as HTMLSelectElement).value).toBe('ignore');
+    // 2. L'etape de correspondance dit lesquelles, et pourquoi, AVANT tout aperçu.
+    expect(screen.getByText(/ne peut pas encore traiter/i)).toBeInTheDocument();
+    expect(screen.getByText(/« Diagnostics » → variable « Diagnostics »/)).toBeInTheDocument();
+    expect(screen.getByText(/« Diagnostic principal » → variable « Diagnostic principal »/)).toBeInTheDocument();
+    // La variable existe deja : on n'invite pas a la creer une seconde fois. Seule « Commentaire »,
+    // inconnue du gabarit, garde ce bouton.
+    expect(screen.getAllByRole('button', { name: 'Créer la variable' })).toHaveLength(1);
+
+    // 3. Le choix manuel est REFUSE — et refuser, c'est ne rien changer : « Sexe » reste mappee.
+    const sexe = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    expect([...sexe.options].some((option) => option.value === 'encounter:diagnostics')).toBe(true);
+    await userEvent.selectOptions(sexe, 'encounter:diagnostics');
+    await waitFor(() => expect(screen.getAllByRole('status').length).toBeGreaterThan(0));
+    expect(sexe.value).toBe('patient:sexe');
+    expect(screen.getAllByRole('status')[0].textContent).toMatch(/« Diagnostics ».*« Sexe »/s);
+
+    // 4. Une colonne quelconque tentee sur cette cible reste ignoree, sans perdre ses options.
+    const commentaire = screen.getAllByRole('combobox')[4] as HTMLSelectElement;
+    await userEvent.selectOptions(commentaire, 'patient:diagnostic_principal');
+    await waitFor(() => expect(screen.getAllByRole('status')).toHaveLength(2));
+    expect(commentaire.value).toBe('ignore');
+    expect(screen.getAllByRole('button', { name: 'Créer la variable' })).toHaveLength(1);
+
+    // 5. Le rapport nomme les trois colonnes ecartees pour ce motif — sans les fondre dans les
+    //    colonnes ignorees ordinaires. « Sexe », qui a garde son mappage, n'en fait pas partie.
+    await userEvent.click(screen.getByRole('button', { name: 'Aperçu' }));
+    await waitFor(() => expect(importRecords).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/^3 colonne\(s\) ignorée\(s\)/)).toBeInTheDocument();
+
+    // 6. Et rien de tout cela n'est parti au serveur : ni diagnostic, ni cellule brute a sa place.
+    const sent = importRecords.mock.calls[0][1];
+    expect(sent[0].patient_data).toEqual({ sexe: 'M' });
+    expect(sent[0].encounter?.data).toEqual({});
+  });
 });
