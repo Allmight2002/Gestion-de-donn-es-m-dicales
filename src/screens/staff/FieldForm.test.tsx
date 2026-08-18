@@ -359,3 +359,72 @@ describe('FieldForm — raisons de valeur manquante (L33)', () => {
     expect(screen.getByLabelText('Accepter une valeur manquante')).toBeDisabled();
   });
 });
+
+// L21 — la cardinalite est STRUCTURELLE : elle ne concerne que le diagnostic, et elle se fige
+// des qu'une fiche porte la variable.
+describe('FieldForm — plusieurs valeurs (L21)', () => {
+  const CASE = 'Accepte plusieurs valeurs';
+
+  async function chooseTerminology() {
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'terminology');
+  }
+
+  test('la case n est proposee que pour un diagnostic', async () => {
+    renderForm();
+    expect(screen.queryByRole('checkbox', { name: CASE })).toBeNull();
+    await chooseSelectType();
+    expect(screen.queryByRole('checkbox', { name: CASE })).toBeNull();
+    await chooseTerminology();
+    expect(screen.getByRole('checkbox', { name: CASE })).toBeInTheDocument();
+  });
+
+  test('cocher la case transmet la cardinalite au gabarit', async () => {
+    const onSubmit = renderForm();
+    await chooseTerminology();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'diagnostic');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Diagnostic');
+    await userEvent.click(screen.getByRole('checkbox', { name: CASE }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldKey: 'diagnostic', type: 'terminology', isMultiple: true }),
+      undefined,
+    );
+  });
+
+  // La base refuse `is_multiple` hors terminologie : revenir a un autre type ne doit pas
+  // provoquer ce refus, l'ecran doit deposer la cardinalite en chemin.
+  test('revenir a un autre type n emporte pas la cardinalite', async () => {
+    const onSubmit = renderForm();
+    await chooseTerminology();
+    await userEvent.click(screen.getByRole('checkbox', { name: CASE }));
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'notes');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Notes');
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'text');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'text', isMultiple: false }),
+      undefined,
+    );
+  });
+
+  test('variable deja utilisee : la case est grisee comme le type et la portee', () => {
+    render(
+      <I18nProvider>
+        <FieldForm
+          onSubmit={vi.fn()}
+          lockStructural
+          initial={{
+            fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'encounter', section: 'clinique',
+            type: 'terminology', required: false, isMultiple: true,
+          }}
+        />
+      </I18nProvider>,
+    );
+    const cardinalite = screen.getByRole('checkbox', { name: CASE });
+    expect(cardinalite).toBeChecked();
+    expect(cardinalite).toBeDisabled();
+    expect(screen.getByLabelText('Type')).toBeDisabled();
+  });
+});

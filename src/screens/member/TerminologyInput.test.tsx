@@ -21,7 +21,7 @@ const RELEASE = {
   conceptCount: 1,
 };
 
-function renderInput(repo: Partial<TerminologyRepository>, value: unknown = null) {
+function renderInput(repo: Partial<TerminologyRepository>, value: unknown = null, isMultiple = false) {
   const onChange = vi.fn();
   render(
     <I18nProvider>
@@ -31,7 +31,7 @@ function renderInput(repo: Partial<TerminologyRepository>, value: unknown = null
         listEntries: async () => ({ entries: [], total: 0 }),
         ...repo,
       } as TerminologyRepository}>
-        <TerminologyInput field={{ label: 'Diagnostic' }} value={value} onChange={onChange} />
+        <TerminologyInput field={{ label: 'Diagnostic', isMultiple }} value={value} onChange={onChange} />
       </RepositoryProvider>
     </I18nProvider>,
   );
@@ -39,6 +39,75 @@ function renderInput(repo: Partial<TerminologyRepository>, value: unknown = null
 }
 
 beforeEach(async () => { await clearCache(); });
+
+// L21 : un patient porte souvent plusieurs diagnostics. Le RANG porte la convention « le
+// premier est le principal », donc l'ordre de saisie ne se retrie jamais.
+//
+// Ce bloc passe AVANT celui de F6, et ce n'est pas cosmetique : les tests de copie locale
+// achevent leur telechargement apres leur propre fin, et cette ecriture tardive retombe dans
+// le test suivant, qui chercherait alors dans une copie locale au lieu du serveur.
+describe('TerminologyInput — listes de diagnostics (L21)', () => {
+  const CHOLERA_V = { code: CHOLERA.code, label: CHOLERA.label };
+  const DIABETE_V = { code: DIABETE.code, label: DIABETE.label };
+
+  test('les valeurs choisies s affichent numerotees, dans l ordre de saisie', () => {
+    renderInput({}, [CHOLERA_V, DIABETE_V], true);
+    const etiquettes = screen.getAllByRole('listitem');
+
+    expect(etiquettes).toHaveLength(2);
+    expect(etiquettes[0]).toHaveTextContent('1.');
+    expect(etiquettes[0]).toHaveTextContent('Cholera');
+    expect(etiquettes[1]).toHaveTextContent('2.');
+    expect(etiquettes[1]).toHaveTextContent('Diabete de type 2');
+    expect(screen.getByText('Le premier diagnostic de la liste est le diagnostic principal.')).toBeInTheDocument();
+  });
+
+  // Le mode unitaire REMPLACE la recherche par une etiquette ; en liste elle doit rester,
+  // sinon ajouter un diagnostic obligerait a en retirer un autre.
+  test('la zone de recherche reste visible sous les etiquettes', () => {
+    renderInput({}, [CHOLERA_V], true);
+    expect(screen.getByRole('combobox', { name: 'Diagnostic' })).toBeInTheDocument();
+  });
+
+  test('choisir un second diagnostic l ajoute a la fin de la liste', async () => {
+    const onChange = renderInput({ search: async () => [DIABETE] }, [CHOLERA_V], true);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), 'di');
+    await userEvent.click(await screen.findByRole('option', { name: 'Diabete de type 2' }));
+
+    expect(onChange).toHaveBeenCalledWith([CHOLERA_V, DIABETE_V]);
+  });
+
+  test('un concept deja choisi n est plus propose', async () => {
+    renderInput({ search: async () => [CHOLERA, DIABETE] }, [CHOLERA_V], true);
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), 'ch');
+
+    expect(await screen.findByRole('option', { name: 'Diabete de type 2' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Cholera' })).toBeNull();
+  });
+
+  test('retirer une valeur conserve les autres et leur ordre', async () => {
+    const onChange = renderInput({}, [CHOLERA_V, DIABETE_V], true);
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+
+    expect(onChange).toHaveBeenCalledWith([DIABETE_V]);
+  });
+
+  // Le point a ne pas rater : la base refuse le tableau vide, deliberement. Le client doit
+  // demander le RETRAIT de la variable, jamais ecrire `[]`.
+  test('retirer la derniere valeur demande la suppression au lieu d ecrire un tableau vide', async () => {
+    const onChange = renderInput({}, [CHOLERA_V], true);
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+
+    expect(onChange).toHaveBeenCalledWith(null);
+    expect(onChange).not.toHaveBeenCalledWith([]);
+  });
+
+  test('le mode unitaire n est pas touche : la valeur reste une etiquette sans recherche', () => {
+    renderInput({}, CHOLERA_V);
+    expect(screen.getByText('Cholera')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
 
 describe('TerminologyInput (F6)', () => {
   test('ne consulte pas le serveur en deca de deux caracteres', async () => {
@@ -169,3 +238,4 @@ describe('TerminologyInput (F6)', () => {
     window.dispatchEvent(new Event('online'));
   });
 });
+
