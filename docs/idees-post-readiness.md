@@ -447,16 +447,21 @@ Relevés en auditant l'export **type de variable par type de variable**, à la d
 **Consignés, pas à corriger dans l'immédiat.** Chaque symptôme a été vérifié dans le code, et D14 a
 été prouvé en exécutant la bibliothèque XLSX réellement embarquée.
 
-⚠️ **D13, D14 et D15 touchent `exportContract.ts`, c'est-à-dire le fichier de
-[L22](lots-paralleles.md).** Ne pas les traiter dans un lot séparé tant que L22 n'est pas livré :
-soit les intégrer à L22, soit les enchaîner après lui. D16 porte sur `ExportPanel.tsx` et recoupe
+⚠️ **Séquence — lire avant de toucher `exportContract.ts` : D13 et D14 sont livrés, D15 ne l'est
+pas.** Le commit `7e83a3f` (2026-08-17) a livré D13, D14 **et L22 dans le même commit**, alors que
+L22 n'avait pas encore son prérequis L20. Le commit `6775a91` (PR #221) a annulé **la seule part
+L22** et conservé D13 et D14 ; L20 a été livré ensuite (`cde3170`, PR #222), et L21 + L22 restent à
+faire ensemble comme prévu. D13 et D14 sont donc en place **hors de leur lot d'origine** : ne pas
+les corriger une seconde fois — ils sont verrouillés par trois tests
+(`exportContract_test.ts:299`, `:313`, `:328`). La consigne antérieure « ne rien traiter tant que
+L22 n'est pas livré » ne vaut plus que pour **D15**. D16 porte sur `ExportPanel.tsx` et recoupe
 **D8**.
 
 | # | Défaut | Cause | Ampleur | Statut |
 |---|---|---|---|---|
-| D13 | **L'ordre des colonnes de l'export ne suit pas l'ordre du formulaire** — et ne l'a jamais suivi. Réordonner les variables dans le gabarit ne change rien au fichier produit | L'Edge Function charge pourtant les variables triées (`.order('display_order')`, `generate-export/handler.ts:516`), mais `mergeExportFields` retrie ensuite **alphabétiquement sur la clé technique** (`exportContract.ts:150`). `displayOrder` ne sert que de départage interne quand une même variable existe dans plusieurs versions de gabarit. Aucun test n'affirme l'ordre alphabétique : cela ressemble à un oubli, pas à une décision | Petite (Edge) | Signalé 2026-08-15 |
-| D14 | **Toutes les valeurs partent en cellules TEXTE dans le `.xlsx`** : un score de Glasgow ne se moyenne pas, ne se met pas en graphique, et R le lit en `character` | `formatValue` est typé `: string` et renvoie une chaîne pour toute valeur, nombres compris (`exportContract.ts:101`). SheetJS déduit le type de cellule du type JS reçu | Moyenne (Edge, **impact analyse**) | Signalé 2026-08-15 |
-| D15 | **Le code de donnée manquante occupe la colonne de valeur** : `encounter__gcs_admission` contient `8`, `12`, puis `non_fait`. La colonne devient mixte, donc non numérique — même après D14 | Choix **délibéré**, assumé en commentaire dans `buildDictionary` : « c'est le code qui sera lu par l'analyse ». MedData refuse `-99` en stockage, mais réintroduit la raison dans la colonne de valeur à l'export | Moyenne (Edge + **décision produit**) | Signalé 2026-08-15 |
+| D13 | **L'ordre des colonnes de l'export ne suit pas l'ordre du formulaire** — et ne l'a jamais suivi. Réordonner les variables dans le gabarit ne change rien au fichier produit | L'Edge Function charge pourtant les variables triées (`.order('display_order')`, `generate-export/handler.ts:516`), mais `mergeExportFields` retrie ensuite **alphabétiquement sur la clé technique** (`exportContract.ts:150`). `displayOrder` ne sert que de départage interne quand une même variable existe dans plusieurs versions de gabarit. Aucun test n'affirme l'ordre alphabétique : cela ressemble à un oubli, pas à une décision | Petite (Edge) | **Livré 2026-08-17** (`7e83a3f`) |
+| D14 | **Toutes les valeurs partent en cellules TEXTE dans le `.xlsx`** : un score de Glasgow ne se moyenne pas, ne se met pas en graphique, et R le lit en `character` | `formatValue` est typé `: string` et renvoie une chaîne pour toute valeur, nombres compris (`exportContract.ts:101`). SheetJS déduit le type de cellule du type JS reçu | Moyenne (Edge, **impact analyse**) | **Livré 2026-08-17** (`7e83a3f`) — partiel, voir ci-dessous |
+| D15 | **Le code de donnée manquante occupe la colonne de valeur** : `encounter__gcs_admission` contient `8`, `12`, puis `non_fait`. La colonne devient mixte, donc non numérique — même après D14 | Choix **délibéré**, assumé en commentaire dans `buildDictionary` : « c'est le code qui sera lu par l'analyse ». MedData refuse `-99` en stockage, mais réintroduit la raison dans la colonne de valeur à l'export | Moyenne (Edge + **décision produit**) | **Ouvert — devenu bloquant depuis D14** |
 | D16 | **Un export vide ne s'explique pas** : la base contient des patients, le fichier n'en contient aucun, et rien ne dit pourquoi | Trois causes se cumulent sans être énoncées : l'export ne retient que les fiches `curated` (`handler.ts:352`, `:404`, `:437`) ; une base **transversale** n'a aucune rencontre, donc « 1 ligne / rencontre » et « Portée des rencontres » n'y donneront jamais rien ; la cohorte de patients exige un patient `curated` alors que la cohorte de rencontres n'exige que la rencontre (`20260616092100_cohort_eligibility.sql`), d'où des résultats opposés selon le mode | Moyenne (front) | Signalé 2026-08-15 |
 
 #### D14 — types de cellules dans le XLSX
@@ -481,6 +486,13 @@ gcs_num   type=n   valeur=8       <- ce qu'il faudrait
 Correction attendue : renvoyer le type natif pour les champs `number`, `integer` et `boolean`, plus
 la méta `age_value` — et ajouter les tests de type de cellule qui manquent.
 
+**Livré le 2026-08-17 (`7e83a3f`), mais partiellement.** `formatValue` renvoie bien un nombre natif
+pour `number` et `integer` (`exportContract.ts:183`), `formatAgeValue` fait de même pour la méta
+`age_value` (`:310`), et deux tests figent les types produits (`exportContract_test.ts:313`,
+`:328`). **Les booléens n'ont pas été convertis** : `formatValue` renvoie toujours les chaînes
+`'1'` et `'0'` (`:180`), alors que la correction attendue les citait. Reste donc à faire, si le
+porteur le souhaite — un booléen en `t='s'` se recompte mal dans un tableau croisé.
+
 **Les dates : ne rien changer.** Le texte ISO se trie correctement, se relit sans ambiguïté dans R,
 SPSS et Stata, et échappe aux conversions automatiques d'Excel qui interprètent parfois une date au
 format américain. Le documenter au dictionnaire suffit.
@@ -490,6 +502,16 @@ format américain. Le documenter au dictionnaire suffit.
 **Ce n'est pas une régression de [L33](lots-paralleles.md).** L33 a rendu les raisons configurables
 par variable et les a documentées au dictionnaire (`missing_reasons`) ; il n'a pas déplacé leur
 emplacement dans la feuille de données, et n'avait pas à le faire.
+
+**Depuis que D14 est livré, ce défaut a changé de nature.** Avant, une colonne numérique portant
+une raison de valeur manquante était uniformément en texte : hétérogène sur le fond, homogène sur
+la forme. Maintenant, `formatValue` renvoie la raison — une chaîne — **avant** d'atteindre la
+branche numérique (`exportContract.ts:171-183`) : un `gcs` valant `8`, `12`, `non_fait` produit
+deux cellules `t='n'` et une cellule `t='s'` **dans la même colonne**. L'outil de lecture arbitre
+alors, et les deux arbitrages sont mauvais : soit tout est recoercé en texte — et le gain de D14
+disparaît dès qu'une seule raison existe dans la base — soit la cellule texte tombe en `NA` et la
+raison est perdue sans bruit. Aucun test ne couvre ce cas. **D14 ne tient donc réellement que pour
+les variables où aucune raison n'a jamais été saisie ; D15 conditionne son bénéfice.**
 
 Correction proposée : la colonne de valeur reste propre et vide, une colonne parallèle
 `missing__<column>` porte la raison. Rien n'est perdu et la colonne redevient exploitable. C'est un
