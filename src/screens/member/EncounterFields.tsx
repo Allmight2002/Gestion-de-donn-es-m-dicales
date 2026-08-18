@@ -1,6 +1,6 @@
 import { Fragment, useId, useState, type ReactNode } from 'react';
 import { CircleHelp } from 'lucide-react';
-import type { TemplateField, TemplateSection } from '../../data/types';
+import { isMultipleTerminology, type TemplateField, type TemplateSection } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
@@ -151,7 +151,18 @@ export function EncounterFields({
                   onRemove={onRemove}
                 />
               ) : (
-                <ValueInput field={field} value={values[field.fieldKey]} onChange={(v) => onChange(field.fieldKey, v)} />
+                <ValueInput
+                  field={field}
+                  value={values[field.fieldKey]}
+                  // L21 : retirer la DERNIERE valeur d'une liste supprime la CLE, au lieu
+                  // d'ecrire `[]` ou de laisser un `null` derriere soi. La base refuse le
+                  // tableau vide, et « pas de valeur » n'a qu'une seule representation.
+                  onChange={(v) =>
+                    v === null && isMultipleTerminology(field)
+                      ? onRemove(field.fieldKey)
+                      : onChange(field.fieldKey, v)
+                  }
+                />
               )}
             </div>
           </div>

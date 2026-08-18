@@ -12,6 +12,10 @@ import { useOnline } from '../../data/offline';
 // Un menu deroulant ne tient pas au-dela de quelques dizaines d'entrees ; le referentiel en
 // compte des dizaines de milliers. L'utilisateur tape, choisit, et c'est le CODE qui part
 // en base avec le libelle affiche — jamais du texte libre.
+//
+// L21 — mode MULTIVALUE (`field.isMultiple`) : un patient porte souvent plusieurs diagnostics.
+// Les valeurs choisies s'affichent alors en etiquettes NUMEROTEES, la zone de recherche reste
+// visible en dessous, et le rang porte la convention « le premier est le diagnostic principal ».
 const DEBOUNCE_MS = 250;
 
 export function TerminologyInput({
@@ -19,9 +23,9 @@ export function TerminologyInput({
   value,
   onChange,
 }: {
-  field: { label: string };
+  field: { label: string; isMultiple?: boolean };
   value: unknown;
-  onChange: (v: TerminologyValue | null) => void;
+  onChange: (v: TerminologyValue | TerminologyValue[] | null) => void;
 }) {
   const { t } = useI18n();
   const repo = useTerminologyRepository();
@@ -41,7 +45,10 @@ export function TerminologyInput({
   const [downloading, setDownloading] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
 
-  const selected = isTerminologyValue(value) ? value : null;
+  const multiple = field.isMultiple === true;
+  // L'ordre du tableau EST le rang : il n'est ni retrie ni normalise, ici comme au serveur.
+  const chosen = multiple && Array.isArray(value) ? value.filter(isTerminologyValue) : [];
+  const selected = !multiple && isTerminologyValue(value) ? value : null;
 
   useEffect(() => {
     const ticket = ++cacheCheckRef.current;
@@ -129,10 +136,26 @@ export function TerminologyInput({
 
   function choose(option: TerminologyOption) {
     // Le couple part tel quel : le serveur refusera un libelle qui ne correspond pas au code.
-    onChange({ code: option.code, label: option.label });
+    const couple = { code: option.code, label: option.label };
+    // Multivalue : on AJOUTE EN FIN. Le rang suit l'ordre de saisie, jamais un tri.
+    onChange(multiple ? [...chosen, couple] : couple);
     setQuery('');
     setOptions([]);
   }
+
+  function remove(index: number) {
+    const next = chosen.filter((_, i) => i !== index);
+    // JAMAIS `[]`. La base le refuse deliberement : « pas de valeur » n'a qu'une seule
+    // representation — la cle absente, ou un code de donnee manquante. `null` demande donc a
+    // l'ecran appelant de RETIRER LA CLE, au lieu d'ecrire une liste vide qu'il refuserait.
+    onChange(next.length > 0 ? next : null);
+  }
+
+  // Un concept deja choisi sort des resultats : le serveur refuse les doublons, l'ecran ne doit
+  // pas laisser tenter ce qu'il refusera.
+  const visibleOptions = multiple
+    ? options.filter((o) => !chosen.some((c) => c.code === o.code))
+    : options;
 
   if (selected) {
     return (
@@ -153,6 +176,33 @@ export function TerminologyInput({
 
   return (
     <div className="space-y-1">
+      {/* Les etiquettes d'abord, la recherche EN DESSOUS et toujours visible : ajouter un
+          diagnostic ne doit jamais obliger a en retirer un autre. */}
+      {multiple && chosen.length > 0 && (
+        <>
+          <ul className="flex flex-wrap gap-2">
+            {chosen.map((c, index) => (
+              <li
+                key={c.code}
+                className="flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-sm text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100"
+              >
+                {/* Le NUMERO est le rang, et c'est lui qui porte « le premier est le principal ». */}
+                <span className="font-medium tabular-nums">{index + 1}.</span>
+                <span>{c.label}</span>
+                <button
+                  type="button"
+                  onClick={() => remove(index)}
+                  aria-label={`${t('terminology.remove')} ${c.label}`}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-slate-500">{t('terminology.rank_hint')}</p>
+        </>
+      )}
       {stale && !online ? (
         <p role="status" className="text-xs text-amber-700 dark:text-amber-300">
           {t('terminology.stale_offline')}
@@ -166,7 +216,7 @@ export function TerminologyInput({
         type="search"
         className="input"
         role="combobox"
-        aria-expanded={options.length > 0}
+        aria-expanded={visibleOptions.length > 0}
         aria-controls={listId}
         aria-label={field.label}
         autoComplete="off"
@@ -179,9 +229,9 @@ export function TerminologyInput({
       )}
       {searching && <p className="text-xs text-slate-500">{t('terminology.searching')}</p>}
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
-      {options.length > 0 && (
+      {visibleOptions.length > 0 && (
         <ul id={listId} role="listbox" className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          {options.map((o) => (
+          {visibleOptions.map((o) => (
             <li key={o.id}>
               {/* Le role `option` porte sur l'element ACTIVABLE : sinon un clic sur la ligne
                   ne declenche rien, et les technologies d'assistance annoncent une option
@@ -199,7 +249,7 @@ export function TerminologyInput({
           ))}
         </ul>
       )}
-      {!searching && !error && options.length === 0 && query.trim().length >= MIN_QUERY_LENGTH && (
+      {!searching && !error && visibleOptions.length === 0 && query.trim().length >= MIN_QUERY_LENGTH && (
         <p className="text-xs text-slate-500">{t('terminology.no_result')}</p>
       )}
       {local ? (

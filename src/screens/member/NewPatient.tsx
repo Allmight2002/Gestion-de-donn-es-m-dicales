@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
-import type { TemplateField, ValidationRule } from '../../data/types';
+import { isMultipleTerminology, type TemplateField, type ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
@@ -350,9 +350,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                         onChange={(value) => {
                           // Une proposition effacee ne laisse rien : elle n'a jamais ete une valeur.
                           const wasProposed = prefilled.has(field.fieldKey);
+                          // L21 : retirer la derniere valeur d'une liste retire la CLE. Le
+                          // tableau vide est refuse par la base, deliberement.
+                          const emptiedList = isMultipleTerminology(field) && isClearedValue(value);
                           setPrefilled((current) => forgetPrefilled(current, field.fieldKey));
                           setPermanent((current) => {
-                            if (wasProposed && isClearedValue(value)) {
+                            if (emptiedList || (wasProposed && isClearedValue(value))) {
                               const { [field.fieldKey]: _cleared, ...rest } = current;
                               return rest;
                             }

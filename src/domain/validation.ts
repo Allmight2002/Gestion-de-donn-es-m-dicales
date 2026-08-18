@@ -4,7 +4,7 @@
 //    du vide (§6) ;
 //  * évaluation des règles de cohérence JSON (opérateurs whitelist, jamais exécutées
 //    comme du code) -> erreurs bloquantes (block) ou avertissements (warn).
-import { isTerminologyValue, type TemplateField } from '../data/types';
+import { isTerminologyList, isTerminologyValue, type TemplateField } from '../data/types';
 import {
   COMPARISON_OPERATORS,
   CONDITION_OPERATORS,
@@ -135,6 +135,13 @@ export function validateField(field: TemplateField, value: unknown, requireCompl
   // du couple. Ici on ne verifie que la FORME, pour signaler la saisie incomplete avant
   // l'aller-retour reseau.
   if (field.type === 'terminology') {
+    // Multivalue (L21) : meme partage, une case de plus. On verifie que c'est un TABLEAU de
+    // couples bien formes, rien d'autre — ni l'existence des concepts, ni les doublons, ni la
+    // borne de 50, qui restent au serveur. Le tableau vide n'atteint jamais cette branche :
+    // `isEmpty` l'a deja traite comme une absence de valeur.
+    if (field.isMultiple) {
+      return isTerminologyList(value) ? null : 'Liste de diagnostics incomplète : choisissez des propositions';
+    }
     return isTerminologyValue(value) ? null : 'Diagnostic incomplet : choisissez une proposition';
   }
   if (field.type === 'select' && Array.isArray(field.allowedValues)) {

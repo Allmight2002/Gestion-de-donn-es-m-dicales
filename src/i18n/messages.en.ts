@@ -329,6 +329,9 @@ export const messages = {
     'admin.section': 'Section',
     'admin.type': 'Type',
     'admin.required': 'Required',
+    'admin.field_multiple': 'Accepts several values',
+    'admin.field_multiple_hint':
+      'Data entry will offer as many diagnoses as needed, in the chosen order: the first one is the main diagnosis.',
     'admin.allowed_values': 'Allowed values',
     'admin.values_count': 'value(s) defined',
     'admin.value_set': 'Ready-made list',
@@ -344,6 +347,8 @@ export const messages = {
     'terminology.searching': 'Searching…',
     'terminology.no_result': 'No diagnosis found for this search.',
     'terminology.change': 'Change',
+    'terminology.remove': 'Remove',
+    'terminology.rank_hint': 'The first diagnosis in the list is the main diagnosis.',
     'terminology.download': 'Download for offline search',
     'terminology.downloading': 'Downloading diagnoses…',
     'terminology.local_ready': 'Offline search available.',

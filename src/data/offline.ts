@@ -39,6 +39,13 @@ export interface OfflineField {
   label: string;
   scope: string; // 'patient' | 'encounter'
   type: string;
+  /**
+   * Cardinalite du champ (L21). `download_base_snapshot` la transporte deja ; sans elle, une
+   * liste de diagnostics s'ouvrirait hors connexion dans le formulaire UNITAIRE : les valeurs
+   * deja saisies seraient invisibles et la premiere saisie les remplacerait.
+   * Absente d'un instantane telecharge avant ce lot -> unitaire.
+   */
+  isMultiple?: boolean;
   displayOrder: number;
   // §7.5 : metadonnees COMPLETES pour editer hors-ligne comme en ligne (groupage par section,
   // unite, liste de valeurs, caractere requis, bornes, codes manquants, types de rencontre).
@@ -148,7 +155,8 @@ export function buildSnapshot(
     baseName: base.name,
     templateVersionId: base.templateVersionId,
     fields: fields.map((f) => ({
-      id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type, displayOrder: f.displayOrder,
+      id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type,
+      isMultiple: f.isMultiple ?? false, displayOrder: f.displayOrder,
       // §7.5 : metadonnees completes conservees (edition hors-ligne fidele a l'edition en ligne).
       section: f.section ?? null, description: f.description ?? null, defaultValue: f.defaultValue ?? null,
       unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
