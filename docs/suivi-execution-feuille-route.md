@@ -2754,6 +2754,84 @@ PR #226 ouverte vers `develop`, **non fusionnée** : la fusion revient au porteu
 L24 (refus au mappage d'import) et L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en
 dernier). S'y ajoute le filtrage des diagnostics unitaires, qui demande un opérateur serveur.
 
+## Lot L24 — Listes de diagnostics : refus au mappage d'import (2026-08-18)
+
+Front seul, aucune migration. Ce lot **n'ajoute pas** l'import des diagnostics : il pose un refus
+honnête à la place d'un échec tardif.
+
+### Le constat, et ce qu'il n'est pas
+
+L'import ne prend en charge **aucun** champ de type `terminology`, même à valeur unique :
+`src/domain/import.ts` transmet la cellule telle quelle, et la validation serveur rejette une chaîne
+là où elle attend un couple `{code, libellé}`. Ce n'est pas une régression de L21 — c'est un manque
+**antérieur**, que L21 rend simplement visible : dès qu'une variable multivaluée existe, elle
+apparaît dans la liste des cibles de mappage. Le lot traite donc les deux cardinalités, pas
+seulement la nouvelle.
+
+### Ce qui est livré
+
+- **`autoMapColumns` ne propose plus une cible de terminologie.** La résolution d'un en-tête est
+  passée par une fonction unique, `matchColumn`, qui distingue trois issues : cible utilisable,
+  variable de terminologie, ou rien. Les priorités d'avant sont conservées telles quelles — alias
+  méta d'abord, puis champ patient, puis champ rencontre — et un test verrouille le cas d'une
+  variable de terminologie nommée « Date », que l'alias méta continue de gagner.
+- **Le choix manuel est refusé, et refuser ne change rien.** Tenter cette cible sur une colonne
+  déjà mappée ne l'écrase pas : la colonne garde son mappage. Écraser par « ignorer » ferait perdre
+  une colonne valide à cause d'une action refusée — une perte de données provoquée par un
+  garde-fou. Le message dit ce qui se passe et quoi faire, sans terme technique : la variable ne
+  peut pas encore être importée, l'import ne sait pas retrouver un diagnostic du référentiel à
+  partir du texte d'un fichier, ces diagnostics sont à saisir à la main sur la fiche du patient.
+- **Le rapport nomme les colonnes écartées pour ce motif**, au lieu de les fondre dans les colonnes
+  ignorées ordinaires — c'est le point qui manquait le plus : un utilisateur qui importe un fichier
+  contenant une colonne « Diagnostic » doit comprendre pourquoi elle n'est pas arrivée. La liste
+  réunit deux sources, les en-têtes reconnus et les tentatives manuelles refusées, et n'y garde que
+  les colonnes **réellement restées ignorées** : une colonne qui a conservé un mappage valide n'y
+  figure pas, sinon le rapport mentirait dans l'autre sens. Elle apparaît à l'étape de
+  correspondance (donc **avant** de lancer quoi que ce soit) et dans la carte de résultat, aperçu
+  comme import.
+
+### Deux détails qui n'étaient pas dans la consigne
+
+- Le bouton « Créer la variable » disparaît sur une colonne dont l'en-tête désigne **déjà** une
+  variable de terminologie : à côté d'un message disant que cette variable se saisit à la main,
+  proposer de la créer inviterait à fabriquer un doublon. Il reste en place sur une colonne
+  inconnue, même après une tentative refusée : un refus ne doit pas priver la colonne de ses
+  options normales.
+- **`buildImportRows` est laissé intact.** Y filtrer les valeurs de terminologie aurait fait
+  disparaître des cellules en silence sur un chemin qui contourne l'écran. Le refus vit au mappage,
+  où il s'explique ; le rejet de dernier recours reste au serveur, où il est la source de vérité.
+
+### À noter pour le lot qui traitera vraiment l'import
+
+Rien de tout cela n'est implémenté ici : le format d'entrée naturel sera celui de la sortie —
+libellés séparés par `; ` dans une colonne unique — et la route « plusieurs colonnes vers un même
+champ » reste bloquée par `duplicateTargets`, qui traite toute cible assignée deux fois comme un
+conflit.
+
+### Validation locale — niveau 1
+
+- `npm run typecheck` : vert, relancé **après** l'écriture des tests (leçon de L23) ;
+- `npm run lint` : vert, 0 warning ;
+- `npm run test:web` : **63 fichiers, 443/443 tests verts** (442 avant ce lot) ;
+- `npx vitest run --project db test/import-domain.test.ts` : **13/13** (6 avant ce lot) — test pur,
+  sans base ;
+- `npm run build` avec `VITE_USE_SIGNED_READ=true` : vert, PWA régénérée (74 entrées préchargées).
+
+La suite base de données complète n'a pas été relancée : le lot ne touche ni SQL, ni RPC, ni RLS.
+C'est la CI qui joue `npm test` sur la PR.
+
+### Publication
+
+Travail mené dans un `git worktree` dédié, par précaution contre les détournements de branche déjà
+constatés en session parallèle. PR ouverte vers `develop` ; la fusion revient au porteur.
+
+### Ce qui reste
+
+L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), l'import réel des
+diagnostics, et le filtrage des diagnostics unitaires nommé pendant L23 (L34). La ligne « Statut »
+en tête de `spec-variables-multivaluees.md` cite encore L21 à L26 comme « à livrer » : elle sera à
+rafraîchir d'un coup quand la famille sera close, pas lot par lot.
+
 ## Lot L25 — Conflit hors-ligne : issue « garder les deux » (2026-08-18)
 
 Front seul, aucune migration. Lot **séparable** : rien n'en dépend et son absence ne produisait
@@ -2832,12 +2910,15 @@ C'est la CI qui joue `npm test` sur la PR.
 
 ### Publication
 
-PR ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
+PR #229 ouverte vers `develop`, **non fusionnée** : la fusion revient au porteur, sur sa consigne.
 Lot mené dans un `git worktree` dédié dès le départ — le répertoire de travail est partagé avec
-d'autres sessions, et L24 y était en cours.
+d'autres sessions, et L24 y était en cours. L24 ayant été fusionné (PR #228) pendant la CI de
+celle-ci, la branche a intégré `develop` : le seul conflit portait sur la fin de ce document, où
+les deux lots ajoutaient leur compte rendu.
 
 ### Ce qui reste
 
-L24 (refus au mappage d'import) et L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en
-dernier). S'y ajoutent le filtrage des diagnostics unitaires (L34, opérateur serveur) et, pour qui
-voudra le pousser, la détection d'un troisième écrivain à la résolution d'un conflit.
+L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), seul lot de la famille
+encore ouvert après L24. S'y ajoutent le filtrage des diagnostics unitaires (L34, opérateur
+serveur), l'import réel des diagnostics, et — pour qui voudra le pousser — la détection d'un
+troisième écrivain à la résolution d'un conflit.

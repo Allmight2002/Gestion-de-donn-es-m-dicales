@@ -119,22 +119,84 @@ export function findInFileEncounterDuplicates(rows: ImportRow[]): InFileEncounte
   return duplicates;
 }
 
+// L24 : l'import ne resout AUCUN champ `terminology`, meme a valeur UNIQUE — il transmettrait la
+// cellule telle quelle la ou le serveur attend un couple {code, libelle}. Manque ANTERIEUR aux
+// variables multivaluees, que L21 rend seulement visible. La cible est donc refusee AU MAPPAGE,
+// ce qui nomme le manque a l'utilisateur au lieu de le lui faire decouvrir en fin d'import sous
+// la forme d'un echec serveur opaque (spec-variables-multivaluees.md §9).
+const isTerminology = (field: TemplateField) => field.type === 'terminology';
+
+/** Colonne visant une variable de terminologie : cible refusee, colonne laissee « ignoree ». */
+export interface TerminologyColumn {
+  index: number;
+  header: string;
+  fieldLabel: string;
+}
+
+type ColumnMatch =
+  | { kind: 'target'; target: ImportTarget }
+  | { kind: 'terminology'; field: TemplateField }
+  | { kind: 'none' };
+
+/** Resolution d'un en-tete : meta connue, puis champ patient, puis champ rencontre. */
+function matchColumn(header: string, patient: TemplateField[], encounter: TemplateField[]): ColumnMatch {
+  const n = norm(header ?? '');
+  if (!n) return { kind: 'none' };
+  const meta = META_ALIASES[n];
+  if (meta) return { kind: 'target', target: meta };
+  const byName = (f: TemplateField) => norm(f.label) === n || norm(f.fieldKey) === n;
+  const pf = patient.find(byName);
+  if (pf) return isTerminology(pf) ? { kind: 'terminology', field: pf } : { kind: 'target', target: `patient:${pf.fieldKey}` };
+  const ef = encounter.find(byName);
+  if (ef) return isTerminology(ef) ? { kind: 'terminology', field: ef } : { kind: 'target', target: `encounter:${ef.fieldKey}` };
+  return { kind: 'none' };
+}
+
 /** Pre-remplit la correspondance (par INDEX) : meta connue, puis champ de gabarit par libelle/cle. */
 export function autoMapColumns(headers: string[], fields: TemplateField[]): ColumnMapping {
   const patient = fields.filter((f) => f.scope === 'patient');
   const encounter = fields.filter((f) => f.scope === 'encounter');
   const map: ColumnMapping = {};
   headers.forEach((h, i) => {
-    const n = norm(h ?? '');
-    if (!n) { map[i] = 'ignore'; return; }
-    if (META_ALIASES[n]) { map[i] = META_ALIASES[n]; return; }
-    const pf = patient.find((f) => norm(f.label) === n || norm(f.fieldKey) === n);
-    if (pf) { map[i] = `patient:${pf.fieldKey}`; return; }
-    const ef = encounter.find((f) => norm(f.label) === n || norm(f.fieldKey) === n);
-    if (ef) { map[i] = `encounter:${ef.fieldKey}`; return; }
-    map[i] = 'ignore';
+    const match = matchColumn(h, patient, encounter);
+    // Une colonne reconnue comme terminologie reste IGNOREE : la proposer promettrait un import
+    // que ni le client ni le serveur ne savent faire.
+    map[i] = match.kind === 'target' ? match.target : 'ignore';
   });
   return map;
+}
+
+/**
+ * Colonnes dont l'en-tete designe une variable de terminologie : exactement celles
+ * qu'`autoMapColumns` aurait mappees sans ce refus. L'ecran les cite pour que l'utilisateur
+ * sache POURQUOI sa colonne « Diagnostic » n'est pas arrivee.
+ */
+export function findTerminologyColumns(headers: string[], fields: TemplateField[]): TerminologyColumn[] {
+  const patient = fields.filter((f) => f.scope === 'patient');
+  const encounter = fields.filter((f) => f.scope === 'encounter');
+  const found: TerminologyColumn[] = [];
+  headers.forEach((h, i) => {
+    const match = matchColumn(h, patient, encounter);
+    if (match.kind === 'terminology') found.push({ index: i, header: h ?? '', fieldLabel: match.field.label });
+  });
+  return found;
+}
+
+/** Champ de gabarit vise par une cible, si elle en designe un. */
+function fieldForTarget(target: ImportTarget, fields: TemplateField[]): TemplateField | undefined {
+  for (const scope of ['patient', 'encounter'] as const) {
+    const prefix = `${scope}:`;
+    if (!target.startsWith(prefix)) continue;
+    const key = target.slice(prefix.length);
+    return fields.find((f) => f.scope === scope && f.fieldKey === key);
+  }
+  return undefined;
+}
+
+/** Cible REFUSEE au mappage (L24) : le champ vise est de type `terminology`, multivalue ou non. */
+export function terminologyTargetField(target: ImportTarget, fields: TemplateField[]): TemplateField | null {
+  const field = fieldForTarget(target, fields);
+  return field && isTerminology(field) ? field : null;
 }
 
 /** Cibles (hors "ignore") assignees a PLUSIEURS colonnes -> conflit a resoudre avant import. */
