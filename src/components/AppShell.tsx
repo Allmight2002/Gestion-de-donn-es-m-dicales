@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink } from 'react-router';
 import {
-  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, ShieldAlert, UserPlus, Users, X,
+  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
+import { canCreateBase } from '../auth/logic';
 import { useI18n } from '../i18n/useI18n';
 import type { MessageKey } from '../i18n/messages';
 import { flushOutbox, isOfflineEnabled, useOnline, useOutbox, type FlushDeps } from '../data/offline';
-import { usePatientRepository } from '../data/RepositoryProvider';
+import { useBaseRepository, usePatientRepository } from '../data/RepositoryProvider';
 import { recentBases } from '../lib/recentBases';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from './ThemeToggle';
@@ -36,6 +37,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, error: authError } = useAuth();
   const { t } = useI18n();
   const online = useOnline();
+  const bases = useBaseRepository();
   const patients = usePatientRepository();
   const outboxEntries = useOutbox();
   const unsyncedEntries = outboxEntries.filter((e) => ['pending', 'syncing', 'conflict', 'rejected'].includes(e.state));
@@ -46,6 +48,31 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Corbeille des bases : le compte est affiche en badge dans la barre laterale, comme la
+  // synchronisation. Recharge au montage et au retour de focus de la fenetre (une RPC legere
+  // `list_deleted_bases`), jamais en hors-ligne ni hors du role medecin. Un echec reseau
+  // laisse le badge a zero plutot que de faire echouer la coquille entiere.
+  const mayCreate = canCreateBase(profile);
+  const [trashCount, setTrashCount] = useState(0);
+  useEffect(() => {
+    if (!online || !mayCreate) {
+      setTrashCount(0);
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      void bases.listDeletedBases()
+        .then((deleted) => { if (!cancelled) setTrashCount(deleted.length); })
+        .catch(() => { if (!cancelled) setTrashCount(0); });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refresh);
+    };
+  }, [online, mayCreate, bases]);
 
   // D2 — le tiroir mobile est une MODALE (aria-modal) mais rien ne bloquait le defilement de la
   // page derriere : en scrollant, la barre d'adresse du navigateur mobile se replie, la hauteur
@@ -123,6 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               : []),
             { to: '/groups', labelKey: 'group.title', Icon: Users },
             { to: '/templates', labelKey: 'mytemplates.title', Icon: FileText },
+            { to: '/trash', labelKey: 'nav.trash', Icon: Trash2, badge: trashCount },
             { to: '/sync', labelKey: 'sync.title', Icon: RefreshCw, badge: syncBadge, badgeDanger: conflictCount + rejectedCount > 0 },
           ];
 

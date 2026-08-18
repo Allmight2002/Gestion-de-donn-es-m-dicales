@@ -10,6 +10,7 @@ import type { PatientListItem } from '../../data/patients';
 import { displayFieldValue } from '../../data/types';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { Menu } from '../../components/Menu';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
@@ -280,33 +281,37 @@ export function BaseHome() {
               <p className="mt-0.5 text-sm text-slate-500">{t('patient.list_count').replace('{n}', String(total))}</p>
             </div>
             {fields.length > 0 && (
-              <details className="relative">
-                <summary className="btn-secondary cursor-pointer list-none">
-                  <Columns3 size={16} aria-hidden />
-                  {t('patient.columns')}
-                  <span className="text-xs text-slate-400">
-                    {t('patient.columns_count').replace('{visible}', String(visibleFields.length)).replace('{total}', String(fields.length))}
-                  </span>
-                </summary>
-                <div className="card absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] p-4 shadow-lg">
-                  <p className="helper-text mb-3">{t('patient.columns_hint')}</p>
-                  <div className="max-h-64 space-y-1 overflow-y-auto">
-                    {fields.map((field) => (
-                      <Checkbox
-                          key={field.id}
-                          label={field.label}
-                          containerClassName="rounded-lg px-2 hover:bg-slate-50"
-                          checked={visibleFieldKeys.includes(field.fieldKey)}
-                          onChange={(event) => setVisibleFieldKeys((current) => (
-                            event.target.checked
-                              ? [...current, field.fieldKey]
-                              : current.filter((key) => key !== field.fieldKey)
-                          ))}
-                      />
-                    ))}
-                  </div>
+              <Menu
+                triggerLabel={t('patient.columns')}
+                triggerClassName="btn-secondary cursor-pointer"
+                triggerContent={
+                  <>
+                    <Columns3 size={16} aria-hidden />
+                    {t('patient.columns')}
+                    <span className="text-xs text-slate-400">
+                      {t('patient.columns_count').replace('{visible}', String(visibleFields.length)).replace('{total}', String(fields.length))}
+                    </span>
+                  </>
+                }
+                panelClassName="card absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] p-4 shadow-lg"
+              >
+                <p className="helper-text mb-3">{t('patient.columns_hint')}</p>
+                <div className="max-h-64 space-y-1 overflow-y-auto">
+                  {fields.map((field) => (
+                    <Checkbox
+                        key={field.id}
+                        label={field.label}
+                        containerClassName="rounded-lg px-2 hover:bg-slate-50"
+                        checked={visibleFieldKeys.includes(field.fieldKey)}
+                        onChange={(event) => setVisibleFieldKeys((current) => (
+                          event.target.checked
+                            ? [...current, field.fieldKey]
+                            : current.filter((key) => key !== field.fieldKey)
+                        ))}
+                    />
+                  ))}
                 </div>
-              </details>
+              </Menu>
             )}
           </div>
           {rows.length === 0 ? (
