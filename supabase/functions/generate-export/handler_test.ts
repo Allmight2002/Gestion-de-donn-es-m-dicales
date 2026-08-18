@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from '@std/assert';
+import * as XLSX from 'xlsx';
 import {
   buildExportFilename,
   EXPORT_LIMITS,
@@ -557,6 +558,101 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
   assertStringIncludes(csv, 'inconnu'); // valeur manquante codifiee
   assertStringIncludes(csv, '-5'); // nombre negatif legitime preserve
   assertStringIncludes(csv, "'=SUM(A1)"); // formule CSV neutralisee par apostrophe
+});
+
+Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types natifs', async () => {
+  let uploadedBytes: Uint8Array | null = null;
+  const multiField = {
+    id: 'f_diag',
+    template_version_id: TV,
+    field_key: 'diagnostics',
+    label: 'Diagnostics',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'terminology',
+    is_multiple: true,
+    unit: null,
+    allowed_values: null,
+    display_order: 4,
+  };
+  const encWithMulti = {
+    ...ENCOUNTER,
+    data: {
+      ...ENCOUNTER.data,
+      diagnostics: [
+        { code: '1A00', label: 'Cholera' },
+        { code: 'BA00', label: 'Hypertension' },
+      ],
+    },
+  };
+
+  const adminResponder: Responder = (call) => {
+    if (call.kind === 'storage' && call.method === 'upload') {
+      const blob = call.args[1] as Blob;
+      return blob.arrayBuffer().then((buf) => {
+        uploadedBytes = new Uint8Array(buf);
+        return okResult({ path: 'p' });
+      });
+    }
+    if (call.kind === 'storage') return okResult([{}]);
+    if (call.kind === 'from') {
+      switch (call.table) {
+        case 'cohort':
+          return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
+        case 'base':
+          return okResult({ name: 'Base Test' });
+        case 'cohort_member':
+          return okResult([{ patient_id: 'p1' }]);
+        case 'patient':
+          return okResult([{ id: 'p1', patient_code: 'P0001', template_version_id: TV, data: {} }]);
+        case 'cohort_encounter_member':
+          return okResult([{ encounter_id: 'e1' }]);
+        case 'encounter':
+          return okResult([encWithMulti]);
+        case 'template_field':
+          return okResult([...FIELDS, multiField]);
+        case 'template_section':
+          return okResult(SECTIONS);
+        case 'export_log':
+          return okResult({ id: 'exp1', format: 'xlsx' });
+      }
+    }
+    return okResult(null);
+  };
+  const admin = fakeSupabaseClient({
+    role: 'admin',
+    responder: adminResponder,
+  });
+  const asUser = fakeSupabaseClient({
+    role: 'user',
+    user: { data: { user: { id: 'u1' } } },
+    responder: (c) => c.kind === 'rpc' ? okResult(true) : okResult(null),
+  });
+  const custom: GenerateExportDeps = {
+    buildClients: () => ({ asUser, admin }),
+    newId: () => 'fixed-uuid',
+    now: () => 1_700_000_000_000,
+    nowIso: () => '2026-07-12T00:00:00.000Z',
+  };
+
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('xlsx') }), custom));
+  assertEquals(status, 200);
+  assert(uploadedBytes !== null);
+
+  const wb = XLSX.read(uploadedBytes!, { type: 'array' });
+  assertEquals(wb.SheetNames.includes('Export'), true);
+  assertEquals(wb.SheetNames.includes('Dictionnaire'), true);
+  assertEquals(wb.SheetNames.includes('diagnostics'), true);
+
+  const diagSheet = XLSX.utils.sheet_to_json(wb.Sheets['diagnostics']) as Record<string, unknown>[];
+  assertEquals(diagSheet.length, 2);
+  assertEquals(diagSheet[0].patient_code, 'P0001');
+  assertEquals(diagSheet[0].rang, 1);
+  assertEquals(diagSheet[0].code, '1A00');
+  assertEquals(diagSheet[0].label, 'Cholera');
+  assertEquals(diagSheet[1].rang, 2);
+  assertEquals(diagSheet[1].code, 'BA00');
+  assertEquals(diagSheet[1].label, 'Hypertension');
 });
 
 Deno.test('generate-export: XLSX -> 200', async () => {

@@ -8,7 +8,10 @@ import {
   assertNoIdentity,
   buildDictionary,
   buildEncounterExport,
+  buildMultivalueTable,
   buildPatientExport,
+  type ExportTable,
+  extractMultivalueCodes,
   mergeExportFields,
   neutralizeExportTable,
   referencedTemplateVersions,
@@ -318,6 +321,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       scope: 'patient' | 'encounter';
       section: string;
       type: string;
+      is_multiple?: boolean | null;
       unit: string | null;
       allowed_values: unknown[] | null;
       allowed_options: unknown[] | null;
@@ -514,7 +518,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_field')
           .select(
-            'id, template_version_id, field_key, label, description, scope, section, type, unit, allowed_values, allowed_options, missing_reasons, display_order',
+            'id, template_version_id, field_key, label, description, scope, section, type, is_multiple, unit, allowed_values, allowed_options, missing_reasons, display_order',
             { count: 'exact' },
           )
           .in('template_version_id', chunk)
@@ -547,7 +551,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       },
     });
     const sectionLabels = new Map(
-      rawSections.map((s) => [`${s.template_version_id} ${s.section_key}`, s.label]),
+      rawSections.map((s) => [`${s.template_version_id} ${s.section_key}`, s.label]),
     );
 
     const fields = mergeExportFields(
@@ -557,8 +561,9 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         description: f.description,
         scope: f.scope,
         section: f.section,
-        sectionLabel: sectionLabels.get(`${f.template_version_id} ${f.section}`) ?? null,
+        sectionLabel: sectionLabels.get(`${f.template_version_id} ${f.section}`) ?? null,
         type: f.type,
+        isMultiple: Boolean(f.is_multiple),
         unit: f.unit,
         allowedValues: f.allowed_values,
         allowedOptions: f.allowed_options,
@@ -567,13 +572,31 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         templateVersionIds: [f.template_version_id],
       })),
     );
+
+    const multivalueFields = fields.filter((f) => f.isMultiple);
+    const multivalueDataRows = options.mode === 'patient' ? patients : encounters;
+    const { indicatorsByField, omittedFieldKeys } = extractMultivalueCodes(fields, multivalueDataRows);
+
     const main = options.mode === 'patient'
       ? buildPatientExport(patients, encounters, fields, options.rule)
       : buildEncounterExport(encounters, fields);
-    const dict = buildDictionary(fields);
+    const dict = buildDictionary(fields, { indicatorsByField, omittedFieldKeys });
+
+    const multivalueTables: { name: string; table: ExportTable }[] = [];
+    for (const f of multivalueFields) {
+      const table = buildMultivalueTable(f, patients, encounters);
+      const safeTable = neutralizeExportTable(table);
+      const sheetName = exportFilenameSegment(f.label, f.fieldKey).slice(0, 31) || f.fieldKey.slice(0, 31);
+      multivalueTables.push({ name: sheetName, table: safeTable });
+    }
+
     const dictionaryCells = format === 'xlsx' ? (dict.rows.length + 1) * dict.columns.length : 0;
-    assertExportShapeWithinLimits(main.rows.length, main.columns.length, format, dictionaryCells);
+    const multivalueCells = format === 'xlsx'
+      ? multivalueTables.reduce((acc, m) => acc + (m.table.rows.length + 1) * m.table.columns.length, 0)
+      : 0;
+    assertExportShapeWithinLimits(main.rows.length, main.columns.length, format, dictionaryCells + multivalueCells);
     assertNoIdentity(main.columns);
+    for (const m of multivalueTables) assertNoIdentity(m.table.columns);
 
     let bytes: Uint8Array;
     let contentType: string;
@@ -581,7 +604,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       const generationStartedAt = performance.now();
       const safeMain = neutralizeExportTable(main);
       const safeDict = neutralizeExportTable(dict);
-      assertXlsxExportWithinLimits([safeMain, safeDict]);
+      assertXlsxExportWithinLimits([safeMain, safeDict, ...multivalueTables.map((m) => m.table)]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safeMain.rows, { header: safeMain.columns }), 'Export');
       XLSX.utils.book_append_sheet(
@@ -589,6 +612,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         XLSX.utils.json_to_sheet(safeDict.rows, { header: safeDict.columns }),
         'Dictionnaire',
       );
+      for (const m of multivalueTables) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(m.table.rows, { header: m.table.columns }),
+          m.name,
+        );
+      }
       bytes = new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }));
       assertXlsxGenerationTime(generationStartedAt);
       assertXlsxOutputSize(bytes);
