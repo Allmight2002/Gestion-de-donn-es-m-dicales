@@ -70,6 +70,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(await screen.findByRole('link', { name: /Tableau de bord/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Groupes de recherche/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Mes jeux de variables/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Corbeille/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Synchronisation/ })).toBeInTheDocument();
     // Base recente de CE compte.
     expect(screen.getByRole('link', { name: /Gliomes 2026/ })).toBeInTheDocument();
@@ -88,6 +89,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(await screen.findByRole('link', { name: /Liste des requêtes/ })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Mes jeux de variables/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Groupes de recherche/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Corbeille/ })).not.toBeInTheDocument();
   });
 
   test('saisisseur : barre laterale limitee au tableau de bord et a la synchronisation', async () => {
@@ -97,6 +99,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.queryByRole('link', { name: /Groupes de recherche/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Mes jeux de variables/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Comptes de mission/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Corbeille/ })).not.toBeInTheDocument();
   });
 
   test('logout avec outbox vide se deconnecte sans confirmation', async () => {
