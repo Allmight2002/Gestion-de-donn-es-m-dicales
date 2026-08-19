@@ -27,12 +27,13 @@ inventées, pas une fuite.
 **État vérifié le 19 août 2026** : `npm run db:verify` → **129 migrations rejouées proprement
 depuis zéro** (~10 s) ; schéma `public` : 42 tables, 261 fonctions, 63 politiques RLS,
 63 triggers (décomptes du fichier **généré** [schema-etat-final.md](schema-etat-final.md), qui
-fait foi) ; `npm run test:web` → **467/467 tests verts** (65 fichiers, 108 s) ; 7 Edge Functions.
+fait foi) ; **`npm test` → 134 fichiers, 1256/1256 tests verts** (RLS embarqué + UI, 121 s en
+intégration continue), dont `npm run test:web` → 467/467 sur 65 fichiers ; 7 Edge Functions.
 Environ 21 200 lignes de TypeScript applicatif (hors tests) et 19 400 lignes de SQL de migration.
 
-> La suite RLS (`npm run test:rls`, projet `db`) n'a **pas** été rejouée pour établir cet
-> instantané — comptez plusieurs dizaines de minutes. Le dernier décompte connu est celui de
-> l'audit du 9 août : 581/581.
+> Le décompte complet vient du job `build-test` de l'intégration continue, qui rejoue **les deux
+> projets Vitest** (`db` et `web`) sur un PostgreSQL embarqué. Sur un poste Windows, comptez
+> nettement plus que les 121 s d'un runner Linux.
 
 ## 2. Le modèle mental, en trois minutes
 

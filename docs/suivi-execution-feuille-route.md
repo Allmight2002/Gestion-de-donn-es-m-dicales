@@ -2995,7 +2995,8 @@ Lot **documentaire** : ni code applicatif, ni migration, ni test touché. Les ch
 la documentation ont malgré tout été **mesurés**, pas recopiés :
 
 - `npm run db:verify` : **129 migrations rejouées proprement depuis zéro** en 9,8 s ;
-- `npm run test:web` : **65 fichiers, 467/467 tests verts** en 108 s ;
+- `npm run test:web` : **65 fichiers, 467/467 tests verts** en 108 s ; suite complète mesurée par
+  la CI (job `build-test`) : **134 fichiers, 1256/1256 tests verts** en 121 s ;
 - décomptes du schéma `public` (42 tables, 261 fonctions, 63 policies, 63 triggers) relus dans
   `docs/schema-etat-final.md`, qui est généré ;
 - décompte des fonctions privilégiées (110 en huit catégories, plus 11 `service_role`) relu dans
