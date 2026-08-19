@@ -108,7 +108,8 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
    nouvelle variable → relancer l'aperçu → importer → la valeur apparaît sur la fiche patient.
 
 ### 4.7 Cohortes & exports
-21. Créer une cohorte figée simple, générer un **export CSV** → le fichier se télécharge + bandeau de succès.
+21. Onglet **Analyse › Exporter**, choisir CSV, cliquer « **Exporter les données** » → le fichier se télécharge + bandeau de succès, **sans avoir constitué de cohorte**.
+21 bis. Voie avancée : créer une cohorte figée, l'exporter depuis sa carte → même résultat, population choisie.
 22. Dans l'historique des exports : « **Télécharger** » un export conservé → le fichier arrive (teste l'Edge `kind=export`).
 
 ### 4.8 Accès (C1, E1)

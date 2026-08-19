@@ -113,8 +113,11 @@ navigateur. Le frontend appelle
 [`generate-export`](../supabase/functions/generate-export/index.ts), qui :
 
 1. verifie le JWT utilisateur et l'autorisation `can_export_data(base_id)` ;
-2. relit la cohorte figee et les donnees curees cote serveur par pages de 500, avec comptage exact
-   et ordre stable ; les filtres de listes sont decoupes par groupes de 200 identifiants ;
+2. relit la cohorte figee cote serveur par pages de 500, avec comptage exact et ordre stable ; les
+   filtres de listes sont decoupes par groupes de 200 identifiants ;
+2 bis. ecarte les fiches auxquelles il manque un champ obligatoire -- `export_incomplete_records`,
+   qui applique la definition de la base (`missing_required_fields`), et non le statut de
+   validation ; les exclusions sont comptees dans `export_options.excluded_records` ;
 3. applique la liste blanche analytique et refuse toute colonne identifiante ;
 4. genere le CSV ou le XLSX, calcule `file_hash`, stocke le fichier dans `scientific-exports` ;
 5. insere `export_log` avec `generation_mode='server'` et le nom de telechargement dans

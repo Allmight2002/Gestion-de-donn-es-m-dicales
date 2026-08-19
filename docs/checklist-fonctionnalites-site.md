@@ -76,7 +76,8 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 ### Session C - Groupes + cohortes + exports + acces
 
 - Groupes de recherche.
-- Cohortes.
+- Export direct (onglet Analyse > Exporter), sans cohorte.
+- Cohortes (voie avancee).
 - Generation export CSV/Excel.
 - Telechargement depuis historique des exports.
 - Profils d'acces.
@@ -420,9 +421,11 @@ QA-UNK-2,2026-07-08,165
 
 ### A tester
 
+- Exporter directement depuis l'onglet Analyse > Exporter, sans passer par une cohorte.
 - Generer un export CSV.
 - Generer un export Excel si disponible.
-- Generer et conserver.
+- Verifier que la forme des lignes est ANNONCEE (base transversale, registre) et DEMANDEE
+  seulement en suivi longitudinal.
 - Verifier le bandeau de succes.
 - Cliquer `Telecharger` dans l'historique des exports conserves.
 - Verifier le fichier dans le dossier de telechargements.

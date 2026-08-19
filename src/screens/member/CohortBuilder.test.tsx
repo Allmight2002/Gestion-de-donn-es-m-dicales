@@ -164,23 +164,21 @@ describe('CohortBuilder', () => {
     await waitFor(() => expect(createSnapshot).toHaveBeenCalledWith('b1', 'Analyse F figée', filter, true));
   });
 
-  test('avertit avant de figer une cohorte incluant des fiches non validees sans bloquer sa creation', async () => {
-    const preview = vi.fn(async (_b: string, _f: FilterDefinition, validatedOnly = true) => (
-      validatedOnly ? { patientCount: 3, encounterCount: 4 } : { patientCount: 5, encounterCount: 6 }
-    ));
+  // Le figeage ne trie plus : il fige la population telle qu'elle est, et l'export ecarte
+  // lui-meme les fiches incompletes. L'avertissement « non exportable en l'etat » n'a donc
+  // plus d'objet, et la case « donnees verifiees » n'est plus qu'un filtre facultatif.
+  test('la cohorte fige toute la population, sans avertissement ni etape de plus', async () => {
     const createSnapshot = vi.fn(async () => ({ id: 'snapshot' }));
-    renderBuilder(makeCohorts({ preview, createSnapshot }));
+    renderBuilder(makeCohorts({ createSnapshot }));
 
     await screen.findByRole('heading', { name: 'Cohortes' });
-    await userEvent.click(screen.getByRole('checkbox', { name: /inclure uniquement les données vérifiées/i }));
+    expect(screen.getByRole('checkbox', { name: /inclure uniquement les données vérifiées/i })).not.toBeChecked();
     await userEvent.click(screen.getByRole('button', { name: 'Voir le résultat' }));
     fireEvent.change(await screen.findByLabelText('Nom de la cohorte'), { target: { value: 'Avec brouillons' } });
     await userEvent.click(screen.getByRole('button', { name: 'Créer la cohorte' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('2 fiches non validées');
-    expect(createSnapshot).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Créer quand même' }));
     await waitFor(() => expect(createSnapshot).toHaveBeenCalledWith('b1', 'Avec brouillons', { conditions: [] }, false));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   test('supprime une cohorte apres confirmation et la retire de la liste', async () => {

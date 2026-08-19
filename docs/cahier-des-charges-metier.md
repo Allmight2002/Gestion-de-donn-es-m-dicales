@@ -234,10 +234,27 @@ exporte des données **sans identité**.
 ### 4.9 Cohortes et exports
 - **EF-27.** Constitution de **cohortes** (sélection de patients/rencontres) **dynamiques** ou
   **figées**. Seule une cohorte **figée** est exportable (instantané reproductible).
+- **EF-27 ter (exporter sans démarche, 2026-08-19).** Le parcours principal est **un bouton** :
+  *Analyse › Exporter › Exporter les données*. L'application fige elle-même la population à cet
+  instant, sous un nom daté, puis produit le fichier — la reproductibilité est **conservée**, elle
+  cesse d'être une démarche à la charge du médecin. La constitution de cohortes reste offerte, à
+  côté, pour choisir une population précise ; la case « Inclure uniquement les données vérifiées »
+  y devient un **filtre facultatif, décoché par défaut**, et l'avertissement « cohorte non
+  exportable en l'état » disparaît (il n'a plus d'objet).
 - **EF-28.** Export **CSV / XLSX** d'une cohorte figée, avec **dictionnaire des variables**. Le
   fichier est conservé immuable (empreinte) et **tracé**.
 - **RG-15.** L'export **refuse tout champ identifiant** (liste blanche analytique). Un code
   pseudonymisé est exporté, jamais le nom ni la date de naissance.
+- **EF-28 ter (ce qui entre dans le fichier, 2026-08-19).** L'export ne dépend plus du **statut de
+  validation** : une fiche s'exporte dès lors qu'elle porte ses **champs obligatoires** — une
+  réponse « refus / inconnu / non applicable » compte comme renseignée, un champ masqué n'est pas
+  réclamé. Les fiches incomplètes sont **écartées et comptées**, jamais bloquantes. Une fiche de la
+  cohorte devenue **introuvable** reste, elle, un refus : partiel par décision, jamais par accident.
+- **EF-28 quater (une question de moins, 2026-08-19).** La **forme des lignes** découle du **modèle
+  d'observation** de la base, verrouillé dès la première saisie : une ligne par participant en
+  transversal, une ligne par événement en registre. Le choix (par patient ou par rencontre, avec la
+  règle première/dernière) n'est proposé qu'en **suivi longitudinal**. L'écran ne demande plus la
+  portée des rencontres : la cohorte figée dit déjà lesquelles en font partie.
 - **EF-27 bis (filtrer une liste, L23).** Sur une variable à plusieurs valeurs, la constitution de
   cohorte n'offre que **« contient l'un de »** et **« ne contient aucun de »**. L'égalité est
   retirée de l'interface plutôt que de produire un résultat faux en silence. Un patient portant

@@ -201,7 +201,10 @@ masquées par l'interface.
 `curation_draft`, `curation_clarification`) — voir §4.
 
 **Cohortes & export** (`cohort`, `cohort_member`, `cohort_encounter_member`, `export_log`)
-Une cohorte est **dynamique** ou **figée** ; seule une cohorte figée s'exporte. Le fichier
+Une cohorte est **dynamique** ou **figée** ; seule une cohorte figée s'exporte — mais **le
+médecin n'a plus à en constituer une** : le parcours principal (`/bases/:id/export`) fige la
+population à la volée, sous un nom daté, puis exporte. La constitution manuelle
+(`/bases/:id/cohorts`) reste offerte pour choisir une population précise. Le fichier
 d'export est conservé immuable (`file_hash`) et tracé. `assert_export_columns_safe()`
 **refuse tout champ identifiant** (liste blanche analytique).
 
@@ -417,7 +420,7 @@ doivent pas être pilotables par le navigateur seul. Détail complet :
 | `finalize-upload` | Valide hash/taille/MIME **après** commit | La preuve est recalculée côté serveur, avec compensation en cas d'échec partiel |
 | `cleanup-upload` | Reprend les tickets d'upload abandonnés | Idempotence et nettoyage hors session utilisateur |
 | `reconcile-quarantine` | Réconcilie les objets mis en quarantaine | Accès `service_role` au bucket isolé |
-| `generate-export` | Produit l'export d'une cohorte figée | Restreint aux lignes `curated`, hash enregistré, rollback si la journalisation échoue |
+| `generate-export` | Produit l'export d'une cohorte figée | Écarte les fiches auxquelles il manque un champ obligatoire (le statut de validation n'entre pas en compte), hash enregistré, rollback si la journalisation échoue |
 | `create-mission-account` | Crée, révèle, régénère ou révoque les justificatifs d'un `saisisseur` | Nécessite l'admin Auth et la clé de chiffrement Edge ; seul le propriétaire choisit l'identifiant et consulte le mot de passe généré |
 
 > Une modification locale sous `supabase/functions/` **ne change pas le cloud** : chaque fonction
