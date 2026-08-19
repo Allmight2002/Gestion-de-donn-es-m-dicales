@@ -19,8 +19,8 @@
 | # | Chantier | Nature | Décision | État | Où vit le travail |
 |---|---|---|---|---|---|
 | **A** | Justificatifs gérés par le propriétaire | Auth + base + Edge Function + interface | **Tranchée : identifiant choisi, mot de passe généré et chiffré, sans e-mail** (§2.2) | **Clos le 2026-08-11 : local, staging et production technique validés** | SHA `bb99ac72ba46541904d255f7bf129ecd2ad3ca4e` |
-| **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
-| **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
+| **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Clos le 2026-08-11** — les six points sont livrés avec le lot L16 (§3.7, journal d'exécution) | L16 (`dc90392` ; SHA promu `fae091a3`) |
+| **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Clos le 2026-08-11** — option A livrée : migration `20260811130000_mission_identity_write_correction.sql`, RPC `update_patient_identity`, interface | L16 (`dc90392` ; SHA promu `fae091a3`) |
 | **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | **Tranchée : utilitaire partagé, phrase du serveur + code** (§5.4) | **Implémenté et vérifié localement le 2026-08-11** (§5.5) | branche `codex/edge-error-messages` |
 | **E** | Cohortes : suppression, carte dynamique, figeage inexportable | Base + frontend | Recommandation posée, non tranchée | Documenté dans la file d'attente | [idees-post-readiness.md](idees-post-readiness.md) |
 
@@ -276,6 +276,11 @@ cause et sa décision. C'est la spécification du lot.
 **Tout est à écrire** : les cinq corrections d'écran (points 1, 3, 4, 5 et le point 2 issu du
 chantier C), leurs tests web dans `src/screens/member/*.test.tsx`, puis la batterie de
 validation.
+
+**Clôture (2026-08-11)** : les six points ont été livrés avec le lot L16, en même temps que le
+chantier C — migration `20260811130000_mission_identity_write_correction.sql`, RPC
+`update_patient_identity` et interface. Preuves locales, CI, staging et production technique dans
+[suivi-execution-feuille-route.md](suivi-execution-feuille-route.md).
 
 ---
 

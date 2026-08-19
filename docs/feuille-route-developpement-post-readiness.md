@@ -3,8 +3,10 @@
 - Porteur : Dr Mbassi
 - Date de cadrage : 2026-07-26
 - Statut : développement et releases techniques internes possibles avec données fictives ; dernier
-  candidat intégralement promu : `f0bf2af5910f5b4ebf985adf1724b9dcc69745ce` (staging
-  `30718950416`, cible technique production `30720194028`). Les gates cliniques restent ouverts.
+  candidat intégralement promu : `3a145c7e66416fd2899b615d9491fbf78307c5a0` (staging
+  `31828221111`, cible technique production `31831096560`, le 2026-08-14, inspection en pause).
+  Les gates cliniques restent ouverts. L'état courant est porté par le
+  [journal d'exécution](suivi-execution-feuille-route.md).
 - Source des idées : [`idees-post-readiness.md`](idees-post-readiness.md)
 - Référence de production : [`readiness-production-2026-07-19.md`](readiness-production-2026-07-19.md)
 - Prompt d'exécution autonome :
