@@ -58,7 +58,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L1~~ | ~~Liste d'une base : affichage et bandeau~~ | **Livré le 2026-07-28** | — |
 | ~~L2~~ | ~~Formulaires patient : sections~~ | **Livré le 2026-07-28** | — |
 | ~~L3~~ | ~~Allègement du chargement~~ | **Livré le 2026-07-28** | — |
-| **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
+| ~~L4~~ | ~~Soupape sur le champ diagnostic~~ | **Livré le 2026-08-13** (PR #169/#170 ; proposer « Diagnostic absent du référentiel ») | — |
 | ~~L5~~ | ~~Constructeur de règles~~ | **Livré le 2026-07-28** | — |
 | ~~L6~~ | ~~Finition de l'interface~~ | **Livré le 2026-08-09** | — |
 | ~~L7~~ | ~~Protections de branche (B7)~~ | **Livré le 2026-08-01** | — |
@@ -81,9 +81,9 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L24~~ | ~~Listes de diagnostics : refus au mappage d'import~~ | **Livré le 2026-08-18** (PR #228, tout `terminology` refusé au mappage) | — |
 | ~~L25~~ | ~~Conflit hors-ligne : issue « garder les deux »~~ | **Livré le 2026-08-18** (PR #229, `mergeKeepBoth` pure) | — |
 | ~~L26~~ | ~~Regroupement des variables `diagnostic_1/2/3`~~ | **Clos sans exécution le 2026-08-19** — la base d'essai qui portait ces variables a été supprimée ; plus rien à convertir. Exigences conservées au §12 de la spécification | — |
-| **L27** | Texte d'aide par variable | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `exportContract.ts` | L29 |
+| ~~L27~~ | ~~Texte d'aide par variable~~ | **Livré le 2026-08-13** (consigne de saisie ; `description` ajoutée au Dictionnaire) | — |
 | ~~L28~~ | ~~Valeur par défaut et unicité~~ | **Livré le 2026-08-14** (valeur proposée ; `is_unique` écartée) | — |
-| **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
+| ~~L29~~ | ~~Prévisualisation du formulaire~~ | **Livré le 2026-08-14** (écran propre, bouton dans l'éditeur de version) | — |
 | ~~L30~~ | ~~Options de liste : code interne stable~~ | **Livré le 2026-08-15** (`allowed_options` fait foi, `allowed_values` conservé en miroir) | — |
 | ~~L31~~ | ~~Sections personnalisables~~ | **Livré le 2026-08-15** (`template_section` rattachée à la version, `section` conservé en miroir du code) | — |
 | ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
@@ -146,7 +146,7 @@ traductions voyagent ensemble dans 98 Ko. La correction touche
 `src/i18n/messages.ts`, signalé ci-dessus comme source de conflits : ce lot doit
 tourner **seul**, ou au moins sans aucun lot qui ajoute du texte.
 
-### L4 — Soupape sur le champ diagnostic
+### ~~L4 — Soupape sur le champ diagnostic~~ — **livré le 2026-08-13**
 
 **Idée 6** : étendre au type `terminology` la soupape des listes contrôlées.
 Touche `FieldForm.tsx`, que L9 modifie aussi — ne pas lancer les deux ensemble.
@@ -451,7 +451,7 @@ modèle de mise en œuvre à suivre — `20260815161000_option_key_repair.sql`, 
 figure sur les listes d'options. La famille « listes de diagnostics » est **close**.
 
 
-### L27 — Texte d'aide par variable
+### ~~L27 — Texte d'aide par variable~~ — **livré le 2026-08-13**
 
 Une variable n'a aujourd'hui qu'un libellé. Rien ne dit **comment** la renseigner, alors que la
 réponse dépend de la définition : « score de Glasgow à l'admission » signifie-t-il le premier score
@@ -492,7 +492,7 @@ Effet de bord assumé du lot : la liste des colonnes recopiées d'une version de
 — dupliquer un gabarit perdait silencieusement toutes les consignes, et `promote_template_to_global`
 perdait en plus les types de rencontre. Cette liste vit désormais dans `copy_template_fields`.
 
-### L29 — Prévisualisation du formulaire
+### ~~L29 — Prévisualisation du formulaire~~ — **livré le 2026-08-14**
 
 Le seul lot de la famille qui n'entre en collision avec rien : il ouvre son propre écran et ne
 touche `TemplateVersionEditor.tsx` que pour y poser un bouton.
