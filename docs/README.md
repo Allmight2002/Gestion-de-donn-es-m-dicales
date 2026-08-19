@@ -64,6 +64,7 @@
 | [supervision.md](supervision.md) | Supervision et alertes d'exploitation |
 | [continuite.md](continuite.md) | Sauvegarde, restauration, reprise |
 | [qa-parcours-site.md](qa-parcours-site.md) · [instructions-agent-qa.md](instructions-agent-qa.md) | Plan de test du site déployé et cadrage de l'agent QA |
+| [plan-test-preuves-2026-08-19.md](plan-test-preuves-2026-08-19.md) | Plan de test des lots livrés (L14, corbeille, D9/D12, L20-L25, L27-L33, L11) en attente de preuve de fonctionnement sur le site déployé |
 | [redaction-diagnostic-sauvegarde.md](redaction-diagnostic-sauvegarde.md) | Expurger un diagnostic de sauvegarde avant de le journaliser |
 
 ## 5. État courant et readiness
