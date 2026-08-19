@@ -4,6 +4,25 @@ Ce document est la référence de lecture de l'état **actuel** de MedData. Les 
 et comptes rendus datés conservent leurs constats à leur date ; ils ne doivent pas être lus comme
 une description de l'environnement courant sans cette mise en contexte.
 
+> ## ⚠️ Ce qui a changé depuis le 1er août — à lire avant le reste
+>
+> Relu le 2026-08-19. Le corps de ce document reste valable **sauf sur les points suivants** :
+>
+> - **L'inspection antivirus est en pause depuis le 2026-08-13**, sur staging comme sur la cible
+>   technique `production`. Il n'y a plus de tunnel ClamAV à relancer : les fichiers déposés ne
+>   sont **pas analysés** et restent au statut `accepted_client`, sur le seul contrôle navigateur.
+>   La section « Dernière release technique prouvée » ci-dessous décrit l'état du 1er août, quand
+>   le scanner était encore exigé. Voir
+>   [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md).
+> - **La release technique prouvée n'est plus celle citée ci-dessous** : le SHA et les identifiants
+>   de run datent du 1er août. Le journal d'exécution
+>   ([suivi-execution-feuille-route.md](suivi-execution-feuille-route.md)) porte l'état courant.
+> - **Deux familles de lots ont été livrées depuis** : « moteur de formulaires » (L27 à L33,
+>   close le 2026-08-15) et « listes de diagnostics » (L20 à L25, closes le 2026-08-18 ; L26 clos
+>   sans exécution le 2026-08-19).
+> - **Le périmètre autorisé n'a pas changé** : données fictives uniquement, aucun usage clinique,
+>   aucun utilisateur tiers.
+
 ## Périmètre autorisé
 
 La cible technique nommée `production` reste un environnement persistant de tests internes. Elle
@@ -24,9 +43,13 @@ pas et ne constitue pas une readiness clinique.
   l'inventaire des Edge Functions, le frontend, l'activation stricte de l'inspection et la dérive
   cloud.
 
-Le scanner ClamAV strict est actuellement joignable via un tunnel Cloudflare temporaire. Il est
+~~Le scanner ClamAV strict est actuellement joignable via un tunnel Cloudflare temporaire. Il est
 valide pour les tests internes fictifs menés le 1er août, mais **ne remplace pas** un hébergement
-pérenne et supervisé requis avant toute donnée réelle.
+pérenne et supervisé requis avant toute donnée réelle.~~
+
+> **Périmé depuis le 2026-08-13.** Le tunnel n'est plus monté et l'inspection est en pause : plus
+> aucun fichier déposé n'est analysé. L'exigence de fond est inchangée — un hébergement pérenne et
+> supervisé reste requis avant toute donnée réelle.
 
 ## Modèle d'observation des bases (L9)
 

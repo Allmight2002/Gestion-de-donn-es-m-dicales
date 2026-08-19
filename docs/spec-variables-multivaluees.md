@@ -1,11 +1,13 @@
 # Spécification — Variables à valeurs multiples
 
-- Statut : 🚧 **implémentation en cours** — socle PostgreSQL L20 livré localement le 2026-08-16 ;
-  saisie, export, import, cohortes, conflit hors-ligne et conversion L21 à L26 encore à livrer
+- Statut : ✅ **livrée** — L20 à L25 fusionnés du 2026-08-16 au 2026-08-18 (socle serveur, saisie,
+  export, cohortes, refus au mappage d'import, conflit hors-ligne). **L26 — conversion des
+  enregistrements existants — est clos sans avoir été exécuté, faute d'objet** : voir §12
 - Migration : `20260818045033_multivalue_terminology_foundation.sql`
 - Surface serveur : `assert_data_valid`, `jsonb_matches`, `base_completeness_stats`,
   Edge Function `generate-export`
-- Surface web : `FieldForm`, `FieldInput` / `ValueInput`, `TerminologyInput`, `CohortBuilder`
+- Surface web : `FieldForm`, `FieldInput` / `ValueInput`, `TerminologyInput`, `CohortBuilder`,
+  `conflictMerge` / `SyncCenter`, `autoMapColumns`
 - Périmètre autorisé : données fictives uniquement, comme le reste du produit
 
 ---
@@ -289,10 +291,37 @@ existantes s'appliquent sans ajout :
 Une rencontre saisie avant le changement reste lisible avec le formulaire qui était actif à sa
 saisie. Rien à construire.
 
-## 12. Regroupement des variables existantes
+## 12. Regroupement des variables existantes — clos sans exécution (2026-08-19)
 
-C'est la **seule partie qui touche des données déjà enregistrées**. Elle doit être implémentée en
-dernier, après que le reste soit en service, et précédée d'une sauvegarde vérifiée.
+Cette partie était la **seule qui touchait des données déjà enregistrées**. Elle est **close sans
+avoir été implémentée** : au moment de l'exécuter, elle n'avait plus d'objet.
+
+**Ce qui l'a rendue sans objet.** La base qui portait `diagnostic_1`, `diagnostic_2` et
+`diagnostic_3` était une base d'essai, supprimée depuis. Il ne reste aucun enregistrement à
+convertir. Écrire un outil de conversion de masse — la surface la plus dangereuse du produit,
+celle qui réécrit des fiches déjà saisies — pour un jeu de données inexistant aurait produit du
+code jamais exercé sur un cas réel, et vieillissant sans être utilisé.
+
+**Ce qui reste possible sans lui.** L'opération (a) — créer une version de gabarit portant la
+variable regroupée — **est déjà faisable à la main** depuis L21, avec les écrans en service :
+bouton « nouvelle version » du constructeur, suppression de `diagnostic_1/2/3`, ajout d'une
+variable de type `terminology` avec la case « Accepte plusieurs valeurs » cochée. Quatre gestes ;
+L26 n'y aurait ajouté qu'un raccourci. L'opération (b) — convertir les enregistrements — reste
+sans équivalent manuel, mais c'est précisément celle qui n'a plus de données à traiter.
+
+**Ce qui n'a donc pas été livré**, et qu'il ne faut pas croire disponible :
+
+- aucune fonction d'aperçu ni de conversion pour les listes de diagnostics ;
+- aucune valeur supplémentaire dans la contrainte `source` de `field_change_log` — elle en porte
+  toujours six (`direct_entry`, `curation_validation`, `curation_finalization`,
+  `manual_correction`, `import`, `option_key_repair`) ;
+- aucun écran de regroupement.
+
+**Si le besoin réapparaît** — un médecin arrivant avec des fiches saisies sous le contournement
+`diagnostic_1/2/3` — la cible ci-dessous reste valable. Elle décrit ce qu'il faudrait construire,
+**pas ce qui existe**.
+
+### 12.1 Cible conservée, non implémentée
 
 Deux opérations distinctes, jamais fusionnées :
 
@@ -318,10 +347,21 @@ Contraintes sur (b) :
 - une valeur non résoluble **bloque** la conversion de l'enregistrement concerné et est rapportée,
   plutôt que d'être écartée silencieusement.
 
-**Recommandation.** Regrouper sans convertir laisse coexister les deux formes : anciennes
-rencontres en `diagnostic_1/2/3`, nouvelles en `diagnostic`, et un export coupé en deux. Tant que
-les bases ne contiennent que des données fictives, la conversion est sans risque et il n'y aura
-pas de meilleur moment.
+### 12.2 Le modèle à suivre existe déjà dans le dépôt
+
+`20260815161000_option_key_repair.sql` (lot L30) réalise **la même figure** sur les listes
+d'options : plan interne partagé par l'aperçu et l'exécution — l'aperçu ne peut donc pas annoncer
+autre chose que ce qui sera fait ; aperçu déclaré `stable`, donc incapable d'écrire ; exécution
+refusée sans `p_confirm => true` ; sous-transaction par fiche ; relecture sous verrou pour ne pas
+écraser une modification survenue depuis l'aperçu ; journalisation sous une source dédiée ;
+élargissement du `check` en `not valid` puis `validate`, qui évite de tenir un verrou exclusif
+pendant le parcours de la table. Une reprise de L26 devrait partir de là plutôt que d'une page
+blanche.
+
+Une seule exigence de L26 n'y a pas d'équivalent : le **rattachement de l'enregistrement à la
+nouvelle version de gabarit**. `option_key_repair` ne touche que `data`. Il faudra décider à ce
+moment-là si la version cible doit être publiée — donc immuable — avant qu'on y rattache des
+données, ce que cette spécification recommande.
 
 ## 13. Couverture de test exigée
 
@@ -362,10 +402,11 @@ pas de meilleur moment.
 | `[object Object]` à l'export | Test de non-régression écrit **avant** l'implémentation |
 | Explosion du nombre de colonnes indicatrices | Seuil de 100, feuille dédiée exhaustive en repli |
 | Perte d'une valeur lors d'une synchronisation concurrente | Conflit déjà détecté ; issue « garder les deux » livrée par L25 |
-| Conversion des données historiques | Aperçu obligatoire, opt-in, idempotente, journalisée, sauvegarde préalable |
+| Conversion des données historiques | **Sans objet** : les données qui la motivaient n'existent plus. Exigences conservées au §12.1 si le besoin revient |
 | Confusion avec les groupes répétables | Critère de bascule fixé au §2 ; spécification distincte à venir |
 
 ---
 
-*Cette spécification décrit la cible complète. Pendant l'exécution séquentielle de L20 à L26, le
-statut en tête et les migrations indiquent la partie réellement disponible.*
+*Cette spécification décrit la cible complète. Les sections 1 à 11 et 13 décrivent le produit
+**tel qu'il est** depuis la fusion de L25 ; le §12 décrit une cible **non implémentée** et
+volontairement close. En cas d'écart, le code et les migrations font foi.*

@@ -81,10 +81,10 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
 | **Identité** | `patient_identity`, `clinical_attachment` | Restreinte (`can_view_identity`) ; jamais exportée |
 | **Analytique** | `patient`, `encounter`, `field_change_log` | `age_value`/`age_unit` en colonnes ; **jamais la DOB** |
 | **Documents bruts** | `raw_submission`, `raw_document`, `curation_task`, `curation_draft`, `curation_clarification` | Restreinte ; accès curateur **réservé** |
-| Gabarits | `template`, `template_version`, `template_field`, `validation_rule` | Version publiée **immuable** |
+| Gabarits | `template`, `template_version`, `template_field`, `template_section`, `validation_rule` | Version publiée **immuable** ; sections rattachées à la version |
 | Comptes & bases | `profiles`, `base`, `base_access`, `base_invitation`, `mission_account_credential`, `mission_credential_operation` | `profiles` ↔ `auth.users` ; justificatifs de mission chiffrés ; génération de session contrôlée par RLS |
 | Cohortes & export | `cohort`, `cohort_member`, `cohort_encounter_member`, `export_log` | Cohorte figée = instantané |
-| Audit & import | `audit_log`, `import_batch`, `import_row_hash` | Journal infalsifiable ; cycle de vie d'import |
+| Audit & import | `audit_log`, `import_batch`, `import_row_hash`, `client_error_log` | Journal infalsifiable ; cycle de vie d'import ; incidents web bornés (L11) |
 
 **ET-7.** `patient_identity` et `patient` sont **deux tables sans clé étrangère** entre elles ;
 le seul lien est la paire `(base_id, patient_code)`. → on ne peut pas joindre identité et
@@ -98,6 +98,27 @@ analytique par construction.
 compatibilité des bases existantes. Des triggers et RPC serveur interdisent une rencontre, une
 soumission de portée rencontre ou un retour de champ à cette portée dans une base transverse ; le
 changement de modèle est atomique et refusé dès qu'une donnée existe.
+
+**ET-8 ter. Attributs de variable ajoutés en août 2026**, tous par migrations **additives** sur
+`template_field`, donc sans toucher aucune donnée existante :
+
+| Colonne | Migration | Rôle |
+|---|---|---|
+| `description` | `20260813174655` | Texte d'aide (L27) |
+| `default_value` | `20260814090000` | Valeur proposée à la saisie, jamais écrite d'office (L28) |
+| `missing_reasons` | `20260814170000` | Raisons de valeur manquante admises, variable par variable (L33) |
+| `allowed_options` | `20260815160000` | Code interne stable par option ; `allowed_values` conservé en miroir (L30) |
+| `section` | `20260815180000` | Miroir du code de `template_section` (L31) |
+| `is_multiple` | `20260818045033` | Variable de type `terminology` portant une liste de 1 à 50 couples code/libellé (L20) |
+
+**ET-8 quater. Cardinalité et validation.** `is_multiple` est contraint au seul type
+`terminology` (`template_field_multiple_terminology_only`) et compte parmi les attributs
+**structurels** : il ne peut pas changer sur une variable déjà utilisée. `assert_data_valid`
+évalue la branche « valeur manquante » **avant** la branche de type, puis, pour une liste :
+tableau non vide, au plus 50 éléments, chaque élément réduit aux seules clés `code` et `label`
+non vides, chaque couple existant dans `terminology_concept` avec `is_selectable` toutes
+publications conservées confondues, et **aucun code répété**. Les messages d'erreur nomment le
+libellé de la variable, jamais une valeur clinique.
 
 ### 4.2 Diagramme
 
@@ -192,7 +213,16 @@ synchronisation hors-ligne.
 - **ET-21. Synchronisation** : chaque entrée de l'outbox est rejouée via la RPC validée et
   idempotente `replay_encounter_update`, avec identifiant d'opération stable et verrou optimiste ;
   une réponse perdue peut être rejouée sans seconde écriture ; **conflit** → choix « garder ma version »
-  (forçage) / « garder la version serveur ».
+  (forçage) / « garder la version serveur » / **« garder les deux »** (L25).
+- **ET-21 bis. « Garder les deux » (L25).** `mergeKeepBoth` (`src/domain/conflictMerge.ts`) est une
+  fonction **pure** : toutes les clés viennent de ma version, et seules les clés portant une liste
+  de terminologie **des deux côtés** sont unies par `code` — ordre local d'abord, puis les
+  nouveautés serveur, sans doublon. Le libellé d'un code présent des deux côtés reste le mien : le
+  code est l'identité. L'issue n'est **proposée que lorsqu'elle sauve au moins une valeur**, la
+  visibilité étant dérivée de la fusion elle-même, jamais d'un prédicat parallèle. La charge étant
+  **déterministe**, un rejeu après réponse réseau perdue retrouve l'accusé d'idempotence et
+  n'écrit pas une seconde fois. Limite assumée : l'écriture est forcée (`expected = null`), donc
+  l'écriture d'un troisième appareil survenue entre la détection et le clic serait écrasée.
 - **ET-22. Cloisonnement & cycle de vie** : `ownerUserId` sur chaque instantané/entrée ;
   `get/list` filtrent l'utilisateur courant ; **expiration** 24 heures appliquée à la lecture ;
   **purge au démarrage** et **effacement des instantanés à la déconnexion** (la file d'écritures

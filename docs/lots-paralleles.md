@@ -74,13 +74,13 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L17~~ | ~~Messages d'erreur des Edge Functions~~ | **Livré** (`6a453b9`, `src/lib/edgeFunctionError.ts`) | — |
 | ~~L18~~ | ~~Cohorte dynamique : compteur vivant et « Figer maintenant »~~ | **Livré** (PR #159, #160) | — |
 | ~~L19~~ | ~~Archivage d'une cohorte~~ | **Livré, preuve technique de production** (PR #179, #182, #184, #185, #187) | — |
-| **L20** | Listes de diagnostics : surface base | migration, `test/validation.test.ts`, `test/templates.admin.test.ts`, `src/data/types.ts`, `src/data/templates.ts` | **seul** (prérequis de L21 à L26) |
-| **L21** | Listes de diagnostics : saisie et constructeur | `TerminologyInput.tsx`, `FieldForm.tsx`, `FieldInput.tsx`, `ValueInput.tsx`, `src/domain/validation.ts` | L22, L24, L25 — **jamais avec L4 ni L13** |
-| **L22** | Listes de diagnostics : export | `exportContract.ts`, `handler.ts` et leurs tests Deno | L21, L23, L24, L25 |
-| **L23** | Listes de diagnostics : cohortes | `CohortBuilder.tsx`, `src/data/cohorts.ts` | L21, L22, L24 — **jamais avec L18 ni L19** |
-| **L24** | Listes de diagnostics : refus au mappage d'import | `src/domain/import.ts`, `ImportData.tsx` | L21, L22, L23, L25 |
-| **L25** | Conflit hors-ligne : issue « garder les deux » | `src/data/offline.ts`, `SyncCenter.tsx` | L21, L22, L23, L24 |
-| **L26** | Regroupement des variables `diagnostic_1/2/3` | migration, RPC d'aperçu et de conversion, écran du constructeur | **seul**, en dernier |
+| ~~L20~~ | ~~Listes de diagnostics : surface base~~ | **Livré le 2026-08-18** (PR #222, `20260818045033_multivalue_terminology_foundation.sql`) | — |
+| ~~L21~~ | ~~Listes de diagnostics : saisie et constructeur~~ | **Livré le 2026-08-18** (PR #224) | — |
+| ~~L22~~ | ~~Listes de diagnostics : export~~ | **Livré le 2026-08-18** (PR #225, après annulation puis restauration — voir le journal d'exécution) | — |
+| ~~L23~~ | ~~Listes de diagnostics : cohortes~~ | **Livré le 2026-08-18** (PR #226, `has_any` / `has_none` seuls) | — |
+| ~~L24~~ | ~~Listes de diagnostics : refus au mappage d'import~~ | **Livré le 2026-08-18** (PR #228, tout `terminology` refusé au mappage) | — |
+| ~~L25~~ | ~~Conflit hors-ligne : issue « garder les deux »~~ | **Livré le 2026-08-18** (PR #229, `mergeKeepBoth` pure) | — |
+| ~~L26~~ | ~~Regroupement des variables `diagnostic_1/2/3`~~ | **Clos sans exécution le 2026-08-19** — la base d'essai qui portait ces variables a été supprimée ; plus rien à convertir. Exigences conservées au §12 de la spécification | — |
 | **L27** | Texte d'aide par variable | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `exportContract.ts` | L29 |
 | ~~L28~~ | ~~Valeur par défaut et unicité~~ | **Livré le 2026-08-14** (valeur proposée ; `is_unique` écartée) | — |
 | **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
@@ -88,7 +88,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L31~~ | ~~Sections personnalisables~~ | **Livré le 2026-08-15** (`template_section` rattachée à la version, `section` conservé en miroir du code) | — |
 | ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
 | ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
-| **L34** | Filtre d'une variable Diagnostic à valeur unique | migration (`jsonb_matches`), `CohortBuilder.tsx` | L24, L25 — **jamais avec L26** |
+| **L34** | Filtre d'une variable Diagnostic à valeur unique | migration (`jsonb_matches`), `CohortBuilder.tsx` | L24, L25 (L26 étant clos, sa contrainte d'exclusion tombe) |
 | **L35** | Variables calculées : arithmétique définie par l'utilisateur | migration (`template_field.formula`), `exportContract.ts`, `FieldForm.tsx`, `EncounterFields.tsx`, `import.ts`, `CohortBuilder.tsx` | L25 — **jamais avec L21 à L24 ni L34** |
 | **L36** | Parité d'export des listes à choix multiples | `exportContract.ts`, `exportContract_test.ts`, `handler.ts` | **jamais avec L22 ni L35** |
 | **L37** | Feuille de fréquences prête à l'analyse | `exportContract.ts` (ou module dédié), `handler.ts`, tests Deno | **jamais avec L22, L35 ni L36** |
@@ -429,24 +429,27 @@ binaire, où `resolveKeepMine` écrase la valeur de l'autre. Le lot ajoute une t
 réalisant l'union des deux listes par `code`, ordre local puis nouveautés serveur. Fonction de
 domaine pure, testable sans base.
 
-### L26 — Regroupement des variables `diagnostic_1/2/3` (à lancer SEUL, en dernier)
+### ~~L26 — Regroupement des variables `diagnostic_1/2/3`~~ — **clos sans exécution le 2026-08-19**
 
-§12 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). **Seul lot de cette
-famille qui touche des données déjà enregistrées.** À traiter après que tout le reste soit en
-service, et précédé d'une sauvegarde vérifiée.
+§12 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Ce lot était le seul de
+la famille à toucher des **données déjà enregistrées**. Il est clos **sans avoir été implémenté** :
+la base qui portait `diagnostic_1`, `diagnostic_2` et `diagnostic_3` était une base d'essai,
+supprimée depuis. Il ne restait rien à convertir.
 
-Deux opérations qui ne doivent jamais être fusionnées : créer une version de gabarit portant la
-variable regroupée (n'affecte que les saisies futures), et convertir les enregistrements existants
-(facultative, explicitement cochée). Une fonction d'aperçu en lecture seule précède l'exécution et
-rend les valeurs non résolubles, les doublons entre `diagnostic_1` et `diagnostic_2`, et les
-enregistrements déjà convertis.
+Décision du porteur, prise le 2026-08-19 après vérification de deux faits :
 
-L'exécution est transactionnelle par enregistrement et idempotente : une reprise après
-interruption ne doit ni dupliquer une valeur ni retraiter un enregistrement. Chaque conversion est
-tracée dans `field_change_log`, dont la contrainte `source` doit accueillir une valeur
-supplémentaire — modification additive d'une contrainte `check` sur une table portant des données.
+- **l'opération (a)**, créer une version de gabarit portant la variable regroupée, **est déjà
+  faisable à la main** depuis L21 — nouvelle version, suppression des trois variables, ajout d'une
+  variable `terminology` avec « Accepte plusieurs valeurs » ; L26 n'y aurait ajouté qu'un
+  raccourci ;
+- **l'opération (b)**, convertir les enregistrements, n'a plus de données à traiter — et c'est la
+  surface la plus dangereuse du produit, celle qui réécrit des fiches déjà saisies.
 
-Surface base : appliquer `meddata-db-safety`.
+Les exigences (aperçu en lecture seule, opt-in, transactionnel par enregistrement, idempotent,
+journalisé, valeur non résoluble bloquante) restent écrites au §12.1 de la spécification, avec le
+modèle de mise en œuvre à suivre — `20260815161000_option_key_repair.sql`, qui réalise déjà la même
+figure sur les listes d'options. La famille « listes de diagnostics » est **close**.
+
 
 ### L27 — Texte d'aide par variable
 
@@ -820,19 +823,19 @@ avant ses lots.
 - **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
 - **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
 
-## Ordre suggéré — état au 2026-08-15
+## Ordre suggéré — état au 2026-08-19
 
 **Niveau atteint.** L1–L19 sont livrés, à l'exception de L14. L11 a été intégré puis promu sur
-`main` (PR #176, #189, correctifs #192 et #194). Dans la famille moteur de formulaires, L27,
-L28, L29, L33, L32 et L30 sont également livrés (PR #191/#193, #197/#198, #199/#200, #201–#204,
-#205–#206 et #207). Cela porte à **vingt-quatre lots livrés/intégrés**.
+`main` (PR #176, #189, correctifs #192 et #194). La famille « moteur de formulaires » (L27 à L33)
+est close depuis le 2026-08-15. La famille « listes de diagnostics » l'est depuis le 2026-08-19 :
+L20 à L25 livrés (PR #222, #224, #225, #226, #228, #229) et **L26 clos sans exécution**. Cela
+porte à **trente lots livrés**, plus un clos sans objet.
 
-**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. La famille
-« moteur de formulaires » est **close** : L27 à L33 sont tous livrés. Le fichier `.freebuff/` non
-suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
+**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
+`.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-L'ordre suivant reflète la priorité confirmée : terminer la famille moteur de formulaires, puis
-L14 seul, puis la famille diagnostics.
+Restent ouverts : **L14** (chargement de la seule langue active) et les lots d'analyse **L34 à
+L37**, spécifiés mais non implémentés.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -847,13 +850,12 @@ L14 seul, puis la famille diagnostics.
    7. ~~**L31**~~ — sections personnalisables — **livré le 2026-08-15** ; une seule notion (la
       section visuelle), gel total sur version publiée, miroir sur le code.
 2. **L14**, seul, après les autres ajouts de textes i18n.
-3. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
-   1. **L20 seul** — surface base, prérequis de tous les autres ;
-   2. puis en parallèle **L21, L22 et L24** — à condition que **L4 et L13** soient soldés ou non
-      lancés ;
-   3. puis **L23** — à condition que **L18 et L19** soient soldés ou non lancés — et **L25**,
-      qui ne dépend de rien ;
-   4. **L26 seul, en dernier**, après sauvegarde vérifiée.
+3. ~~**Famille « listes de diagnostics »**~~ (L20 à L26) — **close le 2026-08-19** :
+   1. ~~**L20**~~ — surface base — **livré le 2026-08-18** ;
+   2. ~~**L21**, **L22**, **L24**~~ — saisie, export, refus au mappage — **livrés le 2026-08-18** ;
+   3. ~~**L23**~~ et ~~**L25**~~ — cohortes et conflit hors-ligne — **livrés le 2026-08-18** ;
+   4. ~~**L26**~~ — **clos sans exécution le 2026-08-19** : la base d'essai qui portait
+      `diagnostic_1/2/3` a été supprimée, il n'y a plus rien à convertir.
 4. **L35**, après la famille diagnostics : il touche `FieldForm.tsx`, `exportContract.ts`,
    `import.ts` et `CohortBuilder.tsx`, c'est-à-dire les fichiers de L21, L22, L24 et L23. La
    contrainte est structurelle et ne déplace aucune priorité.
