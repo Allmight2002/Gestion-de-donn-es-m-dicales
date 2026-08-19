@@ -118,7 +118,7 @@ en `curated` entrent dans les cohortes et exports. Le médecin peut supprimer un
 | Base de données | **PostgreSQL 18 + RLS** | Schéma portable vers Supabase tel quel |
 | Backend cible | **Supabase** (Postgres + Auth + RLS + Storage + Edge Functions) | `auth.users` + table `profiles` |
 | Frontend | **React 19 + TypeScript 5 strict + Vite 8 (PWA)** + Tailwind v4 | auth + gating par rôle |
-| Routage / i18n | react-router 8 + i18n maison (fr/en) | 13 routes, `ProtectedRoute` par rôle |
+| Routage / i18n | react-router 8 + i18n maison (fr/en) | 41 routes (44 `<Route>`), `ProtectedRoute` par rôle |
 | Code serveur | **Edge Functions Deno** (`supabase/functions/`) | 7 fonctions ; chemins non pilotables par le navigateur seul |
 | Antivirus | **ClamAV** en service HTTP (`services/clamav-scanner`) | appelé par `inspect-upload` |
 | Tests de sécurité | **Vitest + PostgreSQL embarqué** (`embedded-postgres`) | **sans Docker**, voir ci-dessous |
@@ -187,7 +187,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   ├── i18n/                             # messages fr/en + provider
 │   ├── lib/                              # client Supabase (clé ANON), env, écriture gardée, réseau
 │   ├── pwa/                              # politique d'enregistrement du service worker
-│   ├── routes/                           # routage (13 routes) + ProtectedRoute (gating par rôle)
+│   ├── routes/                           # routage (41 routes) + ProtectedRoute (gating par rôle)
 │   ├── screens/                          # member/ (médecin, curateur, saisisseur) + staff/ (admin)
 │   ├── components/                       # AppShell, ErrorBoundary, palette de commandes, UI
 │   └── main.tsx · App.tsx

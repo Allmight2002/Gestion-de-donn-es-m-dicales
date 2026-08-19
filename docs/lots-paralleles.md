@@ -68,7 +68,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L11~~ | ~~Observabilité des erreurs (P3)~~ | **Livré et promu sur `main`** (PR #176, #189, #192, #194) | — |
 | ~~L12~~ | ~~Traitement des propositions~~ | **Livré** (PR #172) | — |
 | ~~L13~~ | ~~Rafraîchissement de la copie locale~~ | **Livré** (PR #180, #181) | — |
-| **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
+| ~~L14~~ | ~~Chargement de la seule langue active~~ | **Livré le 2026-08-18** (PR #215, `7fc71b3`) | — |
 | ~~L15~~ | ~~Comptes de mission : identifiant et mot de passe générés~~ | **Livré le 2026-08-11** (`009ed3c`) | — |
 | ~~L16~~ | ~~Compte de mission : création et correction de l'identité~~ | **Livré le 2026-08-11** (`dc90392`, base + interface) | — |
 | ~~L17~~ | ~~Messages d'erreur des Edge Functions~~ | **Livré** (`6a453b9`, `src/lib/edgeFunctionError.ts`) | — |
