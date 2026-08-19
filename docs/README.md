@@ -33,7 +33,7 @@
 | Document | Contenu |
 |---|---|
 | [edge-functions.md](edge-functions.md) | Les 7 fonctions serveur : lecture signée auditée, inspection antivirus, export, comptes de mission |
-| [security-definer.md](security-definer.md) | Inventaire normatif des 94 fonctions privilégiées + contrôle d'ACL |
+| [security-definer.md](security-definer.md) | Inventaire normatif des 110 fonctions privilégiées + contrôle d'ACL |
 | [upload-inspection-operations.md](upload-inspection-operations.md) | Exploitation de la chaîne d'inspection des fichiers déposés |
 | [xlsx-security.md](xlsx-security.md) | Risques propres au traitement des tableurs |
 | [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md) | Ce que le mode hors-ligne autorise et interdit de stocker localement |
@@ -88,8 +88,8 @@
 | [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md) | Problèmes ouverts sur les interactions entre comptes, options écartées comprises |
 | [idees-post-readiness.md](idees-post-readiness.md) | File d'attente produit tenue à jour |
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
-| [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | ⚠️ **Proposition non implémentée** (étude de conception) |
-| [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | ⚠️ **Proposition non implémentée** — listes de diagnostics, en remplacement des variables `diagnostic_1/2/3` |
+| [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
+| [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | 🟢 **Implémentée** (L20 à L25, 2026-08-18) — listes de diagnostics : saisie, export, cohortes, hors-ligne. Son **§12 seul** reste une cible non implémentée, close le 2026-08-19 |
 | [brief-audit-prochain.md](brief-audit-prochain.md) | Cadrage du prochain audit |
 | [strategie-produit-post-mvp.md](strategie-produit-post-mvp.md) · [-claude.md](strategie-produit-post-mvp-claude.md) · [-synthese.md](strategie-produit-post-mvp-synthese.md) | 🗄️ Études de marché datées (juillet) + synthèse d'arbitrage |
 
@@ -133,10 +133,10 @@
 |---|---|
 | [../README.md](../README.md) | Mise en route, structure du dépôt, sécurité en bref |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Flux Git (`main`/`develop`), releases, spécificités du dépôt |
-| [../CLAUDE.md](../CLAUDE.md) · [../AGENTS.md](../AGENTS.md) | Instructions permanentes pour les agents de développement |
+| [../CLAUDE.md](../CLAUDE.md) | Instructions permanentes pour les agents de développement |
 | [../supabase/security-definer-allowlist.json](../supabase/security-definer-allowlist.json) | Inventaire normatif des fonctions privilégiées (source, pas doc) |
 
 ---
 
-*Index vérifié le 17 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
+*Index vérifié le 19 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
 dans `docs/`.*

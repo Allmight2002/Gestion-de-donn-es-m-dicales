@@ -14,7 +14,7 @@
 **Avant de lancer deux lots en même temps**, vérifier le tableau de
 [`lots-paralleles.md`](lots-paralleles.md) : deux lots qui touchent le même
 fichier produiront un conflit de fusion, même si leurs sujets n'ont aucun
-rapport. **L14, L16, L20, L26 et L31 doivent tourner seuls.**
+rapport. **L14, L16, L20 et L31 doivent tourner seuls.** (L26 est clos ; voir plus bas.)
 
 > **Collisions à connaître avant d'ouvrir un thread L20 à L26** : **L21** touche les deux fichiers
 > de **L4** et l'un de ceux de **L13** ; **L23** touche les deux fichiers de **L18** et **L19**.
@@ -1848,7 +1848,15 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L26 — Regroupement des variables diagnostic_1/2/3 (à lancer SEUL, en dernier)
+## ~~L26 — Regroupement des variables diagnostic_1/2/3~~ — **clos sans exécution le 2026-08-19**
+
+> ⚠️ **Ce prompt ne doit plus être lancé.** La base d'essai qui portait `diagnostic_1/2/3` a été
+> supprimée : la conversion n'a plus d'objet, et le regroupement de la variable est déjà faisable
+> à la main depuis L21. Décision et justification au §12 de
+> [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Le texte est conservé tel
+> quel : il redeviendrait le point de départ correct si un médecin arrivait un jour avec des
+> fiches saisies sous ce contournement.
+
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2509,8 +2517,8 @@ COUVERTURE DE TEST EXIGÉE.
   - web : les opérateurs réapparaissent pour ce type de variable, et une variable
     multivaluée n'offre toujours que has_any et has_none.
 
-Parallélisable avec L24 et L25. JAMAIS avec L26, ni avec un lot qui modifie
-CohortBuilder.tsx.
+Parallélisable avec L24 et L25, mais jamais avec un lot qui modifie
+CohortBuilder.tsx. (L'exclusion avec L26 tombe : L26 est clos sans exécution.)
 
 AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin, à commencer
 par la décision A/B ci-dessus. Ne code rien tant que tu n'as pas mes réponses.

@@ -10,9 +10,11 @@
 > parcours développeur et un parcours sécurité. L'index de toute la documentation est dans
 > [README.md](README.md).
 
-**Instantané vérifié le 10 août 2026** (`npm run db:verify`, 112 migrations rejouées depuis zéro) :
-38 tables · 225 fonctions · 61 politiques RLS · 59 triggers · 7 Edge Functions · ~18 000 lignes de
-TypeScript applicatif (hors tests) · ~15 500 lignes de SQL de migration.
+**Instantané vérifié le 19 août 2026** (`npm run db:verify` : les 129 migrations rejouées
+proprement depuis zéro en ~10 s ; décomptes du schéma `public` repris de
+[schema-etat-final.md](schema-etat-final.md), qui est **généré** et fait foi) :
+42 tables · 261 fonctions · 63 politiques RLS · 63 triggers · 7 Edge Functions · ~21 200 lignes de
+TypeScript applicatif (hors tests) · ~19 400 lignes de SQL de migration.
 
 Spécifications de référence (reconstituées à partir du code réel, versionnées) :
 **[cahier-des-charges-metier.md](cahier-des-charges-metier.md)** (fonctionnel : EF / RG) et
@@ -340,6 +342,13 @@ seule, ou le patient **et** la demande.
 20260729104500_mission_accounts           20260729153000_mission_profile_reconcile
 20260801140238_restore_deleted_base       20260801185149_observation_model_base
 20260811120000_managed_mission_credentials
+
+# Moteur de formulaires (L27–L33) et listes de diagnostics (L20), août 2026
+20260813174655_add_template_field_description   20260814090000_template_field_default_value
+20260814170000_template_field_missing_reasons   20260815090000_template_rule_visibility
+20260815160000_template_field_option_codes      20260815161000_option_key_repair
+20260815180000_template_section                 20260817120000_required_complete_at_complete
+20260818045033_multivalue_terminology_foundation
 ```
 
 ---
@@ -355,7 +364,7 @@ recrée ce que Supabase fournit déjà (`auth.uid()`, rôles) ; il n'est jamais 
 npm test            # tout : RLS (projet db) + frontend (projet web)
 npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
-npm run db:verify   # rejoue les 112 migrations depuis zéro (~13 s) et résume le schéma
+npm run db:verify   # rejoue les 129 migrations depuis zéro (~10 s) et résume le schéma
 npm run test:web -- --coverage   # couverture du projet web
 ```
 
@@ -442,6 +451,14 @@ Le verdict est écrit par la RPC `complete_file_inspection` : statut, métadonn�
 et seul `accepted` ouvre la lecture. Voir [upload-inspection-operations.md](upload-inspection-operations.md)
 et [xlsx-security.md](xlsx-security.md).
 
+> ⚠️ **L'étape ClamAV est en pause depuis le 2026-08-13** sur staging comme sur la cible technique
+> `production` : les fichiers déposés ne sont plus analysés et restent au statut
+> `accepted_client`, sur le seul contrôle navigateur. Le schéma ci-dessus décrit donc la chaîne
+> **complète, telle qu'elle se rejoue en mode `strict`**, pas ce qui tourne aujourd'hui. La
+> variable `INSPECTION_MODE` non renseignée vaut `strict` : l'antivirus ne se désactive jamais par
+> oubli. Décision et conséquences :
+> [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md).
+
 ### 9.2 Import CSV/XLSX
 
 Le client **propose** un mappage colonnes → champs de gabarit ; le serveur **valide et décide**
@@ -463,7 +480,11 @@ Contraintes de sécurité associées : [securite-mode-hors-ligne.md](securite-mo
   groupe, avec ses propres politiques de visibilité.
 - **Référentiel de terminologie** (`terminology_release`, `terminology_concept`) : listes de
   valeurs versionnées ; les données historiques conservent la version sous laquelle elles ont été
-  saisies (`20260728043556_preserve_historical_terminology.sql`).
+  saisies (`20260728043556_preserve_historical_terminology.sql`). Une variable de ce type peut
+  porter **plusieurs valeurs** (`template_field.is_multiple`, depuis
+  `20260818045033_multivalue_terminology_foundation.sql`) : une liste ordonnée de 1 à 50 couples
+  code/libellé, sans doublon de code, dont l'ordre est le rang. Voir
+  [spec-variables-multivaluees.md](spec-variables-multivaluees.md).
 - **Corbeille et restauration de base** (`restore_deleted_base`) : suppression logique réversible.
   ⚠️ Comportement acté : une base restaurée **perd son rattachement au groupe de recherche**
   (le snapshot ne capture que les statuts `raw_submission`/`curation_task`).

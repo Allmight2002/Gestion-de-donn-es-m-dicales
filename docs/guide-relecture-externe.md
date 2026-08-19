@@ -24,10 +24,11 @@ doit l'être. Les comptes de démonstration et leur mot de passe sont volontaire
 [`supabase/seed.sql`](../supabase/seed.sql) : ce sont des comptes de démonstration sur des données
 inventées, pas une fuite.
 
-**État vérifié le 10 août 2026** : `npm run db:verify` → 112 migrations rejouées depuis zéro,
-38 tables, 225 fonctions, 61 politiques RLS, 59 triggers ; `npm run test:web` → **286/286 tests
-verts** (48 fichiers, 51 s) ; 7 Edge Functions. Environ 18 000 lignes de TypeScript applicatif
-(hors tests) et 15 500 lignes de SQL de migration.
+**État vérifié le 19 août 2026** : `npm run db:verify` → **129 migrations rejouées proprement
+depuis zéro** (~10 s) ; schéma `public` : 42 tables, 261 fonctions, 63 politiques RLS,
+63 triggers (décomptes du fichier **généré** [schema-etat-final.md](schema-etat-final.md), qui
+fait foi) ; `npm run test:web` → **467/467 tests verts** (65 fichiers, 108 s) ; 7 Edge Functions.
+Environ 21 200 lignes de TypeScript applicatif (hors tests) et 19 400 lignes de SQL de migration.
 
 > La suite RLS (`npm run test:rls`, projet `db`) n'a **pas** été rejouée pour établir cet
 > instantané — comptez plusieurs dizaines de minutes. Le dernier décompte connu est celui de
@@ -250,8 +251,8 @@ Le dernier audit technique interne
 | Point connu | Statut |
 |---|---|
 | `npm audit` signale des vulnérabilités **transitives d'outillage de build** (aucune en runtime de production) | Suivi ; l'`override` `brace-expansion` a depuis été porté à 5.0.9 |
-| ~~1 test web en échec (`CreateFlows.test.tsx`)~~ | **Corrigé depuis.** Vérifié le 2026-08-10 : `npm run test:web` → **286/286 tests, 48/48 fichiers**, en 51 s |
-| Fichiers parasites `stdout` et `tsc_output.txt` à la racine | Connu, à nettoyer |
+| ~~1 test web en échec (`CreateFlows.test.tsx`)~~ | **Corrigé depuis.** Revérifié le 2026-08-19 : `npm run test:web` → **467/467 tests, 65/65 fichiers**, en 108 s |
+| ~~Fichiers parasites `stdout` et `tsc_output.txt` à la racine~~ | **Absents** le 2026-08-19 : ni suivis par git, ni présents dans un checkout neuf |
 | Une base restaurée depuis la corbeille **perd son rattachement au groupe de recherche** | Comportement acté, à documenter dans la spec |
 | `handle_new_user` lit le rôle dans `raw_app_meta_data` alors que Supabase écrit `app_metadata` ensuite | Défaut réel **documenté dans la migration**, compensé par `reconcile_mission_profile` |
 | L'administrateur du serveur peut lire la base | Limite assumée du MVP (§4.1) |

@@ -1,6 +1,9 @@
 # Spécification — Observabilité des erreurs et notification des bugs
 
-- Statut : **proposition — non implémentée** (étude de conception, aucune migration créée)
+- Statut : ✅ **implémentée** (lot L11, 2026-08-13) — migrations
+  `20260813170000_client_error_observability.sql` et `20260813200000_client_error_pgcrypto_search_path.sql`,
+  client `src/lib/reportError.ts` / `src/data/clientErrors.ts`, écran `SystemStatus.tsx`,
+  tests `test/client-errors.test.ts`. L'**alerting** (notification sortante) reste rattaché à B5
 - Date : 2026-07-22
 - Demandeur : Dr Mbassi (besoin : être informé automatiquement des bugs en production et de leurs causes)
 - Rattachement : chantier **monitoring (B5)** du rapport `docs/readiness-production-2026-07-19.md`

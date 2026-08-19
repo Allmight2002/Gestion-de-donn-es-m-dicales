@@ -1,7 +1,7 @@
 # Idées produit post-readiness — file d'attente
 
 - Tenu à jour à partir des échanges avec le porteur (Dr Mbassi)
-- Dernière mise à jour : 2026-08-13
+- Dernière mise à jour : 2026-08-19
 
 Cette liste rassemble les **chantiers concrets** identifiés mais **volontairement non commencés**. Elle est distincte des études `docs/strategie-produit-post-mvp*.md` (stratégie de marché et positionnement) : ici, ce sont des évolutions techniques précises, prêtes à être spécifiées puis construites.
 
@@ -27,8 +27,8 @@ antérieur **B3 → B4 → B8 → B1 → B9** sur un même candidat traçable.
 
 | # | Idée | Ampleur | Où c'est bloqué aujourd'hui | Spécification | Statut |
 |---|---|---|---|---|---|
-| 1 | **Comptes de mission** (rôle `saisisseur`) — un médecin confie la saisie d'une seule base à un étudiant, pour une durée limitée, en création seule, révocable | Moyenne (base + Edge + UI) | — | [`spec-comptes-mission.md`](spec-comptes-mission.md) | Spec écrite ; 6 décisions en attente du demandeur |
-| 2 | **Observabilité des erreurs** — être notifié automatiquement des bugs et de leurs causes, sans exposer de donnée patient | Moyenne (front + base + alerting) | Fait partie du blocage monitoring **B5** | [`spec-observabilite-erreurs.md`](spec-observabilite-erreurs.md) | Spec écrite ; 7 décisions en attente du demandeur |
+| 1 | **Comptes de mission** (rôle `saisisseur`) — un médecin confie la saisie d'une seule base à un étudiant, pour une durée limitée, en création seule, révocable | Moyenne (base + Edge + UI) | — | [`spec-comptes-mission.md`](spec-comptes-mission.md) | **Livrée** — base et Edge le 2026-07-29 (`20260729104500_mission_accounts.sql`), identifiant et mot de passe générés puis correction d'identité les 2026-08-11 (L15, L16). Écran `MissionAccounts.tsx` |
+| 2 | **Observabilité des erreurs** — être notifié automatiquement des bugs et de leurs causes, sans exposer de donnée patient | Moyenne (front + base + alerting) | Fait partie du blocage monitoring **B5** | [`spec-observabilite-erreurs.md`](spec-observabilite-erreurs.md) | **Livrée** (L11) — `client_error_log` le 2026-08-13 (`20260813170000_client_error_observability.sql`), remontée bornée côté client (`src/lib/reportError.ts`) et écran `SystemStatus.tsx`. L'**alerting** proprement dit reste rattaché à B5 |
 | 3 | **Bouton de suppression de base** — surface dans l'interface la suppression déjà existante côté serveur | Petite (surtout UI) | — | *(à spécifier si besoin)* | **Livrée** : suppression avec motif (`BaseSettings.tsx:121`), corbeille et restauration (`Dashboard.tsx:259`). Reste la **purge définitive**, qui n'existe nulle part → défaut **D10** |
 | 4a | **Registre « Diagnostic urgences » (noyau)** — base à listes contrôlées (diagnostic, motif, issue) pour produire des diagnostics analysables | **Nulle (configuration, pas de code)** | — | *(canevas à préparer)* | Signal terrain fort (directrice des urgences, Tchad) ; faisable dès maintenant en données fictives |
 | 4b | **Terminologie diagnostique (programme)** — typeahead searchable, IDs stables, synonymes, attributs par diagnostic, CIM | Grande (sous-système + UI) | Modèle actuel plat, pas de référentiel gouverné | *(cadrée en séance le 2026-07-26)* | **Lancée** : structure du référentiel livrée (T1) ; contenu, type de champ et interface à suivre |

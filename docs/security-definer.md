@@ -2,22 +2,24 @@
 
 La liste normative se trouve dans
 [`supabase/security-definer-allowlist.json`](../supabase/security-definer-allowlist.json). Elle
-rattache chacune des **94** signatures exécutables par le rôle `authenticated` à une justification
-bornée, en sept catégories (état vérifié le 2026-08-10) :
+rattache chacune des **110** signatures exécutables par le rôle `authenticated` à une justification
+bornée, en huit catégories (décompte relu dans l'inventaire le 2026-08-19) :
 
 | Catégorie | Signatures | Objet |
 |---|---:|---|
-| `authorization-policy-helper` | 29 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
-| `clinical-curation-rpc` | 19 | Commandes cliniques et de curation |
-| `access-and-base-administration-rpc` | 14 | Administration des accès et des bases |
-| `template-administration-rpc` | 11 | Administration des gabarits |
-| `audited-sensitive-read` | 10 | Lectures sensibles tracées |
+| `authorization-policy-helper` | 30 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
+| `clinical-curation-rpc` | 22 | Commandes cliniques et de curation |
+| `template-administration-rpc` | 17 | Administration des jeux de variables |
+| `access-and-base-administration-rpc` | 16 | Administration des accès et des bases |
+| `audited-sensitive-read` | 12 | Lectures sensibles tracées |
 | `import-idempotence-concurrency-rpc` | 7 | Import, idempotence, concurrence |
 | `file-inspection-rpc` | 4 | Inspection des fichiers déposés |
+| `client-error-observability-rpc` | 2 | Remontée bornée des erreurs client |
 
-Les fonctions réservées à `service_role` (par exemple `mission_account_lookup`,
-`reconcile_mission_profile`) sont **volontairement absentes** de l'inventaire : n'y figurent que
-les signatures exécutables par un utilisateur authentifié.
+Les **11** signatures réservées à `service_role` (par exemple `mission_account_lookup`,
+`reconcile_mission_profile`) sont **volontairement absentes** de ce décompte : n'y figurent que
+les signatures exécutables par un utilisateur authentifié. Elles ont leur propre section
+`serviceRole` dans l'inventaire.
 
 Ce nombre n'est pas une cible à conserver. Toute nouvelle fonction, surcharge,
 suppression ou modification de signature fait échouer le contrôle jusqu'à une
