@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260818045033_multivalue_terminology_foundation.sql`
-- Tables : 42 · Policies RLS : 63 · Triggers : 63 · Fonctions : 261
+- Dernière migration incluse : `20260819103000_export_completeness_filter.sql`
+- Tables : 42 · Policies RLS : 63 · Triggers : 63 · Fonctions : 263
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1019,6 +1019,7 @@ Triggers :
 | enforce_template_field_default_value | — | INVOKER | plpgsql |
 | enforce_template_field_missing_reasons | — | DEFINER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
+| export_incomplete_records | p_cohort_id uuid | INVOKER | sql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | finalize_patient | p_patient_id uuid | DEFINER | plpgsql |
@@ -1094,6 +1095,7 @@ Triggers :
 | log_identity_read | p_patient_id uuid | DEFINER | plpgsql |
 | log_raw_document_read | p_document_id uuid | DEFINER | plpgsql |
 | log_sensitive_read | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid | DEFINER | plpgsql |
+| missing_required_fields | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
 | mission_account_lookup | p_email text | DEFINER | plpgsql |
 | mission_accounts | p_base_id uuid | DEFINER | plpgsql |
 | mission_accounts_owned | p_base_id uuid | DEFINER | plpgsql |

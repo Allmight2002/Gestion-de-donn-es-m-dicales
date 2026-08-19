@@ -540,15 +540,18 @@ impossible depuis un compte médecin.
 
 ### 6.1 L'export bloqué — résolu, mécanisme à connaître
 
-Le refus était un `409 EXPORT_INCOMPLETE`. Mécanisme : l'export ne lit que les lignes
-`validation_status = 'curated'` et non supprimées, puis **compare les ensembles et refuse en bloc**
-si un seul membre manque à l'appel
-([`generate-export/handler.ts:358`](../supabase/functions/generate-export/handler.ts:358)) — refus
-plutôt qu'export silencieusement partiel. **C'est délibéré et doit le rester.**
+Le refus était un `409 EXPORT_INCOMPLETE`. Mécanisme d'alors : l'export ne lisait que les lignes
+`validation_status = 'curated'`, puis comparait les ensembles et refusait en bloc si un seul membre
+manquait à l'appel.
 
-Contournement utile si **seules des rencontres** bloquent : dans « Portée des rencontres », choisir
-« Toutes les rencontres des patients » plutôt que « correspondantes » — cette portée ne lit pas la
-liste figée des rencontres. Attention : le contenu exporté n'est pas le même.
+**Depuis la migration `20260819103000` (décision du 2026-08-17), le statut de validation n'est plus
+la porte de l'export** : une fiche `draft` ou `complete` s'exporte dès lors qu'elle porte ses champs
+obligatoires. Les fiches incomplètes sont écartées et comptées
+(`export_options.excluded_records`), sans jamais faire échouer l'export.
+
+**Ce qui reste délibéré :** la comparaison stricte des ensembles. Un membre de cohorte introuvable
+(supprimé, illisible, mutation concurrente) reste un `409 EXPORT_INCOMPLETE` — un export peut être
+partiel *par décision*, jamais *par accident*.
 
 ### 6.2 Suppression d'une cohorte — livrée le 2026-08-13
 

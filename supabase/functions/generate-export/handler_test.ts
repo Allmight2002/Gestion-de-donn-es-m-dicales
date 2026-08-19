@@ -94,6 +94,8 @@ interface Opts {
   patientRows?: unknown[];
   encounterMemberRows?: Array<{ encounter_id: string }>;
   encounterRows?: unknown[];
+  incompleteRecords?: Array<{ record_kind: string; record_id: string }>;
+  incompleteError?: unknown;
   fromResponder?: (call: FromCall) => DbResult | undefined;
 }
 
@@ -126,6 +128,10 @@ function deps(opts: Opts = {}): GenerateExportDeps {
   const userResponder: Responder = (call) =>
     call.kind === 'rpc' && call.rpc === 'can_export_data' ? okResult(opts.canExport ?? true) : okResult(null);
   const adminResponder: Responder = (call) => {
+    // Filtre de completude : par defaut aucune fiche ecartee.
+    if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') {
+      return opts.incompleteError ? errorResult(opts.incompleteError) : okResult(opts.incompleteRecords ?? []);
+    }
     if (call.kind === 'storage') {
       opts.onStorage?.(call.method, call.args);
       if (call.method === 'upload') return opts.uploadError ? errorResult(opts.uploadError) : okResult({ path: 'p' });
@@ -507,6 +513,7 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
   let uploaded: Uint8Array | null = null;
   // On intercepte l'upload via un responder qui capture les octets reellement ecrits.
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       const blob = call.args[1] as Blob;
       return blob.arrayBuffer().then((buf) => {
@@ -587,6 +594,7 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
   };
 
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       const blob = call.args[1] as Blob;
       return blob.arrayBuffer().then((buf) => {
@@ -681,4 +689,84 @@ Deno.test('generate-export: echec insert export_log -> rollback fichier + 500', 
   assertEquals(b.error, 'Journalisation de l export impossible');
   assertEquals(removed.length, 1); // le fichier uploade est bien supprime (rollback)
   assert(!text.includes('insert failed')); // aucun detail interne dans la reponse
+});
+
+// ---------------------------------------------------------------------------
+// La porte de l'export : completude, plus statut de validation (decision 2026-08-17)
+// ---------------------------------------------------------------------------
+
+Deno.test('generate-export: aucune lecture ne filtre sur le statut de validation', async () => {
+  const filtered: string[] = [];
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: body() }),
+      deps({
+        fromResponder: (call) => {
+          for (const op of call.ops.filter((candidate) => candidate.m === 'eq')) {
+            if ((op.a as [string, unknown])[0] === 'validation_status') filtered.push(call.table);
+          }
+          return undefined;
+        },
+      }),
+    ),
+  );
+  assertEquals(status, 200);
+  // Un brouillon complet doit pouvoir sortir : plus aucun `validation_status = 'curated'`.
+  assertEquals(filtered, []);
+});
+
+Deno.test('generate-export: fiche incomplete ecartee, comptee et tracee -- sans faire echouer l export', async () => {
+  let logged: Record<string, unknown> | undefined;
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { cohortId: COHORT, format: 'csv', options: { mode: 'patient' } } }),
+      deps({
+        memberRows: [{ patient_id: 'p1' }, { patient_id: 'p2' }],
+        patientRows: [
+          { id: 'p1', patient_code: 'P001', template_version_id: TV, data: {} },
+          { id: 'p2', patient_code: 'P002', template_version_id: TV, data: {} },
+        ],
+        incompleteRecords: [{ record_kind: 'patient', record_id: 'p2' }],
+        fromResponder: (call) => {
+          if (call.table !== 'export_log') return undefined;
+          logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+          return undefined;
+        },
+      }),
+    ),
+  );
+  assertEquals(status, 200);
+  assertEquals(b.error, undefined);
+  assertEquals(logged?.patient_count, 1);
+  assertEquals((logged?.export_options as { excluded_records?: unknown }).excluded_records, {
+    reason: 'required_fields_missing',
+    patients: 1,
+    encounters: 0,
+  });
+});
+
+Deno.test('generate-export: rencontre incomplete absente du fichier', async () => {
+  let uploaded: Blob | null = null;
+  const d = deps({
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+    encounterRows: [ENCOUNTER, { ...ENCOUNTER, id: 'e2', data: {} }],
+    incompleteRecords: [{ record_kind: 'encounter', record_id: 'e2' }],
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body() }), d));
+  assertEquals(status, 200);
+  const text = await uploaded!.text();
+  assertStringIncludes(text, 'e1');
+  assertEquals(text.includes('e2'), false);
+});
+
+Deno.test('generate-export: filtre de completude illisible -> refus (aucun export non verifie)', async () => {
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body() }), deps({ incompleteError: { message: 'rpc down' } })),
+  );
+  assertEquals(status, 500);
+  assertEquals(b.code, 'EXPORT_READ_FAILED');
+  assertEquals(b.resource, 'completeness');
 });
