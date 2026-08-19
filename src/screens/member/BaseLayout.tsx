@@ -80,8 +80,15 @@ export function BaseLayout() {
     {
       labelKey: 'base.tab_analysis',
       Icon: ChartPie,
-      active: under(`${base}/cohorts`) || under(`${base}/stats`),
+      active: under(`${base}/cohorts`) || under(`${base}/stats`) || under(`${base}/export`),
       subs: [
+        // L'export vient EN PREMIER : c'est ce qu'on vient chercher ici. La constitution de
+        // cohortes reste accessible juste a cote, pour qui en a besoin.
+        {
+          to: `${base}/export`,
+          labelKey: 'base.tab_export',
+          when: !!(isOwner || listing?.permissions.canExportData),
+        },
         {
           to: `${base}/cohorts`,
           labelKey: 'base.tab_cohorts',

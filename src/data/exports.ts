@@ -33,6 +33,8 @@ export interface RecordExportInput {
 export interface ExportRepository {
   recordExport(input: RecordExportInput): Promise<ExportLogItem>;
   listExports(cohortId: string): Promise<ExportLogItem[]>;
+  /** Historique du parcours principal : tous les exports de la base, cohorte par cohorte. */
+  listBaseExports(baseId: string): Promise<ExportLogItem[]>;
   getExportDownloadUrl(exportId: string, storagePath: string): Promise<string | null>;
 }
 
@@ -43,7 +45,7 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { recordExport: fail, listExports: fail, getExportDownloadUrl: fail };
+    return { recordExport: fail, listExports: fail, listBaseExports: fail, getExportDownloadUrl: fail };
   }
 
   return {
@@ -68,6 +70,22 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
         )
         .eq('cohort_id', cohortId)
         .order('exported_at', { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as LogRow[]).map(mapLog);
+    },
+
+    // La RLS reste la meme (`can_export_data` sur la base de la cohorte) : filtrer par base
+    // n'ouvre aucune ligne de plus, cela evite seulement d'exiger une cohorte pour lire son
+    // propre historique.
+    async listBaseExports(baseId) {
+      const { data, error } = await client
+        .from('export_log')
+        .select(
+          'id, format, exported_at, patient_count, encounter_count, file_hash, stored_file_path, generation_mode, export_options',
+        )
+        .eq('base_id', baseId)
+        .order('exported_at', { ascending: false })
+        .limit(20);
       if (error) throw error;
       return ((data ?? []) as LogRow[]).map(mapLog);
     },

@@ -203,6 +203,16 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* Parcours principal : exporter sans avoir a constituer une cohorte. Le meme ecran
+          sert les deux entrees ; l'absence de `cohortId` fige la population a la volee. */}
+      <Route
+        path="/bases/:id/export"
+        element={
+          <ProtectedRoute area="member" globalRoles={['medecin']}>
+            <ExportPanel />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/bases/:id/cohorts/:cohortId/export"
         element={

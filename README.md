@@ -22,9 +22,9 @@ Tests Vitest, RLS et migrations sont rejouables localement ; les compteurs exact
 `npm run manifest`, `npm run schema` et les sorties de test.
 Build PWA OK ; **déployé** (Vercel + Supabase cloud, **données fictives**).
 
-**Instantané vérifié le 10 août 2026** : `npm run db:verify` → 112 migrations rejouées depuis
-zéro, 38 tables, 225 fonctions, 61 politiques RLS, 59 triggers ; `npm run test:web` → 286/286
-tests verts (48 fichiers) ; 7 Edge Functions.
+**Instantané vérifié le 19 août 2026** : `npm run db:verify` → 129 migrations rejouées proprement
+depuis zéro ; schéma `public` : 42 tables, 261 fonctions, 63 politiques RLS, 63 triggers ;
+`npm run test:web` → 467/467 tests verts (65 fichiers) ; 7 Edge Functions.
 
 > Le compteur de triggers de [docs/schema-etat-final.md](docs/schema-etat-final.md) affiche **58** :
 > ce document ne recense que le schéma `public`. Le 59ᵉ est `handle_new_user`, posé sur
@@ -118,7 +118,7 @@ en `curated` entrent dans les cohortes et exports. Le médecin peut supprimer un
 | Base de données | **PostgreSQL 18 + RLS** | Schéma portable vers Supabase tel quel |
 | Backend cible | **Supabase** (Postgres + Auth + RLS + Storage + Edge Functions) | `auth.users` + table `profiles` |
 | Frontend | **React 19 + TypeScript 5 strict + Vite 8 (PWA)** + Tailwind v4 | auth + gating par rôle |
-| Routage / i18n | react-router 8 + i18n maison (fr/en) | 13 routes, `ProtectedRoute` par rôle |
+| Routage / i18n | react-router 8 + i18n maison (fr/en) | 41 routes (44 `<Route>`), `ProtectedRoute` par rôle |
 | Code serveur | **Edge Functions Deno** (`supabase/functions/`) | 7 fonctions ; chemins non pilotables par le navigateur seul |
 | Antivirus | **ClamAV** en service HTTP (`services/clamav-scanner`) | appelé par `inspect-upload` |
 | Tests de sécurité | **Vitest + PostgreSQL embarqué** (`embedded-postgres`) | **sans Docker**, voir ci-dessous |
@@ -187,7 +187,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   ├── i18n/                             # messages fr/en + provider
 │   ├── lib/                              # client Supabase (clé ANON), env, écriture gardée, réseau
 │   ├── pwa/                              # politique d'enregistrement du service worker
-│   ├── routes/                           # routage (13 routes) + ProtectedRoute (gating par rôle)
+│   ├── routes/                           # routage (41 routes) + ProtectedRoute (gating par rôle)
 │   ├── screens/                          # member/ (médecin, curateur, saisisseur) + staff/ (admin)
 │   ├── components/                       # AppShell, ErrorBoundary, palette de commandes, UI
 │   └── main.tsx · App.tsx
@@ -278,10 +278,27 @@ mission, brouillons personnels, soumission sans droit de correction ultérieure.
 **Sous-systèmes ajoutés depuis le MVP** (tous documentés dans
 [docs/architecture.md](docs/architecture.md) §9) : **import** CSV/XLSX par lots (le client
 propose le mappage, le serveur valide et déduplique), **mode hors-ligne** (lecture, file
-d'attente d'écritures, verrou optimiste sur conflit), **groupes de recherche**,
-**comptes de mission**, **référentiel de terminologie**, **corbeille et restauration** de base,
-**modèles d'observation** (transversal / longitudinal / registre d'événements), et la chaîne
+d'attente d'écritures, verrou optimiste sur conflit, et résolution « garder les deux » qui unit
+deux listes plutôt que d'en écraser une), **groupes de recherche**, **comptes de mission**,
+**référentiel de terminologie**, **corbeille et restauration** de base, **modèles d'observation**
+(transversal / longitudinal / registre d'événements), et la chaîne
 **upload → inspection antivirus → quarantaine** côté serveur.
+
+**Moteur de formulaires** (août 2026) : texte d'aide et valeur proposée par variable, raisons de
+valeur manquante choisies variable par variable, affichage conditionnel (la valeur d'un champ
+masqué est effacée, jamais en silence), sections personnalisables, aperçu du formulaire, et code
+interne stable pour chaque option de liste.
+
+**Variables à valeurs multiples** (août 2026) : une variable de type référentiel peut porter une
+**liste ordonnée** de 1 à 50 diagnostics, sans doublon de code, l'ordre valant rang. Saisie,
+export (colonne de libellés, colonne de codes, compteur, colonnes indicatrices, feuille dédiée),
+cohortes (`contient l'un de` / `ne contient aucun de`) et hors-ligne sont couverts. Voir
+[docs/spec-variables-multivaluees.md](docs/spec-variables-multivaluees.md).
+
+> ⚠️ **L'inspection antivirus est en pause depuis le 2026-08-13** sur les environnements
+> déployés : les fichiers déposés ne sont plus analysés côté serveur. La chaîne existe et se
+> rejoue en mode `strict` ; elle n'est simplement pas active. Voir
+> [docs/decision-pause-inspection-2026-08-12.md](docs/decision-pause-inspection-2026-08-12.md).
 
 > **`service_role` jamais dans le frontend** : le client navigateur
 > ([src/lib/supabase.ts](src/lib/supabase.ts)) n'utilise que la clé **ANON** (vérifiable par

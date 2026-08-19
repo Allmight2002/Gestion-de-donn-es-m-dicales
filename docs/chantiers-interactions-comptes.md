@@ -19,8 +19,8 @@
 | # | Chantier | Nature | Décision | État | Où vit le travail |
 |---|---|---|---|---|---|
 | **A** | Justificatifs gérés par le propriétaire | Auth + base + Edge Function + interface | **Tranchée : identifiant choisi, mot de passe généré et chiffré, sans e-mail** (§2.2) | **Clos le 2026-08-11 : local, staging et production technique validés** | SHA `bb99ac72ba46541904d255f7bf129ecd2ad3ca4e` |
-| **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Rien d'implémenté** — première tentative effacée le 2026-08-10 (§3.7) | — |
-| **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Rien d'implémenté** | — |
+| **B** | Écarts d'interface du rôle `saisisseur` (6 points) | Frontend | Tranchée point par point (§3) | **Clos le 2026-08-11** — les six points sont livrés avec le lot L16 (§3.7, journal d'exécution) | L16 (`dc90392` ; SHA promu `fae091a3`) |
+| **C** | Écriture de l'identité par le compte de mission | **Base + spec + UI** | **Tranchée : option A** (§4.4) | **Clos le 2026-08-11** — option A livrée : migration `20260811130000_mission_identity_write_correction.sql`, RPC `update_patient_identity`, interface | L16 (`dc90392` ; SHA promu `fae091a3`) |
 | **D** | Messages d'erreur des Edge Functions inexploitables | Frontend transverse | **Tranchée : utilitaire partagé, phrase du serveur + code** (§5.4) | **Implémenté et vérifié localement le 2026-08-11** (§5.5) | branche `codex/edge-error-messages` |
 | **E** | Cohortes : suppression, carte dynamique, figeage inexportable | Base + frontend | Recommandation posée, non tranchée | Documenté dans la file d'attente | [idees-post-readiness.md](idees-post-readiness.md) |
 
@@ -276,6 +276,11 @@ cause et sa décision. C'est la spécification du lot.
 **Tout est à écrire** : les cinq corrections d'écran (points 1, 3, 4, 5 et le point 2 issu du
 chantier C), leurs tests web dans `src/screens/member/*.test.tsx`, puis la batterie de
 validation.
+
+**Clôture (2026-08-11)** : les six points ont été livrés avec le lot L16, en même temps que le
+chantier C — migration `20260811130000_mission_identity_write_correction.sql`, RPC
+`update_patient_identity` et interface. Preuves locales, CI, staging et production technique dans
+[suivi-execution-feuille-route.md](suivi-execution-feuille-route.md).
 
 ---
 
@@ -535,15 +540,18 @@ impossible depuis un compte médecin.
 
 ### 6.1 L'export bloqué — résolu, mécanisme à connaître
 
-Le refus était un `409 EXPORT_INCOMPLETE`. Mécanisme : l'export ne lit que les lignes
-`validation_status = 'curated'` et non supprimées, puis **compare les ensembles et refuse en bloc**
-si un seul membre manque à l'appel
-([`generate-export/handler.ts:358`](../supabase/functions/generate-export/handler.ts:358)) — refus
-plutôt qu'export silencieusement partiel. **C'est délibéré et doit le rester.**
+Le refus était un `409 EXPORT_INCOMPLETE`. Mécanisme d'alors : l'export ne lisait que les lignes
+`validation_status = 'curated'`, puis comparait les ensembles et refusait en bloc si un seul membre
+manquait à l'appel.
 
-Contournement utile si **seules des rencontres** bloquent : dans « Portée des rencontres », choisir
-« Toutes les rencontres des patients » plutôt que « correspondantes » — cette portée ne lit pas la
-liste figée des rencontres. Attention : le contenu exporté n'est pas le même.
+**Depuis la migration `20260819103000` (décision du 2026-08-17), le statut de validation n'est plus
+la porte de l'export** : une fiche `draft` ou `complete` s'exporte dès lors qu'elle porte ses champs
+obligatoires. Les fiches incomplètes sont écartées et comptées
+(`export_options.excluded_records`), sans jamais faire échouer l'export.
+
+**Ce qui reste délibéré :** la comparaison stricte des ensembles. Un membre de cohorte introuvable
+(supprimé, illisible, mutation concurrente) reste un `409 EXPORT_INCOMPLETE` — un export peut être
+partiel *par décision*, jamais *par accident*.
 
 ### 6.2 Suppression d'une cohorte — livrée le 2026-08-13
 

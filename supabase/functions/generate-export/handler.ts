@@ -361,7 +361,6 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
           .in('id', chunk)
           .eq('base_id', cohort.base_id)
           .is('deleted_at', null)
-          .eq('validation_status', 'curated')
           .order('id', { ascending: true })
           .range(from, to);
         return { data: result.data as PatientRow[] | null, error: result.error, count: result.count };
@@ -376,8 +375,38 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       console.error('generate-export cohort patient scope mismatch');
       throw new ExportCollectionError('inconsistent', 'patients');
     }
+    // La porte de l'export n'est plus le STATUT de validation (`curated`) mais la
+    // COMPLETUDE des champs obligatoires : une fiche `draft` ou `complete` s'exporte des
+    // lors qu'elle porte ses champs requis. La definition de « champ requis manquant »
+    // reste celle de la base (`missing_required_fields`) : une seule regle pour la saisie
+    // et pour l'export. Fail-closed : si la base ne peut pas repondre, l'export echoue --
+    // il n'exporte jamais des fiches dont la completude n'a pas ete verifiee.
+    interface IncompleteRow {
+      record_kind: string;
+      record_id: string;
+    }
+    const { data: incompleteData, error: incompleteErr } = await admin
+      .rpc('export_incomplete_records', { p_cohort_id: cohortId });
+    if (incompleteErr) throw new ExportCollectionError('read', 'completeness');
+    if (!Array.isArray(incompleteData)) throw new ExportCollectionError('inconsistent', 'completeness');
+    const incompletePatientIds = new Set<string>();
+    const incompleteEncounterIds = new Set<string>();
+    for (const row of incompleteData as IncompleteRow[]) {
+      if (typeof row?.record_id !== 'string' || !row.record_id) {
+        throw new ExportCollectionError('inconsistent', 'completeness');
+      }
+      if (row.record_kind === 'patient') incompletePatientIds.add(row.record_id);
+      else if (row.record_kind === 'encounter') incompleteEncounterIds.add(row.record_id);
+      else throw new ExportCollectionError('inconsistent', 'completeness');
+    }
+
+    // Le code d'un patient ecarte reste connu : en mode rencontre le fichier ne porte
+    // aucune donnee permanente, seulement `patient_code` -- une rencontre complete n'a
+    // donc pas a disparaitre parce que la fiche patient est encore incomplete.
     const idToCode = new Map(patientRows.map((patient) => [patient.id, patient.patient_code]));
-    const patients = patientRows.map((patient) => ({
+    const keptPatientRows = patientRows.filter((patient) => !incompletePatientIds.has(patient.id));
+    const excludedPatientCount = patientRows.length - keptPatientRows.length;
+    const patients = keptPatientRows.map((patient) => ({
       code: patient.patient_code,
       templateVersionId: patient.template_version_id,
       data: patient.data ?? {},
@@ -413,7 +442,6 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
             .in('id', chunk)
             .eq('patient.base_id', cohort.base_id)
             .is('deleted_at', null)
-            .eq('validation_status', 'curated')
             .order('id', { ascending: true })
             .range(from, to);
           return { data: result.data as EncounterRow[] | null, error: result.error, count: result.count };
@@ -446,7 +474,6 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
             .in('patient_id', chunk)
             .eq('patient.base_id', cohort.base_id)
             .is('deleted_at', null)
-            .eq('validation_status', 'curated')
             .order('id', { ascending: true })
             .range(from, to);
           return { data: result.data as EncounterRow[] | null, error: result.error, count: result.count };
@@ -465,7 +492,18 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       }
     }
 
-    // Une cohorte de rencontres peut contenir une rencontre curated dont le patient draft
+    // Les rencontres incompletes sont ecartees APRES le controle de presence stricte : un
+    // export peut etre partiel PAR DECISION (exclusions comptees), jamais PAR ACCIDENT
+    // (lecture en echec, mutation concurrente) -- ce dernier cas reste un refus.
+    let excludedEncounterCount = 0;
+    for (const id of [...encMap.keys()]) {
+      if (incompleteEncounterIds.has(id)) {
+        encMap.delete(id);
+        excludedEncounterCount += 1;
+      }
+    }
+
+    // Une cohorte de rencontres peut contenir une rencontre dont le patient
     // n'appartient pas a cohort_member. Son code est charge par lots, dans la meme base, et toute
     // absence est traitee fail-closed.
     const missingParentIds = [
@@ -497,16 +535,23 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       throw new ExportCollectionError('inconsistent', 'encounter_parents');
     }
 
-    const encounters = [...encMap.values()].map((encounter) => ({
-      id: encounter.id,
-      patientCode: idToCode.get(encounter.patient_id) ?? '',
-      encounterDate: encounter.encounter_date,
-      encounterType: encounter.encounter_type,
-      templateVersionId: encounter.template_version_id,
-      ageValue: encounter.age_value,
-      ageUnit: encounter.age_unit,
-      data: encounter.data ?? {},
-    }));
+    const encounters = [...encMap.values()]
+      // En mode PATIENT la ligne est le patient : les rencontres d'un patient ecarte n'ont
+      // pas de ligne d'accueil, et laisser leurs valeurs dans les feuilles annexes
+      // produirait des `patient_code` orphelins. En mode RENCONTRE elles restent exportees :
+      // le fichier ne porte alors aucune donnee permanente, et ces rencontres, elles, sont
+      // completes.
+      .filter((encounter) => options.mode !== 'patient' || !incompletePatientIds.has(encounter.patient_id))
+      .map((encounter) => ({
+        id: encounter.id,
+        patientCode: idToCode.get(encounter.patient_id) ?? '',
+        encounterDate: encounter.encounter_date,
+        encounterType: encounter.encounter_type,
+        templateVersionId: encounter.template_version_id,
+        ageValue: encounter.age_value,
+        ageUnit: encounter.age_unit,
+        data: encounter.data ?? {},
+      }));
 
     const templateVersions = referencedTemplateVersions(patients, encounters);
     if (!templateVersions.length) return json(409, { error: 'Aucune version de gabarit referencee' });
@@ -658,6 +703,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
           generated_by: 'edge:generate-export',
           dictionary_included: format === 'xlsx',
           download_filename: filename,
+          // Trace des exclusions : un export partiel doit rester explicable apres coup,
+          // meme si l'ecran n'en dit rien.
+          excluded_records: {
+            reason: 'required_fields_missing',
+            patients: excludedPatientCount,
+            encounters: excludedEncounterCount,
+          },
         },
         patient_count: patients.length,
         encounter_count: encounters.length,

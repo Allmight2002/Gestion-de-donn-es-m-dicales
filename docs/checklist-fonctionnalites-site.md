@@ -76,7 +76,8 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 ### Session C - Groupes + cohortes + exports + acces
 
 - Groupes de recherche.
-- Cohortes.
+- Export direct (onglet Analyse > Exporter), sans cohorte.
+- Cohortes (voie avancee).
 - Generation export CSV/Excel.
 - Telechargement depuis historique des exports.
 - Profils d'acces.
@@ -231,6 +232,11 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Historique des corrections.
 - Changement de statut : Brouillon, Complete, Finalise.
 - Tentative de sortie sans sauvegarder depuis l'edition.
+- Variable a plusieurs valeurs (diagnostics) : ajouter trois valeurs, verifier leur rang affiche,
+  en retirer une du milieu, verifier que l'ordre des autres ne bouge pas.
+- Verifier qu'un concept deja choisi n'est plus propose dans la recherche.
+- Retirer la DERNIERE valeur : la variable doit redevenir vide, pas afficher une liste vide.
+- Choisir un code de donnee manquante a la place de la liste, puis revenir a une liste.
 
 ### Attendu
 
@@ -261,6 +267,20 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Modifier un champ autorise.
 - Verifier les champs verrouilles si deja utilises.
 - Cloner un modele officiel depuis la bibliotheque.
+- Texte d'aide d'une variable : le saisir, verifier l'icone d'aide au formulaire et la colonne du
+  dictionnaire d'export.
+- Valeur proposee : la definir, verifier qu'elle PREREMPLIT la saisie sans etre ecrite d'office.
+- Raisons de valeur manquante : cocher `refus` et `non documente`, verifier qu'elles seules sont
+  offertes a la saisie.
+- Affichage conditionnel : poser une regle de visibilite, verifier que la valeur d'un champ masque
+  est effacee ET que l'utilisateur en est averti (jamais en silence).
+- Sections personnalisables : creer, renommer, reordonner ; verifier le gel sur version publiee.
+- Apercu du formulaire : ouvrir l'apercu depuis l'editeur de version.
+- Codes d'options : donner un code interne a une option, verifier qu'il apparait a l'export et pas
+  a la saisie.
+- Variable a plusieurs valeurs : sur une variable de type referentiel, cocher
+  `Accepte plusieurs valeurs`. Verifier que la case N'APPARAIT PAS sur les autres types, et
+  qu'elle se verrouille des que la version n'est plus en brouillon.
 
 ### Attendu
 
@@ -268,6 +288,8 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Le nom du jeu n'est pas redondant.
 - Le jeu apparait dans `Mes jeux de variables`.
 - Le clone depuis bibliotheque cree un jeu personnel.
+- Une version publiee refuse toute modification structurelle et invite a creer une version.
+- La case `Accepte plusieurs valeurs` n'est offerte que pour le type referentiel.
 
 CSV conseille :
 
@@ -327,6 +349,8 @@ QA-F1-3,30,M,2026-07-09,65.2,Suivi
 - Reimport d'un fichier corrige.
 - Colonne inconnue -> creation dynamique d'une variable.
 - Conflit de mapping : deux colonnes vers la meme cible.
+- Tenter de mapper une colonne sur une variable de type referentiel, a valeur unique puis a
+  plusieurs valeurs : le choix ne doit PAS prendre, et la colonne garde son mappage precedent.
 
 ### Attendu
 
@@ -334,6 +358,9 @@ QA-F1-3,30,M,2026-07-09,65.2,Suivi
 - Les lignes deja importees sont ignorees, sans doublon.
 - Une colonne inconnue peut devenir variable si l'utilisateur a la permission.
 - Les erreurs sont comprehensibles, sans SQL brut.
+- Les variables de type referentiel ne sont jamais proposees automatiquement comme cible, et les
+  colonnes ecartees pour ce motif sont nommees a l'etape de correspondance ET dans le rapport
+  d'import, distinctement des colonnes ignorees ordinaires.
 
 CSV conseille pour import :
 
@@ -376,7 +403,10 @@ QA-UNK-2,2026-07-08,165
 - Ajouter un filtre patient.
 - Ajouter un filtre rencontre.
 - Tester les operateurs : egal, different, superieur, inferieur, entre, dans.
-- Calculer les effectifs.
+- Sur une variable a plusieurs valeurs : verifier que SEULS `contient l'un de` et
+  `ne contient aucun de` sont proposes, et qu'aucun operateur d'egalite n'apparait.
+- Calculer les effectifs sur une liste vide, a une valeur, puis a plusieurs valeurs.
+- Verifier qu'un patient portant cinq diagnostics compte pour UN patient.
 - Creer une cohorte figee.
 - Reouvrir la cohorte.
 - Verifier le nombre de patients et rencontres.
@@ -391,18 +421,30 @@ QA-UNK-2,2026-07-08,165
 
 ### A tester
 
+- Exporter directement depuis l'onglet Analyse > Exporter, sans passer par une cohorte.
 - Generer un export CSV.
 - Generer un export Excel si disponible.
-- Generer et conserver.
+- Verifier que la forme des lignes est ANNONCEE (base transversale, registre) et DEMANDEE
+  seulement en suivi longitudinal.
 - Verifier le bandeau de succes.
 - Cliquer `Telecharger` dans l'historique des exports conserves.
 - Verifier le fichier dans le dossier de telechargements.
 - Ouvrir le fichier et verifier son contenu.
 - Re-telecharger depuis l'historique.
+- Sur une base portant une variable a plusieurs valeurs, verifier dans le fichier :
+  - la colonne principale (libelles separes par `; `) ;
+  - la colonne de codes ;
+  - la colonne `nb__...`, VIDE et non `0` en presence d'un code de donnee manquante ;
+  - les colonnes indicatrices `has__...` en `0/1` ;
+  - la feuille dediee (une ligne par valeur, avec son rang) ;
+  - la ligne `is_multiple` au dictionnaire.
+- Exporter une base melangeant d'anciennes rencontres et des rencontres saisies apres le passage
+  a plusieurs valeurs.
 
 ### Attendu
 
 - Le fichier se telecharge vraiment.
+- AUCUNE cellule ne contient `[object Object]`.
 - Les donnees identifiantes ne sont pas presentes.
 - Les documents bruts ne sont pas presents.
 - Le telechargement depuis historique passe par l'Edge Function signee.
@@ -570,12 +612,18 @@ Ce parcours est distinct des invitations entre medecins ci-dessus. Il n'utilise 
 - Repasser en ligne.
 - Synchroniser.
 - Tester conflit de version si possible.
+- Conflit portant sur une liste de diagnostics, depuis deux appareils : verifier que l'issue
+  `garder les deux` est proposee, que l'apercu annonce le nombre de valeurs recuperees, et que le
+  resultat ecrit correspond exactement a cet apercu.
+- Conflit ne portant que sur des champs a valeur unique : l'issue `garder les deux` ne doit PAS
+  etre proposee.
 
 ### Attendu
 
 - Lecture hors ligne sans identite.
 - Ecritures en file d'attente.
 - Conflits visibles et resolubles.
+- `garder les deux` n'apparait que lorsqu'elle sauve reellement au moins une valeur.
 - Pas de donnees d'une autre base dans le cache.
 
 ## 22. Cooperation a deux comptes

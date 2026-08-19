@@ -2922,3 +2922,83 @@ L26 (regroupement de `diagnostic_1/2/3`, à lancer seul et en dernier), seul lot
 encore ouvert après L24. S'y ajoutent le filtrage des diagnostics unitaires (L34, opérateur
 serveur), l'import réel des diagnostics, et — pour qui voudra le pousser — la détection d'un
 troisième écrivain à la résolution d'un conflit.
+
+## Lot L26 — Regroupement de `diagnostic_1/2/3` : clos sans exécution (2026-08-19)
+
+**Aucun code. Aucune migration.** Le lot est clos parce qu'il n'a plus d'objet, et la
+documentation vivante a été rafraîchie dans la foulée.
+
+### Pourquoi le lot s'arrête avant d'avoir commencé
+
+L26 était le seul lot de la famille « listes de diagnostics » à toucher des **données déjà
+enregistrées**. Son objet : regrouper `diagnostic_1`, `diagnostic_2` et `diagnostic_3` en une
+variable multivaluée, puis — opération distincte et facultative — convertir les enregistrements
+existants.
+
+À l'ouverture du lot, le porteur a signalé que **la base qui portait ces trois variables était une
+base d'essai, supprimée depuis**. Deux constats en découlent, vérifiés dans le code avant de
+décider :
+
+1. **L'opération (b), la conversion, n'a plus rien à traiter.** Écrire un outil de conversion de
+   masse — la surface la plus dangereuse du produit, celle qui réécrit des fiches déjà saisies —
+   pour un jeu de données inexistant aurait produit du code jamais exercé sur un cas réel.
+2. **L'opération (a), le regroupement, est déjà faisable à la main** depuis L21 : `createNextVersion`
+   (bouton « nouvelle version » de `TemplateVersionEditor`), `deleteField` sur les trois variables,
+   puis `addField` avec la case `isMultiple` de `FieldForm`. Quatre gestes ; L26 n'y aurait ajouté
+   qu'un raccourci.
+
+Décision du porteur : **clore en documentant**, plutôt que livrer un outil sans emploi ou laisser
+le lot ouvert indéfiniment. `diagnostic_1/2/3` n'apparaissait d'ailleurs **nulle part dans le
+code** — uniquement dans la documentation.
+
+### Ce qui n'existe pas, et qu'il ne faut pas croire disponible
+
+- Aucune fonction d'aperçu ni de conversion pour les listes de diagnostics.
+- La contrainte `source` de `field_change_log` **n'a pas été élargie** : elle porte toujours ses
+  six valeurs (`direct_entry`, `curation_validation`, `curation_finalization`,
+  `manual_correction`, `import`, `option_key_repair`).
+- Aucun écran de regroupement.
+
+Les exigences (aperçu en lecture seule, opt-in, transactionnel par enregistrement, idempotent,
+journalisé, valeur non résoluble bloquante) sont **conservées** au §12.1 de
+[`spec-variables-multivaluees.md`](spec-variables-multivaluees.md), avec le modèle à suivre :
+`20260815161000_option_key_repair.sql` (L30) réalise déjà la même figure sur les listes d'options.
+Une seule exigence de L26 n'y a pas d'équivalent — le rattachement de l'enregistrement à la
+nouvelle version de gabarit — et la spécification recommande d'exiger une version **publiée**,
+donc immuable, avant d'y rattacher des données.
+
+**La famille « listes de diagnostics » (L20 à L26) est close.**
+
+### Rafraîchissement de la documentation vivante
+
+Demandé dans la foulée par le porteur. Seuls des faits **vérifiables** ont été corrigés ; aucune
+preuve datée (audits, validations de staging, exercices de reprise) n'a été retouchée — ces
+documents valent à leur date.
+
+| Document | Ce qui était faux | Corrigé en |
+|---|---|---|
+| `architecture.md` | Instantané du 10 août : 112 migrations, 38 tables, 225 fonctions, 61 policies, 59 triggers, ~18 000 lignes TS, ~15 500 lignes SQL | 129 migrations, 42 tables, 261 fonctions, 63 policies, 63 triggers, ~21 200 lignes TS, ~19 400 lignes SQL ; migrations récentes ajoutées à la carte ; `is_multiple` mentionné au §9.4 |
+| `security-definer.md` | **94** signatures en **sept** catégories (état du 10 août) | **110** en **huit** catégories, décomptes relus dans l'inventaire ; les 11 signatures `service_role` explicitées |
+| `README.md` (index) | `spec-variables-multivaluees.md` marquée « Proposition non implémentée » | Marquée implémentée (L20 à L25) ; seul son §12 reste une cible close |
+| `guide-relecture-externe.md` | Mêmes chiffres périmés du 10 août | Alignés sur l'instantané du 19 août |
+| `checklist-fonctionnalites-site.md` | Aucune couverture des lots L20 à L25 ni L27 à L33 | Ajouts aux sections 9, 10, 12, 14, 15 et 21 |
+| `lots-paralleles.md` · `prompts-lots.md` | L20 à L25 encore « à faire », L26 « à lancer seul, en dernier » | L20 à L25 marqués livrés avec leurs PR ; L26 marqué clos ; le prompt L26 porte un bandeau « ne plus lancer » |
+
+Le décompte des migrations vient de `npm run db:verify` ; ceux du schéma de
+`docs/schema-etat-final.md`, qui est **généré** et fait foi. L'écart entre les deux outils sur les
+triggers (64 contre 63) s'explique : `db:verify` compte tous les triggers non internes, la
+génération se limite au schéma `public`. C'est le chiffre du schéma `public` qui est retenu.
+
+### Validation
+
+Lot **documentaire** : ni code applicatif, ni migration, ni test touché. Les chiffres écrits dans
+la documentation ont malgré tout été **mesurés**, pas recopiés :
+
+- `npm run db:verify` : **129 migrations rejouées proprement depuis zéro** en 9,8 s ;
+- `npm run test:web` : **65 fichiers, 467/467 tests verts** en 108 s ; suite complète mesurée par
+  la CI (job `build-test`) : **134 fichiers, 1256/1256 tests verts** en 121 s ;
+- décomptes du schéma `public` (42 tables, 261 fonctions, 63 policies, 63 triggers) relus dans
+  `docs/schema-etat-final.md`, qui est généré ;
+- décompte des fonctions privilégiées (110 en huit catégories, plus 11 `service_role`) relu dans
+  `supabase/security-definer-allowlist.json` ;
+- lignes de code comptées dans `src/` (hors tests) et `supabase/migrations/`.

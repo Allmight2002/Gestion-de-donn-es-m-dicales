@@ -6,13 +6,15 @@
   [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)
 - **Révisé le 2026-08-13** : sept prompts ajoutés (L27 à L33), le reste des améliorations du
   moteur de formulaires
+- **Révisé le 2026-08-18** : trois prompts ajoutés (L35 à L37) — variables calculées, parité
+  d'export des listes à choix multiples, feuille de fréquences
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
 **Avant de lancer deux lots en même temps**, vérifier le tableau de
 [`lots-paralleles.md`](lots-paralleles.md) : deux lots qui touchent le même
 fichier produiront un conflit de fusion, même si leurs sujets n'ont aucun
-rapport. **L14, L16, L20, L26 et L31 doivent tourner seuls.**
+rapport. **L14, L16, L20 et L31 doivent tourner seuls.** (L26 est clos ; voir plus bas.)
 
 > **Collisions à connaître avant d'ouvrir un thread L20 à L26** : **L21** touche les deux fichiers
 > de **L4** et l'un de ceux de **L13** ; **L23** touche les deux fichiers de **L18** et **L19**.
@@ -23,6 +25,9 @@ rapport. **L14, L16, L20, L26 et L31 doivent tourner seuls.**
 > touché par L27, L28, L30, L31 et L33 ; `exportContract.ts` par L27, L30, L31, L32 et L33. Une
 > seule session à la fois sur le moteur de formulaires. **Seul L29 échappe à la règle** : il
 > n'ouvre que son propre écran et tourne en parallèle de n'importe quoi.
+
+> **L35, L36 et L37 écrivent tous dans `exportContract.ts`**, comme L22 : c'est une seconde file
+> d'attente. Les prendre dans l'ordre — L35, puis L36, puis L37 — et jamais deux ensemble.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
@@ -1843,7 +1848,15 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L26 — Regroupement des variables diagnostic_1/2/3 (à lancer SEUL, en dernier)
+## ~~L26 — Regroupement des variables diagnostic_1/2/3~~ — **clos sans exécution le 2026-08-19**
+
+> ⚠️ **Ce prompt ne doit plus être lancé.** La base d'essai qui portait `diagnostic_1/2/3` a été
+> supprimée : la conversion n'a plus d'objet, et le regroupement de la variable est déjà faisable
+> à la main depuis L21. Décision et justification au §12 de
+> [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Le texte est conservé tel
+> quel : il redeviendrait le point de départ correct si un médecin arrivait un jour avec des
+> fiches saisies sous ce contournement.
+
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2504,8 +2517,8 @@ COUVERTURE DE TEST EXIGÉE.
   - web : les opérateurs réapparaissent pour ce type de variable, et une variable
     multivaluée n'offre toujours que has_any et has_none.
 
-Parallélisable avec L24 et L25. JAMAIS avec L26, ni avec un lot qui modifie
-CohortBuilder.tsx.
+Parallélisable avec L24 et L25, mais jamais avec un lot qui modifie
+CohortBuilder.tsx. (L'exclusion avec L26 tombe : L26 est clos sans exécution.)
 
 AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin, à commencer
 par la décision A/B ci-dessus. Ne code rien tant que tu n'as pas mes réponses.
@@ -2529,6 +2542,388 @@ l'application déployée une cohorte « Diagnostic n'est pas X » sur une variab
 valeur unique, puis vérifié qu'elle EXCLUT les patients portant X — exactement le
 cas qui, avant ce lot, les incluait tous en silence. Tu ne t'arrêtes pas avant.
 Si une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+## L35 — Variables calculées : arithmétique définie par l'utilisateur
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L35 » de
+docs/lots-paralleles.md.
+
+CE LOT AJOUTE UNE CALCULATRICE, PAS DES FORMULES. L'utilisateur écrit lui-même
+le calcul dans son gabarit : duree_sejour = date_sortie − date_entree. Nous ne
+livrons aucune formule clinique toute faite — ni IMC, ni Glasgow, ni clairance.
+Si tu te surprends à coder un score, tu as quitté le lot.
+
+LE CHOIX STRUCTURANT, déjà arrêté : le résultat n'est JAMAIS stocké. Il n'est
+écrit ni dans encounter.data ni dans patient.data, et aucune RPC ne le calcule.
+Il est recalculé à l'affichage et à l'export. La raison est vérifiable dans le
+dépôt : src/domain/export.ts n'est qu'un ré-export de
+supabase/functions/generate-export/exportContract.ts, donc le front et l'Edge
+Function de production lisent le MÊME module TypeScript. Un évaluateur posé là
+tourne à l'identique aux deux endroits, et le hors-ligne fonctionne sans travail
+supplémentaire. Ne déplace pas ce calcul en PL/pgSQL : ce serait une seconde
+implémentation de la même sémantique sur des valeurs cliniques.
+
+LA DÉCISION À PRENDRE AVANT DE CODER — pose-la-moi, ne tranche pas seul. La
+formule appartient-elle à la VERSION de gabarit, comme les autres attributs
+d'une variable ?
+
+  A. Oui. Une fiche saisie sous l'ancienne version garde le résultat de
+     l'ancienne formule. Cohérent avec la complétude, qui évalue déjà chaque
+     dossier contre sa propre version. MAIS corriger une formule fausse ne
+     répare pas le passé.
+
+  B. Non. La formule est unique et toute correction s'applique rétroactivement.
+     Les résultats déjà lus et cités changent alors sans préavis.
+
+Ma recommandation est A. Attends ma réponse.
+
+PÉRIMÈTRE.
+
+1. MIGRATION ADDITIVE : une colonne « formula » NULLABLE sur template_field. Ne
+   modifie aucune migration existante. La formule est VALIDÉE au moment où la
+   variable est enregistrée — opérandes existants, types compatibles, syntaxe
+   acceptée — sur le modèle de default_value (L28, migration
+   20260814090000_template_field_default_value.sql). Une formule invalide est
+   refusée à l'enregistrement du gabarit, pas découverte à la saisie.
+
+2. GRAMMAIRE FERMÉE, et rien de plus : + − × ÷ entre variables number/integer
+   et constantes littérales, plus date − date qui rend un nombre de jours
+   (durée de séjour, âge à l'inclusion). Pas de condition, pas d'imbrication,
+   pas d'appel de fonction. Les opérandes sont des variables SAISIES du même
+   gabarit : une variable calculée ne peut pas en référencer une autre. Cette
+   interdiction SUPPRIME la détection de cycles au lieu de la coder — ne
+   l'assouplis pas « pour rendre service ».
+
+3. ÉVALUATEUR dans exportContract.ts, type de sortie DÉDUIT et non choisi :
+   number en général, nombre entier de jours pour date − date.
+
+4. VALEURS MANQUANTES. Si un opérande est absent, ou porte l'un des cinq codes
+   (non_fait, inconnu, non_applicable, refus, non_documente), le résultat est
+   ABSENT — jamais zéro. Une division par zéro donne également un résultat
+   absent, ni erreur ni infini. Un zéro fabriqué serait lu comme une mesure.
+
+5. CONSTRUCTEUR (src/screens/staff/FieldForm.tsx) : saisie de la formule, liste
+   des opérandes admissibles, type de sortie affiché.
+
+6. FORMULAIRE (src/screens/member/EncounterFields.tsx) : la variable calculée
+   s'affiche en LECTURE SEULE et se met à jour quand un opérande change. Elle
+   n'est jamais saisissable.
+
+7. REFUS AU MAPPAGE D'IMPORT (src/domain/import.ts) : une variable calculée
+   n'est pas proposée comme colonne cible. Refus explicite, sur le modèle de
+   L24. Une colonne importée serait ignorée en silence, ou contredirait la
+   formule.
+
+8. CONSTRUCTEUR DE COHORTES (src/screens/member/CohortBuilder.tsx) : une
+   variable calculée n'y figure pas, et l'écran dit pourquoi. jsonb_matches
+   compare « p_data ->> field » ; la clé n'existant pas, le filtre serait muet
+   et non faux. Ne cherche pas à le faire marcher : c'est hors périmètre, et
+   c'est ce qui garderait le lot petit.
+
+9. COMPLÉTUDE. base_completeness_stats et base_completion_queue doivent IGNORER
+   les variables calculées. Rien n'étant stocké, elles apparaîtraient sinon à
+   0 % chez tout le monde, dans une file « à compléter » où personne ne peut
+   rien compléter. ATTENTION : PL/pgSQL doit savoir qu'une variable est
+   calculée — un simple test « formula is not null » — mais ne doit JAMAIS
+   évaluer la formule. Cette distinction est la propriété qui tient tout le lot.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - l'évaluateur : les quatre opérations, date − date en jours, division par
+    zéro, opérande absent, et chacun des cinq codes de valeur manquante ;
+  - le MÊME jeu de cas donne le MÊME résultat côté web et côté Deno : c'est la
+    garantie centrale du lot, elle se prouve, elle ne se suppose pas ;
+  - refus d'une formule invalide à l'enregistrement du gabarit — opérande
+    inconnu, type incompatible, référence à une autre variable calculée ;
+  - base : une variable calculée ne compte ni dans la complétude ni dans la
+    file « à compléter » ;
+  - web : lecture seule au formulaire, absence au mappage d'import, absence au
+    constructeur de cohortes.
+
+Ce lot touche FieldForm.tsx, exportContract.ts, import.ts et CohortBuilder.tsx.
+JAMAIS en parallèle de L21, L22, L23, L24 ni L34.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin, à
+commencer par la décision A/B ci-dessus. Ne code rien tant que tu n'as pas mes
+réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as créé sur
+l'application déployée une variable calculée « durée de séjour = date de sortie
+− date d'entrée », puis saisi deux dossiers — l'un complet, l'autre portant
+« non documenté » sur la date de sortie. Tu as vérifié que le premier affiche le
+bon nombre de jours au formulaire ET dans l'export, et que le second laisse la
+valeur VIDE et non zéro, aux deux endroits. Tu ne t'arrêtes pas avant. Si une
+commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+## L36 — Parité d'export des listes à choix multiples
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L36 » de
+docs/lots-paralleles.md.
+
+LE BUT EST L'ANALYSE, PAS LA SYMÉTRIE DU CODE. Celui qui exploite les données
+est le médecin lui-même, occasionnellement un statisticien. Aujourd'hui, un
+champ multiselect sort en DEUX colonnes — libellés et codes joints par « ; »
+(optionCells, supabase/functions/generate-export/exportContract.ts:155). Pour
+compter les dossiers portant un signe, il faut découper la cellule à la main.
+La terminologie multivaluée, elle, sort déjà avec une colonne nb__, des
+colonnes indicatrices has__ en 1/0, et une feuille dédiée au format long.
+
+Les colonnes indicatrices 1/0 sont LE livrable : elles s'analysent directement
+dans Excel, SPSS, Stata ou R, sans jamais toucher au texte. La feuille au format
+long est un confort pour le statisticien. Si l'effort doit être réduit, c'est
+elle qu'on coupe, jamais les indicatrices.
+
+CONSTAT, vérifié dans le code. Cinq portes se ferment successivement, dans
+supabase/functions/generate-export/exportContract.ts sauf mention contraire :
+
+  - columnsForFields (:219) teste « type === 'terminology' » AVANT isMultiple :
+    un multiselect n'atteint jamais la branche multivaluée, il tombe dans
+    isOptionList et repart avec ses deux colonnes ;
+  - assignField (:326) sort par « if (field.type !== 'terminology') return; »
+    avant d'écrire nb__ ;
+  - extractMultivalueCodes (:362) filtre sur isMultiple ;
+  - handler.ts (:576) filtre lui aussi sur isMultiple pour bâtir les feuilles ;
+  - buildMultivalueTable (:542) ne sait lire que isTerminologyList et
+    isTerminologyValue, alors qu'un multiselect stocke un string[] de codes
+    d'option — une forme de valeur qu'elle ne reconnaît pas.
+
+LA DOUBLE GARDE DE columnsForFields EST LE PIÈGE : relâcher isMultiple ne suffit
+pas, puisque le test de type se ferme en amont. Il faut AJOUTER UNE BRANCHE, pas
+assouplir un filtre.
+
+CE QUE TU NE DOIS PAS FAIRE. is_multiple reste réservé au type terminology : la
+contrainte template_field_multiple_terminology_only
+(supabase/migrations/20260818045033_multivalue_terminology_foundation.sql:13-15)
+impose « check (not is_multiple or type = 'terminology') ». NE LA TOUCHE PAS.
+C'est la couche export qui reconnaît le multiselect comme une liste
+multivaluée. Ce lot ne comporte donc NI migration, NI validation serveur, NI
+constructeur, NI instantané hors-ligne. Si tu écris une migration, tu as quitté
+le lot — arrête-toi et dis-le-moi.
+
+LA DERNIÈRE DÉCISION À PRENDRE — pose-la-moi : quand la variable porte un code
+de valeur manquante, nb__ vaut-il 0 ou reste-t-il vide ? Les indicatrices sont
+déjà tranchées à 0 (exportContract.ts:449-450). Le select à valeur unique, lui,
+est HORS de ce lot : il est couvert par L37.
+
+PÉRIMÈTRE.
+
+1. nb__<champ> : le nombre d'éléments cochés.
+
+2. has__<champ>__<code normalisé> en 1/0, sous le MÊME plafond
+   MAX_INDICATOR_CODES (100 codes distincts, :342) et avec la MÊME
+   normalisation normalizeIndicatorSuffix (:344) que la terminologie. Ne
+   réinvente ni l'un ni l'autre.
+
+3. FEUILLE DÉDIÉE au format long (patient_code, encounter_id, rang, code,
+   label), par généralisation de buildMultivalueTable — à qui il faut apprendre
+   la seconde forme de valeur, le string[] de codes d'option.
+
+4. LIGNES DE DICTIONNAIRE pour les nouvelles colonnes.
+
+5. Les libellés viennent de allowed_options via labelOfOption (livré par L30).
+   UN CODE INCONNU RESTE RENDU TEL QUEL : c'est une règle verrouillée par le
+   test exportContract_test.ts:200-205. Dans la feuille longue, il ressortira
+   donc identique en code et en label.
+
+6. Une valeur manquante codifiée met les indicatrices à 0, comme pour la
+   terminologie (:449-450).
+
+7. CORRECTION D'UNE LIGNE, incluse dans ce lot : buildDictionary nomme les
+   indicatrices par leur CODE (label: `${f.label} — ${ind.code}`, :694) alors
+   que IndicatorMeta porte déjà un champ label, renseigné en :399 par
+   « labelByCode.get(code) ?? code ». Le libellé est calculé, transporté, puis
+   ignoré : le médecin lit « Signes — fievre » au lieu de « Signes — Fièvre »,
+   et « Diagnostics — S06.5 » sans son intitulé. Note que cette correction
+   améliore aussi la sortie de la terminologie multivaluée, pas seulement celle
+   du multiselect.
+
+LE TEST À RÉÉCRIRE, PAS À SUPPRIMER. « liste multiple : libelles et codes
+voyagent dans le meme ordre » (exportContract_test.ts:207-220) fige aujourd'hui
+les deux colonnes. Ce qu'il garantit de précieux, c'est l'ORDRE partagé entre
+libellés et codes ; seul le nombre de colonnes attendu change. Garde
+l'assertion d'ordre.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - un multiselect à trois options : les trois colonnes has__ portent bien 1 et
+    0 aux bons endroits, et nb__ compte juste ;
+  - un code inconnu reste rendu tel quel, dans la feuille principale comme dans
+    la feuille longue ;
+  - une valeur manquante codifiée met les indicatrices à 0 ;
+  - au-delà de 100 codes distincts, le champ part dans omittedFieldKeys et le
+    dictionnaire le dit ;
+  - le dictionnaire nomme les indicatrices par leur LIBELLÉ ;
+  - la terminologie multivaluée livrée par L22 sort exactement comme avant —
+    non-régression, ce lot ne doit rien lui changer sauf le libellé du
+    dictionnaire.
+
+EFFET DE BORD À SURVEILLER : le plafond de cellules XLSX. handler.ts compte
+déjà les cellules des feuilles multivaluées (:594) ; généraliser au multiselect
+multiplie les feuilles et rapproche donc le plafond sur les bases larges. Le
+mécanisme existe, c'est son déclenchement qui devient plus probable : vérifie
+qu'il refuse proprement et n'explose pas.
+
+Ce lot écrit dans exportContract.ts. JAMAIS en parallèle de L22, L35 ni L37.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin, à
+commencer par celle sur nb__ ci-dessus. Ne code rien tant que tu n'as pas mes
+réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as exporté depuis
+l'application déployée une base contenant une variable multiselect à trois
+options cochées différemment sur trois dossiers. Tu as ouvert le fichier XLSX,
+vérifié la présence des colonnes has__ et de la feuille dédiée, puis fait la
+somme d'une colonne has__ et retrouvé le compte exact des dossiers concernés.
+Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi telle
+quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+## L37 — Feuille de fréquences prête à l'analyse
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis les fiches « L36 » et
+« L37 » de docs/lots-paralleles.md. L36 doit être fusionné avant de commencer.
+
+L36 donne au médecin des colonnes qu'il peut sommer ; CE LOT LUI DONNE LA SOMME.
+Une feuille « Fréquences » dans le classeur, une ligne par valeur, avec les
+colonnes : variable, code, libellé, n (dossiers portant la valeur),
+dénominateur, %, n_manquants. C'est le tableau de fréquences d'un article,
+prêt à recopier — le geste que l'analyste refait à la main à chaque étude.
+
+LE DÉNOMINATEUR EST TRANCHÉ, n'y reviens pas. Un dossier où la variable ne
+s'applique pas, ou qui porte l'un des cinq codes de valeur manquante (non_fait,
+inconnu, non_applicable, refus, non_documente), SORT du dénominateur et est
+compté dans n_manquants. Deux fièvres sur trois dossiers renseignés font 67 %,
+avec « 1 non documenté » à côté — et non 2 sur 4 = 50 %, qui ferait baisser le
+pourcentage à cause d'une donnée absente plutôt que d'un signe absent. Le
+dénominateur et le nombre de manquants sont DES COLONNES, pas une note de bas de
+page : le pourcentage doit être vérifiable sans quitter la feuille.
+
+L'UNITÉ DE COMPTAGE EST LA LIGNE DE LA FEUILLE PRINCIPALE, et c'est le piège du
+lot. En mode rencontre, une ligne égale une rencontre. En mode patient,
+buildPatientExport ne retient QU'UNE SEULE rencontre par patient — pickEncounter
+avec AggregationRule = 'first' | 'last', exportContract.ts:461 — alors que
+extractMultivalueCodes (:477-478) et buildMultivalueTable (handler.ts:587)
+reçoivent TOUTES les rencontres. Compter sur toutes les rencontres en mode
+patient donnerait à un patient suivi cinq fois un poids de cinq dans un tableau
+dont la feuille principale ne le montre qu'une fois. Les fréquences se calculent
+sur les lignes EFFECTIVEMENT PRODUITES, jamais sur les données d'entrée.
+
+PÉRIMÈTRE.
+
+1. COUVERTURE UNIFORME : select, multiselect, terminologie à valeur unique et
+   terminologie multivaluée. C'est ce qui distingue ce lot de L36 : un select
+   n'a pas besoin d'indicatrices, mais il a autant besoin d'une table de
+   fréquences que les autres.
+
+2. LE PLAFOND DE 100 CODES NE S'APPLIQUE PAS ICI. MAX_INDICATOR_CODES (:342)
+   existe parce qu'une colonne coûte cher ; une ligne ne coûte rien. Une
+   variable écartée des indicatrices par omittedFieldKeys doit QUAND MÊME
+   recevoir ses fréquences — ce lot rend analysables précisément les variables
+   sur lesquelles L36 renonce, ce qui est souvent le cas des diagnostics.
+
+3. VALEURS JAMAIS OBSERVÉES. Pour un select et un multiselect, l'espace des
+   valeurs est connu du gabarit (allowed_options, L30) : une valeur jamais
+   cochée figure avec n = 0, ce qui est une information (« aucun dossier ne
+   porte X »). Pour la terminologie, l'espace est le référentiel entier : seules
+   les valeurs observées sont listées.
+
+4. SUR UNE VARIABLE MULTIVALUÉE, LA SOMME DES POURCENTAGES DÉPASSE 100 %. C'est
+   normal — un dossier porte plusieurs valeurs — mais la feuille doit l'ÉCRIRE,
+   faute de quoi un relecteur y verra une erreur de calcul.
+
+5. XLSX SEULEMENT. Les feuilles annexes n'existent pas en CSV (handler.ts:593-594,
+   et « dictionary_included: format === 'xlsx' » en :659). Un export CSV ne
+   portera pas la feuille de fréquences, et c'est cohérent : le CSV s'adresse à
+   qui sait programmer, précisément le lecteur qui n'a pas besoin de ce lot.
+
+6. Pose le calcul dans un MODULE DÉDIÉ plutôt que dans exportContract.ts : la
+   surface de conflit s'en trouve réduite, conformément au critère de découpage
+   de docs/lots-paralleles.md. handler.ts et le décompte de cellules XLSX
+   restent partagés de toute façon.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - le dénominateur exclut les cinq codes de valeur manquante ET les dossiers où
+    la variable ne s'applique pas, et n_manquants les compte ;
+  - MODE PATIENT : un patient à cinq rencontres pèse UNE unité, pas cinq —
+    c'est le test qui protège de l'erreur la plus grave du lot ;
+  - une variable multivaluée dont les pourcentages somment à plus de 100 % ;
+  - une variable écartée des indicatrices (plus de 100 codes) reçoit quand même
+    ses fréquences ;
+  - un select figure bien dans la feuille ;
+  - une option jamais cochée apparaît avec n = 0 ;
+  - un export CSV ne porte pas la feuille et n'échoue pas pour autant.
+
+Ce lot écrit dans exportContract.ts et handler.ts. JAMAIS en parallèle de L22,
+L35 ni L36.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Le
+dénominateur, lui, est déjà tranché — ne me le repose pas. Ne code rien tant
+que tu n'as pas mes réponses au reste.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as exporté depuis
+l'application déployée une base où au moins un dossier porte « non documenté »
+sur la variable observée. Tu as ouvert la feuille « Fréquences », pris une
+ligne au hasard, et refait son compte à la main sur la feuille de données : le
+n, le dénominateur et le nombre de manquants doivent tomber juste, et le dossier
+« non documenté » doit être HORS du dénominateur. Tu ne t'arrêtes pas avant. Si
+une commande t'est refusée, donne-la-moi telle quelle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```

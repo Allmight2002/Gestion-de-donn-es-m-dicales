@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-14**
+- Établi le 2026-07-27 · **révisé le 2026-08-18**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -34,6 +34,16 @@
 > duplication d'une variable, réorganisation par glisser-déposer, affichage compact du
 > constructeur, versionnement.
 
+> **Révision du 2026-08-18** : un lot est ajouté, **L35** — variables calculées définies par
+> l'utilisateur. Il est découpé dans le chantier « champs calculés » jusqu'ici laissé hors des
+> lots : l'arithmétique que l'utilisateur écrit lui-même a un périmètre ; le langage d'expression
+> complet et le catalogue de scores validés n'en ont toujours pas.
+>
+> **Un second lot est ajouté le même jour, L36**, sur un constat distinct : à l'export, un
+> `multiselect` n'a pas la parité de format de la terminologie multivaluée livrée par L21/L22.
+> **L37** suit le même jour : la feuille de fréquences prête à recopier, qui prolonge L36 vers le
+> résultat au lieu de la matière première.
+
 Le critère de découpage est le **fichier touché**, pas le thème. Deux lots qui
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
 n'ont aucun rapport.
@@ -48,7 +58,7 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L1~~ | ~~Liste d'une base : affichage et bandeau~~ | **Livré le 2026-07-28** | — |
 | ~~L2~~ | ~~Formulaires patient : sections~~ | **Livré le 2026-07-28** | — |
 | ~~L3~~ | ~~Allègement du chargement~~ | **Livré le 2026-07-28** | — |
-| **L4** | Soupape sur le champ diagnostic | `proposalField.ts`, `EncounterFields.tsx`, `TerminologyInput.tsx`, `FieldForm.tsx` | L1, L2, L3, L7 |
+| ~~L4~~ | ~~Soupape sur le champ diagnostic~~ | **Livré le 2026-08-13** (PR #169/#170 ; proposer « Diagnostic absent du référentiel ») | — |
 | ~~L5~~ | ~~Constructeur de règles~~ | **Livré le 2026-07-28** | — |
 | ~~L6~~ | ~~Finition de l'interface~~ | **Livré le 2026-08-09** | — |
 | ~~L7~~ | ~~Protections de branche (B7)~~ | **Livré le 2026-08-01** | — |
@@ -58,27 +68,30 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | ~~L11~~ | ~~Observabilité des erreurs (P3)~~ | **Livré et promu sur `main`** (PR #176, #189, #192, #194) | — |
 | ~~L12~~ | ~~Traitement des propositions~~ | **Livré** (PR #172) | — |
 | ~~L13~~ | ~~Rafraîchissement de la copie locale~~ | **Livré** (PR #180, #181) | — |
-| **L14** | Chargement de la seule langue active | `messages.ts`, `useI18n.ts` | **seul** |
+| ~~L14~~ | ~~Chargement de la seule langue active~~ | **Livré le 2026-08-18** (PR #215, `7fc71b3`) | — |
 | ~~L15~~ | ~~Comptes de mission : identifiant et mot de passe générés~~ | **Livré le 2026-08-11** (`009ed3c`) | — |
 | ~~L16~~ | ~~Compte de mission : création et correction de l'identité~~ | **Livré le 2026-08-11** (`dc90392`, base + interface) | — |
 | ~~L17~~ | ~~Messages d'erreur des Edge Functions~~ | **Livré** (`6a453b9`, `src/lib/edgeFunctionError.ts`) | — |
 | ~~L18~~ | ~~Cohorte dynamique : compteur vivant et « Figer maintenant »~~ | **Livré** (PR #159, #160) | — |
 | ~~L19~~ | ~~Archivage d'une cohorte~~ | **Livré, preuve technique de production** (PR #179, #182, #184, #185, #187) | — |
-| **L20** | Listes de diagnostics : surface base | migration, `test/validation.test.ts`, `test/templates.admin.test.ts`, `src/data/types.ts`, `src/data/templates.ts` | **seul** (prérequis de L21 à L26) |
-| **L21** | Listes de diagnostics : saisie et constructeur | `TerminologyInput.tsx`, `FieldForm.tsx`, `FieldInput.tsx`, `ValueInput.tsx`, `src/domain/validation.ts` | L22, L24, L25 — **jamais avec L4 ni L13** |
-| **L22** | Listes de diagnostics : export | `exportContract.ts`, `handler.ts` et leurs tests Deno | L21, L23, L24, L25 |
-| **L23** | Listes de diagnostics : cohortes | `CohortBuilder.tsx`, `src/data/cohorts.ts` | L21, L22, L24 — **jamais avec L18 ni L19** |
-| **L24** | Listes de diagnostics : refus au mappage d'import | `src/domain/import.ts`, `ImportData.tsx` | L21, L22, L23, L25 |
-| **L25** | Conflit hors-ligne : issue « garder les deux » | `src/data/offline.ts`, `SyncCenter.tsx` | L21, L22, L23, L24 |
-| **L26** | Regroupement des variables `diagnostic_1/2/3` | migration, RPC d'aperçu et de conversion, écran du constructeur | **seul**, en dernier |
-| **L27** | Texte d'aide par variable | migration, `FieldForm.tsx`, `EncounterFields.tsx`, `exportContract.ts` | L29 |
+| ~~L20~~ | ~~Listes de diagnostics : surface base~~ | **Livré le 2026-08-18** (PR #222, `20260818045033_multivalue_terminology_foundation.sql`) | — |
+| ~~L21~~ | ~~Listes de diagnostics : saisie et constructeur~~ | **Livré le 2026-08-18** (PR #224) | — |
+| ~~L22~~ | ~~Listes de diagnostics : export~~ | **Livré le 2026-08-18** (PR #225, après annulation puis restauration — voir le journal d'exécution) | — |
+| ~~L23~~ | ~~Listes de diagnostics : cohortes~~ | **Livré le 2026-08-18** (PR #226, `has_any` / `has_none` seuls) | — |
+| ~~L24~~ | ~~Listes de diagnostics : refus au mappage d'import~~ | **Livré le 2026-08-18** (PR #228, tout `terminology` refusé au mappage) | — |
+| ~~L25~~ | ~~Conflit hors-ligne : issue « garder les deux »~~ | **Livré le 2026-08-18** (PR #229, `mergeKeepBoth` pure) | — |
+| ~~L26~~ | ~~Regroupement des variables `diagnostic_1/2/3`~~ | **Clos sans exécution le 2026-08-19** — la base d'essai qui portait ces variables a été supprimée ; plus rien à convertir. Exigences conservées au §12 de la spécification | — |
+| ~~L27~~ | ~~Texte d'aide par variable~~ | **Livré le 2026-08-13** (consigne de saisie ; `description` ajoutée au Dictionnaire) | — |
 | ~~L28~~ | ~~Valeur par défaut et unicité~~ | **Livré le 2026-08-14** (valeur proposée ; `is_unique` écartée) | — |
-| **L29** | Prévisualisation du formulaire | nouvel écran, `TemplateVersionEditor.tsx` | tous |
+| ~~L29~~ | ~~Prévisualisation du formulaire~~ | **Livré le 2026-08-14** (écran propre, bouton dans l'éditeur de version) | — |
 | ~~L30~~ | ~~Options de liste : code interne stable~~ | **Livré le 2026-08-15** (`allowed_options` fait foi, `allowed_values` conservé en miroir) | — |
 | ~~L31~~ | ~~Sections personnalisables~~ | **Livré le 2026-08-15** (`template_section` rattachée à la version, `section` conservé en miroir du code) | — |
 | ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
 | ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
-| **L34** | Filtre d'une variable Diagnostic à valeur unique | migration (`jsonb_matches`), `CohortBuilder.tsx` | L24, L25 — **jamais avec L26** |
+| **L34** | Filtre d'une variable Diagnostic à valeur unique | migration (`jsonb_matches`), `CohortBuilder.tsx` | L24, L25 (L26 étant clos, sa contrainte d'exclusion tombe) |
+| **L35** | Variables calculées : arithmétique définie par l'utilisateur | migration (`template_field.formula`), `exportContract.ts`, `FieldForm.tsx`, `EncounterFields.tsx`, `import.ts`, `CohortBuilder.tsx` | L25 — **jamais avec L21 à L24 ni L34** |
+| **L36** | Parité d'export des listes à choix multiples | `exportContract.ts`, `exportContract_test.ts`, `handler.ts` | **jamais avec L22 ni L35** |
+| **L37** | Feuille de fréquences prête à l'analyse | `exportContract.ts` (ou module dédié), `handler.ts`, tests Deno | **jamais avec L22, L35 ni L36** |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
 > L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
@@ -133,7 +146,7 @@ traductions voyagent ensemble dans 98 Ko. La correction touche
 `src/i18n/messages.ts`, signalé ci-dessus comme source de conflits : ce lot doit
 tourner **seul**, ou au moins sans aucun lot qui ajoute du texte.
 
-### L4 — Soupape sur le champ diagnostic
+### ~~L4 — Soupape sur le champ diagnostic~~ — **livré le 2026-08-13**
 
 **Idée 6** : étendre au type `terminology` la soupape des listes contrôlées.
 Touche `FieldForm.tsx`, que L9 modifie aussi — ne pas lancer les deux ensemble.
@@ -416,26 +429,29 @@ binaire, où `resolveKeepMine` écrase la valeur de l'autre. Le lot ajoute une t
 réalisant l'union des deux listes par `code`, ordre local puis nouveautés serveur. Fonction de
 domaine pure, testable sans base.
 
-### L26 — Regroupement des variables `diagnostic_1/2/3` (à lancer SEUL, en dernier)
+### ~~L26 — Regroupement des variables `diagnostic_1/2/3`~~ — **clos sans exécution le 2026-08-19**
 
-§12 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). **Seul lot de cette
-famille qui touche des données déjà enregistrées.** À traiter après que tout le reste soit en
-service, et précédé d'une sauvegarde vérifiée.
+§12 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md). Ce lot était le seul de
+la famille à toucher des **données déjà enregistrées**. Il est clos **sans avoir été implémenté** :
+la base qui portait `diagnostic_1`, `diagnostic_2` et `diagnostic_3` était une base d'essai,
+supprimée depuis. Il ne restait rien à convertir.
 
-Deux opérations qui ne doivent jamais être fusionnées : créer une version de gabarit portant la
-variable regroupée (n'affecte que les saisies futures), et convertir les enregistrements existants
-(facultative, explicitement cochée). Une fonction d'aperçu en lecture seule précède l'exécution et
-rend les valeurs non résolubles, les doublons entre `diagnostic_1` et `diagnostic_2`, et les
-enregistrements déjà convertis.
+Décision du porteur, prise le 2026-08-19 après vérification de deux faits :
 
-L'exécution est transactionnelle par enregistrement et idempotente : une reprise après
-interruption ne doit ni dupliquer une valeur ni retraiter un enregistrement. Chaque conversion est
-tracée dans `field_change_log`, dont la contrainte `source` doit accueillir une valeur
-supplémentaire — modification additive d'une contrainte `check` sur une table portant des données.
+- **l'opération (a)**, créer une version de gabarit portant la variable regroupée, **est déjà
+  faisable à la main** depuis L21 — nouvelle version, suppression des trois variables, ajout d'une
+  variable `terminology` avec « Accepte plusieurs valeurs » ; L26 n'y aurait ajouté qu'un
+  raccourci ;
+- **l'opération (b)**, convertir les enregistrements, n'a plus de données à traiter — et c'est la
+  surface la plus dangereuse du produit, celle qui réécrit des fiches déjà saisies.
 
-Surface base : appliquer `meddata-db-safety`.
+Les exigences (aperçu en lecture seule, opt-in, transactionnel par enregistrement, idempotent,
+journalisé, valeur non résoluble bloquante) restent écrites au §12.1 de la spécification, avec le
+modèle de mise en œuvre à suivre — `20260815161000_option_key_repair.sql`, qui réalise déjà la même
+figure sur les listes d'options. La famille « listes de diagnostics » est **close**.
 
-### L27 — Texte d'aide par variable
+
+### ~~L27 — Texte d'aide par variable~~ — **livré le 2026-08-13**
 
 Une variable n'a aujourd'hui qu'un libellé. Rien ne dit **comment** la renseigner, alors que la
 réponse dépend de la définition : « score de Glasgow à l'admission » signifie-t-il le premier score
@@ -476,7 +492,7 @@ Effet de bord assumé du lot : la liste des colonnes recopiées d'une version de
 — dupliquer un gabarit perdait silencieusement toutes les consignes, et `promote_template_to_global`
 perdait en plus les types de rencontre. Cette liste vit désormais dans `copy_template_fields`.
 
-### L29 — Prévisualisation du formulaire
+### ~~L29 — Prévisualisation du formulaire~~ — **livré le 2026-08-14**
 
 Le seul lot de la famille qui n'entre en collision avec rien : il ouvre son propre écran et ne
 touche `TemplateVersionEditor.tsx` que pour y poser un bouton.
@@ -601,13 +617,198 @@ des opérateurs distincts, auquel cas rien ne bouge mais deux syntaxes cohabiten
 ailleurs un **inventaire en lecture seule** des cohortes bâties sur une variable Diagnostic : leur
 population a été calculée avec le défaut.
 
+### L35 — Variables calculées : arithmétique définie par l'utilisateur
+
+L'utilisateur définit une variable dont la valeur est un calcul sur d'autres variables du même
+gabarit : `duree_sejour = date_sortie − date_entree`, `delta_score = score_j7 − score_j0`. Il
+l'obtient aujourd'hui en calculant hors de l'outil, ou en saisissant une colonne redondante qui se
+désynchronise dès qu'un opérande est corrigé.
+
+**Ce lot ne livre aucune formule : il livre la calculatrice.** La formule appartient à celui qui
+définit le gabarit, au même titre que le libellé, les bornes et les valeurs autorisées. C'est ce
+qui sépare ce lot de l'idée A3 « scores automatiques » : livrer un IMC ou un Glasgow, c'est nous
+qui écrivons le calcul, et le registre répond alors de sa version, de sa validité et des droits
+d'usage de l'échelle. Ici, non.
+
+**Périmètre.** `+ − × ÷` entre variables `number`/`integer` et constantes littérales, plus
+`date − date` qui rend un nombre de jours. Rien d'autre : pas de condition, pas d'imbrication, pas
+d'appel de fonction. Les opérandes sont des variables **saisies** du même gabarit — une variable
+calculée ne peut pas en référencer une autre, ce qui **supprime** la détection de cycles au lieu de
+la traiter. Le type de sortie est déduit et affiché par le constructeur, jamais choisi.
+
+**Le résultat n'est jamais stocké**, et c'est ce qui rend le lot petit. `src/domain/export.ts`
+n'est qu'un ré-export de `supabase/functions/generate-export/exportContract.ts` : le front et
+l'Edge Function de production lisent le **même** module TypeScript. Un évaluateur posé là tourne à
+l'identique aux deux endroits, et les « trois implémentations d'une même sémantique » redoutées au
+chantier resté hors des lots tombent à une seule — à la condition exacte que PL/pgSQL n'ait jamais
+à évaluer la formule. Le hors-ligne suit sans travail supplémentaire, l'évaluateur étant déjà
+côté client.
+
+**Le prix, à assumer explicitement** : on ne peut pas bâtir de cohorte sur une variable calculée.
+`jsonb_matches` compare `p_data ->> field`, et la clé n'existe pas. Le filtre serait muet, pas
+faux — mais l'interface doit le dire, sans quoi la variable sera cherchée dans le constructeur de
+cohortes. C'est aussi la porte de sortie du lot : le jour où le filtrage devient nécessaire, un lot
+suivant devra porter la formule en PL/pgSQL et affronter la question du recalcul.
+
+**Valeurs manquantes (L33).** Si un opérande est absent ou porte l'un des cinq codes — `non_fait`,
+`inconnu`, `non_applicable`, `refus`, `non_documente` — le résultat est **absent**, jamais zéro.
+Une division par zéro donne également un résultat absent, ni erreur ni infini. Corollaire à ne pas
+manquer : une variable calculée doit être **exclue de la complétude** (B1) et de la file « à
+compléter » (B2). Rien n'étant stocké, elle y apparaîtrait à 0 % chez tout le monde, et personne
+ne pourrait « aller la compléter ».
+
+**Import.** Une variable calculée ne doit pas être proposée au mappage (`src/domain/import.ts`) :
+la colonne importée serait ignorée en silence, ou contredirait la formule. Refus explicite, sur le
+modèle de L24.
+
+**La décision à trancher avant de coder** : la formule appartient-elle à la version de gabarit,
+comme les autres attributs de variable ? Si oui, corriger une formule fausse ne répare pas les
+fiches saisies sous l'ancienne version — cohérent avec la complétude, qui évalue déjà chaque
+dossier contre sa propre version, mais contre-intuitif pour une valeur qui n'est pas une donnée
+saisie. Si non, toute correction réécrit rétroactivement des résultats déjà lus et cités.
+Recommandation : rattacher à la version, et rendre la republication du gabarit visible.
+
+Taille comparable à L27 ou L28. **Jamais avec L21 à L24 ni L34** : `FieldForm.tsx`,
+`exportContract.ts`, `import.ts` et `CohortBuilder.tsx` sont exactement leurs fichiers.
+
+### L36 — Parité d'export des listes à choix multiples
+
+Un `multiselect` sort en **deux colonnes** — libellés et codes, joints par `; ` (`optionCells`,
+`exportContract.ts:155`). La terminologie multivaluée livrée par L21/L22 en sort avec, en plus, une
+colonne `nb__`, des indicatrices `has__…` en 1/0 et une feuille dédiée au format long. Pour compter
+les dossiers portant un signe, l'analyste doit donc découper une cellule à la main — exactement le
+travail que le format long existe pour éviter.
+
+**Ce n'est pas un oubli, c'est structurel.** Cinq portes se ferment successivement.
+`columnsForFields` (`:219`) teste `type === 'terminology'` **avant** `isMultiple` : un `multiselect`
+n'atteint jamais la branche multivaluée, il tombe dans `isOptionList` et repart avec ses deux
+colonnes. `assignField` (`:326`) sort par `if (field.type !== 'terminology') return;` avant d'écrire
+`nb__`. `extractMultivalueCodes` (`:362`) et la construction des feuilles dans `handler.ts` (`:576`)
+filtrent tous deux sur `isMultiple`. Or `is_multiple` est hors d'atteinte : la contrainte
+`template_field_multiple_terminology_only`
+(`20260818045033_multivalue_terminology_foundation.sql:13-15`) impose
+`check (not is_multiple or type = 'terminology')`. Enfin `buildMultivalueTable` (`:542`) ne sait
+lire que `isTerminologyList`/`isTerminologyValue`, alors qu'un `multiselect` stocke un `string[]` de
+codes d'option — une forme de valeur qu'elle ne reconnaît pas.
+
+**La double garde de `columnsForFields` est le point à ne pas manquer** : relâcher `isMultiple` ne
+suffirait pas, puisque le test de type se ferme en amont. Il faut ajouter une branche, pas assouplir
+un filtre.
+
+L30 avait livré les codes d'option stables (`option_code__`), pas la parité de format — d'où la
+confusion légitime : la moitié visible du travail était faite.
+
+**Décision retenue — option A, la couche export seule.** `is_multiple` reste réservé à la
+terminologie ; c'est `generate-export` qui reconnaît `multiselect` comme une liste multivaluée. Le
+lot ne touche donc **ni migration, ni validation serveur, ni constructeur, ni instantané
+hors-ligne**. Cette propriété vaut d'être protégée : c'est elle qui sépare un lot d'export d'un
+chantier de la taille de L20.
+
+**L'option B — étendre `is_multiple` au `multiselect` — est écartée** : elle exigerait une
+migration, la validation, le constructeur et l'instantané hors-ligne pour un besoin exclusivement
+d'analyse.
+
+**Ce que le lot ajoute** : `nb__<champ>`, les indicatrices `has__<champ>__<code>` en 1/0 sous le
+même plafond `MAX_INDICATOR_CODES` (100 codes distincts, `:342`) et la même normalisation
+`normalizeIndicatorSuffix` (`:344`), une feuille dédiée au format long
+`patient_code/encounter_id/rang/code/label` par généralisation de `buildMultivalueTable`, et les
+lignes de dictionnaire correspondantes. Les libellés viennent de `allowed_options` via
+`labelOfOption` (L30) ; **un code inconnu reste rendu tel quel**, règle verrouillée par le test
+`exportContract_test.ts:200-205` — dans la feuille longue il ressortira donc identique en `code` et
+en `label`. Une valeur manquante codifiée met les indicatrices à 0, comme pour la terminologie
+(`:449-450`).
+
+**Le dictionnaire nomme les indicatrices par leur code, pas par leur libellé.** `buildDictionary`
+écrit `label: ${f.label} — ${ind.code}` (`:694`) alors que `IndicatorMeta` porte déjà un champ
+`label`, renseigné en `:399` par `labelByCode.get(code) ?? code`. Le libellé est donc calculé,
+transporté, puis ignoré : le médecin qui ouvre le dictionnaire lit « Signes — fievre » au lieu de
+« Signes — Fièvre », et sur un diagnostic « Diagnostics — S06.5 » sans son intitulé. Correction
+d'une ligne, à porter par ce lot puisqu'elle est dans la fonction qu'il modifie — en notant qu'elle
+**améliore aussi la sortie de la terminologie multivaluée**, pas seulement celle du `multiselect`.
+
+**Le test à réécrire, pas à supprimer.** « liste multiple : libelles et codes voyagent dans le meme
+ordre » (`exportContract_test.ts:207-220`) fige aujourd'hui les deux colonnes. Ce qu'il garantit de
+précieux, c'est l'**ordre** partagé entre libellés et codes ; seul le nombre de colonnes attendu
+change.
+
+**Points à trancher.** Le `select` à valeur unique reste **exclu de ce lot** : sa colonne
+`option_code__` est déjà analysable telle quelle, et une feuille longue d'une ligne par dossier
+n'apporterait rien. Il est en revanche **couvert par L37**, où une table de fréquences le concerne
+autant que les autres types — le point est donc clos. Reste à fixer la valeur de `nb__` quand la
+variable porte un code de valeur manquante — 0 ou vide — là où les indicatrices sont déjà
+tranchées à 0.
+
+**Effet de bord à surveiller** : le plafond de cellules XLSX. `handler.ts` compte déjà les cellules
+des feuilles multivaluées (`:594`) ; généraliser au `multiselect` multiplie les feuilles et
+rapproche donc le plafond sur les bases larges. Le mécanisme existe, c'est son déclenchement qui
+devient plus probable.
+
+**Jamais avec L22 ni L35** : les trois lots écrivent dans `exportContract.ts`.
+
+### L37 — Feuille de fréquences prête à l'analyse
+
+L36 donne au médecin des colonnes qu'il peut sommer ; ce lot lui donne la somme. Une feuille
+`Fréquences` dans le classeur, une ligne par valeur : `variable`, `code`, `libellé`, `n` (dossiers
+portant la valeur), `dénominateur`, `%`, `n_manquants`. C'est le tableau de fréquences d'un
+article, prêt à recopier — le geste que l'analyste refait à la main à chaque étude.
+
+**Le dénominateur est tranché** (décision du 2026-08-18). Un dossier où la variable ne s'applique
+pas, ou qui porte l'un des cinq codes de valeur manquante (`non_fait`, `inconnu`,
+`non_applicable`, `refus`, `non_documente`), **sort du dénominateur** et est compté dans
+`n_manquants`. Deux fièvres sur trois dossiers renseignés font 67 %, avec « 1 non documenté »
+à côté — et non 2 sur 4 = 50 %, qui ferait baisser le pourcentage à cause d'une donnée absente
+plutôt que d'un signe absent. Le dénominateur et le nombre de manquants sont **des colonnes**, pas
+une note de bas de page : le pourcentage doit être vérifiable sans quitter la feuille.
+
+**L'unité de comptage est la ligne de la feuille principale, et c'est le piège du lot.** En mode
+rencontre, une ligne égale une rencontre. En mode patient, `buildPatientExport` ne retient
+**qu'une seule** rencontre par patient — `pickEncounter` avec `AggregationRule = 'first' | 'last'`
+(`:461`) — alors que `extractMultivalueCodes` (`:477-478`) et `buildMultivalueTable`
+(`handler.ts:587`) reçoivent **toutes** les rencontres. Compter sur toutes les rencontres en mode
+patient donnerait à un patient suivi cinq fois un poids de cinq dans un tableau dont la feuille
+principale ne le montre qu'une fois. Les fréquences se calculent sur les lignes **effectivement
+produites**, jamais sur les données d'entrée.
+
+**Couverture uniforme** : `select`, `multiselect`, terminologie à valeur unique et terminologie
+multivaluée. C'est ce qui distingue ce lot de L36, et ce qui **clot le point laissé ouvert par
+lui** : un `select` n'a pas besoin d'indicatrices, mais il a autant besoin d'une table de
+fréquences que les autres.
+
+**Le plafond de 100 codes ne s'applique pas ici.** `MAX_INDICATOR_CODES` (`:342`) existe parce
+qu'une colonne coûte cher ; une ligne ne coûte rien. Une variable écartée des indicatrices par
+`omittedFieldKeys` doit donc **quand même** recevoir ses fréquences — ce lot rend analysables
+précisément les variables sur lesquelles L36 renonce.
+
+**Valeurs jamais observées.** Pour un `select` et un `multiselect`, l'espace des valeurs est connu
+du gabarit (`allowed_options`, L30) : une valeur jamais cochée peut figurer avec `n = 0`, ce qui
+est une information (« aucun dossier ne porte X »). Pour la terminologie, l'espace est le
+référentiel entier : seules les valeurs observées sont listées.
+
+**Sur une variable multivaluée, la somme des pourcentages dépasse 100 %.** C'est normal — un
+dossier porte plusieurs valeurs — mais la feuille doit l'écrire, faute de quoi un relecteur y
+verra une erreur de calcul.
+
+**XLSX seulement.** Les feuilles annexes n'existent pas en CSV (`handler.ts:593-594`, et
+`dictionary_included: format === 'xlsx'` en `:659`). Un export CSV ne portera donc pas la feuille
+de fréquences, ce qui est cohérent : le CSV s'adresse à qui sait programmer, et c'est précisément
+le lecteur qui n'a pas besoin de ce lot.
+
+Poser le calcul dans un **module dédié** plutôt que dans `exportContract.ts` limiterait la surface
+de conflit, conformément au critère de découpage de ce document ; `handler.ts` et le décompte de
+cellules XLSX restent partagés de toute façon.
+
+**Jamais avec L22, L35 ni L36.**
+
 ## Deux chantiers volontairement laissés hors des lots
 
-**Champs calculés.** Un langage d'expression (`DATEDIFF`, `IF` imbriqués) devrait tourner à
-l'identique en TypeScript, en PL/pgSQL et en Deno — trois implémentations d'une même sémantique sur
-des valeurs cliniques. La bifurcation à trancher d'abord : catalogue fermé de calculs paramétrés,
-ou calcul uniquement à l'export sans jamais être stocké. Tant que ce choix n'est pas fait, le lot
-n'a pas de périmètre. Reste en file d'idées (`idees-fonctionnalites-futures.md` A3).
+**Langage d'expression et catalogue de scores validés.** Le sous-ensemble utile — une
+arithmétique que l'utilisateur écrit lui-même — est sorti d'ici et fait l'objet de **L35**. Ce qui
+reste dehors, ce sont les deux extrémités. D'un côté un langage complet (`DATEDIFF`, `IF`
+imbriqués, conditions), qui devrait tourner à l'identique en TypeScript, en PL/pgSQL et en Deno —
+trois implémentations d'une même sémantique sur des valeurs cliniques. De l'autre un catalogue
+fermé de scores livrés avec leur formule — IMC, Glasgow, clairance : c'est alors nous qui écrivons
+le calcul, et le registre répond de sa version, de sa validité et des droits d'usage de l'échelle.
+Les deux restent en file d'idées (`idees-fonctionnalites-futures.md` A3).
 
 **Groupes répétables.** Plusieurs occurrences portant chacune leurs propres attributs — des
 interventions avec date, type, indication. Le critère de bascule est posé au §2 de
@@ -622,19 +823,19 @@ avant ses lots.
 - **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
 - **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
 
-## Ordre suggéré — état au 2026-08-15
+## Ordre suggéré — état au 2026-08-19
 
 **Niveau atteint.** L1–L19 sont livrés, à l'exception de L14. L11 a été intégré puis promu sur
-`main` (PR #176, #189, correctifs #192 et #194). Dans la famille moteur de formulaires, L27,
-L28, L29, L33, L32 et L30 sont également livrés (PR #191/#193, #197/#198, #199/#200, #201–#204,
-#205–#206 et #207). Cela porte à **vingt-quatre lots livrés/intégrés**.
+`main` (PR #176, #189, correctifs #192 et #194). La famille « moteur de formulaires » (L27 à L33)
+est close depuis le 2026-08-15. La famille « listes de diagnostics » l'est depuis le 2026-08-19 :
+L20 à L25 livrés (PR #222, #224, #225, #226, #228, #229) et **L26 clos sans exécution**. Cela
+porte à **trente lots livrés**, plus un clos sans objet.
 
-**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. La famille
-« moteur de formulaires » est **close** : L27 à L33 sont tous livrés. Le fichier `.freebuff/` non
-suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
+**Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
+`.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-L'ordre suivant reflète la priorité confirmée : terminer la famille moteur de formulaires, puis
-L14 seul, puis la famille diagnostics.
+Restent ouverts : **L14** (chargement de la seule langue active) et les lots d'analyse **L34 à
+L37**, spécifiés mais non implémentés.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -649,13 +850,19 @@ L14 seul, puis la famille diagnostics.
    7. ~~**L31**~~ — sections personnalisables — **livré le 2026-08-15** ; une seule notion (la
       section visuelle), gel total sur version publiée, miroir sur le code.
 2. **L14**, seul, après les autres ajouts de textes i18n.
-3. **Famille « listes de diagnostics »** (L20 à L26), dans cet ordre :
-   1. **L20 seul** — surface base, prérequis de tous les autres ;
-   2. puis en parallèle **L21, L22 et L24** — à condition que **L4 et L13** soient soldés ou non
-      lancés ;
-   3. puis **L23** — à condition que **L18 et L19** soient soldés ou non lancés — et **L25**,
-      qui ne dépend de rien ;
-   4. **L26 seul, en dernier**, après sauvegarde vérifiée.
+3. ~~**Famille « listes de diagnostics »**~~ (L20 à L26) — **close le 2026-08-19** :
+   1. ~~**L20**~~ — surface base — **livré le 2026-08-18** ;
+   2. ~~**L21**, **L22**, **L24**~~ — saisie, export, refus au mappage — **livrés le 2026-08-18** ;
+   3. ~~**L23**~~ et ~~**L25**~~ — cohortes et conflit hors-ligne — **livrés le 2026-08-18** ;
+   4. ~~**L26**~~ — **clos sans exécution le 2026-08-19** : la base d'essai qui portait
+      `diagnostic_1/2/3` a été supprimée, il n'y a plus rien à convertir.
+4. **L35**, après la famille diagnostics : il touche `FieldForm.tsx`, `exportContract.ts`,
+   `import.ts` et `CohortBuilder.tsx`, c'est-à-dire les fichiers de L21, L22, L24 et L23. La
+   contrainte est structurelle et ne déplace aucune priorité.
+5. **L36**, après la fusion de L21 et L22 : sa généralisation de `buildMultivalueTable` suppose
+   la version L22 du fichier. À prendre également après L35, qui écrit dans `exportContract.ts`.
+6. **L37**, après L36 : même fichier, et la feuille de fréquences s'appuie sur l'énumération de
+   codes que L36 généralise au `multiselect`.
 
 > L13, L18 et L19 sont déjà soldés. Après L20, L21, L22 et L24 peuvent donc démarrer ensemble ;
 > L23 et L25 suivent ensuite. Cette famille reste reportée après les formulaires, car L21 et L22

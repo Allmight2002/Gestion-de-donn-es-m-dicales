@@ -111,14 +111,34 @@ exporte des données **sans identité**.
 - **EF-4.** Un **gabarit** définit les **variables** (champs) d'un registre. Il est **versionné** ;
   une version **publiée devient immuable** (reproductibilité scientifique).
 - **EF-5.** Chaque variable porte : libellé, **type** (texte, entier, nombre, date, date-heure,
-  booléen, liste, liste multiple), **portée** (donnée **permanente** du patient / donnée de
-  **rencontre**), `requise`, **valeurs autorisées**, **bornes** min/max, unité, **types de
-  rencontre** concernés, et la gestion des **codes manquants** (`non fait` / `inconnu` /
-  `non applicable`).
+  booléen, liste, liste multiple, **référentiel**), **portée** (donnée **permanente** du patient /
+  donnée de **rencontre**), `requise`, **valeurs autorisées**, **bornes** min/max, unité, **types
+  de rencontre** concernés, et les **raisons de valeur manquante** admises, choisies variable par
+  variable parmi `non fait`, `inconnu`, `non applicable`, `refus` et `non documenté` (L33).
+- **EF-5 bis (texte d'aide, L27).** Une variable porte un **texte d'aide** facultatif qui dit
+  *comment* la renseigner. Il s'affiche au formulaire et figure au **dictionnaire d'export** :
+  c'est là qu'un relecteur extérieur cherche la définition d'une variable.
+- **EF-5 ter (valeur proposée, L28).** Une variable peut porter une **valeur proposée**, qui
+  **préremplit** la saisie sans jamais être écrite d'office. Interdit de proposer une valeur pour
+  une variable clinique dont le défaut orienterait la réponse.
+- **EF-5 quater (plusieurs valeurs, L20 à L25).** Une variable de type **référentiel** peut
+  accepter **plusieurs valeurs** : une liste ordonnée de **1 à 50** couples code/libellé, **sans
+  code en double**, dont l'ordre vaut **rang** — la première valeur est le diagnostic principal.
+  Une liste vide est refusée : l'absence de valeur s'exprime par l'absence de la variable ou par
+  une raison de valeur manquante, qui **remplace** la liste. Réservé au type référentiel : les
+  listes fermées recopiées dans le gabarit relèvent de `liste multiple`. Spécification :
+  [spec-variables-multivaluees.md](spec-variables-multivaluees.md).
+- **EF-5 quinquies (sections et affichage conditionnel, L31, L32).** Les variables se rangent en
+  **sections** définies par le médecin, réordonnables tant que la version est en brouillon. Une
+  **règle de visibilité** peut masquer une variable selon la valeur d'une autre ; la valeur d'un
+  champ ainsi masqué est **effacée, mais jamais en silence** — l'utilisateur en est averti
+  (décision du 2026-08-14).
 - **EF-6.** Des **règles de cohérence** (ex. « si X alors Y requis ») peuvent bloquer une donnée
   incohérente. Elles sont contrôlées (opérateurs en liste blanche).
 - **EF-7.** Un gabarit est **global** (géré par l'admin) ou **personnel** (créé et versionné par le
   médecin propriétaire). Le médecin peut **créer la version suivante** de son gabarit personnel.
+- **EF-7 bis (aperçu, L29).** Le constructeur offre un **aperçu du formulaire** tel qu'il sera
+  saisi, sans écrire de donnée.
 - **RG-8.** Une variable **déjà utilisée** par des données ne peut plus voir son **sens** changer
   (clé, type, portée, requise, bornes, valeurs autorisées…) ni être supprimée ; seuls le libellé,
   la section et l'unité restent modifiables. Pour changer le reste : créer une nouvelle version.
@@ -183,6 +203,13 @@ exporte des données **sans identité**.
   probables vis-à-vis de rencontres **déjà enregistrées** (décision humaine).
 - **RG-12.** L'import **ne rétrograde jamais** un patient déjà `curated`. L'identité importée
   exige la permission d'identité (sinon la ligne est rejetée).
+- **RG-12 bis (variables de référentiel, L24).** L'import **ne prend en charge aucune variable de
+  type référentiel**, à valeur unique comme à plusieurs valeurs : rien ne résout un concept, et le
+  serveur refuserait une chaîne là où il attend un couple code/libellé. Ces cibles ne sont jamais
+  proposées automatiquement, le choix manuel ne prend pas, et les colonnes écartées pour ce motif
+  sont **nommées** à l'étape de correspondance **et** au rapport d'import — distinctement des
+  colonnes ignorées ordinaires. Refus **explicite** plutôt qu'échec serveur opaque en fin
+  d'import.
 
 ### 4.7 Documents cliniques (images, PDF)
 - **EF-22.** Ajout d'un document/image à un patient (libellé obligatoire, **dé-identification
@@ -207,19 +234,51 @@ exporte des données **sans identité**.
 ### 4.9 Cohortes et exports
 - **EF-27.** Constitution de **cohortes** (sélection de patients/rencontres) **dynamiques** ou
   **figées**. Seule une cohorte **figée** est exportable (instantané reproductible).
+- **EF-27 ter (exporter sans démarche, 2026-08-19).** Le parcours principal est **un bouton** :
+  *Analyse › Exporter › Exporter les données*. L'application fige elle-même la population à cet
+  instant, sous un nom daté, puis produit le fichier — la reproductibilité est **conservée**, elle
+  cesse d'être une démarche à la charge du médecin. La constitution de cohortes reste offerte, à
+  côté, pour choisir une population précise ; la case « Inclure uniquement les données vérifiées »
+  y devient un **filtre facultatif, décoché par défaut**, et l'avertissement « cohorte non
+  exportable en l'état » disparaît (il n'a plus d'objet).
 - **EF-28.** Export **CSV / XLSX** d'une cohorte figée, avec **dictionnaire des variables**. Le
   fichier est conservé immuable (empreinte) et **tracé**.
 - **RG-15.** L'export **refuse tout champ identifiant** (liste blanche analytique). Un code
   pseudonymisé est exporté, jamais le nom ni la date de naissance.
+- **EF-28 ter (ce qui entre dans le fichier, 2026-08-19).** L'export ne dépend plus du **statut de
+  validation** : une fiche s'exporte dès lors qu'elle porte ses **champs obligatoires** — une
+  réponse « refus / inconnu / non applicable » compte comme renseignée, un champ masqué n'est pas
+  réclamé. Les fiches incomplètes sont **écartées et comptées**, jamais bloquantes. Une fiche de la
+  cohorte devenue **introuvable** reste, elle, un refus : partiel par décision, jamais par accident.
+- **EF-28 quater (une question de moins, 2026-08-19).** La **forme des lignes** découle du **modèle
+  d'observation** de la base, verrouillé dès la première saisie : une ligne par participant en
+  transversal, une ligne par événement en registre. Le choix (par patient ou par rencontre, avec la
+  règle première/dernière) n'est proposé qu'en **suivi longitudinal**. L'écran ne demande plus la
+  portée des rencontres : la cohorte figée dit déjà lesquelles en font partie.
+- **EF-27 bis (filtrer une liste, L23).** Sur une variable à plusieurs valeurs, la constitution de
+  cohorte n'offre que **« contient l'un de »** et **« ne contient aucun de »**. L'égalité est
+  retirée de l'interface plutôt que de produire un résultat faux en silence. Un patient portant
+  cinq diagnostics compte pour **un patient**.
+- **EF-28 bis (exporter une liste, L22).** Une variable à plusieurs valeurs produit une colonne de
+  **libellés** joints, une colonne de **codes**, un **compteur**, une colonne indicatrice `0/1`
+  par code présent (jusqu'à 100 codes distincts), et une **feuille dédiée** sans perte — une ligne
+  par valeur, avec son rang. Une raison de valeur manquante remplit la colonne principale et
+  laisse le compteur **vide**, jamais `0`, qui signifierait « aucun diagnostic ».
 
 ### 4.10 Mode hors-ligne (application installable / PWA)
 - **EF-29.** Une base peut être rendue **disponible hors-ligne** : un **instantané analytique**
   (jamais l'identité ni les images) est stocké sur l'appareil pour consultation sans réseau.
 - **EF-30.** Les **corrections de rencontres** faites hors-ligne sont mises en file et **rejouées**
   à la reconnexion, via les mêmes contrôles serveur, avec **détection de conflit** (« garder ma
-  version » / « garder la version serveur »).
+  version » / « garder la version serveur » / **« garder les deux »**).
+- **EF-30 bis (garder les deux, L25).** Quand deux appareils ont chacun ajouté une valeur à la
+  même liste, une troisième issue **unit les deux listes** par code plutôt que d'en écraser une.
+  Elle n'est **proposée que si elle sauve réellement au moins une valeur** : un bouton qui
+  promettrait un sauvetage sans l'accomplir serait pire que pas de bouton. L'écran affiche
+  l'aperçu exact de ce qui sera écrit.
 - **RG-16.** Le cache hors-ligne est **cloisonné par compte** (un autre utilisateur du même
-  appareil n'y accède pas), **expire** (7 jours) et est **purgé à la déconnexion**.
+  appareil n'y accède pas), **expire au bout de 24 heures** (`OFFLINE_TTL_MS`, appliqué à la
+  lecture et au démarrage) et est **purgé à la déconnexion**.
 
 ### 4.11 Traçabilité (audit)
 - **EF-31.** Les **actions sensibles** sont tracées dans un **journal infalsifiable** : consultation
