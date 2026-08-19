@@ -40,14 +40,6 @@ const NO_OPS: FilterOp[] = [];
 interface FreezeCandidate {
   cohort: CohortSummary;
   name: string;
-  unvalidatedCount: number;
-}
-
-interface SnapshotWarning {
-  name: string;
-  filter: FilterDefinition;
-  validatedOnly: boolean;
-  unvalidatedCount: number;
 }
 
 function operatorsFor(field: TemplateField | undefined): FilterOp[] {
@@ -89,12 +81,11 @@ export function CohortBuilder() {
   const [counts, setCounts] = useState<{ patientCount: number; encounterCount: number } | null>(null);
   const [name, setName] = useState('');
   const [cohortType, setCohortType] = useState<'dynamic' | 'snapshot'>('snapshot');
-  const [validatedOnly, setValidatedOnly] = useState(true);
+  const [validatedOnly, setValidatedOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [liveCounts, setLiveCounts] = useState<Record<string, { patientCount: number; encounterCount: number }>>({});
   const [freezeCandidate, setFreezeCandidate] = useState<FreezeCandidate | null>(null);
-  const [snapshotWarning, setSnapshotWarning] = useState<SnapshotWarning | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<CohortSummary | null>(null);
 
   const msg = (value: unknown) => errorMessage(value, t('common.error'));
@@ -235,26 +226,13 @@ export function CohortBuilder() {
 
   const buildFilter = (): FilterDefinition => ({ conditions });
 
-  async function countUnvalidated(filter: FilterDefinition): Promise<number> {
-    if (!baseId) return 0;
-    const [all, validated] = await Promise.all([
-      cohorts.preview(baseId, filter, false),
-      cohorts.preview(baseId, filter, true),
-    ]);
-    return Math.max(0, all.patientCount - validated.patientCount);
-  }
-
-  async function createSnapshot(nameToSave: string, filter: FilterDefinition, snapshotValidatedOnly: boolean, closeBuilderAfterSave: boolean) {
+  /** Fige une cohorte dynamique EXISTANTE sous un nouveau nom (le batisseur, lui, ecrit direct). */
+  async function createSnapshot(nameToSave: string, filter: FilterDefinition, snapshotValidatedOnly: boolean) {
     if (!baseId) return;
     setBusy(true);
     try {
       await cohorts.createSnapshot(baseId, nameToSave, filter, snapshotValidatedOnly);
-      setSnapshotWarning(null);
       setFreezeCandidate(null);
-      if (closeBuilderAfterSave) {
-        resetBuilder();
-        setBuilderOpen(false);
-      }
       await load();
     } catch (value) {
       setError(msg(value));
@@ -285,15 +263,9 @@ export function CohortBuilder() {
     setBusy(true);
     try {
       if (cohortType === 'snapshot') {
-        const filter = buildFilter();
-        if (!validatedOnly) {
-          const unvalidatedCount = await countUnvalidated(filter);
-          if (unvalidatedCount > 0) {
-            setSnapshotWarning({ name: name.trim(), filter, validatedOnly, unvalidatedCount });
-            return;
-          }
-        }
-        await cohorts.createSnapshot(baseId, name.trim(), filter, validatedOnly);
+        // Le figeage ne trie plus : il fige la population telle qu'elle est. C'est l'export
+        // qui ecarte les fiches auxquelles il manque un champ obligatoire.
+        await cohorts.createSnapshot(baseId, name.trim(), buildFilter(), validatedOnly);
       } else await cohorts.createDynamic(baseId, name.trim(), buildFilter(), validatedOnly);
       resetBuilder();
       setBuilderOpen(false);
@@ -309,13 +281,11 @@ export function CohortBuilder() {
     if (!baseId) return;
     setBusy(true);
     try {
-      const unvalidatedCount = cohort.validatedOnly ? 0 : await countUnvalidated(cohort.filterDefinition);
       setFreezeCandidate({
         cohort,
         name: t('cohort.freeze_name')
           .replace('{name}', cohort.name)
           .replace('{date}', formatDate(new Date().toISOString(), lang)),
-        unvalidatedCount,
       });
       setError(null);
     } catch (value) {
@@ -649,15 +619,12 @@ export function CohortBuilder() {
       <ConfirmDialog
         open={freezeCandidate !== null}
         title={t('cohort.freeze_title')}
-        body={freezeCandidate?.unvalidatedCount
-          ? <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('cohort.unvalidated_warning').replace('{n}', String(freezeCandidate.unvalidatedCount))}</p>
-          : undefined}
         confirmLabel={t('cohort.freeze_confirm')}
         confirmDisabled={!freezeCandidate?.name.trim()}
         busy={busy}
         onCancel={() => setFreezeCandidate(null)}
         onConfirm={() => {
-          if (freezeCandidate) void createSnapshot(freezeCandidate.name.trim(), freezeCandidate.cohort.filterDefinition, freezeCandidate.cohort.validatedOnly, false);
+          if (freezeCandidate) void createSnapshot(freezeCandidate.name.trim(), freezeCandidate.cohort.filterDefinition, freezeCandidate.cohort.validatedOnly);
         }}
       >
         <label className="form-label">
@@ -670,17 +637,6 @@ export function CohortBuilder() {
         </label>
       </ConfirmDialog>
 
-      <ConfirmDialog
-        open={snapshotWarning !== null}
-        title={t('cohort.unvalidated_title')}
-        body={snapshotWarning ? <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('cohort.unvalidated_warning').replace('{n}', String(snapshotWarning.unvalidatedCount))}</p> : undefined}
-        confirmLabel={t('cohort.unvalidated_confirm')}
-        busy={busy}
-        onCancel={() => setSnapshotWarning(null)}
-        onConfirm={() => {
-          if (snapshotWarning) void createSnapshot(snapshotWarning.name, snapshotWarning.filter, snapshotWarning.validatedOnly, true);
-        }}
-      />
     </section>
   );
 }

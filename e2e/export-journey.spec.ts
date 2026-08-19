@@ -37,10 +37,10 @@ test.describe('parcours export critique (medecin)', () => {
 
     // 3) lancement d'un export CSV
     await page.getByLabel(/Format/i).selectOption('csv');
-    await page.getByRole('button', { name: /G.n.rer et conserver|Generate and keep/i }).click();
+    await page.getByRole('button', { name: /Exporter les donn.es|Export the data/i }).click();
 
     // 4) attente du resultat
-    await expect(page.getByText(/Export g.n.r. et conserv.|Export generated and kept/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Export termin.|Export complete/i)).toBeVisible({ timeout: 30_000 });
 
     // 5) presence de CET export dans l'historique. Le message de succes precede volontairement
     // le rechargement de la liste : attendre le compteur evite de cliquer un ancien XLSX.
@@ -82,6 +82,6 @@ test.describe('refus export (role sans droit)', () => {
 
     // Le role hors zone membre ne doit ni atteindre l'ecran d'export ni pouvoir lancer un export.
     await expect(page).not.toHaveURL(/\/cohorts\/[^/]+\/export$/);
-    await expect(page.getByRole('button', { name: /G.n.rer et conserver|Generate and keep/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Exporter les donn.es|Export the data/i })).toHaveCount(0);
   });
 });
