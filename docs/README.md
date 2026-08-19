@@ -56,6 +56,7 @@
 | Document | Contenu |
 |---|---|
 | [deploiement.md](deploiement.md) | Mettre le service en ligne (pilote à données fictives) + prérequis avant données réelles |
+| [deploiement-on-premise.md](deploiement-on-premise.md) | Installer **tout le projet chez une institution** : serveur local + Supabase self-hosted + WiFi (sans prérequis réseau) |
 | [pipeline-release-coordonnee.md](pipeline-release-coordonnee.md) | Le workflow de release coordonnée (manuel, `workflow_dispatch`) |
 | [gouvernance-release.md](gouvernance-release.md) | Preuve de gouvernance exigée avant une release clinique |
 | [operations-readiness.md](operations-readiness.md) | Preuve de responsabilités et d'exploitation (échoue fermé sans elle) |
@@ -138,5 +139,5 @@
 
 ---
 
-*Index vérifié le 17 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
+*Index vérifié le 18 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
 dans `docs/`.*
