@@ -315,6 +315,10 @@ export function TemplateVersionEditor({
                 section: editing.section,
                 type: editing.type,
                 required: editing.required,
+                // L21 : sans cette ligne, corriger le libelle d'une variable de terminologie
+                // multivaluee la repasserait en valeur unique -- `updateField` enverrait
+                // `p_is_multiple: false`, que la base accepte tant qu'aucune fiche ne l'utilise.
+                isMultiple: editing.isMultiple,
                 encounterTypes: editing.encounterTypes,
                 allowedValues: editing.allowedValues ? editing.allowedValues.map(String) : null,
                 // L30 : l'editeur travaille sur les options ; le repli sur les seules cles
