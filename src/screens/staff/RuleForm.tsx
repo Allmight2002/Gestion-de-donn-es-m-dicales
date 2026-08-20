@@ -88,6 +88,55 @@ function serializeRule(rule: unknown) {
   }
 }
 
+type RuleDraft = {
+  kind: GuidedRuleKind;
+  comparisonOperator: ComparisonOperator | '';
+  leftField: string;
+  rightField: string;
+  conditionOperator: ConditionOperator | '';
+  conditionField: string;
+  conditionValue: string;
+  conditionChoices: string[];
+  requiredField: string;
+};
+
+function inputValue(value: unknown): string {
+  if (value === true) return 'true';
+  if (value === false) return 'false';
+  if (value === null || value === undefined) return '';
+  return typeof value === 'string' ? value : String(value);
+}
+
+function ruleDraftOf(rule: unknown): RuleDraft | null {
+  const parsed = parseRule(serializeRule(rule));
+  if (!parsed.ok || !parsed.value) return null;
+  if ('operator' in parsed.value) {
+    return {
+      kind: 'comparison',
+      comparisonOperator: parsed.value.operator,
+      leftField: parsed.value.left_field,
+      rightField: parsed.value.right_field,
+      conditionOperator: '',
+      conditionField: '',
+      conditionValue: '',
+      conditionChoices: [],
+      requiredField: '',
+    };
+  }
+  const conditionValue = parsed.value.if.value;
+  return {
+    kind: parsed.value.then.operator === 'visible' ? 'visibility' : 'conditional',
+    comparisonOperator: '',
+    leftField: '',
+    rightField: '',
+    conditionOperator: parsed.value.if.operator,
+    conditionField: parsed.value.if.field,
+    conditionValue: Array.isArray(conditionValue) ? '' : inputValue(conditionValue),
+    conditionChoices: Array.isArray(conditionValue) ? conditionValue.map(inputValue) : [],
+    requiredField: parsed.value.then.field,
+  };
+}
+
 export function RuleSummary({ rule, fields }: { rule: unknown; fields: TemplateField[] }) {
   const { t } = useI18n();
   const parsed = parseRule(serializeRule(rule));
@@ -114,25 +163,38 @@ export function RuleForm({
   onSubmit,
   busy,
   existingRules = [],
+  initialRule,
+  initialMessage,
+  initialSeverity,
+  submitLabel,
+  onCancel,
 }: {
   fields: TemplateField[];
   onSubmit: (rule: unknown, message: string, severity: RuleSeverity) => void;
   busy?: boolean;
   /** Regles deja enregistrees sur cette version : sert a refuser un cycle d'affichage. */
   existingRules?: readonly { rule: unknown }[];
+  /** Règle existante à relire dans le constructeur guidé, sans exposer son JSON. */
+  initialRule?: unknown;
+  initialMessage?: string | null;
+  initialSeverity?: RuleSeverity;
+  submitLabel?: string;
+  onCancel?: () => void;
 }) {
   const { t } = useI18n();
-  const [kind, setKind] = useState<GuidedRuleKind>('comparison');
-  const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>('');
-  const [leftField, setLeftField] = useState('');
-  const [rightField, setRightField] = useState('');
-  const [conditionOperator, setConditionOperator] = useState<ConditionOperator | ''>('');
-  const [conditionField, setConditionField] = useState('');
-  const [conditionValue, setConditionValue] = useState('');
-  const [conditionChoices, setConditionChoices] = useState<string[]>([]);
-  const [requiredField, setRequiredField] = useState('');
-  const [message, setMessage] = useState('');
-  const [severity, setSeverity] = useState<RuleSeverity>('block');
+  const draft = useMemo(() => (initialRule === undefined ? null : ruleDraftOf(initialRule)), [initialRule]);
+  const editing = initialRule !== undefined;
+  const [kind, setKind] = useState<GuidedRuleKind>(draft?.kind ?? 'comparison');
+  const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>(draft?.comparisonOperator ?? '');
+  const [leftField, setLeftField] = useState(draft?.leftField ?? '');
+  const [rightField, setRightField] = useState(draft?.rightField ?? '');
+  const [conditionOperator, setConditionOperator] = useState<ConditionOperator | ''>(draft?.conditionOperator ?? '');
+  const [conditionField, setConditionField] = useState(draft?.conditionField ?? '');
+  const [conditionValue, setConditionValue] = useState(draft?.conditionValue ?? '');
+  const [conditionChoices, setConditionChoices] = useState<string[]>(draft?.conditionChoices ?? []);
+  const [requiredField, setRequiredField] = useState(draft?.requiredField ?? '');
+  const [message, setMessage] = useState(initialMessage ?? '');
+  const [severity, setSeverity] = useState<RuleSeverity>(initialSeverity ?? 'block');
   const [error, setError] = useState<string | null>(null);
 
   const fieldsByKey = useMemo(() => new Map(fields.map((field) => [field.fieldKey, field])), [fields]);
@@ -212,8 +274,10 @@ export function RuleForm({
     // Une regle d'affichage ne bloque ni n'avertit : sa severite n'a pas de sens et n'est pas
     // demandee. On enregistre la valeur par defaut de la colonne, que l'evaluation ignore.
     onSubmit(res.value, message, kind === 'visibility' ? 'block' : severity);
-    resetRuleInputs();
-    setMessage('');
+    if (!editing) {
+      resetRuleInputs();
+      setMessage('');
+    }
   }
 
   function fieldOptions() {
@@ -406,8 +470,13 @@ export function RuleForm({
           </label>
         )}
         <button type="submit" disabled={busy} className="btn-primary">
-          {t('admin.add_rule')}
+          {submitLabel ?? t('admin.add_rule')}
         </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary">
+            {t('admin.cancel')}
+          </button>
+        )}
       </div>
       {error && (
         <p role="alert" className="text-xs text-red-600">

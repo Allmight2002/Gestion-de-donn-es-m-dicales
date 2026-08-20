@@ -55,6 +55,35 @@ describe('MyTemplates', () => {
     expect(screen.queryByText('Gabarit de Bob')).toBeNull();
   });
 
+  test('ouvre la dernière version brouillon depuis l action principale de la carte', async () => {
+    const getVersion = vi.fn(async (versionId: string) => ({
+      version: { id: versionId, templateId: 'mine', versionNumber: versionId === 'v2' ? 2 : 1, status: versionId === 'v2' ? 'draft' as const : 'published' as const },
+      fields: [],
+      rules: [],
+      sections: [],
+    }));
+    const repo = baseRepo({
+      async listTemplates() {
+        return [{
+          id: 'mine', name: 'Mon Neuro', specialty: 'neuro', ownerUserId: 'me', isGlobal: false,
+          versions: [
+            { id: 'v1', templateId: 'mine', versionNumber: 1, status: 'published' as const },
+            { id: 'v2', templateId: 'mine', versionNumber: 2, status: 'draft' as const },
+          ],
+        }];
+      },
+      getVersion,
+    });
+    const user = userEvent.setup();
+    renderMine(repo);
+
+    await user.click(await screen.findByRole('button', { name: /Ouvrir le jeu de variables/ }));
+
+    await waitFor(() => expect(getVersion).toHaveBeenCalledWith('v2'));
+    expect(await screen.findByRole('heading', { name: 'Mon Neuro' })).toBeInTheDocument();
+    expect(screen.getByText('Version 2 · Brouillon')).toBeInTheDocument();
+  });
+
   test('renommer appelle renameTemplate', async () => {
     const renameTemplate = vi.fn(async () => {});
     renderMine(baseRepo({ renameTemplate }));

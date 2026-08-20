@@ -35,7 +35,11 @@ describe('TemplateLibrary (F3 v2)', () => {
     ];
     const bases = { async listTemplateModels() { return models; } } as unknown as BaseRepository;
     const createTemplateBundle = vi.fn(async (_input: TemplateBundleInput) => ({ templateId: 'new', versionId: 'vnew', baseId: null }));
-    const templates = { createTemplateBundle } as unknown as TemplateRepository;
+    const getVersion = vi.fn(async () => ({
+      version: { id: 'vnew', templateId: 'new', versionNumber: 1, status: 'draft' as const },
+      fields: [], rules: [], sections: [],
+    }));
+    const templates = { createTemplateBundle, getVersion } as unknown as TemplateRepository;
 
     renderLib(bases, templates);
     expect(await screen.findByText('Neuro global')).toBeInTheDocument();
@@ -44,7 +48,7 @@ describe('TemplateLibrary (F3 v2)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Utiliser ce modèle' }));
     await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
     expect(createTemplateBundle).toHaveBeenCalledWith(expect.objectContaining({ name: 'Neuro global', specialty: 'Neurologie', sourceVersionId: 'gv1' }));
-    expect(await screen.findByText('TEMPLATES')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Neuro global' })).toBeInTheDocument();
   });
 
   test('repli : aucun modele global -> affiche les modeles livres en dur', async () => {
