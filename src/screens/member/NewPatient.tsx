@@ -12,7 +12,8 @@ import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
-import { FieldLabel, HiddenValuesNotice, SectionedFields } from './EncounterFields';
+import { CalculatedValue, FieldLabel, HiddenValuesNotice, SectionedFields } from './EncounterFields';
+import { isCalculatedField } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
@@ -325,7 +326,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                       mention « proposé » y sont rendues au meme endroit. */}
                   <FieldLabel field={field} prefilled={prefilled.has(field.fieldKey)} />
                   <div className="mt-1">
-                    {proposal ? (
+                    {/* L35 : meme regle qu'au formulaire de rencontre — une variable
+                        calculee s'affiche, elle ne se saisit pas. */}
+                    {isCalculatedField(field) ? (
+                      <CalculatedValue field={field} values={permanent} fields={fields} />
+                    ) : proposal ? (
                       <ChoiceWithProposal
                         field={field}
                         proposal={proposal}

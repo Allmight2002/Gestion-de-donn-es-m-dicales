@@ -320,12 +320,16 @@ export function TemplateVersionEditor({
                 unit: editing.unit,
                 allowMissingCodes: editing.allowMissingCodes,
                 missingReasons: editing.missingReasons,
+                // L35 : sans cette ligne, corriger le libelle d'une variable calculee
+                // effacerait sa formule -- la variable redeviendrait saisie en silence.
+                formula: editing.formula,
               }}
               lockStructural={editing.inUse ?? false}
               submitLabel={t('admin.save')}
               onCancel={() => setEditing(null)}
               observationModel={observationModel}
               sections={sections}
+              fields={fields}
               onSubmit={(f) =>
                 void run(() => repo.updateField(editing.id, f)).then((ok) => {
                   if (ok) setEditing(null);
@@ -340,6 +344,7 @@ export function TemplateVersionEditor({
               busy={busy}
               observationModel={observationModel}
               sections={sections}
+              fields={fields}
               onSubmit={async (f, companion) => {
                 // Ne jamais promettre une soupape qui n'a pas pu etre creee. Un conflit est
                 // signale avant toute ecriture et le formulaire reste rempli pour correction.

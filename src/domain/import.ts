@@ -126,6 +126,12 @@ export function findInFileEncounterDuplicates(rows: ImportRow[]): InFileEncounte
 // la forme d'un echec serveur opaque (spec-variables-multivaluees.md §9).
 const isTerminology = (field: TemplateField) => field.type === 'terminology';
 
+// L35 : meme refus, autre motif. Une variable CALCULEE n'a pas de valeur a soi : elle est
+// recalculee a l'affichage et a l'export a partir de ses operandes. Une colonne importee vers
+// elle serait ignoree en silence -- ou pire, contredirait le calcul affiche a cote. La cible
+// est donc refusee AU MAPPAGE, et l'ecran dit pourquoi.
+const isCalculated = (field: TemplateField) => Boolean(field.formula && field.formula.trim());
+
 /** Colonne visant une variable de terminologie : cible refusee, colonne laissee « ignoree ». */
 export interface TerminologyColumn {
   index: number;
@@ -133,10 +139,21 @@ export interface TerminologyColumn {
   fieldLabel: string;
 }
 
+/** Colonne visant une variable CALCULEE (L35) : meme forme, motif distinct. */
+export type CalculatedColumn = TerminologyColumn;
+
 type ColumnMatch =
   | { kind: 'target'; target: ImportTarget }
   | { kind: 'terminology'; field: TemplateField }
+  | { kind: 'calculated'; field: TemplateField }
   | { kind: 'none' };
+
+/** Cible refusee au mappage, avec son motif — ou `null` si la variable est importable. */
+function refusalFor(field: TemplateField): ColumnMatch | null {
+  if (isTerminology(field)) return { kind: 'terminology', field };
+  if (isCalculated(field)) return { kind: 'calculated', field };
+  return null;
+}
 
 /** Resolution d'un en-tete : meta connue, puis champ patient, puis champ rencontre. */
 function matchColumn(header: string, patient: TemplateField[], encounter: TemplateField[]): ColumnMatch {
@@ -146,9 +163,9 @@ function matchColumn(header: string, patient: TemplateField[], encounter: Templa
   if (meta) return { kind: 'target', target: meta };
   const byName = (f: TemplateField) => norm(f.label) === n || norm(f.fieldKey) === n;
   const pf = patient.find(byName);
-  if (pf) return isTerminology(pf) ? { kind: 'terminology', field: pf } : { kind: 'target', target: `patient:${pf.fieldKey}` };
+  if (pf) return refusalFor(pf) ?? { kind: 'target', target: `patient:${pf.fieldKey}` };
   const ef = encounter.find(byName);
-  if (ef) return isTerminology(ef) ? { kind: 'terminology', field: ef } : { kind: 'target', target: `encounter:${ef.fieldKey}` };
+  if (ef) return refusalFor(ef) ?? { kind: 'target', target: `encounter:${ef.fieldKey}` };
   return { kind: 'none' };
 }
 
@@ -172,12 +189,31 @@ export function autoMapColumns(headers: string[], fields: TemplateField[]): Colu
  * sache POURQUOI sa colonne « Diagnostic » n'est pas arrivee.
  */
 export function findTerminologyColumns(headers: string[], fields: TemplateField[]): TerminologyColumn[] {
+  return findRefusedColumns(headers, fields, 'terminology');
+}
+
+/**
+ * Colonnes dont l'en-tete designe une variable CALCULEE (L35). Meme role que ci-dessus :
+ * l'ecran les cite pour que l'utilisateur sache pourquoi sa colonne « durée de séjour » n'est
+ * pas arrivee -- au lieu de la croire importee puis de trouver autre chose a l'export.
+ */
+export function findCalculatedColumns(headers: string[], fields: TemplateField[]): CalculatedColumn[] {
+  return findRefusedColumns(headers, fields, 'calculated');
+}
+
+function findRefusedColumns(
+  headers: string[],
+  fields: TemplateField[],
+  kind: 'terminology' | 'calculated',
+): TerminologyColumn[] {
   const patient = fields.filter((f) => f.scope === 'patient');
   const encounter = fields.filter((f) => f.scope === 'encounter');
   const found: TerminologyColumn[] = [];
   headers.forEach((h, i) => {
     const match = matchColumn(h, patient, encounter);
-    if (match.kind === 'terminology') found.push({ index: i, header: h ?? '', fieldLabel: match.field.label });
+    if (match.kind === kind) {
+      found.push({ index: i, header: h ?? '', fieldLabel: (match as { field: TemplateField }).field.label });
+    }
   });
   return found;
 }
@@ -197,6 +233,12 @@ function fieldForTarget(target: ImportTarget, fields: TemplateField[]): Template
 export function terminologyTargetField(target: ImportTarget, fields: TemplateField[]): TemplateField | null {
   const field = fieldForTarget(target, fields);
   return field && isTerminology(field) ? field : null;
+}
+
+/** Cible REFUSEE au mappage (L35) : le champ vise est une variable CALCULEE. */
+export function calculatedTargetField(target: ImportTarget, fields: TemplateField[]): TemplateField | null {
+  const field = fieldForTarget(target, fields);
+  return field && isCalculated(field) ? field : null;
 }
 
 /** Cibles (hors "ignore") assignees a PLUSIEURS colonnes -> conflit a resoudre avant import. */

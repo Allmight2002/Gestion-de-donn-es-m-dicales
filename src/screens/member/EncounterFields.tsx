@@ -4,6 +4,7 @@ import { isMultipleTerminology, type TemplateField, type TemplateSection } from 
 import { useI18n } from '../../i18n/useI18n';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
+import { calculatedValue, isCalculatedField } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
 
@@ -42,6 +43,44 @@ export function FieldLabel({ field, prefilled = false }: { field: TemplateField;
         </span>
       )}
     </span>
+  );
+}
+
+/**
+ * L35 — resultat d'une variable CALCULEE. Toujours en lecture seule : la valeur vient de la
+ * formule du gabarit, jamais de la personne qui saisit, et elle n'est enregistree nulle part.
+ *
+ * Elle se met a jour des qu'un operande change, parce qu'elle est recalculee a chaque rendu
+ * a partir des valeurs du formulaire — il n'y a rien a synchroniser, donc rien qui puisse se
+ * desynchroniser. Un resultat ABSENT (operande manquant, valeur manquante codifiee, division
+ * par zero) s'affiche comme tel, jamais comme un zero qui se lirait comme une mesure.
+ */
+export function CalculatedValue({
+  field,
+  values,
+  fields,
+}: {
+  field: TemplateField;
+  values: Record<string, unknown>;
+  fields: readonly TemplateField[];
+}) {
+  const { t } = useI18n();
+  const result = calculatedValue(field, values, fields);
+  return (
+    <output
+      aria-label={field.label}
+      title={t('form.calculated_hint')}
+      className="flex min-h-11 items-center gap-2 text-sm text-slate-700"
+    >
+      {result === null ? (
+        <span className="italic text-slate-400">{t('form.calculated_absent')}</span>
+      ) : (
+        <span className="font-medium tabular-nums">{result}</span>
+      )}
+      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+        {t('form.calculated')}
+      </span>
+    </output>
   );
 }
 
@@ -141,7 +180,11 @@ export function EncounterFields({
           <div className="flex flex-col text-sm">
             <FieldLabel field={field} prefilled={prefilledKeys?.has(field.fieldKey) ?? false} />
             <div className="mt-1">
-              {proposal ? (
+              {/* L35 : une variable calculee n'est JAMAIS saisissable — pas de champ, pas de
+                  raison de valeur manquante, rien a enregistrer. */}
+              {isCalculatedField(field) ? (
+                <CalculatedValue field={field} values={values} fields={fields} />
+              ) : proposal ? (
                 <ChoiceWithProposal
                   field={field}
                   proposal={proposal}

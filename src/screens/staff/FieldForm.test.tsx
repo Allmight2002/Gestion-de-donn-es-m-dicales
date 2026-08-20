@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
+import type { TemplateField } from '../../data/types';
 import { FieldForm } from './FieldForm';
 
 function renderForm(onSubmit = vi.fn()) {
@@ -426,5 +427,136 @@ describe('FieldForm — plusieurs valeurs (L21)', () => {
     expect(cardinalite).toBeChecked();
     expect(cardinalite).toBeDisabled();
     expect(screen.getByLabelText('Type')).toBeDisabled();
+  });
+});
+
+// --- L35 : le constructeur livre la CALCULATRICE, pas une formule ------------------------
+const OPERANDES: TemplateField[] = [
+  {
+    id: 'date_entree', fieldKey: 'date_entree', label: 'Date d’entrée', scope: 'encounter',
+    section: 'clinique', type: 'date', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 0,
+  },
+  {
+    id: 'date_sortie', fieldKey: 'date_sortie', label: 'Date de sortie', scope: 'encounter',
+    section: 'clinique', type: 'date', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 1,
+  },
+  {
+    id: 'score', fieldKey: 'score', label: 'Score', scope: 'encounter',
+    section: 'clinique', type: 'integer', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 2,
+  },
+  {
+    id: 'commentaire', fieldKey: 'commentaire', label: 'Commentaire', scope: 'encounter',
+    section: 'clinique', type: 'text', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 3,
+  },
+  {
+    id: 'duree', fieldKey: 'duree', label: 'Durée déjà calculée', scope: 'encounter',
+    section: 'clinique', type: 'integer', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 4,
+    formula: 'date_sortie - date_entree',
+  },
+];
+
+function renderCalculator(onSubmit = vi.fn()) {
+  render(
+    <I18nProvider>
+      <FieldForm onSubmit={onSubmit} fields={OPERANDES} />
+    </I18nProvider>,
+  );
+  return onSubmit;
+}
+
+async function enableCalculation() {
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Variable calculée' }));
+}
+
+describe('FieldForm — variables calculees (L35)', () => {
+  test('n’offre que des operandes ADMISSIBLES : ni texte, ni variable deja calculee', async () => {
+    renderCalculator();
+    await enableCalculation();
+    const gauche = screen.getByLabelText('Premier élément');
+    expect(within(gauche).getByRole('option', { name: 'Date d’entrée' })).toBeInTheDocument();
+    expect(within(gauche).getByRole('option', { name: 'Score' })).toBeInTheDocument();
+    // Un texte ne se calcule pas ; une variable calculee ne peut pas en nourrir une autre --
+    // c'est ce qui SUPPRIME la question des cycles au lieu de la traiter.
+    expect(within(gauche).queryByRole('option', { name: 'Commentaire' })).toBeNull();
+    expect(within(gauche).queryByRole('option', { name: 'Durée déjà calculée' })).toBeNull();
+  });
+
+  test('le type de sortie est DEDUIT et affiche, jamais choisi', async () => {
+    renderCalculator();
+    await enableCalculation();
+    // Le selecteur de type disparait : il n'y a plus rien a decider.
+    expect(screen.queryByRole('combobox', { name: 'Type' })).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
+    expect(screen.getByText('nombre de jours (calculé)')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'score');
+    await userEvent.selectOptions(screen.getByLabelText('Opération'), '*');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), '__literal__');
+    await userEvent.type(screen.getAllByLabelText('un nombre fixe')[0], '2');
+    expect(screen.getByText('nombre (calculé)')).toBeInTheDocument();
+  });
+
+  test('une formule refusee est EXPLIQUEE dans le formulaire, pas a l enregistrement', async () => {
+    renderCalculator();
+    await enableCalculation();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Opération'), '+');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
+    expect(screen.getByText(/Une date ne se combine qu’avec une autre date/)).toBeInTheDocument();
+  });
+
+  test('une variable calculee n’est ni obligatoire, ni preremplie, ni bornee', async () => {
+    renderCalculator();
+    expect(screen.getByRole('checkbox', { name: 'Obligatoire' })).toBeInTheDocument();
+    await enableCalculation();
+    // Rien n'y est saisi : ces trois reglages ne pourraient jamais s'appliquer.
+    expect(screen.queryByRole('checkbox', { name: 'Obligatoire' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /valeur manquante/i })).toBeNull();
+    expect(screen.queryByLabelText('Minimum')).toBeNull();
+  });
+
+  test('enregistre la forme canonique, et rien d incompatible avec elle', async () => {
+    const onSubmit = renderCalculator();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'duree_sejour');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Durée de séjour');
+    await enableCalculation();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const sent = onSubmit.mock.calls[0][0];
+    expect(sent.formula).toBe('date_sortie - date_entree');
+    expect(sent.type).toBe('integer');
+    expect(sent.required).toBe(false);
+    expect(sent.defaultValue).toBeNull();
+    expect(sent.missingReasons).toEqual([]);
+  });
+
+  test('une formule incomplete n’est jamais envoyee au serveur', async () => {
+    const onSubmit = renderCalculator();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'duree_sejour');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Durée de séjour');
+    await enableCalculation();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
+    // Le second element n'est pas choisi.
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  test('sans aucun operande possible, la calculatrice n’est pas proposee', async () => {
+    render(
+      <I18nProvider>
+        <FieldForm onSubmit={vi.fn()} fields={[]} />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Variable calculée' })).toBeDisabled();
+    expect(screen.getByText(/Aucune variable ne peut servir au calcul/)).toBeInTheDocument();
   });
 });

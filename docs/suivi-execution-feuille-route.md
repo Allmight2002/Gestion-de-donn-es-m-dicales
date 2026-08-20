@@ -3002,3 +3002,153 @@ la documentation ont malgré tout été **mesurés**, pas recopiés :
 - décompte des fonctions privilégiées (110 en huit catégories, plus 11 `service_role`) relu dans
   `supabase/security-definer-allowlist.json` ;
 - lignes de code comptées dans `src/` (hors tests) et `supabase/migrations/`.
+
+## Lot L35 — Variables calculées : arithmétique définie par l'utilisateur (2026-08-20)
+
+**Ce lot livre une calculatrice, pas des formules.** Aucun score clinique n'est fourni — ni IMC,
+ni Glasgow, ni clairance : celui qui définit le gabarit écrit lui-même son calcul, au même titre
+qu'il écrit un libellé ou des valeurs autorisées. C'est ce qui sépare ce lot de l'idée « scores
+automatiques » : livrer un IMC, ce serait nous qui répondrions de sa version, de sa validité et
+des droits d'usage de l'échelle.
+
+### La décision prise avant de coder
+
+**La formule appartient à la VERSION de gabarit** (option A, tranchée par le porteur le
+2026-08-20), comme le libellé, les bornes et les valeurs autorisées. Une fiche saisie sous
+l'ancienne version garde donc le résultat de l'ancienne formule — cohérent avec la complétude, qui
+évalue déjà chaque dossier contre sa propre version. Le prix, assumé : corriger une formule fausse
+ne répare pas le passé ; il faut une nouvelle version de gabarit.
+
+Aucun mécanisme nouveau n'a été nécessaire pour tenir cette promesse : `guard_template_field_update`
+interdisait déjà toute modification d'un champ appartenant à une version publiée ou archivée. À
+l'export, `mergeExportFields` unit une colonne à travers ses versions ; la formule, elle, **ne se
+fusionne pas** — chaque version garde la sienne (`formulaByVersion`), sinon une fiche v1 se verrait
+appliquer la formule corrigée en v2.
+
+Trois choix complémentaires ont été arrêtés au même moment :
+
+- **une seule opération, `A op B`**, jamais de chaîne : aucune règle de priorité invisible, donc
+  `a + b / 2` ne peut pas exister et personne n'a à deviner ce qu'il vaut ;
+- **sélecteurs guidés** dans le constructeur plutôt qu'une expression à taper : la liste n'offre
+  que des opérandes admissibles, ce qui rend un opérande inconnu impossible à choisir ;
+- **opérandes de la même portée** : une variable calculée de rencontre ne lit que des variables de
+  rencontre. Le formulaire a déjà toutes les valeurs sous la main, l'export lit un seul bloc.
+
+### Le choix structurant : le résultat n'est jamais stocké
+
+Rien n'est écrit dans `patient.data` ni dans `encounter.data`, et **aucune RPC ne calcule**. Le
+résultat est recalculé à l'affichage et à l'export, par un évaluateur unique posé dans
+`supabase/functions/generate-export/exportContract.ts` — le module que `src/domain/export.ts` se
+contente de ré-exporter. Le navigateur et l'Edge Function de production lisent donc le **même**
+fichier : une seule implémentation de la sémantique, et le hors-ligne suit sans travail
+supplémentaire.
+
+**Ce que PL/pgSQL fait, et rien d'autre :** il *valide* la formule à l'enregistrement de la
+variable (syntaxe, opérandes existants, types compatibles) et il *sait* qu'une variable est
+calculée — un simple `formula is not null` — pour l'écarter de la complétude. Il n'évalue jamais.
+Cette distinction est la propriété qui tient tout le lot, et elle est tenue par un test : seules
+`enforce_template_field_formula` et `enforce_template_field_formula_operand` découpent une formule
+en base, et la liste complète des fonctions qui mentionnent la colonne est figée dans
+`test/template-formula.test.ts`. Toute fonction ajoutée à cette liste devra l'être sciemment.
+
+### Grammaire fermée
+
+`+ − × ÷` entre variables `number`/`integer` et constantes littérales, plus `date − date` qui rend
+un nombre **entier** de jours. Pas de condition, pas d'imbrication, pas d'appel de fonction. Les
+opérandes sont des variables **saisies** du même gabarit : une variable calculée ne peut pas en
+référencer une autre — cette interdiction **supprime** la détection de cycles au lieu de la coder.
+
+Le **type de sortie est déduit**, jamais choisi : `integer` pour `date − date`, `number` sinon. Il
+est déduit **par le serveur**, qui réécrit la colonne `type` : un client d'une autre version ne
+peut donc pas faire diverger l'étiquette d'une colonne et son contenu réel.
+
+Deux exclusions valent d'être notées. `datetime` n'est pas un opérande admissible : une différence
+d'horodatages ne rend pas un nombre entier de jours, et le type de sortie cesserait d'être
+déductible. Et `2 + 3` est refusé : deux constantes valent la même chose pour tout le monde et
+n'appartiennent pas au dossier.
+
+### Valeurs manquantes : absent, jamais zéro
+
+Si un opérande est absent, ou porte l'un des cinq codes de L33 (`non_fait`, `inconnu`,
+`non_applicable`, `refus`, `non_documente`), **le résultat est absent**. Une division par zéro
+donne également un résultat absent — ni erreur, ni infini. Un zéro fabriqué se lirait comme une
+mesure et fausserait toute moyenne calculée ensuite. À l'export, un résultat absent laisse une
+cellule **vide**.
+
+Un arrondi à six décimales est appliqué, non pour inventer une précision mais pour effacer
+l'artefact du calcul binaire : sans lui, `0,1 + 0,2` sortirait à `0,30000000000000004` dans un
+fichier clinique.
+
+### Ce que le lot refuse explicitement
+
+| Refus | Pourquoi |
+|---|---|
+| Variable calculée **obligatoire** | Rien n'y est saisi : personne ne pourrait la compléter. |
+| **Valeur proposée** sur une variable calculée | Sa valeur vient de la formule. |
+| **Raisons de valeur manquante** | Elle n'est jamais saisie. *(Ramenées à vide plutôt que refusées : la colonne porte une valeur par défaut non vide depuis L33, et refuser punirait l'appelant pour un défaut de colonne.)* |
+| Rendre calculée une variable **déjà renseignée** | Les valeurs saisies seraient masquées par un calcul, sans être effacées ni signalées. |
+| **Supprimer un opérande** encore utilisé par une formule | La colonne sortirait vide à l'export, sans erreur nulle part. |
+| Cible d'**import** vers une variable calculée | La colonne serait ignorée en silence, ou contredirait la formule. Non proposée dans la liste, et refusée si elle arrive par un autre chemin. |
+| Critère de **cohorte** sur une variable calculée | `jsonb_matches` compare `p_data ->> field` ; la clé n'existe pas. Le filtre serait **muet, pas faux** — pire, puisque rien ne l'expliquerait. |
+
+Le dernier point est la porte de sortie du lot, assumée : le jour où filtrer devient nécessaire, un
+lot suivant devra porter la formule en PL/pgSQL et affronter la question du recalcul. En attendant,
+l'écran **nomme** les variables absentes et dit pourquoi — sans quoi elles seraient cherchées puis
+supposées perdues.
+
+### La complétude ignore les variables calculées
+
+`base_completeness_stats`, `base_completion_queue_page` et `missing_required_fields` filtrent sur
+`formula is null`. Sans cela, une variable calculée apparaîtrait à **0 % chez tout le monde**, dans
+une file « à compléter » que personne ne pourrait solder.
+
+### Fichiers touchés
+
+| Fichier | Ce qui change |
+|---|---|
+| `supabase/migrations/20260820120000_template_field_formula.sql` | Colonne `formula` nullable, deux déclencheurs de validation, `copy_template_fields`, surcharge de `update_template_field`, exclusions de complétude, instantané hors-ligne |
+| `supabase/functions/generate-export/exportContract.ts` | Grammaire, évaluateur, colonne recalculée, `formulaByVersion`, colonne `formula` au dictionnaire |
+| `supabase/functions/generate-export/formulaCases.ts` | **Nouveau** — jeu de cas partagé entre les deux exécuteurs de tests |
+| `supabase/functions/generate-export/handler.ts` | La formule voyage avec sa version |
+| `src/domain/fieldFormula.ts` | **Nouveau** — ce dont les écrans ont besoin, sans dupliquer la grammaire |
+| `src/domain/import.ts` | Refus au mappage, sur le modèle de L24 |
+| `src/screens/staff/FieldForm.tsx` | Sélecteurs guidés, type de sortie affiché, neutralisation de ce qui n'a plus de sens |
+| `src/screens/member/EncounterFields.tsx` | `CalculatedValue` : lecture seule, recalculée à chaque rendu |
+| `src/screens/member/NewPatient.tsx` | Même règle pour les variables permanentes, qui ne passent pas par `EncounterFields` |
+| `src/screens/member/CohortBuilder.tsx` | Variables calculées écartées, absence expliquée |
+| `src/screens/member/ImportData.tsx` | Cible non proposée, colonnes écartées citées |
+| `src/data/types.ts` · `templates.ts` · `offline.ts` · `TemplateVersionEditor.tsx` | La formule traverse la couche de données, la RPC et l'instantané hors-ligne |
+
+### Validation
+
+- `npm run typecheck` · `npm run lint` : verts ;
+- `npm run db:verify` : **131 migrations rejouées proprement depuis zéro** (10,6 s) ;
+- `npm run test:web` : **65 fichiers, 485/485 tests verts** ;
+- `npx vitest run --project db` : suite complète verte, dont **24 tests** du nouveau
+  `test/template-formula.test.ts` et **18** de `test/import-domain.test.ts` ;
+- `deno test` : **134 tests verts**, `deno fmt --check` et `deno lint` propres ;
+- `npm run release:edge:check` : contrat statique OK (7 fonctions) ;
+- `npm run build` : passe (avec `VITE_USE_SIGNED_READ=true`, garde de readiness préexistante).
+
+**La garantie centrale du lot se prouve, elle ne se suppose pas.** Le jeu de cas de
+`formulaCases.ts` — les quatre opérations, `date − date` en jours, division par zéro, opérande
+absent, et chacun des cinq codes de valeur manquante — est rejoué **à l'identique** par
+`test/formula.test.ts` (Node, côté navigateur) et par `exportContract_test.ts` (Deno, côté Edge
+Function de production). Les deux attendent les mêmes résultats. Le jour où quelqu'un croira bien
+faire en recopiant l'évaluateur dans l'un des deux mondes, ce test tombera.
+
+### Limites connues, laissées hors périmètre
+
+- **Rien n'empêche côté serveur d'écrire une valeur sous la clé d'une variable calculée.** Cette
+  valeur est strictement **inerte** — l'export applique la formule de la version et ne lit jamais
+  la clé — et le test Deno « une valeur stockée sous la clé calculée ne remplace pas le calcul » le
+  vérifie. Fermer aussi cette porte imposerait de redéclarer `assert_data_valid` en entier (130
+  lignes dont la fidélité compte plus que ce gain) ; L24 s'était arrêté au même endroit.
+- **Édition d'une variable : perte préexistante de la consigne de saisie et de la valeur
+  proposée.** `TemplateVersionEditor` ne repasse ni `description` (L27) ni `defaultValue` (L28)
+  dans `initial` : corriger le libellé d'une variable les efface. Le défaut est **antérieur** à ce
+  lot et hors de son périmètre ; seule `formula` a été ajoutée là, pour ne pas créer une troisième
+  occurrence du même problème. À traiter séparément.
+- Le tableau des lots de `lots-paralleles.md` n'a **pas** été mis à jour : une session parallèle y
+  écrivait au même moment (lots L38 à L44 issus de l'audit du 18 août). À reprendre par elle ou
+  après sa fusion.

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
   findTerminologyColumns, terminologyTargetField,
+  findCalculatedColumns, calculatedTargetField,
   type ColumnMapping, type ImportRow,
 } from '../src/domain/import';
 import type { TemplateField } from '../src/data/types';
@@ -154,5 +155,47 @@ describe('findInFileEncounterDuplicates', () => {
       base,
       { ...base, source_row_number: 2, encounter: { ...base.encounter!, data: { score: 11 } } },
     ])).toEqual([]);
+  });
+});
+
+// L35 : une variable CALCULEE n'a pas de valeur a soi -- elle est recalculee a l'affichage et
+// a l'export. Une colonne importee vers elle serait ignoree en silence, ou contredirait la
+// formule affichee a cote. La cible est donc refusee AU MAPPAGE.
+const dureeSejour: TemplateField = {
+  ...f('duree_sejour', 'Durée de séjour', 'encounter', 'integer'),
+  formula: 'date_sortie - date_entree',
+};
+const withCalculated: TemplateField[] = [...fields, dureeSejour];
+
+describe('cibles calculees refusees a l import (L35)', () => {
+  test('une colonne visant une variable calculee reste IGNOREE', () => {
+    const m = autoMapColumns(['Code patient', 'Durée de séjour', 'Score de Glasgow'], withCalculated);
+    expect(m[0]).toBe('patient_code');
+    expect(m[1]).toBe('ignore');
+    // Les variables saisies, elles, restent mappees comme avant.
+    expect(m[2]).toBe('encounter:glasgow_score');
+  });
+
+  test('l ecran peut NOMMER la colonne ecartee, au lieu de la laisser disparaitre', () => {
+    const found = findCalculatedColumns(['Code patient', 'duree_sejour'], withCalculated);
+    expect(found).toEqual([{ index: 1, header: 'duree_sejour', fieldLabel: 'Durée de séjour' }]);
+  });
+
+  test('sans variable calculee, rien n est signale', () => {
+    expect(findCalculatedColumns(['Code patient', 'Score de Glasgow'], withCalculated)).toEqual([]);
+  });
+
+  test('calculatedTargetField : refuse la cible calculee, laisse passer le reste', () => {
+    expect(calculatedTargetField('encounter:duree_sejour', withCalculated)?.label).toBe('Durée de séjour');
+    expect(calculatedTargetField('encounter:glasgow_score', withCalculated)).toBeNull();
+    expect(calculatedTargetField('patient_code', withCalculated)).toBeNull();
+  });
+
+  test('une valeur dirigee vers une variable calculee n arrive pas dans les donnees', () => {
+    // Le mappage l'a deja ecartee ; on verifie qu'aucun autre chemin ne la ramene.
+    const mapping: ColumnMapping = autoMapColumns(['Code patient', 'Durée de séjour'], withCalculated);
+    const rows = buildImportRows([['P1', '42']], mapping, withCalculated);
+    expect(rows[0].encounter).toBeNull();
+    expect(rows[0].patient_data).toEqual({});
   });
 });

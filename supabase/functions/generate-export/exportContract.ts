@@ -36,6 +36,18 @@ export interface ExportField {
   allowedOptions?: unknown[] | null;
   /** Raisons de valeur manquante proposees pour CETTE variable (L33). Absent = instantane ancien. */
   missingReasons?: readonly string[] | null;
+  /**
+   * Variable CALCULEE (L35) : `date_sortie - date_entree`. Rien n'est stocke sous cette cle ;
+   * la colonne est recalculee a l'export. Absent/null = variable saisie, comme avant le lot.
+   */
+  formula?: string | null;
+  /**
+   * La formule appartient a la VERSION de gabarit (decision L35-A) : une fiche saisie sous
+   * l'ancienne version garde le resultat de l'ancienne formule. `mergeExportFields` unit une
+   * colonne a travers ses versions ; cette table dit laquelle s'applique a quelle fiche, au
+   * lieu d'appliquer a tout le monde une formule choisie au hasard du tri.
+   */
+  formulaByVersion?: Record<string, string>;
   templateVersionIds?: string[];
   displayOrder?: number;
 }
@@ -197,6 +209,307 @@ export const formatValue = (v: unknown, type?: string): unknown => {
   return String(v);
 };
 
+// =============================================================================
+// Variables calculees (L35) — la calculatrice, jamais une formule clinique
+// =============================================================================
+//
+// L'utilisateur ecrit lui-meme le calcul dans son gabarit : `date_sortie - date_entree`.
+// Le produit ne livre AUCUNE formule toute faite : ni IMC, ni Glasgow, ni clairance. Il
+// livre l'operateur, et le refus de ce qui n'a pas de sens.
+//
+// LE RESULTAT N'EST JAMAIS STOCKE. Il n'entre ni dans `patient.data` ni dans
+// `encounter.data`, et aucune RPC ne le calcule. Il est recalcule a l'affichage et a
+// l'export, par CE module — le meme fichier que lisent le navigateur (via
+// `src/domain/export.ts`) et l'Edge Function de production. Une seule implementation de la
+// semantique, donc aucune derive possible entre ce qu'un ecran montre et ce qu'un fichier
+// exporte contient ; et le hors-ligne suit sans travail supplementaire.
+//
+// PL/pgSQL sait qu'une variable est calculee (`formula is not null`) et s'en sert pour
+// l'ECARTER de la completude. Il n'evalue jamais la formule. C'est cette distinction qui
+// tient tout le lot.
+
+/** Les quatre operations, et rien d'autre : pas de condition, pas d'appel de fonction. */
+export const FORMULA_OPERATORS = ['+', '-', '*', '/'] as const;
+export type FormulaOperator = (typeof FORMULA_OPERATORS)[number];
+
+export type FormulaOperand =
+  | { kind: 'field'; fieldKey: string }
+  | { kind: 'literal'; value: number };
+
+/**
+ * UNE seule operation, deux operandes. Pas d'imbrication, donc aucune regle de priorite
+ * invisible : `a + b / 2` ne peut pas exister, et personne n'a a deviner ce qu'il vaut.
+ */
+export interface ParsedFormula {
+  left: FormulaOperand;
+  operator: FormulaOperator;
+  right: FormulaOperand;
+}
+
+/** Type de sortie DEDUIT de la formule, jamais choisi par l'utilisateur. */
+export type FormulaOutputType = 'number' | 'integer';
+
+/**
+ * Types de variables admissibles comme operande. `datetime` en est volontairement absent :
+ * une difference d'horodatages ne rend pas un nombre ENTIER de jours, et le type de sortie
+ * cesserait d'etre deductible.
+ */
+export const FORMULA_OPERAND_TYPES = ['number', 'integer', 'date'] as const;
+
+/** Nom interne admissible comme operande : c'est lui qui rend la formule relisible. */
+const FORMULA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const FORMULA_NUMBER = /^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$/;
+
+export const isFormulaIdentifier = (key: string): boolean => FORMULA_IDENTIFIER.test(key);
+
+/** Ce qu'une variable doit exposer pour qu'on sache la lire — rien de plus. */
+export interface FormulaFieldRef {
+  fieldKey: string;
+  type: string;
+  /** Non nulle = variable CALCULEE : jamais un operande (voir `checkFormula`). */
+  formula?: string | null;
+}
+
+function parseOperand(token: string): FormulaOperand | null {
+  if (FORMULA_NUMBER.test(token)) {
+    const value = Number(token);
+    return Number.isFinite(value) ? { kind: 'literal', value } : null;
+  }
+  return FORMULA_IDENTIFIER.test(token) ? { kind: 'field', fieldKey: token } : null;
+}
+
+/**
+ * Lecture STRICTE : trois jetons separes par des espaces. Le constructeur ecrit toujours
+ * cette forme ; tout le reste est refuse a l'enregistrement plutot que devine. Une formule
+ * qu'on ne sait pas lire ne doit pas produire un resultat approximatif.
+ */
+export function parseFormula(text: string | null | undefined): ParsedFormula | null {
+  if (typeof text !== 'string') return null;
+  const tokens = text.trim().split(/\s+/);
+  if (tokens.length !== 3) return null;
+  const [rawLeft, rawOperator, rawRight] = tokens;
+  if (!(FORMULA_OPERATORS as readonly string[]).includes(rawOperator)) return null;
+  const left = parseOperand(rawLeft);
+  const right = parseOperand(rawRight);
+  if (!left || !right) return null;
+  return { left, operator: rawOperator as FormulaOperator, right };
+}
+
+const operandText = (operand: FormulaOperand): string =>
+  operand.kind === 'field' ? operand.fieldKey : String(operand.value);
+
+/** Forme canonique stockee en base : un espace de chaque cote de l'operateur. */
+export const formatFormula = (parsed: ParsedFormula): string =>
+  `${operandText(parsed.left)} ${parsed.operator} ${operandText(parsed.right)}`;
+
+/**
+ * Motifs de refus. Ce sont des CODES : l'interface les traduit, la base rend ses propres
+ * messages. Deux libelles a tenir, une seule regle.
+ */
+export type FormulaProblem =
+  | 'syntax'
+  | 'self_reference'
+  | 'unknown_operand'
+  | 'calculated_operand'
+  | 'operand_type'
+  | 'operator_type'
+  | 'constant_only';
+
+export interface FormulaCheck {
+  ok: boolean;
+  problem?: FormulaProblem;
+  /** Nom interne de la variable en cause, quand le refus en designe une. */
+  detail?: string;
+  parsed?: ParsedFormula;
+  outputType?: FormulaOutputType;
+}
+
+const isDateRef = (ref: FormulaFieldRef) => ref.type === 'date';
+
+/**
+ * Valide une formule AU MOMENT OU LA VARIABLE EST ENREGISTREE : operandes existants, non
+ * calcules, de types compatibles. Une formule invalide est refusee la, pas decouverte a la
+ * saisie sous la forme d'un resultat vide que personne ne sait expliquer.
+ *
+ * `peers` ne contient que les variables de la MEME portee : une variable de rencontre ne
+ * lit pas une donnee permanente, faute de quoi le formulaire devrait charger un second bloc
+ * de donnees pour afficher un resultat.
+ */
+export function checkFormula(
+  text: string | null | undefined,
+  selfFieldKey: string,
+  peers: readonly FormulaFieldRef[],
+): FormulaCheck {
+  const parsed = parseFormula(text);
+  if (!parsed) return { ok: false, problem: 'syntax' };
+
+  const refs: (FormulaFieldRef | null)[] = [];
+  for (const operand of [parsed.left, parsed.right]) {
+    if (operand.kind === 'literal') {
+      refs.push(null);
+      continue;
+    }
+    if (operand.fieldKey === selfFieldKey) {
+      return { ok: false, problem: 'self_reference', detail: operand.fieldKey };
+    }
+    const ref = peers.find((p) => p.fieldKey === operand.fieldKey);
+    if (!ref) return { ok: false, problem: 'unknown_operand', detail: operand.fieldKey };
+    // Une variable calculee ne peut pas en referencer une autre. Cette interdiction
+    // SUPPRIME la detection de cycles au lieu de la coder : il n'y a jamais de chaine.
+    if (ref.formula) return { ok: false, problem: 'calculated_operand', detail: operand.fieldKey };
+    if (!(FORMULA_OPERAND_TYPES as readonly string[]).includes(ref.type)) {
+      return { ok: false, problem: 'operand_type', detail: operand.fieldKey };
+    }
+    refs.push(ref);
+  }
+
+  // Deux constantes ne font pas une variable : `2 + 3` vaut 5 pour tout le monde et
+  // n'appartient pas au dossier.
+  if (refs.every((r) => r === null)) return { ok: false, problem: 'constant_only' };
+
+  const dates = refs.filter((r) => r !== null && isDateRef(r));
+  if (dates.length === 2) {
+    // La SEULE operation admise entre deux dates, et elle rend des jours entiers.
+    if (parsed.operator !== '-') return { ok: false, problem: 'operator_type' };
+    return { ok: true, parsed, outputType: 'integer' };
+  }
+  // Une date melangee a un nombre n'a pas de sens ici : « date + 3 » demanderait de decider
+  // si 3 est un jour, un mois ou une heure. On refuse plutot que de choisir a sa place.
+  if (dates.length === 1) return { ok: false, problem: 'operator_type' };
+  return { ok: true, parsed, outputType: 'number' };
+}
+
+/** Index des operandes, construit UNE fois par export plutot qu'a chaque ligne. */
+export const formulaFieldIndex = (
+  fields: readonly FormulaFieldRef[],
+): Map<string, FormulaFieldRef> => new Map(fields.map((f) => [f.fieldKey, f]));
+
+const MS_PER_DAY = 86_400_000;
+
+/** Date stockee -> jours depuis l'epoque. Une date invalide vaut ABSENTE, jamais zero. */
+function dateToDays(raw: unknown): number | null {
+  if (typeof raw !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const ms = Date.UTC(year, month - 1, day);
+  const back = new Date(ms);
+  // 2024-02-31 n'existe pas : `Date.UTC` la deplacerait en mars sans rien dire.
+  if (back.getUTCFullYear() !== year || back.getUTCMonth() !== month - 1 || back.getUTCDate() !== day) {
+    return null;
+  }
+  return ms / MS_PER_DAY;
+}
+
+function numericValue(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === 'string' && raw.trim() !== '' && NUMERIC_LITERAL.test(raw.trim())) {
+    const n = Number(raw.trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Valeur d'un operande, ou `null` pour ABSENTE. Un operande absent, ou porteur de l'un des
+ * cinq codes de valeur manquante, rend le resultat absent — jamais zero. Un zero fabrique
+ * se lirait comme une mesure, et fausserait toute moyenne calculee ensuite.
+ */
+function operandValue(
+  operand: FormulaOperand,
+  data: Record<string, unknown> | null | undefined,
+  byKey: ReadonlyMap<string, FormulaFieldRef>,
+): number | null {
+  if (operand.kind === 'literal') return operand.value;
+  const ref = byKey.get(operand.fieldKey);
+  if (!ref) return null;
+  const raw = data ? data[operand.fieldKey] : undefined;
+  if (raw === null || raw === undefined || raw === '') return null;
+  // Les cinq codes de L33 : `non_fait`, `inconnu`, `non_applicable`, `refus`, `non_documente`.
+  if (typeof raw === 'object' && MISSING_KEY in (raw as Record<string, unknown>)) return null;
+  return isDateRef(ref) ? dateToDays(raw) : numericValue(raw);
+}
+
+// Le calcul binaire fabrique des chiffres qui n'ont pas ete mesures : 0,1 + 0,2 y vaut
+// 0,30000000000000004. On arrondit pour EFFACER cet artefact, pas pour inventer une
+// precision — au-dela de cette taille, l'arrondi lui-meme deviendrait faux.
+const FORMULA_DECIMALS = 6;
+const FORMULA_SAFE_SCALE = 1e15;
+function stripBinaryNoise(value: number): number {
+  if (!Number.isFinite(value) || Math.abs(value) >= FORMULA_SAFE_SCALE) return value;
+  const factor = 10 ** FORMULA_DECIMALS;
+  return Math.round(value * factor) / factor;
+}
+
+/**
+ * Evalue une formule sur une fiche. `null` = resultat ABSENT, la seule reponse possible
+ * quand un operande manque, porte un code de valeur manquante, ou qu'on divise par zero :
+ * ni erreur, ni infini, ni zero.
+ */
+export function evaluateFormula(
+  parsed: ParsedFormula,
+  data: Record<string, unknown> | null | undefined,
+  byKey: ReadonlyMap<string, FormulaFieldRef>,
+): number | null {
+  const left = operandValue(parsed.left, data, byKey);
+  if (left === null) return null;
+  const right = operandValue(parsed.right, data, byKey);
+  if (right === null) return null;
+  let result: number;
+  switch (parsed.operator) {
+    case '+':
+      result = left + right;
+      break;
+    case '-':
+      result = left - right;
+      break;
+    case '*':
+      result = left * right;
+      break;
+    case '/':
+      // Division par zero : resultat ABSENT. Ni erreur qui bloquerait tout l'export, ni
+      // infini qui se lirait comme une valeur.
+      if (right === 0) return null;
+      result = left / right;
+      break;
+  }
+  if (!Number.isFinite(result)) return null;
+  return stripBinaryNoise(result);
+}
+
+/**
+ * Variable calculee : dans sa propre version, ou dans l'une des versions unies par
+ * `mergeExportFields`. Une colonne devenue calculee en v2 reste une colonne calculee du
+ * point de vue du dictionnaire, meme si les fiches v1 y portent encore une valeur saisie.
+ */
+export const isCalculatedField = (
+  field: Pick<ExportField, 'formula' | 'formulaByVersion'>,
+): boolean => Boolean(field.formula) || Object.keys(field.formulaByVersion ?? {}).length > 0;
+
+/** Formule applicable A CETTE FICHE : celle de SA version, sinon celle de la variable. */
+export const formulaForVersion = (
+  field: Pick<ExportField, 'formula' | 'formulaByVersion'>,
+  versionId: string | undefined,
+): string | null => {
+  const byVersion = field.formulaByVersion;
+  if (versionId && byVersion && Object.keys(byVersion).length > 0) {
+    return byVersion[versionId] ?? null;
+  }
+  return field.formula ?? null;
+};
+
+/** Meme chose depuis le texte stocke : le chemin qu'empruntent l'ecran et l'export. */
+export function evaluateFormulaText(
+  text: string | null | undefined,
+  data: Record<string, unknown> | null | undefined,
+  byKey: ReadonlyMap<string, FormulaFieldRef>,
+): number | null {
+  const parsed = parseFormula(text);
+  return parsed ? evaluateFormula(parsed, data, byKey) : null;
+}
+
 const codeOf = (v: unknown): string => {
   if (isTerminologyValue(v)) return v.code;
   if (isTerminologyList(v)) return v.map((item) => item.code).join('; ');
@@ -217,6 +530,9 @@ const nbOf = (v: unknown): number | '' => {
  */
 export const columnsForFields = (fields: ExportField[]): string[] =>
   fields.flatMap((f) => {
+    // L35 : une variable calculee rend UNE colonne, comme le nombre qu'elle produit. Elle
+    // n'a ni code, ni liste de modalites, ni indicatrices — il n'y a rien a coder.
+    if (isCalculatedField(f)) return [columnId(f)];
     if (f.type === 'terminology') {
       if (f.isMultiple) {
         return [columnId(f), codeColumnId(f), nbColumnId(f)];
@@ -240,6 +556,18 @@ function mergeOptionLists(a: unknown[] | null | undefined, b: unknown[] | null |
     return typeof key === 'string' && !seen.has(key);
   });
   return extra.length ? [...a, ...extra] : a;
+}
+
+/**
+ * Formule d'une variable, rattachee a chacune des versions ou elle s'applique. Une variable
+ * sans formule n'en produit aucune : une colonne saisie reste saisie.
+ */
+function formulaEntries(field: ExportField): Record<string, string> {
+  const entries: Record<string, string> = { ...field.formulaByVersion };
+  if (field.formula) {
+    for (const versionId of field.templateVersionIds ?? []) entries[versionId] = field.formula;
+  }
+  return entries;
 }
 
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
@@ -274,12 +602,17 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // de section (version anterieure au lot, ou section detachee). On garde le premier
       // libelle connu plutot que de laisser la colonne sans nom lisible.
       previous.sectionLabel = previous.sectionLabel ?? field.sectionLabel;
+      // L35 : la formule NE SE FUSIONNE PAS. Chaque version garde la sienne, sinon une
+      // fiche v1 se verrait appliquer la formule corrigee en v2 — exactement ce que la
+      // decision « la formule appartient a la version » interdit.
+      previous.formulaByVersion = { ...previous.formulaByVersion, ...formulaEntries(field) };
     } else {
       merged.set(key, {
         ...field,
         isMultiple: Boolean(field.isMultiple),
         templateVersionIds: [...new Set(versions)].sort(),
         missingReasons: field.missingReasons ? sortMissingReasons(field.missingReasons) : field.missingReasons,
+        formulaByVersion: formulaEntries(field),
       });
     }
   }
@@ -300,6 +633,8 @@ export function referencedTemplateVersions(patients: ExportPatient[], encounters
   ].sort();
 }
 
+const EMPTY_FORMULA_INDEX: ReadonlyMap<string, FormulaFieldRef> = new Map();
+
 const belongsToField = (versionId: string | undefined, field: ExportField) =>
   !versionId || !field.templateVersionIds?.length || field.templateVersionIds.includes(versionId);
 const valueFor = (data: Record<string, unknown>, versionId: string | undefined, field: ExportField) =>
@@ -311,8 +646,19 @@ function assignField(
   data: Record<string, unknown> | null,
   versionId: string | undefined,
   field: ExportField,
+  /** Operandes possibles, de la MEME portee que `field` (L35). Vide ailleurs. */
+  peers: ReadonlyMap<string, FormulaFieldRef> = EMPTY_FORMULA_INDEX,
 ): void {
   const applicable = Boolean(data) && belongsToField(versionId, field);
+  // L35 : rien n'est stocke sous cette cle, la colonne est RECALCULEE ici. La formule
+  // retenue est celle de la version de LA FICHE, pas celle de la version courante.
+  const formula = applicable ? formulaForVersion(field, versionId) : null;
+  if (formula) {
+    const value = evaluateFormulaText(formula, data, peers);
+    // Resultat absent -> cellule vide, jamais zero : un zero se lirait comme une mesure.
+    row[columnId(field)] = value === null ? '' : value;
+    return;
+  }
   if (isOptionList(field)) {
     // L30 : le libelle dans la colonne principale, le code dans la sienne. C'est le code
     // qui reste stable quand un libelle est corrige, donc lui qui permet de compter.
@@ -417,6 +763,9 @@ const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encou
 export function buildEncounterExport(encounters: ExportEncounter[], fields: ExportField[]): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
   const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
+  // L35 : les operandes d'une variable calculee sont de la MEME portee — l'index ne
+  // contient donc que les variables de rencontre, et il est construit une seule fois.
+  const encPeers = formulaFieldIndex(encFields);
 
   const columns = [
     ...ENCOUNTER_META,
@@ -440,7 +789,7 @@ export function buildEncounterExport(encounters: ExportEncounter[], fields: Expo
       age_unit: e.ageUnit ?? '',
     };
     for (const f of encFields) {
-      assignField(row, e.data, e.templateVersionId, f);
+      assignField(row, e.data, e.templateVersionId, f, encPeers);
       const indicators = indicatorsByField.get(f.fieldKey) ?? [];
       const applicable = Boolean(e.data) && belongsToField(e.templateVersionId, f);
       for (const ind of indicators) {
@@ -476,6 +825,10 @@ export function buildPatientExport(
 
   const { indicatorsByField: patIndicators } = extractMultivalueCodes(patientFields, patients);
   const { indicatorsByField: encIndicators } = extractMultivalueCodes(encounterFields, encounters);
+  // L35 : un index d'operandes PAR PORTEE. Une variable calculee permanente ne lit que des
+  // donnees permanentes, une variable de rencontre que des donnees de rencontre.
+  const patPeers = formulaFieldIndex(patientFields);
+  const encPeers = formulaFieldIndex(encounterFields);
 
   const patientCols = patientFields.flatMap((f) => {
     const base = columnsForFields([f]);
@@ -501,7 +854,7 @@ export function buildPatientExport(
   const rows = [...patients].sort((a, b) => a.code.localeCompare(b.code)).map((p) => {
     const row: Record<string, unknown> = { patient_code: p.code };
     for (const f of patientFields) {
-      assignField(row, p.data, p.templateVersionId, f);
+      assignField(row, p.data, p.templateVersionId, f, patPeers);
       const indicators = patIndicators.get(f.fieldKey) ?? [];
       const applicable = Boolean(p.data) && belongsToField(p.templateVersionId, f);
       for (const ind of indicators) {
@@ -518,7 +871,7 @@ export function buildPatientExport(
     row.age_value = e ? formatAgeValue(e.ageValue ?? e.data.age_at_encounter) : '';
     row.age_unit = e?.ageUnit ?? '';
     for (const f of encounterFields) {
-      assignField(row, e ? e.data : null, e?.templateVersionId, f);
+      assignField(row, e ? e.data : null, e?.templateVersionId, f, encPeers);
       const indicators = encIndicators.get(f.fieldKey) ?? [];
       const applicable = Boolean(e?.data) && belongsToField(e?.templateVersionId, f);
       for (const ind of indicators) {
@@ -608,6 +961,18 @@ export interface DictionaryOptions {
   omittedFieldKeys?: Set<string>;
 }
 
+/**
+ * Formule(s) d'une colonne, pour le dictionnaire. Une colonne peut traverser des versions
+ * dont les formules different : le dictionnaire les cite TOUTES, comme il cite deja toutes
+ * les raisons de valeur manquante — sans quoi il decrirait une version et laisserait un
+ * resultat inexplique en face d'une fiche plus ancienne.
+ */
+function formulaLabel(field: ExportField): string {
+  const all = Object.values(field.formulaByVersion ?? {});
+  if (field.formula) all.push(field.formula);
+  return [...new Set(all)].sort().join('; ');
+}
+
 export function buildDictionary(fields: ExportField[], options?: DictionaryOptions): ExportTable {
   const columns = [
     'column_id',
@@ -618,6 +983,10 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
     'section',
     'section_label',
     'type',
+    // L35 : une colonne calculee doit dire COMMENT elle a ete obtenue. Sans cette colonne,
+    // le fichier exporte porte un nombre que rien n'explique, et qui n'est nulle part dans
+    // les donnees brutes puisqu'il n'est jamais stocke.
+    'formula',
     'is_multiple',
     'unit',
     'allowed_values',
@@ -643,8 +1012,11 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
           : '',
         missing_reasons: (f.missingReasons ?? []).join('; '),
         template_versions: (f.templateVersionIds ?? []).join('; '),
+        // Les colonnes derivees (code, nombre, indicatrices) ne sont pas calculees par une
+        // formule d'utilisateur : la case reste vide chez elles.
+        formula: '',
       };
-      const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common };
+      const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common, formula: formulaLabel(f) };
       if (isOptionList(f)) {
         return [
           valueRow,

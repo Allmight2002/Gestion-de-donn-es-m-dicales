@@ -10,15 +10,20 @@ import {
   buildEncounterExport,
   buildMultivalueTable,
   buildPatientExport,
+  checkFormula,
   codeColumnId,
   columnId,
+  evaluateFormulaText,
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
+  formulaFieldIndex,
+  type FormulaFieldRef,
   mergeExportFields,
   nbColumnId,
   optionCodeColumnId,
 } from './exportContract.ts';
+import { FORMULA_CASE_FIELDS, FORMULA_CASES } from './formulaCases.ts';
 
 const champ = (over: Partial<ExportField> & Pick<ExportField, 'fieldKey' | 'type'>): ExportField => ({
   label: over.fieldKey,
@@ -86,6 +91,8 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       allowed_values: '',
       missing_reasons: '',
       template_versions: '',
+      // L35 : colonne ajoutee au dictionnaire. Vide sur une variable saisie.
+      formula: '',
     },
     {
       column_id: codeColumnId(DIAGNOSTIC),
@@ -101,6 +108,8 @@ Deno.test('le dictionnaire documente aussi la colonne analytique du code', () =>
       allowed_values: '',
       missing_reasons: '',
       template_versions: '',
+      // L35 : colonne ajoutee au dictionnaire. Vide sur une variable saisie.
+      formula: '',
     },
   ]);
 });
@@ -460,4 +469,116 @@ Deno.test('L22 : le dictionnaire documente is_multiple=true et la colonne nb__..
   const nbRow = dict.rows.find((r) => r.column_id === nbColumnId(DIAG_MULTI));
   assertEquals(nbRow?.label, 'diagnostics — nombre');
   assertEquals(nbRow?.type, 'computed_count');
+});
+
+// =============================================================================
+// L35 — variables calculees
+// =============================================================================
+
+// LA GARANTIE CENTRALE DU LOT. Le meme tableau de cas est rejoue ici (Deno, Edge Function de
+// production) et dans `test/formula.test.ts` (Node, cote navigateur). Les deux mondes lisent
+// le meme module TypeScript ; ce test le PROUVE au lieu de le supposer — y compris le jour ou
+// quelqu'un croira bien faire en recopiant l'evaluateur dans l'un des deux.
+Deno.test('L35 : le jeu de cas partage donne les memes resultats cote Deno que cote web', () => {
+  const index = formulaFieldIndex(FORMULA_CASE_FIELDS as FormulaFieldRef[]);
+  for (const c of FORMULA_CASES) {
+    assertEquals(evaluateFormulaText(c.formula, c.data, index), c.expected, c.name);
+  }
+});
+
+Deno.test('L35 : checkFormula refuse aux memes conditions des deux cotes', () => {
+  const peers: FormulaFieldRef[] = [
+    { fieldKey: 'score_j0', type: 'integer' },
+    { fieldKey: 'date_entree', type: 'date' },
+    { fieldKey: 'date_sortie', type: 'date' },
+    { fieldKey: 'commentaire', type: 'text' },
+    { fieldKey: 'duree_deja_calculee', type: 'integer', formula: 'date_sortie - date_entree' },
+  ];
+  assertEquals(checkFormula('date_sortie - date_entree', 'duree', peers).outputType, 'integer');
+  assertEquals(checkFormula('score_j0 * 2', 'double', peers).outputType, 'number');
+  assertEquals(checkFormula('score_j0 - absent', 'x', peers).problem, 'unknown_operand');
+  assertEquals(checkFormula('score_j0 - commentaire', 'x', peers).problem, 'operand_type');
+  assertEquals(checkFormula('duree_deja_calculee * 2', 'x', peers).problem, 'calculated_operand');
+  assertEquals(checkFormula('date_sortie + date_entree', 'x', peers).problem, 'operator_type');
+  assertEquals(checkFormula('2 + 3', 'x', peers).problem, 'constant_only');
+  assertEquals(checkFormula('a + b - c', 'x', peers).problem, 'syntax');
+});
+
+const DUREE = champ({
+  fieldKey: 'duree_sejour',
+  type: 'integer',
+  label: 'Duree de sejour',
+  formula: 'date_sortie - date_entree',
+});
+const ENTREE = champ({ fieldKey: 'date_entree', type: 'date', label: 'Date d entree' });
+const SORTIE = champ({ fieldKey: 'date_sortie', type: 'date', label: 'Date de sortie' });
+
+Deno.test('L35 : la colonne calculee est RECALCULEE a l export, sans rien lire dans la fiche', () => {
+  const table = buildEncounterExport(
+    [rencontre({ date_entree: '2024-02-01', date_sortie: '2024-03-01' })],
+    [ENTREE, SORTIE, DUREE],
+  );
+  assertEquals(table.rows[0][columnId(DUREE)], 29);
+  // Une seule colonne : ni code, ni nombre, ni indicatrices — il n'y a rien a coder.
+  assertEquals(table.columns.filter((c) => c.includes('duree_sejour')), [columnId(DUREE)]);
+});
+
+Deno.test('L35 : resultat ABSENT -> cellule VIDE, jamais zero', () => {
+  const table = buildEncounterExport(
+    [
+      rencontre({ date_entree: '2024-02-01' }),
+      {
+        ...rencontre({ date_entree: '2024-02-01', date_sortie: { __missing__: 'inconnu' } }),
+        id: 'e2',
+      },
+    ],
+    [ENTREE, SORTIE, DUREE],
+  );
+  assertEquals(table.rows[0][columnId(DUREE)], '');
+  assertEquals(table.rows[1][columnId(DUREE)], '');
+});
+
+Deno.test('L35 : une valeur stockee sous la cle calculee NE remplace PAS le calcul', () => {
+  // Rien ne devrait s'y trouver ; si quelque chose s'y trouve, c'est la formule qui fait foi.
+  const table = buildEncounterExport(
+    [rencontre({ date_entree: '2024-02-01', date_sortie: '2024-03-01', duree_sejour: 999 })],
+    [ENTREE, SORTIE, DUREE],
+  );
+  assertEquals(table.rows[0][columnId(DUREE)], 29);
+});
+
+Deno.test('L35 : la formule appartient a LA VERSION — une fiche ancienne garde son resultat', () => {
+  const v1 = '00000000-0000-0000-0000-0000000000a1';
+  const v2 = '00000000-0000-0000-0000-0000000000a2';
+  // v1 : duree = sortie - entree. v2 : la formule est corrigee en sortie - inclusion.
+  const fields: ExportField[] = [
+    { ...ENTREE, templateVersionIds: [v1, v2] },
+    { ...SORTIE, templateVersionIds: [v1, v2] },
+    { ...champ({ fieldKey: 'date_inclusion', type: 'date' }), templateVersionIds: [v2] },
+    { ...DUREE, formula: 'date_sortie - date_entree', templateVersionIds: [v1] },
+    { ...DUREE, formula: 'date_sortie - date_inclusion', templateVersionIds: [v2] },
+  ];
+  const data = {
+    date_entree: '2024-02-01',
+    date_sortie: '2024-03-01',
+    date_inclusion: '2024-02-20',
+  };
+  const table = buildEncounterExport(
+    [
+      { ...rencontre(data), id: 'e1', templateVersionId: v1 },
+      { ...rencontre(data), id: 'e2', templateVersionId: v2 },
+    ],
+    fields,
+  );
+  assertEquals(table.rows[0][columnId(DUREE)], 29);
+  assertEquals(table.rows[1][columnId(DUREE)], 10);
+});
+
+Deno.test('L35 : le dictionnaire cite la formule, sinon la colonne serait inexplicable', () => {
+  const dict = buildDictionary([ENTREE, SORTIE, DUREE]);
+  assertEquals(dict.columns.includes('formula'), true);
+  const row = dict.rows.find((r) => r.column_id === columnId(DUREE));
+  assertEquals(row?.formula, 'date_sortie - date_entree');
+  // Une variable saisie n'a pas de formule : la case reste vide.
+  assertEquals(dict.rows.find((r) => r.column_id === columnId(ENTREE))?.formula, '');
 });
