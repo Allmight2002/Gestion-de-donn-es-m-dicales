@@ -12,9 +12,12 @@ import { TemplateVersionEditor } from './TemplateVersionEditor';
 import type { TemplateRepository } from '../../data/templates';
 import type { TemplateField, TemplateVersion, VersionStatus } from '../../data/types';
 
-function statefulMock(status: VersionStatus): TemplateRepository {
+// `seed` : variables DEJA presentes dans la version, telles que le serveur les renverrait
+// (avec consigne, valeur proposee, etc.). Sans lui, seul un champ cree via le formulaire
+// peut etre edite, et il ne porte alors que ce que le formulaire a rempli.
+function statefulMock(status: VersionStatus, seed: TemplateField[] = []): TemplateRepository {
   const version: TemplateVersion = { id: 'v1', templateId: 't1', versionNumber: 1, status };
-  let fields: TemplateField[] = [];
+  let fields: TemplateField[] = [...seed];
   let n = 0;
   return {
     async listTemplates() {
@@ -255,6 +258,40 @@ describe('TemplateVersionEditor (brouillon)', () => {
     await user.type(label, 'Glasgow modifié');
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
     expect(await screen.findByText('Glasgow modifié')).toBeInTheDocument();
+  });
+
+  // L27/L28 — corriger un libelle ne doit rien effacer d'autre. Sans `description` et
+  // `defaultValue` dans le pre-remplissage, le formulaire repart a vide sur ces deux
+  // champs et `updateField` recoit null : la consigne de saisie et la valeur proposee
+  // disparaissent en silence, alors que personne n'y a touche.
+  test('modifier le seul libelle conserve la consigne de saisie et la valeur proposee', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft', [{
+      id: 'f1', fieldKey: 'pays', label: 'Pays de résidence',
+      description: 'Pays déclaré par le patient', defaultValue: 'Tchad',
+      scope: 'patient', section: 'clinique', type: 'text', unit: null, allowedValues: null,
+      required: false, minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 1,
+    }]);
+    const updateField = vi.spyOn(repo, 'updateField');
+    renderEditor(repo);
+    await screen.findByText('Pays de résidence');
+
+    await user.click(screen.getByRole('button', { name: 'Modifier' }));
+    // Le formulaire doit PORTER les deux valeurs : c'est ce qui les renverra intactes.
+    expect(screen.getByLabelText('Consigne de saisie')).toHaveValue('Pays déclaré par le patient');
+    expect(screen.getByLabelText('Valeur proposée')).toHaveValue('Tchad');
+
+    const label = screen.getByLabelText('Libellé');
+    await user.clear(label);
+    await user.type(label, 'Pays de naissance');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledOnce());
+    expect(updateField).toHaveBeenCalledWith('f1', expect.objectContaining({
+      label: 'Pays de naissance',
+      description: 'Pays déclaré par le patient',
+      defaultValue: 'Tchad',
+    }));
   });
 
   test('permet de reordonner les champs sur mobile avec des boutons explicites', async () => {

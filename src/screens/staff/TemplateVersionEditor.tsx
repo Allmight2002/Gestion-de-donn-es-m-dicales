@@ -306,6 +306,11 @@ export function TemplateVersionEditor({
               initial={{
                 fieldKey: editing.fieldKey,
                 label: editing.label,
+                // L27/L28 : sans ces deux lignes, corriger le libelle d'une variable
+                // effacerait sa consigne de saisie et sa valeur proposee -- `updateField`
+                // enverrait alors `p_description: null` et `p_default_value: null`, en silence.
+                description: editing.description,
+                defaultValue: editing.defaultValue,
                 scope: editing.scope,
                 section: editing.section,
                 type: editing.type,
