@@ -3152,3 +3152,38 @@ faire en recopiant l'évaluateur dans l'un des deux mondes, ce test tombera.
 - Le tableau des lots de `lots-paralleles.md` n'a **pas** été mis à jour : une session parallèle y
   écrivait au même moment (lots L38 à L44 issus de l'audit du 18 août). À reprendre par elle ou
   après sa fusion.
+
+## L36 — Parité d'export des listes à choix multiples (2026-08-20)
+
+### Résultat
+
+- La branche `codex/l36-multiselect-export` a produit le commit `815c6d5` et la PR #247 vers
+  `develop`.
+- La PR #247 a été fusionnée le 2026-08-20 dans `develop` par le commit `b9b984a`.
+- Le `multiselect` conserve ses colonnes libellé/code et reçoit `nb__`, les indicatrices
+  `has__` et une feuille longue `patient_code`, `encounter_id`, `rang`, `code`, `label`.
+- Une valeur manquante codifiée produit `nb__ = 0` et des indicatrices à 0 ; un code inconnu
+  reste identique dans la feuille principale et la feuille longue.
+- Le plafond de 100 codes, la normalisation des suffixes et le refus propre du plafond de
+  cellules XLSX sont conservés. Le dictionnaire nomme les indicatrices par leur libellé.
+- Aucune migration, validation serveur, constructeur ou logique hors-ligne n'a été modifiée.
+
+### Validation
+
+- `npm run edge:fmt`, `npm run edge:lint`, `npm run edge:check` : verts.
+- `npm run edge:test` : **138 tests verts**, dont la non-régression L22 et les cas L36.
+- `npm run typecheck` : vert.
+- Lint ciblé des quatre fichiers touchés : vert.
+- `npm run test:web` : **65 fichiers, 487 tests verts**.
+- `npm run build` : vert avec `VITE_USE_SIGNED_READ=true`, garde de readiness existante.
+- CI GitHub du run `32400798242` : `build-test` et `scanner-image` verts ; le job distant a
+  également validé les tests RLS/UI, le build PWA et les contrôles Edge.
+
+### Limites de vérification locales
+
+- `npm run lint` global n'est pas exploitable dans ce worktree : ESLint descend dans plusieurs
+  worktrees présents sous le dépôt et échoue sur un `tsconfigRootDir` ambigu ; le lint ciblé
+  des fichiers L36 est vert.
+- `npm test` a été interrompu après blocage lors de l'initialisation PostgreSQL embarquée dans
+  l'environnement partagé. La suite équivalente RLS/UI a toutefois été exécutée avec succès
+  par la CI du commit de la PR.
