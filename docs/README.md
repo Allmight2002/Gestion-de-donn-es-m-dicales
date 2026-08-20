@@ -35,8 +35,8 @@
 
 | Document | Contenu |
 |---|---|
-| [edge-functions.md](edge-functions.md) | Les 7 fonctions serveur : lecture signée auditée, inspection antivirus, export, comptes de mission |
-| [security-definer.md](security-definer.md) | Inventaire normatif des 110 fonctions privilégiées + contrôle d'ACL |
+| [edge-functions.md](edge-functions.md) | Les 8 fonctions serveur : lecture signée auditée, inspection antivirus, export, comptes de mission et purge D10 |
+| [security-definer.md](security-definer.md) | Inventaire normatif des 112 fonctions privilégiées + contrôle d'ACL |
 | [upload-inspection-operations.md](upload-inspection-operations.md) | Exploitation de la chaîne d'inspection des fichiers déposés |
 | [xlsx-security.md](xlsx-security.md) | Risques propres au traitement des tableurs |
 | [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md) | Ce que le mode hors-ligne autorise et interdit de stocker localement |
@@ -87,6 +87,7 @@
 | Document | Contenu |
 |---|---|
 | [feuille-route-developpement-post-readiness.md](feuille-route-developpement-post-readiness.md) | Reprise du développement malgré les gates de production |
+| [feuille-route-offline-saisie.md](feuille-route-offline-saisie.md) | **Cible technique non implémentée** : création de patients et saisie de rencontres hors-ligne, synchronisation idempotente et preuves E2E |
 | [suivi-execution-feuille-route.md](suivi-execution-feuille-route.md) | Journal d'exécution de cette feuille de route |
 | [lots-paralleles.md](lots-paralleles.md) | Découpage des chantiers en lots parallélisables |
 | [prompts-lots.md](prompts-lots.md) · [prompt-execution-autonome-feuille-route.md](prompt-execution-autonome-feuille-route.md) | Prompts de travail prêts à l'emploi (outillage interne) |

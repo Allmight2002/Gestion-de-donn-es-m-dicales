@@ -1,6 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from '@std/assert';
+import { assert, assertEquals, assertStringIncludes, assertThrows } from '@std/assert';
 import * as XLSX from 'xlsx';
 import {
+  assertExportShapeWithinLimits,
   buildExportFilename,
   EXPORT_LIMITS,
   exportFilenameSegment,
@@ -509,6 +510,14 @@ Deno.test('generate-export: les colonnes de code de terminologie comptent dans l
   assertEquals(responseBody.observed, 6 + terminologyFields.length * 2);
 });
 
+Deno.test('generate-export: les cellules des feuilles multivaluees depassent proprement le plafond', () => {
+  const longSheetCells = (Math.ceil(EXPORT_LIMITS.cells / 5) + 1) * 5;
+  assertThrows(
+    () => assertExportShapeWithinLimits(1, 1, 'xlsx', longSheetCells),
+    Error,
+  );
+});
+
 Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs/manquants', async () => {
   let uploaded: Uint8Array | null = null;
   // On intercepte l'upload via un responder qui capture les octets reellement ecrits.
@@ -582,6 +591,19 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
     allowed_values: null,
     display_order: 4,
   };
+  const optionMultiField = {
+    id: 'f_signes',
+    template_version_id: TV,
+    field_key: 'signes',
+    label: 'Signes',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'multiselect',
+    unit: null,
+    allowed_values: ['fievre'],
+    allowed_options: [{ value_key: 'fievre', label: 'Fièvre', is_active: true }],
+    display_order: 5,
+  };
   const encWithMulti = {
     ...ENCOUNTER,
     data: {
@@ -590,6 +612,7 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
         { code: '1A00', label: 'Cholera' },
         { code: 'BA00', label: 'Hypertension' },
       ],
+      signes: ['code_historique_inconnu', 'fievre'],
     },
   };
 
@@ -618,7 +641,7 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
         case 'encounter':
           return okResult([encWithMulti]);
         case 'template_field':
-          return okResult([...FIELDS, multiField]);
+          return okResult([...FIELDS, multiField, optionMultiField]);
         case 'template_section':
           return okResult(SECTIONS);
         case 'export_log':
@@ -661,6 +684,25 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
   assertEquals(diagSheet[1].rang, 2);
   assertEquals(diagSheet[1].code, 'BA00');
   assertEquals(diagSheet[1].label, 'Hypertension');
+
+  assertEquals(wb.SheetNames.includes('signes'), true);
+  const signsSheet = XLSX.utils.sheet_to_json(wb.Sheets['signes']) as Record<string, unknown>[];
+  assertEquals(signsSheet, [
+    {
+      patient_code: 'P0001',
+      encounter_id: 'e1',
+      rang: 1,
+      code: 'code_historique_inconnu',
+      label: 'code_historique_inconnu',
+    },
+    {
+      patient_code: 'P0001',
+      encounter_id: 'e1',
+      rang: 2,
+      code: 'fievre',
+      label: 'Fièvre',
+    },
+  ]);
 });
 
 Deno.test('generate-export: XLSX -> 200', async () => {

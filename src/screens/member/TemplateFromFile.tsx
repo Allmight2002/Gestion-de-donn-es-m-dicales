@@ -9,6 +9,8 @@ import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { proposeFieldsFromSheet, type ProposedField } from '../../domain/templateFromSheet';
 import { useToast } from '../../components/Toast';
 import { Checkbox } from '../../components/Checkbox';
+import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
+import { fieldTypeLabel } from '../../domain/templateLabels';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 Mo : on ne lit qu'une STRUCTURE, pas un gros jeu de donnees
 const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
@@ -37,6 +39,7 @@ export function TemplateFromFile() {
   const [baseName, setBaseName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createdVersion, setCreatedVersion] = useState<{ id: string; name: string } | null>(null);
 
   const msg = (e: unknown) => errorMessage(e, t('common.error'));
   const patch = (i: number, p: Partial<ProposedField>) => setFields((fs) => fs.map((f, j) => (j === i ? { ...f, ...p } : f)));
@@ -84,13 +87,24 @@ export function TemplateFromFile() {
         toast(t('tfile.base_created'), 'success');
         navigate(`/bases/${bundle.baseId}/import`);
       } else {
-        navigate('/templates');
+        setCreatedVersion({ id: bundle.versionId, name: name.trim() });
       }
     } catch (err) {
       setError(msg(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  if (createdVersion) {
+    return (
+      <TemplateVersionEditor
+        versionId={createdVersion.id}
+        templateName={createdVersion.name}
+        showVersionActions={false}
+        onBack={() => navigate('/templates')}
+      />
+    );
   }
 
   return (
@@ -142,7 +156,7 @@ export function TemplateFromFile() {
                     <td className="px-2 py-1"><input className="input w-40 py-1" value={f.label} onChange={(e) => patch(i, { label: e.target.value })} /></td>
                     <td className="px-2 py-1">
                       <select className="input py-1" value={f.type} onChange={(e) => patch(i, { type: e.target.value as FieldType })}>
-                        {TYPES.map((x) => <option key={x} value={x}>{x}</option>)}
+                         {TYPES.map((x) => <option key={x} value={x}>{fieldTypeLabel(t, x)}</option>)}
                       </select>
                     </td>
                     <td className="px-2 py-1">

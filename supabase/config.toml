@@ -79,3 +79,9 @@ import_map = "../deno.json"
 [functions.create-mission-account]
 verify_jwt = false
 import_map = "../deno.json"
+
+# Purge definitive D10 : verification du proprietaire, suppression Storage
+# rejouable puis finalisation PostgreSQL service-only.
+[functions.purge-deleted-base]
+verify_jwt = false
+import_map = "../deno.json"

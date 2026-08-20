@@ -22,6 +22,19 @@ async function chooseSelectType() {
   await userEvent.selectOptions(screen.getByLabelText('Type'), 'select');
 }
 
+describe('FieldForm — options avancees', () => {
+  test('la categorie de calcul est repliee mais reste ouvrable', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    const summary = screen.getByText('Calcul et formule');
+    const details = summary.closest('details');
+
+    expect(details).not.toHaveAttribute('open');
+    await user.click(summary);
+    expect(details).toHaveAttribute('open');
+  });
+});
+
 describe('FieldForm — jeux de valeurs (F4)', () => {
   test('les listes pretes a l emploi n apparaissent que pour un champ a choix', async () => {
     renderForm();
@@ -61,7 +74,7 @@ describe('FieldForm — jeux de valeurs (F4)', () => {
     await userEvent.type(screen.getByLabelText('Libellé'), 'Issue');
     await userEvent.selectOptions(screen.getByLabelText("Liste prête à l'emploi"), 'oui-non-inconnu');
     await userEvent.click(screen.getByRole('button', { name: 'Insérer' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     // L30 : ce qui part en base est le CODE ; le libelle voyage a cote et reste modifiable.
     expect(onSubmit).toHaveBeenCalledWith(
@@ -175,7 +188,7 @@ describe('FieldForm description', () => {
     await userEvent.type(screen.getByLabelText('Clé technique'), 'glasgow');
     await userEvent.type(screen.getByLabelText('Libellé'), 'Score de Glasgow');
     await userEvent.type(screen.getByLabelText('Consigne de saisie'), 'Premier score documenté avant toute sédation');
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       description: 'Premier score documenté avant toute sédation',
     }), undefined);
@@ -209,7 +222,7 @@ describe('FieldForm — soupape (F5)', () => {
   test('sans la case cochee, aucun champ compagnon n est demande', async () => {
     const onSubmit = renderForm();
     await fillChoiceField();
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fieldKey: 'diagnostic' }), undefined);
   });
 
@@ -218,7 +231,7 @@ describe('FieldForm — soupape (F5)', () => {
     await fillChoiceField();
     await userEvent.click(screen.getByRole('checkbox', { name: 'Obligatoire' }));
     await userEvent.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ fieldKey: 'diagnostic', required: true }),
@@ -239,7 +252,7 @@ describe('FieldForm — base transversale (L9)', () => {
     expect(screen.getByText('Données du formulaire unique')).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Clé technique'), 'poids');
     await userEvent.type(screen.getByLabelText('Libellé'), 'Poids');
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ scope: 'patient', encounterTypes: null }), undefined);
   });
 });
@@ -272,7 +285,7 @@ describe('FieldForm — valeur proposée (L28)', () => {
     await userEvent.type(screen.getByLabelText('Libellé'), 'Pays de résidence');
     await userEvent.type(screen.getByLabelText('Valeur proposée'), 'Tchad');
     expect(screen.queryByRole('status')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ defaultValue: 'Tchad' }), undefined);
   });
 
@@ -283,7 +296,7 @@ describe('FieldForm — valeur proposée (L28)', () => {
     await userEvent.type(screen.getByLabelText('Clé technique'), 'date_consultation');
     await userEvent.type(screen.getByLabelText('Libellé'), 'Date de consultation');
     await userEvent.selectOptions(screen.getByLabelText('Valeur proposée'), '__today__');
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ defaultValue: '__today__' }), undefined);
   });
 
@@ -307,7 +320,7 @@ describe('FieldForm — raisons de valeur manquante (L33)', () => {
     const onSubmit = renderForm();
     expect(screen.queryByText('Raisons proposées à la saisie')).toBeNull();
     await nameField('sexe', 'Sexe');
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ missingReasons: [], allowMissingCodes: false }),
       undefined,
@@ -319,7 +332,7 @@ describe('FieldForm — raisons de valeur manquante (L33)', () => {
     await nameField('examen', 'Examen');
     await userEvent.click(screen.getByLabelText('Accepter une valeur manquante'));
     expect(screen.getByText('Raisons proposées à la saisie')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ missingReasons: ['non_fait', 'inconnu', 'non_applicable'] }),
       undefined,
@@ -334,7 +347,7 @@ describe('FieldForm — raisons de valeur manquante (L33)', () => {
     await userEvent.click(screen.getByLabelText('Inconnu'));
     await userEvent.click(screen.getByLabelText('Non applicable'));
     await userEvent.click(screen.getByLabelText('Refus du patient'));
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ missingReasons: ['refus'], allowMissingCodes: true }),
       undefined,
@@ -385,7 +398,7 @@ describe('FieldForm — plusieurs valeurs (L21)', () => {
     await userEvent.type(screen.getByLabelText('Clé technique'), 'diagnostic');
     await userEvent.type(screen.getByLabelText('Libellé'), 'Diagnostic');
     await userEvent.click(screen.getByRole('checkbox', { name: CASE }));
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ fieldKey: 'diagnostic', type: 'terminology', isMultiple: true }),
@@ -402,7 +415,7 @@ describe('FieldForm — plusieurs valeurs (L21)', () => {
     await userEvent.type(screen.getByLabelText('Clé technique'), 'notes');
     await userEvent.type(screen.getByLabelText('Libellé'), 'Notes');
     await userEvent.selectOptions(screen.getByLabelText('Type'), 'text');
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'text', isMultiple: false }),
@@ -528,7 +541,7 @@ describe('FieldForm — variables calculees (L35)', () => {
     await enableCalculation();
     await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
     await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const sent = onSubmit.mock.calls[0][0];
@@ -546,7 +559,7 @@ describe('FieldForm — variables calculees (L35)', () => {
     await enableCalculation();
     await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
     // Le second element n'est pas choisi.
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

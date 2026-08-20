@@ -140,6 +140,37 @@ describe('RuleForm', () => {
     expect(within(leftField).getByRole('option', { name: 'Date — Patient — patient_date' })).toBeInTheDocument();
     expect(within(leftField).getByRole('option', { name: 'Date — Visite — visit_date' })).toBeInTheDocument();
   });
+
+  test('relit une règle existante et permet de la corriger sans la recréer', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm
+          fields={fields}
+          initialRule={{ operator: 'greater_or_equal', left_field: 'discharge_date', right_field: 'admission_date' }}
+          initialMessage="La sortie doit suivre l’admission"
+          initialSeverity="warn"
+          submitLabel="Enregistrer la règle"
+          onCancel={() => {}}
+          onSubmit={onSubmit}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByLabelText('Variable à contrôler')).toHaveValue('discharge_date');
+    expect(screen.getByLabelText('Relation clinique')).toHaveValue('greater_or_equal');
+    expect(screen.getByDisplayValue('La sortie doit suivre l’admission')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'less_than');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la règle' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      { operator: 'less_than', left_field: 'discharge_date', right_field: 'admission_date' },
+      'La sortie doit suivre l’admission',
+      'warn',
+    );
+  });
 });
 
 describe('RuleSummary', () => {

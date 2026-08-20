@@ -42,7 +42,11 @@ async function uploadSheet() {
 describe('TemplateFromFile (F1)', () => {
   test('un fichier propose des champs, puis « créer » construit le jeu de variables', async () => {
     const createTemplateBundle = vi.fn(async (_input: TemplateBundleInput) => ({ templateId: 't1', versionId: 'v1', baseId: null }));
-    renderScreen({ createTemplateBundle } as unknown as TemplateRepository);
+    const getVersion = vi.fn(async () => ({
+      version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'draft' as const },
+      fields: [], rules: [], sections: [],
+    }));
+    renderScreen({ createTemplateBundle, getVersion } as unknown as TemplateRepository);
 
     await uploadSheet();
 
@@ -54,7 +58,7 @@ describe('TemplateFromFile (F1)', () => {
     await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
     expect(createTemplateBundle.mock.calls[0][0]).toMatchObject({ name: 'cohorte', specialty: null, withBase: false });
     expect(createTemplateBundle.mock.calls[0][0].fields).toHaveLength(2);
-    expect(await screen.findByText('TEMPLATES')).toBeInTheDocument(); // redirection apres creation
+    expect(await screen.findByRole('heading', { name: 'cohorte' })).toBeInTheDocument(); // ouverture directe de l’éditeur
   });
 
   test('V3 : « créer aussi une base » cree jeu + base et atterrit sur l ecran d import', async () => {

@@ -11,7 +11,14 @@ import { EmptyState } from '../../components/EmptyState';
 import { SkeletonList } from '../../components/Skeleton';
 
 // Corbeille des bases (demenagee du tableau de bord vers la barre laterale) : la
-// restauration remet la base en ligne sans remettre les acces partages, comme avant.
+// restauration remet la base en ligne sans remettre les acces partages. D10 ajoute
+// une purge definitive confirmee par le serveur et rejouable apres un incident Storage.
+function newOperationId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  const suffix = Math.floor(Math.random() * 0x1_0000_0000_0000).toString(16).padStart(12, '0');
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
 export function Trash() {
   const repo = useBaseRepository();
   const { t } = useI18n();
@@ -19,8 +26,13 @@ export function Trash() {
   const [deleted, setDeleted] = useState<DeletedBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<DeletedBase | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<DeletedBase | null>(null);
+  const [purgeName, setPurgeName] = useState('');
+  const [purgeOperationId, setPurgeOperationId] = useState<string | null>(null);
+  const [purging, setPurging] = useState(false);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -60,6 +72,52 @@ export function Trash() {
     }
   }
 
+  function openPurge(base: DeletedBase) {
+    setPurgeTarget(base);
+    setPurgeName('');
+    setPurgeOperationId(base.purgeOperationId ?? newOperationId());
+    setError(null);
+    setSuccess(null);
+  }
+
+  function closePurge() {
+    if (purging) return;
+    setPurgeTarget(null);
+    setPurgeName('');
+    setPurgeOperationId(null);
+  }
+
+  async function purgeBase() {
+    if (!purgeTarget || !purgeOperationId || purgeName.trim() !== purgeTarget.name) return;
+    const purgedName = purgeTarget.name;
+    setPurging(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await repo.purgeDeletedBase(purgeTarget.id, purgeOperationId);
+      setPurging(false);
+      closePurge();
+      await reload();
+      setSuccess(t('base.purge_success').replace('{name}', purgedName));
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setPurging(false);
+    }
+  }
+
+  function contentWarning(base: DeletedBase) {
+    const contents = [
+      base.patientCount > 0 && t('base.purge_patients').replace('{count}', String(base.patientCount)),
+      base.encounterCount > 0 && t('base.purge_encounters').replace('{count}', String(base.encounterCount)),
+      base.documentCount > 0 && t('base.purge_documents').replace('{count}', String(base.documentCount)),
+      base.attachmentCount > 0 && t('base.purge_attachments').replace('{count}', String(base.attachmentCount)),
+    ].filter((value): value is string => Boolean(value));
+    return contents.length > 0
+      ? t('base.purge_contents').replace('{details}', contents.join(', '))
+      : t('base.purge_empty_body');
+  }
+
   return (
     <section className="space-y-5">
       <ConfirmDialog
@@ -71,8 +129,40 @@ export function Trash() {
         onCancel={() => setRestoreTarget(null)}
         onConfirm={() => void restoreBase()}
       />
+      <ConfirmDialog
+        open={purgeTarget !== null}
+        title={t('base.purge_title')}
+        body={purgeTarget ? (
+          <div className="space-y-2 text-sm text-slate-600">
+            <p>{t('base.purge_irreversible')}</p>
+            <p>{contentWarning(purgeTarget)}</p>
+            <p>{t('base.purge_export_note')}</p>
+            <label className="block space-y-1 text-sm font-medium text-slate-700" htmlFor="purge-base-name">
+              <span>{t('base.purge_name_label')}</span>
+              <input
+                id="purge-base-name"
+                className="input w-full"
+                value={purgeName}
+                onChange={(event) => setPurgeName(event.target.value)}
+                autoComplete="off"
+                disabled={purging}
+              />
+            </label>
+            {purgeName.length > 0 && purgeName.trim() !== purgeTarget.name && (
+              <p className="text-xs text-red-600">{t('base.purge_name_invalid')}</p>
+            )}
+          </div>
+        ) : undefined}
+        confirmLabel={t('base.purge_confirm')}
+        confirmDisabled={!purgeTarget || purgeName.trim() !== purgeTarget.name}
+        danger
+        busy={purging}
+        onCancel={closePurge}
+        onConfirm={() => void purgeBase()}
+      />
       <PageHeader title={t('base.trash_title')} description={t('base.trash_hint')} />
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {success && <p role="status" className="text-sm text-emerald-700">{success}</p>}
       {!online ? (
         <p className="text-sm text-slate-500">{t('base.trash_offline')}</p>
       ) : loading ? (
@@ -89,12 +179,27 @@ export function Trash() {
                 <p className="mt-1 text-xs text-slate-400">
                   {t('base.deleted_on').replace('{date}', new Date(base.deletedAt).toLocaleDateString())}
                   {' · '}
-                  {t('base.purge_eligible').replace('{date}', new Date(base.purgeEligibleAt).toLocaleDateString())}
+                  {t('base.purge_immediate')}
                 </p>
               </div>
-              <button type="button" className="btn-secondary" onClick={() => setRestoreTarget(base)}>
-                {t('base.restore')}
-              </button>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setRestoreTarget(base)}
+                  disabled={base.purgePending || purging}
+                >
+                  {t('base.restore')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => openPurge(base)}
+                  disabled={purging}
+                >
+                  {base.purgePending ? t('base.purge_retry') : t('base.purge')}
+                </button>
+              </div>
             </li>
           ))}
         </ul>

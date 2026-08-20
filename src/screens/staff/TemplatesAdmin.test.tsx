@@ -12,9 +12,12 @@ import { TemplateVersionEditor } from './TemplateVersionEditor';
 import type { TemplateRepository } from '../../data/templates';
 import type { TemplateField, TemplateVersion, VersionStatus } from '../../data/types';
 
-function statefulMock(status: VersionStatus): TemplateRepository {
+// `seed` : variables DEJA presentes dans la version, telles que le serveur les renverrait
+// (avec consigne, valeur proposee, etc.). Sans lui, seul un champ cree via le formulaire
+// peut etre edite, et il ne porte alors que ce que le formulaire a rempli.
+function statefulMock(status: VersionStatus, seed: TemplateField[] = []): TemplateRepository {
   const version: TemplateVersion = { id: 'v1', templateId: 't1', versionNumber: 1, status };
-  let fields: TemplateField[] = [];
+  let fields: TemplateField[] = [...seed];
   let n = 0;
   return {
     async listTemplates() {
@@ -61,6 +64,9 @@ function statefulMock(status: VersionStatus): TemplateRepository {
     async promoteToGlobal() {},
     async addRule(_v, rule, message, severity) {
       return { id: 'r1', rule, message, severity };
+    },
+    async updateRule(id, rule, message, severity) {
+      return { id, rule, message, severity };
     },
     async deleteRule() {},
     async publishVersion() {
@@ -118,8 +124,8 @@ describe('TemplatesAdmin', () => {
     await screen.findByText('Neurochirurgie');
     await user.type(screen.getByLabelText('Nom'), 'Cardiologie');
     await user.click(screen.getByRole('button', { name: 'Nouveau modèle' }));
-    // L'editeur affiche la section "Champs".
-    expect(await screen.findByText('Champs')).toBeInTheDocument();
+    // L'editeur affiche la section "Variables".
+    expect(await screen.findByText('Variables')).toBeInTheDocument();
   });
 
   test('renommer un gabarit appelle renameTemplate', async () => {
@@ -169,10 +175,11 @@ describe('TemplateVersionEditor (brouillon)', () => {
   test('ajouter un champ l affiche dans la table', async () => {
     const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.type(screen.getByLabelText('Clé technique'), 'glasgow_score');
     await user.type(screen.getByLabelText('Libellé'), 'Score de Glasgow');
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(await screen.findByText('Score de Glasgow')).toBeInTheDocument();
   });
 
@@ -181,12 +188,13 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const addField = vi.spyOn(repo, 'addField');
     renderEditor(repo);
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.selectOptions(screen.getByLabelText('Type'), 'select');
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
     await user.type(screen.getByLabelText('Libellé'), 'Diagnostic');
     await user.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     await waitFor(() => expect(addField).toHaveBeenCalledOnce());
     expect(addField).toHaveBeenCalledWith(
@@ -202,13 +210,14 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const addField = vi.spyOn(repo, 'addField');
     renderEditor(repo);
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.selectOptions(screen.getByLabelText('Portée'), 'patient');
     await user.selectOptions(screen.getByLabelText('Type'), 'terminology');
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
     await user.type(screen.getByLabelText('Libellé'), 'Diagnostic principal');
     await user.click(screen.getByRole('checkbox', { name: 'Permettre de signaler un diagnostic absent du référentiel' }));
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     await waitFor(() => expect(addField).toHaveBeenCalledOnce());
     expect(addField).toHaveBeenCalledWith(
@@ -223,17 +232,18 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const addField = vi.spyOn(repo, 'addField');
     renderEditor(repo);
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic_autre');
     await user.type(screen.getByLabelText('Libellé'), 'Champ existant');
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     expect(await screen.findByText('Champ existant')).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Type'), 'select');
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
     await user.type(screen.getByLabelText('Libellé'), 'Diagnostic');
     await user.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/soupape n’a pas été ajoutée/i);
     expect(addField).toHaveBeenCalledTimes(1);
@@ -243,13 +253,14 @@ describe('TemplateVersionEditor (brouillon)', () => {
   test('modifier un champ pre-remplit le formulaire et enregistre le nouveau libelle', async () => {
     const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.type(screen.getByLabelText('Clé technique'), 'glasgow');
     await user.type(screen.getByLabelText('Libellé'), 'Glasgow');
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     await screen.findByText('Glasgow');
 
-    await user.click(screen.getByRole('button', { name: 'Modifier' }));
+    await user.click(screen.getByRole('button', { name: /Modifier la variable/ }));
     const label = screen.getByDisplayValue('Glasgow');
     await user.clear(label);
     await user.type(label, 'Glasgow modifié');
@@ -257,24 +268,91 @@ describe('TemplateVersionEditor (brouillon)', () => {
     expect(await screen.findByText('Glasgow modifié')).toBeInTheDocument();
   });
 
+  // L27/L28 — corriger un libelle ne doit rien effacer d'autre. Sans `description` et
+  // `defaultValue` dans le pre-remplissage, le formulaire repart a vide sur ces deux
+  // champs et `updateField` recoit null : la consigne de saisie et la valeur proposee
+  // disparaissent en silence, alors que personne n'y a touche.
+  test('modifier le seul libelle conserve la consigne de saisie et la valeur proposee', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft', [{
+      id: 'f1', fieldKey: 'pays', label: 'Pays de résidence',
+      description: 'Pays déclaré par le patient', defaultValue: 'Tchad',
+      scope: 'patient', section: 'clinique', type: 'text', unit: null, allowedValues: null,
+      required: false, minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 1,
+    }]);
+    const updateField = vi.spyOn(repo, 'updateField');
+    renderEditor(repo);
+    await screen.findByText('Pays de résidence');
+
+    await user.click(screen.getByRole('button', { name: /Modifier la variable/ }));
+    // Le formulaire doit PORTER les deux valeurs : c'est ce qui les renverra intactes.
+    expect(screen.getByLabelText('Consigne de saisie')).toHaveValue('Pays déclaré par le patient');
+    expect(screen.getByLabelText('Valeur proposée')).toHaveValue('Tchad');
+
+    const label = screen.getByLabelText('Libellé');
+    await user.clear(label);
+    await user.type(label, 'Pays de naissance');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledOnce());
+    expect(updateField).toHaveBeenCalledWith('f1', expect.objectContaining({
+      label: 'Pays de naissance',
+      description: 'Pays déclaré par le patient',
+      defaultValue: 'Tchad',
+    }));
+  });
+
   test('permet de reordonner les champs sur mobile avec des boutons explicites', async () => {
     const user = userEvent.setup();
     const repo = statefulMock('draft');
     const reorderFields = vi.spyOn(repo, 'reorderFields');
     renderEditor(repo);
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
 
     await user.type(screen.getByLabelText('Clé technique'), 'premier');
     await user.type(screen.getByLabelText('Libellé'), 'Premier');
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     await screen.findByText('Premier');
     await user.type(screen.getByLabelText('Clé technique'), 'second');
     await user.type(screen.getByLabelText('Libellé'), 'Second');
-    await user.click(screen.getByRole('button', { name: 'Ajouter un champ' }));
+    await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
     await screen.findByText('Second');
 
     await user.click(screen.getByRole('button', { name: 'Monter · Second' }));
     await waitFor(() => expect(reorderFields).toHaveBeenLastCalledWith('v1', ['f2', 'f1']));
+  });
+
+  // L21 — corriger un libelle ne doit pas toucher a la cardinalite. Sans `isMultiple` dans le
+  // pre-remplissage, le formulaire repart sur « une seule valeur » et `updateField` recoit
+  // false : une variable multivaluee redevient unitaire alors que personne n'y a touche.
+  test('modifier le seul libelle conserve la cardinalite multivaluee', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft', [{
+      id: 'f1', fieldKey: 'diagnostic', label: 'Diagnostic principal',
+      scope: 'encounter', section: 'clinique', type: 'terminology', isMultiple: true,
+      unit: null, allowedValues: null, required: false, minValue: null, maxValue: null,
+      allowMissingCodes: false, displayOrder: 1,
+    }]);
+    const updateField = vi.spyOn(repo, 'updateField');
+    renderEditor(repo);
+    await screen.findByText('Diagnostic principal');
+
+    await user.click(screen.getByRole('button', { name: /Modifier la variable/ }));
+    // Le formulaire doit PORTER la cardinalite : c'est ce qui la renverra intacte.
+    expect(screen.getByRole('checkbox', { name: 'Accepte plusieurs valeurs' })).toBeChecked();
+
+    const label = screen.getByLabelText('Libellé');
+    await user.clear(label);
+    await user.type(label, 'Diagnostic retenu');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledOnce());
+    expect(updateField).toHaveBeenCalledWith('f1', expect.objectContaining({
+      label: 'Diagnostic retenu',
+      type: 'terminology',
+      isMultiple: true,
+    }));
   });
 
   test('propose uniquement le constructeur de regles guide', async () => {
@@ -313,8 +391,8 @@ describe('TemplateVersionEditor (brouillon)', () => {
 describe('TemplateVersionEditor (publiee)', () => {
   test('lecture seule : pas de formulaire d ajout, mention affichee', async () => {
     renderEditor(statefulMock('published'));
-    expect(await screen.findByText(/lecture seule/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Ajouter un champ' })).toBeNull();
+    expect(await screen.findByText(/Version publiée : lecture seule/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ajouter une variable' })).toBeNull();
   });
 });
 
@@ -324,13 +402,13 @@ describe('TemplateVersionEditor — aperçu du formulaire', () => {
   test.each(['draft', 'published'] as const)('s ouvre puis se referme (version %s)', async (status) => {
     const user = userEvent.setup();
     renderEditor(statefulMock(status));
-    await screen.findByText('Champs');
+    await screen.findByText('Variables');
 
     await user.click(screen.getByRole('button', { name: 'Aperçu du formulaire' }));
     expect(await screen.findByRole('tab', { name: /Rencontre/ })).toBeInTheDocument();
-    expect(screen.queryByText('Champs')).toBeNull();
+    expect(screen.queryByText('Variables')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /Retour à l’éditeur/ }));
-    expect(await screen.findByText('Champs')).toBeInTheDocument();
+    expect(await screen.findByText('Variables')).toBeInTheDocument();
   });
 });

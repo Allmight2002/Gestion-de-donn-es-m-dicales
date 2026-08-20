@@ -30,9 +30,9 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 (L35) : nouvelle surcharge update_template_field avec p_formula. Meme raison qu'aux
     // lots precedents -- les signatures anterieures restent listees et en service, pour qu'une
     // copie non rafraichie de l'application continue d'appeler la sienne.
-    expect(signatures).toHaveLength(111);
-    expect(serviceRoleSignatures).toHaveLength(11);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(122);
+    expect(signatures).toHaveLength(112);
+    expect(serviceRoleSignatures).toHaveLength(12);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(124);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

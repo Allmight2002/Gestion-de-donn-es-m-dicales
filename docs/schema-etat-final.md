@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260819103000_export_completeness_filter.sql`
-- Tables : 42 · Policies RLS : 63 · Triggers : 63 · Fonctions : 263
+- Dernière migration incluse : `20260820210000_base_purge.sql`
+- Tables : 43 · Policies RLS : 63 · Triggers : 66 · Fonctions : 269
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -53,6 +53,7 @@ Policies :
 | inclusion_target_revision | bigint | non | `0` |
 | deletion_snapshot | jsonb | oui |  |
 | observation_model | text | non | `'longitudinal'::text` |
+| purge_status | text | non | `'none'::text` |
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
@@ -120,6 +121,29 @@ Policies :
 Triggers :
 - `trg_audit_invitation` — AFTER INSERT → `trg_audit_invitation_fn()`
 - `trg_base_invitation_escalation` — BEFORE INSERT/UPDATE → `guard_access_escalation()`
+
+### base_purge_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| operation_id | uuid | non |  |
+| base_id | uuid | oui |  |
+| base_reference_id | uuid | non |  |
+| requested_by | uuid | oui |  |
+| base_name | text | non |  |
+| manifest | jsonb | non |  |
+| manifest_hash | text | non |  |
+| patient_count | integer | non | `0` |
+| encounter_count | integer | non | `0` |
+| document_count | integer | non | `0` |
+| attachment_count | integer | non | `0` |
+| export_count | integer | non | `0` |
+| storage_object_count | integer | non | `0` |
+| status | text | non | `'pending'::text` |
+| created_at | timestamp with time zone | non | `now()` |
+| completed_at | timestamp with time zone | oui |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### client_error_log · RLS activée
 
@@ -365,8 +389,9 @@ Triggers :
 | generation_mode | text | non | `'client'::text` |
 | generated_by_function | text | oui |  |
 | server_generated_at | timestamp with time zone | oui |  |
-| base_id | uuid | non |  |
+| base_id | uuid | oui |  |
 | cohort_name | text | non |  |
+| base_reference_id | uuid | non |  |
 
 Policies :
 - `el_insert` (INSERT) — WITH CHECK false
@@ -375,6 +400,7 @@ Policies :
 Triggers :
 - `trg_audit_export` — AFTER INSERT → `trg_audit_export_fn()`
 - `trg_export_generation_mode` — BEFORE INSERT/UPDATE → `guard_export_generation_mode()`
+- `trg_export_log_base_reference` — BEFORE INSERT/UPDATE → `guard_export_base_reference()`
 - `trg_export_log_upload_ticket` — BEFORE INSERT/UPDATE → `guard_upload_ticket_attachment()`
 
 ### field_change_log · RLS activée
@@ -773,6 +799,7 @@ Policies :
 | allowed_options | jsonb | oui |  |
 | section_id | uuid | oui |  |
 | is_multiple | boolean | non | `false` |
+| formula | text | oui |  |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -781,6 +808,8 @@ Policies :
 Triggers :
 - `trg_template_field_allowed_options` — BEFORE INSERT/UPDATE → `enforce_template_field_allowed_options()`
 - `trg_template_field_default_value` — BEFORE INSERT/UPDATE → `enforce_template_field_default_value()`
+- `trg_template_field_formula` — BEFORE INSERT/UPDATE → `enforce_template_field_formula()`
+- `trg_template_field_formula_operand` — BEFORE UPDATE/DELETE → `enforce_template_field_formula_operand()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
@@ -1017,10 +1046,13 @@ Triggers :
 | enforce_observation_model_on_template_field | — | DEFINER | plpgsql |
 | enforce_template_field_allowed_options | — | DEFINER | plpgsql |
 | enforce_template_field_default_value | — | INVOKER | plpgsql |
+| enforce_template_field_formula | — | INVOKER | plpgsql |
+| enforce_template_field_formula_operand | — | INVOKER | plpgsql |
 | enforce_template_field_missing_reasons | — | DEFINER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | export_incomplete_records | p_cohort_id uuid | INVOKER | sql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
+| finalize_base_purge | p_operation_id uuid, p_manifest_hash text, p_actor_id uuid | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | finalize_patient | p_patient_id uuid | DEFINER | plpgsql |
 | finalize_upload_operation | p_ticket_id uuid, p_entity text, p_metadata jsonb | DEFINER | plpgsql |
@@ -1043,6 +1075,7 @@ Triggers :
 | guard_curation_draft_scope | — | DEFINER | plpgsql |
 | guard_curation_draft_supersession | — | DEFINER | plpgsql |
 | guard_document_created_by | — | DEFINER | plpgsql |
+| guard_export_base_reference | — | INVOKER | plpgsql |
 | guard_export_generation_mode | — | DEFINER | plpgsql |
 | guard_finalized_draft | — | INVOKER | plpgsql |
 | guard_inspection_status | — | INVOKER | plpgsql |
@@ -1124,6 +1157,7 @@ Triggers :
 | pgp_sym_encrypt | text, text, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
+| prepare_base_purge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
 | preview_option_key_repair | p_base_id uuid | DEFINER | plpgsql |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |
@@ -1189,6 +1223,7 @@ Triggers :
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_is_multiple boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
+| update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_is_multiple boolean, p_missing_reasons text[], p_allowed_options jsonb, p_formula text, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |

@@ -18,6 +18,7 @@ import {
 import type { FieldScope, FieldSection, FieldType, NewField, TemplateField, TemplateSection } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections';
+import { fieldTypeLabel } from '../../domain/templateLabels';
 import { Checkbox } from '../../components/Checkbox';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
@@ -31,23 +32,28 @@ const LITERAL_CHOICE = '__literal__';
 
 export function FieldForm({
   onSubmit,
+  onSubmitAndNext,
   busy,
   initial,
   lockStructural = false,
   submitLabel,
+  submitAndNextLabel,
   onCancel,
   observationModel = 'longitudinal',
   sections,
   fields = [],
-}: {
+  }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
+  /** Variante utilisée par l’éditeur pour enregistrer puis sélectionner la variable suivante. */
+  onSubmitAndNext?: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
   busy?: boolean;
   /** Pre-remplissage en mode edition (null/absent = creation). */
   initial?: NewField | null;
   /** Variable deja utilisee : nom interne / portee / type verrouilles (seul le libelle change). */
   lockStructural?: boolean;
   submitLabel?: string;
+  submitAndNextLabel?: string;
   onCancel?: () => void;
   observationModel?: ObservationModel;
   /** Sections de la version (L31). Absentes -> les trois codes historiques, comme avant le lot. */
@@ -100,6 +106,7 @@ export function FieldForm({
   const [allowMissingCodes, setAllowMissingCodes] = useState(
     initial ? allowedMissingReasons(initial).length > 0 : false,
   );
+  const [missingOpen, setMissingOpen] = useState(Boolean(initial?.allowMissingCodes));
   const [defaultValue, setDefaultValue] = useState(initial?.defaultValue ?? '');
 
   // --- L35 : variable calculee ---------------------------------------------------------
@@ -109,6 +116,7 @@ export function FieldForm({
   // relu par le meme `parseFormula` cote serveur et cote export.
   const initialFormula = parseFormula(initial?.formula);
   const [calculated, setCalculated] = useState(Boolean(initialFormula));
+  const [formulaOpen, setFormulaOpen] = useState(Boolean(initialFormula));
   const [leftOperand, setLeftOperand] = useState(
     initialFormula ? (initialFormula.left.kind === 'field' ? initialFormula.left.fieldKey : LITERAL_CHOICE) : '',
   );
@@ -202,8 +210,8 @@ export function FieldForm({
     setValueSetId('');
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent, advance = false) {
+    e?.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
     // Une formule incomplete ou refusee n'est jamais envoyee : le motif est deja affiche.
     if (calculated && !formulaCheck.ok) return;
@@ -212,7 +220,8 @@ export function FieldForm({
       // Tout ce qui n'a pas de sens sur une variable calculee part explicitement a vide, au
       // lieu de trainer une valeur que la base refuserait : rien n'est saisi sous cette
       // variable, donc ni obligation, ni valeur proposee, ni raison de valeur manquante.
-      const accepted = await onSubmit({
+      const save = advance ? (onSubmitAndNext ?? onSubmit) : onSubmit;
+      const accepted = await save({
         fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null,
         scope: effectiveScope, section,
         type: (outputType ?? 'number') as FieldType,
@@ -252,7 +261,8 @@ export function FieldForm({
       defaultValue: allowsDefault && trimmedDefault ? trimmedDefault : null,
     };
     const wantsProposal = supportsProposal && withProposal && !editing;
-    const accepted = await onSubmit(
+    const save = advance ? (onSubmitAndNext ?? onSubmit) : onSubmit;
+    const accepted = await save(
       built,
       wantsProposal ? makeProposalField(built, t('admin.proposal_label_suffix')) : undefined,
     );
@@ -349,7 +359,7 @@ export function FieldForm({
           >
             {TYPES.map((ty) => (
               <option key={ty} value={ty}>
-                {ty}
+                {fieldTypeLabel(t, ty)}
               </option>
             ))}
           </select>
@@ -371,7 +381,9 @@ export function FieldForm({
           Trois selecteurs, jamais une expression a taper : la liste n'offre que des operandes
           admissibles. Le produit livre la CALCULATRICE ; la formule appartient a celui qui
           definit le gabarit, au meme titre que le libelle ou les valeurs autorisees. */}
-      <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-3">
+      <details className="sm:col-span-2 lg:col-span-3" open={formulaOpen} onToggle={(event) => setFormulaOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.formula_category')}</summary>
+        <div className="mt-3 flex flex-col gap-2">
         <Checkbox
           label={t('admin.formula_enable')}
           checked={calculated}
@@ -466,12 +478,15 @@ export function FieldForm({
             <p className="helper-text">{t('admin.formula_not_stored')}</p>
           </fieldset>
         )}
-      </div>
+        </div>
+      </details>
 
       {/* L21 : reservee au diagnostic. Une liste FERMEE recopiee dans le gabarit reste du
           ressort de `multiselect` ; deux facons de faire la meme chose seraient une dette. */}
       {type === 'terminology' && !calculated && (
-        <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-3">
+        <details className="sm:col-span-2 lg:col-span-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.terminology_category')}</summary>
+          <div className="mt-2 flex flex-col gap-1">
           <Checkbox
             label={t('admin.field_multiple')}
             checked={isMultiple}
@@ -479,17 +494,20 @@ export function FieldForm({
             onChange={(e) => setIsMultiple(e.target.checked)}
           />
           <span className="helper-text">{t('admin.field_multiple_hint')}</span>
-        </div>
+          </div>
+        </details>
       )}
 
       {/* L30 : l'editeur reste ACTIF sur une variable deja utilisee -- c'est tout l'objet
           du lot. Seule la suppression d'une option y est retiree ; renommer, ajouter,
           desactiver et reordonner restent possibles et ne touchent aucune fiche. */}
       {isChoice && !calculated && (
-        <fieldset className="flex flex-col gap-3 sm:col-span-2 lg:col-span-3">
-          <legend className="px-1 text-xs font-medium text-slate-600">{t('admin.options')}</legend>
-          <OptionsEditor options={options} onChange={setOptions} locked={lockStructural} />
-          <div className="flex flex-wrap items-end gap-2">
+        <details className="sm:col-span-2 lg:col-span-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.options_category')}</summary>
+          <fieldset className="mt-3 flex flex-col gap-3">
+            <legend className="sr-only">{t('admin.options')}</legend>
+            <OptionsEditor options={options} onChange={setOptions} locked={lockStructural} />
+            <div className="flex flex-wrap items-end gap-2">
             <label className="form-label">
               {t('admin.value_set')}
               <select className={inputCls} value={valueSetId} onChange={(e) => setValueSetId(e.target.value)}>
@@ -505,8 +523,9 @@ export function FieldForm({
               {t('admin.value_set_insert')}
             </button>
             <p className="text-xs text-slate-500">{t('admin.value_set_hint')}</p>
-          </div>
-        </fieldset>
+            </div>
+          </fieldset>
+        </details>
       )}
       {/* Soupape a la CREATION seulement : elle cree un second champ. Les diagnostics comme
           les listes restent controles ; la proposition est donc stockee a cote, jamais dedans. */}
@@ -521,7 +540,9 @@ export function FieldForm({
         </div>
       )}
       {(isNumber || calculated) && (
-        <>
+        <details className="sm:col-span-2 lg:col-span-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.numeric_constraints')}</summary>
+          <div className="mt-3 flex flex-wrap gap-3">
           {/* Des bornes sur un resultat calcule seraient INERTES : rien n'est saisi, donc rien
               a valider. Les afficher promettrait un controle qui n'existe pas. */}
           {!calculated && (
@@ -540,13 +561,16 @@ export function FieldForm({
             {t('admin.unit')}
             <input className={inputCls + ' w-24'} value={unit} onChange={(e) => setUnit(e.target.value)} />
           </label>
-        </>
+          </div>
+        </details>
       )}
       {/* Une variable calculee n'est jamais saisie : elle ne peut donc pas porter de raison
           de valeur manquante. Son resultat, lui, est simplement ABSENT quand un operande
           manque -- ce qui n'a pas a etre configure. */}
       {!calculated && (
-      <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-3">
+      <details className="sm:col-span-2 lg:col-span-3" open={missingOpen} onToggle={(event) => setMissingOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.missing_category')}</summary>
+      <div className="mt-2 flex flex-col gap-2">
         <Checkbox
           label={t('admin.allow_missing')}
           checked={allowMissingCodes}
@@ -577,13 +601,16 @@ export function FieldForm({
           </fieldset>
         )}
       </div>
+      </details>
       )}
 
       {/* Valeur PROPOSEE : reste modifiable meme sur une variable deja utilisee (elle ne
           change le sens d'aucune donnee deja saisie). Jamais sur une variable calculee :
           sa valeur vient de la formule, il n'y a rien a proposer. */}
       {allowsDefault && !calculated && (
-        <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-3">
+        <details className="sm:col-span-2 lg:col-span-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.default_category')}</summary>
+        <div className="mt-2 flex flex-col gap-1">
           <label htmlFor="field-default" className="form-label">
             {t('admin.field_default')}
             {type === 'date' || type === 'datetime' ? (
@@ -644,14 +671,15 @@ export function FieldForm({
             </p>
           )}
         </div>
+        </details>
       )}
 
       {!isCrossSectional && scope === 'encounter' && (
-        <fieldset className="surface-muted p-3 sm:col-span-2 lg:col-span-3">
-          <legend className="px-1 text-xs font-medium text-slate-600">
-            {t('admin.encounter_types')}
-          </legend>
-          <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+        <details className="surface-muted p-3 sm:col-span-2 lg:col-span-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.encounter_category')}</summary>
+          <fieldset className="mt-2">
+            <legend className="sr-only">{t('admin.encounter_types')}</legend>
+            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
             {ENCOUNTER_TYPES.map((x) => (
               <Checkbox
                 key={x}
@@ -661,13 +689,19 @@ export function FieldForm({
                 onChange={() => toggleEncType(x)}
               />
             ))}
-          </div>
-        </fieldset>
+            </div>
+          </fieldset>
+        </details>
       )}
       <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-3">
         <button type="submit" disabled={busy} className="btn-primary">
-          {submitLabel ?? t('admin.add_field')}
+          {submitLabel ?? t('admin.add_variable_form')}
         </button>
+        {editing && onSubmitAndNext && (
+          <button type="button" onClick={() => void submit(undefined, true)} disabled={busy} className="btn-secondary">
+            {submitAndNextLabel ?? t('admin.save_next')}
+          </button>
+        )}
         {onCancel && (
           <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary">
             {t('admin.cancel')}

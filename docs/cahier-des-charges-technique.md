@@ -295,7 +295,7 @@ npm run db:verify # applique toutes les migrations depuis zéro
 | Couche | Emplacement |
 |---|---|
 | Migrations SQL (source de vérité) | `supabase/migrations/` ; état résultant : `docs/schema-etat-final.md` |
-| Edge Functions (7) | `supabase/functions/` (`signed-read`, `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`, `create-mission-account`) |
+| Edge Functions (8) | `supabase/functions/` (`signed-read`, `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`, `create-mission-account`, `purge-deleted-base`) |
 | Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `signedRead`, `groups`, `mission`, `inspection`, `terminology`, `drafts`) |
 | Domaine pur | `src/domain/` (validation, règles, import/export, inspection de fichiers, tableur + worker, bibliothèques de gabarits et de listes de valeurs) |
 | Écrans | `src/screens/member/`, `src/screens/staff/` |

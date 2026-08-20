@@ -5,6 +5,7 @@ import { MoreHorizontal } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
+import { currentTemplateVersion, draftTemplateVersion, preferredTemplateVersion } from '../../domain/templateVersions';
 import { useToast } from '../../components/Toast';
 import { Menu, MenuItem } from '../../components/Menu';
 import { TemplateVersionEditor } from './TemplateVersionEditor';
@@ -21,7 +22,7 @@ export function TemplatesAdmin() {
   const [templates, setTemplates] = useState<TemplateWithVersions[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ versionId: string; templateName: string } | null>(null);
   const [name, setName] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,7 @@ export function TemplatesAdmin() {
       setName('');
       setSpecialty('');
       await reload();
-      setSelected(version.id);
+      setSelected({ versionId: version.id, templateName: name.trim() });
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -110,7 +111,8 @@ export function TemplatesAdmin() {
   if (selected) {
     return (
       <TemplateVersionEditor
-        versionId={selected}
+        versionId={selected.versionId}
+        templateName={selected.templateName}
         onBack={() => {
           setSelected(null);
           void reload();
@@ -155,9 +157,13 @@ export function TemplatesAdmin() {
       {loading && <SkeletonList rows={4} label={t('common.loading')} />}
       {!loading && templates.length === 0 && <p className="text-slate-500">{t('admin.no_templates')}</p>}
 
-      <ul className="grid gap-3 sm:grid-cols-2">
-        {templates.map((tpl) => (
-          <li key={tpl.id} className="card relative flex min-h-44 flex-col p-4">
+       <ul className="grid gap-3 sm:grid-cols-2">
+         {templates.map((tpl) => {
+           const preferred = preferredTemplateVersion(tpl.versions);
+           const current = currentTemplateVersion(tpl.versions);
+           const draft = draftTemplateVersion(tpl.versions);
+           return (
+           <li key={tpl.id} className="card relative flex min-h-44 flex-col p-4">
             <div className="flex items-start justify-between gap-3">
               {editId === tpl.id ? (
                 <div className="grid min-w-0 flex-1 gap-3">
@@ -201,20 +207,55 @@ export function TemplatesAdmin() {
                 <button onClick={() => setConfirmId(null)} className="font-medium text-slate-500 hover:text-slate-700">{t('common.no')}</button>
               </div>
             )}
-            <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-              {tpl.versions.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => setSelected(v.id)}
-                  className="btn-secondary min-h-11 flex-1 px-3 py-2 text-xs"
-                >
-                  {t('admin.version')} {v.versionNumber} · {t(`status.${v.status}`)}
-                </button>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
+             <button
+               type="button"
+               className="mt-auto w-full rounded-xl border border-teal-100 bg-teal-50/60 p-3 text-left transition hover:border-teal-300 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+               onClick={() => preferred && setSelected({ versionId: preferred.id, templateName: tpl.name })}
+               disabled={!preferred}
+             >
+               <span className="flex items-center justify-between gap-3">
+                 <span className="text-sm font-semibold text-teal-900">{t('admin.open_template')}</span>
+                 <span aria-hidden className="text-lg text-teal-700">→</span>
+               </span>
+               {preferred ? (
+                 <span className="mt-1 block text-xs text-teal-800">
+                   {draft && draft.id === preferred.id ? t('admin.version_in_progress') : t('admin.current_version')}
+                   {' · '}{t('admin.version')} {preferred.versionNumber} · {t(`status.${preferred.status}`)}
+                 </span>
+               ) : (
+                 <span className="mt-1 block text-xs text-slate-500">{t('admin.no_templates')}</span>
+               )}
+               {draft && current && draft.id !== current.id && (
+                 <span className="mt-1 block text-xs font-medium text-teal-700">{t('admin.new_version_available')}</span>
+               )}
+             </button>
+             {current && (
+               <p className="mt-3 text-xs text-slate-500">
+                 {t('admin.current_version')} : {t('admin.version')} {current.versionNumber} · {t(`status.${current.status}`)}
+                 {typeof current.fieldCount === 'number' && ` · ${t('admin.variable_count').replace('{n}', String(current.fieldCount))}`}
+               </p>
+             )}
+             <p className="mt-1 text-xs text-slate-500">{t('admin.version_explanation')}</p>
+             <details className="mt-3 border-t border-slate-100 pt-3">
+               <summary className="cursor-pointer text-sm font-medium text-slate-700">{t('admin.version_history')} ({tpl.versions.length})</summary>
+               <div className="mt-2 space-y-2">
+                 {[...tpl.versions].sort((a, b) => b.versionNumber - a.versionNumber).map((v) => (
+                   <button
+                     key={v.id}
+                     type="button"
+                     onClick={() => setSelected({ versionId: v.id, templateName: tpl.name })}
+                     className="flex min-h-11 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                   >
+                     <span>{t('admin.open_version')} {v.versionNumber}</span>
+                     <span className="badge">{t(`status.${v.status}`)}</span>
+                   </button>
+                 ))}
+               </div>
+             </details>
+           </li>
+           );
+         })}
+       </ul>
     </section>
   );
 }

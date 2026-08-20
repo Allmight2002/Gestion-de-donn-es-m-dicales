@@ -137,6 +137,9 @@ class FakeStorageBucket {
   remove(paths: string[]): Promise<DbResult> {
     return this.call('remove', [paths]);
   }
+  list(path?: string, options?: unknown): Promise<DbResult> {
+    return this.call('list', [path, options]);
+  }
 }
 
 export interface FakeClientConfig {

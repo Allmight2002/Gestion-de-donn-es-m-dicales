@@ -13,7 +13,7 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Squelette minimal mais VALIDE : toutes les fonctions declarees + config.toml + deno.json coherents.
-const BASE_FUNCTIONS = ['cleanup-upload', 'create-mission-account', 'finalize-upload', 'generate-export', 'inspect-upload', 'reconcile-quarantine', 'signed-read'];
+const BASE_FUNCTIONS = ['cleanup-upload', 'create-mission-account', 'finalize-upload', 'generate-export', 'inspect-upload', 'purge-deleted-base', 'reconcile-quarantine', 'signed-read'];
 const ENTRYPOINT = 'Deno.serve((_req: Request) => new Response("ok"));\n';
 
 const DENO_JSON = JSON.stringify({
@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 describe('inventaire dynamique des Edge Functions', () => {
-  test('le depot reel passe : sept fonctions decouvertes, aucune derive', () => {
+  test('le depot reel passe : huit fonctions decouvertes, aucune derive', () => {
     const result = verifyEdgeFunctions(REPO_ROOT);
     expect(result.errors).toEqual([]);
     expect(result.ok).toBe(true);
