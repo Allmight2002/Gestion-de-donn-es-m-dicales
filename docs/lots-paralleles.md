@@ -8,8 +8,10 @@
   [`feuille-route-developpement-post-readiness.md`](feuille-route-developpement-post-readiness.md),
   pour les lots L15 à L19
   [`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md),
-  et pour les lots L20 à L26
-  [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)
+  pour les lots L20 à L26
+  [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md),
+  et pour les lots L38 à L44
+  [`audits/audit-technique-complet-2026-08-18.md`](audits/audit-technique-complet-2026-08-18.md)
 
 > **Révision du 2026-08-10** : trois lots étaient livrés sans être marqués comme tels —
 > **L6** (2026-08-09), **L8** (2026-08-01) et **L9** (2026-08-01). Cinq lots sont ajoutés,
@@ -43,6 +45,13 @@
 > `multiselect` n'a pas la parité de format de la terminologie multivaluée livrée par L21/L22.
 > **L37** suit le même jour : la feuille de fréquences prête à recopier, qui prolonge L36 vers le
 > résultat au lieu de la matière première.
+
+> **Révision du 2026-08-20** : sept lots sont ajoutés, **L38 à L44**, issus de
+> [`audits/audit-technique-complet-2026-08-18.md`](audits/audit-technique-complet-2026-08-18.md) —
+> les huit priorités de l'audit du 18 août, la priorité 8 (gouvernance, second reviewer humain)
+> restant hors lot car elle n'est pas un changement de code. Ces lots sont menés sur un thread
+> dédié, **en parallèle de L35** : un seul chevauchement de fichier a été identifié, **L41**
+> (`CohortBuilder.tsx`, commun avec L35) — voir sa fiche pour l'ordre à respecter.
 
 Le critère de découpage est le **fichier touché**, pas le thème. Deux lots qui
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
@@ -92,6 +101,13 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L35** | Variables calculées : arithmétique définie par l'utilisateur | migration (`template_field.formula`), `exportContract.ts`, `FieldForm.tsx`, `EncounterFields.tsx`, `import.ts`, `CohortBuilder.tsx` | L25 — **jamais avec L21 à L24 ni L34** |
 | **L36** | Parité d'export des listes à choix multiples | `exportContract.ts`, `exportContract_test.ts`, `handler.ts` | **jamais avec L22 ni L35** |
 | **L37** | Feuille de fréquences prête à l'analyse | `exportContract.ts` (ou module dédié), `handler.ts`, tests Deno | **jamais avec L22, L35 ni L36** |
+| **L38** | Interdire `inspection=paused` en production (audit P0) | `.github/workflows/coordinated-release.yml`, `scripts/release-env-check.mjs`, `scripts/check-inspection-env.mjs`, `.env.production.example` | — |
+| **L39** | Durcir la persistance des brouillons cliniques (audit P1) | `src/data/drafts.ts`, `src/screens/member/EncounterForm.tsx` | — |
+| **L40** | Limites de dimensions/mégapixels sur les images (audit P2) | `src/domain/imageUpload.ts` | **jamais avec L44** |
+| **L41** | `react-hooks/exhaustive-deps` en erreur bloquante (audit P2) | config ESLint, 28 fichiers dont `CohortBuilder.tsx` | **jamais avant L35** (même fichier) |
+| **L42** | Génération du code patient côté serveur (audit P2) | migration (RPC d'allocation), `src/screens/member/NewPatient.tsx`, `src/data/patients.ts` | — |
+| **L43** | Gestion explicite de l'échec de `getSession()` (audit P2) | `src/auth/AuthProvider.tsx` | — |
+| **L44** | Validation DOCX/XLSX et nettoyage des métadonnées d'upload locales (audit P3 ×2) | `src/domain/imageUpload.ts`, `src/data/attachments.ts`, `src/data/inspection.ts` | **jamais avec L40** |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
 > L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
@@ -799,6 +815,113 @@ cellules XLSX restent partagés de toute façon.
 
 **Jamais avec L22, L35 ni L36.**
 
+### L38 — Interdire `inspection=paused` en production
+
+Priorité 1 de l'audit du 18 août, seul constat coté **critique**. Le workflow de release
+coordonnée accepte aujourd'hui `inspection=paused` quel que soit `target` : une release
+`production` peut donc s'exécuter sans verdict antivirus serveur strict sur les fichiers
+téléversés, alors que le mode `paused` a été conçu pour le staging fictif (voir
+[`project-deploiement`](../CLAUDE.md) et le journal B2 de
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md), qui documente déjà
+`paused` comme état exceptionnel, jamais comme réglage de production).
+
+À faire échouer le workflow, pas à corriger en silence : `target=production` et
+`inspection != strict` doit être un refus explicite, avant tout job de déploiement, avec
+`.env.production.example` aligné sur `strict` par défaut. La demande d'un mode « break-glass »
+séparé pour les cas exceptionnels est une décision à trancher avec le porteur avant de l'ajouter
+— elle ouvrirait volontairement une dérogation, à ne pas faire sans arbitrage.
+
+Fichiers principaux (confirmés) : `.github/workflows/coordinated-release.yml`,
+`scripts/release-env-check.mjs`, `scripts/check-inspection-env.mjs`,
+`scripts/activate-strict-inspection.mjs`, `.env.production.example`. Aucun code applicatif
+React ni migration : lot CI/config, isolé de tous les autres.
+
+### L39 — Durcir la persistance des brouillons cliniques
+
+Priorité 2 de l'audit (sévérité élevée). **Point à vérifier avant de coder** : `src/data/drafts.ts`
+documente déjà que le brouillon « ne stocke QUE des données ANALYTIQUES (jamais d'identité) » et
+qu'il est partitionné par utilisateur courant — donc une partie du risque décrit par l'audit
+(confusion avec l'identité patient) ne s'applique pas tel quel ; ce qui reste vrai, c'est que les
+valeurs cliniques analytiques (résultats, dates, observations) restent lisibles en clair dans le
+profil navigateur pendant 72 heures.
+
+**La recommandation principale de l'audit — déplacer le brouillon vers le serveur — contredit un
+choix produit délibéré** : MedData est hors-ligne d'abord, et le formulaire de rencontre doit
+rester utilisable sans réseau (voir [`project-hors-ligne`](../CLAUDE.md)). Un brouillon
+serveur-only romprait cette garantie. Les pistes de repli listées par l'audit lui-même
+conviennent mieux : réduire fortement le TTL (72 h est long pour une anti-perte), migrer de
+`localStorage` vers une base locale déjà chiffrée/partitionnée comme celle utilisée pour la
+copie de terminologie ou l'outbox hors-ligne plutôt qu'un `localStorage` brut, et purger plus
+agressivement (à la sortie de l'écran réussie, pas seulement au logout).
+
+**Décision à trancher avant de coder** : quel support de repli (IndexedDB dédié vs. TTL réduit
+seul) et quel nouveau TTL. Fichiers principaux : `src/data/drafts.ts`, `src/data/drafts.test.tsx`,
+`src/screens/member/EncounterForm.tsx`. Aucune surface base.
+
+### L40 — Limites de dimensions/mégapixels sur les images
+
+Priorité 3 de l'audit (sévérité moyenne). `src/domain/imageUpload.ts` borne déjà
+`MAX_IMAGE_BYTES` (8 Mo) mais rien ne borne les dimensions décodées : une image très compressée
+mais énorme peut coûter cher en mémoire au décodage, avant même l'envoi. Ajouter une vérification
+`naturalWidth`/`naturalHeight` (ou équivalent `createImageBitmap`) avant réencodage, avec des
+plafonds explicites, et libérer la ressource de décodage une fois la validation faite.
+
+Fichier principal : `src/domain/imageUpload.ts`, qui porte déjà `ALLOWED_ATTACHMENT_FORMATS` —
+**partagé avec L44**, à ne pas lancer ensemble.
+
+### L41 — `react-hooks/exhaustive-deps` en erreur bloquante
+
+Priorité 4 de l'audit (sévérité moyenne). La règle est aujourd'hui en `warn` dans la config
+ESLint, et 28 fichiers portent une suppression explicite — dont `CohortBuilder.tsx`.
+
+**Collision structurelle avec L35** : `CohortBuilder.tsx` est l'un des cinq fichiers de L35. Ce
+lot ne doit **jamais démarrer avant que L35 soit fusionné** — sans quoi une correction de
+dépendances et l'ajout de la logique de variable calculée modifieraient le même `useEffect` en
+parallèle, avec un risque de conflit sémantique et pas seulement textuel.
+
+Chaque suppression doit être vérifiée une par une, pas juste basculée en `error` globalement : une
+dépendance manquante ajoutée sans réflexion peut déclencher une boucle de rendu ou une requête en
+trop. C'est le plus long des sept lots de cette famille.
+
+### L42 — Génération du code patient côté serveur
+
+Priorité 5 de l'audit (sévérité moyenne-faible). `NewPatient.tsx:114` calcule
+`` `P-${String(existing + 1).padStart(4, '0')}` `` côté client à partir du dernier compte connu :
+deux créations simultanées sur la même base peuvent proposer le même code. La contrainte
+d'unicité en base empêche la corruption des données, mais l'utilisateur reçoit une erreur au lieu
+d'un code correct du premier coup.
+
+Migration additive portant une fonction/RPC transactionnelle d'allocation (`nextval` sur une
+séquence par base, ou verrou en lecture sur le dernier code), appelée par `src/data/patients.ts`
+à la création ; `NewPatient.tsx` perd son calcul local et affiche le code retourné par le serveur.
+Surface base : appliquer `meddata-db-safety`.
+
+### L43 — Gestion explicite de l'échec de `getSession()`
+
+Priorité 6 de l'audit (sévérité moyenne-faible). `src/auth/AuthProvider.tsx` initialise la
+session à partir d'une Promise sans traitement explicite du rejet dans le chemin principal :
+un échec réseau au démarrage peut laisser l'application en chargement indéfini plutôt que de
+retomber proprement sur l'écran de connexion. Ajouter un `.catch` (ou bloc `try/catch` sous
+`await`) qui bascule sur l'état déconnecté — comportement fail-closed cohérent avec le reste de
+l'authentification. Petit lot isolé, aucune surface base.
+
+### L44 — Validation DOCX/XLSX et nettoyage des métadonnées d'upload locales
+
+Regroupe les priorités 7a et 7b de l'audit (sévérité faible chacune), toutes deux dans le
+périmètre Storage/upload — sur le modèle de L24, petit lot isolé à faible risque :
+
+- la validation des documents Office s'appuie sur l'**extension**, pas sur une inspection de la
+  structure OOXML (`[Content_Types].xml`, `word/`, `xl/`) ; un fichier renommé avec la bonne
+  extension mais un contenu différent passe le contrôle client. Le porteur voudra peut-être
+  confirmer que l'inspection serveur (ClamAV, scanner strict) reste la vraie ligne de défense ici
+  — le contrôle client n'a jamais eu vocation à être une validation de format faisant autorité ;
+- certaines clés d'idempotence d'upload dans `src/data/inspection.ts` transportent des métadonnées
+  en clair (scope, hash, label) ; les remplacer par des clés opaques et nettoyer après
+  finalisation.
+
+Fichiers principaux : `src/domain/imageUpload.ts` (catalogue de formats — **partagé avec L40**,
+à ne pas lancer ensemble), `src/data/attachments.ts`, `src/data/inspection.ts`.
+
 ## Deux chantiers volontairement laissés hors des lots
 
 **Langage d'expression et catalogue de scores validés.** Le sous-ensemble utile — une
@@ -822,6 +945,10 @@ avant ses lots.
 - **P5, terminologie avancée** : couverte par les lots T1 à T4 déjà livrés.
 - **P1A, registre urgences** : marqué obsolète, remplacé par la terminologie.
 - **Idée 5, bibliothèque de jeux de valeurs** : livrée le 26 juillet.
+- **Priorité 8 de l'audit du 18 août, gouvernance GitHub (second reviewer humain)** : ce n'est pas
+  un changement de code, mais une décision organisationnelle (qui relit, quand la dérogation
+  mono-personne saute) qui revient au porteur. À consigner comme décision plutôt qu'à découper en
+  lot le jour où un second relecteur rejoint le projet.
 
 ## Ordre suggéré — état au 2026-08-19
 
@@ -834,8 +961,11 @@ porte à **trente lots livrés**, plus un clos sans objet.
 **Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-Restent ouverts : **L14** (chargement de la seule langue active) et les lots d'analyse **L34 à
-L37**, spécifiés mais non implémentés.
+Restent ouverts : les lots d'analyse **L34 à L37**, spécifiés mais non implémentés (L14 est en
+réalité livré le 2026-08-18, PR #215 — la phrase ci-dessus n'a pas été corrigée au moment de sa
+rédaction), et les lots d'audit **L38 à L44**, ajoutés le 2026-08-20 et menés sur un thread dédié
+en parallèle de L35 (voir la révision du 2026-08-20 en tête de document pour la seule collision
+identifiée, L41 contre L35).
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
