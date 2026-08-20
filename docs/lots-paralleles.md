@@ -50,8 +50,9 @@
 > [`audits/audit-technique-complet-2026-08-18.md`](audits/audit-technique-complet-2026-08-18.md) —
 > les huit priorités de l'audit du 18 août, la priorité 8 (gouvernance, second reviewer humain)
 > restant hors lot car elle n'est pas un changement de code. Ces lots sont menés sur un thread
-> dédié, **en parallèle de L35** : un seul chevauchement de fichier a été identifié, **L41**
-> (`CohortBuilder.tsx`, commun avec L35) — voir sa fiche pour l'ordre à respecter.
+> dédié, **en parallèle de L35** : deux chevauchements de fichier ont été identifiés — **L41**
+> (`CohortBuilder.tsx`, commun avec L35) et **L41/L42 entre eux** (`NewPatient.tsx`, même
+> `useCallback`) — voir leurs fiches pour l'ordre à respecter.
 
 Le critère de découpage est le **fichier touché**, pas le thème. Deux lots qui
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
@@ -104,8 +105,8 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L38** | Interdire `inspection=paused` en production (audit P0) | `.github/workflows/coordinated-release.yml`, `scripts/release-env-check.mjs`, `scripts/check-inspection-env.mjs`, `.env.production.example` | — |
 | **L39** | Durcir la persistance des brouillons cliniques (audit P1) | `src/data/drafts.ts`, `src/screens/member/EncounterForm.tsx` | — |
 | **L40** | Limites de dimensions/mégapixels sur les images (audit P2) | `src/domain/imageUpload.ts` | **jamais avec L44** |
-| **L41** | `react-hooks/exhaustive-deps` en erreur bloquante (audit P2) | config ESLint, 28 fichiers dont `CohortBuilder.tsx` | **jamais avant L35** (même fichier) |
-| **L42** | Génération du code patient côté serveur (audit P2) | migration (RPC d'allocation), `src/screens/member/NewPatient.tsx`, `src/data/patients.ts` | — |
+| **L41** | `react-hooks/exhaustive-deps` en erreur bloquante (audit P2) | config ESLint, 28 fichiers dont `CohortBuilder.tsx` et `NewPatient.tsx` | **jamais avant L35** (`CohortBuilder.tsx`) ; **jamais avec L42** (`NewPatient.tsx`) |
+| **L42** | Génération du code patient côté serveur (audit P2) | migration (RPC d'allocation), `src/screens/member/NewPatient.tsx`, `src/data/patients.ts` | **jamais avec L41** (même fichier) |
 | **L43** | Gestion explicite de l'échec de `getSession()` (audit P2) | `src/auth/AuthProvider.tsx` | — |
 | **L44** | Validation DOCX/XLSX et nettoyage des métadonnées d'upload locales (audit P3 ×2) | `src/domain/imageUpload.ts`, `src/data/attachments.ts`, `src/data/inspection.ts` | **jamais avec L40** |
 
@@ -883,6 +884,10 @@ Chaque suppression doit être vérifiée une par une, pas juste basculée en `er
 dépendance manquante ajoutée sans réflexion peut déclencher une boucle de rendu ou une requête en
 trop. C'est le plus long des sept lots de cette famille.
 
+**Seconde collision, avec L42** : la suppression à corriger dans `NewPatient.tsx:121` porte
+exactement sur le `useEffect`/`useCallback` dont L42 réécrit le contenu (retrait du calcul local
+du code patient, ligne 114). Ne pas lancer les deux ensemble sur ce fichier.
+
 ### L42 — Génération du code patient côté serveur
 
 Priorité 5 de l'audit (sévérité moyenne-faible). `NewPatient.tsx:114` calcule
@@ -895,6 +900,9 @@ Migration additive portant une fonction/RPC transactionnelle d'allocation (`next
 séquence par base, ou verrou en lecture sur le dernier code), appelée par `src/data/patients.ts`
 à la création ; `NewPatient.tsx` perd son calcul local et affiche le code retourné par le serveur.
 Surface base : appliquer `meddata-db-safety`.
+
+**Collision avec L41** : la ligne 114 retirée par ce lot est dans le même `useCallback` que la
+suppression `exhaustive-deps` de la ligne 121, que L41 traite. Ne pas lancer les deux ensemble.
 
 ### L43 — Gestion explicite de l'échec de `getSession()`
 

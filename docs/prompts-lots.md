@@ -8,6 +8,9 @@
   moteur de formulaires
 - **Révisé le 2026-08-18** : trois prompts ajoutés (L35 à L37) — variables calculées, parité
   d'export des listes à choix multiples, feuille de fréquences
+- **Révisé le 2026-08-20** : sept prompts ajoutés (L38 à L44), issus de
+  [`audits/audit-technique-complet-2026-08-18.md`](audits/audit-technique-complet-2026-08-18.md).
+  Menés sur un thread dédié, en parallèle de L35.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -28,6 +31,13 @@ rapport. **L14, L16, L20 et L31 doivent tourner seuls.** (L26 est clos ; voir pl
 
 > **L35, L36 et L37 écrivent tous dans `exportContract.ts`**, comme L22 : c'est une seconde file
 > d'attente. Les prendre dans l'ordre — L35, puis L36, puis L37 — et jamais deux ensemble.
+
+> **L38 à L44 (issus de l'audit du 18 août) tournent sur un thread séparé, en parallèle de L35.**
+> Deux collisions à connaître : **L41** touche `CohortBuilder.tsx`, un des cinq fichiers de L35 —
+> ne pas commencer L41 avant que L35 soit fusionné. **L41 et L42** touchent tous deux le même
+> `useCallback` de `NewPatient.tsx` — ne jamais les lancer ensemble. **L40 et L44** touchent tous
+> deux `src/domain/imageUpload.ts` — ne jamais les lancer ensemble non plus. Le reste (L38, L39,
+> L43) est isolé et parallélisable avec tout.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
@@ -2924,6 +2934,644 @@ ligne au hasard, et refait son compte à la main sur la feuille de données : le
 n, le dénominateur et le nombre de manquants doivent tomber juste, et le dossier
 « non documenté » doit être HORS du dénominateur. Tu ne t'arrêtes pas avant. Si
 une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L38 — Interdire `inspection=paused` en production
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L38 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorité 1 — c'est le SEUL constat coté critique de tout l'audit).
+
+CONSTAT, vérifié dans le code. Le workflow .github/workflows/coordinated-release.yml
+déclare l'entrée `inspection` en `type: choice` avec `default: paused` (lignes
+24-27), et rien ne l'articule avec `target`. Le job `production` (`if:
+inputs.target == 'production'`, ligne 530) s'exécute donc SANS AUCUN CONTRÔLE
+qui refuserait `inspection=paused` : une release de production peut aujourd'hui
+partir sans verdict antivirus serveur strict sur les fichiers déjà téléversés.
+`paused` a été conçu pour le staging fictif — voir le journal B2 de
+docs/suivi-execution-feuille-route.md, qui le documente déjà comme état
+exceptionnel, jamais comme réglage de production.
+
+CE QUI DOIT DEVENIR IMPOSSIBLE, littéralement :
+
+  target=production ET inspection≠strict
+
+PÉRIMÈTRE.
+
+1. Un refus EXPLICITE et PRÉCOCE dans le workflow — avant tout job de
+   déploiement, pas après coup — quand `inputs.target == 'production'` et
+   `inputs.inspection != 'strict'`. Message d'erreur clair, pas un échec muet
+   plus loin dans la chaîne.
+
+2. `strict` devient la valeur par défaut de l'entrée `inspection` (remplace
+   `paused` ligne 26). `paused` reste utilisable, mais seulement pour
+   `target=staging`.
+
+3. `.env.production.example` aligné sur `strict`, s'il ne l'est pas déjà.
+
+4. Vérifie `scripts/release-env-check.mjs` et `scripts/check-inspection-env.mjs`
+   : si l'un des deux porte déjà une logique proche, RÉUTILISE-la plutôt que
+   d'écrire un second contrôle qui pourrait diverger.
+
+CE QUE CE LOT NE FAIT PAS. L'audit suggère un mode « break-glass » séparé pour
+les cas exceptionnels. NE L'AJOUTE PAS sans arbitrage explicite du porteur —
+ce serait ouvrir volontairement une dérogation, exactement ce que ce lot doit
+fermer. Si le sujet se pose, pose-le-moi, ne tranche pas seul.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - le workflow refuse `target=production` + `inspection=paused` (ou toute
+    valeur autre que `strict`) avant le job de déploiement ;
+  - `target=staging` + `inspection=paused` continue de fonctionner sans
+    changement ;
+  - `target=production` + `inspection=strict` continue de fonctionner sans
+    changement ;
+  - `test/inspection-mode.test.ts` et `test/deployment.test.ts` couvrent déjà
+    des cas voisins : vérifie qu'ils passent toujours et étends-les plutôt que
+    d'ouvrir un troisième fichier de test pour la même logique.
+
+Ce lot touche uniquement CI/config (`.github/workflows/coordinated-release.yml`,
+les scripts release-env-check/check-inspection-env, `.env.production.example`).
+Aucun code applicatif React, aucune migration : isolé de tous les autres lots
+de cette famille comme de L34 à L37.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin — en
+particulier si un mode « break-glass » doit exister malgré tout, et sous
+quelle forme d'approbation. Ne code rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production (le workflow lui-même, sur
+la branche main), ET tu as PROUVÉ le refus en lançant réellement le workflow
+« Coordinated release » avec target=production et inspection=paused, en
+montrant qu'il échoue AVANT tout déploiement — pas en le lisant, en le
+déclenchant. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la
+moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L39 — Durcir la persistance des brouillons cliniques
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L39 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorité 2, sévérité élevée).
+
+VÉRIFIE D'ABORD CE QUI EST DÉJÀ VRAI, avant de croire l'audit au pied de la
+lettre. src/data/drafts.ts documente lui-même, en commentaire de tête : « ne
+stocke QUE des données ANALYTIQUES (jamais d'identité) », partitionné par
+`getOfflineUser()` (poste partagé : un autre compte ne retrouve pas le
+brouillon d'un tiers), effacé à l'enregistrement réussi, TTL 72 heures
+(`DRAFT_TTL_MS`). Une partie du risque décrit par l'audit (confusion avec
+l'identité patient) NE S'APPLIQUE DONC PAS tel quel. Ce qui reste vrai : les
+valeurs cliniques analytiques (résultats, dates, observations — voir
+`EncounterDraft` dans src/screens/member/EncounterForm.tsx) restent lisibles
+EN CLAIR dans `localStorage` du profil navigateur pendant 72 heures.
+
+LA RECOMMANDATION PRINCIPALE DE L'AUDIT CONTREDIT UN CHOIX PRODUIT DÉLIBÉRÉ —
+NE LA SUIS PAS TELLE QUELLE. « Brouillon → serveur » romprait le fonctionnement
+hors-ligne du formulaire de rencontre, qui doit rester utilisable sans réseau.
+Les pistes de repli que l'audit liste lui-même, en cas d'impossibilité du
+premier choix, conviennent mieux ici.
+
+LA DÉCISION À PRENDRE AVANT DE CODER — pose-la-moi, ne tranche pas seul :
+
+  A. Réduire fortement le TTL (72 h est long pour une simple protection
+     anti-perte de saisie en cours) ET migrer le stockage de `localStorage`
+     brut vers un support déjà chiffré/partitionné du projet (la base locale
+     utilisée pour la copie de terminologie ou l'outbox hors-ligne), plutôt
+     que d'inventer un troisième mécanisme de stockage local.
+
+  B. Garder `localStorage` mais réduire le TTL de façon plus drastique
+     (quelques heures, pas 72) et purger plus agressivement — à la sortie
+     réussie de l'écran, pas seulement au logout/changement de compte comme
+     aujourd'hui (AuthProvider.tsx, `clearDraftsForCurrentUser`).
+
+Ma recommandation est A, parce que le stockage clair reste le problème même
+avec un TTL court. Attends ma réponse avant d'écrire du code.
+
+PÉRIMÈTRE (une fois la décision prise) : src/data/drafts.ts,
+src/data/drafts.test.tsx, src/screens/member/EncounterForm.tsx (et
+EncounterForm.test.tsx pour les tests existants à faire évoluer, pas à casser).
+Aucune surface base, aucune migration.
+
+CONTRAINTES À PRÉSERVER, quelle que soit la voie choisie :
+  - le brouillon reste analytique seulement, jamais d'identité — ne l'étends
+    pas à `patient_identity` ;
+  - le partitionnement par utilisateur courant reste intact ;
+  - `saveDraft`/`loadDraft` restent best-effort : indisponibilité ou quota
+    dépassé ne doit jamais bloquer la saisie (`try/catch` silencieux existant,
+    à conserver) ;
+  - la récupération après fermeture accidentelle de l'onglet doit continuer de
+    fonctionner — c'est la fonction A4 du cahier, ne la supprime pas en
+    corrigeant le risque.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - un brouillon sauvegardé n'est plus lisible en clair dans le support de
+    stockage choisi (si voie A : absent de `localStorage`) ;
+  - le nouveau TTL expire bien un brouillon trop ancien ;
+  - la purge agressive s'exécute à la sortie réussie de l'écran, en plus du
+    logout ;
+  - non-régression : un brouillon sauvegardé est toujours rechargé après un
+    rechargement de page simulé, sur le même patient et le même utilisateur.
+
+AVANT DE COMMENCER : pose-moi la décision A/B ci-dessus, et toutes les
+questions dont tu as besoin sur le nouveau TTL exact. Ne code rien tant que
+tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as vérifié sur
+l'application déployée qu'un brouillon de rencontre n'est plus lisible en clair
+au-delà du support attendu, ET que la récupération après fermeture accidentelle
+fonctionne toujours. Tu ne t'arrêtes pas avant. Si une commande t'est refusée,
+donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L40 — Limites de dimensions/mégapixels sur les images
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L40 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorité 3, sévérité moyenne).
+
+CONSTAT. src/domain/imageUpload.ts borne déjà `MAX_IMAGE_BYTES` (8 Mo,
+réencodage EXIF) mais rien ne borne les DIMENSIONS décodées. Une image très
+compressée (donc légère en octets) mais gigantesque en pixels — par exemple un
+scan à très haute résolution — passe la validation par taille de fichier, puis
+coûte cher en mémoire au moment du décodage/réencodage, avant même l'envoi.
+
+PÉRIMÈTRE.
+
+1. Ajoute une vérification des dimensions décodées AVANT le réencodage complet
+   — `createImageBitmap` (ou équivalent) pour lire `width`/`height` sans
+   nécessairement matérialiser tout le pipeline de réencodage si le fichier
+   dépasse les plafonds.
+
+2. Plafonds explicites : largeur maximale, hauteur maximale, et/ou nombre
+   maximal de mégapixels (largeur × hauteur). Propose des valeurs raisonnables
+   pour des photos de dossier médical (documents, plaies, radios scannées) —
+   pose-moi la question si tu hésites entre deux ordres de grandeur.
+
+3. Message d'erreur clair côté `validateImageFile`/`validateAttachmentFile`,
+   sur le modèle des erreurs de taille existantes (`Image trop volumineuse
+   (max X Mo)`).
+
+4. Libère explicitement la ressource de décodage une fois la validation faite
+   (`close()` sur l'`ImageBitmap` ou équivalent) : ne laisse pas le bitmap
+   décodé vivre plus longtemps que nécessaire.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - une image sous les plafonds de dimensions passe la validation ;
+  - une image au-delà d'un des plafonds (largeur, hauteur, ou mégapixels) est
+    refusée AVANT le réencodage complet, avec un message clair ;
+  - la ressource de décodage est libérée après validation, y compris en cas de
+    refus.
+
+Fichier principal : src/domain/imageUpload.ts — PARTAGÉ avec L44 (même
+catalogue `ALLOWED_ATTACHMENT_FORMATS`/`ALLOWED_IMAGE_TYPES`). NE JAMAIS
+lancer ce lot en même temps que L44.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin — en
+particulier les plafonds exacts de largeur/hauteur/mégapixels. Ne code rien
+tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as essayé d'ajouter
+une pièce jointe image dépassant les plafonds sur l'application déployée pour
+vérifier le refus, PUIS une image conforme pour vérifier qu'elle passe. Tu ne
+t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L41 — `react-hooks/exhaustive-deps` en erreur bloquante
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L41 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorité 4, sévérité moyenne).
+
+ATTENTION AUX DEUX COLLISIONS DE FICHIER AVANT DE COMMENCER — vérifie avec moi
+qu'elles sont soldées :
+
+  1. `CohortBuilder.tsx` (lignes 121 et 133) est aussi un fichier de L35
+     (variables calculées). NE COMMENCE PAS avant que L35 soit fusionné.
+  2. `NewPatient.tsx` (ligne 121) est dans le MÊME `useCallback` que la ligne
+     114 que L42 (génération du code patient côté serveur) modifie. NE LANCE
+     PAS ce lot en parallèle de L42 : soit L42 est fusionné d'abord, soit tu
+     traites `NewPatient.tsx` en dernier, une fois L42 réglé.
+
+CONSTAT. eslint.config.js:33 porte `'react-hooks/exhaustive-deps': 'warn'`. 28
+fichiers contiennent une suppression `// eslint-disable-next-line
+react-hooks/exhaustive-deps` (liste complète disponible via `grep -rn
+"eslint-disable.*exhaustive-deps" src/`). Une dépendance manquante peut créer
+une fermeture périmée (stale closure) ou un comportement de synchronisation
+faux, difficile à repérer en revue.
+
+PÉRIMÈTRE, DANS CET ORDRE — NE PASSE PAS LA RÈGLE EN `error` GLOBALEMENT AVANT
+D'AVOIR TRAITÉ CHAQUE SUPPRESSION :
+
+1. Pour CHACUNE des 28 suppressions (hors CohortBuilder.tsx et NewPatient.tsx
+   tant que les collisions ci-dessus ne sont pas résolues), lis le code
+   environnant et détermine si la dépendance manquante est :
+   (a) réellement sans effet — la fonction/valeur omise est stable ou n'a pas
+       besoin d'être surveillée — auquel cas retire le commentaire et corrige
+       le tableau de dépendances pour qu'il soit exact plutôt que supprimé ;
+   (b) un vrai défaut — la dépendance manque et son ajout changerait le
+       comportement (nouvel appel, re-render). Dans ce cas, corrige le fond
+       (stabilise la référence avec useCallback/useMemo si c'est la fonction
+       qui bouge sans raison, ou ajoute la dépendance si le comportement
+       correct exige de réagir à son changement) — NE contourne PAS en
+       ajoutant la dépendance sans vérifier que ça ne déclenche pas une boucle
+       de rendu ou une requête réseau en trop.
+
+2. Une fois les 26 fichiers hors collision traités et la CI verte, active
+   `'react-hooks/exhaustive-deps': 'error'` dans eslint.config.js.
+
+3. Traite ensuite `CohortBuilder.tsx` et `NewPatient.tsx` séparément, une fois
+   L35 et L42 respectivement fusionnés — reviens me voir à ce moment plutôt
+   que d'anticiper leur contenu.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - pour chaque correction de catégorie (b) ci-dessus, un test qui aurait
+    échoué sans le correctif (par exemple : un effet qui aurait dû se
+    redéclencher et ne le faisait pas) ;
+  - `npm run lint` est vert avec la règle en `error`, sur l'ensemble du
+    périmètre traité.
+
+Ce lot est le plus long de la famille : ne bâcle pas la vérification par
+fichier au profit de la vitesse.
+
+AVANT DE COMMENCER : confirme-moi que L35 est fusionné (pour CohortBuilder.tsx)
+et l'état de L42 (pour NewPatient.tsx) avant d'ouvrir ces deux fichiers en
+particulier. Pose-moi aussi toute question sur un cas ambigu rencontré en
+cours de route — tu n'as pas à tout deviner seul sur un projet médical où une
+boucle de requête mal corrigée a un coût réel.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : la règle est en `error` en production (dans la config
+publiée), les 28 suppressions sont résolues au fond ou retirées à bon droit, et
+tu as vérifié sur l'application déployée qu'aucun des écrans corrigés n'a
+régressé (boucle de rendu, requête en trop, donnée non rafraîchie). Tu ne
+t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L42 — Génération du code patient côté serveur
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L42 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorité 5, sévérité moyenne-faible).
+
+Ce lot touche la base de données : charge la Skill meddata-db-safety et
+applique-la.
+
+COLLISION DE FICHIER — vérifie avec moi que L41 (exhaustive-deps) n'est pas en
+cours sur NewPatient.tsx avant de commencer : les deux lots modifient le même
+`useCallback` (ligne 114 pour ce lot, ligne 121 pour L41).
+
+CONSTAT, vérifié dans le code. src/screens/member/NewPatient.tsx:114 calcule
+côté client :
+
+  `P-${String(existing + 1).padStart(4, '0')}`
+
+à partir du dernier compte connu (`existing`, obtenu plus haut dans le même
+`useCallback`). Deux créations de patient simultanées sur la MÊME base peuvent
+donc proposer le même code. La contrainte d'unicité en base
+(`uq_patient_base_code`, déjà en place) empêche la corruption des données, mais
+l'utilisateur reçoit une erreur au lieu d'un code correct du premier coup —
+mauvaise expérience, pas un risque d'intégrité.
+
+PÉRIMÈTRE.
+
+1. MIGRATION ADDITIVE : une fonction/RPC transactionnelle d'allocation de code,
+   `SECURITY DEFINER` comme les autres RPC d'écriture du projet, qui verrouille
+   ou utilise une séquence PAR BASE pour garantir qu'aucun code n'est distribué
+   deux fois même sous création concurrente. Ne modifie AUCUNE migration
+   existante.
+
+2. `src/data/patients.ts` : `createPatient` (ou une fonction dédiée
+   `allocatePatientCode`) appelle cette RPC pour obtenir le prochain code,
+   plutôt que de recevoir `input.code` calculé côté client.
+
+3. `NewPatient.tsx` : perd le calcul local de la ligne 114. Le code proposé à
+   l'écran vient de l'appel serveur. Décide avec moi si le code s'affiche
+   AVANT la soumission (appel dédié « prévisualiser le prochain code ») ou
+   SEULEMENT au moment de la création — la seconde option est plus simple et
+   évite d'exposer un code qui pourrait être pris par une création concurrente
+   entre-temps.
+
+4. RLS/tests : la RPC d'allocation doit être testée pour la même autorisation
+   que la création de patient elle-même — pas de fuite d'un compteur de base à
+   un utilisateur qui n'y a pas accès.
+
+RÈGLES ABSOLUES (rappel de meddata-db-safety) :
+  - nouvelle migration horodatée, additive ;
+  - `npm run schema`, `npm run build` et `npm run manifest` avant de fusionner ;
+  - la base reste la source de vérité de l'unicité — ne retire pas
+    `uq_patient_base_code` en pensant que l'allocation centralisée suffit,
+    elle reste le filet de sécurité final.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - deux allocations concurrentes sur la même base ne produisent jamais le
+    même code (test de concurrence réel, pas seulement séquentiel) ;
+  - l'allocation est refusée à un utilisateur sans droit de création sur la
+    base ;
+  - une base existante avec des patients déjà créés continue de fonctionner :
+    le prochain code alloué suit bien le dernier existant, pas de collision
+    rétroactive.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin — en
+particulier le choix du point 3 (aperçu avant soumission ou non), et confirme
+l'état de L41 sur NewPatient.tsx. Ne code rien tant que tu n'as pas mes
+réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner, promouvoir jusqu'à main, ET à appliquer la
+migration sur le cloud — staging d'abord, production ensuite, via la release
+coordonnée. Tu n'as pas besoin de me redemander à chaque étape.
+
+CONDITIONS :
+- la CI doit être verte. Si elle est rouge, tu corriges la cause ;
+- la production passe APRÈS un staging réussi.
+
+TERMINÉ SIGNIFIE : la migration est en production, l'interface est déployée,
+et tu as créé DEUX patients à la suite sur la même base depuis l'application
+déployée pour vérifier que les codes sont distincts et corrects du premier
+coup. Tu ne t'arrêtes pas avant. Si une commande t'est refusée, donne-la-moi
+telle quelle.
+
+Rappel : uniquement des données fictives.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L43 — Gestion explicite de l'échec de `getSession()`
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L43 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorité 6, sévérité moyenne-faible).
+
+CONSTAT. src/auth/AuthProvider.tsx:224 initialise la session ainsi :
+
+  `void backend.getSession().then(applyUser);`
+
+Aucun `.catch` ni traitement explicite du rejet dans ce chemin. Un échec réseau
+ou un rejet de la Promise au démarrage (`getSession()` qui échoue) peut laisser
+l'application dans son état de chargement initial indéfiniment, ou produire un
+rejet de Promise non géré selon l'environnement — plutôt que de retomber
+proprement sur l'écran de connexion.
+
+PÉRIMÈTRE. Ajoute un traitement explicite du rejet — `.catch` sur cette chaîne,
+ou `try/catch` si tu préfères réécrire en `async/await` — qui bascule
+l'application sur l'état déconnecté (`setStatus('unauthenticated')` ou
+équivalent déjà utilisé ailleurs dans ce fichier pour un échec d'authentification).
+Comportement fail-closed : en cas de doute sur l'état de la session, l'utilisateur
+est traité comme non connecté, jamais comme connecté par défaut.
+
+Vérifie aussi `onAuthChange` juste en dessous (ligne 225) : si son callback peut
+lui aussi rejeter silencieusement, applique la même discipline.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - `getSession()` qui rejette fait basculer l'état sur déconnecté, pas sur un
+    chargement infini ;
+  - aucun rejet de Promise non géré n'est produit par ce chemin (le test doit
+    le vérifier, pas seulement l'état final) ;
+  - non-régression : `getSession()` qui réussit continue de fonctionner
+    exactement comme avant.
+
+Fichier principal : src/auth/AuthProvider.tsx. Petit lot isolé, aucune surface
+base.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin. Ne code
+rien tant que tu n'as pas mes réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as simulé un échec
+de `getSession()` (mock ou coupure réseau contrôlée) pour vérifier que
+l'application retombe proprement sur l'écran de connexion plutôt que de rester
+bloquée en chargement. Tu ne t'arrêtes pas avant. Si une commande t'est
+refusée, donne-la-moi telle quelle.
+
+Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L44 — Validation DOCX/XLSX et nettoyage des métadonnées d'upload locales
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord CLAUDE.md, puis la fiche « L44 » de
+docs/lots-paralleles.md et docs/audits/audit-technique-complet-2026-08-18.md
+(priorités 7a et 7b, sévérité faible chacune, regroupées ici car toutes deux
+dans le périmètre Storage/upload — sur le modèle de L24, petit lot isolé).
+
+COLLISION DE FICHIER — ne lance pas ce lot en même temps que L40 : les deux
+modifient src/domain/imageUpload.ts (catalogue `ALLOWED_ATTACHMENT_FORMATS`).
+
+PARTIE A — VALIDATION DOCX/XLSX.
+
+CE QUI EXISTE DÉJÀ, ne le refais pas : src/domain/imageUpload.ts porte une
+détection par MAGIC BYTES (`detectContainer`, lignes 87-97) qui confirme déjà
+le CONTENEUR réel (ZIP pour docx/xlsx, OLE pour doc/xls) contre l'extension
+déclarée — c'est plus robuste qu'une simple vérification d'extension, et le
+commentaire du fichier (lignes 72-79) documente déjà honnêtement sa limite :
+« la signature confirme le CONTENEUR, pas le sous-type Office exact ». L'audit
+sous-estime donc ce qui est en place ; la faiblesse réelle est précise, pas
+générale : un fichier ZIP dont le CONTENU interne ne correspond pas à un docx/
+xlsx valide (par exemple un ZIP quelconque renommé .docx) passe la vérification
+actuelle, puisque « PK.. » suffit à la valider comme conteneur ZIP.
+
+PÉRIMÈTRE.
+
+1. Pousse la vérification un cran plus loin QUAND le conteneur détecté est
+   `zip` et l'extension déclarée `docx`/`xlsx` : ouvre l'archive ZIP côté
+   client (une bibliothèque de lecture ZIP légère, ou une lecture manuelle de
+   l'en-tête central) et vérifie la présence de `[Content_Types].xml` à la
+   racine, PLUS le dossier `word/` pour docx ou `xl/` pour xlsx. Ne va pas
+   plus loin qu'une vérification de présence de ces entrées — ce lot ne
+   parse pas le XML interne.
+
+2. Documente EXPLICITEMENT, dans le commentaire du fichier, que cette
+   vérification reste une défense en profondeur CÔTÉ CLIENT et ne remplace
+   PAS l'inspection serveur (ClamAV / scanner strict, cf. L38) qui reste la
+   vraie ligne de défense contre un contenu malveillant. Ne fais pas croire,
+   dans un message d'erreur ou un commentaire, que ce contrôle client suffit
+   à garantir un fichier sûr.
+
+3. Si une bibliothèque tierce est nécessaire pour lire l'en-tête ZIP, vérifie
+   qu'elle est LÉGÈRE, sans dépendance transitive lourde, et documente-la dans
+   package.json comme les autres dépendances vendored du projet — voir
+   comment SheetJS a été traité (licence, empreinte verrouillée, test
+   d'inventaire) pour le niveau de rigueur attendu.
+
+PARTIE B — MÉTADONNÉES D'UPLOAD EN CLAIR.
+
+CONSTAT, vérifié dans le code. src/data/inspection.ts:121-127,
+`stableUploadOperationKey(scope, fileHash, label)`, construit une clé
+`localStorage` de la forme :
+
+  `${OPERATION_PREFIX}${scope}:${fileHash}:${label ?? ''}`
+
+Le `scope`, le hash du fichier et le `label` voyagent EN CLAIR dans le NOM de
+la clé elle-même, lisible par quiconque inspecte le stockage local du
+navigateur — même si aucune donnée médicale n'y est écrite en valeur, le nom
+de la clé peut déjà renseigner sur ce qui a été téléversé.
+
+PÉRIMÈTRE.
+
+1. Remplace la clé lisible par une clé OPAQUE — par exemple un hash de
+   `scope:fileHash:label` plutôt que leur concaténation en clair — tout en
+   conservant l'idempotence actuelle (même triplet → même clé → même
+   opération retrouvée).
+
+2. Vérifie l'appelant en ligne 82 (`p_idempotency_key: input.idempotencyKey`)
+   : la clé envoyée AU SERVEUR peut rester ce qu'elle est aujourd'hui si le
+   serveur ne fait qu'un test d'égalité — seule la PORTION STOCKÉE EN LOCAL
+   doit devenir opaque. Vérifie ce point avant de tout changer : ne casse pas
+   l'idempotence serveur en modifiant la forme de la clé transmise sans
+   nécessité.
+
+3. Nettoie la métadonnée locale APRÈS finalisation de l'upload — si ce
+   nettoyage n'existe pas déjà, ajoute-le (clé retirée de `localStorage` une
+   fois l'opération confirmée côté serveur), pour ne pas laisser s'accumuler
+   des clés d'opérations terminées.
+
+COUVERTURE DE TEST EXIGÉE.
+
+  - PARTIE A : un vrai .docx passe, un vrai .xlsx passe, un ZIP quelconque
+    renommé .docx est refusé, un .doc/.xls (OLE, non concerné par cette
+    vérification) continue de passer comme avant ;
+  - PARTIE B : `stableUploadOperationKey` ne contient plus `scope`, `fileHash`
+    ni `label` en clair dans la clé stockée ; deux appels avec le même triplet
+    retrouvent la MÊME opération (idempotence non cassée) ; la clé est retirée
+    après finalisation.
+
+Fichiers principaux : src/domain/imageUpload.ts (partagé avec L40, cf.
+ci-dessus), src/data/attachments.ts, src/data/inspection.ts.
+
+AVANT DE COMMENCER : pose-moi toutes les questions dont tu as besoin — en
+particulier si une bibliothèque de lecture ZIP existe déjà dans le projet ou
+doit être ajoutée pour la partie A. Ne code rien tant que tu n'as pas mes
+réponses.
+
+AUTORISATIONS : tu es autorisé à créer une branche, committer, pousser, ouvrir
+une pull request, la fusionner et promouvoir jusqu'à la production, sans me
+redemander à chaque étape. Le circuit est : branche de travail -> develop ->
+main.
+
+DÉPLOIEMENT — lis ceci avant de promettre quoi que ce soit : vercel.json porte
+git.deploymentEnabled: false. Fusionner vers main NE DÉPLOIE RIEN. Le seul
+chemin vers le déployé est le workflow manuel « Coordinated release », lancé
+d'abord sur staging, puis sur production en lui donnant l'identifiant du run
+staging réussi pour le MÊME commit.
+
+CONDITION UNIQUE : la CI doit être verte. Si elle est rouge, tu corriges la
+cause — tu ne fusionnes pas, et tu ne désactives pas le contrôle.
+
+TERMINÉ SIGNIFIE : le changement est en production, et tu as vérifié sur
+l'application déployée : (1) qu'un ZIP renommé .docx est refusé au dépôt d'une
+pièce jointe, tandis qu'un vrai .docx passe ; (2) en inspectant le
+`localStorage` du navigateur après un téléversement, qu'aucune clé ne révèle
+plus le scope, le hash ou le label en clair. Tu ne t'arrêtes pas avant. Si une
+commande t'est refusée, donne-la-moi telle quelle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
