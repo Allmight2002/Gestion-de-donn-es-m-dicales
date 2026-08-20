@@ -3187,3 +3187,71 @@ faire en recopiant l'évaluateur dans l'un des deux mondes, ce test tombera.
 - `npm test` a été interrompu après blocage lors de l'initialisation PostgreSQL embarquée dans
   l'environnement partagé. La suite équivalente RLS/UI a toutefois été exécutée avec succès
   par la CI du commit de la PR.
+
+## Lot D10 — purge définitive des bases de la corbeille (2026-08-20)
+
+### Décision et comportement
+
+- La purge est immédiate, explicite et irréversible ; elle est disponible pour une base vide ou
+  non vide, uniquement depuis la corbeille et pour son propriétaire autorisé.
+- L'interface demande le nom exact de la base, affiche l'avertissement irréversible et les
+  compteurs patients, rencontres, documents, pièces jointes et exports. Elle désactive les
+  actions pendant l'attente, affiche un résultat compréhensible et conserve un identifiant
+  d'opération pour un retry sûr. Le libellé de l'ancienne date de purge indique maintenant
+  l'action immédiate.
+- Le navigateur ne reçoit ni erreur SQL brute ni secret : il appelle l'Edge
+  `purge-deleted-base` avec le JWT utilisateur, sans `service_role`.
+
+### Base, RPC et sécurité
+
+- La migration additive `supabase/migrations/20260820210000_base_purge.sql` ajoute l'état
+  `base.purge_status` et `base_purge_operation`, puis détache les références d'export avec la
+  référence immuable `export_log.base_reference_id`. Le trigger de compatibilité complète cette
+  référence pour les anciens appels d'insertion et interdit sa modification.
+- `prepare_base_purge` authentifie, vérifie le propriétaire, refuse une base active, verrouille
+  la ligne, recense les dépendances et persiste un manifeste hashé. `finalize_base_purge`, réservé
+  au `service_role`, verrouille l'opération et supprime explicitement, dans une transaction, la
+  base et ses dépendances : identités/patients, rencontres, pièces jointes, soumissions/documents,
+  curation, cohortes et membres, imports, accès/invitations, groupes, tickets d'upload,
+  opérations hors ligne, idempotence de curation, journaux de quarantaine et credentials de
+  mission.
+- Les grants sont restreints ; les RPC SECURITY DEFINER utilisent un `search_path` explicite.
+  La restauration refuse `PURGE_IN_PROGRESS`, ce qui empêche la concurrence restauration/purge.
+  Une opération `pending` est rejouable sans second effet dangereux ; une opération terminée
+  retourne `ALREADY_PURGED`.
+
+### Audit, exports, Storage et récupération
+
+- `audit_log` est conservé par détachement contrôlé de sa référence de base ; `export_log` est
+  conservé avec `base_reference_id`, le nom de base et les métadonnées du journal. Aucun
+  `ON DELETE CASCADE` de la purge ne vise ces preuves.
+- L'Edge inspecte les quatre buckets privés (`raw-documents`, `clinical-attachments`,
+  `scientific-exports`, `quarantined-uploads`), supprime les objets connus et les orphelins sous
+  le préfixe de la base, relit chaque bucket et ne finalise PostgreSQL qu'après vérification vide.
+  Toute panne de listing, suppression ou vérification laisse l'opération en attente et permet
+  une reprise ; la transaction PostgreSQL ne prétend pas couvrir Storage.
+- Aucun cloud, aucune migration distante et aucune donnée réelle n'ont été touchés. Avant toute
+  suppression réelle, une sauvegarde vérifiée, une validation finale du circuit de release et un
+  plan de restauration/récupération de la cible restent obligatoires ; les tests D10 utilisent
+  uniquement le PostgreSQL embarqué et les données fictives.
+
+### Validation D10
+
+- Tests PostgreSQL D10 : **5/5** ; cohérence des exports : **10/10** ; ACL des fonctions et
+  inventaire Edge : **11/11** ; sécurité P1 ciblée : **7/7**.
+- `npm run test:rls` : **73 fichiers, 887 tests verts**.
+- `npm run edge:fmt`, `npm run edge:lint`, `npm run edge:check`, `npm run release:edge:check` :
+  verts ; Edge : **144/144 tests**, 8 fonctions détectées.
+- `npm run typecheck` et lint ciblé D10 : verts. `npm run test:web` : **66 fichiers,
+  494 tests verts**. `npm run build` : vert avec `VITE_USE_SIGNED_READ=true` ; precache de 76
+  entrées. `npm run db:verify` : **132 migrations appliquées proprement**, 43 tables,
+  269 fonctions, 63 politiques RLS et 67 triggers vérifiés.
+
+### Limites restantes
+
+- `npm run lint` global descend dans les worktrees concurrents présents sous `.claude/worktrees`
+  et échoue sur 1 487 erreurs de parsing dues à des `tsconfigRootDir` ambigus ; le lint ciblé
+  des surfaces D10 est vert. Le fichier non suivi `docs/feuille-route-offline-saisie.md` et
+  `.freebuff/` sont restés hors périmètre et inchangés.
+- La preuve distante de sauvegarde, d'application de migration, de déploiement Edge et de
+  suppression de données réelles reste à produire dans le circuit de release autorisé.

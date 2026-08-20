@@ -2,7 +2,7 @@
 
 La liste normative se trouve dans
 [`supabase/security-definer-allowlist.json`](../supabase/security-definer-allowlist.json). Elle
-rattache chacune des **111** signatures exécutables par le rôle `authenticated` à une justification
+rattache chacune des **112** signatures exécutables par le rôle `authenticated` à une justification
 bornée, en huit catégories (décompte relu dans l'inventaire le 2026-08-20) :
 
 | Catégorie | Signatures | Objet |
@@ -10,13 +10,13 @@ bornée, en huit catégories (décompte relu dans l'inventaire le 2026-08-20) :
 | `authorization-policy-helper` | 30 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
 | `clinical-curation-rpc` | 22 | Commandes cliniques et de curation |
 | `template-administration-rpc` | 18 | Administration des jeux de variables |
-| `access-and-base-administration-rpc` | 16 | Administration des accès et des bases |
+| `access-and-base-administration-rpc` | 17 | Administration des accès et des bases |
 | `audited-sensitive-read` | 12 | Lectures sensibles tracées |
 | `import-idempotence-concurrency-rpc` | 7 | Import, idempotence, concurrence |
 | `file-inspection-rpc` | 4 | Inspection des fichiers déposés |
 | `client-error-observability-rpc` | 2 | Remontée bornée des erreurs client |
 
-Les **11** signatures réservées à `service_role` (par exemple `mission_account_lookup`,
+Les **12** signatures réservées à `service_role` (par exemple `mission_account_lookup`,
 `reconcile_mission_profile`) sont **volontairement absentes** de ce décompte : n'y figurent que
 les signatures exécutables par un utilisateur authentifié. Elles ont leur propre section
 `serviceRole` dans l'inventaire.

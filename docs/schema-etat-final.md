@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260820120000_template_field_formula.sql`
-- Tables : 42 · Policies RLS : 63 · Triggers : 65 · Fonctions : 266
+- Dernière migration incluse : `20260820210000_base_purge.sql`
+- Tables : 43 · Policies RLS : 63 · Triggers : 66 · Fonctions : 269
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -53,6 +53,7 @@ Policies :
 | inclusion_target_revision | bigint | non | `0` |
 | deletion_snapshot | jsonb | oui |  |
 | observation_model | text | non | `'longitudinal'::text` |
+| purge_status | text | non | `'none'::text` |
 
 Policies :
 - `base_insert` (INSERT) — WITH CHECK ((owner_user_id = auth.uid()) AND is_medecin())
@@ -120,6 +121,29 @@ Policies :
 Triggers :
 - `trg_audit_invitation` — AFTER INSERT → `trg_audit_invitation_fn()`
 - `trg_base_invitation_escalation` — BEFORE INSERT/UPDATE → `guard_access_escalation()`
+
+### base_purge_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| operation_id | uuid | non |  |
+| base_id | uuid | oui |  |
+| base_reference_id | uuid | non |  |
+| requested_by | uuid | oui |  |
+| base_name | text | non |  |
+| manifest | jsonb | non |  |
+| manifest_hash | text | non |  |
+| patient_count | integer | non | `0` |
+| encounter_count | integer | non | `0` |
+| document_count | integer | non | `0` |
+| attachment_count | integer | non | `0` |
+| export_count | integer | non | `0` |
+| storage_object_count | integer | non | `0` |
+| status | text | non | `'pending'::text` |
+| created_at | timestamp with time zone | non | `now()` |
+| completed_at | timestamp with time zone | oui |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### client_error_log · RLS activée
 
@@ -365,8 +389,9 @@ Triggers :
 | generation_mode | text | non | `'client'::text` |
 | generated_by_function | text | oui |  |
 | server_generated_at | timestamp with time zone | oui |  |
-| base_id | uuid | non |  |
+| base_id | uuid | oui |  |
 | cohort_name | text | non |  |
+| base_reference_id | uuid | non |  |
 
 Policies :
 - `el_insert` (INSERT) — WITH CHECK false
@@ -375,6 +400,7 @@ Policies :
 Triggers :
 - `trg_audit_export` — AFTER INSERT → `trg_audit_export_fn()`
 - `trg_export_generation_mode` — BEFORE INSERT/UPDATE → `guard_export_generation_mode()`
+- `trg_export_log_base_reference` — BEFORE INSERT/UPDATE → `guard_export_base_reference()`
 - `trg_export_log_upload_ticket` — BEFORE INSERT/UPDATE → `guard_upload_ticket_attachment()`
 
 ### field_change_log · RLS activée
@@ -1026,6 +1052,7 @@ Triggers :
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | export_incomplete_records | p_cohort_id uuid | INVOKER | sql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
+| finalize_base_purge | p_operation_id uuid, p_manifest_hash text, p_actor_id uuid | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | finalize_patient | p_patient_id uuid | DEFINER | plpgsql |
 | finalize_upload_operation | p_ticket_id uuid, p_entity text, p_metadata jsonb | DEFINER | plpgsql |
@@ -1048,6 +1075,7 @@ Triggers :
 | guard_curation_draft_scope | — | DEFINER | plpgsql |
 | guard_curation_draft_supersession | — | DEFINER | plpgsql |
 | guard_document_created_by | — | DEFINER | plpgsql |
+| guard_export_base_reference | — | INVOKER | plpgsql |
 | guard_export_generation_mode | — | DEFINER | plpgsql |
 | guard_finalized_draft | — | INVOKER | plpgsql |
 | guard_inspection_status | — | INVOKER | plpgsql |
@@ -1129,6 +1157,7 @@ Triggers :
 | pgp_sym_encrypt | text, text, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text | INVOKER | c |
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
+| prepare_base_purge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
 | preview_option_key_repair | p_base_id uuid | DEFINER | plpgsql |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |

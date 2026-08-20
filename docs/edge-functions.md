@@ -31,6 +31,7 @@ supabase functions deploy signed-read --import-map deno.json
 supabase functions deploy finalize-upload --import-map deno.json
 supabase functions deploy cleanup-upload --import-map deno.json
 supabase functions deploy generate-export --import-map deno.json
+supabase functions deploy purge-deleted-base --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
@@ -393,6 +394,7 @@ supabase functions deploy finalize-upload --import-map deno.json
 supabase functions deploy cleanup-upload --import-map deno.json
 supabase functions deploy generate-export --import-map deno.json
 supabase functions deploy reconcile-quarantine --import-map deno.json
+supabase functions deploy purge-deleted-base --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
@@ -498,3 +500,32 @@ distante utilise uniquement des données fictives et ne doit imprimer aucun iden
 ni mot de passe de mission. Une fusion Git ne déploie pas cette fonction : MedData exige le workflow
 manuel **Coordinated release**, d'abord sur staging puis sur production pour le même commit et avec
 l'identifiant du run staging réussi.
+
+---
+
+## 10.6 - Purge définitive d'une base de la corbeille (`purge-deleted-base`)
+
+La purge D10 est une action immédiate du propriétaire, y compris pour une base non vide. Le
+frontend n'utilise jamais `service_role` : il appelle l'Edge avec son JWT, et l'Edge sépare les
+étapes suivantes :
+
+1. `prepare_base_purge` authentifie l'appelant, vérifie le propriétaire, refuse une base active,
+   verrouille la ligne de base et persiste une opération `pending` avec le manifeste et son hash ;
+2. l'Edge relit les quatre buckets privés (`raw-documents`, `clinical-attachments`,
+   `scientific-exports`, `quarantined-uploads`), supprime les chemins connus et les objets
+   orphelins sous le préfixe de la base, puis vérifie que le préfixe est vide ;
+3. la RPC `finalize_base_purge`, exécutable par `service_role` seulement, verrouille l'opération
+   et la base, détache `export_log.base_id`, conserve `base_reference_id` et l'audit, puis
+   supprime explicitement les dépendances PostgreSQL dans une seule transaction.
+
+Une panne de listing, de suppression ou de vérification Storage ne déclenche jamais la
+finalisation SQL ; l'opération reste rejouable. Une réponse perdue est idempotente : une
+opération déjà terminée renvoie `ALREADY_PURGED` sans second effet de bord. Les erreurs internes
+ne sont pas transmises au navigateur, qui ne reçoit que des codes et messages choisis.
+
+La table `export_log` est compatible avec les anciens chemins d'insertion : un trigger complète
+`base_reference_id` depuis `base_id` à la création et interdit ensuite de modifier cette référence.
+Après purge, les octets Storage sont supprimés mais le journal des exports et `audit_log` restent
+lisibles comme preuves détachées. Avant toute cible réelle, la sauvegarde doit être vérifiée et la
+validation finale du circuit de release doit être acquise ; le lot local D10 ne touche aucune
+cible distante.

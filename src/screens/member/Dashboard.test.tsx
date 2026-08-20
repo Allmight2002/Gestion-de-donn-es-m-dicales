@@ -84,6 +84,7 @@ function mockBases(): BaseRepository {
     },
     async softDeleteBase() {},
     async restoreDeletedBase() {},
+    async purgeDeletedBase() {},
     async setTemplateVersion() {},
     async setObservationModel() {
       return { id: 'b1', name: 'Registre Neuro', specialty: 'neuro', ownerUserId: 'u', currentTemplateVersionId: 'v1', observationModel: 'longitudinal' as const };
