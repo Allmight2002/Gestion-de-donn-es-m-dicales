@@ -2,14 +2,14 @@
 
 La liste normative se trouve dans
 [`supabase/security-definer-allowlist.json`](../supabase/security-definer-allowlist.json). Elle
-rattache chacune des **110** signatures exécutables par le rôle `authenticated` à une justification
-bornée, en huit catégories (décompte relu dans l'inventaire le 2026-08-19) :
+rattache chacune des **111** signatures exécutables par le rôle `authenticated` à une justification
+bornée, en huit catégories (décompte relu dans l'inventaire le 2026-08-20) :
 
 | Catégorie | Signatures | Objet |
 |---|---:|---|
 | `authorization-policy-helper` | 30 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
 | `clinical-curation-rpc` | 22 | Commandes cliniques et de curation |
-| `template-administration-rpc` | 17 | Administration des jeux de variables |
+| `template-administration-rpc` | 18 | Administration des jeux de variables |
 | `access-and-base-administration-rpc` | 16 | Administration des accès et des bases |
 | `audited-sensitive-read` | 12 | Lectures sensibles tracées |
 | `import-idempotence-concurrency-rpc` | 7 | Import, idempotence, concurrence |

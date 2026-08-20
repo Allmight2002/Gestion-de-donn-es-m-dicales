@@ -27,9 +27,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // la liste doit contenir EXACTEMENT les sections de la version, ce qu'une ecriture
     // directe ne saurait garantir.
     // +1 (L20) : nouvelle surcharge update_template_field avec p_is_multiple.
-    expect(signatures).toHaveLength(110);
+    // +1 (L35) : nouvelle surcharge update_template_field avec p_formula. Meme raison qu'aux
+    // lots precedents -- les signatures anterieures restent listees et en service, pour qu'une
+    // copie non rafraichie de l'application continue d'appeler la sienne.
+    expect(signatures).toHaveLength(111);
     expect(serviceRoleSignatures).toHaveLength(11);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(121);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(122);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
