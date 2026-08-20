@@ -17,6 +17,7 @@ import {
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
+  extractMultivalueCodes,
   formulaFieldIndex,
   type FormulaFieldRef,
   mergeExportFields,
@@ -224,8 +225,109 @@ Deno.test('liste multiple : libelles et codes voyagent dans le meme ordre', () =
     ],
   });
   const table = buildEncounterExport([rencontre({ signes: ['toux', 'fievre'] })], [multi]);
+  assertEquals(table.columns.slice(6, 9), [columnId(multi), optionCodeColumnId(multi), nbColumnId(multi)]);
   assertEquals(table.rows[0][columnId(multi)], 'Toux; Fievre');
   assertEquals(table.rows[0][optionCodeColumnId(multi)], 'toux; fievre');
+  assertEquals(table.rows[0][nbColumnId(multi)], 2);
+});
+
+Deno.test('L36 : un multiselect a trois indicatrices 1/0 et un nombre exact', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    label: 'Signes',
+    type: 'multiselect',
+    allowedValues: ['fievre', 'toux', 'douleur'],
+    allowedOptions: [
+      { value_key: 'fievre', label: 'Fièvre', is_active: true },
+      { value_key: 'toux', label: 'Toux', is_active: true },
+      { value_key: 'douleur', label: 'Douleur', is_active: true },
+    ],
+  });
+  const e2: ExportEncounter = {
+    ...rencontre({ signes: ['douleur'] }),
+    id: 'e2',
+    patientCode: 'P0002',
+    encounterDate: '2026-01-02',
+  };
+  const e3: ExportEncounter = {
+    ...rencontre({ signes: { __missing__: 'non_documente' } }),
+    id: 'e3',
+    patientCode: 'P0003',
+    encounterDate: '2026-01-03',
+  };
+  const table = buildEncounterExport(
+    [rencontre({ signes: ['toux', 'fievre'] }), e2, e3],
+    [multi],
+  );
+  const fievre = `has__${columnId(multi)}__fievre`;
+  const toux = `has__${columnId(multi)}__toux`;
+  const douleur = `has__${columnId(multi)}__douleur`;
+
+  assertEquals(table.rows[0][columnId(multi)], 'Toux; Fièvre');
+  assertEquals(table.rows[0][nbColumnId(multi)], 2);
+  assertEquals(table.rows[0][fievre], 1);
+  assertEquals(table.rows[0][toux], 1);
+  assertEquals(table.rows[0][douleur], 0);
+  assertEquals(table.rows[1][nbColumnId(multi)], 1);
+  assertEquals(table.rows[1][fievre], 0);
+  assertEquals(table.rows[1][toux], 0);
+  assertEquals(table.rows[1][douleur], 1);
+  assertEquals(table.rows[2][columnId(multi)], 'non_documente');
+  assertEquals(table.rows[2][nbColumnId(multi)], 0);
+  assertEquals(table.rows[2][fievre], 0);
+  assertEquals(table.rows[2][toux], 0);
+  assertEquals(table.rows[2][douleur], 0);
+
+  const { indicatorsByField } = extractMultivalueCodes([multi], [
+    rencontre({ signes: ['toux', 'fievre'] }),
+    e2,
+  ]);
+  const dictionary = buildDictionary([multi], { indicatorsByField });
+  const fievreRow = dictionary.rows.find((row) => row.column_id === fievre);
+  assertEquals(fievreRow?.label, 'Signes — Fièvre');
+});
+
+Deno.test('L36 : un code inconnu reste identique dans la feuille principale et la feuille longue', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    label: 'Signes',
+    type: 'multiselect',
+    allowedValues: ['fievre'],
+    allowedOptions: [{ value_key: 'fievre', label: 'Fièvre', is_active: true }],
+  });
+  const encounter = rencontre({ signes: ['code_historique_inconnu'] });
+  const main = buildEncounterExport([encounter], [multi]);
+  const long = buildMultivalueTable(multi, [], [encounter]);
+
+  assertEquals(main.rows[0][columnId(multi)], 'code_historique_inconnu');
+  assertEquals(main.rows[0][optionCodeColumnId(multi)], 'code_historique_inconnu');
+  assertEquals(long.rows, [{
+    patient_code: 'P0001',
+    encounter_id: 'e1',
+    rang: 1,
+    code: 'code_historique_inconnu',
+    label: 'code_historique_inconnu',
+  }]);
+});
+
+Deno.test('L36 : au-delà de 100 codes, les indicatrices sont omises et le dictionnaire le signale', () => {
+  const codes = Array.from({ length: 101 }, (_, index) => `code_${index}`);
+  const multi = champ({
+    fieldKey: 'signes',
+    label: 'Signes',
+    type: 'multiselect',
+    allowedValues: codes,
+  });
+  const encounter = rencontre({ signes: codes });
+  const { indicatorsByField, omittedFieldKeys } = extractMultivalueCodes([multi], [encounter]);
+  const table = buildEncounterExport([encounter], [multi]);
+  const dictionary = buildDictionary([multi], { indicatorsByField, omittedFieldKeys });
+  const omittedRow = dictionary.rows.find((row) => row.column_id === `has__${columnId(multi)}`);
+
+  assertEquals(omittedFieldKeys.has('signes'), true);
+  assertEquals(indicatorsByField.get('signes'), []);
+  assertEquals(table.columns.some((column) => column.startsWith(`has__${columnId(multi)}__`)), false);
+  assertEquals(omittedRow?.type, 'computed_indicator_omitted');
 });
 
 Deno.test('liste : une raison de valeur manquante part dans la colonne du libelle, pas dans celle du code', () => {
@@ -469,6 +571,16 @@ Deno.test('L22 : le dictionnaire documente is_multiple=true et la colonne nb__..
   const nbRow = dict.rows.find((r) => r.column_id === nbColumnId(DIAG_MULTI));
   assertEquals(nbRow?.label, 'diagnostics — nombre');
   assertEquals(nbRow?.type, 'computed_count');
+
+  const sample = rencontre({
+    diagnostics: [{ code: '1A00', label: 'Cholera' }],
+  });
+  const { indicatorsByField } = extractMultivalueCodes([DIAG_MULTI], [sample]);
+  const dictionaryWithIndicators = buildDictionary([DIAG_MULTI], { indicatorsByField });
+  const indicatorRow = dictionaryWithIndicators.rows.find(
+    (row) => row.column_id === `has__${columnId(DIAG_MULTI)}__1a00`,
+  );
+  assertEquals(indicatorRow?.label, 'diagnostics — Cholera');
 });
 
 // =============================================================================

@@ -12,6 +12,7 @@ import {
   buildPatientExport,
   type ExportTable,
   extractMultivalueCodes,
+  isMultivalueField,
   mergeExportFields,
   neutralizeExportTable,
   referencedTemplateVersions,
@@ -179,7 +180,7 @@ function collectionFailureResponse(error: ExportCollectionError): Response {
   });
 }
 
-function assertExportShapeWithinLimits(
+export function assertExportShapeWithinLimits(
   rowCount: number,
   columnCount: number,
   format: 'csv' | 'xlsx',
@@ -623,7 +624,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       })),
     );
 
-    const multivalueFields = fields.filter((f) => f.isMultiple);
+    const multivalueFields = fields.filter((f) => isMultivalueField(f));
     const multivalueDataRows = options.mode === 'patient' ? patients : encounters;
     const { indicatorsByField, omittedFieldKeys } = extractMultivalueCodes(fields, multivalueDataRows);
 
