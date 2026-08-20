@@ -66,6 +66,12 @@ export interface OfflineField {
   allowMissingCodes?: boolean;
   /** Raisons de valeur manquante (L33). Absente d'un instantane telecharge avant ce lot. */
   missingReasons?: string[] | null;
+  /**
+   * Variable calculee (L35). Seule la METADONNEE voyage : le calcul vit deja cote client,
+   * donc le formulaire hors-ligne affiche exactement le meme resultat que le formulaire en
+   * ligne. Absente d'un instantane telecharge avant ce lot -> variable saisie, comme alors.
+   */
+  formula?: string | null;
   encounterTypes?: string[] | null;
 }
 
@@ -169,7 +175,8 @@ export function buildSnapshot(
       // liste pour les autres. Un instantane sans liste retombe sur les trois codes
       // historiques -- exactement ce que la variable proposait alors.
       allowMissingCodes: f.allowMissingCodes ?? true,
-      missingReasons: f.missingReasons ?? null, encounterTypes: f.encounterTypes ?? null,
+      missingReasons: f.missingReasons ?? null, formula: f.formula ?? null,
+      encounterTypes: f.encounterTypes ?? null,
     })),
     fieldsByVersion,
     rulesByVersion,

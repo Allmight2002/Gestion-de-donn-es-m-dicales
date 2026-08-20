@@ -291,3 +291,65 @@ describe('EncounterFields — listes de diagnostics (L21)', () => {
     expect(onChange).toHaveBeenCalledWith('diagnostic', { __missing__: 'non_fait' });
   });
 });
+
+// --- L35 : variables calculees ---------------------------------------------------------
+const sejour: TemplateField[] = [
+  {
+    id: 'date_entree', fieldKey: 'date_entree', label: 'Date d’entrée', scope: 'encounter',
+    section: 'clinique', type: 'date', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 0,
+  },
+  {
+    id: 'date_sortie', fieldKey: 'date_sortie', label: 'Date de sortie', scope: 'encounter',
+    section: 'clinique', type: 'date', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: true,
+    missingReasons: ['non_documente'], displayOrder: 1,
+  },
+  {
+    id: 'duree_sejour', fieldKey: 'duree_sejour', label: 'Durée de séjour', scope: 'encounter',
+    section: 'clinique', type: 'integer', unit: 'jours', allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 2,
+    formula: 'date_sortie - date_entree',
+  },
+];
+
+const renderSejour = (values: Record<string, unknown>) =>
+  render(
+    <I18nProvider>
+      <EncounterFields fields={sejour} values={values} onChange={() => undefined} onRemove={() => undefined} />
+    </I18nProvider>,
+  );
+
+describe('EncounterFields — variable calculee (L35)', () => {
+  test('la variable calculee n’est PAS saisissable : aucun champ, aucune raison manquante', () => {
+    renderSejour({ date_entree: '2024-02-01', date_sortie: '2024-03-01' });
+    // Les operandes, eux, restent saisissables.
+    expect(screen.getByLabelText('Date d’entrée')).toBeInTheDocument();
+    // La variable calculee n'a ni champ de saisie, ni selecteur de valeur manquante.
+    const calculee = screen.getByRole('status', { name: 'Durée de séjour' });
+    expect(calculee.querySelector('input')).toBeNull();
+    expect(screen.queryByLabelText('Durée de séjour — valeur manquante')).toBeNull();
+  });
+
+  test('le resultat s’affiche et se met a jour quand un operande change', () => {
+    const { unmount } = renderSejour({ date_entree: '2024-02-01', date_sortie: '2024-03-01' });
+    expect(screen.getByRole('status', { name: 'Durée de séjour' })).toHaveTextContent('29');
+    unmount();
+    // Une correction d'un operande change le resultat, sans qu'il y ait rien a resynchroniser.
+    renderSejour({ date_entree: '2024-02-01', date_sortie: '2024-02-11' });
+    expect(screen.getByRole('status', { name: 'Durée de séjour' })).toHaveTextContent('10');
+  });
+
+  test('operande absent -> resultat ABSENT, jamais zero', () => {
+    renderSejour({ date_entree: '2024-02-01' });
+    const calculee = screen.getByRole('status', { name: 'Durée de séjour' });
+    expect(calculee).toHaveTextContent('en attente des éléments du calcul');
+    expect(calculee.textContent).not.toContain('0');
+  });
+
+  test('code de valeur manquante sur un operande -> resultat ABSENT', () => {
+    renderSejour({ date_entree: '2024-02-01', date_sortie: { __missing__: 'non_documente' } });
+    expect(screen.getByRole('status', { name: 'Durée de séjour' }))
+      .toHaveTextContent('en attente des éléments du calcul');
+  });
+});
