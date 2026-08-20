@@ -113,9 +113,7 @@ export const columnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `${f
  */
 export const codeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `terminology_code__${columnId(field)}`;
 
-/**
- * Colonne du NOMBRE d'elements d'une variable multivaluee (L22).
- */
+/** Colonne du NOMBRE d'elements d'une variable multivaluee (L22/L36). */
 export const nbColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `nb__${columnId(field)}`;
 
 /**
@@ -127,6 +125,10 @@ export const nbColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `n
 export const optionCodeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `option_code__${columnId(field)}`;
 
 const isOptionList = (field: Pick<ExportField, 'type'>) => field.type === 'select' || field.type === 'multiselect';
+
+/** Une liste multivaluee a des indicatrices, meme si `is_multiple` reste reserve a terminology. */
+export const isMultivalueField = (field: Pick<ExportField, 'type' | 'isMultiple'>) =>
+  field.type === 'multiselect' || (field.type === 'terminology' && Boolean(field.isMultiple));
 
 interface RawOption {
   value_key?: unknown;
@@ -516,9 +518,12 @@ const codeOf = (v: unknown): string => {
   return '';
 };
 
-const nbOf = (v: unknown): number | '' => {
+const nbOf = (field: ExportField, v: unknown): number | '' => {
   if (v === null || v === undefined || v === '') return '';
-  if (missingCodeOf(v)) return '';
+  if (missingCodeOf(v)) return field.type === 'multiselect' ? 0 : '';
+  if (field.type === 'multiselect') {
+    return Array.isArray(v) ? v.filter((item): item is string => typeof item === 'string').length : '';
+  }
   if (isTerminologyList(v)) return v.length;
   if (isTerminologyValue(v)) return 1;
   return '';
@@ -526,7 +531,7 @@ const nbOf = (v: unknown): number | '' => {
 
 /**
  * Colonnes d'un jeu de champs : un champ de terminologie en occupe deux (ou trois si multivalué),
- * une liste contrôlée deux.
+ * une liste contrôlée deux, et un multiselect ajoute son nombre avant les indicatrices.
  */
 export const columnsForFields = (fields: ExportField[]): string[] =>
   fields.flatMap((f) => {
@@ -539,6 +544,7 @@ export const columnsForFields = (fields: ExportField[]): string[] =>
       }
       return [columnId(f), codeColumnId(f)];
     }
+    if (f.type === 'multiselect') return [columnId(f), optionCodeColumnId(f), nbColumnId(f)];
     if (isOptionList(f)) return [columnId(f), optionCodeColumnId(f)];
     return [columnId(f)];
   });
@@ -640,7 +646,7 @@ const belongsToField = (versionId: string | undefined, field: ExportField) =>
 const valueFor = (data: Record<string, unknown>, versionId: string | undefined, field: ExportField) =>
   belongsToField(versionId, field) ? formatValue(data[field.fieldKey], field.type) : '';
 
-/** Renseigne la colonne du champ, et celle du code lorsqu'il s'agit d'une terminologie. */
+/** Renseigne la colonne du champ et ses colonnes analytiques derivees. */
 function assignField(
   row: Record<string, unknown>,
   data: Record<string, unknown> | null,
@@ -659,6 +665,13 @@ function assignField(
     row[columnId(field)] = value === null ? '' : value;
     return;
   }
+  if (field.type === 'multiselect') {
+    const cells = applicable ? optionCells(field, data![field.fieldKey]) : { label: '', code: '' };
+    row[columnId(field)] = cells.label;
+    row[optionCodeColumnId(field)] = cells.code;
+    row[nbColumnId(field)] = applicable ? nbOf(field, data![field.fieldKey]) : '';
+    return;
+  }
   if (isOptionList(field)) {
     // L30 : le libelle dans la colonne principale, le code dans la sienne. C'est le code
     // qui reste stable quand un libelle est corrige, donc lui qui permet de compter.
@@ -671,7 +684,7 @@ function assignField(
   if (field.type !== 'terminology') return;
   row[codeColumnId(field)] = applicable ? codeOf(data![field.fieldKey]) : '';
   if (field.isMultiple) {
-    row[nbColumnId(field)] = applicable ? nbOf(data![field.fieldKey]) : '';
+    row[nbColumnId(field)] = applicable ? nbOf(field, data![field.fieldKey]) : '';
   }
 }
 
@@ -698,6 +711,24 @@ export interface IndicatorMeta {
   label: string;
 }
 
+interface MultivalueEntry {
+  code: string;
+  label: string;
+}
+
+/** Enumere une liste de terminologie ou les codes bruts d'un multiselect. */
+const multivalueEntriesOf = (field: ExportField, value: unknown): MultivalueEntry[] => {
+  if (field.type === 'multiselect') {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((code) => ({ code, label: labelOfOption(field, code) }));
+  }
+  if (isTerminologyList(value)) return value;
+  if (isTerminologyValue(value)) return [value];
+  return [];
+};
+
 export function extractMultivalueCodes(
   fields: ExportField[],
   dataRows: Array<{ data?: Record<string, unknown> | null; templateVersionId?: string }>,
@@ -705,21 +736,16 @@ export function extractMultivalueCodes(
   const indicatorsByField = new Map<string, IndicatorMeta[]>();
   const omittedFieldKeys = new Set<string>();
 
-  for (const f of fields.filter((field) => field.isMultiple)) {
+  for (const f of fields.filter((field) => isMultivalueField(field))) {
     const rawCodes: string[] = [];
     const labelByCode = new Map<string, string>();
 
     for (const row of dataRows) {
       if (!row.data) continue;
       const val = row.data[f.fieldKey];
-      if (isTerminologyList(val)) {
-        for (const item of val) {
-          rawCodes.push(item.code);
-          if (!labelByCode.has(item.code)) labelByCode.set(item.code, item.label);
-        }
-      } else if (isTerminologyValue(val)) {
-        rawCodes.push(val.code);
-        if (!labelByCode.has(val.code)) labelByCode.set(val.code, val.label);
+      for (const item of multivalueEntriesOf(f, val)) {
+        rawCodes.push(item.code);
+        if (!labelByCode.has(item.code)) labelByCode.set(item.code, item.label);
       }
     }
 
@@ -753,11 +779,8 @@ export function extractMultivalueCodes(
   return { indicatorsByField, omittedFieldKeys };
 }
 
-const hasCodeInValue = (v: unknown, targetCode: string): boolean => {
-  if (isTerminologyList(v)) return v.some((item) => item.code === targetCode);
-  if (isTerminologyValue(v)) return v.code === targetCode;
-  return false;
-};
+const hasCodeInValue = (field: ExportField, value: unknown, targetCode: string): boolean =>
+  multivalueEntriesOf(field, value).some((item) => item.code === targetCode);
 
 const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_value', 'age_unit'];
 export function buildEncounterExport(encounters: ExportEncounter[], fields: ExportField[]): ExportTable {
@@ -798,7 +821,7 @@ export function buildEncounterExport(encounters: ExportEncounter[], fields: Expo
         } else if (missingCodeOf(e.data[f.fieldKey])) {
           row[ind.columnId] = 0;
         } else {
-          row[ind.columnId] = hasCodeInValue(e.data[f.fieldKey], ind.code) ? 1 : 0;
+          row[ind.columnId] = hasCodeInValue(f, e.data[f.fieldKey], ind.code) ? 1 : 0;
         }
       }
     }
@@ -863,7 +886,7 @@ export function buildPatientExport(
         } else if (missingCodeOf(p.data[f.fieldKey])) {
           row[ind.columnId] = 0;
         } else {
-          row[ind.columnId] = hasCodeInValue(p.data[f.fieldKey], ind.code) ? 1 : 0;
+          row[ind.columnId] = hasCodeInValue(f, p.data[f.fieldKey], ind.code) ? 1 : 0;
         }
       }
     }
@@ -880,7 +903,7 @@ export function buildPatientExport(
         } else if (missingCodeOf(e.data[f.fieldKey])) {
           row[ind.columnId] = 0;
         } else {
-          row[ind.columnId] = hasCodeInValue(e.data[f.fieldKey], ind.code) ? 1 : 0;
+          row[ind.columnId] = hasCodeInValue(f, e.data[f.fieldKey], ind.code) ? 1 : 0;
         }
       }
     }
@@ -889,9 +912,7 @@ export function buildPatientExport(
   return { columns, rows };
 }
 
-/**
- * Construit la feuille dédiée pour un champ multivalué (L22 §7.3).
- */
+/** Construit la feuille dédiée pour un champ multivalué (L22/L36 §7.3). */
 export function buildMultivalueTable(
   field: ExportField,
   patients: ExportPatient[],
@@ -900,29 +921,23 @@ export function buildMultivalueTable(
   const columns = ['patient_code', 'encounter_id', 'rang', 'code', 'label'];
   const rows: Record<string, unknown>[] = [];
 
+  const appendRows = (patientCode: string, encounterId: string, raw: unknown) => {
+    for (const [index, item] of multivalueEntriesOf(field, raw).entries()) {
+      rows.push({
+        patient_code: patientCode,
+        encounter_id: encounterId,
+        rang: index + 1,
+        code: item.code,
+        label: item.label,
+      });
+    }
+  };
+
   if (field.scope === 'patient') {
     const sortedPatients = [...patients].sort((a, b) => a.code.localeCompare(b.code));
     for (const p of sortedPatients) {
       const raw = p.data ? p.data[field.fieldKey] : null;
-      if (isTerminologyList(raw)) {
-        raw.forEach((item, index) => {
-          rows.push({
-            patient_code: p.code,
-            encounter_id: '',
-            rang: index + 1,
-            code: item.code,
-            label: item.label,
-          });
-        });
-      } else if (isTerminologyValue(raw)) {
-        rows.push({
-          patient_code: p.code,
-          encounter_id: '',
-          rang: 1,
-          code: raw.code,
-          label: raw.label,
-        });
-      }
+      appendRows(p.code, '', raw);
     }
   } else {
     const sortedEncounters = [...encounters].sort((a, b) =>
@@ -931,25 +946,7 @@ export function buildMultivalueTable(
     );
     for (const e of sortedEncounters) {
       const raw = e.data ? e.data[field.fieldKey] : null;
-      if (isTerminologyList(raw)) {
-        raw.forEach((item, index) => {
-          rows.push({
-            patient_code: e.patientCode,
-            encounter_id: e.id,
-            rang: index + 1,
-            code: item.code,
-            label: item.label,
-          });
-        });
-      } else if (isTerminologyValue(raw)) {
-        rows.push({
-          patient_code: e.patientCode,
-          encounter_id: e.id,
-          rang: 1,
-          code: raw.code,
-          label: raw.label,
-        });
-      }
+      appendRows(e.patientCode, e.id, raw);
     }
   }
 
@@ -1017,6 +1014,45 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
         formula: '',
       };
       const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common, formula: formulaLabel(f) };
+      const derivedRows: Record<string, unknown>[] = [];
+      if (isMultivalueField(f)) {
+        derivedRows.push({
+          ...common,
+          column_id: nbColumnId(f),
+          label: `${f.label} — nombre`,
+          type: 'computed_count',
+          is_multiple: 'false',
+          unit: '',
+          allowed_values: '',
+          missing_reasons: '',
+        });
+
+        const indicators = options?.indicatorsByField?.get(f.fieldKey) ?? [];
+        for (const ind of indicators) {
+          derivedRows.push({
+            ...common,
+            column_id: ind.columnId,
+            label: `${f.label} — ${ind.label}`,
+            type: 'computed_indicator',
+            is_multiple: 'false',
+            unit: '',
+            allowed_values: ind.code,
+            missing_reasons: '',
+          });
+        }
+        if (options?.omittedFieldKeys?.has(f.fieldKey)) {
+          derivedRows.push({
+            ...common,
+            column_id: `has__${columnId(f)}`,
+            label: `${f.label} — indicateurs (>100 codes, voir feuille dédiée)`,
+            type: 'computed_indicator_omitted',
+            is_multiple: 'false',
+            unit: '',
+            allowed_values: '',
+            missing_reasons: '',
+          });
+        }
+      }
       if (isOptionList(f)) {
         return [
           valueRow,
@@ -1030,10 +1066,11 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
             allowed_values: optionsList.map((o) => o.key).join('; '),
             missing_reasons: '',
           },
+          ...derivedRows,
         ];
       }
       if (f.type !== 'terminology') return [valueRow];
-      const result = [
+      return [
         valueRow,
         {
           ...common,
@@ -1045,46 +1082,8 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
           allowed_values: '',
           missing_reasons: '',
         },
+        ...derivedRows,
       ];
-      if (f.isMultiple) {
-        result.push({
-          ...common,
-          column_id: nbColumnId(f),
-          label: `${f.label} — nombre`,
-          type: 'computed_count',
-          is_multiple: 'false',
-          unit: '',
-          allowed_values: '',
-          missing_reasons: '',
-        });
-
-        const indicators = options?.indicatorsByField?.get(f.fieldKey) ?? [];
-        for (const ind of indicators) {
-          result.push({
-            ...common,
-            column_id: ind.columnId,
-            label: `${f.label} — ${ind.code}`,
-            type: 'computed_indicator',
-            is_multiple: 'false',
-            unit: '',
-            allowed_values: ind.code,
-            missing_reasons: '',
-          });
-        }
-        if (options?.omittedFieldKeys?.has(f.fieldKey)) {
-          result.push({
-            ...common,
-            column_id: `has__${columnId(f)}`,
-            label: `${f.label} — indicateurs (>100 codes, voir feuille dédiée)`,
-            type: 'computed_indicator_omitted',
-            is_multiple: 'false',
-            unit: '',
-            allowed_values: '',
-            missing_reasons: '',
-          });
-        }
-      }
-      return result;
     }),
   };
 }
