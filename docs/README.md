@@ -101,8 +101,9 @@
 
 | Document | Date | Objet |
 |---|---|---|
-| [audits/audit-technique-complet-2026-08-09.md](audits/audit-technique-complet-2026-08-09.md) | 2026-08-09 | **Audit le plus récent** — ≈8,8/10, aucun constat critique ou élevé |
-| [audits/audit-technique-complet-2026-07-26.md](audits/audit-technique-complet-2026-07-26.md) | 2026-07-26 | Audit précédent (référence de comparaison) |
+| [audits/audit-technique-complet-2026-08-18.md](audits/audit-technique-complet-2026-08-18.md) | 2026-08-18 | **Audit le plus récent** — 8,8/10 ; 1 constat critique (P0, antivirus `paused` en production) et 1 élevé (P1, brouillons cliniques en clair) ; correctifs découpés en lots L38-L44 dans [`lots-paralleles.md`](lots-paralleles.md) |
+| [audits/audit-technique-complet-2026-08-09.md](audits/audit-technique-complet-2026-08-09.md) | 2026-08-09 | Audit précédent — ≈8,8/10, aucun constat critique ou élevé à cette date |
+| [audits/audit-technique-complet-2026-07-26.md](audits/audit-technique-complet-2026-07-26.md) | 2026-07-26 | Audit antérieur (référence de comparaison) |
 | [audit-complet-2026-07-10.md](audit-complet-2026-07-10.md) | 2026-07-10 | Rapport d'audit consolidé |
 | [audit-multiagents-2026-07-10.md](audit-multiagents-2026-07-10.md) | 2026-07-10 | Audit multi-agents |
 | [validation-staging-lot-13-2026-07-12.md](validation-staging-lot-13-2026-07-12.md) · [-13.md](validation-staging-lot-13-2026-07-13.md) | 2026-07 | Validations de staging du lot 13 |
