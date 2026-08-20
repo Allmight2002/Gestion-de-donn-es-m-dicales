@@ -35,8 +35,8 @@
 
 | Document | Contenu |
 |---|---|
-| [edge-functions.md](edge-functions.md) | Les 7 fonctions serveur : lecture signée auditée, inspection antivirus, export, comptes de mission |
-| [security-definer.md](security-definer.md) | Inventaire normatif des 110 fonctions privilégiées + contrôle d'ACL |
+| [edge-functions.md](edge-functions.md) | Les 8 fonctions serveur : lecture signée auditée, inspection antivirus, export, comptes de mission et purge D10 |
+| [security-definer.md](security-definer.md) | Inventaire normatif des 112 fonctions privilégiées + contrôle d'ACL |
 | [upload-inspection-operations.md](upload-inspection-operations.md) | Exploitation de la chaîne d'inspection des fichiers déposés |
 | [xlsx-security.md](xlsx-security.md) | Risques propres au traitement des tableurs |
 | [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md) | Ce que le mode hors-ligne autorise et interdit de stocker localement |

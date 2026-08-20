@@ -10,10 +10,10 @@
 > parcours développeur et un parcours sécurité. L'index de toute la documentation est dans
 > [README.md](README.md).
 
-**Instantané vérifié le 19 août 2026** (`npm run db:verify` : les 129 migrations rejouées
+**Instantané vérifié le 20 août 2026** (`npm run db:verify` : les 132 migrations rejouées
 proprement depuis zéro en ~10 s ; décomptes du schéma `public` repris de
 [schema-etat-final.md](schema-etat-final.md), qui est **généré** et fait foi) :
-42 tables · 261 fonctions · 63 politiques RLS · 63 triggers · 7 Edge Functions · ~21 200 lignes de
+43 tables · 269 fonctions · 63 politiques RLS · 66 triggers · 8 Edge Functions · ~21 200 lignes de
 TypeScript applicatif (hors tests) · ~19 400 lignes de SQL de migration.
 
 Spécifications de référence (reconstituées à partir du code réel, versionnées) :
@@ -140,6 +140,7 @@ erDiagram
     cohort ||--o{ cohort_encounter_member : rencontres
     base ||--o{ export_log : exports
     base ||--o{ audit_log : audit
+    base ||--o{ base_purge_operation : "preuve de purge"
 ```
 
 Les tables ci-dessus forment le **cœur** (zones cloisonnées + curation + export). Les
@@ -210,7 +211,9 @@ d'export est conservé immuable (`file_hash`) et tracé. `assert_export_columns_
 
 **Audit** (`audit_log`) — trace des actions sensibles (§14) : consultation d'identité,
 vue/téléchargement d'image, changement d'accès, invitation, figement de cohorte, export,
-suppression, publication de gabarit.
+suppression, publication de gabarit. La purge D10 ajoute une preuve `base_purged` détachée
+de la base supprimée ; `base_purge_operation` conserve le manifeste, son empreinte, les
+décomptes et l'état de reprise.
 
 ---
 
@@ -296,8 +299,8 @@ seule, ou le patient **et** la demande.
 
 | Couche | Emplacement | Rôle |
 |---|---|---|
-| **Migrations SQL** | `supabase/migrations/` (112) | Schéma, RLS, fonctions, RPC — **source de vérité** |
-| **Edge Functions** | `supabase/functions/` (7) | Code **serveur** Deno : chemins non pilotables par le navigateur seul (§9) |
+| **Migrations SQL** | `supabase/migrations/` (132) | Schéma, RLS, fonctions, RPC — **source de vérité** |
+| **Edge Functions** | `supabase/functions/` (8) | Code **serveur** Deno : chemins non pilotables par le navigateur seul (§9) |
 | Inventaire privilèges | `supabase/security-definer-allowlist.json` | Fonctions `SECURITY DEFINER` justifiées une à une |
 | Données de démo | `supabase/seed.sql` | Comptes + 10 patients **fictifs** |
 | Storage | `supabase/storage.sql` | Buckets privés + RLS (dont `quarantined-uploads`) |
@@ -352,6 +355,7 @@ seule, ou le patient **et** la demande.
 20260815160000_template_field_option_codes      20260815161000_option_key_repair
 20260815180000_template_section                 20260817120000_required_complete_at_complete
 20260818045033_multivalue_terminology_foundation
+20260820210000_base_purge
 ```
 
 ---
@@ -367,7 +371,7 @@ recrée ce que Supabase fournit déjà (`auth.uid()`, rôles) ; il n'est jamais 
 npm test            # tout : RLS (projet db) + frontend (projet web)
 npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
-npm run db:verify   # rejoue les 129 migrations depuis zéro (~10 s) et résume le schéma
+npm run db:verify   # rejoue les 132 migrations depuis zéro (~10 s) et résume le schéma
 npm run test:web -- --coverage   # couverture du projet web
 ```
 
@@ -409,7 +413,7 @@ Le seed ne crée **pas** de compte `saisisseur` : une mission se provisionne dep
 
 ## 9. Sous-systèmes serveur (au-delà du MVP)
 
-Les sept **Edge Functions** (`supabase/functions/`, runtime Deno) portent les chemins qui ne
+Les huit **Edge Functions** (`supabase/functions/`, runtime Deno) portent les chemins qui ne
 doivent pas être pilotables par le navigateur seul. Détail complet :
 [edge-functions.md](edge-functions.md).
 
@@ -422,6 +426,7 @@ doivent pas être pilotables par le navigateur seul. Détail complet :
 | `reconcile-quarantine` | Réconcilie les objets mis en quarantaine | Accès `service_role` au bucket isolé |
 | `generate-export` | Produit l'export d'une cohorte figée | Écarte les fiches auxquelles il manque un champ obligatoire (le statut de validation n'entre pas en compte), hash enregistré, rollback si la journalisation échoue |
 | `create-mission-account` | Crée, révèle, régénère ou révoque les justificatifs d'un `saisisseur` | Nécessite l'admin Auth et la clé de chiffrement Edge ; seul le propriétaire choisit l'identifiant et consulte le mot de passe généré |
+| `purge-deleted-base` | Prépare, supprime les objets Storage et finalise la purge immédiate d'une base de la corbeille | Le propriétaire est vérifié par RPC authentifiée ; le service seul finalise après manifeste, suppression vérifiée des quatre buckets et conservation de l'audit/journal d'export |
 
 > Une modification locale sous `supabase/functions/` **ne change pas le cloud** : chaque fonction
 > doit être redéployée explicitement. Les validations locales ne prouvent jamais la version
@@ -491,6 +496,14 @@ Contraintes de sécurité associées : [securite-mode-hors-ligne.md](securite-mo
 - **Corbeille et restauration de base** (`restore_deleted_base`) : suppression logique réversible.
   ⚠️ Comportement acté : une base restaurée **perd son rattachement au groupe de recherche**
   (le snapshot ne capture que les statuts `raw_submission`/`curation_task`).
+- **Purge définitive D10** (`prepare_base_purge`, `finalize_base_purge`,
+  `base_purge_operation`) : le propriétaire peut lancer immédiatement une purge, y compris
+  pour une base non vide. La préparation verrouille la base et persiste un manifeste des chemins
+  Storage ; l'Edge supprime et vérifie les objets des quatre buckets, puis la RPC service-only
+  détache `export_log`, conserve `audit_log` et journal d'export, et supprime explicitement les
+  dépendances PostgreSQL dans une transaction. Une panne Storage laisse l'opération `pending`
+  et permet un rejeu ; aucune migration distante ni purge réelle n'est autorisée sans sauvegarde
+  vérifiée et validation finale.
 - **Modèles d'observation** (`base.observation_model`) : `cross_sectional` (une saisie par
   participant), `longitudinal` (suivi répété), `event_registry` (registre d'événements). Le choix
   se verrouille à la première saisie ; en transversal, les rencontres sont **refusées par les

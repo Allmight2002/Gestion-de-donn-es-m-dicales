@@ -222,7 +222,7 @@ describe('restauration de base : proprietaire, transaction et acces revoques', (
     const trash = (await rowsAs(bobId, 'select * from public.list_deleted_bases()')).filter((row) => row.id === baseId);
     expect(trash).toHaveLength(1);
     expect(trash[0]).toMatchObject({ id: baseId, name: 'Base de Bob', deletion_reason: 'creation par erreur' });
-    expect(new Date(trash[0].purge_eligible_at).getTime()).toBeGreaterThan(new Date(trash[0].deleted_at).getTime());
+    expect(new Date(trash[0].purge_eligible_at).getTime()).toBe(new Date(trash[0].deleted_at).getTime());
     expect(await rowsAs(aliceId, 'select * from public.list_deleted_bases()')).toHaveLength(0);
     await expect(rowsAs(aliceId, 'select public.restore_deleted_base($1)', [baseId]))
       .rejects.toThrow(/proprietaire/i);

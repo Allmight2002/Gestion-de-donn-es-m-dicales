@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { AccessRole, BasePermissions } from './access';
 import { requireUpdatedRow } from '../lib/guardedWrite';
+import { invokeEdgeFunction } from '../lib/edgeFunctionError';
 
 export type BaseRole = 'owner' | AccessRole;
 export type ObservationModel = 'cross_sectional' | 'longitudinal' | 'event_registry';
@@ -52,6 +53,13 @@ export interface DeletedBase {
   deletedAt: string;
   deletionReason: string;
   purgeEligibleAt: string;
+  patientCount: number;
+  encounterCount: number;
+  documentCount: number;
+  attachmentCount: number;
+  exportCount: number;
+  purgePending: boolean;
+  purgeOperationId: string | null;
 }
 
 export interface PublishedTemplateOption {
@@ -148,6 +156,8 @@ export interface BaseRepository {
   /** Commandes de cycle de vie executees et autorisees exclusivement par la base. */
   softDeleteBase(baseId: string, reason: string): Promise<void>;
   restoreDeletedBase(baseId: string): Promise<void>;
+  /** D10 : supprime definitivement une base de la corbeille via l Edge serveur. */
+  purgeDeletedBase(baseId: string, operationId: string): Promise<void>;
   /** Rattache la base a une (nouvelle) version de son gabarit. Reserve au proprietaire (RLS). */
   setTemplateVersion(baseId: string, versionId: string): Promise<void>;
   /** Le serveur refuse tout changement des qu'une donnee existe dans la base. */
@@ -209,7 +219,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     };
     return {
       listMyBases: fail, listDeletedBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail,
-      softDeleteBase: fail, restoreDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
+      softDeleteBase: fail, restoreDeletedBase: fail, purgeDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
       setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail,
       getBaseProposalsPage: fail,
       previewOptionKeyRepair: fail,
@@ -263,12 +273,21 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       if (error) throw error;
       return ((data ?? []) as {
         id: string; name: string; deleted_at: string; deletion_reason: string; purge_eligible_at: string;
+        patient_count: number; encounter_count: number; document_count: number; attachment_count: number;
+        export_count: number; purge_pending: boolean; purge_operation_id: string | null;
       }[]).map((row) => ({
         id: row.id,
         name: row.name,
         deletedAt: row.deleted_at,
         deletionReason: row.deletion_reason,
-        purgeEligibleAt: row.purge_eligible_at,
+        purgeEligibleAt: row.purge_eligible_at ?? row.deleted_at,
+        patientCount: row.patient_count ?? 0,
+        encounterCount: row.encounter_count ?? 0,
+        documentCount: row.document_count ?? 0,
+        attachmentCount: row.attachment_count ?? 0,
+        exportCount: row.export_count ?? 0,
+        purgePending: row.purge_pending === true,
+        purgeOperationId: row.purge_operation_id ?? null,
       }));
     },
 
@@ -339,6 +358,16 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     async restoreDeletedBase(baseId) {
       const { error } = await client.rpc('restore_deleted_base', { p_base_id: baseId });
       if (error) throw error;
+    },
+
+    async purgeDeletedBase(baseId, operationId) {
+      const result = await invokeEdgeFunction<{
+        status?: string;
+        code?: string;
+      }>(client, 'purge-deleted-base', { baseId, operationId });
+      if (!result || (result.status !== 'purged' && result.status !== 'already_purged')) {
+        throw new Error('La purge définitive n’a pas été confirmée par le serveur.');
+      }
     },
 
     async setTemplateVersion(baseId, versionId) {

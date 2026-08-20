@@ -290,15 +290,15 @@ D6, D7, D8 et les chantiers liés aux comptes de mission sont repris avec leurs 
 
 ### Lot de retours d'usage du 2026-08-13 (D9 à D12)
 
-Signalés par le porteur à l'usage et par des testeurs. **D9 et D12 corrigés le 2026-08-18**
-(lot D9/D12) ; **D10 et D11 restent consignés.** Chaque symptôme a été vérifié dans le code avant
+Signalés par le porteur à l'usage et par des testeurs. **D9, D10 et D12 sont corrigés**
+(D9/D12 le 2026-08-18, D10 le 2026-08-20) ; **D11 reste consigné.** Chaque symptôme a été vérifié dans le code avant
 d'être écrit ici : les quatre sont réels, et trois d'entre eux sont **transverses** — ils ne se
 corrigent proprement qu'une fois, dans une primitive partagée, jamais écran par écran.
 
 | # | Défaut | Cause | Ampleur | Statut |
 |---|---|---|---|---|
 | D9 | **Les menus déroulants ne se ferment pas quand on clique ailleurs** : il faut re-cliquer sur le bouton qui les a ouverts. Source de confusion répétée | Les trois menus flottants sont des `<details>/<summary>` natifs (`src/screens/member/MyTemplates.tsx:170`, `src/screens/staff/TemplatesAdmin.tsx:180`, `src/screens/member/BaseHome.tsx:273`). L'élément natif n'offre **ni fermeture au clic extérieur, ni fermeture à Échap**, et rien ne l'ajoute : aucun écouteur `mousedown`/`pointerdown` n'existe dans `src/` | Petite (front, composant partagé) | **Corrigé le 2026-08-18** (lot D9/D12) |
-| D10 | **Une base mise à la corbeille ne peut jamais être supprimée définitivement** par son propriétaire — alors que l'interface annonce une « purge manuelle » à une date précise | La corbeille n'offre que « Restaurer » (`src/screens/member/Dashboard.tsx:286`). `list_deleted_bases()` calcule `purge_eligible_at = deleted_at + interval '1 year'` (`20260801140238_restore_deleted_base.sql:168`), rendu par le libellé « Purge manuelle possible à partir du {date} » (`src/i18n/messages.ts:822`). Or **aucune purge n'existe** : pas de RPC de suppression dure (le dépôt n'expose que `softDeleteBase`, `restoreDeletedBase`, `listDeletedBases`, `src/data/bases.ts:99`), et aucune tâche planifiée (les seuls crons sont la sauvegarde et le moniteur) | Moyenne (base + front + décision de conservation) | Signalé 2026-08-13 |
+| D10 | **Une base mise à la corbeille ne peut jamais être supprimée définitivement** par son propriétaire — alors que l'interface annonce une « purge manuelle » à une date précise | Corrigé le 2026-08-20 par le lot D10 : action immédiate propriétaire-only dans la corbeille, confirmation forte, RPC de préparation/finalisation, manifeste Storage et conservation des preuves | Moyenne (base + front + décision de conservation) | **Corrigé le 2026-08-20** |
 | D11 | **Un message d'erreur peut rester hors de l'écran** : il s'affiche en haut de page alors que l'action a été déclenchée en bas. L'utilisateur voit une action qui « ne fait rien » | Motif général : 51 blocs `role="alert"` répartis sur 40 fichiers d'interface (hors tests), la plupart rendus en tête d'écran ou de section, et **rien ne ramène l'utilisateur vers eux** (aucun `scrollIntoView` ni `window.scrollTo` dans `src/`). Le toast existe (`src/components/Toast.tsx`) mais n'a que les variantes `success` et `warning`, et n'est employé que par une dizaine d'écrans | Moyenne (front, **transverse**) | Signalé 2026-08-13 |
 | D12 | **Les boutons ne changent pas de couleur quand on les presse**, en particulier au doigt | `src/index.css:126-134` et `:186-190` ne définissent que des états `hover:` pour `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger` et `.icon-button` ; le seul retour à l'appui est `active:translate-y-px` sur `.btn-primary` — un décalage d'un pixel, sans couleur. Or Tailwind v4 (`package.json:89`) conditionne `hover:` à `@media (hover: hover)` : **sur écran tactile ces styles ne s'appliquent jamais**. Le focus clavier, lui, est correct (contour global `:focus-visible`, `src/index.css:38`) | Petite (front, primitives CSS) | **Corrigé le 2026-08-18** (lot D9/D12) |
 
@@ -345,9 +345,25 @@ retour du focus, sélection, unicité d'ouverture.
 
 #### D10 — purge définitive d'une base
 
-Le défaut n'est pas seulement l'absence de bouton : **l'interface annonce une opération que personne
-ne peut exécuter**, ni le propriétaire, ni un exploitant. Une base d'essai ou créée par erreur reste
-donc dans la corbeille indéfiniment.
+Le défaut n'était pas seulement l'absence de bouton : **l'interface annonçait une opération que personne
+ne pouvait exécuter**, ni le propriétaire, ni un exploitant. Le lot D10 est maintenant livré avec la
+décision produit suivante : la purge est immédiate, explicite et peut concerner une base non vide ;
+seul le propriétaire autorisé peut la lancer depuis la corbeille.
+
+La solution est portée par `20260820210000_base_purge.sql`, `prepare_base_purge` et
+`finalize_base_purge`, ainsi que par l'Edge Function `purge-deleted-base`. La préparation verrouille
+la base, vérifie l'état et le propriétaire, recense les dépendances et persiste un manifeste des
+objets des buckets `raw-documents`, `clinical-attachments`, `scientific-exports` et
+`quarantined-uploads`. L'Edge supprime puis reliste les objets avant la finalisation service-only.
+La finalisation détache le journal des exports, conserve `audit_log` et `export_log`, supprime les
+dépendances PostgreSQL dans un ordre explicite et reste rejouable avec une opération `pending`.
+
+La corbeille affiche désormais une confirmation par saisie exacte du nom, les compteurs de contenu,
+les états d'attente/reprise et des messages d'erreur génériques. Le libellé d'ancienne échéance est
+remplacé par « purge définitive disponible immédiatement ».
+
+Les options et questions de conservation ci-dessous sont l'analyse historique du défaut ; elles ne
+décrivent plus le comportement produit courant.
 
 Deux écarts s'ajoutent, à trancher avant d'écrire la moindre ligne :
 
@@ -360,8 +376,7 @@ Deux écarts s'ajoutent, à trancher avant d'écrire la moindre ligne :
 - **la suppression dure n'est pas un geste anodin** : elle croise le droit à l'effacement d'un côté,
   et la traçabilité exigée par le registre des traitements de l'autre.
 
-Trois issues possibles, à instruire avec `meddata-db-safety` puisqu'il s'agit d'une suppression
-irréversible :
+Les trois issues envisagées avant la décision étaient :
 
 - **purge par le propriétaire après le délai**, via une RPC dédiée qui préserve `audit_log` et le
   journal des exports. **Piège à vérifier avant tout `delete`** : recenser les clés étrangères qui
@@ -372,8 +387,10 @@ irréversible :
 - **suppression immédiate réservée aux bases vides** (aucun patient jamais créé), qui couvre le cas
   courant de la base d'essai sans toucher à la conservation de données cliniques.
 
-À défaut de trancher tout de suite, la correction minimale est de **ne plus annoncer une action
-inexistante** et d'aligner le délai affiché sur la politique de conservation.
+La décision retenue est la première variante, avec exécution immédiate et non limitée aux bases
+vides, complétée par la protection Storage et une étape de sauvegarde vérifiée avant toute donnée
+réelle. Les preuves locales D10 et les limites de déploiement sont consignées dans
+[le journal d'exécution](suivi-execution-feuille-route.md#lot-d10--purge-définitive-des-bases-de-la-corbeille-2026-08-20).
 
 #### D11 — visibilité des messages d'échec
 
@@ -437,9 +454,9 @@ l'infrastructure des destinations globales avec badge (`/sync`). Fait le 2026-08
   (comme le badge de synchronisation), jamais en hors-ligne ni hors du rôle ;
 - la section `<details>` et son chargement disparaissent du tableau de bord.
 
-Limites assumées : la corbeille reste vide hors-ligne (la RPC est serveur) ; le libellé « Purge
-manuelle possible à partir du {date} » annonce toujours une purge inexistante — c'est **D10**, qui
-reste ouvert et nécessite une décision produit avant tout travail.
+Limite assumée : la corbeille reste vide hors-ligne (la RPC est serveur). La purge exige une
+sauvegarde vérifiée et une validation finale dans le circuit de release ; aucune donnée réelle,
+migration distante ou version cloud n'a été modifiée par le lot local.
 
 ### Lot « export et analyse » du 2026-08-15 (D13 à D16)
 
