@@ -12,9 +12,12 @@ import { TemplateVersionEditor } from './TemplateVersionEditor';
 import type { TemplateRepository } from '../../data/templates';
 import type { TemplateField, TemplateVersion, VersionStatus } from '../../data/types';
 
-function statefulMock(status: VersionStatus): TemplateRepository {
+// `seed` : variables DEJA presentes dans la version, telles que le serveur les renverrait
+// (avec consigne, valeur proposee, etc.). Sans lui, seul un champ cree via le formulaire
+// peut etre edite, et il ne porte alors que ce que le formulaire a rempli.
+function statefulMock(status: VersionStatus, seed: TemplateField[] = []): TemplateRepository {
   const version: TemplateVersion = { id: 'v1', templateId: 't1', versionNumber: 1, status };
-  let fields: TemplateField[] = [];
+  let fields: TemplateField[] = [...seed];
   let n = 0;
   return {
     async listTemplates() {
@@ -275,6 +278,38 @@ describe('TemplateVersionEditor (brouillon)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Monter · Second' }));
     await waitFor(() => expect(reorderFields).toHaveBeenLastCalledWith('v1', ['f2', 'f1']));
+  });
+
+  // L21 — corriger un libelle ne doit pas toucher a la cardinalite. Sans `isMultiple` dans le
+  // pre-remplissage, le formulaire repart sur « une seule valeur » et `updateField` recoit
+  // false : une variable multivaluee redevient unitaire alors que personne n'y a touche.
+  test('modifier le seul libelle conserve la cardinalite multivaluee', async () => {
+    const user = userEvent.setup();
+    const repo = statefulMock('draft', [{
+      id: 'f1', fieldKey: 'diagnostic', label: 'Diagnostic principal',
+      scope: 'encounter', section: 'clinique', type: 'terminology', isMultiple: true,
+      unit: null, allowedValues: null, required: false, minValue: null, maxValue: null,
+      allowMissingCodes: false, displayOrder: 1,
+    }]);
+    const updateField = vi.spyOn(repo, 'updateField');
+    renderEditor(repo);
+    await screen.findByText('Diagnostic principal');
+
+    await user.click(screen.getByRole('button', { name: 'Modifier' }));
+    // Le formulaire doit PORTER la cardinalite : c'est ce qui la renverra intacte.
+    expect(screen.getByRole('checkbox', { name: 'Accepte plusieurs valeurs' })).toBeChecked();
+
+    const label = screen.getByLabelText('Libellé');
+    await user.clear(label);
+    await user.type(label, 'Diagnostic retenu');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledOnce());
+    expect(updateField).toHaveBeenCalledWith('f1', expect.objectContaining({
+      label: 'Diagnostic retenu',
+      type: 'terminology',
+      isMultiple: true,
+    }));
   });
 
   test('propose uniquement le constructeur de regles guide', async () => {
