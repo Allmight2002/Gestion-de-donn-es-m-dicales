@@ -105,6 +105,8 @@ export interface TemplateVersion {
   templateId: string;
   versionNumber: number;
   status: VersionStatus;
+  /** Nombre de variables connu par les lectures de liste ; absent des lectures de détail. */
+  fieldCount?: number;
 }
 
 export interface TemplateField {

@@ -53,6 +53,7 @@ export function BaseTemplateEditor() {
       <PageHeader title={t('basetemplate.title')} description={t('basetemplate.hint')} />
       <TemplateVersionEditor
         versionId={listing.base.currentTemplateVersionId}
+        templateName={listing.templateName ?? undefined}
         onBack={back}
         showVersionActions={false}
         observationModel={listing.base.observationModel}

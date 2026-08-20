@@ -43,6 +43,7 @@ export interface TemplateRepository {
   /** Reordonne les variables d'une version (drag & drop) : `orderedIds` dans le nouvel ordre. */
   reorderFields(versionId: string, orderedIds: string[]): Promise<void>;
   addRule(versionId: string, rule: unknown, message: string, severity: RuleSeverity): Promise<ValidationRule>;
+  updateRule(ruleId: string, rule: unknown, message: string, severity: RuleSeverity): Promise<ValidationRule>;
   deleteRule(ruleId: string): Promise<void>;
   publishVersion(versionId: string): Promise<void>;
   archiveVersion(versionId: string): Promise<void>;
@@ -70,7 +71,13 @@ export interface TemplateBundleInput {
 }
 export interface TemplateBundleResult { templateId: string; versionId: string; baseId: string | null; }
 
-type VersionRow = { id: string; template_id: string; version_number: number; status: TemplateVersion['status'] };
+type VersionRow = {
+  id: string;
+  template_id: string;
+  version_number: number;
+  status: TemplateVersion['status'];
+  template_field?: { id: string }[];
+};
 type FieldRow = {
   id: string; field_key: string; label: string; scope: TemplateField['scope']; section: TemplateField['section'];
   description: string | null;
@@ -89,7 +96,11 @@ type RuleRow = { id: string; rule: unknown; message: string | null; severity: Ru
 type SectionRow = { id: string; section_key: string; label: string; display_order: number };
 
 const mapVersion = (r: VersionRow): TemplateVersion => ({
-  id: r.id, templateId: r.template_id, versionNumber: r.version_number, status: r.status,
+  id: r.id,
+  templateId: r.template_id,
+  versionNumber: r.version_number,
+  status: r.status,
+  fieldCount: Array.isArray(r.template_field) ? r.template_field.length : undefined,
 });
 const mapSection = (r: SectionRow): TemplateSection => ({
   id: r.id, sectionKey: r.section_key, label: r.label, displayOrder: r.display_order,
@@ -140,7 +151,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     return {
       listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, createTemplateBundle: fail, getVersion: fail, addField: fail, updateField: fail,
       getSections: fail, addSection: fail, renameSection: fail, deleteSection: fail, reorderSections: fail,
-      deleteField: fail, reorderFields: fail, addRule: fail, deleteRule: fail, publishVersion: fail,
+      deleteField: fail, reorderFields: fail, addRule: fail, updateRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
     };
@@ -175,7 +186,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     async listTemplates() {
       const { data, error } = await client
         .from('template')
-        .select('id, name, specialty, owner_user_id, is_global, template_version(id, template_id, version_number, status)')
+        .select('id, name, specialty, owner_user_id, is_global, template_version(id, template_id, version_number, status, template_field(id))')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data ?? []).map((t) => ({
@@ -425,6 +436,18 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       const { data, error } = await client
         .from('validation_rule')
         .insert({ template_version_id: versionId, rule, message, severity })
+        .select('id, rule, message, severity')
+        .single();
+      if (error) throw error;
+      clearVersionCache();
+      return mapRule(data as RuleRow);
+    },
+
+    async updateRule(ruleId, rule, message, severity) {
+      const { data, error } = await client
+        .from('validation_rule')
+        .update({ rule, message, severity })
+        .eq('id', ruleId)
         .select('id, rule, message, severity')
         .single();
       if (error) throw error;

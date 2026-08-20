@@ -6,6 +6,7 @@ import { useBaseRepository, useTemplateRepository } from '../../data/RepositoryP
 import type { NewField } from '../../data/types';
 import type { PublishedTemplateOption } from '../../data/bases';
 import { TEMPLATE_LIBRARY } from '../../domain/templateLibrary';
+import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 import { SkeletonList } from '../../components/Skeleton';
 
 // F3 v2 — Bibliotheque de gabarits par specialite, alimentee par les GABARITS GLOBAUX (cures par
@@ -22,6 +23,7 @@ export function TemplateLibrary() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // cle du modele en cours de creation
   const [error, setError] = useState<string | null>(null);
+  const [createdVersion, setCreatedVersion] = useState<{ id: string; name: string } | null>(null);
   const operationKeys = useRef(new Map<string, string>());
 
   useEffect(() => {
@@ -37,8 +39,8 @@ export function TemplateLibrary() {
     try {
       const operationKey = operationKeys.current.get(key) ?? crypto.randomUUID();
       operationKeys.current.set(key, operationKey);
-      await templates.createTemplateBundle({ name, specialty, ...input, operationKey });
-      navigate('/templates');
+       const bundle = await templates.createTemplateBundle({ name, specialty, ...input, operationKey });
+       setCreatedVersion({ id: bundle.versionId, name });
     } catch (e) {
       setError(errorMessage(e, t('common.error')));
     } finally {
@@ -48,6 +50,17 @@ export function TemplateLibrary() {
   }, [templates]);
 
   if (loading) return <SkeletonList rows={5} label={t('common.loading')} />;
+
+  if (createdVersion) {
+    return (
+      <TemplateVersionEditor
+        versionId={createdVersion.id}
+        templateName={createdVersion.name}
+        showVersionActions={false}
+        onBack={() => navigate('/templates')}
+      />
+    );
+  }
 
   const useBuiltin = globals.length === 0;
 
