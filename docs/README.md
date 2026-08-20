@@ -87,6 +87,7 @@
 | Document | Contenu |
 |---|---|
 | [feuille-route-developpement-post-readiness.md](feuille-route-developpement-post-readiness.md) | Reprise du développement malgré les gates de production |
+| [feuille-route-offline-saisie.md](feuille-route-offline-saisie.md) | **Cible technique non implémentée** : création de patients et saisie de rencontres hors-ligne, synchronisation idempotente et preuves E2E |
 | [suivi-execution-feuille-route.md](suivi-execution-feuille-route.md) | Journal d'exécution de cette feuille de route |
 | [lots-paralleles.md](lots-paralleles.md) | Découpage des chantiers en lots parallélisables |
 | [prompts-lots.md](prompts-lots.md) · [prompt-execution-autonome-feuille-route.md](prompt-execution-autonome-feuille-route.md) | Prompts de travail prêts à l'emploi (outillage interne) |
