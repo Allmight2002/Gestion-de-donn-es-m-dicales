@@ -19,6 +19,7 @@ import type { CohortSummary, FilterCondition, FilterDefinition, FilterOp } from 
 import { getTemplateFields } from '../../data/templates';
 import { fieldOptions } from '../../domain/fieldOptions';
 import { isMultipleTerminology, type TemplateField, type TerminologyValue } from '../../data/types';
+import { isCalculatedField } from '../../domain/fieldFormula';
 import type { MessageKey } from '../../i18n/messages';
 // L23 : le meme composant de recherche que la saisie, en mode multivalue -- aucun second
 // selecteur de diagnostic a maintenir, et la meme fenetre sur le referentiel.
@@ -67,6 +68,8 @@ export function CohortBuilder() {
   const cohorts = useCohortRepository();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
+  /** L35 : libelles des variables calculees, ecartees du filtrage — l'ecran doit le dire. */
+  const [calculatedFields, setCalculatedFields] = useState<string[]>([]);
   const [list, setList] = useState<CohortSummary[]>([]);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
@@ -103,9 +106,17 @@ export function CohortBuilder() {
     try {
       const base = await bases.getBase(baseId);
       if (base?.base.currentTemplateVersionId) {
-        const sorted = (await getTemplateFields(templates, base.base.currentTemplateVersionId))
+        // L35 : les variables CALCULEES sont ecartees d'emblee. `jsonb_matches` compare
+        // « p_data ->> field » ; la cle n'existant dans aucune fiche, le filtre serait MUET —
+        // pas faux, ce qui est pire : il rendrait zero dossier sans que rien ne l'explique.
+        const all = await getTemplateFields(templates, base.base.currentTemplateVersionId);
+        const sorted = all
+          .filter((field) => !isCalculatedField(field))
           .sort((a, b) => a.displayOrder - b.displayOrder);
         setFields(sorted);
+        // Absentes de la liste, elles seraient CHERCHEES : l'ecran les nomme et dit pourquoi
+        // elles n'y sont pas, plutot que de laisser croire a un oubli.
+        setCalculatedFields(all.filter(isCalculatedField).map((field) => field.label));
         setDraftField((previous) => previous || sorted[0]?.fieldKey || '');
       }
       const existing = await cohorts.listCohorts(baseId);
@@ -472,6 +483,13 @@ export function CohortBuilder() {
               </div>
               {draftOp === 'in' && <p className="helper-text">{t('cohort.in_hint')}</p>}
               {filterable && isPresenceOp && <p className="helper-text">{t('cohort.presence_hint')}</p>}
+              {/* L35 : ces variables sont absentes de la liste ci-dessus. Sans cette phrase,
+                  elles seraient cherchees, puis supposees perdues. */}
+              {calculatedFields.length > 0 && (
+                <p role="status" className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  {t('cohort.calculated_excluded')} <span className="font-medium">{calculatedFields.join(', ')}</span>
+                </p>
+              )}
             </div>
           </SectionCard>
 

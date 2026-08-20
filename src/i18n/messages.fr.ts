@@ -965,6 +965,46 @@ export const messages = {
       'Choisissez un ou plusieurs diagnostics : la cohorte retiendra les fiches selon leur présence dans la liste, quel que soit leur rang.',
     'cohort.not_filterable':
       'Cette variable n’est pas filtrable en l’état : un diagnostic à valeur unique ne peut être comparé sans risque de résultat faux. Utilisez une variable acceptant plusieurs valeurs.',
+    // L35 — variables calculées : la calculatrice, jamais une formule livrée.
+    'admin.formula': 'Calcul',
+    'admin.formula_enable': 'Variable calculée',
+    'admin.formula_hint':
+      'La valeur est calculée à partir de deux autres variables du même formulaire, par exemple « date de sortie − date d’entrée ». Elle n’est jamais saisie.',
+    'admin.formula_locked':
+      'Cette variable est déjà renseignée dans des fiches : elle ne peut pas devenir calculée, sinon les valeurs déjà saisies disparaîtraient derrière un calcul. Créez une nouvelle variable.',
+    'admin.formula_no_operand':
+      'Aucune variable ne peut servir au calcul pour l’instant : il faut d’abord créer, dans ce même formulaire, au moins une variable de type nombre ou date.',
+    'admin.formula_left': 'Premier élément',
+    'admin.formula_right': 'Second élément',
+    'admin.formula_operator': 'Opération',
+    'admin.formula_choose': '— choisir —',
+    'admin.formula_constant': 'un nombre fixe',
+    'admin.formula_preview': 'Calcul enregistré : {formula}',
+    'admin.formula_not_stored':
+      'Le résultat n’est jamais enregistré dans les fiches : il est recalculé à chaque affichage et à chaque export. Corriger un des éléments corrige donc le résultat, partout et aussitôt.',
+    'admin.formula_output_number': 'nombre (calculé)',
+    'admin.formula_output_integer': 'nombre de jours (calculé)',
+    'admin.formula_output_unknown': '—',
+    'admin.formula_error_syntax':
+      'Complétez le calcul : deux éléments et une opération sont attendus.',
+    'admin.formula_error_self_reference': 'Une variable ne peut pas se calculer à partir d’elle-même.',
+    'admin.formula_error_unknown_operand':
+      '« {name} » n’existe pas dans ce formulaire, ou n’a pas la même portée.',
+    'admin.formula_error_calculated_operand':
+      '« {name} » est elle-même une variable calculée : un calcul ne peut pas en reprendre un autre.',
+    'admin.formula_error_operand_type': '« {name} » n’est ni un nombre ni une date.',
+    'admin.formula_error_operator_type':
+      'Une date ne se combine qu’avec une autre date, par soustraction — le résultat est alors un nombre de jours.',
+    'admin.formula_error_constant_only':
+      'Au moins un des deux éléments doit être une variable du formulaire.',
+    'form.calculated': 'calculé',
+    'form.calculated_hint':
+      'Cette valeur est calculée automatiquement à partir des autres réponses. Elle ne se saisit pas et n’est pas enregistrée telle quelle.',
+    'form.calculated_absent': 'en attente des éléments du calcul',
+    'import.calculated_columns':
+      'Colonne(s) ignorée(s), car la variable visée est calculée par le formulaire : sa valeur vient du calcul, pas du fichier.',
+    'cohort.calculated_excluded':
+      'Les variables calculées ne peuvent pas servir de filtre : leur résultat n’est pas enregistré dans les fiches, donc il n’y a rien à comparer. Filtrez plutôt sur les variables qui servent au calcul.',
   } as const;
 
 export type MessageKey = keyof typeof messages;

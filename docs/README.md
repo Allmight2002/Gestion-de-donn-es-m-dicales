@@ -16,6 +16,9 @@
 (parcours développeur et parcours sécurité, ~15 min chacun), puis
 [architecture.md](architecture.md).
 
+**Vous voulez plutôt essayer le produit déployé** (sans lire le code) ? →
+[guide-decouverte-produit.md](guide-decouverte-produit.md).
+
 ---
 
 ## 1. Comprendre le produit 🟢
@@ -101,8 +104,9 @@
 
 | Document | Date | Objet |
 |---|---|---|
-| [audits/audit-technique-complet-2026-08-09.md](audits/audit-technique-complet-2026-08-09.md) | 2026-08-09 | **Audit le plus récent** — ≈8,8/10, aucun constat critique ou élevé |
-| [audits/audit-technique-complet-2026-07-26.md](audits/audit-technique-complet-2026-07-26.md) | 2026-07-26 | Audit précédent (référence de comparaison) |
+| [audits/audit-technique-complet-2026-08-18.md](audits/audit-technique-complet-2026-08-18.md) | 2026-08-18 | **Audit le plus récent** — 8,8/10 ; 1 constat critique (P0, antivirus `paused` en production) et 1 élevé (P1, brouillons cliniques en clair) ; correctifs découpés en lots L38-L44 dans [`lots-paralleles.md`](lots-paralleles.md) |
+| [audits/audit-technique-complet-2026-08-09.md](audits/audit-technique-complet-2026-08-09.md) | 2026-08-09 | Audit précédent — ≈8,8/10, aucun constat critique ou élevé à cette date |
+| [audits/audit-technique-complet-2026-07-26.md](audits/audit-technique-complet-2026-07-26.md) | 2026-07-26 | Audit antérieur (référence de comparaison) |
 | [audit-complet-2026-07-10.md](audit-complet-2026-07-10.md) | 2026-07-10 | Rapport d'audit consolidé |
 | [audit-multiagents-2026-07-10.md](audit-multiagents-2026-07-10.md) | 2026-07-10 | Audit multi-agents |
 | [validation-staging-lot-13-2026-07-12.md](validation-staging-lot-13-2026-07-12.md) · [-13.md](validation-staging-lot-13-2026-07-13.md) | 2026-07 | Validations de staging du lot 13 |
@@ -112,6 +116,8 @@
 | [decision-environnement-production-tests-2026-07-29.md](decision-environnement-production-tests-2026-07-29.md) | 2026-07-29 | Décision sur l'environnement `production` persistant |
 | [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md) | 2026-08-12 | Décision de mise en pause du parcours antivirus (ClamAV non requis) |
 | [decision-export-simple-2026-08-17.md](decision-export-simple-2026-08-17.md) | 2026-08-17 | Décision de simplification de l'export (statut non gating, complétude, écran par modèle d'observation) |
+| [decision-recherche-patient-2026-08-20.md](decision-recherche-patient-2026-08-20.md) | 2026-08-20 | Décision sur la recherche patient dans une base (visibilité `medecin`, portée code/nom selon `can_view_identity`, recherche serveur sur toute la base) — non implémentée |
+| [decision-notifications-v1-2026-08-20.md](decision-notifications-v1-2026-08-20.md) | 2026-08-20 | Décision sur le périmètre v1 des notifications in-app (clarification de curation seulement, médecin + curateur, in-app, table dédiée) — non implémentée |
 
 ## 8. Cadre juridique
 

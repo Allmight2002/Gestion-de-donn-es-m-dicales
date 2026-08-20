@@ -150,6 +150,12 @@ export interface TemplateField {
    * lot : passer par `allowedMissingReasons` plutot que de la lire directement.
    */
   missingReasons?: MissingCode[] | null;
+  /**
+   * Variable CALCULEE (L35) : `date_sortie - date_entree`, forme canonique « A op B ».
+   * Null/absent = variable saisie, comme avant le lot. Le resultat n'est JAMAIS stocke :
+   * il est recalcule a l'affichage et a l'export par `evaluateFormula` (domain/export).
+   */
+  formula?: string | null;
   displayOrder: number;
   /** Champ de rencontre limite a certains types (null/vide/absent = tous). Pilote affichage + requis. */
   encounterTypes?: string[] | null;
@@ -206,4 +212,6 @@ export interface NewField {
   allowMissingCodes?: boolean;
   /** Raisons de valeur manquante proposees pour cette variable. */
   missingReasons?: MissingCode[] | null;
+  /** Calcul defini par l'utilisateur (L35), forme canonique « A op B ». Null = variable saisie. */
+  formula?: string | null;
 }

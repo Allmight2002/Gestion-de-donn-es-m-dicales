@@ -10,8 +10,10 @@ import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections
 import {
   autoMapColumns, buildImportRows, duplicateTargets, findInFileEncounterDuplicates,
   findTerminologyColumns, terminologyTargetField,
+  findCalculatedColumns, calculatedTargetField,
   type ColumnMapping, type ImportReport, type ImportTarget, type TerminologyColumn,
 } from '../../domain/import';
+import { isCalculatedField } from '../../domain/fieldFormula';
 import { parseSpreadsheetOffThread } from '../../domain/spreadsheet';
 import { normalizeKey, proposeFieldsFromSheet } from '../../domain/templateFromSheet';
 import type { ImportDuplicateWarning } from '../../data/patients';
@@ -189,6 +191,13 @@ export function ImportData() {
       .filter((column) => (mapping[column.index] ?? 'ignore') === 'ignore')
       .sort((a, b) => a.index - b.index);
   }, [terminologyColumns, refusedTerminology, headers, mapping]);
+  // L35 : colonnes dont l'en-tete designe une variable CALCULEE. Elles ne sont jamais mappees
+  // (ni automatiquement, ni manuellement) ; l'ecran les cite pour que l'utilisateur sache
+  // pourquoi sa colonne « durée de séjour » n'est pas arrivee, au lieu de la croire importee.
+  const ignoredCalculated = useMemo(
+    () => findCalculatedColumns(headers, fields),
+    [headers, fields],
+  );
   // Colonnes dont l'en-tete designe DEJA une variable de terminologie : leur proposer « creer
   // la variable » inviterait a fabriquer un doublon de celle qui existe.
   const recognizedTerminology = useMemo(
@@ -333,6 +342,10 @@ export function ImportData() {
   // L'import ne sait pas resoudre un diagnostic dans le referentiel ; accepter la cible ne
   // ferait que reporter l'echec a la fin de l'import, cote serveur et en termes techniques.
   const setCol = (i: number, target: ImportTarget) => {
+    // L35 : la cible n'est deja plus proposee dans la liste ; ce refus couvre les autres
+    // chemins (mappage automatique, ancien etat), pour qu'aucune colonne ne parte vers une
+    // variable calculee sans que rien ne le dise.
+    if (calculatedTargetField(target, fields)) return;
     const refused = terminologyTargetField(target, fields);
     if (refused) {
       // Refuser, c'est NE RIEN CHANGER : la colonne garde le mappage qu'elle avait. L'ecraser
@@ -449,13 +462,16 @@ export function ImportData() {
                         <option value="identity.full_name">{t('import.full_name')}</option>
                         <option value="identity.date_of_birth">{t('import.dob')}</option>
                       </optgroup>
+                      {/* L35 : une variable CALCULEE n'est pas proposee comme cible. Sa valeur
+                          vient de la formule ; une colonne dirigee vers elle serait ignoree en
+                          silence, ou contredirait le resultat affiche a cote. */}
                       <optgroup label={t('import.grp_patient')}>
-                        {fields.filter((field) => field.scope === 'patient').map((field) => (
+                        {fields.filter((field) => field.scope === 'patient' && !isCalculatedField(field)).map((field) => (
                           <option key={field.id} value={`patient:${field.fieldKey}`}>{field.label}</option>
                         ))}
                       </optgroup>
                       <optgroup label={t('import.grp_encounter')}>
-                        {fields.filter((field) => field.scope === 'encounter').map((field) => (
+                        {fields.filter((field) => field.scope === 'encounter' && !isCalculatedField(field)).map((field) => (
                           <option key={field.id} value={`encounter:${field.fieldKey}`}>{field.label}</option>
                         ))}
                       </optgroup>
@@ -505,6 +521,14 @@ export function ImportData() {
                 <p className="mt-1">{t('import.terminology_hint')}</p>
                 <ul className="mt-2 space-y-0.5">
                   {ignoredTerminology.map((column) => <li key={column.index}>{columnLabel(column)}</li>)}
+                </ul>
+              </div>
+            )}
+            {ignoredCalculated.length > 0 && (
+              <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="mt-1">{t('import.calculated_columns')}</p>
+                <ul className="mt-2 space-y-0.5">
+                  {ignoredCalculated.map((column) => <li key={column.index}>{columnLabel(column)}</li>)}
                 </ul>
               </div>
             )}

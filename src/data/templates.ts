@@ -79,7 +79,10 @@ type FieldRow = {
   unit: string | null; allowed_values: unknown[] | null;
   allowed_options: unknown[] | null; required: boolean;
   min_value: number | null; max_value: number | null; allow_missing_codes: boolean;
-  missing_reasons: MissingCode[] | null; display_order: number;
+  missing_reasons: MissingCode[] | null;
+  /** Variable calculee (L35). Absente d'une reponse anterieure au lot -> variable saisie. */
+  formula?: string | null;
+  display_order: number;
   encounter_types: string[] | null;
 };
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
@@ -117,6 +120,7 @@ const mapField = (r: FieldRow): TemplateField => ({
   unit: r.unit, allowedValues: r.allowed_values, allowedOptions: r.allowed_options,
   required: r.required, minValue: r.min_value,
   maxValue: r.max_value, allowMissingCodes: r.allow_missing_codes, missingReasons: r.missing_reasons,
+  formula: r.formula ?? null,
   displayOrder: r.display_order,
   encounterTypes: r.encounter_types,
 });
@@ -241,7 +245,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       const [fRes, sRes] = await Promise.all([
         client
           .from('template_field')
-          .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, display_order, encounter_types')
+          .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, formula, display_order, encounter_types')
           .eq('template_version_id', versionId)
           .order('display_order', { ascending: true }),
         client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),
@@ -356,6 +360,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
           // rien a arbitrer. Un client ancien, lui, n'enverra que le booleen.
           allow_missing_codes: (item.missingReasons ?? []).length > 0,
           missing_reasons: item.missingReasons ?? [],
+          // L35 : le serveur VALIDE la formule et en DEDUIT le type de sortie. Une variable
+          // saisie envoie null et retrouve exactement le comportement d'avant le lot.
+          formula: item.formula?.trim() || null,
         })))
         .select('*');
       if (error) throw error;
@@ -388,6 +395,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         p_max_value: field.maxValue ?? null,
         p_unit: field.unit ?? null,
         p_missing_reasons: field.missingReasons ?? [],
+        // `p_formula` selectionne la surcharge L35 de la RPC. Sans cette cle, PostgREST
+        // resout la signature anterieure et la variable reste saisie.
+        p_formula: field.formula?.trim() || null,
       });
       if (error) throw error;
       clearVersionCache();

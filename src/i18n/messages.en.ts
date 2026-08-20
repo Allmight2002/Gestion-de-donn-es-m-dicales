@@ -965,4 +965,42 @@ export const messages = {
       'Pick one or more diagnoses: the cohort keeps records based on their presence in the list, whatever their rank.',
     'cohort.not_filterable':
       'This variable cannot be filtered as it stands: a single-value diagnosis cannot be compared without risking a wrong result. Use a variable that accepts several values.',
+    // L35 — calculated variables: the calculator, never a formula we ship.
+    'admin.formula': 'Calculation',
+    'admin.formula_enable': 'Calculated variable',
+    'admin.formula_hint':
+      'The value is computed from two other variables of the same form, for instance “discharge date − admission date”. It is never typed in.',
+    'admin.formula_locked':
+      'This variable already holds values in records: it cannot become calculated, or those values would vanish behind a computation. Create a new variable instead.',
+    'admin.formula_no_operand':
+      'No variable can feed a calculation yet: first create, in this same form, at least one number or date variable.',
+    'admin.formula_left': 'First element',
+    'admin.formula_right': 'Second element',
+    'admin.formula_operator': 'Operation',
+    'admin.formula_choose': '— choose —',
+    'admin.formula_constant': 'a fixed number',
+    'admin.formula_preview': 'Calculation saved: {formula}',
+    'admin.formula_not_stored':
+      'The result is never stored in records: it is recomputed on every display and every export. Correcting one of the elements therefore corrects the result, everywhere and at once.',
+    'admin.formula_output_number': 'number (calculated)',
+    'admin.formula_output_integer': 'number of days (calculated)',
+    'admin.formula_output_unknown': '—',
+    'admin.formula_error_syntax': 'Complete the calculation: two elements and one operation are expected.',
+    'admin.formula_error_self_reference': 'A variable cannot be computed from itself.',
+    'admin.formula_error_unknown_operand':
+      '“{name}” does not exist in this form, or does not have the same scope.',
+    'admin.formula_error_calculated_operand':
+      '“{name}” is itself a calculated variable: one calculation cannot build on another.',
+    'admin.formula_error_operand_type': '“{name}” is neither a number nor a date.',
+    'admin.formula_error_operator_type':
+      'A date only combines with another date, by subtraction — the result is then a number of days.',
+    'admin.formula_error_constant_only': 'At least one of the two elements must be a variable of the form.',
+    'form.calculated': 'calculated',
+    'form.calculated_hint':
+      'This value is computed automatically from the other answers. It cannot be typed in and is not stored as such.',
+    'form.calculated_absent': 'waiting for the elements of the calculation',
+    'import.calculated_columns':
+      'Column(s) skipped, because the target variable is computed by the form: its value comes from the calculation, not from the file.',
+    'cohort.calculated_excluded':
+      'Calculated variables cannot be used as a filter: their result is not stored in records, so there is nothing to compare. Filter on the variables that feed the calculation instead.',
   } as const satisfies MessageDictionary;

@@ -279,3 +279,40 @@ describe('CohortBuilder — variables multivaluees (L23)', () => {
     expect(within(comparaison).getByRole('option', { name: 'est compris entre' })).toBeInTheDocument();
   });
 });
+
+// L35 : `jsonb_matches` compare « p_data ->> field ». La cle d'une variable calculee n'existe
+// dans aucune fiche : le filtre serait MUET, pas faux -- il rendrait zero dossier sans que
+// rien ne l'explique. La variable est donc absente de la liste, et l'ecran dit pourquoi.
+describe('CohortBuilder — variables calculees (L35)', () => {
+  const DUREE = field({
+    fieldKey: 'duree_sejour', label: 'Durée de séjour', scope: 'encounter', type: 'integer',
+    formula: 'date_sortie - date_entree',
+  });
+
+  test('la variable calculee n’est PAS proposee comme critere', async () => {
+    renderBuilder(makeCohorts(), makeTemplates([
+      field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'] }),
+      DUREE,
+    ]));
+    await screen.findByRole('heading', { name: 'Cohortes' });
+    const variable = screen.getByLabelText('Variable');
+    expect(within(variable).getByRole('option', { name: /Sexe/ })).toBeInTheDocument();
+    expect(within(variable).queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+  });
+
+  test('l’ecran EXPLIQUE l’absence, au lieu de la laisser passer pour un oubli', async () => {
+    renderBuilder(makeCohorts(), makeTemplates([
+      field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'] }),
+      DUREE,
+    ]));
+    await screen.findByRole('heading', { name: 'Cohortes' });
+    const notice = await screen.findByText(/Les variables calculées ne peuvent pas servir de filtre/);
+    expect(notice).toHaveTextContent('Durée de séjour');
+  });
+
+  test('sans variable calculee, aucune explication n’encombre l’ecran', async () => {
+    renderBuilder(makeCohorts());
+    await screen.findByRole('heading', { name: 'Cohortes' });
+    expect(screen.queryByText(/Les variables calculées ne peuvent pas servir de filtre/)).toBeNull();
+  });
+});
