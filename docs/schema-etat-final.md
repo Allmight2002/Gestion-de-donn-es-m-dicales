@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260820210000_base_purge.sql`
+- Dernière migration incluse : `20260821120000_template_field_formula_datetime.sql`
 - Tables : 43 · Policies RLS : 63 · Triggers : 66 · Fonctions : 269
 
 ## Tables (colonnes, RLS, policies, triggers)

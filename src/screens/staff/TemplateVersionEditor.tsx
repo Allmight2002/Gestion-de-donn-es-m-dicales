@@ -221,7 +221,6 @@ export function TemplateVersionEditor({
               <span className="badge">{t('admin.version')} {version.versionNumber} · {t(`status.${version.status}`)}</span>
               <span className="text-xs text-slate-500">{t('admin.variable_count').replace('{n}', String(fields.length))}</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">{t('admin.version_explanation')}</p>
           </div>
           <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:justify-end">
             {editable && (

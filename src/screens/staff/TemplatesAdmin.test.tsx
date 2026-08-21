@@ -116,6 +116,8 @@ describe('TemplatesAdmin', () => {
   test('liste les gabarits existants', async () => {
     renderAdmin(statefulMock('draft'));
     expect(await screen.findByText('Neurochirurgie')).toBeInTheDocument();
+    expect(screen.queryByText('Version en préparation')).toBeNull();
+    expect(screen.queryByText(/Historique des versions/)).toBeNull();
   });
 
   test('creer un gabarit ouvre l editeur de version', async () => {

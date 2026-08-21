@@ -3067,6 +3067,13 @@ d'horodatages ne rend pas un nombre entier de jours, et le type de sortie cesser
 déductible. Et `2 + 3` est refusé : deux constantes valent la même chose pour tout le monde et
 n'appartiennent pas au dossier.
 
+**Correctif du 2026-08-21.** La première exclusion était trop stricte : `datetime` est désormais
+un opérande temporel admissible. `date − date` reste un entier de jours ; dès qu'une date-heure
+intervient, la différence est exprimée en jours potentiellement fractionnaires et le type de
+sortie déduit devient `number`. La règle est appliquée par le contrat partagé navigateur/Edge et
+par le déclencheur PostgreSQL dans la migration additive
+`20260821120000_template_field_formula_datetime.sql`.
+
 ### Valeurs manquantes : absent, jamais zéro
 
 Si un opérande est absent, ou porte l'un des cinq codes de L33 (`non_fait`, `inconnu`,
@@ -3107,6 +3114,7 @@ une file « à compléter » que personne ne pourrait solder.
 | Fichier | Ce qui change |
 |---|---|
 | `supabase/migrations/20260820120000_template_field_formula.sql` | Colonne `formula` nullable, deux déclencheurs de validation, `copy_template_fields`, surcharge de `update_template_field`, exclusions de complétude, instantané hors-ligne |
+| `supabase/migrations/20260821120000_template_field_formula_datetime.sql` | Correctif additif : `datetime` comme opérande, sortie en jours fractionnaires |
 | `supabase/functions/generate-export/exportContract.ts` | Grammaire, évaluateur, colonne recalculée, `formulaByVersion`, colonne `formula` au dictionnaire |
 | `supabase/functions/generate-export/formulaCases.ts` | **Nouveau** — jeu de cas partagé entre les deux exécuteurs de tests |
 | `supabase/functions/generate-export/handler.ts` | La formule voyage avec sa version |

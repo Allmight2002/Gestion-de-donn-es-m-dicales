@@ -223,7 +223,6 @@ export const messages = {
     'admin.current_version': 'Version courante',
     'admin.version_in_progress': 'Version en préparation',
     'admin.new_version_available': 'Nouvelle version disponible',
-    'admin.version_explanation': 'Un jeu de variables peut contenir plusieurs versions. Une version publiée reste en lecture seule ; un brouillon peut encore être modifié.',
     'admin.open_version': 'Ouvrir la version',
     'admin.editor_context': 'Jeu de variables',
     'admin.variable_count': '{n} variable(s)',
@@ -424,8 +423,6 @@ export const messages = {
     'section.paraclinique': 'Paraclinique',
     // L31 — gestion des sections d'une version de gabarit.
     'admin.sections': 'Sections du formulaire',
-    'admin.sections_hint':
-      "Les sections regroupent les variables à l'écran. Elles appartiennent à cette version : une fois la version publiée, elles ne changent plus.",
     'admin.section_label': 'Nom de la section',
     'admin.section_placeholder': 'Imagerie',
     'admin.section_add': 'Ajouter la section',
@@ -958,7 +955,7 @@ export const messages = {
     'base.purge_documents': '{count} document(s) brut(s)',
     'base.purge_attachments': '{count} pièce(s) jointe(s)',
     'base.purge_export_note': 'Le journal d’audit et le journal des exports seront conservés comme preuves de traçabilité ; les fichiers eux-mêmes seront supprimés.',
-    'base.purge_name_label': 'Pour confirmer, saisissez exactement le nom de la base :',
+    'base.purge_name_label': 'Saisissez exactement le nom de la base « {name} » :',
     'base.purge_name_invalid': 'Le nom saisi ne correspond pas.',
     'base.purge_confirm': 'Supprimer définitivement',
     'base.purge_success': 'La base « {name} » a été supprimée définitivement.',
@@ -1038,7 +1035,7 @@ export const messages = {
     'admin.formula_locked':
       'Cette variable est déjà renseignée dans des fiches : elle ne peut pas devenir calculée, sinon les valeurs déjà saisies disparaîtraient derrière un calcul. Créez une nouvelle variable.',
     'admin.formula_no_operand':
-      'Aucune variable ne peut servir au calcul pour l’instant : il faut d’abord créer, dans ce même formulaire, au moins une variable de type nombre ou date.',
+      'Aucune variable ne peut servir au calcul pour l’instant : il faut d’abord créer, dans ce même formulaire, au moins une variable de type nombre, date ou date-heure.',
     'admin.formula_left': 'Premier élément',
     'admin.formula_right': 'Second élément',
     'admin.formula_operator': 'Opération',
@@ -1057,9 +1054,9 @@ export const messages = {
       '« {name} » n’existe pas dans ce formulaire, ou n’a pas la même portée.',
     'admin.formula_error_calculated_operand':
       '« {name} » est elle-même une variable calculée : un calcul ne peut pas en reprendre un autre.',
-    'admin.formula_error_operand_type': '« {name} » n’est ni un nombre ni une date.',
+    'admin.formula_error_operand_type': '« {name} » n’est ni un nombre, ni une date, ni une date-heure.',
     'admin.formula_error_operator_type':
-      'Une date ne se combine qu’avec une autre date, par soustraction — le résultat est alors un nombre de jours.',
+      'Une date ou une date-heure ne se combine qu’avec une autre date ou date-heure, par soustraction — le résultat est en jours.',
     'admin.formula_error_constant_only':
       'Au moins un des deux éléments doit être une variable du formulaire.',
     'form.calculated': 'calculé',

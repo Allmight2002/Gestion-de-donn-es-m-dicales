@@ -93,11 +93,12 @@ describe('Trash (corbeille des bases)', () => {
     await screen.findByText('Registre clos');
     await user.click(screen.getByRole('button', { name: 'Supprimer définitivement' }));
     expect(screen.getByRole('dialog', { name: 'Supprimer définitivement cette base ?' })).toBeInTheDocument();
-    expect(screen.getByText(/contient 2 patient\(s\), 3 rencontre\(s\), 1 document\(s\) brut\(s\), 1 pièce\(s\) jointe\(s\)/)).toBeInTheDocument();
     const dialog = screen.getByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
+    expect(within(dialog).queryByText(/contient 2 patient\(s\)/)).toBeNull();
+    expect(within(dialog).getByLabelText('Saisissez exactement le nom de la base « Registre clos » :')).toBeInTheDocument();
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
     expect(confirm).toBeDisabled();
-    await user.type(within(dialog).getByLabelText('Pour confirmer, saisissez exactement le nom de la base :'), 'Registre clos');
+    await user.type(within(dialog).getByLabelText('Saisissez exactement le nom de la base « Registre clos » :'), 'Registre clos');
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     expect(purgeDeletedBase).toHaveBeenCalledWith('deleted-1', expect.any(String));

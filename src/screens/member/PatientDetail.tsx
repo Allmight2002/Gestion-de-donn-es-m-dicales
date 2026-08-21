@@ -22,14 +22,36 @@ import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
+import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 // L30 : `type` et les options voyagent avec la colonne pour que la fiche affiche le
 // LIBELLE de l'option et non son code -- en ligne comme depuis un instantane.
 type Column = {
-  id: string; fieldKey: string; label: string; scope: string; displayOrder: number;
+  id: string; fieldKey: string; label: string; scope: string; section: string; displayOrder: number;
+  sectionLabel?: string | null; sectionOrder?: number | null;
   type?: string; allowedValues?: unknown; allowedOptions?: unknown;
 };
+
+type ColumnSource = {
+  id: string; fieldKey: string; label: string; scope: string; section?: string | null; displayOrder: number;
+  sectionLabel?: string | null; sectionOrder?: number | null;
+  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+};
+
+const toColumn = (field: ColumnSource): Column => ({
+  id: field.id,
+  fieldKey: field.fieldKey,
+  label: field.label,
+  scope: field.scope,
+  section: field.section ?? '',
+  sectionLabel: field.sectionLabel ?? null,
+  sectionOrder: field.sectionOrder ?? null,
+  displayOrder: field.displayOrder,
+  type: field.type,
+  allowedValues: field.allowedValues,
+  allowedOptions: field.allowedOptions,
+});
 
 // §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
 // une image s'affiche apres « Afficher l'image » ; un document s'ouvre dans un onglet.
@@ -127,11 +149,11 @@ export function PatientDetail() {
         setEncounters(op.encounters.map((e) => ({ ...e })));
         // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
         // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
-        const dictFor = (vid?: string | null): Column[] => (vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || [];
-        setPatientFields([...dictFor(op.templateVersionId)].sort((a, b) => a.displayOrder - b.displayOrder).filter((f) => f.scope === 'patient'));
+        const dictFor = (vid?: string | null): Column[] => ((vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || []).map(toColumn);
+        setPatientFields(dictFor(op.templateVersionId).sort((a, b) => a.displayOrder - b.displayOrder).filter((f) => f.scope === 'patient'));
         const encFields = new Map<string, Column>();
         for (const e of op.encounters) for (const f of dictFor(e.templateVersionId)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
-        if (encFields.size === 0) for (const f of (snap?.fields ?? [])) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
+        if (encFields.size === 0) for (const f of (snap?.fields ?? []).map(toColumn)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
         setEncounterFields([...encFields.values()].sort((a, b) => a.displayOrder - b.displayOrder));
         setError(null);
         return;
@@ -153,10 +175,7 @@ export function PatientDetail() {
       if (base?.base.currentTemplateVersionId) {
         const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
         const sorted: Column[] = fields
-          .map((f) => ({
-            id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, displayOrder: f.displayOrder,
-            type: f.type, allowedValues: f.allowedValues, allowedOptions: f.allowedOptions,
-          }))
+          .map(toColumn)
           .sort((a, b) => a.displayOrder - b.displayOrder);
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
@@ -275,14 +294,23 @@ export function PatientDetail() {
           </span>
         )}
       >
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          {patientFields.map((f) => (
-            <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
-              <dt className="text-xs text-slate-500">{f.label}</dt>
-              <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f)}</dd>
-            </div>
+        <div className="space-y-4">
+          {groupFieldsBySection(patientFields).map((group) => (
+            <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
+              <legend className="px-1 text-sm font-semibold text-slate-700">
+                {sectionLabel(t, { sectionKey: group.key, label: group.label })}
+              </legend>
+              <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                {group.fields.map((f) => (
+                  <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
+                    <dt className="text-xs text-slate-500">{f.label}</dt>
+                    <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </fieldset>
           ))}
-        </dl>
+        </div>
       </SectionCard>
 
       <div>
@@ -322,16 +350,23 @@ export function PatientDetail() {
                     </span>
                   )}
                 </div>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
-                  {encounterFields
-                    .filter((f) => f.fieldKey in e.data)
-                    .map((f) => (
-                      <div key={f.id} className="contents">
-                        <dt className="text-slate-500">{f.label}</dt>
-                        <dd>{fmt(e.data[f.fieldKey], f)}</dd>
-                      </div>
-                    ))}
-                </dl>
+                <div className="space-y-3">
+                  {groupFieldsBySection(encounterFields.filter((f) => f.fieldKey in e.data)).map((group) => (
+                    <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
+                      <legend className="px-1 text-xs font-semibold text-slate-600">
+                        {sectionLabel(t, { sectionKey: group.key, label: group.label })}
+                      </legend>
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
+                        {group.fields.map((f) => (
+                          <div key={f.id} className="contents">
+                            <dt className="text-slate-500">{f.label}</dt>
+                            <dd>{fmt(e.data[f.fieldKey], f)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </fieldset>
+                  ))}
+                </div>
               </li>
             ))}
           </ul>

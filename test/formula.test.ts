@@ -83,6 +83,8 @@ describe('checkFormula — refus a l enregistrement du gabarit', () => {
     { fieldKey: 'score_j7', type: 'integer' },
     { fieldKey: 'date_entree', type: 'date' },
     { fieldKey: 'date_sortie', type: 'date' },
+    { fieldKey: 'heure_entree', type: 'datetime' },
+    { fieldKey: 'heure_sortie', type: 'datetime' },
     { fieldKey: 'commentaire', type: 'text' },
     { fieldKey: 'duree_deja_calculee', type: 'integer', formula: 'date_sortie - date_entree' },
   ];
@@ -97,6 +99,21 @@ describe('checkFormula — refus a l enregistrement du gabarit', () => {
     const check = checkFormula('date_sortie - date_entree', 'duree', peers);
     expect(check.ok).toBe(true);
     expect(check.outputType).toBe('integer');
+  });
+
+  test('accepte datetime - datetime, type de sortie « number » (jours fractionnaires)', () => {
+    const check = checkFormula('heure_sortie - heure_entree', 'duree_precise', peers);
+    expect(check.ok).toBe(true);
+    expect(check.outputType).toBe('number');
+  });
+
+  test('accepte une date et une date-heure ensemble, avec une sortie « number »', () => {
+    const check = checkFormula('heure_sortie - date_entree', 'duree_mixte', peers);
+    expect(check.ok).toBe(true);
+    expect(check.outputType).toBe('number');
+    const inverse = checkFormula('date_sortie - heure_entree', 'duree_mixte_inverse', peers);
+    expect(inverse.ok).toBe(true);
+    expect(inverse.outputType).toBe('number');
   });
 
   test('refuse un operande inconnu, en le nommant', () => {
@@ -136,6 +153,7 @@ describe('checkFormula — refus a l enregistrement du gabarit', () => {
     // « date + 3 » demanderait de decider si 3 est un jour, un mois ou une heure.
     expect(checkFormula('date_entree + 3', 'x', peers).problem).toBe('operator_type');
     expect(checkFormula('date_entree - score_j0', 'x', peers).problem).toBe('operator_type');
+    expect(checkFormula('heure_entree + 3', 'x', peers).problem).toBe('operator_type');
   });
 
   test('refuse deux constantes : ce n est pas une variable de dossier', () => {
