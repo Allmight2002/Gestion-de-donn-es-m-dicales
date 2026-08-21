@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Monitor, Smartphone } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import type { MessageKey } from '../../i18n/messages';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
@@ -9,6 +10,7 @@ import { findProposalField, isProposalSource, proposalKeysOf } from '../../domai
 import { EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
 import { FieldInput } from '../member/FieldInput';
 import { ChoiceWithProposal } from '../member/ChoiceWithProposal';
+import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 
 // L29 — apercu du formulaire tel que le verra la personne qui saisit, sans creer de
 // patient d'essai.
@@ -60,6 +62,18 @@ const INERT_TERMINOLOGY: TerminologyRepository = {
 
 const sortedScope = (fields: TemplateField[], scope: 'patient' | 'encounter') =>
   fields.filter((f) => f.scope === scope).sort((a, b) => a.displayOrder - b.displayOrder);
+
+const previewUnit = (
+  field: TemplateField,
+  fields: readonly TemplateField[],
+  t: (key: MessageKey) => string,
+): string | null => {
+  const temporalFormula = Boolean(field.formula && formulaUsesTemporalOperands(field.formula, fields));
+  const unit = temporalFormula ? normalizeFormulaTimeUnit(field.unit) : field.unit;
+  return temporalFormula && unit && (FORMULA_TIME_UNITS as readonly string[]).includes(unit)
+    ? t(`form.unit_${unit}` as MessageKey)
+    : unit;
+};
 
 export function FormPreview({
   version,
@@ -225,12 +239,13 @@ export function FormPreview({
                     sections={sections}
                     renderField={(field) => {
                       const proposal = isProposalSource(field) ? findProposalField(patientFields, field) : undefined;
+                      const renderedUnit = previewUnit(field, patientFields, t);
                       return (
                         <div className="flex flex-col text-sm">
                           <span className="text-slate-700 dark:text-slate-200">
                             {field.label}
                             {field.required && <span className="text-red-500"> *</span>}
-                            {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
+                            {renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
                           </span>
                           <div className="mt-1">
                             {proposal ? (

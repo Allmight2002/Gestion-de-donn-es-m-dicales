@@ -609,6 +609,8 @@ Deno.test('L35 : checkFormula refuse aux memes conditions des deux cotes', () =>
     { fieldKey: 'duree_deja_calculee', type: 'integer', formula: 'date_sortie - date_entree' },
   ];
   assertEquals(checkFormula('date_sortie - date_entree', 'duree', peers).outputType, 'integer');
+  assertEquals(checkFormula('date_sortie - date_entree', 'duree_heures', peers, 'hours').outputType, 'integer');
+  assertEquals(checkFormula('date_sortie - date_entree', 'duree_semaines', peers, 'weeks').outputType, 'number');
   assertEquals(checkFormula('heure_sortie - heure_entree', 'duree_precise', peers).outputType, 'number');
   assertEquals(checkFormula('heure_sortie - date_entree', 'duree_mixte', peers).outputType, 'number');
   assertEquals(checkFormula('date_sortie - heure_entree', 'duree_mixte_inverse', peers).outputType, 'number');
@@ -639,6 +641,15 @@ Deno.test('L35 : la colonne calculee est RECALCULEE a l export, sans rien lire d
   assertEquals(table.rows[0][columnId(DUREE)], 29);
   // Une seule colonne : ni code, ni nombre, ni indicatrices — il n'y a rien a coder.
   assertEquals(table.columns.filter((c) => c.includes('duree_sejour')), [columnId(DUREE)]);
+});
+
+Deno.test('L35 : la duree exportee respecte l unite de restitution choisie', () => {
+  const dureeHeures = { ...DUREE, unit: 'hours' };
+  const table = buildEncounterExport(
+    [rencontre({ date_entree: '2024-01-01', date_sortie: '2024-01-03' })],
+    [ENTREE, SORTIE, dureeHeures],
+  );
+  assertEquals(table.rows[0][columnId(dureeHeures)], 48);
 });
 
 Deno.test('L35 : resultat ABSENT -> cellule VIDE, jamais zero', () => {
@@ -690,6 +701,26 @@ Deno.test('L35 : la formule appartient a LA VERSION — une fiche ancienne garde
   );
   assertEquals(table.rows[0][columnId(DUREE)], 29);
   assertEquals(table.rows[1][columnId(DUREE)], 10);
+});
+
+Deno.test('L35 : une version peut conserver une unite de restitution differente', () => {
+  const v1 = '00000000-0000-0000-0000-0000000000b1';
+  const v2 = '00000000-0000-0000-0000-0000000000b2';
+  const fields: ExportField[] = [
+    { ...ENTREE, templateVersionIds: [v1, v2] },
+    { ...SORTIE, templateVersionIds: [v1, v2] },
+    { ...DUREE, unit: null, templateVersionIds: [v1] },
+    { ...DUREE, unit: 'hours', templateVersionIds: [v2] },
+  ];
+  const table = buildEncounterExport(
+    [
+      { ...rencontre({ date_entree: '2024-01-01', date_sortie: '2024-01-03' }), id: 'e1', templateVersionId: v1 },
+      { ...rencontre({ date_entree: '2024-01-01', date_sortie: '2024-01-03' }), id: 'e2', templateVersionId: v2 },
+    ],
+    fields,
+  );
+  assertEquals(table.rows[0][columnId(DUREE)], 2);
+  assertEquals(table.rows[1][columnId(DUREE)], 48);
 });
 
 Deno.test('L35 : le dictionnaire cite la formule, sinon la colonne serait inexplicable', () => {

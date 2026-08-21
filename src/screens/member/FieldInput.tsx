@@ -2,6 +2,7 @@ import type { TemplateField } from '../../data/types';
 import { isOrphanValue, selectableOptions } from '../../domain/fieldOptions';
 import { TerminologyInput } from './TerminologyInput';
 import { Checkbox } from '../../components/Checkbox';
+import { DatePickerInput } from '../../components/DatePickerInput';
 
 const cls = 'input';
 
@@ -38,7 +39,7 @@ export function FieldInput({
       );
     case 'date':
       return (
-        <input type="date" className={cls} aria-label={field.label} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)} />
+        <DatePickerInput value={(value as string) ?? ''} ariaLabel={field.label} onChange={onChange} />
       );
     case 'datetime':
       return (

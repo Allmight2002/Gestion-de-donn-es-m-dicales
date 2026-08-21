@@ -2,16 +2,28 @@ import { Fragment, useId, useState, type ReactNode } from 'react';
 import { CircleHelp } from 'lucide-react';
 import { isMultipleTerminology, type TemplateField, type TemplateSection } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
+import type { MessageKey } from '../../i18n/messages';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
-import { calculatedValue, isCalculatedField } from '../../domain/fieldFormula';
+import { calculatedValue, FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
 
-export function FieldLabel({ field, prefilled = false }: { field: TemplateField; prefilled?: boolean }) {
+export function FieldLabel({ field, fields, prefilled = false }: {
+  field: TemplateField;
+  fields?: readonly TemplateField[];
+  prefilled?: boolean;
+}) {
   const { t } = useI18n();
   const [helpOpen, setHelpOpen] = useState(false);
   const helpId = useId();
+  const temporalFormula = Boolean(fields && formulaUsesTemporalOperands(field.formula, fields));
+  const formulaUnit = isCalculatedField(field)
+    ? temporalFormula ? normalizeFormulaTimeUnit(field.unit) : field.unit
+    : field.unit;
+  const renderedUnit = formulaUnit && isCalculatedField(field) && (FORMULA_TIME_UNITS as readonly string[]).includes(formulaUnit)
+    ? t(`form.unit_${formulaUnit}` as MessageKey)
+    : formulaUnit;
   return (
     <span className="flex items-center gap-1 text-slate-700">
       {field.label}
@@ -31,7 +43,7 @@ export function FieldLabel({ field, prefilled = false }: { field: TemplateField;
         </span>
       )}
       {field.required && <span className="text-red-500"> *</span>}
-      {field.unit && <span className="text-slate-400"> ({field.unit})</span>}
+      {renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
       {/* Valeur venue du jeu de variables, pas encore confirmee par la personne qui saisit :
           la mention disparait des qu'on y touche. Rien n'est enregistre a ce sujet. */}
       {prefilled && (
@@ -178,7 +190,7 @@ export function EncounterFields({
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
           <div className="flex flex-col text-sm">
-            <FieldLabel field={field} prefilled={prefilledKeys?.has(field.fieldKey) ?? false} />
+                            <FieldLabel field={field} fields={fields} prefilled={prefilledKeys?.has(field.fieldKey) ?? false} />
             <div className="mt-1">
               {/* L35 : une variable calculee n'est JAMAIS saisissable — pas de champ, pas de
                   raison de valeur manquante, rien a enregistrer. */}

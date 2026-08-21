@@ -25,8 +25,13 @@ import type { TemplateField } from '../data/types';
 export {
   FORMULA_OPERATORS,
   FORMULA_OPERAND_TYPES,
+  FORMULA_TIME_UNITS,
+  DEFAULT_FORMULA_TIME_UNIT,
   formatFormula,
+  isFormulaTimeUnit,
+  normalizeFormulaTimeUnit,
   parseFormula,
+  type FormulaTimeUnit,
   type FormulaOperator,
   type FormulaOutputType,
   type FormulaProblem,
@@ -70,8 +75,24 @@ export function checkFieldFormula(
   formula: string | null | undefined,
   self: { scope: TemplateField['scope']; fieldKey: string },
   fields: readonly TemplateField[],
+  resultUnit?: string | null,
 ): FormulaCheck {
-  return checkFormula(formula, self.fieldKey, toRefs(operandCandidates(fields, self)));
+  return checkFormula(formula, self.fieldKey, toRefs(operandCandidates(fields, self)), resultUnit);
+}
+
+/** Une formule temporelle est une soustraction entre deux variables date/date-heure. */
+export function formulaUsesTemporalOperands(
+  formula: string | null | undefined,
+  fields: readonly Pick<TemplateField, 'fieldKey' | 'type'>[],
+): boolean {
+  const parsed = parseFormula(formula);
+  if (!parsed || parsed.operator !== '-') return false;
+  const operands = [parsed.left, parsed.right];
+  return operands.every((operand) => {
+    if (operand.kind !== 'field') return false;
+    const field = fields.find((candidate) => candidate.fieldKey === operand.fieldKey);
+    return field?.type === 'date' || field?.type === 'datetime';
+  });
 }
 
 /** Cle de message pour un motif de refus. Les libelles vivent dans `i18n/messages`. */
@@ -82,12 +103,12 @@ export const formulaProblemKey = (problem: FormulaProblem) => `admin.formula_err
  * un code de valeur manquante, ou la division tombe sur zero. Jamais zero, jamais une erreur.
  */
 export function calculatedValue(
-  field: Pick<TemplateField, 'formula'>,
+  field: Pick<TemplateField, 'formula' | 'unit'>,
   values: Record<string, unknown>,
   fields: readonly TemplateField[],
 ): number | null {
   if (!isCalculatedField(field)) return null;
-  return evaluateFormulaText(field.formula, values, formulaFieldIndex(toRefs(fields)));
+  return evaluateFormulaText(field.formula, values, formulaFieldIndex(toRefs(fields)), field.unit);
 }
 
 /** Assemble la forme canonique a partir des trois selecteurs du constructeur. */
