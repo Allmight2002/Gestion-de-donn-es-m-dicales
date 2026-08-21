@@ -192,6 +192,31 @@ describe('T1 referentiel de terminologie', () => {
       'select slug from public.terminology_release where id = $1', [imported.releaseId],
     )).rows[0].slug).toMatch(/^import-essai--archive-/);
 
+    await expect(importTerminology(db.admin, {
+      slug: 'import-essai', concepts, discardReplaced: true,
+    })).rejects.toThrow(/exige --replace/);
+
+    const discarded = await importTerminology(db.admin, {
+      slug: 'import-essai', concepts, replace: true, activate: true, discardReplaced: true,
+    });
+    expect((await db.admin.query(
+      'select count(*)::int as n from public.terminology_release where id = $1', [replaced.releaseId],
+    )).rows[0].n).toBe(0);
+    expect((await db.admin.query(
+      'select count(*)::int as n from public.terminology_concept where release_id = $1', [discarded.releaseId],
+    )).rows[0].n).toBe(3);
+
+    const invalidConcepts = concepts.map((concept, index) => (
+      index === 0 ? { ...concept, depth: -1 } : concept
+    ));
+    await expect(importTerminology(db.admin, {
+      slug: 'import-essai', concepts: invalidConcepts, replace: true, discardReplaced: true,
+    })).rejects.toThrow();
+    // Le referentiel courant doit survivre a un echec arrive APRES la suppression demandee.
+    expect((await db.admin.query(
+      'select count(*)::int as n from public.terminology_concept where release_id = $1', [discarded.releaseId],
+    )).rows[0].n).toBe(3);
+
     // Remettre le referentiel de test en service pour les autres cas.
     await db.admin.query(
       `delete from public.terminology_release where slug = $1 or slug like $1 || '--archive-%'`,

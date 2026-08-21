@@ -10,6 +10,11 @@ const tsv = (...rows: string[]) => [HEADER, ...rows].join('\n');
 const HEADER_BLOCK = 'Code\tBlockId\tTitle\tClassKind\tDepthInKind';
 const tsvWithBlockId = (...rows: string[]) => [HEADER_BLOCK, ...rows].join('\n');
 
+const csv = (...rows: string[]) => [
+  'Code;BlockId;Title;ClassKind;',
+  ...rows,
+].join('\r\n');
+
 describe('parseTerminologyRows (T1)', () => {
   test('reconstruit la hierarchie a partir des tirets du libelle', () => {
     const { concepts } = parseTerminologyRows(tsv(
@@ -127,6 +132,18 @@ describe('parseTerminologyRows (T1)', () => {
     expect(concepts.map((c) => c.isSelectable)).toEqual([false, false, true]);
   });
 
+  test('lit le CSV Excel avec BOM, separateur et guillemets dans les libelles', () => {
+    const { concepts } = parseTerminologyRows(`\uFEFF${csv(
+      ';;Certaines maladies infectieuses;chapter;',
+      ';BlockL1-1A0;- Gastroenterite infectieuse;block;',
+      '1A00;;- - Cholera;category;',
+      '2A70.1;;"- - Leucemie lymphoblastique B ; BCR-ABL1";category;',
+    )}`);
+
+    expect(concepts.map((c) => c.code)).toEqual([null, 'BlockL1-1A0', '1A00', '2A70.1']);
+    expect(concepts.at(-1)?.label).toBe('Leucemie lymphoblastique B ; BCR-ABL1');
+  });
+
   test('l absence de colonne BlockId reste acceptee', () => {
     const { concepts } = parseTerminologyRows(tsv('1A00\t- Cholera\tcategory\t1'));
     expect(concepts[0].code).toBe('1A00');
@@ -147,15 +164,23 @@ describe('parseTerminologyRows (T1)', () => {
     expect(skipped.excludedChapter).toBe(3);
   });
 
-  // Conserves a la demande du porteur : symptomes (urgences) et medecine traditionnelle.
-  test('les chapitres conserves ne sont pas ecartes', () => {
+  test('conserve les traumatismes malgre la mention de causes externes', () => {
     const { concepts } = parseTerminologyRows(tsv(
+      '\tLesions traumatiques, intoxications ou certaines autres consequences de causes externes\tchapter\t1',
+      'NA00\t- Fracture traumatique\tcategory\t1',
+    ));
+    expect(concepts.map((c) => c.code)).toEqual([null, 'NA00']);
+  });
+
+  test('ecarte les symptomes et la medecine traditionnelle', () => {
+    const { concepts, skipped } = parseTerminologyRows(tsv(
       '\tSymptomes, signes ou resultats d examen clinique\tchapter\t1',
       'MD11\t- Fievre\tcategory\t1',
       '\tChapitre supplementaire Affections de Medecine traditionnelle\tchapter\t1',
       'SD90\t- Trouble du systeme du foie\tcategory\t1',
     ));
-    expect(concepts.map((c) => c.code)).toEqual([null, 'MD11', null, 'SD90']);
+    expect(concepts).toHaveLength(0);
+    expect(skipped.excludedChapter).toBe(4);
   });
 
   test('la liste des chapitres ecartes peut etre remplacee', () => {
