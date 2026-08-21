@@ -39,6 +39,8 @@ export interface ImportTerminologyOptions {
   attribution?: string | null;
   activate?: boolean;
   replace?: boolean;
+  /** Supprime la publication portant le meme slug ; reserve aux reinitialisations de test. */
+  discardReplaced?: boolean;
 }
 
 export function readTextFile(path: string): string;

@@ -4,8 +4,8 @@
 // referentiel tiers doit etre verifiee au cas par cas. Le script lit donc un fichier fourni
 // en argument et n'ecrit rien d'autre dans le depot.
 //
-// Format attendu : TSV avec en-tete `Code, Title, ClassKind, DepthInKind`, encode en UTF-8
-// ou en UTF-16 LE (l'export Windows produit ce dernier). La hierarchie est portee par les
+// Format attendu : TSV ou CSV Excel separe par `;`, avec en-tete `Code, Title, ClassKind`
+// (et `BlockId` eventuel), encode en UTF-8 ou en UTF-16 LE. La hierarchie est portee par les
 // tirets qui prefixent le libelle, pas par DepthInKind qui compte la profondeur AU SEIN d'un
 // type.
 //
@@ -50,10 +50,12 @@ const KINDS = new Set(['chapter', 'block', 'category']);
  * causes externes et facteurs de recours decrivent le comment ou le pourquoi, pas la
  * maladie.
  *
- * Deux chapitres sont au contraire CONSERVES a sa demande explicite :
- *  - les symptomes et signes, parce qu'aux urgences un patient est recu pour une douleur
- *    ou une fievre bien avant qu'un diagnostic soit pose ;
- *  - les affections de medecine traditionnelle, pertinentes dans le contexte de deploiement.
+ * Les symptomes/signes et les affections de medecine traditionnelle sont egalement ecartes :
+ * le referentiel de test souhaite les sortir des propositions diagnostiques.
+ *
+ * Le chapitre « Lesions traumatiques, intoxications ou certaines autres consequences de
+ * causes externes » reste en revanche diagnostique. Son intitulé contient « causes externes »,
+ * mais l'ecarter entierement ferait disparaitre les traumatismes et intoxications.
  */
 export const CHAPITRES_ECARTES = [
   "codes d'extension",
@@ -61,7 +63,11 @@ export const CHAPITRES_ECARTES = [
   'facteurs influant',
   'evaluation du fonctionnement',
   "codes d'utilisation particuliere",
+  'symptomes, signes',
+  'affections de medecine traditionnelle',
 ];
+
+const CHAPITRE_TRAUMATISMES = 'lesions traumatiques, intoxications';
 
 /** Minuscules, accents et apostrophes ramenes a une forme comparable. */
 function normaliser(texte) {
@@ -71,6 +77,58 @@ function normaliser(texte) {
     .replace(/[’ʼ]/g, "'")
     .toLowerCase()
     .trim();
+}
+
+/**
+ * Lit les champs d'un TSV, ou d'un CSV Excel separe par `;`. Les guillemets doubles
+ * et les separateurs inclus dans un libelle sont pris en charge : une simple substitution
+ * de `;` en tabulation corromprait par exemple un diagnostic portant BCR-ABL1.
+ */
+function parseDelimitedRows(text) {
+  const source = text.replace(/^\uFEFF/, '');
+  const firstLine = source.split(/\r?\n/, 1)[0] ?? '';
+  const delimiter = firstLine.includes('\t') ? '\t' : firstLine.includes(';') ? ';' : null;
+  if (!delimiter) throw new Error('En-tete attendu : Code, Title, ClassKind, DepthInKind.');
+
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (char === '"') {
+      if (quoted && source[index + 1] === '"') {
+        cell += '"';
+        index++;
+      } else if (quoted) {
+        quoted = false;
+      } else if (cell === '') {
+        quoted = true;
+      } else {
+        throw new Error('Guillemet inattendu dans le fichier de terminologie.');
+      }
+      continue;
+    }
+    if (!quoted && char === delimiter) {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+    if (!quoted && (char === '\n' || char === '\r')) {
+      if (char === '\r' && source[index + 1] === '\n') index++;
+      row.push(cell);
+      if (row.some((value) => value.trim() !== '')) rows.push(row);
+      row = [];
+      cell = '';
+      continue;
+    }
+    cell += char;
+  }
+  if (quoted) throw new Error('Guillemet ouvrant non ferme dans le fichier de terminologie.');
+  row.push(cell);
+  if (row.some((value) => value.trim() !== '')) rows.push(row);
+  return rows;
 }
 
 /**
@@ -86,9 +144,10 @@ function normaliser(texte) {
  *  - un chapitre ECARTE emporte tout son contenu jusqu'au chapitre suivant.
  */
 export function parseTerminologyRows(text, options = {}) {
+  const defaultFilters = options.excludedChapters === undefined;
   const ecartes = (options.excludedChapters ?? CHAPITRES_ECARTES).map(normaliser);
-  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-  const header = (lines.shift() ?? '').split('\t').map((h) => h.trim());
+  const rows = parseDelimitedRows(text);
+  const header = (rows.shift() ?? []).map((h) => h.trim());
   const idx = {
     code: header.indexOf('Code'),
     blockId: header.indexOf('BlockId'), // facultatif
@@ -105,8 +164,7 @@ export function parseTerminologyRows(text, options = {}) {
   // Un chapitre ecarte emporte tout ce qui le suit, jusqu'au chapitre suivant.
   let dansChapitreEcarte = false;
 
-  for (const line of lines) {
-    const cells = line.split('\t');
+  for (const cells of rows) {
     const rawTitle = cells[idx.title] ?? '';
     const kind = (cells[idx.kind] ?? '').trim();
     // Code de classification, sinon identifiant technique du regroupement.
@@ -117,7 +175,9 @@ export function parseTerminologyRows(text, options = {}) {
 
     if (kind === 'chapter') {
       const titre = normaliser(rawTitle.replace(/^(\s*-\s*)+/, ''));
-      dansChapitreEcarte = ecartes.some((motif) => titre.includes(motif));
+      const isTraumaChapter = titre.startsWith(CHAPITRE_TRAUMATISMES);
+      dansChapitreEcarte = !(defaultFilters && isTraumaChapter)
+        && ecartes.some((motif) => titre.includes(motif));
       // Un nouveau chapitre referme les branches du precedent.
       parents.length = 0;
     }
@@ -176,9 +236,15 @@ const CHUNK = 500;
  * publication lors d'un remplacement sans collision de cle primaire.
  */
 export async function importTerminology(client, options) {
-  const { slug, concepts, title, source, version, license, attribution, activate = false, replace = false } = options;
+  const {
+    slug, concepts, title, source, version, license, attribution, activate = false,
+    replace = false, discardReplaced = false,
+  } = options;
   if (!slug) throw new Error('Un identifiant de referentiel (slug) est requis.');
   if (!Array.isArray(concepts) || concepts.length === 0) throw new Error('Aucun concept exploitable dans le fichier.');
+  if (discardReplaced && !replace) {
+    throw new Error('La suppression de la publication precedente exige --replace.');
+  }
 
   const publicationIds = new Map();
   for (const concept of concepts) {
@@ -200,15 +266,21 @@ export async function importTerminology(client, options) {
     const existing = await client.query('select id from public.terminology_release where slug = $1', [slug]);
     if (existing.rowCount > 0) {
       if (!replace) throw new Error(`Le referentiel "${slug}" existe deja. Utiliser --replace pour le recharger.`);
-      // Une fiche stocke le couple code/libelle comme instantane historique. L'ancienne
-      // publication doit donc rester disponible pour revalider ce couple apres activation de
-      // la nouvelle. Seul son slug technique est archive afin de liberer le slug courant.
-      await client.query(
-        `update public.terminology_release
-         set slug = $2
-         where id = $1`,
-        [existing.rows[0].id, `${slug}--archive-${existing.rows[0].id}`],
-      );
+      if (discardReplaced) {
+        // Reserve aux environnements de test explicitement reinitialises. L'operation reste
+        // transactionnelle : si la nouvelle publication echoue, la suppression est annulee.
+        await client.query('delete from public.terminology_release where id = $1', [existing.rows[0].id]);
+      } else {
+        // Une fiche stocke le couple code/libelle comme instantane historique. L'ancienne
+        // publication doit donc rester disponible pour revalider ce couple apres activation de
+        // la nouvelle. Seul son slug technique est archive afin de liberer le slug courant.
+        await client.query(
+          `update public.terminology_release
+           set slug = $2
+           where id = $1`,
+          [existing.rows[0].id, `${slug}--archive-${existing.rows[0].id}`],
+        );
+      }
     }
 
     const release = await client.query(
@@ -251,7 +323,7 @@ async function main() {
   const file = arg('file');
   const slug = arg('slug');
   if (!file || !slug) {
-    throw new Error('Usage : --file=<chemin.tsv> --slug=<identifiant> [--title=] [--source=] [--version=] [--license=] [--attribution=] [--activate] [--replace]');
+    throw new Error('Usage : --file=<chemin.tsv-ou-csv> --slug=<identifiant> [--title=] [--source=] [--version=] [--license=] [--attribution=] [--activate] [--replace] [--discard-replaced]');
   }
   const dbUrl = process.env.SUPABASE_DB_URL;
   if (!/^postgres(?:ql)?:\/\//i.test(dbUrl ?? '')) throw new Error('SUPABASE_DB_URL PostgreSQL est requis.');
@@ -273,6 +345,7 @@ async function main() {
       attribution: arg('attribution'),
       activate: process.argv.includes('--activate'),
       replace: process.argv.includes('--replace'),
+      discardReplaced: process.argv.includes('--discard-replaced'),
     });
 
     console.log(`Referentiel "${slug}" importe : ${concepts.length} concepts, dont ${selectable} proposables a la saisie.`);
