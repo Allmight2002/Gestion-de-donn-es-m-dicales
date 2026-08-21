@@ -477,10 +477,25 @@ plutôt que fusionnés silencieusement.
 
 ### 9.3 Mode hors-ligne
 
-Trois phases livrées : **lecture** (instantané local), **écritures** (file d'attente
-`offline_encounter_operation` rejouée à la reconnexion) et **conflits** (verrou optimiste sur la
-rencontre : une modification concurrente est détectée et présentée, jamais écrasée en silence).
-Contraintes de sécurité associées : [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md).
+L'existant de démonstration comprend trois phases : **lecture** (instantané analytique local),
+**écritures** (file d'attente `offline_encounter_operation` rejouée à la reconnexion) et
+**conflits** (verrou optimiste sur la rencontre : une modification concurrente est détectée et
+présentée, jamais écrasée en silence). Cette implémentation actuelle ne permet pas encore la
+création d'un nouveau patient hors-ligne.
+
+La cible désormais retenue est une **saisie hors-ligne seule** (*intake-only*), encore non livrée :
+
+- la liste, la recherche, les fiches et les rencontres déjà présentes sur le serveur sont
+  indisponibles hors-ligne ;
+- l'instantané de lecture ne doit plus être consommé par ce mode ;
+- seul le contexte de formulaire préparé en ligne est conservé ;
+- les nouveaux patients sont stockés séparément comme saisies locales en attente, puis envoyés
+  par des opérations idempotentes après reconnexion ;
+- la base redevient consultable uniquement après retour en ligne.
+
+La feuille de route et les critères de preuve sont détaillés dans
+[feuille-route-offline-saisie.md](feuille-route-offline-saisie.md). Contraintes de sécurité
+associées : [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md).
 
 ### 9.4 Autres sous-systèmes
 
