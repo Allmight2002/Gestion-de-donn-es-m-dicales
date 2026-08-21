@@ -67,7 +67,6 @@ export function SectionsEditor({
   return (
     <div>
       <h3 className="mb-1 text-sm font-semibold text-slate-700">{t('admin.sections')}</h3>
-      <p className="mb-3 text-xs text-slate-500">{t('admin.sections_hint')}</p>
 
       <ul className="space-y-2 text-sm">
         {sections.map((section, index) => {
