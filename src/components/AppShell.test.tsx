@@ -72,8 +72,8 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.getByRole('link', { name: /Mes jeux de variables/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Corbeille/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Synchronisation/ })).toBeInTheDocument();
-    // Base recente de CE compte.
-    expect(screen.getByRole('link', { name: /Gliomes 2026/ })).toBeInTheDocument();
+    // Base recente de CE compte : elle est rendue apres la resolution asynchrone du profil.
+    expect(await screen.findByRole('link', { name: /Gliomes 2026/ })).toBeInTheDocument();
     // Profil + deconnexion + contenu de la page.
     const profileName = screen.getByText('Dr Mbassi');
     expect(profileName).toBeInTheDocument();
