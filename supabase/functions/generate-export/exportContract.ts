@@ -252,11 +252,11 @@ export interface ParsedFormula {
 export type FormulaOutputType = 'number' | 'integer';
 
 /**
- * Types de variables admissibles comme operande. `datetime` en est volontairement absent :
- * une difference d'horodatages ne rend pas un nombre ENTIER de jours, et le type de sortie
- * cesserait d'etre deductible.
+ * Types de variables admissibles comme operande. Une date-heure se calcule dans la meme
+ * unite que `date - date` (des jours), mais peut produire une fraction : la sortie devient
+ * alors `number` au lieu de `integer`.
  */
-export const FORMULA_OPERAND_TYPES = ['number', 'integer', 'date'] as const;
+export const FORMULA_OPERAND_TYPES = ['number', 'integer', 'date', 'datetime'] as const;
 
 /** Nom interne admissible comme operande : c'est lui qui rend la formule relisible. */
 const FORMULA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -326,7 +326,7 @@ export interface FormulaCheck {
   outputType?: FormulaOutputType;
 }
 
-const isDateRef = (ref: FormulaFieldRef) => ref.type === 'date';
+const isTemporalRef = (ref: FormulaFieldRef) => ref.type === 'date' || ref.type === 'datetime';
 
 /**
  * Valide une formule AU MOMENT OU LA VARIABLE EST ENREGISTREE : operandes existants, non
@@ -369,15 +369,20 @@ export function checkFormula(
   // n'appartient pas au dossier.
   if (refs.every((r) => r === null)) return { ok: false, problem: 'constant_only' };
 
-  const dates = refs.filter((r) => r !== null && isDateRef(r));
-  if (dates.length === 2) {
-    // La SEULE operation admise entre deux dates, et elle rend des jours entiers.
+  const temporals = refs.filter((r): r is FormulaFieldRef => r !== null && isTemporalRef(r));
+  if (temporals.length === 2) {
+    // La SEULE operation admise entre deux dates/date-heures est la soustraction. Une paire
+    // de dates reste entiere ; la presence d'une date-heure autorise une fraction de jour.
     if (parsed.operator !== '-') return { ok: false, problem: 'operator_type' };
-    return { ok: true, parsed, outputType: 'integer' };
+    return {
+      ok: true,
+      parsed,
+      outputType: temporals.every((ref) => ref.type === 'date') ? 'integer' : 'number',
+    };
   }
-  // Une date melangee a un nombre n'a pas de sens ici : « date + 3 » demanderait de decider
-  // si 3 est un jour, un mois ou une heure. On refuse plutot que de choisir a sa place.
-  if (dates.length === 1) return { ok: false, problem: 'operator_type' };
+  // Une date/date-heure melangee a un nombre n'a pas de sens ici : « date + 3 » demanderait
+  // de decider si 3 est un jour, un mois ou une heure. On refuse plutot que de choisir.
+  if (temporals.length === 1) return { ok: false, problem: 'operator_type' };
   return { ok: true, parsed, outputType: 'number' };
 }
 
@@ -387,22 +392,85 @@ export const formulaFieldIndex = (
 ): Map<string, FormulaFieldRef> => new Map(fields.map((f) => [f.fieldKey, f]));
 
 const MS_PER_DAY = 86_400_000;
+const DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/;
+const DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:(Z)|([+-])(\d{2}):(\d{2}))?$/;
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return leap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function validDateParts(year: number, month: number, day: number): boolean {
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+}
+
+function utcMilliseconds(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+): number | null {
+  if (
+    !validDateParts(year, month, day) || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59
+  ) {
+    return null;
+  }
+  // `Date.UTC(0..99, ...)` remplace ces annees par 1900..1999. Les setters UTC gardent
+  // donc ici la meme annee que la valeur entree, y compris pour les dates anciennes.
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, 0);
+  return date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day &&
+      date.getUTCHours() === hour &&
+      date.getUTCMinutes() === minute &&
+      date.getUTCSeconds() === second
+    ? date.getTime()
+    : null;
+}
 
 /** Date stockee -> jours depuis l'epoque. Une date invalide vaut ABSENTE, jamais zero. */
 function dateToDays(raw: unknown): number | null {
   if (typeof raw !== 'string') return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw.trim());
+  const match = DATE_PREFIX.exec(raw.trim());
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const ms = Date.UTC(year, month - 1, day);
-  const back = new Date(ms);
-  // 2024-02-31 n'existe pas : `Date.UTC` la deplacerait en mars sans rien dire.
-  if (back.getUTCFullYear() !== year || back.getUTCMonth() !== month - 1 || back.getUTCDate() !== day) {
-    return null;
+  const ms = utcMilliseconds(year, month, day);
+  return ms === null ? null : ms / MS_PER_DAY;
+}
+
+/** Date-heure stockee -> jours depuis l'epoque, avec une fraction si necessaire. */
+function datetimeToDays(raw: unknown): number | null {
+  if (typeof raw !== 'string') return null;
+  const match = DATETIME_RE.exec(raw.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = match[6] ? Number(match[6]) : 0;
+  if (match[8] !== undefined) {
+    const offsetHour = Number(match[9]);
+    const offsetMinute = Number(match[10]);
+    if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) return null;
   }
-  return ms / MS_PER_DAY;
+  const wallMs = utcMilliseconds(year, month, day, hour, minute, second);
+  if (wallMs === null) return null;
+  const offsetMinutes = match[7] === 'Z'
+    ? 0
+    : match[8]
+    ? (match[8] === '+' ? 1 : -1) * (Number(match[9]) * 60 + Number(match[10]))
+    : 0;
+  return (wallMs - offsetMinutes * 60_000) / MS_PER_DAY;
 }
 
 function numericValue(raw: unknown): number | null {
@@ -431,7 +499,9 @@ function operandValue(
   if (raw === null || raw === undefined || raw === '') return null;
   // Les cinq codes de L33 : `non_fait`, `inconnu`, `non_applicable`, `refus`, `non_documente`.
   if (typeof raw === 'object' && MISSING_KEY in (raw as Record<string, unknown>)) return null;
-  return isDateRef(ref) ? dateToDays(raw) : numericValue(raw);
+  if (ref.type === 'date') return dateToDays(raw);
+  if (ref.type === 'datetime') return datetimeToDays(raw);
+  return numericValue(raw);
 }
 
 // Le calcul binaire fabrique des chiffres qui n'ont pas ete mesures : 0,1 + 0,2 y vaut

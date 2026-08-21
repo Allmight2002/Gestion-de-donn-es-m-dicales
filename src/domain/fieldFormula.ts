@@ -38,7 +38,7 @@ export const isCalculatedField = (field: Pick<TemplateField, 'formula'>): boolea
 
 /**
  * Variables admissibles comme operande : meme portee, saisies (jamais calculees), de type
- * nombre ou date, et portant un nom interne relisible dans une formule.
+ * nombre, date ou date-heure, et portant un nom interne relisible dans une formule.
  *
  * La restriction sur le nom est volontairement visible ici : une variable nommee « poids (kg) »
  * ne peut pas apparaitre dans « poids (kg) / 2 » sans rendre la formule ambigue. Elle n'est

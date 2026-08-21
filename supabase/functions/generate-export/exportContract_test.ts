@@ -603,15 +603,21 @@ Deno.test('L35 : checkFormula refuse aux memes conditions des deux cotes', () =>
     { fieldKey: 'score_j0', type: 'integer' },
     { fieldKey: 'date_entree', type: 'date' },
     { fieldKey: 'date_sortie', type: 'date' },
+    { fieldKey: 'heure_entree', type: 'datetime' },
+    { fieldKey: 'heure_sortie', type: 'datetime' },
     { fieldKey: 'commentaire', type: 'text' },
     { fieldKey: 'duree_deja_calculee', type: 'integer', formula: 'date_sortie - date_entree' },
   ];
   assertEquals(checkFormula('date_sortie - date_entree', 'duree', peers).outputType, 'integer');
+  assertEquals(checkFormula('heure_sortie - heure_entree', 'duree_precise', peers).outputType, 'number');
+  assertEquals(checkFormula('heure_sortie - date_entree', 'duree_mixte', peers).outputType, 'number');
+  assertEquals(checkFormula('date_sortie - heure_entree', 'duree_mixte_inverse', peers).outputType, 'number');
   assertEquals(checkFormula('score_j0 * 2', 'double', peers).outputType, 'number');
   assertEquals(checkFormula('score_j0 - absent', 'x', peers).problem, 'unknown_operand');
   assertEquals(checkFormula('score_j0 - commentaire', 'x', peers).problem, 'operand_type');
   assertEquals(checkFormula('duree_deja_calculee * 2', 'x', peers).problem, 'calculated_operand');
   assertEquals(checkFormula('date_sortie + date_entree', 'x', peers).problem, 'operator_type');
+  assertEquals(checkFormula('heure_entree + 3', 'x', peers).problem, 'operator_type');
   assertEquals(checkFormula('2 + 3', 'x', peers).problem, 'constant_only');
   assertEquals(checkFormula('a + b - c', 'x', peers).problem, 'syntax');
 });
