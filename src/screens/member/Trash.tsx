@@ -106,18 +106,6 @@ export function Trash() {
     }
   }
 
-  function contentWarning(base: DeletedBase) {
-    const contents = [
-      base.patientCount > 0 && t('base.purge_patients').replace('{count}', String(base.patientCount)),
-      base.encounterCount > 0 && t('base.purge_encounters').replace('{count}', String(base.encounterCount)),
-      base.documentCount > 0 && t('base.purge_documents').replace('{count}', String(base.documentCount)),
-      base.attachmentCount > 0 && t('base.purge_attachments').replace('{count}', String(base.attachmentCount)),
-    ].filter((value): value is string => Boolean(value));
-    return contents.length > 0
-      ? t('base.purge_contents').replace('{details}', contents.join(', '))
-      : t('base.purge_empty_body');
-  }
-
   return (
     <section className="space-y-5">
       <ConfirmDialog
@@ -133,12 +121,9 @@ export function Trash() {
         open={purgeTarget !== null}
         title={t('base.purge_title')}
         body={purgeTarget ? (
-          <div className="space-y-2 text-sm text-slate-600">
-            <p>{t('base.purge_irreversible')}</p>
-            <p>{contentWarning(purgeTarget)}</p>
-            <p>{t('base.purge_export_note')}</p>
+          <div className="text-sm text-slate-700">
             <label className="block space-y-1 text-sm font-medium text-slate-700" htmlFor="purge-base-name">
-              <span>{t('base.purge_name_label')}</span>
+              <span>{t('base.purge_name_label').replace('{name}', purgeTarget.name)}</span>
               <input
                 id="purge-base-name"
                 className="input w-full"

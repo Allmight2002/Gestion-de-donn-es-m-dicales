@@ -225,7 +225,6 @@ export const messages = {
     'admin.current_version': 'Current version',
     'admin.version_in_progress': 'Version in progress',
     'admin.new_version_available': 'New version available',
-    'admin.version_explanation': 'A variable set can contain several versions. A published version is read-only; a draft can still be changed.',
     'admin.open_version': 'Open version',
     'admin.editor_context': 'Variable set',
     'admin.variable_count': '{n} variable(s)',
@@ -424,8 +423,6 @@ export const messages = {
     'section.biologie': 'Biology',
     'section.paraclinique': 'Paraclinical',
     'admin.sections': 'Form sections',
-    'admin.sections_hint':
-      'Sections group variables on screen. They belong to this version: once it is published, they no longer change.',
     'admin.section_label': 'Section name',
     'admin.section_placeholder': 'Imaging',
     'admin.section_add': 'Add section',
@@ -958,7 +955,7 @@ export const messages = {
     'base.purge_documents': '{count} raw document(s)',
     'base.purge_attachments': '{count} attachment(s)',
     'base.purge_export_note': 'The audit log and export journal will be preserved as traceability evidence; the files themselves will be deleted.',
-    'base.purge_name_label': 'To confirm, type the registry name exactly:',
+    'base.purge_name_label': 'Enter the exact registry name “{name}”:',
     'base.purge_name_invalid': 'The entered name does not match.',
     'base.purge_confirm': 'Delete permanently',
     'base.purge_success': 'Registry “{name}” was permanently deleted.',
@@ -1038,7 +1035,7 @@ export const messages = {
     'admin.formula_locked':
       'This variable already holds values in records: it cannot become calculated, or those values would vanish behind a computation. Create a new variable instead.',
     'admin.formula_no_operand':
-      'No variable can feed a calculation yet: first create, in this same form, at least one number or date variable.',
+      'No variable can feed a calculation yet: first create, in this same form, at least one number, date, or date-time variable.',
     'admin.formula_left': 'First element',
     'admin.formula_right': 'Second element',
     'admin.formula_operator': 'Operation',
@@ -1056,9 +1053,9 @@ export const messages = {
       '“{name}” does not exist in this form, or does not have the same scope.',
     'admin.formula_error_calculated_operand':
       '“{name}” is itself a calculated variable: one calculation cannot build on another.',
-    'admin.formula_error_operand_type': '“{name}” is neither a number nor a date.',
+    'admin.formula_error_operand_type': '“{name}” is neither a number, a date, nor a date-time.',
     'admin.formula_error_operator_type':
-      'A date only combines with another date, by subtraction — the result is then a number of days.',
+      'A date or date-time only combines with another date or date-time, by subtraction — the result is in days.',
     'admin.formula_error_constant_only': 'At least one of the two elements must be a variable of the form.',
     'form.calculated': 'calculated',
     'form.calculated_hint':

@@ -648,8 +648,9 @@ qui écrivons le calcul, et le registre répond alors de sa version, de sa valid
 d'usage de l'échelle. Ici, non.
 
 **Périmètre.** `+ − × ÷` entre variables `number`/`integer` et constantes littérales, plus
-`date − date` qui rend un nombre de jours. Rien d'autre : pas de condition, pas d'imbrication, pas
-d'appel de fonction. Les opérandes sont des variables **saisies** du même gabarit — une variable
+`date/date-heure − date/date-heure` qui rend un nombre de jours (potentiellement fractionnaires
+si une date-heure intervient). Rien d'autre : pas de condition, pas d'imbrication, pas d'appel de
+fonction. Les opérandes sont des variables **saisies** du même gabarit — une variable
 calculée ne peut pas en référencer une autre, ce qui **supprime** la détection de cycles au lieu de
 la traiter. Le type de sortie est déduit et affiché par le constructeur, jamais choisi.
 

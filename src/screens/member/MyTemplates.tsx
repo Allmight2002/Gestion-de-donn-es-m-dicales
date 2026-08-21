@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Template, TemplateVersion } from '../../data/types';
-import { currentTemplateVersion, draftTemplateVersion, preferredTemplateVersion } from '../../domain/templateVersions';
+import { currentTemplateVersion, preferredTemplateVersion } from '../../domain/templateVersions';
 import { useToast } from '../../components/Toast';
 import { Menu, MenuItem } from '../../components/Menu';
 import { PageHeader } from '../../components/PageHeader';
@@ -129,7 +129,7 @@ export function MyTemplates() {
 
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
-      <PageHeader title={t('mytemplates.title')} description={t('mytemplates.hint')} />
+      <PageHeader title={t('mytemplates.title')} />
 
       <SectionCard title={t('mytemplates.create')} icon={FileText}>
         <form onSubmit={(e) => { e.preventDefault(); void createTemplate(); }} className="space-y-4">
@@ -157,14 +157,14 @@ export function MyTemplates() {
         <EmptyState icon={FileText} title={t('mytemplates.empty')} />
       )}
 
-       <ul className="grid gap-3 sm:grid-cols-2">
+       <ul className="card divide-y divide-slate-200 overflow-hidden dark:divide-slate-800">
          {templates.map((tpl) => {
            const preferred = preferredTemplateVersion(tpl.versions);
            const current = currentTemplateVersion(tpl.versions);
-           const draft = draftTemplateVersion(tpl.versions);
+           const variableCount = preferred?.fieldCount ?? current?.fieldCount;
            return (
-           <li key={tpl.id} className="card relative flex min-h-44 flex-col p-4">
-             <div className="flex items-start justify-between gap-3">
+           <li key={tpl.id} className="relative p-4">
+             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {editId === tpl.id ? (
                 <div className="grid min-w-0 flex-1 gap-3">
                   <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t('admin.name')} />
@@ -176,79 +176,51 @@ export function MyTemplates() {
                 </div>
               ) : (
                 <div className="min-w-0">
-                  <h2 className="text-base font-semibold text-slate-900">{tpl.name}</h2>
-                  {tpl.specialty && <p className="mt-1 text-sm text-slate-500">{tpl.specialty}</p>}
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h2 className="text-base font-semibold text-slate-900">{tpl.name}</h2>
+                    {tpl.specialty && <p className="text-sm text-slate-500">{tpl.specialty}</p>}
+                    {typeof variableCount === 'number' && (
+                      <span className="text-xs text-slate-500">
+                        {t('admin.variable_count').replace('{n}', String(variableCount))}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
               {editId !== tpl.id && (
-                <Menu
-                  triggerLabel={`${t('common.actions')} · ${tpl.name}`}
-                  triggerClassName="icon-button h-11 w-11 cursor-pointer"
-                  triggerContent={<MoreHorizontal size={20} aria-hidden />}
-                  panelClassName="card absolute right-0 z-10 mt-2 w-48 space-y-1 p-2 shadow-lg"
-                >
-                  <MenuItem onSelect={() => startEdit(tpl)} className="btn-ghost w-full justify-start">
-                    {t('admin.rename')}
-                  </MenuItem>
-                  <MenuItem onSelect={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">
-                    {t('admin.delete_template')}
-                  </MenuItem>
-                </Menu>
+                <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+                  <button
+                    type="button"
+                    className="btn-secondary min-w-0 flex-1 sm:flex-none"
+                    onClick={() => preferred && setSelected({ versionId: preferred.id, templateName: tpl.name })}
+                    disabled={!preferred}
+                  >
+                    <span>{t('admin.open_template')}</span>
+                    <span aria-hidden className="text-lg">→</span>
+                  </button>
+                  <Menu
+                    triggerLabel={`${t('common.actions')} · ${tpl.name}`}
+                    triggerClassName="icon-button h-11 w-11 cursor-pointer"
+                    triggerContent={<MoreHorizontal size={20} aria-hidden />}
+                    panelClassName="card absolute right-0 z-10 mt-2 w-48 space-y-1 p-2 shadow-lg"
+                  >
+                    <MenuItem onSelect={() => startEdit(tpl)} className="btn-ghost w-full justify-start">
+                      {t('admin.rename')}
+                    </MenuItem>
+                    <MenuItem onSelect={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">
+                      {t('admin.delete_template')}
+                    </MenuItem>
+                  </Menu>
+                </div>
               )}
             </div>
             {confirmId === tpl.id && (
-              <div className="surface-muted mt-4 flex flex-wrap items-center gap-2 p-3 text-sm" role="status">
+              <div className="surface-muted mt-3 flex flex-wrap items-center gap-2 p-3 text-sm" role="status">
                 <span className="mr-auto text-slate-600">{t('admin.confirm_delete')}</span>
                 <button onClick={() => void removeTemplate(tpl.id)} disabled={busy} className="font-medium text-red-600 hover:underline">{t('common.yes')}</button>
                 <button onClick={() => setConfirmId(null)} className="font-medium text-slate-500 hover:text-slate-700">{t('common.no')}</button>
               </div>
             )}
-             <button
-               type="button"
-               className="mt-auto w-full rounded-xl border border-teal-100 bg-teal-50/60 p-3 text-left transition hover:border-teal-300 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-               onClick={() => preferred && setSelected({ versionId: preferred.id, templateName: tpl.name })}
-               disabled={!preferred}
-             >
-               <span className="flex items-center justify-between gap-3">
-                 <span className="text-sm font-semibold text-teal-900">{t('admin.open_template')}</span>
-                 <span aria-hidden className="text-lg text-teal-700">→</span>
-               </span>
-               {preferred ? (
-                 <span className="mt-1 block text-xs text-teal-800">
-                   {draft && draft.id === preferred.id ? t('admin.version_in_progress') : t('admin.current_version')}
-                   {' · '}{t('admin.version')} {preferred.versionNumber} · {t(`status.${preferred.status}`)}
-                 </span>
-               ) : (
-                 <span className="mt-1 block text-xs text-slate-500">{t('admin.no_templates')}</span>
-               )}
-               {draft && current && draft.id !== current.id && (
-                 <span className="mt-1 block text-xs font-medium text-teal-700">{t('admin.new_version_available')}</span>
-               )}
-             </button>
-
-             {current && (
-               <p className="mt-3 text-xs text-slate-500">
-                 {t('admin.current_version')} : {t('admin.version')} {current.versionNumber} · {t(`status.${current.status}`)}
-                 {typeof current.fieldCount === 'number' && ` · ${t('admin.variable_count').replace('{n}', String(current.fieldCount))}`}
-               </p>
-             )}
-             <p className="mt-1 text-xs text-slate-500">{t('admin.version_explanation')}</p>
-             <details className="mt-3 border-t border-slate-100 pt-3">
-               <summary className="cursor-pointer text-sm font-medium text-slate-700">{t('admin.version_history')} ({tpl.versions.length})</summary>
-               <div className="mt-2 space-y-2">
-                 {[...tpl.versions].sort((a, b) => b.versionNumber - a.versionNumber).map((v) => (
-                   <button
-                     key={v.id}
-                     type="button"
-                     onClick={() => setSelected({ versionId: v.id, templateName: tpl.name })}
-                     className="flex min-h-11 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
-                   >
-                     <span>{t('admin.open_version')} {v.versionNumber}</span>
-                     <span className="badge">{t(`status.${v.status}`)}</span>
-                   </button>
-                 ))}
-               </div>
-             </details>
            </li>
            );
          })}

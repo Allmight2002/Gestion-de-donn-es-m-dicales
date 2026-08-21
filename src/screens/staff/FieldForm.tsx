@@ -169,7 +169,7 @@ export function FieldForm({
 
   // --- L35 : assemblage et verification de la formule ------------------------------------
   const effectiveScope: FieldScope = isCrossSectional ? 'patient' : scope;
-  // Operandes admissibles : meme portee, variables SAISIES, nombre ou date. Une variable
+  // Operandes admissibles : meme portee, variables SAISIES, nombre, date ou date-heure. Une variable
   // calculee n'y figure pas -- c'est ce qui supprime la question des cycles.
   const candidates = operandCandidates(fields, { scope: effectiveScope, fieldKey: fieldKey.trim() });
   const operandToken = (choice: string, literal: string) =>

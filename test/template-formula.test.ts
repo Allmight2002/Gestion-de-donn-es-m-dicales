@@ -51,6 +51,8 @@ beforeAll(async () => {
 
   await addField('date_entree', 'date', 900);
   await addField('date_sortie', 'date', 901);
+  await addField('heure_entree', 'datetime', 899);
+  await addField('heure_sortie', 'datetime', 898);
   await addField('score_j0', 'integer', 902);
   await addField('score_j7', 'integer', 903);
   await addField('commentaire_l35', 'text', 904);
@@ -67,6 +69,21 @@ describe('L35 — validation de la formule a l enregistrement', () => {
     expect(row.formula).toBe('date_sortie - date_entree');
     // Le type envoye par le client etait `number` : c'est le SERVEUR qui deduit.
     expect(row.type).toBe('integer');
+  });
+
+  test('accepte datetime - datetime et en DEDUIT un nombre de jours fractionnaires', async () => {
+    await addField('duree_precise', 'integer', 9101, { formula: 'heure_sortie - heure_entree' });
+    const row = await formulaOf('duree_precise');
+    expect(row.formula).toBe('heure_sortie - heure_entree');
+    // Une date-heure peut produire une fraction de jour : le serveur deduit donc `number`.
+    expect(row.type).toBe('number');
+  });
+
+  test('accepte date - datetime et en DEDUIT « number »', async () => {
+    await addField('duree_mixte', 'integer', 9102, { formula: 'heure_sortie - date_entree' });
+    expect((await formulaOf('duree_mixte')).type).toBe('number');
+    await addField('duree_mixte_inverse', 'integer', 9103, { formula: 'date_sortie - heure_entree' });
+    expect((await formulaOf('duree_mixte_inverse')).type).toBe('number');
   });
 
   test('accepte une soustraction de nombres et en deduit « number »', async () => {
@@ -107,6 +124,8 @@ describe('L35 — validation de la formule a l enregistrement', () => {
   test('REFUSE de melanger une date et un nombre', async () => {
     await expect(addField('mauvais_6', 'number', 925, { formula: 'date_entree + 3' }))
       .rejects.toThrow(/une autre date/);
+    await expect(addField('mauvais_12', 'number', 9251, { formula: 'heure_entree + 3' }))
+      .rejects.toThrow(/date\/heure|date-heure/i);
   });
 
   test('REFUSE une formule hors grammaire (imbrication, fonction, condition)', async () => {

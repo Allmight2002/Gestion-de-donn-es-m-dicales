@@ -456,19 +456,29 @@ const OPERANDES: TemplateField[] = [
     minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 1,
   },
   {
+    id: 'heure_entree', fieldKey: 'heure_entree', label: 'Heure d’entrée', scope: 'encounter',
+    section: 'clinique', type: 'datetime', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 2,
+  },
+  {
+    id: 'heure_sortie', fieldKey: 'heure_sortie', label: 'Heure de sortie', scope: 'encounter',
+    section: 'clinique', type: 'datetime', unit: null, allowedValues: null, required: false,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 3,
+  },
+  {
     id: 'score', fieldKey: 'score', label: 'Score', scope: 'encounter',
     section: 'clinique', type: 'integer', unit: null, allowedValues: null, required: false,
-    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 2,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 4,
   },
   {
     id: 'commentaire', fieldKey: 'commentaire', label: 'Commentaire', scope: 'encounter',
     section: 'clinique', type: 'text', unit: null, allowedValues: null, required: false,
-    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 3,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 5,
   },
   {
     id: 'duree', fieldKey: 'duree', label: 'Durée déjà calculée', scope: 'encounter',
     section: 'clinique', type: 'integer', unit: null, allowedValues: null, required: false,
-    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 4,
+    minValue: null, maxValue: null, allowMissingCodes: false, displayOrder: 6,
     formula: 'date_sortie - date_entree',
   },
 ];
@@ -492,11 +502,31 @@ describe('FieldForm — variables calculees (L35)', () => {
     await enableCalculation();
     const gauche = screen.getByLabelText('Premier élément');
     expect(within(gauche).getByRole('option', { name: 'Date d’entrée' })).toBeInTheDocument();
+    expect(within(gauche).getByRole('option', { name: 'Heure d’entrée' })).toBeInTheDocument();
     expect(within(gauche).getByRole('option', { name: 'Score' })).toBeInTheDocument();
     // Un texte ne se calcule pas ; une variable calculee ne peut pas en nourrir une autre --
     // c'est ce qui SUPPRIME la question des cycles au lieu de la traiter.
     expect(within(gauche).queryByRole('option', { name: 'Commentaire' })).toBeNull();
     expect(within(gauche).queryByRole('option', { name: 'Durée déjà calculée' })).toBeNull();
+  });
+
+  test('accepte les date-heures et deduit une sortie numerique fractionnaire', async () => {
+    renderCalculator();
+    await enableCalculation();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'heure_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'heure_entree');
+    expect(screen.getByText('nombre (calculé)')).toBeInTheDocument();
+  });
+
+  test('accepte les deux sens entre date et date-heure', async () => {
+    renderCalculator();
+    await enableCalculation();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'heure_entree');
+    expect(screen.getByText('nombre (calculé)')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'heure_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
+    expect(screen.getByText('nombre (calculé)')).toBeInTheDocument();
   });
 
   test('le type de sortie est DEDUIT et affiche, jamais choisi', async () => {
@@ -521,7 +551,7 @@ describe('FieldForm — variables calculees (L35)', () => {
     await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
     await userEvent.selectOptions(screen.getByLabelText('Opération'), '+');
     await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
-    expect(screen.getByText(/Une date ne se combine qu’avec une autre date/)).toBeInTheDocument();
+    expect(screen.getByText(/Une date ou une date-heure ne se combine qu’avec une autre/)).toBeInTheDocument();
   });
 
   test('une variable calculee n’est ni obligatoire, ni preremplie, ni bornee', async () => {

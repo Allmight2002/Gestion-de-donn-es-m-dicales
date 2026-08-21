@@ -93,6 +93,7 @@
   .dark .text-teal-900 { color: #99f6e4; }
   .dark .bg-teal-50 { background-color: rgb(19 78 74 / 0.35); }
   .dark .bg-teal-50\/70,
+  .dark .bg-teal-50\/60,
   .dark .bg-teal-50\/50,
   .dark .bg-teal-50\/40 { background-color: rgb(19 78 74 / 0.35); }
   .dark .bg-teal-100 { background-color: rgb(19 78 74 / 0.55); }
@@ -115,6 +116,7 @@
   .dark .border-indigo-100 { border-color: rgb(67 56 202 / 0.4); }
 .dark .text-green-700 { color: #4ade80; }
 .dark .bg-green-50 { background-color: rgb(20 83 45 / 0.3); }
+.dark .hover\:bg-teal-50:hover { background-color: rgb(19 78 74 / 0.45); }
 .dark .hover\:bg-slate-50\/70:hover,
 .dark .hover\:bg-slate-50\/60:hover { background-color: rgb(30 41 59 / 0.65); }
 

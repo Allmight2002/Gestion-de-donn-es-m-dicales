@@ -115,6 +115,37 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
+  test('organise les variables permanentes et de rencontre par section', async () => {
+    const sectionsTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'], section: 'identification', sectionLabel: 'Identification', sectionOrder: 0 }),
+            field({ fieldKey: 'mecanisme', label: 'Mécanisme', scope: 'patient', type: 'text', section: 'circonstances', sectionLabel: 'Circonstances', sectionOrder: 1 }),
+            field({ fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', section: 'examen', sectionLabel: 'Examen initial', sectionOrder: 2 }),
+          ],
+          rules: [],
+          sections: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patient = { ...patientView, data: { sexe: 'M', mecanisme: 'Chute' } };
+    const patients = makePatients({
+      async getPatient() { return patient; },
+      async listEncounters() { return [{ ...encounter, data: { glasgow_score: 12 } }]; },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, sectionsTemplateRepo);
+
+    const identification = await screen.findByRole('group', { name: 'Identification' });
+    const circonstances = screen.getByRole('group', { name: 'Circonstances' });
+    const examen = screen.getByRole('group', { name: 'Examen initial' });
+    expect(within(identification).getByText('Sexe')).toBeInTheDocument();
+    expect(within(circonstances).getByText('Mécanisme')).toBeInTheDocument();
+    expect(within(examen).getByText('Glasgow')).toBeInTheDocument();
+  });
+
   // Chantier D : un refus de `signed-read` etait avale en silence ; l'utilisateur ne voyait
   // qu'un libelle « Erreur » indiscernable d'un fichier manquant.
   test('affiche le motif du refus renvoye par signed-read', async () => {

@@ -55,7 +55,16 @@ describe('MyTemplates', () => {
     expect(screen.queryByText('Gabarit de Bob')).toBeNull();
   });
 
-  test('ouvre la dernière version brouillon depuis l action principale de la carte', async () => {
+  test('affiche une liste compacte sans description ni historique des versions', async () => {
+    renderMine(baseRepo());
+    expect(await screen.findByText('Mon Neuro')).toBeInTheDocument();
+    expect(screen.queryByText('Créez, importez et gérez vos jeux de variables.')).toBeNull();
+    expect(screen.queryByText('Version en préparation')).toBeNull();
+    expect(screen.queryByText(/Historique des versions/)).toBeNull();
+    expect(screen.getByRole('button', { name: /Ouvrir le jeu de variables/ })).toBeInTheDocument();
+  });
+
+  test('ouvre la dernière version brouillon depuis l action principale de la liste', async () => {
     const getVersion = vi.fn(async (versionId: string) => ({
       version: { id: versionId, templateId: 'mine', versionNumber: versionId === 'v2' ? 2 : 1, status: versionId === 'v2' ? 'draft' as const : 'published' as const },
       fields: [],

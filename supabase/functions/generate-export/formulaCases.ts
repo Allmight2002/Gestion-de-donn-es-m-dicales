@@ -40,6 +40,8 @@ export const FORMULA_CASE_FIELDS: FormulaCaseField[] = [
   { fieldKey: 'diviseur', type: 'number' },
   { fieldKey: 'date_entree', type: 'date' },
   { fieldKey: 'date_sortie', type: 'date' },
+  { fieldKey: 'heure_entree', type: 'datetime' },
+  { fieldKey: 'heure_sortie', type: 'datetime' },
   { fieldKey: 'commentaire', type: 'text' },
 ];
 
@@ -131,6 +133,38 @@ export const FORMULA_CASES: FormulaCase[] = [
     name: 'une date impossible vaut ABSENTE',
     formula: 'date_sortie - date_entree',
     data: { date_entree: '2024-02-31', date_sortie: '2024-03-05' },
+    expected: null,
+  },
+
+  // --- datetime - datetime, en jours potentiellement fractionnaires --------------------
+  {
+    name: 'duree de sejour date-heure en jours fractionnaires',
+    formula: 'heure_sortie - heure_entree',
+    data: { heure_entree: '2024-05-01T10:00', heure_sortie: '2024-05-02T22:00' },
+    expected: 1.5,
+  },
+  {
+    name: 'date-heure avec fuseaux horaires calculee comme un instant',
+    formula: 'heure_sortie - heure_entree',
+    data: { heure_entree: '2024-05-01T10:00+02:00', heure_sortie: '2024-05-01T09:30Z' },
+    expected: 0.0625,
+  },
+  {
+    name: 'date-heure moins date',
+    formula: 'heure_sortie - date_entree',
+    data: { date_entree: '2024-05-01', heure_sortie: '2024-05-02T12:00' },
+    expected: 1.5,
+  },
+  {
+    name: 'date moins date-heure',
+    formula: 'date_sortie - heure_entree',
+    data: { heure_entree: '2024-05-01T12:00', date_sortie: '2024-05-03' },
+    expected: 1.5,
+  },
+  {
+    name: 'date-heure impossible vaut ABSENTE',
+    formula: 'heure_sortie - heure_entree',
+    data: { heure_entree: '2024-05-01T10:00', heure_sortie: '2024-05-01T24:00' },
     expected: null,
   },
 
