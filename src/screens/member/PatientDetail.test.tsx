@@ -115,6 +115,67 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
+  test('affiche l unite des variables numeriques dans la consultation', async () => {
+    const consultationTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'poids', label: 'Poids', scope: 'patient', type: 'number', unit: 'kg' }),
+            field({ fieldKey: 'temperature', label: 'Température', scope: 'encounter', type: 'number', unit: '°C' }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patients = makePatients({
+      async getPatient() { return { ...patientView, data: { poids: 72.5 } }; },
+      async listEncounters() { return [{ ...encounter, data: { temperature: 38.2 } }]; },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, consultationTemplateRepo);
+
+    const weightLabel = await screen.findByText('Poids');
+    expect(weightLabel.closest('dt')).toHaveTextContent('Poids (kg)');
+    expect(screen.getByText('72.5')).toBeInTheDocument();
+    const temperatureLabel = screen.getByText('Température');
+    expect(temperatureLabel.closest('dt')).toHaveTextContent('Température (°C)');
+    expect(screen.getByText('38.2')).toBeInTheDocument();
+  });
+
+  test('recalcule une variable temporelle et affiche son unite de restitution', async () => {
+    const formulaTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'date_entree', label: 'Date d’entrée', scope: 'encounter', type: 'date' }),
+            field({ fieldKey: 'date_sortie', label: 'Date de sortie', scope: 'encounter', type: 'date' }),
+            field({
+              fieldKey: 'duree', label: 'Durée', scope: 'encounter', type: 'integer', unit: 'hours',
+              formula: 'date_sortie - date_entree',
+            }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patients = makePatients({
+      async listEncounters() {
+        return [{
+          ...encounter,
+          data: { date_entree: '2024-01-01', date_sortie: '2024-01-03' },
+        }];
+      },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, formulaTemplateRepo);
+
+    const durationLabel = await screen.findByText('Durée');
+    expect(durationLabel.closest('dt')).toHaveTextContent('Durée (heures)');
+    expect(screen.getByText('48')).toBeInTheDocument();
+  });
+
   test('organise les variables permanentes et de rencontre par section', async () => {
     const sectionsTemplateRepo = {
       async getVersion() {

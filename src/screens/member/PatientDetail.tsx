@@ -13,6 +13,8 @@ import { offlineCache, useOnline } from '../../data/offline';
 import { getTemplateFields } from '../../data/templates';
 import { displayFieldValue } from '../../data/types';
 import { isMissing, missingCodeOf } from '../../domain/validation';
+import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
+import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
 import { SkeletonList } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -30,13 +32,15 @@ import { groupFieldsBySection, sectionLabel } from '../../domain/templateSection
 type Column = {
   id: string; fieldKey: string; label: string; scope: string; section: string; displayOrder: number;
   sectionLabel?: string | null; sectionOrder?: number | null;
-  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+  type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
+  formula?: string | null;
 };
 
 type ColumnSource = {
   id: string; fieldKey: string; label: string; scope: string; section?: string | null; displayOrder: number;
   sectionLabel?: string | null; sectionOrder?: number | null;
-  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+  type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
+  formula?: string | null;
 };
 
 const toColumn = (field: ColumnSource): Column => ({
@@ -49,9 +53,25 @@ const toColumn = (field: ColumnSource): Column => ({
   sectionOrder: field.sectionOrder ?? null,
   displayOrder: field.displayOrder,
   type: field.type,
+  unit: field.unit ?? null,
   allowedValues: field.allowedValues,
   allowedOptions: field.allowedOptions,
+  formula: field.formula ?? null,
 });
+
+const formulaFieldsOf = (fields: readonly Column[]) => fields.map((field) => ({
+  fieldKey: field.fieldKey,
+  type: field.type ?? '',
+  formula: field.formula ?? null,
+}));
+
+const unitOf = (field: Column, fields: readonly Column[], t: (key: MessageKey) => string): string | null => {
+  const temporalFormula = Boolean(field.formula && formulaUsesTemporalOperands(field.formula, formulaFieldsOf(fields)));
+  const unit = temporalFormula ? normalizeFormulaTimeUnit(field.unit) : field.unit;
+  return temporalFormula && unit && (FORMULA_TIME_UNITS as readonly string[]).includes(unit)
+    ? t(`form.unit_${unit}` as MessageKey)
+    : unit ?? null;
+};
 
 // §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
 // une image s'affiche apres « Afficher l'image » ; un document s'ouvre dans un onglet.
@@ -122,7 +142,11 @@ export function PatientDetail() {
   const [error, setError] = useState<string | null>(null);
 
   const fmt = useCallback(
-    (v: unknown, field?: Column): string => {
+    (v: unknown, field?: Column, data?: Record<string, unknown>, fields: readonly Column[] = []): string => {
+      if (field?.formula) {
+        const result = evaluateFormulaText(field.formula, data, formulaFieldIndex(formulaFieldsOf(fields)), field.unit);
+        return result === null ? '—' : String(result);
+      }
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
       if (typeof v === 'boolean') return v ? '✓' : '✗';
       // La variable est passee pour que le LIBELLE de l'option s'affiche, et non son code.
@@ -301,12 +325,17 @@ export function PatientDetail() {
                 {sectionLabel(t, { sectionKey: group.key, label: group.label })}
               </legend>
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                {group.fields.map((f) => (
-                  <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
-                    <dt className="text-xs text-slate-500">{f.label}</dt>
-                    <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f)}</dd>
-                  </div>
-                ))}
+                {group.fields.map((f) => {
+                  const renderedUnit = unitOf(f, patientFields, t);
+                  return (
+                    <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
+                      <dt className="text-xs text-slate-500">
+                        {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
+                      </dt>
+                      <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, patientFields)}</dd>
+                    </div>
+                  );
+                })}
               </dl>
             </fieldset>
           ))}
@@ -351,18 +380,23 @@ export function PatientDetail() {
                   )}
                 </div>
                 <div className="space-y-3">
-                  {groupFieldsBySection(encounterFields.filter((f) => f.fieldKey in e.data)).map((group) => (
+                  {groupFieldsBySection(encounterFields.filter((f) => f.formula || f.fieldKey in e.data)).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
                       <legend className="px-1 text-xs font-semibold text-slate-600">
                         {sectionLabel(t, { sectionKey: group.key, label: group.label })}
                       </legend>
                       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
-                        {group.fields.map((f) => (
-                          <div key={f.id} className="contents">
-                            <dt className="text-slate-500">{f.label}</dt>
-                            <dd>{fmt(e.data[f.fieldKey], f)}</dd>
-                          </div>
-                        ))}
+                        {group.fields.map((f) => {
+                          const renderedUnit = unitOf(f, encounterFields, t);
+                          return (
+                            <div key={f.id} className="contents">
+                              <dt className="text-slate-500">
+                                {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
+                              </dt>
+                              <dd>{fmt(e.data[f.fieldKey], f, e.data, encounterFields)}</dd>
+                            </div>
+                          );
+                        })}
                       </dl>
                     </fieldset>
                   ))}
