@@ -39,7 +39,7 @@ export interface ExportField {
   /**
    * Variable CALCULEE (L35) : `date_sortie - date_entree`. Rien n'est stocke sous cette cle ;
    * la colonne est recalculee a l'export. Absent/null = variable saisie, comme avant le lot.
-  */
+   */
   formula?: string | null;
   /** Unite de restitution de la formule, rattachee a chaque version comme la formule elle-meme. */
   formulaUnitByVersion?: Record<string, string | null>;
@@ -405,7 +405,7 @@ export function checkFormula(
       ok: true,
       parsed,
       outputType: temporals.every((ref) => ref.type === 'date') &&
-        INTEGER_FORMULA_TIME_UNITS.has(normalizeFormulaTimeUnit(resultUnit))
+          INTEGER_FORMULA_TIME_UNITS.has(normalizeFormulaTimeUnit(resultUnit))
         ? 'integer'
         : 'number',
     };
@@ -556,8 +556,11 @@ export function evaluateFormula(
   byKey: ReadonlyMap<string, FormulaFieldRef>,
   resultUnit?: string | null,
 ): number | null {
-  const temporalOperands = [parsed.left, parsed.right].filter((operand): operand is { kind: 'field'; fieldKey: string } =>
-    operand.kind === 'field' && (byKey.get(operand.fieldKey)?.type === 'date' || byKey.get(operand.fieldKey)?.type === 'datetime'),
+  const temporalOperands = [parsed.left, parsed.right].filter((
+    operand,
+  ): operand is { kind: 'field'; fieldKey: string } =>
+    operand.kind === 'field' &&
+    (byKey.get(operand.fieldKey)?.type === 'date' || byKey.get(operand.fieldKey)?.type === 'datetime')
   );
   if (temporalOperands.length === 2 && parsed.operator !== '-') return null;
   const left = operandValue(parsed.left, data, byKey);
