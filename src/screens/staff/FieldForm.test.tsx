@@ -603,7 +603,7 @@ describe('FieldForm — variables calculees (L35)', () => {
     expect(screen.getByText('nombre entier (calculé)')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ unit: 'hours', type: 'integer' }), undefined);
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ unit: 'hours', type: 'integer' }));
   });
 
   test('une formule incomplete n’est jamais envoyee au serveur', async () => {
