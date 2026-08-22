@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de la saisie de rencontre (cahier §8.5, §10) avec repos INJECTES.
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -71,6 +71,15 @@ function renderForm(patientRepo: PatientRepository) {
       </RepositoryProvider>
     </I18nProvider>,
   );
+}
+
+// Une variable de gabarit de type date se saisit par le calendrier interne
+// (`DatePickerInput`) : il n'y a plus de champ texte a changer directement. Le calendrier
+// s'ouvre sur le mois courant tant que la variable est vide, d'ou un jour de ce mois-la.
+async function pickDayOfCurrentMonth(fieldLabel: string, day: number) {
+  await userEvent.click(screen.getByRole('button', { name: fieldLabel }));
+  const picker = await screen.findByRole('dialog');
+  await userEvent.click(within(picker).getByRole('button', { name: new RegExp(`^${day} `) }));
 }
 
 describe('EncounterForm', () => {
@@ -192,8 +201,9 @@ describe('EncounterForm', () => {
     fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
     fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'curated' } });
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('Admission'), { target: { value: '2024-01-10' } });
-    fireEvent.change(screen.getByLabelText('Sortie'), { target: { value: '2024-01-05' } });
+    // Sortie AVANT admission : la regle bloquante doit refuser l'enregistrement.
+    await pickDayOfCurrentMonth('Admission', 10);
+    await pickDayOfCurrentMonth('Sortie', 5);
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
     expect(await screen.findByText('sortie >= admission')).toBeInTheDocument();
     expect(createEncounter).not.toHaveBeenCalled();

@@ -23,19 +23,19 @@ async function addField(
   fieldKey: string,
   type: string,
   order: number,
-  extra: { formula?: string | null; required?: boolean } = {},
+  extra: { formula?: string | null; required?: boolean; unit?: string | null } = {},
 ) {
   await db.admin.query(
     `insert into public.template_field
-       (template_version_id, field_key, label, scope, section, type, display_order, required, formula)
-     values($1, $2, $3, 'encounter', 'clinique', $4, $5, $6, $7)`,
-    [versionId, fieldKey, `Libelle ${fieldKey}`, type, order, extra.required ?? false, extra.formula ?? null],
+       (template_version_id, field_key, label, scope, section, type, display_order, required, formula, unit)
+     values($1, $2, $3, 'encounter', 'clinique', $4, $5, $6, $7, $8)`,
+    [versionId, fieldKey, `Libelle ${fieldKey}`, type, order, extra.required ?? false, extra.formula ?? null, extra.unit ?? null],
   );
 }
 
 const formulaOf = async (fieldKey: string) =>
   (await db.admin.query(
-    'select formula, type, required from public.template_field where template_version_id=$1 and field_key=$2',
+    'select formula, type, required, unit from public.template_field where template_version_id=$1 and field_key=$2',
     [versionId, fieldKey],
   )).rows[0];
 
@@ -69,6 +69,42 @@ describe('L35 — validation de la formule a l enregistrement', () => {
     expect(row.formula).toBe('date_sortie - date_entree');
     // Le type envoye par le client etait `number` : c'est le SERVEUR qui deduit.
     expect(row.type).toBe('integer');
+    expect(row.unit).toBe('days');
+  });
+
+  test('accepte une unite choisie et deduit le type pour les semaines', async () => {
+    await addField('duree_semaines', 'integer', 91005, {
+      formula: 'date_sortie - date_entree',
+      unit: 'weeks',
+    });
+    const row = await formulaOf('duree_semaines');
+    expect(row.type).toBe('number');
+    expect(row.unit).toBe('weeks');
+  });
+
+  test('normalise une unite en minuscules et refuse une unite inconnue', async () => {
+    await addField('duree_heures', 'number', 91006, {
+      formula: 'date_sortie - date_entree',
+      unit: 'HOURS',
+    });
+    expect((await formulaOf('duree_heures')).unit).toBe('hours');
+    await expect(addField('duree_inconnue', 'number', 91007, {
+      formula: 'date_sortie - date_entree',
+      unit: 'mois',
+    })).rejects.toThrow(/Unite de rendu invalide/);
+  });
+
+  test('revalide aussi une unite modifiee apres la creation', async () => {
+    await addField('duree_unite_modifiee', 'number', 91008, {
+      formula: 'date_sortie - date_entree',
+    });
+    await db.admin.query(
+      "update public.template_field set unit='minutes' where template_version_id=$1 and field_key=$2",
+      [versionId, 'duree_unite_modifiee'],
+    );
+    const row = await formulaOf('duree_unite_modifiee');
+    expect(row.type).toBe('integer');
+    expect(row.unit).toBe('minutes');
   });
 
   test('accepte datetime - datetime et en DEDUIT un nombre de jours fractionnaires', async () => {

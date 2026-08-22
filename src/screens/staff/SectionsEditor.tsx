@@ -119,12 +119,12 @@ export function SectionsEditor({
                 </>
               ) : (
                 <>
-                  <span className="min-w-0 flex-1 break-words font-medium text-slate-900">
+                  <span className="min-w-[10rem] flex-1 break-words font-medium text-slate-900 sm:min-w-0">
                     {sectionLabel(t, section)}
                   </span>
                   {/* Le code interne est montre, jamais modifiable : c'est lui que portent
                       les fiches deja saisies et les instantanes hors-ligne. */}
-                  <span className="font-mono text-xs text-slate-400">{section.sectionKey}</span>
+                  <span className="min-w-0 max-w-full break-all font-mono text-xs text-slate-400 sm:max-w-none sm:break-normal">{section.sectionKey}</span>
                   <span className="text-xs text-slate-500">
                     {t('admin.section_field_count').replace('{n}', String(used))}
                   </span>

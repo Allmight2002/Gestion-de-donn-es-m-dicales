@@ -209,7 +209,10 @@ export function TemplateVersionEditor({
 
   return (
     <section className="space-y-5 sm:space-y-6">
-      <div className="sticky top-0 z-30 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:-mx-6 sm:px-6">
+      <div
+        data-testid="template-editor-toolbar"
+        className="-mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:z-30"
+      >
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">

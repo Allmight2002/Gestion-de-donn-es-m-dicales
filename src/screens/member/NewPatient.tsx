@@ -324,7 +324,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                 <div className="flex flex-col text-sm">
                   {/* Meme libelle que le formulaire de rencontre : consigne de saisie et
                       mention « proposé » y sont rendues au meme endroit. */}
-                  <FieldLabel field={field} prefilled={prefilled.has(field.fieldKey)} />
+                  <FieldLabel field={field} fields={fields} prefilled={prefilled.has(field.fieldKey)} />
                   <div className="mt-1">
                     {/* L35 : meme regle qu'au formulaire de rencontre — une variable
                         calculee s'affiche, elle ne se saisit pas. */}

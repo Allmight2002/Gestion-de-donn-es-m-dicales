@@ -536,7 +536,7 @@ describe('FieldForm — variables calculees (L35)', () => {
     expect(screen.queryByRole('combobox', { name: 'Type' })).toBeNull();
     await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
     await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
-    expect(screen.getByText('nombre de jours (calculé)')).toBeInTheDocument();
+    expect(screen.getByText('nombre entier (calculé)')).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'score');
     await userEvent.selectOptions(screen.getByLabelText('Opération'), '*');
@@ -580,6 +580,30 @@ describe('FieldForm — variables calculees (L35)', () => {
     expect(sent.required).toBe(false);
     expect(sent.defaultValue).toBeNull();
     expect(sent.missingReasons).toEqual([]);
+    expect(sent.unit).toBe('days');
+  });
+
+  test('permet de choisir l unite de restitution d une duree', async () => {
+    const onSubmit = renderCalculator();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'duree_heures');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Durée en heures');
+    await enableCalculation();
+    await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
+    await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
+
+    const unit = screen.getByLabelText('Unité de rendu');
+    expect(within(unit).getByRole('option', { name: 'Secondes' })).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: 'Minutes' })).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: 'Heures' })).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: 'Jours' })).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: 'Semaines' })).toBeInTheDocument();
+    expect(within(unit).getByRole('option', { name: 'Années' })).toBeInTheDocument();
+
+    await userEvent.selectOptions(unit, 'hours');
+    expect(screen.getByText('nombre entier (calculé)')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ unit: 'hours', type: 'integer' }));
   });
 
   test('une formule incomplete n’est jamais envoyee au serveur', async () => {

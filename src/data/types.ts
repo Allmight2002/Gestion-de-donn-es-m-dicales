@@ -133,6 +133,7 @@ export interface TemplateField {
    * hors-ligne anterieur au lot -> unitaire, exactement le comportement d'alors.
    */
   isMultiple?: boolean;
+  /** Unite affichee, ou unite de restitution d'une formule temporelle. */
   unit: string | null;
   /** Miroir des codes d'options (L30). Conserve pour les instantanes et clients anterieurs. */
   allowedValues: unknown[] | null;
@@ -208,7 +209,7 @@ export interface NewField {
   /** Bornes numeriques (number / integer). */
   minValue?: number | null;
   maxValue?: number | null;
-  /** Unite affichee (number / integer). */
+  /** Unite affichee (number / integer), ou unite de restitution d'une formule temporelle. */
   unit?: string | null;
   /** Autorise les codes manquants. Miroir de `missingReasons` : vrai = liste non vide. */
   allowMissingCodes?: boolean;
