@@ -14,6 +14,7 @@ import {
   FORMULA_OPERAND_TYPES,
   formulaFieldIndex,
   isFormulaIdentifier,
+  parseFormula,
   type FormulaCheck,
   type FormulaFieldRef,
   type FormulaOperator,
@@ -83,7 +84,7 @@ export function checkFieldFormula(
 /** Une formule temporelle est une soustraction entre deux variables date/date-heure. */
 export function formulaUsesTemporalOperands(
   formula: string | null | undefined,
-  fields: readonly Pick<TemplateField, 'fieldKey' | 'type'>[],
+  fields: readonly Pick<FormulaFieldRef, 'fieldKey' | 'type'>[],
 ): boolean {
   const parsed = parseFormula(formula);
   if (!parsed || parsed.operator !== '-') return false;

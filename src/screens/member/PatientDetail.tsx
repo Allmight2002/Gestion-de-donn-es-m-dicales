@@ -70,7 +70,7 @@ const unitOf = (field: Column, fields: readonly Column[], t: (key: MessageKey) =
   const unit = temporalFormula ? normalizeFormulaTimeUnit(field.unit) : field.unit;
   return temporalFormula && unit && (FORMULA_TIME_UNITS as readonly string[]).includes(unit)
     ? t(`form.unit_${unit}` as MessageKey)
-    : unit;
+    : unit ?? null;
 };
 
 // §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
