@@ -160,7 +160,9 @@
         "detect_import_duplicates(p_base_id uuid, p_rows jsonb)",
         "get_import_batch_state(p_batch_id uuid)",
         "import_records(p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid)",
-        "replay_encounter_update(p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone)"
+        "replay_encounter_create(p_operation_id text, p_parent_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text)",
+        "replay_encounter_update(p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone)",
+        "replay_patient_create(p_operation_id text, p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb)"
       ]
     },
     {

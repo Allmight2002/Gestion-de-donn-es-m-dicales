@@ -201,11 +201,13 @@ export const snapshotMeta = (s: OfflineSnapshot): OfflineMeta => ({
   baseId: s.baseId, baseName: s.baseName, cachedAt: s.cachedAt, expiresAt: s.expiresAt, patientCount: s.patients.length,
 });
 
-// --- IndexedDB : 2 object stores -> `snapshots` (cle baseId), `outbox` (cle id) -----------
+// --- IndexedDB : 3 object stores -> `snapshots` (cle baseId), `outbox` (cle id),
+// `intake_context` (cle composite owner::base, contexte de SAISIE hors-ligne) ------
 const DB_NAME = 'meddata-offline';
-const DB_VERSION = 3; // v3 : cle snapshot composite `ownerUserId::baseId` (§5.9)
+const DB_VERSION = 4; // v4 : store `intake_context` (saisie hors-ligne O2). Snapshots et outbox preserves.
 const STORE = 'snapshots';
-const OUTBOX = 'outbox';
+export const OUTBOX_STORE = 'outbox';
+export const INTAKE_CONTEXT_STORE = 'intake_context';
 // Migration securite: declenche la reevaluation/purge des enveloppes legacy.
 const SECURITY_DB_VERSION = DB_VERSION + 1;
 
@@ -218,18 +220,24 @@ function openDb(): Promise<IDBDatabase> {
       const db = req.result;
       // §5.9 : la cle du snapshot passe de `baseId` a `ownerUserId::baseId`. Changer un keyPath
       // impose de RECREER le store -> les anciens instantanes sont perdus (re-telechargeables).
-      // L'outbox (keyPath 'id', travail non synchronise) est preservee.
+      // L'outbox (keyPath 'id', travail non synchronise) est preservee ; `intake_context`
+      // n'est que CREE s'il manque : aucun store existant n'est touche par la v4.
       if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
       db.createObjectStore(STORE, { keyPath: 'key' });
-      if (!db.objectStoreNames.contains(OUTBOX)) db.createObjectStore(OUTBOX, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(OUTBOX_STORE)) db.createObjectStore(OUTBOX_STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(INTAKE_CONTEXT_STORE)) db.createObjectStore(INTAKE_CONTEXT_STORE, { keyPath: 'key' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-// Execute une transaction et resout APRES le commit (durabilite), avec le resultat de la requete.
-function tx<T>(store: string, mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T> {
+/** Transaction bas niveau sur un store du cache hors-ligne (resolue apres commit). */
+export function idbTx<T>(
+  store: string,
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => IDBRequest,
+): Promise<T> {
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
@@ -244,6 +252,25 @@ function tx<T>(store: string, mode: IDBTransactionMode, fn: (store: IDBObjectSto
   );
 }
 
+/** Identifiant local stable (operation, patient local, rencontre locale). */
+export function newOfflineId(): string {
+  return (globalThis.crypto && 'randomUUID' in globalThis.crypto)
+    ? globalThis.crypto.randomUUID()
+    : `ob-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** Evenement diffuse a chaque mutation de file d'attente (hooks React). */
+export function notifyOutboxChange(): void {
+  outboxEvents?.dispatchEvent(new Event('change'));
+}
+
+/** Abonne un ecouteur aux mutations de file d'attente ; renvoie la desinscription. */
+export function onOutboxChange(listener: () => void): () => void {
+  if (!outboxEvents) return () => undefined;
+  outboxEvents.addEventListener('change', listener);
+  return () => outboxEvents.removeEventListener('change', listener);
+}
+
 export interface OfflineCache {
   save(snap: OfflineSnapshot): Promise<void>;
   get(baseId: string): Promise<OfflineSnapshot | null>;
@@ -256,11 +283,11 @@ export const offlineCache: OfflineCache = {
   async save(snap) {
     assertOfflineEnabled();
     if (!currentUser) throw new Error('Aucun proprietaire de cache hors-ligne actif.');
-    await tx(STORE, 'readwrite', (s) => s.put({ ...snap, dataType: 'analytic_snapshot', ownerUserId: currentUser, key: snapKey(snap.baseId) }));
+    await idbTx(STORE, 'readwrite', (s) => s.put({ ...snap, dataType: 'analytic_snapshot', ownerUserId: currentUser, key: snapKey(snap.baseId) }));
   },
   async get(baseId) {
     if (!isOfflineEnabled() || !currentUser) return null;
-    const snap = await tx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(snapKey(baseId)));
+    const snap = await idbTx<OfflineSnapshot | undefined>(STORE, 'readonly', (s) => s.get(snapKey(baseId)));
     if (snap && snap.dataType !== 'analytic_snapshot') return null;
     if (!snap || !ownedByCurrent(snap)) return null;            // §5.5 : pas de lecture inter-comptes
     if (isExpired(snap)) { void offlineCache.remove(baseId); return null; } // §5.6 : TTL applique
@@ -268,19 +295,19 @@ export const offlineCache: OfflineCache = {
   },
   async list() {
     if (!isOfflineEnabled() || !currentUser) return [];
-    const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent);
+    const mine = (await idbTx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent);
     for (const s of mine) if (isExpired(s)) void offlineCache.remove(s.baseId); // purge a la lecture
     return mine.filter((s) => s.dataType === 'analytic_snapshot' && !isExpired(s)).map(snapshotMeta);
   },
-  async remove(baseId) { await tx(STORE, 'readwrite', (s) => s.delete(snapKey(baseId))); },
+  async remove(baseId) { await idbTx(STORE, 'readwrite', (s) => s.delete(snapKey(baseId))); },
 };
 
 // Supprime un instantane par sa cle composite propre (utilise par les purges tous-comptes).
-const deleteByKey = (key: string) => tx(STORE, 'readwrite', (s) => s.delete(key));
+const deleteByKey = (key: string) => idbTx(STORE, 'readwrite', (s) => s.delete(key));
 
 // §5.6 — purge des instantanes EXPIRES (TOUS comptes), pour le menage au demarrage.
 export async function purgeExpiredSnapshots(now = Date.now()): Promise<void> {
-  const all = await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll());
+  const all = await idbTx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll());
   for (const s of all) if ((s.dataType !== 'analytic_snapshot' || isExpired(s, now)) && s.key) await deleteByKey(s.key);
 }
 
@@ -292,7 +319,7 @@ export async function clearOfflineSnapshots(userId: string | null = currentUser)
   // depend plus de la variable globale mutable pendant l'execution asynchrone (la deconnexion remet
   // currentUser a null juste apres l'appel).
   try {
-    const mine = (await tx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter((s) => (s.ownerUserId ?? null) === userId);
+    const mine = (await idbTx<OfflineSnapshot[]>(STORE, 'readonly', (s) => s.getAll())).filter((s) => (s.ownerUserId ?? null) === userId);
     for (const s of mine) if (s.key) await deleteByKey(s.key);
   } catch { /* IndexedDB indisponible */ }
 }
@@ -325,25 +352,103 @@ export interface OutboxEntry {
   ownerUserId?: string | null;
 }
 
-const newId = (): string =>
-  (globalThis.crypto && 'randomUUID' in globalThis.crypto)
-    ? globalThis.crypto.randomUUID()
-    : `ob-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+// =====================================================================================
+// SAISIE HORS-LIGNE (intake-only) — contrat des OPERATIONS de creation en attente.
+// L'union est definie ICI car elle partage le MEME store `outbox` : une entree porte
+// soit une correction analytique (`analytic_outbox`), soit une creation patient/
+// rencontre preparee hors-ligne (`intake_outbox`). Voir src/data/offlineIntake.ts
+// pour la file, le contexte de saisie et la synchronisation.
+// =====================================================================================
+/** Etats communs aux operations de saisie en attente. */
+export type OfflineIntakeState =
+  | 'pending' | 'syncing' | 'succeeded' | 'rejected' | 'conflict' | 'expired' | 'blocked';
+
+/** Charge d'une creation patient : identite autorisee + donnees permanentes.
+ * L'identite d'un patient EN ATTENTE vit uniquement dans cette entree cloisonnee
+ * (IndexedDB par compte, TTL, purge) — jamais dans localStorage ni Cache Storage. */
+export interface PatientCreatePayload {
+  code: string;
+  fullName: string | null;
+  dateOfBirth: string | null;
+  phone: string | null;
+  address: string | null;
+  externalIdentifier: string | null;
+  permanentData: Record<string, unknown>;
+}
+
+/** Charge d'une creation rencontre, DEPENDANTE d'un patient (local ou serveur). */
+export interface EncounterCreatePayload {
+  encounterType: string;
+  encounterDate: string;
+  validationStatus: string;
+  ageUnit: string;
+  data: Record<string, unknown>;
+}
+
+interface IntakeEntryBase {
+  dataType: 'intake_outbox';
+  /** Cle d'operation STABLE envoyee au serveur : un nouveau clic ou un rejeu
+   * apres perte de reponse retombe sur la MEME cle. */
+  id: string;
+  kind: 'patient_create' | 'encounter_create';
+  baseId: string;
+  state: OfflineIntakeState;
+  /** Empreinte canonique de la charge, posee a la creation : toute mutation
+   * ulterieure de la charge est detectee avant tout envoi. */
+  fingerprint: string;
+  createdAt: number;
+  expiresAt: number;
+  attemptCount?: number;
+  lastAttemptAt?: number;
+  syncingStartedAt?: number;
+  lastError?: string;
+  ownerUserId?: string | null;
+}
+
+export interface PatientCreateEntry extends IntakeEntryBase {
+  kind: 'patient_create';
+  /** Identifiant LOCAL distinct des UUID serveur (invariant feuille de route §3.5). */
+  localPatientId: string;
+  payload: PatientCreatePayload;
+  /** Renseignes apres acceptation serveur (mapping local -> serveur). */
+  serverPatientId?: string | null;
+  serverCode?: string | null;
+}
+
+export interface EncounterCreateEntry extends IntakeEntryBase {
+  kind: 'encounter_create';
+  localEncounterId: string;
+  /** Cle d'operation du parent : la rencontre part APRES la creation confirmee. */
+  parentOperationKey: string;
+  payload: EncounterCreatePayload;
+  serverEncounterId?: string | null;
+  serverPatientId?: string | null;
+}
+
+export type IntakeEntry = PatientCreateEntry | EncounterCreateEntry;
+
+/** Contenu possible du store `outbox` : correction analytique OU creation hors-ligne. */
+export type OutboxRecord = OutboxEntry | IntakeEntry;
+
+export const isIntakeEntry = (e: OutboxEntry | IntakeEntry): e is IntakeEntry =>
+  (e as { dataType?: string }).dataType === 'intake_outbox';
+
+const newId = newOfflineId;
 
 const outboxEvents: EventTarget | null = typeof EventTarget !== 'undefined' ? new EventTarget() : null;
 const emitOutboxChange = () => outboxEvents?.dispatchEvent(new Event('change'));
 
 export const outbox = {
-  async put(entry: OutboxEntry) { await tx(OUTBOX, 'readwrite', (s) => s.put(entry)); emitOutboxChange(); },
+  async put(entry: OutboxEntry) { await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put(entry)); emitOutboxChange(); },
   async list(baseId?: string): Promise<OutboxEntry[]> {
-    const all = (await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll())).filter(ownedByCurrent); // §5.5
+    const all = (await idbTx<OutboxEntry[]>(OUTBOX_STORE, 'readonly', (s) => s.getAll())).filter(ownedByCurrent); // §5.5
     return (baseId ? all.filter((e) => e.baseId === baseId) : all).filter((e) => e.dataType === 'analytic_outbox').sort((a, b) => a.createdAt - b.createdAt);
   },
   async get(id: string): Promise<OutboxEntry | null> {
-    const e = await tx<OutboxEntry | undefined>(OUTBOX, 'readonly', (s) => s.get(id));
+    const e = await idbTx<OutboxEntry | undefined>(OUTBOX_STORE, 'readonly', (s) => s.get(id));
     return e && ownedByCurrent(e) ? e : null; // §5.5 : pas de resolution d'une entree d'un autre compte
   },
-  async remove(id: string) { await tx(OUTBOX, 'readwrite', (s) => s.delete(id)); emitOutboxChange(); },
+  async remove(id: string) { await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.delete(id)); emitOutboxChange(); },
   async count(baseId?: string) { return (await this.list(baseId)).length; },
 };
 
@@ -486,12 +591,24 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
   return rep;
 }
 
-/** Anciennes entrees ou entrees expirees: jamais rejouees automatiquement. */
+/** Anciennes entrees ou entrees expirees: jamais rejouees automatiquement.
+ * S'applique aux DEUX familles d'entrees (analytique et saisie hors-ligne) : une entree
+ * inconnue, sans proprietaire, perimee — ou reussie DONT la trace a expire — est supprimee. */
 export async function purgeExpiredOutbox(now = Date.now()): Promise<number> {
-  const all = await tx<OutboxEntry[]>(OUTBOX, 'readonly', (s) => s.getAll());
+  const all = await idbTx<OutboxEntry[]>(OUTBOX_STORE, 'readonly', (s) => s.getAll());
   let removed = 0;
   for (const entry of all) {
-    if (entry.dataType !== 'analytic_outbox' || entry.state === 'succeeded' || !entry.ownerUserId || !Number.isFinite(entry.createdAt) || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
+    if (entry.dataType !== 'analytic_outbox' && entry.dataType !== 'intake_outbox') {
+      await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.delete(entry.id)); removed++;
+      continue;
+    }
+    // Trace de reussite conservee jusqu'a expiration : le mapping local -> serveur sert
+    // aux dependances encore en file (rencontres d'un patient cree hors-ligne).
+    if (entry.state === 'succeeded') {
+      if (!Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) { await outbox.remove(entry.id); removed++; }
+      continue;
+    }
+    if (!entry.ownerUserId || !Number.isFinite(entry.createdAt) || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
       await outbox.remove(entry.id); removed++;
     }
   }
@@ -625,8 +742,8 @@ export function useOutbox(baseId?: string): OutboxEntry[] {
     let alive = true;
     const refresh = () => { void outbox.list(baseId).then((e) => { if (alive) setEntries(e); }).catch(() => { if (alive) setEntries([]); }); };
     refresh();
-    outboxEvents?.addEventListener('change', refresh);
-    return () => { alive = false; outboxEvents?.removeEventListener('change', refresh); };
+    const off = onOutboxChange(refresh);
+    return () => { alive = false; off(); };
   }, [baseId]);
   return entries;
 }

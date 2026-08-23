@@ -19,6 +19,11 @@ import {
   downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
 } from '../../data/offline';
+import {
+  discardIntake, downloadIntakeContext, intakeContextCache, isOfflineIntakeEnabled,
+  useIntakeQueue,
+  type IntakeEntry, type IntakeContextSource, type OfflineIntakeMeta,
+} from '../../data/offlineIntake';
 
 const PAGE_SIZE = 20;
 
@@ -67,6 +72,11 @@ export function BaseHome() {
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false); // UI-2 : modale §5.8 (grosse base)
+  // Saisie hors-ligne (intake-only) : contexte prepare + file locale de CE compte.
+  const intakeEnabled = isOfflineIntakeEnabled();
+  const pendingIntakes = useIntakeQueue(id);
+  const [intakeMeta, setIntakeMeta] = useState<OfflineIntakeMeta | null>(null);
+  const [intakeOfflineView, setIntakeOfflineView] = useState(false);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -82,7 +92,18 @@ export function BaseHome() {
     setError(null);
     try {
       if (!online) {
-        // HORS-LIGNE : tout vient de l'instantane local (analytique uniquement).
+        // MODE INTAKE-ONLY : la lecture de la base est explicitement INDISPONIBLE hors-ligne
+        // (invariant §3.11). Aucun instantane n'est lu ni reconstruit ; seule la file locale
+        // des creations en attente est affichee.
+        if (intakeEnabled) {
+          if (isCancelled()) return;
+          setOfflineView(false);
+          setRows([]); setFields([]); setCachedMeta(null); setTotal(0); setListing(null);
+          setIntakeOfflineView(true);
+          setError(null);
+          return;
+        }
+        // HORS-LIGNE (mode demo historique) : tout vient de l'instantane local (analytique uniquement).
         const snap = await offlineCache.get(id);
         if (isCancelled()) return;
         setOfflineView(true);
@@ -104,6 +125,7 @@ export function BaseHome() {
 
       // EN LIGNE : base + page de patients EN PARALLELE (independants), puis champs du gabarit.
       setOfflineView(false);
+      setIntakeOfflineView(false);
       const [baseResult, pageResult] = await Promise.allSettled([
         bases.getBase(id),
         patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE),
@@ -191,12 +213,50 @@ export function BaseHome() {
     setCachedMeta(null);
   }, [id]);
 
+  // Prepare EN LIGNE le contexte de saisie (formulaire seul, sans les donnees existantes).
+  const doPrepareIntake = useCallback(async () => {
+    if (!id) return;
+    setSaving(true);
+    try {
+      const src: IntakeContextSource = {
+        getBase: (bid) => bases.getBase(bid),
+        getVersion: (vid) => templates.getVersion(vid),
+      };
+      setIntakeMeta(await downloadIntakeContext(id, src));
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setSaving(false);
+    }
+  }, [id, bases, templates, t]);
+
+  // Etat du contexte de saisie local (badge « pret »), reevalue a chaque affichage en ligne.
+  useEffect(() => {
+    if (!intakeEnabled || !id || !online) return;
+    void intakeContextCache.get(id)
+      .then((ctx) => setIntakeMeta(ctx ? {
+        baseId: ctx.baseId, baseName: ctx.baseName, preparedAt: ctx.preparedAt, expiresAt: ctx.expiresAt,
+      } : null))
+      .catch(() => setIntakeMeta(null));
+  }, [id, online, intakeEnabled]);
+
   // Le modele d'observation se regle dans l'onglet Parametres ; ici il ne sert qu'a savoir
   // si la base porte des rencontres (colonne « ajouter une rencontre »).
   const observationModel: ObservationModel = listing?.base.observationModel ?? 'longitudinal';
   const isCrossSectional = observationModel === 'cross_sectional';
 
   if (loading) return <SkeletonList rows={6} />;
+  // MODE INTAKE-ONLY hors-ligne : panneau dedie — ni liste serveur, ni instantane.
+  if (intakeOfflineView) {
+    return (
+      <PendingIntakesPanel
+        baseId={id ?? ''}
+        entries={pendingIntakes}
+        onDiscard={(entryId) => void discardIntake(entryId)}
+      />
+    );
+  }
   if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
   const canCreate = !offlineView && !!listing && (
@@ -272,6 +332,16 @@ export function BaseHome() {
       ) : null}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+
+      {/* Saisie hors-ligne (intake-only) : preparation du CONTEXTE en ligne uniquement. */}
+      {intakeEnabled && !offlineView && listing && canCreate && !isMissionAccess && (
+        <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span className="text-slate-500">{intakeMeta ? t('intake.prepared') : t('intake.prepare')}</span>
+          <button onClick={() => void doPrepareIntake()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
+            {saving ? t('intake.preparing') : intakeMeta ? t('offline.update') : t('intake.prepare')}
+          </button>
+        </div>
+      )}
 
       {!(offlineView && !cachedMeta) && (
         <div className="space-y-3">
@@ -396,4 +466,93 @@ export function BaseHome() {
 function formatCell(v: unknown, field?: Column): string {
   if (typeof v === 'boolean') return v ? '✓' : '✗';
   return displayFieldValue(v, '—', field);
+}
+
+// MODE INTAKE-ONLY (hors-ligne) : la SEULE chose visible est la file locale de CE compte.
+// Jamais melangee a la liste serveur ; les identifiants locaux n'appellent jamais Supabase.
+function PendingIntakesPanel({ baseId, entries, onDiscard }: {
+  baseId: string;
+  entries: IntakeEntry[];
+  onDiscard: (entryId: string) => void;
+}) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const patients = entries.filter((e) => e.kind === 'patient_create');
+  const encounters = entries.filter((e) => e.kind === 'encounter_create');
+  const stateBadge = (state: IntakeEntry['state']) => {
+    const cls = state === 'rejected' || state === 'blocked'
+      ? 'bg-red-100 text-red-800'
+      : state === 'conflict' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600';
+    const label = state === 'conflict' ? t('sync.conflicts')
+      : state === 'syncing' ? t('sync.syncing')
+        : state === 'rejected' ? t('sync.rejected')
+          : state === 'expired' ? t('sync.expired')
+            : t('sync.pending');
+    return <span className={`badge ${cls}`}>{label}</span>;
+  };
+  return (
+    <section className="space-y-5">
+      <PageHeader
+        title={t('intake.pending_title')}
+        description={t('intake.blocked_read')}
+        badge={<span className="badge bg-amber-100 text-amber-800">{t('offline.badge')}</span>}
+        actions={(
+          <button onClick={() => navigate(`/bases/${baseId}/patients/new/manual`)} className="btn-primary flex-1 sm:flex-none">
+            <Plus size={16} aria-hidden /> {t('intake.new_patient')}
+          </button>
+        )}
+      />
+      {patients.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title={t('sync.empty')}
+          action={(
+            <button onClick={() => navigate(`/bases/${baseId}/patients/new/manual`)} className="btn-primary">
+              <Plus size={16} aria-hidden /> {t('intake.new_patient')}
+            </button>
+          )}
+        />
+      ) : (
+        <div className="space-y-3">
+          {patients.map((p) => (
+            <div key={p.id} className="card p-4 text-sm">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="font-medium text-slate-700">{t('sync.intake_patient')}</span>
+                {stateBadge(p.state)}
+              </div>
+              <p className="font-mono text-xs text-slate-500">{p.payload.code}</p>
+              {p.payload.fullName && <p className="text-slate-700">{p.payload.fullName}{p.payload.dateOfBirth ? ` · ${p.payload.dateOfBirth}` : ''}</p>}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/bases/${baseId}/patients/${p.localPatientId}/encounters/new`)}
+                  className="text-xs font-medium text-teal-700 hover:underline"
+                >
+                  + {t('encounter.add')}
+                </button>
+                <button type="button" onClick={() => onDiscard(p.id)} className="text-xs text-slate-400 hover:text-red-600 hover:underline">
+                  {t('offline.remove')}
+                </button>
+              </div>
+            </div>
+          ))}
+          {encounters.map((e) => (
+            <div key={e.id} className="card p-4 text-sm">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="font-medium text-slate-700">{t('sync.intake_encounter')}</span>
+                {stateBadge(e.state)}
+              </div>
+              <p className="text-xs text-slate-500">
+                {e.payload.encounterType} · {e.payload.encounterDate}
+                {e.state === 'blocked' && ` · ${t('sync.intake_blocked')}`}
+              </p>
+              <button type="button" onClick={() => onDiscard(e.id)} className="mt-2 text-xs text-slate-400 hover:text-red-600 hover:underline">
+                {t('offline.remove')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
