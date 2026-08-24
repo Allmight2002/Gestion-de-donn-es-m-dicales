@@ -17,6 +17,7 @@ import type { TemplateRepository } from '../../data/templates';
 import type { NewPatientInput, PatientRepository } from '../../data/patients';
 import type { CurationRepository } from '../../data/curation';
 import type { GlobalRole } from '../../auth/types';
+import { setBirthDate } from '../../../test/helpers/date-picker';
 
 // useAuth mocke : le role pilote l'offre « confier au pool de curation », fermee aux
 // comptes de mission (docs/spec-comptes-mission.md §4).
@@ -91,7 +92,7 @@ describe('NewPatient mode submit', () => {
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
 
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
@@ -113,7 +114,7 @@ describe('NewPatient mode submit', () => {
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
 
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
@@ -135,7 +136,7 @@ describe('NewPatient mode submit', () => {
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
 
@@ -158,7 +159,7 @@ describe('NewPatient : detection de doublon', () => {
     renderAt('/bases/b1/patients/new/submit', { patients });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
 
     expect(await screen.findByText(/existe déjà dans cette base/i)).toBeInTheDocument();
     expect(screen.getByText('P-0009')).toBeInTheDocument();
@@ -176,7 +177,7 @@ describe('NewPatient : detection de doublon', () => {
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
     // Soumettre IMMEDIATEMENT (pas d'attente de l'avertissement debounce).
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     expect(createPatient).not.toHaveBeenCalled(); // bloque par la re-verification au submit
@@ -192,7 +193,7 @@ describe('NewPatient : detection de doublon', () => {
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Autre Nom' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1985-03-03' } });
+    await setBirthDate('1985-03-03');
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     await waitFor(() => expect(screen.getAllByText(/déjà utilisé dans cette base/i).length).toBeGreaterThan(1));
     expect(screen.queryByText(/duplicate key/i)).not.toBeInTheDocument(); // plus de SQL brut
@@ -206,7 +207,7 @@ describe('NewPatient : detection de doublon', () => {
     renderAt('/bases/b1/patients/new/submit', { patients, curation });
     await screen.findByText(/confier un patient au staff/i);
     fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Test' } });
-    fireEvent.change(screen.getByLabelText(/date de naissance/i), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
     await screen.findByText(/existe déjà dans cette base/i);
 
     // Soumettre SANS confirmer : rien n'est cree, un message demande la confirmation.
