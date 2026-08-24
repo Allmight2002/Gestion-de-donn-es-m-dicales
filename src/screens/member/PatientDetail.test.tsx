@@ -16,6 +16,7 @@ import type { PatientRepository, Encounter, PatientListItem, FieldChange } from 
 import type { AttachmentRepository } from '../../data/attachments';
 import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
+import { setBirthDate } from '../../../test/helpers/date-picker';
 
 // EditPatient / EditEncounter lisent le role global (profil de medecin par defaut
 // pour ces tests de correction).
@@ -346,7 +347,7 @@ describe('EditPatientIdentity (correction nominative)', () => {
     );
 
     fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Jeanne Exemple' } });
-    fireEvent.change(screen.getByLabelText('Date de naissance'), { target: { value: '1981-02-03' } });
+    await setBirthDate('1981-02-03');
     fireEvent.change(screen.getByLabelText('Téléphone'), { target: { value: '+235 60 00 00 00' } });
     fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: 'Quartier fictif, N’Djamena' } });
     fireEvent.change(screen.getByLabelText('Identifiant externe'), { target: { value: 'EXT-FICTIF-9' } });
@@ -376,7 +377,7 @@ describe('EditPatientIdentity (correction nominative)', () => {
     );
 
     fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Doublon Fictif' } });
-    fireEvent.change(screen.getByLabelText('Date de naissance'), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
     fireEvent.change(screen.getByLabelText(/Motif de la correction/), { target: { value: 'Correction doublon contrôlée' } });
     await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/autre dossier porte déjà/i);

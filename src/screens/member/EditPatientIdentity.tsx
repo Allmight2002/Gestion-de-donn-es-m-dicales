@@ -10,6 +10,7 @@ import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 import { useI18n } from '../../i18n/useI18n';
 import { errorMessage } from '../../lib/errorMessage';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
+import { DatePickerInput } from '../../components/DatePickerInput';
 
 export function EditPatientIdentity() {
   const { id: baseId, patientId } = useParams();
@@ -157,10 +158,12 @@ export function EditPatientIdentity() {
                 <span className="text-slate-700">{t('patient.external_id')}</span>
                 <input className="input mt-1" value={identity.externalIdentifier ?? ''} onChange={(event) => setField('externalIdentifier', event.target.value)} />
               </label>
-              <label className="block text-sm">
+              <div className="block text-sm">
                 <span className="text-slate-700">{t('patient.dob')}</span>
-                <input type="date" className="input mt-1" value={identity.dateOfBirth ?? ''} onChange={(event) => setField('dateOfBirth', event.target.value)} />
-              </label>
+                <div className="mt-1">
+                  <DatePickerInput value={identity.dateOfBirth} ariaLabel={t('patient.dob')} onChange={(value) => setField('dateOfBirth', value ?? '')} />
+                </div>
+              </div>
               <label className="block text-sm">
                 <span className="text-slate-700">{t('patient.phone')}</span>
                 <input className="input mt-1" value={identity.phone ?? ''} onChange={(event) => setField('phone', event.target.value)} />

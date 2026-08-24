@@ -70,6 +70,15 @@ export function DatePickerInput({
     const initial = selected ?? todayParts();
     return { year: initial.year, month: initial.month };
   });
+  const [draft, setDraft] = useState(() => {
+    const initial = selected ?? todayParts();
+    return {
+      day: String(initial.day),
+      month: String(initial.month + 1),
+      year: String(initial.year),
+    };
+  });
+  const [draftError, setDraftError] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -85,8 +94,10 @@ export function DatePickerInput({
 
   useEffect(() => {
     if (!open) return;
-    const current = parseIsoDate(value);
-    if (current) setDisplayMonth({ year: current.year, month: current.month });
+    const current = parseIsoDate(value) ?? todayParts();
+    setDisplayMonth({ year: current.year, month: current.month });
+    setDraft({ day: String(current.day), month: String(current.month + 1), year: String(current.year) });
+    setDraftError(false);
     dialogRef.current?.focus();
   }, [open, value]);
 
@@ -122,6 +133,28 @@ export function DatePickerInput({
 
   function chooseDate(day: number) {
     onChange(toIsoDate({ year: displayMonth.year, month: displayMonth.month, day }));
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  function applyDraftDate() {
+    const parts = {
+      day: Number(draft.day),
+      month: Number(draft.month) - 1,
+      year: Number(draft.year),
+    };
+    const date = localDate(parts);
+    const valid = /^\d{1,2}$/.test(draft.day)
+      && /^\d{1,2}$/.test(draft.month)
+      && /^\d{4}$/.test(draft.year)
+      && date.getFullYear() === parts.year
+      && date.getMonth() === parts.month
+      && date.getDate() === parts.day;
+    if (!valid) {
+      setDraftError(true);
+      return;
+    }
+    onChange(toIsoDate(parts));
     setOpen(false);
     triggerRef.current?.focus();
   }
@@ -188,6 +221,49 @@ export function DatePickerInput({
               onClick={() => setDisplayMonth((current) => shiftMonth(current.year, current.month, 1))}
             >
               <ChevronRight size={18} aria-hidden />
+            </button>
+          </div>
+
+          <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t('date.direct_entry')}</p>
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)] gap-2">
+              <label className="text-xs text-slate-600 dark:text-slate-300">
+                {t('date.day')}
+                <input
+                  className="input mt-1 text-center"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={draft.day}
+                  onChange={(event) => { setDraft((current) => ({ ...current, day: event.target.value.replace(/\D/g, '').slice(0, 2) })); setDraftError(false); }}
+                  aria-invalid={draftError}
+                />
+              </label>
+              <label className="text-xs text-slate-600 dark:text-slate-300">
+                {t('date.month')}
+                <input
+                  className="input mt-1 text-center"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={draft.month}
+                  onChange={(event) => { setDraft((current) => ({ ...current, month: event.target.value.replace(/\D/g, '').slice(0, 2) })); setDraftError(false); }}
+                  aria-invalid={draftError}
+                />
+              </label>
+              <label className="text-xs text-slate-600 dark:text-slate-300">
+                {t('date.year')}
+                <input
+                  className="input mt-1 text-center"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={draft.year}
+                  onChange={(event) => { setDraft((current) => ({ ...current, year: event.target.value.replace(/\D/g, '').slice(0, 4) })); setDraftError(false); }}
+                  aria-invalid={draftError}
+                />
+              </label>
+            </div>
+            {draftError && <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{t('date.invalid')}</p>}
+            <button type="button" className="btn-primary mt-3 w-full" onClick={applyDraftDate}>
+              {t('date.apply')}
             </button>
           </div>
 

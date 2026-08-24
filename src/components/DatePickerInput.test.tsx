@@ -35,4 +35,35 @@ describe('DatePickerInput', () => {
 
     expect(onChange).toHaveBeenCalledWith(null);
   });
+
+  test('permet de saisir directement une date ancienne sans parcourir les mois', async () => {
+    const user = userEvent.setup();
+    const onChange = renderPicker(null);
+
+    await user.click(screen.getByRole('button', { name: 'Date de consultation' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Jour' }));
+    await user.type(screen.getByRole('textbox', { name: 'Jour' }), '15');
+    await user.clear(screen.getByRole('textbox', { name: 'Mois' }));
+    await user.type(screen.getByRole('textbox', { name: 'Mois' }), '8');
+    await user.clear(screen.getByRole('textbox', { name: 'Année' }));
+    await user.type(screen.getByRole('textbox', { name: 'Année' }), '1961');
+    await user.click(screen.getByRole('button', { name: 'Utiliser cette date' }));
+
+    expect(onChange).toHaveBeenCalledWith('1961-08-15');
+  });
+
+  test('refuse une date impossible saisie directement', async () => {
+    const user = userEvent.setup();
+    const onChange = renderPicker(null);
+
+    await user.click(screen.getByRole('button', { name: 'Date de consultation' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Jour' }));
+    await user.type(screen.getByRole('textbox', { name: 'Jour' }), '31');
+    await user.clear(screen.getByRole('textbox', { name: 'Mois' }));
+    await user.type(screen.getByRole('textbox', { name: 'Mois' }), '2');
+    await user.click(screen.getByRole('button', { name: 'Utiliser cette date' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Saisissez une date valide');
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
