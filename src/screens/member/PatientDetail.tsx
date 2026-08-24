@@ -10,6 +10,10 @@ import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
 import { offlineCache, useOnline } from '../../data/offline';
+import {
+  intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
+  type PatientCreateEntry,
+} from '../../data/offlineIntake';
 import { getTemplateFields } from '../../data/templates';
 import { displayFieldValue } from '../../data/types';
 import { isMissing, missingCodeOf } from '../../domain/validation';
@@ -131,6 +135,10 @@ export function PatientDetail() {
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  // Dossier patient ENCORE LOCAL (cree hors-ligne) : vue dediee, sans aucun appel reseau.
+  const [localPending, setLocalPending] = useState<PatientCreateEntry | null>(null);
+  // Identifiant SERVEUR demande hors-ligne en mode intake-only : blocage explicite.
+  const [blockedServerIdOffline, setBlockedServerIdOffline] = useState(false);
   const [patientFields, setPatientFields] = useState<Column[]>([]);
   const [encounterFields, setEncounterFields] = useState<Column[]>([]);
   const [offlineView, setOfflineView] = useState(false);
@@ -160,6 +168,34 @@ export function PatientDetail() {
     setLoading(true);
     try {
       if (!online) {
+        // MODE INTAKE-ONLY (feuille de route O3) : la fiche d'un patient EXISTANT n'est jamais
+        // reconstruite hors-ligne (invariant §3.11). Seul le dossier LOCAL en attente est
+        // consultable, depuis la file cloisonnee et sans aucun appel reseau.
+        if (isOfflineIntakeEnabled()) {
+          setAttachments([]);
+          setEncounters([]);
+          setOfflineView(false);
+          if (patientId && isLocalPatientId(patientId)) {
+            const local = await intakeQueue.localPatient(patientId);
+            if (!local) {
+              setLocalPending(null);
+              setPatient(null);
+              setError(t('intake.parent_missing'));
+              return;
+            }
+            setBlockedServerIdOffline(false);
+            setLocalPending(local);
+            setPatient(null);
+            setError(null);
+            return;
+          }
+          // Identifiant SERVEUR hors-ligne : bloque explicitement (hors perimetre §7).
+          setBlockedServerIdOffline(true);
+          setLocalPending(null);
+          setPatient(null);
+          setError(null);
+          return;
+        }
         // HORS-LIGNE : lecture seule depuis l'instantane (analytique, sans identite ni images).
         const snap = await offlineCache.get(baseId);
         const op = snap?.patients.find((pp) => pp.id === patientId) ?? null;
@@ -184,6 +220,7 @@ export function PatientDetail() {
       }
 
       setOfflineView(false);
+      setBlockedServerIdOffline(false);
       const [p, encs, base, atts] = await Promise.all([
         patients.getPatient(baseId, patientId),
         patients.listEncounters(patientId),
@@ -231,6 +268,24 @@ export function PatientDetail() {
   }
 
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
+  // Dossier LOCAL en attente : vue dediee, jamais melangee a une fiche serveur.
+  if (localPending && baseId) return <LocalPendingDetail baseId={baseId} entry={localPending} />;
+  if (blockedServerIdOffline && !online) {
+    return (
+      <section className="max-w-2xl space-y-5">
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+          ← {t('admin.back')}
+        </button>
+        <PageHeader
+          title={t('patient.detail')}
+          badge={<span className="badge bg-amber-100 text-amber-800">{t('offline.badge')}</span>}
+        />
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {t('intake.server_patient_unsupported')}
+        </p>
+      </section>
+    );
+  }
   if (!patient) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
   return (
@@ -459,6 +514,79 @@ export function PatientDetail() {
       )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    </section>
+  );
+}
+
+// Fiche LIMITEE d'un dossier encore local (cree hors-ligne, en attente de synchronisation).
+// Les donnees viennent exclusivement de l'operation cloisonnee de la file : aucun appel
+// Supabase, aucune fusion avec la liste serveur. Le serveur revalidera tout a la synchro.
+function LocalPendingDetail({ baseId, entry }: { baseId: string; entry: PatientCreateEntry }) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const online = useOnline();
+  const [labels, setLabels] = useState<Record<string, { label: string; field?: Column }>>({});
+
+  useEffect(() => {
+    let alive = true;
+    void intakeContextCache.get(baseId).then((ctx) => {
+      if (!alive || !ctx) return;
+      const map: typeof labels = {};
+      for (const f of ctx.fields) map[f.fieldKey] = { label: f.label, field: toColumn(f) };
+      setLabels(map);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [baseId]);
+
+  const permanentEntries = Object.entries(entry.payload.permanentData);
+  return (
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
+      <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        ← {t('admin.back')}
+      </button>
+
+      <PageHeader
+        title={t('sync.intake_patient')}
+        eyebrow={<span className="font-mono">{entry.payload.code}</span>}
+        badge={(
+          <span className={`badge ${entry.state === 'rejected' || entry.state === 'blocked' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+            {entry.state === 'pending' ? t('sync.pending')
+              : entry.state === 'syncing' ? t('sync.syncing')
+                : entry.state === 'rejected' ? t('sync.rejected')
+                  : entry.state === 'conflict' ? t('sync.conflicts') : t('intake.pending_title')}
+          </span>
+        )}
+        actions={!online ? undefined : (
+          <button onClick={() => navigate(`/bases/${baseId}/patients/${entry.localPatientId}/encounters/new`)} className="btn-primary">
+            <Plus size={16} aria-hidden /> {t('encounter.add')}
+          </button>
+        )}
+      />
+
+      {(entry.payload.fullName || entry.payload.dateOfBirth) && (
+        <fieldset className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm shadow-sm">
+          <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
+          <div><span className="text-slate-500">{t('patient.full_name')} :</span> {entry.payload.fullName ?? '—'}</div>
+          <div><span className="text-slate-500">{t('patient.dob')} :</span> {entry.payload.dateOfBirth ?? '—'}</div>
+          {entry.payload.phone && <div><span className="text-slate-500">{t('patient.phone')} :</span> {entry.payload.phone}</div>}
+          {entry.payload.address && <div><span className="text-slate-500">{t('patient.address')} :</span> {entry.payload.address}</div>}
+          {entry.payload.externalIdentifier && <div><span className="text-slate-500">{t('patient.external_id')} :</span> {entry.payload.externalIdentifier}</div>}
+        </fieldset>
+      )}
+
+      {permanentEntries.length > 0 && (
+        <SectionCard title={t('patient.permanent_section')}>
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            {permanentEntries.map(([key, value]) => (
+              <div key={key} className="min-w-0">
+                <dt className="truncate text-xs font-medium uppercase tracking-wide text-slate-400">{labels[key]?.label ?? key}</dt>
+                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field)}</dd>
+              </div>
+            ))}
+          </dl>
+        </SectionCard>
+      )}
+      <p className="text-xs text-slate-400">{t('intake.saved_pending')}</p>
     </section>
   );
 }
