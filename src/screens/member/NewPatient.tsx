@@ -24,6 +24,7 @@ import { findProposalField, isProposalSource, proposalKeysOf } from '../../domai
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
+import { DatePickerInput } from '../../components/DatePickerInput';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -337,10 +338,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             </label>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">
+            <div className="block text-sm">
               <span className="text-slate-700">{t('patient.dob')}{mode === 'submit' && <span className="text-red-500"> *</span>}</span>
-              <input type="date" className="input mt-1" value={dob} onChange={(e) => setDob(e.target.value)} required={mode === 'submit'} />
-            </label>
+              <div className="mt-1">
+                <DatePickerInput value={dob} ariaLabel={t('patient.dob')} onChange={(value) => setDob(value ?? '')} />
+              </div>
+            </div>
             <label className="block text-sm">
               <span className="text-slate-700">{t('patient.phone')}</span>
               <input className="input mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
