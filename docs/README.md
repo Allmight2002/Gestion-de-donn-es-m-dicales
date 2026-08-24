@@ -92,6 +92,7 @@
 | [lots-paralleles.md](lots-paralleles.md) | Découpage des chantiers en lots parallélisables |
 | [prompts-lots.md](prompts-lots.md) · [prompt-execution-autonome-feuille-route.md](prompt-execution-autonome-feuille-route.md) | Prompts de travail prêts à l'emploi (outillage interne) |
 | [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md) | Problèmes ouverts sur les interactions entre comptes, options écartées comprises |
+| [chantiers-export-analyse.md](chantiers-export-analyse.md) | Cible et lots L45-L50 pour un export directement exploitable dans Excel, R, SPSS ou Stata |
 | [idees-post-readiness.md](idees-post-readiness.md) | File d'attente produit tenue à jour |
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
@@ -147,5 +148,5 @@
 
 ---
 
-*Index vérifié le 19 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
+*Index vérifié le 24 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
 dans `docs/`.*

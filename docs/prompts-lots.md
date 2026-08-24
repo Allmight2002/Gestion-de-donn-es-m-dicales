@@ -11,6 +11,9 @@
 - **Révisé le 2026-08-20** : sept prompts ajoutés (L38 à L44), issus de
   [`audits/audit-technique-complet-2026-08-18.md`](audits/audit-technique-complet-2026-08-18.md).
   Menés sur un thread dédié, en parallèle de L35.
+- **Révisé le 2026-08-24** : six prompts ajoutés (L45 à L50), issus de
+  [`chantiers-export-analyse.md`](chantiers-export-analyse.md). L45 à L49 forment une file
+  séquentielle ; L50 est différé.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -38,6 +41,10 @@ rapport. **L14, L16, L20 et L31 doivent tourner seuls.** (L26 est clos ; voir pl
 > `useCallback` de `NewPatient.tsx` — ne jamais les lancer ensemble. **L40 et L44** touchent tous
 > deux `src/domain/imageUpload.ts` — ne jamais les lancer ensemble non plus. Le reste (L38, L39,
 > L43) est isolé et parallélisable avec tout.
+
+> **L45 à L49 ne sont pas parallélisables entre eux** : ils écrivent dans le contrat et le
+> générateur d'export. L47 requalifie L36 et L37 n'est pas à lancer pour le profil Analyse. **L50**
+> est différé et ne doit pas retarder le jalon MVP L49.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
@@ -183,6 +190,229 @@ src/i18n/messages.ts, ajoute tes clés à la FIN de chaque section : ce fichier 
 modifié par d'autres chantiers en parallèle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## L45 — Contrat des profils Export Analyse / Export complet
+
+```
+Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
+dans le répertoire de travail. Lis d'abord les instructions du dépôt, puis la
+fiche L45 de docs/lots-paralleles.md et la spécification
+docs/chantiers-export-analyse.md.
+
+AVANT DE CODER : vérifie le contrat actuel de generate-export, le payload de
+l'Edge Function, le repository frontend et la journalisation export_log. Pose
+les questions nécessaires si le nom du profil ou le point d'entrée utilisateur
+n'est pas déterminable. Ne modifie pas encore le format des colonnes : ce lot
+fixe le profil et son acheminement ; les lots L46 à L49 portent les formes de
+données.
+
+OBJECTIF.
+
+1. Ajouter deux profils explicites : `analysis` et `complete`.
+2. Faire de `analysis` le profil par défaut pour un appel sans profil.
+3. Conserver le comportement actuel sous `complete` pendant la transition.
+4. Enregistrer le profil dans `export_log.export_options` et le rendre
+   identifiable dans le nom du fichier ou ses métadonnées.
+5. Conserver strictement les contrôles d'accès, la liste anti-identité, le
+   figeage, le hash, l'upload privé et la journalisation existants.
+
+PÉRIMÈTRE INTERDIT : ne supprime pas encore les colonnes actuelles, ne change
+pas la sémantique des multiselect, ne modifie pas les migrations déjà appliquées
+et ne déplace aucune garantie de sécurité vers l'interface.
+
+COUVERTURE EXIGÉE : payload absent, `analysis`, `complete`, format CSV et XLSX,
+profil inscrit dans le journal, refus d'un profil inconnu, absence d'identité
+dans les deux profils, compatibilité d'un ancien appel.
+
+TERMINÉ SIGNIFIE : contrat et acheminement testés localement, documentation du
+lot mise à jour, tests ciblés verts. Ne committe, ne pousse et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## L46 — Identifiants analytiques, colonnes et feuille `Modalités`
+
+```
+Tu reprends un chantier sur MedData. Lis les instructions du dépôt, puis L46 dans
+docs/lots-paralleles.md et docs/chantiers-export-analyse.md. L45 doit être livré
+ou son contrat doit être présent avant de commencer. Ne lance pas ce lot en
+parallèle de L35, L36, L37 ou L47-L49 : tous touchent le contrat d'export.
+
+OBJECTIF.
+
+1. Définir pour chaque variable un identifiant analytique court, ASCII, unique
+   et stable, distinct du libellé humain et des UUID techniques.
+2. Dans le profil `analysis`, écrire le code stable d'un `select` dans
+   `Données`, sans répéter son libellé sur chaque ligne.
+3. Produire une feuille `Modalités` documentant variable, code, libellé, ordre
+   et état actif.
+4. Conserver dans `complete` les colonnes techniques nécessaires à la
+   réimportation et à la traçabilité.
+5. Préserver l'interprétation des anciens gabarits et refuser explicitement les
+   collisions d'identifiants.
+
+DÉCISION DE STOCKAGE : si un identifiant analytique est ajouté au gabarit, la
+   migration doit être additive, compatible avec les versions historiques et
+   non appliquée à distance. Si un repli déterministe suffit, documente-le et
+   n'ajoute pas de colonne inutile.
+
+COUVERTURE EXIGÉE : changement de libellé sans changement de code, option
+ inactive, modalités de deux versions, collision, CSV/XLSX, export sans UUID
+ ni identité, dictionnaire cohérent avec `Modalités`.
+
+TERMINÉ SIGNIFIE : tests ciblés verts et exemple d'Export Analyse lisible sans
+connaître les identifiants internes. Ne committe, ne pousse et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## L47 — Multiselect en indicatrices binaires dans le profil Analyse
+
+```
+Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L47
+et la section Export Analyse de docs/chantiers-export-analyse.md. L45 doit être
+livré. Ce lot requalifie L36 : ne lance pas les deux ensemble, ni avec L22 ou
+L35. Ne touche ni à la validation serveur, ni au stockage hors-ligne, ni au
+constructeur de formulaire sauf preuve qu'un contrat existant l'exige.
+
+OBJECTIF DU PROFIL `analysis`.
+
+1. Retirer de la feuille principale les libellés concaténés, codes concaténés,
+   compteurs et feuilles relationnelles multiselect.
+2. Produire une colonne indicatrice par code effectivement exporté.
+3. Initialiser chaque indicatrice à `0` pour un champ applicable.
+4. Passer l'indicatrice à `1` si le code est sélectionné ; une liste vide et
+   toute modalité non sélectionnée restent donc à `0`.
+5. Réserver une cellule vide à un champ non applicable ou absent de la version
+   de gabarit. Une raison explicite de valeur manquante suit le codage prévu
+   par le dictionnaire et ne doit jamais devenir une sélection.
+6. Conserver toutes les formes sans perte dans `complete`.
+7. Au-delà du seuil de cardinalité, échouer explicitement ou demander une
+   sélection ; ne jamais tronquer silencieusement.
+
+Ne transforme pas un `0` en valeur manquante et ne supprime pas une variable
+conditionnelle. Vérifie le plafond de cellules XLSX et la neutralisation des
+formules.
+
+COUVERTURE EXIGÉE : liste vide, valeur absente sur un champ applicable,
+modalité sélectionnée/non sélectionnée, champ non applicable, raison de manque,
+codes inconnus historiques, collision de suffixes, zéro et un numériques,
+plus de 100 codes, CSV/XLSX, profil `complete` inchangé.
+
+TERMINÉ SIGNIFIE : les indicatrices non sélectionnées sont bien `0` dans le
+fichier lu par le test, sans perte dans `complete`, et tous les tests ciblés
+sont verts. Ne committe, ne pousse et ne déploie rien sans demande explicite.
+```
+
+---
+
+## L48 — Dates XLSX natives, CSV ISO et unités des durées
+
+```
+Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L48
+et docs/chantiers-export-analyse.md. L45 doit être livré. Ne lance pas ce lot en
+parallèle de L35 ni d'un autre lot qui modifie exportContract.ts.
+
+OBJECTIF.
+
+1. Dans XLSX, écrire les dates et datetime comme valeurs Excel natives, avec un
+   format d'affichage lisible mais sans les convertir en texte.
+2. Dans CSV, conserver une représentation ISO documentée et déterministe.
+3. Garder les nombres, compteurs et indicatrices comme valeurs numériques.
+4. Documenter l'unité de chaque durée calculée dans le dictionnaire et, si
+   nécessaire, dans l'identifiant analytique.
+5. Fixer explicitement le traitement des fuseaux et secondes pour les datetime.
+
+PÉRIMÈTRE INTERDIT : ne change pas la formule métier d'une variable sans
+spécification ; ne masque pas une valeur invalide par zéro ; ne neutralise pas
+la protection anti-formule des textes.
+
+COUVERTURE EXIGÉE : date, datetime, date invalide, durée entière, durée
+fractionnaire, valeur vide, CSV, XLSX relu par SheetJS, type de cellule Excel,
+tri et soustraction possibles dans un classeur.
+
+TERMINÉ SIGNIFIE : le test prouve le type natif XLSX et l'unité de la durée,
+avec tests ciblés verts. Ne committe, ne pousse et ne déploie rien sans demande
+explicite.
+```
+
+---
+
+## L49 — Dictionnaire simplifié et feuille `Métadonnées`
+
+```
+Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L49
+et docs/chantiers-export-analyse.md. L45 à L48 doivent être livrés dans l'ordre.
+Ne lance pas ce lot en parallèle d'un autre lot qui modifie exportContract.ts ou
+handler.ts.
+
+OBJECTIF DU PROFIL `analysis`.
+
+1. Produire les quatre feuilles : `Données`, `Dictionnaire`, `Modalités`,
+   `Métadonnées`.
+2. Garder dans le dictionnaire uniquement variable, libellé, description,
+   section, type, unité, formule, valeurs autorisées et valeurs manquantes,
+   plus les informations nécessaires à l'interprétation.
+3. Déplacer les informations globales dans `Métadonnées` : profil, date,
+   modèle d'observation, population, versions de gabarit, nombre de lignes,
+   exclusions et règle de sélection.
+4. Documenter chaque colonne de `Données`, y compris les indicatrices et les
+   colonnes calculées.
+5. Conserver les variables conditionnelles même si elles sont vides et
+   conserver le dictionnaire détaillé dans `complete`.
+
+VÉRIFICATIONS : aucune identité, date de naissance exacte, image, document,
+UUID technique ou secret dans les feuilles ; les exclusions restent
+explicables ; les versions historiques restent documentées ; les limites XLSX
+restent appliquées.
+
+COUVERTURE EXIGÉE : export vide, variable conditionnelle vide, plusieurs
+versions de gabarit, formule, indicatrice, modalité inactive, CSV et XLSX,
+cohérence entre colonnes, dictionnaire et métadonnées.
+
+TERMINÉ SIGNIFIE : le classeur Analyse est autonome pour un analyste et les
+tests ciblés sont verts. Ne committe, ne pousse et ne déploie rien sans demande
+explicite.
+```
+
+---
+
+## L50 — Concepts diagnostiques et référentiel terminologique
+
+```
+Ce lot est différé. Ne le lance que lorsque L45 à L49 sont livrés et après
+confirmation explicite du besoin de référentiel diagnostique.
+
+Lis les instructions du dépôt, L50 dans docs/lots-paralleles.md et la section
+L50 de docs/chantiers-export-analyse.md. Le lot touche à la fois le référentiel,
+la saisie et l'export ; il ne s'agit pas d'un simple renommage de colonnes.
+
+OBJECTIF.
+
+1. Définir un concept diagnostique stable, distinct du libellé et des synonymes.
+2. Conserver le libellé préféré, les synonymes explicitement validés, le système
+   terminologique, le code et l'historique des versions.
+3. Utiliser l'identifiant canonique dans l'Export Analyse et documenter le
+   libellé dans une feuille `Terminologie` si elle est nécessaire.
+4. Ne jamais fusionner deux diagnostics sur simple ressemblance lexicale.
+
+SÉCURITÉ DES DONNÉES : toute évolution de schéma est additive et nécessite une
+nouvelle migration ; ne modifie pas une migration appliquée et ne fais pas
+reposer l'intégrité sur l'interface. Les anciennes valeurs doivent rester
+interprétables.
+
+COUVERTURE EXIGÉE : synonyme vers un même concept, concepts proches mais
+distincts, changement de libellé, code terminologique absent, historique de
+version, CSV/XLSX, règles RLS/RPC si elles sont touchées.
+
+TERMINÉ SIGNIFIE : référentiel gouverné, contrat d'export documenté, tests
+ciblés verts et aucune fusion automatique non justifiée. Ne committe, ne pousse
+et ne déploie rien sans demande explicite.
 ```
 
 ---

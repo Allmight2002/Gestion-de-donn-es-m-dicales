@@ -264,6 +264,15 @@ exporte des données **sans identité**.
   par code présent (jusqu'à 100 codes distincts), et une **feuille dédiée** sans perte — une ligne
   par valeur, avec son rang. Une raison de valeur manquante remplit la colonne principale et
   laisse le compteur **vide**, jamais `0`, qui signifierait « aucun diagnostic ».
+- **EF-28 quinquies (cible Export Analyse, 2026-08-24).** Le profil d'export proposé par défaut
+  est destiné à une utilisation directe dans Excel, R, SPSS ou Stata. Il produit les feuilles
+  `Données`, `Dictionnaire`, `Modalités` et `Métadonnées`, conserve le code stable des `select`
+  dans les données, transforme les multiselect en indicatrices binaires initialisées à `0` (une
+  modalité non sélectionnée vaut `0`) et réserve les colonnes techniques, compteurs et feuilles
+  relationnelles au profil **Export complet**. La distinction entre `0`, valeur vide et raison de
+  valeur manquante est obligatoire. Cette cible est
+  **documentée mais non implémentée** ; son découpage est dans
+  [`chantiers-export-analyse.md`](chantiers-export-analyse.md).
 
 ### 4.10 Mode hors-ligne (application installable / PWA)
 - **EF-29.** Une base peut être rendue **disponible hors-ligne** : un **instantané analytique**

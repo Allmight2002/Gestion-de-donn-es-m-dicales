@@ -61,6 +61,13 @@ n'ont aucun rapport.
 Un prompt prêt à l'emploi existe pour chaque lot dans
 [`prompts-lots.md`](prompts-lots.md).
 
+**Révision du 2026-08-24** : le chantier d'export directement exploitable pour l'analyse est
+découpé en **L45 à L50**. Le détail, les règles de données et les critères d'acceptation sont
+dans [`chantiers-export-analyse.md`](chantiers-export-analyse.md). Les anciens **L36** et **L37**
+ne doivent pas être lancés séparément pour ce chantier : L36 est requalifié par L47 et L37 est
+écarté du profil Analyse ; une feuille de fréquences ne sera réintroduite que si un besoin
+analytique explicite la justifie.
+
 ## Vue d'ensemble
 
 | Lot | Objet | Fichiers principaux | Lancer en même temps que |
@@ -109,6 +116,12 @@ Un prompt prêt à l'emploi existe pour chaque lot dans
 | **L42** | Génération du code patient côté serveur (audit P2) | migration (RPC d'allocation), `src/screens/member/NewPatient.tsx`, `src/data/patients.ts` | **jamais avec L41** (même fichier) |
 | **L43** | Gestion explicite de l'échec de `getSession()` (audit P2) | `src/auth/AuthProvider.tsx` | — |
 | **L44** | Validation DOCX/XLSX et nettoyage des métadonnées d'upload locales (audit P3 ×2) | `src/domain/imageUpload.ts`, `src/data/attachments.ts`, `src/data/inspection.ts` | **jamais avec L40** |
+| **L45** | Contrat des profils Export Analyse / Export complet | `docs/chantiers-export-analyse.md`, contrat et handler d'export, interface | **avant L46 à L50** |
+| **L46** | Identifiants analytiques, noms de colonnes et feuille `Modalités` | `supabase/functions/generate-export/exportContract.ts`, gabarits, tests | **après L45 ; jamais avec L36/L37** |
+| **L47** | Multiselect en indicatrices binaires dans le profil Analyse | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L45 ; remplace L36 ; jamais avec L22/L35** |
+| **L48** | Dates XLSX natives, CSV ISO et unités des durées | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L45 ; jamais avec L35** |
+| **L49** | Dictionnaire simplifié et feuille `Métadonnées` | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L46 à L48** |
+| **L50** | Concepts diagnostiques et référentiel terminologique dans l'export | référentiel, contrat d'export, tests | **différé ; après L46** |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
 > L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
@@ -689,7 +702,11 @@ Recommandation : rattacher à la version, et rendre la republication du gabarit 
 Taille comparable à L27 ou L28. **Jamais avec L21 à L24 ni L34** : `FieldForm.tsx`,
 `exportContract.ts`, `import.ts` et `CohortBuilder.tsx` sont exactement leurs fichiers.
 
-### L36 — Parité d'export des listes à choix multiples
+### ~~L36 — Parité d'export des listes à choix multiples~~ — requalifié par L47
+
+> Cette analyse reste conservée comme historique du constat. Pour la cible actuelle, L47 porte la
+> représentation des multiselect dans le profil **Export Analyse** ; L36 ne doit plus être lancé
+> séparément.
 
 Un `multiselect` sort en **deux colonnes** — libellés et codes, joints par `; ` (`optionCells`,
 `exportContract.ts:155`). La terminologie multivaluée livrée par L21/L22 en sort avec, en plus, une
@@ -763,7 +780,11 @@ devient plus probable.
 
 **Jamais avec L22 ni L35** : les trois lots écrivent dans `exportContract.ts`.
 
-### L37 — Feuille de fréquences prête à l'analyse
+### ~~L37 — Feuille de fréquences prête à l'analyse~~ — écarté du profil Analyse
+
+> Une feuille de fréquences n'appartient pas au MVP de simplification. Elle pourra être réévaluée
+> dans un lot ultérieur si un besoin analytique explicite le justifie ; L37 ne doit pas être lancé
+> séparément de la cible L45-L49.
 
 L36 donne au médecin des colonnes qu'il peut sommer ; ce lot lui donne la somme. Une feuille
 `Fréquences` dans le classeur, une ligne par valeur : `variable`, `code`, `libellé`, `n` (dossiers
@@ -959,7 +980,7 @@ avant ses lots.
   mono-personne saute) qui revient au porteur. À consigner comme décision plutôt qu'à découper en
   lot le jour où un second relecteur rejoint le projet.
 
-## Ordre suggéré — état au 2026-08-19
+## Ordre suggéré — état au 2026-08-24
 
 **Niveau atteint.** L1–L19 sont livrés, à l'exception de L14. L11 a été intégré puis promu sur
 `main` (PR #176, #189, correctifs #192 et #194). La famille « moteur de formulaires » (L27 à L33)
@@ -970,11 +991,10 @@ porte à **trente lots livrés**, plus un clos sans objet.
 **Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-Restent ouverts : les lots d'analyse **L34 à L37**, spécifiés mais non implémentés (L14 est en
-réalité livré le 2026-08-18, PR #215 — la phrase ci-dessus n'a pas été corrigée au moment de sa
-rédaction), et les lots d'audit **L38 à L44**, ajoutés le 2026-08-20 et menés sur un thread dédié
-en parallèle de L35 (voir la révision du 2026-08-20 en tête de document pour la seule collision
-identifiée, L41 contre L35).
+Restent ouverts : le lot **L34**, les lots d'audit **L38 à L44**, ajoutés le 2026-08-20 et menés
+sur un thread dédié, ainsi que le chantier d'export **L45 à L50** ajouté le 2026-08-24. L36 et L37
+sont requalifiés ou écartés par le nouveau profil Analyse ; voir la révision du 2026-08-24 en tête
+du document.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -998,10 +1018,11 @@ identifiée, L41 contre L35).
 4. **L35**, après la famille diagnostics : il touche `FieldForm.tsx`, `exportContract.ts`,
    `import.ts` et `CohortBuilder.tsx`, c'est-à-dire les fichiers de L21, L22, L24 et L23. La
    contrainte est structurelle et ne déplace aucune priorité.
-5. **L36**, après la fusion de L21 et L22 : sa généralisation de `buildMultivalueTable` suppose
-   la version L22 du fichier. À prendre également après L35, qui écrit dans `exportContract.ts`.
-6. **L37**, après L36 : même fichier, et la feuille de fréquences s'appuie sur l'énumération de
-   codes que L36 généralise au `multiselect`.
+5. **L45 à L49**, dans l'ordre décrit par [`chantiers-export-analyse.md`](chantiers-export-analyse.md) :
+   ils redéfinissent le profil d'export et touchent tous le contrat du générateur. Ne pas les
+   paralléliser avec L35 ni avec un ancien lot d'export.
+6. **L50**, différé après L46 : il dépend du référentiel diagnostique et ne doit pas retarder le
+   jalon MVP de l'Export Analyse.
 
 > L13, L18 et L19 sont déjà soldés. Après L20, L21, L22 et L24 peuvent donc démarrer ensemble ;
 > L23 et L25 suivent ensuite. Cette famille reste reportée après les formulaires, car L21 et L22
