@@ -1,12 +1,15 @@
 # Feuille de route technique — saisie de nouveaux patients hors-ligne
 
-- **Statut :** cible technique non implémentée
+- **Statut :** code des lots O0 à O5 livré le 2026-08-23 ; O6 (preuve navigateur) et O7
+  (activation/release) restent ouverts
 - **Date de cadrage :** 2026-08-21
 - **Objectif :** permettre la création d’un nouveau patient hors-ligne, sans rendre la base consultable hors-ligne, puis synchroniser la saisie au retour du réseau.
 - **Périmètre de cette feuille de route :** architecture, code, base, RLS, tests, PWA et preuves techniques uniquement.
 - **Références :** [architecture](architecture.md), [sécurité du mode hors-ligne](securite-mode-hors-ligne.md), [E2E navigateur](e2e-browser.md), [QA du site](qa-parcours-site.md).
 
-> Cette feuille de route décrit une cible. Elle ne modifie pas la politique actuelle et ne constitue pas une preuve de fonctionnement.
+> Les lots O0 à O5 sont maintenant implémentés localement, mais cette feuille ne constitue pas une
+> preuve staging ni une autorisation de données réelles. Le mode reste désactivé dans les builds
+> persistants jusqu'à la fin d'O6 et d'O7.
 
 ## Décision de cadrage — 2026-08-21
 
@@ -42,31 +45,27 @@ Après avoir préparé le contexte de saisie d’une base en ligne, un utilisate
 
 Le premier circuit ne couvre pas les uploads, images, imports, exports, demandes de curation ni la corbeille hors-ligne. Ces parcours pourront être traités séparément après preuve du circuit patient.
 
-## 2. État technique de départ
+## 2. État technique actuel
 
-Le dépôt possède déjà les briques suivantes :
+Le socle PWA, le snapshot analytique historique et l'outbox des corrections restent disponibles
+pour le mode de démonstration existant. Les lots **O0 à O5** ajoutent maintenant le mode
+*intake-only* sans rendre la base consultable hors-ligne :
 
-- PWA et service worker dans [vite.config.ts](../vite.config.ts) ;
-- téléchargement et lecture d’un instantané analytique dans `src/data/offline.ts` ;
-- cache IndexedDB cloisonné par compte, avec TTL et purge ;
-- file `outbox` pour les corrections de rencontres existantes ;
-- rejeu idempotent serveur via `replay_encounter_update` ;
-- écran de synchronisation et résolution de conflits.
+- `src/data/offlineIntake.ts` porte le contexte de saisie versionné, les opérations
+  `patient_create` / `encounter_create`, les identifiants locaux, le fingerprint, le TTL et la
+  synchronisation ordonnée ;
+- le contexte est conservé dans le store IndexedDB `intake_context` et les créations dans le
+  store `outbox` sous forme d'une union discriminée, partitionnée par compte ;
+- `BaseHome` et `PatientDetail` bloquent la lecture des patients serveur lorsque l'intake-only est
+  actif, tandis que les écrans dédiés permettent de reprendre une saisie locale en attente ;
+- `20260822000000_offline_intake_idempotency.sql` ajoute les reçus serveur fermés aux clients et
+  les RPC `replay_patient_create` / `replay_encounter_create`, qui recalculent l'empreinte et
+  réutilisent les RPC cliniques dans la même transaction.
 
-Les limites actuelles sont structurelles et l’existant ne correspond pas encore au mode cible :
-
-- [BaseHome](../src/screens/member/BaseHome.tsx) peut actuellement afficher des données du
-  snapshot hors-ligne ; ce comportement devra être interdit dans le mode intake-only ;
-- [NewPatient](../src/screens/member/NewPatient.tsx) appelle directement `create_patient` ;
-- [EncounterForm](../src/screens/member/EncounterForm.tsx) appelle directement `create_encounter` ;
-- l’outbox actuelle porte un `encounterId` déjà existant ;
-- aucun contexte de formulaire hors-ligne séparé du snapshot n’existe ;
-- aucun identifiant local de patient n’est transformé en identifiant serveur ;
-- aucune RPC idempotente de création patient ou rencontre n’existe encore.
-
-La solution doit donc **étendre l’outbox existante**, et non créer un deuxième moteur offline. Elle
-doit cependant séparer clairement le contexte de formulaire et la file des créations en attente du
-snapshot de lecture historique.
+La fonctionnalité est donc **implémentée localement mais non autorisée en production**. Elle exige
+`VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true` et `VITE_OFFLINE_INTAKE=demo`. O6 doit
+encore produire la preuve navigateur sur un preview isolé ; O7 doit décider l'activation et
+compléter les preuves de release.
 
 ## 3. Invariants techniques
 
@@ -104,11 +103,11 @@ flowchart LR
 
 ## 5. Lots techniques
 
-### O0 — Contrat des opérations
+### ~~O0 — Contrat des opérations~~ — **livré le 2026-08-23**
 
-**But :** figer le modèle avant d’écrire la base ou l’interface.
+**But atteint :** le modèle est figé et partagé entre la base, le domaine et les écrans.
 
-À définir dans les types du domaine :
+Le contrat livré dans les types du domaine comprend :
 
 - `patient_create` : base, identifiant local, code, identité, données permanentes, clé d’opération ;
 - `encounter_create` : patient local ou serveur, date, type, statut, données, clé d’opération ;
@@ -120,15 +119,17 @@ flowchart LR
 - mapping des identifiants et dépendances ;
 - règle de génération du code patient hors-ligne.
 
-**Choix technique recommandé :** générer un code hors-ligne stable et improbable à collision à partir de l’opération, plutôt que de reprendre le compteur local `P-0001`. Un code explicitement saisi par l’utilisateur reste possible, mais une collision serveur doit être affichée comme conflit.
+**Choix technique retenu :** générer un code hors-ligne stable et improbable à collision à partir de
+l’opération, plutôt que de reprendre le compteur local `P-0001`. Un code explicitement saisi par
+l’utilisateur reste possible, mais une collision serveur doit être affichée comme conflit.
 
-**Sortie :** types, invariants, diagramme d’états et cas d’erreur approuvés avant O1.
+**Sortie livrée :** types, invariants, diagramme d’états et cas d'erreur utilisés par O1 à O4.
 
-### O1 — Rejeu serveur idempotent
+### ~~O1 — Rejeu serveur idempotent~~ — **livré le 2026-08-23**
 
-**But :** rendre les créations rejouables sans doublon.
+**But atteint :** rendre les créations rejouables sans doublon.
 
-Créer uniquement des migrations additives et horodatées dans `supabase/migrations/` :
+La migration additive et horodatée livrée dans `supabase/migrations/` ajoute :
 
 - table de reçu pour `patient_create` : utilisateur, clé, fingerprint, base, patient serveur, code serveur, dates ;
 - table de reçu pour `encounter_create` : utilisateur, clé, fingerprint, patient, rencontre serveur, dates ;
@@ -149,15 +150,16 @@ Chaque RPC doit :
 
 Ajouter aussi un contrôle serveur explicite pour les collisions de code et les doublons d’identité. Le client ne peut pas se baser sur une recherche hors-ligne ancienne pour décider seul.
 
-**Sortie :** migrations, RPC, ACL, tests PostgreSQL de droits, concurrence, rejeu et perte de réponse.
+**Sortie livrée :** migration, RPC, ACL et tests PostgreSQL de droits, concurrence, rejeu et perte de réponse.
 
-### O2 — IndexedDB et outbox
+### ~~O2 — IndexedDB et outbox~~ — **livré le 2026-08-23**
 
-**But :** persister le patient local et ses dépendances sans introduire un second système.
+**But atteint :** persister le patient local et ses dépendances sans introduire un second système.
 
-Étendre le store `outbox` existant avec une union discriminée. Ajouter la migration de version IndexedDB nécessaire, sans perdre les opérations valides existantes.
+Le store `outbox` existant porte désormais une union discriminée. Le store `intake_context` sépare
+les métadonnées de formulaire du snapshot de lecture, sans perdre les opérations valides existantes.
 
-À implémenter :
+Fonctions livrées :
 
 - génération de `localPatientId` et `localEncounterId` ;
 - stockage du payload complet de l’opération de création, y compris l’identité nécessaire au
@@ -172,13 +174,13 @@ Ajouter aussi un contrôle serveur explicite pour les collisions de code et les 
 - suppression en cascade d’une création locale et de ses rencontres dépendantes ;
 - refus de synchroniser une rencontre dont le patient parent est rejeté.
 
-**Sortie :** tests de rechargement, crash/reprise, TTL, isolation entre comptes, dépendances et purge.
+**Sortie livrée :** tests de rechargement, reprise, TTL, isolation entre comptes, dépendances et purge.
 
-### O3 — Formulaires hors-ligne
+### ~~O3 — Formulaires hors-ligne~~ — **livré le 2026-08-23**
 
-**But :** faire fonctionner les vrais écrans sans réseau.
+**But atteint :** faire fonctionner les écrans de saisie sans réseau, avec lecture serveur bloquée.
 
-Adapter :
+Écrans adaptés :
 
 - `NewPatient` : charger champs, règles et valeurs depuis le contexte de saisie ; créer localement ; afficher l’état en attente ;
 - `EncounterForm` : charger uniquement le patient local en attente et le dictionnaire local ; créer une rencontre dépendante ;
@@ -191,13 +193,13 @@ Adapter :
 L’identité en attente ne doit pas être ajoutée au snapshot analytique public de l’application. Elle doit rester dans l’opération locale cloisonnée, avec les mêmes contrôles de compte, TTL et purge. Le
 contexte de formulaire peut fournir les règles et options, mais jamais les patients déjà enregistrés.
 
-**Sortie :** tests web du parcours patient et absence d’appels réseau pendant la saisie et l’enregistrement hors-ligne.
+**Sortie livrée :** tests web du parcours patient et absence d’appels réseau pendant la saisie et l’enregistrement hors-ligne.
 
-### O4 — Synchronisation et interface de reprise
+### ~~O4 — Synchronisation et interface de reprise~~ — **livré le 2026-08-23**
 
-**But :** rendre la reprise compréhensible et sûre.
+**But atteint :** rendre la reprise compréhensible et sûre.
 
-Étendre `flushOutbox` et `SyncCenter` pour :
+`flushIntake` et `SyncCenter` livrent :
 
 - trier les opérations selon leurs dépendances ;
 - synchroniser automatiquement au retour de `online` et manuellement ;
@@ -208,11 +210,11 @@ contexte de formulaire peut fournir les règles et options, mais jamais les pati
 - conserver la trace locale minimale nécessaire à la reprise ;
 - rendre visibles les opérations bloquées par leur parent.
 
-**Sortie :** aucun état `syncing` définitivement bloqué, aucune perte silencieuse, aucune double création.
+**Sortie livrée :** aucun état `syncing` définitivement bloqué, aucune perte silencieuse, aucune double création.
 
-### O5 — Validation locale et serveur
+### ~~O5 — Validation locale et serveur~~ — **livré le 2026-08-23**
 
-Contrôles à ajouter :
+Contrôles présents :
 
 - tests unitaires du fingerprint et de l’ordre des dépendances ;
 - tests IndexedDB du mapping local/serveur ;
@@ -235,7 +237,7 @@ npm run db:verify
 npm run build
 ```
 
-### O6 — Preuve navigateur de bout en bout
+### O6 — Preuve navigateur de bout en bout — **à exécuter**
 
 Le scénario doit être exécuté sur un preview isolé avec données fictives et service worker réel :
 
@@ -259,7 +261,7 @@ Le scénario doit être exécuté sur un preview isolé avec données fictives e
 
 La preuve doit conserver le SHA, l’URL du preview, les résultats Playwright, les erreurs console/réseau, les captures des états offline/synchronisation et les vérifications PostgreSQL. Une preuve de tests unitaires ne remplace pas cette preuve navigateur.
 
-### O7 — Documentation et activation
+### O7 — Documentation et activation — **partiellement traité ; activation ouverte**
 
 Après validation d’O6 :
 
@@ -273,7 +275,8 @@ Après validation d’O6 :
 
 ## 6. Critères de fin
 
-Le lot ne sera pas déclaré terminé tant que les conditions suivantes ne sont pas toutes vraies :
+Les critères ci-dessous décrivent la fin complète de la feuille de route. Les points O0 à O5 sont
+implémentés localement ; la déclaration globale reste bloquée par la preuve O6 et l'activation O7.
 
 - un nouveau patient peut être créé sans réseau, après préparation en ligne du contexte de saisie ;
 - aucun patient ou rencontre déjà enregistré n’est visible hors-ligne ;

@@ -10,7 +10,7 @@
 > parcours développeur et un parcours sécurité. L'index de toute la documentation est dans
 > [README.md](README.md).
 
-**Instantané vérifié le 20 août 2026** (`npm run db:verify` : les 132 migrations rejouées
+**Instantané vérifié le 24 août 2026** (`npm run db:verify` : les 132 migrations rejouées
 proprement depuis zéro en ~10 s ; décomptes du schéma `public` repris de
 [schema-etat-final.md](schema-etat-final.md), qui est **généré** et fait foi) :
 43 tables · 269 fonctions · 63 politiques RLS · 66 triggers · 8 Edge Functions · ~21 200 lignes de
@@ -155,7 +155,11 @@ erDiagram
     base ||--o{ upload_ticket : "depot de fichier"
     upload_ticket ||--o| quarantine_move_log : "si verdict negatif"
 
-    base ||--o{ offline_encounter_operation : "file d'attente hors-ligne"
+    base ||--o{ offline_encounter_operation : "corrections hors-ligne"
+    base ||--o{ offline_patient_create_operation : "reçus intake"
+    base ||--o{ offline_encounter_create_operation : "reçus intake"
+    patient ||--o{ offline_patient_create_operation : "création rejouable"
+    encounter ||--o{ offline_encounter_create_operation : "création rejouable"
 
     research_group ||--o{ research_group_base : rattache
     research_group_base }o--|| base : base
@@ -310,7 +314,7 @@ seule, ou le patient **et** la demande.
 | **Écrans** | `src/screens/member`, `src/screens/staff` | UI React |
 | Auth & rôles | `src/auth/` | `AuthProvider`, gating par rôle (logique pure testée) |
 | Routage | `src/routes/` | 13 routes + `ProtectedRoute` (gating par rôle) |
-| Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts` | Service worker, file d'attente d'écritures |
+| Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts`, `src/data/offlineIntake.ts` | Snapshot analytique historique, corrections et saisie *intake-only* idempotente |
 | i18n | `src/i18n/` | Messages fr/en |
 | **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) + `e2e/` | RLS + domaine + rendu + bout-en-bout |
 | Opérations | `scripts/` (~40) | Vérifications de schéma, sauvegarde, preuves de gouvernance, contrôles de release |
@@ -355,7 +359,11 @@ seule, ou le patient **et** la demande.
 20260815160000_template_field_option_codes      20260815161000_option_key_repair
 20260815180000_template_section                 20260817120000_required_complete_at_complete
 20260818045033_multivalue_terminology_foundation
-20260820210000_base_purge
+
+# Variables calculées, purge définitive et saisie hors-ligne intake-only
+20260820120000_template_field_formula        20260820210000_base_purge
+20260821120000_template_field_formula_datetime  20260821130000_template_field_formula_units
+20260822000000_offline_intake_idempotency
 ```
 
 ---
@@ -477,25 +485,24 @@ plutôt que fusionnés silencieusement.
 
 ### 9.3 Mode hors-ligne
 
-L'existant de démonstration comprend trois phases : **lecture** (instantané analytique local),
-**écritures** (file d'attente `offline_encounter_operation` rejouée à la reconnexion) et
-**conflits** (verrou optimiste sur la rencontre : une modification concurrente est détectée et
-présentée, jamais écrasée en silence). Cette implémentation actuelle ne permet pas encore la
-création d'un nouveau patient hors-ligne.
+Deux parcours coexistent, tous deux réservés aux démonstrations explicitement autorisées :
 
-La cible désormais retenue est une **saisie hors-ligne seule** (*intake-only*), encore non livrée :
+- le parcours historique peut charger un **instantané analytique** et rejouer des corrections de
+  rencontres via `offline_encounter_operation`, avec verrou optimiste et résolution de conflit ;
+- le parcours **intake-only**, livré localement dans O0 à O5 le 2026-08-23, ne charge aucune ligne
+  existante. Après préparation en ligne d'un contexte versionné (`intake_context`), il conserve
+  une création patient puis, éventuellement, une rencontre dépendante dans l'outbox, sous
+  identifiants locaux et TTL de 24 heures. À la reconnexion, les RPC
+  `replay_patient_create` / `replay_encounter_create` recalculent l'empreinte côté serveur,
+  rejouent dans l'ordre et renvoient le même résultat en cas de retry.
 
-- la liste, la recherche, les fiches et les rencontres déjà présentes sur le serveur sont
-  indisponibles hors-ligne ;
-- l'instantané de lecture ne doit plus être consommé par ce mode ;
-- seul le contexte de formulaire préparé en ligne est conservé ;
-- les nouveaux patients sont stockés séparément comme saisies locales en attente, puis envoyés
-  par des opérations idempotentes après reconnexion ;
-- la base redevient consultable uniquement après retour en ligne.
-
-La feuille de route et les critères de preuve sont détaillés dans
-[feuille-route-offline-saisie.md](feuille-route-offline-saisie.md). Contraintes de sécurité
-associées : [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md).
+Quand l'intake-only est actif, la liste, la recherche, les fiches et les rencontres déjà présentes
+sur le serveur sont indisponibles hors-ligne ; la base redevient consultable uniquement après retour
+en ligne. Le mode est protégé par `VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true` et
+`VITE_OFFLINE_INTAKE=demo`, et reste désactivé dans les builds persistants tant que la preuve
+navigateur O6 et l'activation/release O7 ne sont pas validées. Détail :
+[feuille-route-offline-saisie.md](feuille-route-offline-saisie.md). Contraintes de sécurité :
+[securite-mode-hors-ligne.md](securite-mode-hors-ligne.md).
 
 ### 9.4 Autres sous-systèmes
 

@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-18**
+- Établi le 2026-07-27 · **révisé le 2026-08-24**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -68,6 +68,14 @@ ne doivent pas être lancés séparément pour ce chantier : L36 est requalifié
 écarté du profil Analyse ; une feuille de fréquences ne sera réintroduite que si un besoin
 analytique explicite la justifie.
 
+> **Révision du 2026-08-24 — alignement sur le code livré** : **L35** (variables calculées) est
+> livré depuis le 2026-08-21, avec son support `datetime` et ses unités d'affichage. **L36** a été
+> livré le 2026-08-20 dans son périmètre historique (profil Export complet), puis requalifié par
+> **L47** pour le profil Export Analyse. Les chantiers **D10** (purge définitive) et **O0 à O5**
+> (saisie hors-ligne *intake-only*) sont également déjà présents dans le code ; **O6** (preuve
+> navigateur) et **O7** (activation/release) restent à faire. Cette révision corrige aussi l'état
+> contradictoire de **L14**, livré le 2026-08-18.
+
 ## Vue d'ensemble
 
 | Lot | Objet | Fichiers principaux | Lancer en même temps que |
@@ -106,9 +114,9 @@ analytique explicite la justifie.
 | ~~L32~~ | ~~Affichage conditionnel~~ | **Livré le 2026-08-15** (valeur masquée effacée, jamais en silence) | — |
 | ~~L33~~ | ~~Raisons de valeur manquante par variable~~ | **Livré le 2026-08-14** (`refus` et `non_documente` ajoutés ; `allow_missing_codes` conservé en miroir) | — |
 | **L34** | Filtre d'une variable Diagnostic à valeur unique | migration (`jsonb_matches`), `CohortBuilder.tsx` | L24, L25 (L26 étant clos, sa contrainte d'exclusion tombe) |
-| **L35** | Variables calculées : arithmétique définie par l'utilisateur | migration (`template_field.formula`), `exportContract.ts`, `FieldForm.tsx`, `EncounterFields.tsx`, `import.ts`, `CohortBuilder.tsx` | L25 — **jamais avec L21 à L24 ni L34** |
-| **L36** | Parité d'export des listes à choix multiples | `exportContract.ts`, `exportContract_test.ts`, `handler.ts` | **jamais avec L22 ni L35** |
-| **L37** | Feuille de fréquences prête à l'analyse | `exportContract.ts` (ou module dédié), `handler.ts`, tests Deno | **jamais avec L22, L35 ni L36** |
+| ~~L35~~ | ~~Variables calculées : arithmétique définie par l'utilisateur~~ | **Livré le 2026-08-21** (migrations `20260820120000`, `20260821120000`, `20260821130000`, évaluateur partagé navigateur/Edge) | — |
+| ~~L36~~ | ~~Parité d'export des listes à choix multiples~~ | **Livré le 2026-08-20 dans le profil Export complet ; requalifié par L47 le 2026-08-24** | — |
+| ~~L37~~ | ~~Feuille de fréquences prête à l'analyse~~ | **Écarté du profil Analyse le 2026-08-24** ; à réévaluer seulement sur besoin analytique explicite | — |
 | **L38** | Interdire `inspection=paused` en production (audit P0) | `.github/workflows/coordinated-release.yml`, `scripts/release-env-check.mjs`, `scripts/check-inspection-env.mjs`, `.env.production.example` | — |
 | **L39** | Durcir la persistance des brouillons cliniques (audit P1) | `src/data/drafts.ts`, `src/screens/member/EncounterForm.tsx` | — |
 | **L40** | Limites de dimensions/mégapixels sur les images (audit P2) | `src/domain/imageUpload.ts` | **jamais avec L44** |
@@ -122,6 +130,10 @@ analytique explicite la justifie.
 | **L48** | Dates XLSX natives, CSV ISO et unités des durées | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L45 ; jamais avec L35** |
 | **L49** | Dictionnaire simplifié et feuille `Métadonnées` | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L46 à L48** |
 | **L50** | Concepts diagnostiques et référentiel terminologique dans l'export | référentiel, contrat d'export, tests | **différé ; après L46** |
+| ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
+| ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
+| **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
+| **O7** | Activation et preuve de release du mode *intake-only* | variables `VITE_OFFLINE_*`, documentation offline, preuve staging | **après O6 ; jamais sur une release clinique sans arbitrage** |
 
 > **L27 à L33 ne sont PAS parallélisables entre eux.** `FieldForm.tsx` est touché par L27, L28,
 > L30, L31 et L33 — et déjà par L4 et L21 ; `exportContract.ts` par L27, L30, L31, L32 et L33 — et
@@ -647,7 +659,16 @@ des opérateurs distincts, auquel cas rien ne bouge mais deux syntaxes cohabiten
 ailleurs un **inventaire en lecture seule** des cohortes bâties sur une variable Diagnostic : leur
 population a été calculée avec le défaut.
 
-### L35 — Variables calculées : arithmétique définie par l'utilisateur
+### ~~L35 — Variables calculées : arithmétique définie par l'utilisateur~~ — **livré le 2026-08-21**
+
+> **État vérifié dans le code** : le lot est livré. La formule est versionnée avec le gabarit,
+> évaluée par un contrat partagé entre le navigateur et `generate-export`, jamais stockée dans les
+> données cliniques ; les variables calculées sont exclues de la complétude, de l'import et des
+> cohortes. Les migrations additives `20260820120000_template_field_formula.sql`,
+> `20260821120000_template_field_formula_datetime.sql` et
+> `20260821130000_template_field_formula_units.sql` couvrent la grammaire, `datetime` et les
+> unités d'affichage. Le détail de l'implémentation et des contrôles exécutés est consigné dans
+> [`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md#lot-l35--variables-calculées--arithmétique-définie-par-lutilisateur-2026-08-20).
 
 L'utilisateur définit une variable dont la valeur est un calcul sur d'autres variables du même
 gabarit : `duree_sejour = date_sortie − date_entree`, `delta_score = score_j7 − score_j0`. Il
@@ -702,7 +723,7 @@ Recommandation : rattacher à la version, et rendre la republication du gabarit 
 Taille comparable à L27 ou L28. **Jamais avec L21 à L24 ni L34** : `FieldForm.tsx`,
 `exportContract.ts`, `import.ts` et `CohortBuilder.tsx` sont exactement leurs fichiers.
 
-### ~~L36 — Parité d'export des listes à choix multiples~~ — requalifié par L47
+### ~~L36 — Parité d'export des listes à choix multiples~~ — **livré le 2026-08-20, requalifié par L47 le 2026-08-24**
 
 > Cette analyse reste conservée comme historique du constat. Pour la cible actuelle, L47 porte la
 > représentation des multiselect dans le profil **Export Analyse** ; L36 ne doit plus être lancé
@@ -766,19 +787,20 @@ ordre » (`exportContract_test.ts:207-220`) fige aujourd'hui les deux colonnes. 
 précieux, c'est l'**ordre** partagé entre libellés et codes ; seul le nombre de colonnes attendu
 change.
 
-**Points à trancher.** Le `select` à valeur unique reste **exclu de ce lot** : sa colonne
+**Historique de la mise en œuvre (avant requalification).** Le `select` à valeur unique restait
+**exclu de ce lot** : sa colonne
 `option_code__` est déjà analysable telle quelle, et une feuille longue d'une ligne par dossier
-n'apporterait rien. Il est en revanche **couvert par L37**, où une table de fréquences le concerne
-autant que les autres types — le point est donc clos. Reste à fixer la valeur de `nb__` quand la
-variable porte un code de valeur manquante — 0 ou vide — là où les indicatrices sont déjà
-tranchées à 0.
+n'apporterait rien. La feuille de fréquences envisagée par l'ancien L37 a depuis été écartée du
+profil Analyse ; les modalités des `select` relèvent désormais du contrat L46. La valeur de `nb__`
+pour un code de valeur manquante était 0, comme les indicatrices.
 
 **Effet de bord à surveiller** : le plafond de cellules XLSX. `handler.ts` compte déjà les cellules
 des feuilles multivaluées (`:594`) ; généraliser au `multiselect` multiplie les feuilles et
 rapproche donc le plafond sur les bases larges. Le mécanisme existe, c'est son déclenchement qui
 devient plus probable.
 
-**Jamais avec L22 ni L35** : les trois lots écrivent dans `exportContract.ts`.
+**Règle de collision historique :** jamais avec L22 ni L35 ; les trois lots écrivaient dans
+`exportContract.ts`. L36 étant livré et requalifié, cette règle ne déclenche plus un lancement.
 
 ### ~~L37 — Feuille de fréquences prête à l'analyse~~ — écarté du profil Analyse
 
@@ -808,10 +830,12 @@ patient donnerait à un patient suivi cinq fois un poids de cinq dans un tableau
 principale ne le montre qu'une fois. Les fréquences se calculent sur les lignes **effectivement
 produites**, jamais sur les données d'entrée.
 
-**Couverture uniforme** : `select`, `multiselect`, terminologie à valeur unique et terminologie
-multivaluée. C'est ce qui distingue ce lot de L36, et ce qui **clot le point laissé ouvert par
-lui** : un `select` n'a pas besoin d'indicatrices, mais il a autant besoin d'une table de
-fréquences que les autres.
+**Couverture uniforme envisagée dans l'ancien périmètre** : `select`, `multiselect`, terminologie
+à valeur unique et terminologie multivaluée. C'était ce qui distinguait ce lot de L36 et ce qui
+était présenté comme le point laissé ouvert par lui : un `select` n'a pas besoin d'indicatrices,
+mais il a autant besoin d'une table de fréquences que les autres. Cette extension n'est toutefois
+pas livrée dans le profil Export Analyse : L37 reste écarté et les modalités des `select` relèvent
+du contrat L46.
 
 **Le plafond de 100 codes ne s'applique pas ici.** `MAX_INDICATOR_CODES` (`:342`) existe parce
 qu'une colonne coûte cher ; une ligne ne coûte rien. Une variable écartée des indicatrices par
@@ -952,6 +976,29 @@ périmètre Storage/upload — sur le modèle de L24, petit lot isolé à faible
 Fichiers principaux : `src/domain/imageUpload.ts` (catalogue de formats — **partagé avec L40**,
 à ne pas lancer ensemble), `src/data/attachments.ts`, `src/data/inspection.ts`.
 
+### ~~D10 — Purge définitive des bases de la corbeille~~ — **livré le 2026-08-20**
+
+Le chantier D10 est déjà livré hors de la séquence L1–L50. La migration additive
+`20260820210000_base_purge.sql`, l'Edge Function `purge-deleted-base` et l'interface de corbeille
+gèrent une purge immédiate, explicite et irréversible, avec manifeste Storage, reprise idempotente,
+conservation des preuves d'audit/export et suppression PostgreSQL transactionnelle. Le détail et
+les vérifications sont dans la section D10 du
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md#lot-d10--purge-définitive-des-bases-de-la-corbeille-2026-08-20).
+
+### ~~O0 à O5 — Saisie hors-ligne *intake-only*~~ — **code livré le 2026-08-23**
+
+Le contrat local, le contexte de formulaire préparé en ligne, les créations patient/rencontre,
+le rejeu ordonné et le Centre de synchronisation sont implémentés dans
+`src/data/offlineIntake.ts` et les écrans patient. La migration
+`20260822000000_offline_intake_idempotency.sql` ajoute les reçus serveur et les RPC
+`replay_patient_create` / `replay_encounter_create`, avec empreinte recalculée côté serveur,
+verrou de rejeu et transaction avec la création clinique. Le mode reste protégé par
+`VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true` et `VITE_OFFLINE_INTAKE=demo` ; il ne
+constitue donc pas une autorisation de données réelles.
+
+La preuve navigateur O6 (`e2e/offline-intake.spec.ts`) et l'activation/release O7 restent ouverts.
+Tant qu'ils ne sont pas validés, les builds persistants gardent le mode hors-ligne désactivé.
+
 ## Deux chantiers volontairement laissés hors des lots
 
 **Langage d'expression et catalogue de scores validés.** Le sous-ensemble utile — une
@@ -982,19 +1029,18 @@ avant ses lots.
 
 ## Ordre suggéré — état au 2026-08-24
 
-**Niveau atteint.** L1–L19 sont livrés, à l'exception de L14. L11 a été intégré puis promu sur
-`main` (PR #176, #189, correctifs #192 et #194). La famille « moteur de formulaires » (L27 à L33)
-est close depuis le 2026-08-15. La famille « listes de diagnostics » l'est depuis le 2026-08-19 :
-L20 à L25 livrés (PR #222, #224, #225, #226, #228, #229) et **L26 clos sans exécution**. Cela
-porte à **trente lots livrés**, plus un clos sans objet.
+**Niveau atteint.** Les lots **L1 à L33** sont soldés : 32 sont livrés et **L26 est clos sans
+exécution**. **L14 est bien livré le 2026-08-18**. **L35** est livré le 2026-08-21. **L36** a
+été livré dans son périmètre historique le 2026-08-20, puis requalifié par L47 pour le profil
+Export Analyse. **D10** et **O0 à O5** sont livrés hors de la séquence L1–L50.
 
 **Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-Restent ouverts : le lot **L34**, les lots d'audit **L38 à L44**, ajoutés le 2026-08-20 et menés
-sur un thread dédié, ainsi que le chantier d'export **L45 à L50** ajouté le 2026-08-24. L36 et L37
-sont requalifiés ou écartés par le nouveau profil Analyse ; voir la révision du 2026-08-24 en tête
-du document.
+Restent ouverts : **L34**, les lots d'audit **L38 à L44**, le chantier d'export **L45 à L50**,
+ainsi que **O6** et **O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté
+du profil Analyse et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du
+document.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -1008,42 +1054,30 @@ du document.
       orphelines ;
    7. ~~**L31**~~ — sections personnalisables — **livré le 2026-08-15** ; une seule notion (la
       section visuelle), gel total sur version publiée, miroir sur le code.
-2. **L14**, seul, après les autres ajouts de textes i18n.
-3. ~~**Famille « listes de diagnostics »**~~ (L20 à L26) — **close le 2026-08-19** :
+2. ~~**Famille « listes de diagnostics »**~~ (L20 à L26) — **close le 2026-08-19** :
    1. ~~**L20**~~ — surface base — **livré le 2026-08-18** ;
    2. ~~**L21**, **L22**, **L24**~~ — saisie, export, refus au mappage — **livrés le 2026-08-18** ;
    3. ~~**L23**~~ et ~~**L25**~~ — cohortes et conflit hors-ligne — **livrés le 2026-08-18** ;
    4. ~~**L26**~~ — **clos sans exécution le 2026-08-19** : la base d'essai qui portait
       `diagnostic_1/2/3` a été supprimée, il n'y a plus rien à convertir.
-4. **L35**, après la famille diagnostics : il touche `FieldForm.tsx`, `exportContract.ts`,
-   `import.ts` et `CohortBuilder.tsx`, c'est-à-dire les fichiers de L21, L22, L24 et L23. La
-   contrainte est structurelle et ne déplace aucune priorité.
-5. **L45 à L49**, dans l'ordre décrit par [`chantiers-export-analyse.md`](chantiers-export-analyse.md) :
-   ils redéfinissent le profil d'export et touchent tous le contrat du générateur. Ne pas les
-   paralléliser avec L35 ni avec un ancien lot d'export.
-6. **L50**, différé après L46 : il dépend du référentiel diagnostique et ne doit pas retarder le
+3. ~~**L35**~~ — variables calculées — **livré le 2026-08-21** ; ses fichiers partagés ne sont
+   plus une collision active pour les lots futurs.
+4. **L34**, seul sur sa migration et sa surface `CohortBuilder.tsx` ; il ne doit pas réactiver les
+   opérateurs retirés par L23 sans inventaire des cohortes concernées.
+5. **L38 à L44**, dans l'ordre décidé par l'audit et en respectant les collisions L40/L44 et
+   L41/L42. L38 reste prioritaire : il n'est pas couvert par la livraison offline, qui demeure
+   désactivée en production.
+6. **L45 à L49**, dans l'ordre décrit par [`chantiers-export-analyse.md`](chantiers-export-analyse.md) :
+   ils redéfinissent le profil d'export et touchent tous le contrat du générateur.
+7. **L50**, différé après L46 : il dépend du référentiel diagnostique et ne doit pas retarder le
    jalon MVP de l'Export Analyse.
+8. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
+   d'activation et preuve de release. Aucun de ces deux lots n'autorise l'usage de données réelles.
 
-> L13, L18 et L19 sont déjà soldés. Après L20, L21, L22 et L24 peuvent donc démarrer ensemble ;
-> L23 et L25 suivent ensuite. Cette famille reste reportée après les formulaires, car L21 et L22
-> partagent des fichiers avec cette dernière.
-
-> **État au 2026-08-18 : L20 est livré** (`cde3170`, migration
-> `20260818045033_multivalue_terminology_foundation.sql`). La suite est donc **L21 et L22
-> ensemble**, comme prévu — et non L21 seul, malgré la formule « prêt pour la suite séquentielle
-> L21 » du journal d'exécution. La raison n'est pas un conflit de fichiers (il n'y en a aucun entre
-> les deux) mais l'asymétrie laissée par l'annulation de L22 : la base accepte désormais les
-> listes, l'export ne savait plus les lire. Une variable multivaluée saisie sans L22 sortirait en
-> `[object Object]` dans la colonne principale, code vide, sans erreur ni avertissement. Sans L21
-> l'interface n'en crée aucune, donc **le trou ne s'ouvre que le jour où L21 est fusionné**.
-> **L22 est restauré depuis le 2026-08-18** (`2cf39f8`) mais pas encore fusionné : la règle tient
-> donc jusqu'à ce que les deux soient en ligne.
-
-> **Les deux familles se gênent aussi entre elles** : L21 et L27, L28, L30, L31, L33 touchent tous
-> `FieldForm.tsx` ; L22 et L27, L30, L31, L32, L33 touchent tous `exportContract.ts`. En pratique,
-> **une seule session à la fois sur le moteur de formulaires**, sauf L29 ; ne pas entamer L21/L22
-> avant la fin de cette file. La priorité retenue exclut donc tout lancement de la famille
-> diagnostics avant L30 et L31 ; L14 suit ensuite seul.
+> **Historique de coordination** : L21, L22 et L24 ont été livrés le 2026-08-18, puis L23 et L25 ;
+> la famille diagnostics n'est donc plus une file d'attente. Les anciennes notes sur la restauration
+> de L22 et son absence de fusion décrivaient l'état du 2026-08-18 avant sa livraison ; elles ne
+> constituent plus une consigne opérationnelle.
 
 ### Leçon des trois lots menés en parallèle
 
