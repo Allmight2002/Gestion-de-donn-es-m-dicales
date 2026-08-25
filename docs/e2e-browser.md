@@ -37,6 +37,7 @@ jamais en cas de succès. Les retries sont désactivés (`retries: 0`) : une err
 | **Modèle d'observation** | création transverse, formulaire unique sans rencontre ; régression longitudinale | contrôle manuel déployé le 2026-08-01 ; E2E dédié à ajouter |
 | **Parcours export** | UI → Edge `generate-export` → historique → téléchargement (CSV) | oui (correction lot 10) |
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
+| **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
@@ -50,7 +51,10 @@ des couvertures **complémentaires et distinctes**, pas un substitut au parcours
 - Parcours patient avancé : conflit de version concurrent, complétion, rencontres, images.
 - Import : reprise d'un lot, CSV/XLSX, historique, refus d'un export forgé côté client.
 - Fichiers / upload : dépôt navigateur, états `pending` → accepté/rejeté, lecture refusée puis autorisée.
-- Hors-ligne : instantané, réécritures/outbox, reconnexion, verrou optimiste.
+- Hors-ligne historique : instantané, réécritures/outbox, reconnexion, verrou optimiste.
+- Saisie hors-ligne *intake-only* : le scénario O6 existe, mais exige un preview construit avec
+  `VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true`, `VITE_OFFLINE_INTAKE=demo` et des
+  fixtures staging ; sa présence dans le dépôt ne vaut pas preuve d'exécution.
 - Révocation dynamique de permissions et changement de compte.
 - API indisponible / dégradée côté navigateur.
 

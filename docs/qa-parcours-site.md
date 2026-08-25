@@ -124,9 +124,23 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
 27. Ouvrir une tâche du pool si disponible : les documents sont accessibles, mais **AUCUN nom/date de naissance de patient n'est visible nulle part**. Chercher activement : fiche, titres, URLs.
 
 ## 6. Hors-ligne (rapide)
-28. Sur une base : « Rendre disponible hors-ligne » → passer le navigateur **hors-ligne** (DevTools → Network → Offline) → recharger : bandeau hors-ligne, liste des patients consultable (codes, PAS d'identité), fiche patient lisible ; « À compléter »/actions d'écriture absentes ou en file. Repasser en ligne.
+28. **Parcours historique de démonstration uniquement** : sur une base, « Rendre disponible
+    hors-ligne » → passer le navigateur **hors-ligne** (DevTools → Network → Offline) → recharger :
+    bandeau hors-ligne, liste des patients consultable (codes, PAS d'identité), fiche patient
+    lisible ; « À compléter »/actions d'écriture absentes ou en file. Repasser en ligne. Ce parcours
+    n'est pas celui de l'intake-only.
 
-## 6bis. Coopération à deux comptes (médecin propriétaire + 2ᵉ médecin)
+## 6bis. Saisie hors-ligne *intake-only* — preview isolé
+
+Ce parcours exige un build avec `VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true` et
+`VITE_OFFLINE_INTAKE=demo`, des données fictives et le scénario
+[`e2e/offline-intake.spec.ts`](../e2e/offline-intake.spec.ts). Il doit vérifier que la lecture de
+la base est bloquée hors-ligne, qu'un patient puis une rencontre restent dans la file locale,
+qu'un rechargement ne perd pas la saisie, qu'un rejeu ne crée pas de doublon et que les rejets sont
+visibles. La preuve O6 n'est pas considérée comme acquise tant que le scénario n'a pas été exécuté
+sur un preview avec service worker réel.
+
+## 6ter. Coopération à deux comptes (médecin propriétaire + 2ᵉ médecin)
 > L'invitation n'envoie PAS d'email : elle génère un **lien à partager** ; l'adresse saisie sert de
 > **verrou** (seul un compte connecté avec cette adresse peut accepter). Utiliser 2 fenêtres :
 > normale (propriétaire) + **navigation privée** (2ᵉ médecin).

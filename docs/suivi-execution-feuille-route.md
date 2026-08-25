@@ -3157,9 +3157,9 @@ faire en recopiant l'évaluateur dans l'un des deux mondes, ce test tombera.
   dans `initial` : corriger le libellé d'une variable les efface. Le défaut est **antérieur** à ce
   lot et hors de son périmètre ; seule `formula` a été ajoutée là, pour ne pas créer une troisième
   occurrence du même problème. À traiter séparément.
-- Le tableau des lots de `lots-paralleles.md` n'a **pas** été mis à jour : une session parallèle y
-  écrivait au même moment (lots L38 à L44 issus de l'audit du 18 août). À reprendre par elle ou
-  après sa fusion.
+- Le tableau des lots de `lots-paralleles.md` était resté en retard au moment de cette exécution,
+  une session parallèle y écrivant au même moment (lots L38 à L44 issus de l'audit du 18 août).
+  Il est maintenant réaligné avec L35, L36, D10 et O0 à O7 dans la révision du 2026-08-24.
 
 ## L36 — Parité d'export des listes à choix multiples (2026-08-20)
 
@@ -3259,7 +3259,38 @@ faire en recopiant l'évaluateur dans l'un des deux mondes, ce test tombera.
 
 - `npm run lint` global descend dans les worktrees concurrents présents sous `.claude/worktrees`
   et échoue sur 1 487 erreurs de parsing dues à des `tsconfigRootDir` ambigus ; le lint ciblé
-  des surfaces D10 est vert. Le fichier non suivi `docs/feuille-route-offline-saisie.md` et
-  `.freebuff/` sont restés hors périmètre et inchangés.
+  des surfaces D10 est vert. La preuve navigateur O6 et l'activation O7 restent hors de cette
+  validation ; `.freebuff/` est resté hors périmètre et inchangé.
 - La preuve distante de sauvegarde, d'application de migration, de déploiement Edge et de
   suppression de données réelles reste à produire dans le circuit de release autorisé.
+
+## Lot O0–O5 — Saisie hors-ligne *intake-only* (code livré le 2026-08-23)
+
+### Périmètre livré
+
+Le code de la feuille de route [saisie hors-ligne](feuille-route-offline-saisie.md) est désormais
+présent pour les lots **O0 à O5**. Il reste protégé par les trois interrupteurs de démonstration
+`VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true` et `VITE_OFFLINE_INTAKE=demo` ; cette
+livraison n'autorise donc pas l'usage de données médicales réelles.
+
+- **O0/O2** : contrat `patient_create` / `encounter_create`, contexte de formulaire versionné,
+  identifiants locaux, empreinte canonique, TTL, cloisonnement par compte et purge dans
+  `src/data/offlineIntake.ts` ; le contexte ne contient aucune ligne patient existante.
+- **O1** : migration additive `20260822000000_offline_intake_idempotency.sql`, reçus serveur
+  fermés aux clients, RPC `replay_patient_create` et `replay_encounter_create`, empreinte
+  recalculée côté serveur, verrou d'opération et création clinique dans la même transaction.
+- **O3/O4** : `NewPatient`, `EncounterForm`, `BaseHome`, `PatientDetail` et `SyncCenter` savent
+  créer une saisie locale, garder les rencontres dépendantes, bloquer la lecture des patients
+  serveur hors-ligne et exposer les rejets, conflits, expirations et retries.
+- **O5** : tests de domaine et d'IndexedDB (`test/offline-intake.test.ts`), tests PostgreSQL/RPC
+  (`test/offline-intake-rpc.test.ts`) et tests web (`src/screens/member/OfflineIntake.test.tsx`)
+  couvrent les empreintes, dépendances, rejeux, collisions, changement de compte et absence
+  d'appel réseau lors de la saisie locale.
+
+### Ce qui reste ouvert
+
+`e2e/offline-intake.spec.ts` fournit le scénario O6, mais la preuve doit encore être exécutée sur
+un preview isolé avec service worker réel, variables d'intake activées et données fictives. O7
+reste ensuite à décider : mise à jour finale des preuves de release et éventuelle activation sur
+un environnement autorisé. Les builds persistants conservent `VITE_OFFLINE_MODE=disabled`,
+`VITE_OFFLINE_ADMIN_ACK=false` et `VITE_OFFLINE_INTAKE=disabled`.
