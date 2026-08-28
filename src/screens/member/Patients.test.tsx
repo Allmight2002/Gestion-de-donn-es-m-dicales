@@ -13,6 +13,7 @@ import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, PatientListItem, NewPatientInput } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
 import { offlineCache, type OfflineSnapshot } from '../../data/offline';
+import { setBirthDate } from '../../../test/helpers/date-picker';
 
 // NewPatient lit le role global (la voie curation est fermee aux comptes de mission).
 vi.mock('../../auth/useAuth', () => ({
@@ -93,7 +94,7 @@ describe('NewPatient', () => {
     expect(screen.queryByText('Glasgow')).toBeNull();
 
     await user.type(screen.getByLabelText('Nom complet'), 'Marie Test');
-    await user.type(screen.getByLabelText('Date de naissance'), '1995-04-03');
+    await setBirthDate('1995-04-03');
     await user.type(screen.getByLabelText('Téléphone'), '+235 61 00 00 00');
     await user.type(screen.getByLabelText('Adresse'), 'Adresse fictive');
     await user.type(screen.getByLabelText('Identifiant externe'), 'EXT-FICTIF-1');

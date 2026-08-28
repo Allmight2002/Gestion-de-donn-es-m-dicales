@@ -97,6 +97,19 @@ export interface NewEncounterInput {
   data: Record<string, unknown>;
 }
 
+/** Rejeu idempotent d'une creation patient preparee hors-ligne (feuille de route O1). */
+export interface ReplayPatientCreateInput extends NewPatientInput {
+  operationKey: string;
+}
+
+/** Rejeu idempotent d'une creation rencontre hors-ligne : le patient est designe soit
+ * par la cle d'operation parente (patient en attente), soit par son UUID serveur. */
+export interface ReplayEncounterCreateInput extends NewEncounterInput {
+  operationKey: string;
+  parentOperationKey: string | null;
+  patientId: string | null;
+}
+
 export interface Encounter {
   id: string;
   encounterType: string;
@@ -150,10 +163,14 @@ export interface PatientRepository {
   /** Recherche un doublon potentiel par identite (nom + date de naissance). [] si rien. */
   findIdentityMatches(baseId: string, fullName: string, dateOfBirth: string): Promise<IdentityMatch[]>;
   createPatient(baseId: string, input: NewPatientInput): Promise<{ id: string; code: string }>;
+  /** Rejeu IDEMPOTENT d'une creation hors-ligne : une meme cle + charge ne cree jamais deux fois. */
+  replayPatientCreate(baseId: string, input: ReplayPatientCreateInput): Promise<{ id: string; code: string }>;
   getPatient(baseId: string, patientId: string): Promise<PatientListItem | null>;
   /** Age calcule par le systeme (DOB jamais exposee). null si pas de date de naissance. */
   computeAge(patientId: string, at: string, unit?: string): Promise<number | null>;
   createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
+  /** Rejeu IDEMPOTENT d'une creation rencontre hors-ligne (dependante du patient parent). */
+  replayEncounterCreate(input: ReplayEncounterCreateInput): Promise<{ id: string; patientId: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
   getEncounter(encounterId: string): Promise<Encounter | null>;
   updateEncounter(
@@ -263,6 +280,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     };
     return {
       listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
+      replayPatientCreate: fail, replayEncounterCreate: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
       updatePatientIdentity: fail,
@@ -356,6 +374,25 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return { id: row.id, code: row.patient_code };
     },
 
+    async replayPatientCreate(baseId, input) {
+      // Meme charge que create_patient + la cle d'operation : la RPC serveur garantit
+      // l'idempotence (un rejeu apres une reponse perdue ne cree pas de doublon).
+      const { data, error } = await client.rpc('replay_patient_create', {
+        p_operation_id: input.operationKey,
+        p_base_id: baseId,
+        p_patient_code: input.code,
+        p_full_name: input.fullName,
+        p_date_of_birth: input.dateOfBirth,
+        p_phone: input.phone,
+        p_address: input.address,
+        p_external_identifier: input.externalIdentifier,
+        p_permanent_data: input.permanentData,
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PatientRow;
+      return { id: row.id, code: row.patient_code };
+    },
+
     async computeAge(patientId, at, unit = 'years') {
       const { data, error } = await client.rpc('patient_age_at', { p_patient_id: patientId, p_at: at, p_unit: unit });
       if (error) throw error;
@@ -374,6 +411,24 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string };
       return { id: row.id };
+    },
+
+    async replayEncounterCreate(input) {
+      // La RPC serveur resout le parent : cle d'operation du patient en attente, ou
+      // UUID serveur direct ; elle garantit l'ordre et l'idempotence.
+      const { data, error } = await client.rpc('replay_encounter_create', {
+        p_operation_id: input.operationKey,
+        p_parent_operation_id: input.parentOperationKey,
+        p_patient_id: input.patientId,
+        p_encounter_type: input.encounterType,
+        p_encounter_date: input.encounterDate,
+        p_validation_status: input.validationStatus,
+        p_data: input.data,
+        p_age_unit: input.ageUnit,
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as { id: string; patient_id: string };
+      return { id: row.id, patientId: row.patient_id };
     },
 
     async getPatient(baseId, patientId) {

@@ -81,6 +81,10 @@ describe('TemplateVersionEditor', () => {
     expect(screen.getByText('Biologie', { selector: 'summary span' })).toBeInTheDocument();
     expect(screen.getAllByText(/1 variable\(s\)/).length).toBeGreaterThanOrEqual(2);
 
+    const toolbar = screen.getByTestId('template-editor-toolbar');
+    expect(toolbar).toHaveClass('md:sticky', 'md:top-0', 'dark:bg-slate-950/95');
+    expect(toolbar).not.toHaveClass('sticky', 'top-0');
+
     await user.type(screen.getByRole('searchbox', { name: 'Rechercher une variable' }), 'hemoglobine');
 
     expect(screen.getByText('Hémoglobine')).toBeInTheDocument();

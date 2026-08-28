@@ -16,6 +16,7 @@ import type { PatientRepository, Encounter, PatientListItem, FieldChange } from 
 import type { AttachmentRepository } from '../../data/attachments';
 import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
+import { setBirthDate } from '../../../test/helpers/date-picker';
 
 // EditPatient / EditEncounter lisent le role global (profil de medecin par defaut
 // pour ces tests de correction).
@@ -113,6 +114,67 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
+  });
+
+  test('affiche l unite des variables numeriques dans la consultation', async () => {
+    const consultationTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'poids', label: 'Poids', scope: 'patient', type: 'number', unit: 'kg' }),
+            field({ fieldKey: 'temperature', label: 'Température', scope: 'encounter', type: 'number', unit: '°C' }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patients = makePatients({
+      async getPatient() { return { ...patientView, data: { poids: 72.5 } }; },
+      async listEncounters() { return [{ ...encounter, data: { temperature: 38.2 } }]; },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, consultationTemplateRepo);
+
+    const weightLabel = await screen.findByText('Poids');
+    expect(weightLabel.closest('dt')).toHaveTextContent('Poids (kg)');
+    expect(screen.getByText('72.5')).toBeInTheDocument();
+    const temperatureLabel = screen.getByText('Température');
+    expect(temperatureLabel.closest('dt')).toHaveTextContent('Température (°C)');
+    expect(screen.getByText('38.2')).toBeInTheDocument();
+  });
+
+  test('recalcule une variable temporelle et affiche son unite de restitution', async () => {
+    const formulaTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'date_entree', label: 'Date d’entrée', scope: 'encounter', type: 'date' }),
+            field({ fieldKey: 'date_sortie', label: 'Date de sortie', scope: 'encounter', type: 'date' }),
+            field({
+              fieldKey: 'duree', label: 'Durée', scope: 'encounter', type: 'integer', unit: 'hours',
+              formula: 'date_sortie - date_entree',
+            }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patients = makePatients({
+      async listEncounters() {
+        return [{
+          ...encounter,
+          data: { date_entree: '2024-01-01', date_sortie: '2024-01-03' },
+        }];
+      },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, formulaTemplateRepo);
+
+    const durationLabel = await screen.findByText('Durée');
+    expect(durationLabel.closest('dt')).toHaveTextContent('Durée (heures)');
+    expect(screen.getByText('48')).toBeInTheDocument();
   });
 
   test('organise les variables permanentes et de rencontre par section', async () => {
@@ -285,7 +347,7 @@ describe('EditPatientIdentity (correction nominative)', () => {
     );
 
     fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Jeanne Exemple' } });
-    fireEvent.change(screen.getByLabelText('Date de naissance'), { target: { value: '1981-02-03' } });
+    await setBirthDate('1981-02-03');
     fireEvent.change(screen.getByLabelText('Téléphone'), { target: { value: '+235 60 00 00 00' } });
     fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: 'Quartier fictif, N’Djamena' } });
     fireEvent.change(screen.getByLabelText('Identifiant externe'), { target: { value: 'EXT-FICTIF-9' } });
@@ -315,7 +377,7 @@ describe('EditPatientIdentity (correction nominative)', () => {
     );
 
     fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Doublon Fictif' } });
-    fireEvent.change(screen.getByLabelText('Date de naissance'), { target: { value: '1990-01-01' } });
+    await setBirthDate('1990-01-01');
     fireEvent.change(screen.getByLabelText(/Motif de la correction/), { target: { value: 'Correction doublon contrôlée' } });
     await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/autre dossier porte déjà/i);

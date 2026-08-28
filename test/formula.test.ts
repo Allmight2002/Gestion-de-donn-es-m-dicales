@@ -101,6 +101,12 @@ describe('checkFormula — refus a l enregistrement du gabarit', () => {
     expect(check.outputType).toBe('integer');
   });
 
+  test('deduit le type selon l unite de restitution date - date', () => {
+    expect(checkFormula('date_sortie - date_entree', 'duree_heures', peers, 'hours').outputType).toBe('integer');
+    expect(checkFormula('date_sortie - date_entree', 'duree_semaines', peers, 'weeks').outputType).toBe('number');
+    expect(checkFormula('date_sortie - date_entree', 'duree_annees', peers, 'years').outputType).toBe('number');
+  });
+
   test('accepte datetime - datetime, type de sortie « number » (jours fractionnaires)', () => {
     const check = checkFormula('heure_sortie - heure_entree', 'duree_precise', peers);
     expect(check.ok).toBe(true);
@@ -162,5 +168,40 @@ describe('checkFormula — refus a l enregistrement du gabarit', () => {
 
   test('refuse une syntaxe hors grammaire', () => {
     expect(checkFormula('score_j0 + score_j7 - 1', 'x', peers).problem).toBe('syntax');
+  });
+});
+
+describe('evaluateFormula — unite de restitution des durees', () => {
+  test.each([
+    ['seconds', 172800],
+    ['minutes', 2880],
+    ['hours', 48],
+    ['days', 2],
+    ['weeks', 0.285714],
+    ['years', 0.005476],
+  ] as const)('convertit date - date en %s', (unit, expected) => {
+    expect(evaluateFormulaText(
+      'date_sortie - date_entree',
+      { date_entree: '2024-01-01', date_sortie: '2024-01-03' },
+      index,
+      unit,
+    )).toBe(expected);
+  });
+
+  test('conserve les anciennes formules sans unite en jours', () => {
+    expect(evaluateFormulaText(
+      'date_sortie - date_entree',
+      { date_entree: '2024-01-01', date_sortie: '2024-01-03' },
+      index,
+    )).toBe(2);
+  });
+
+  test('convertit aussi la fraction issue de deux date-heures', () => {
+    expect(evaluateFormulaText(
+      'heure_sortie - heure_entree',
+      { heure_entree: '2024-01-01T08:00', heure_sortie: '2024-01-02T20:00' },
+      index,
+      'hours',
+    )).toBe(36);
   });
 });

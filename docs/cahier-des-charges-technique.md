@@ -204,9 +204,10 @@ synchronisation hors-ligne.
 
 ## 8. Mode hors-ligne (PWA)
 
-- **ET-19. Stockage** : IndexedDB (`meddata-offline`), deux magasins — `snapshots` (instantané
-  **analytique** d'une base : patients + rencontres + champs ; **jamais** identité ni images) et
-  `outbox` (corrections de rencontres préparées hors-ligne).
+- **ET-19. Stockage** : IndexedDB (`meddata-offline`) avec `snapshots` (instantané **analytique**
+  d'une base : patients + rencontres + champs ; **jamais** identité ni images), `outbox` (union
+  discriminée pour corrections et créations *intake-only*) et `intake_context` (gabarit, règles,
+  options et droits préparés en ligne, sans ligne patient).
 - **ET-20. Construction de l'instantané** : `buildSnapshot` ne recopie **que** les champs
   analytiques (garantie par construction). Téléchargement en **un appel** via
   `download_base_snapshot` (repli transparent sur l'ancien chemin si la RPC est absente).
@@ -223,6 +224,13 @@ synchronisation hors-ligne.
   **déterministe**, un rejeu après réponse réseau perdue retrouve l'accusé d'idempotence et
   n'écrit pas une seconde fois. Limite assumée : l'écriture est forcée (`expected = null`), donc
   l'écriture d'un troisième appareil survenue entre la détection et le clic serait écrasée.
+- **ET-21 ter. Créations *intake-only* (O0–O5).** Après préparation en ligne d'un contexte versionné,
+  le navigateur peut conserver `patient_create` et `encounter_create` avec des identifiants locaux,
+  une empreinte et une dépendance parent. Les RPC `replay_patient_create` et
+  `replay_encounter_create` recalculent l'empreinte côté serveur, verrouillent le reçu, appellent la
+  RPC clinique dans la même transaction et renvoient le même résultat pour un rejeu identique ; une
+  collision, un doublon d'identité, un accès retiré ou une charge modifiée deviennent un état visible,
+  jamais une double création silencieuse.
 - **ET-22. Cloisonnement & cycle de vie** : `ownerUserId` sur chaque instantané/entrée ;
   `get/list` filtrent l'utilisateur courant ; **expiration** 24 heures appliquée à la lecture ;
   **purge au démarrage** et **effacement des instantanés à la déconnexion** (la file d'écritures
@@ -296,11 +304,11 @@ npm run db:verify # applique toutes les migrations depuis zéro
 |---|---|
 | Migrations SQL (source de vérité) | `supabase/migrations/` ; état résultant : `docs/schema-etat-final.md` |
 | Edge Functions (8) | `supabase/functions/` (`signed-read`, `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`, `create-mission-account`, `purge-deleted-base`) |
-| Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `signedRead`, `groups`, `mission`, `inspection`, `terminology`, `drafts`) |
+| Repositories (accès données) | `src/data/` (`patients`, `templates`, `bases`, `curation`, `cohorts`, `exports`, `attachments`, `access`, `admin`, `audit`, `offline`, `offlineIntake`, `signedRead`, `groups`, `mission`, `inspection`, `terminology`, `drafts`) |
 | Domaine pur | `src/domain/` (validation, règles, import/export, inspection de fichiers, tableur + worker, bibliothèques de gabarits et de listes de valeurs) |
 | Écrans | `src/screens/member/`, `src/screens/staff/` |
 | Auth & rôles | `src/auth/` · routage et gating : `src/routes/` |
-| Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts` |
+| Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts`, `src/data/offlineIntake.ts` |
 | Antivirus | `services/clamav-scanner/` (service HTTP appelé par `inspect-upload`) |
 | Opérations & vérifications | `scripts/` (~40 : `db:verify`, `schema`, `manifest`, sauvegarde coordonnée, preuves de gouvernance, dérive cloud) |
 | i18n | `src/i18n/` |

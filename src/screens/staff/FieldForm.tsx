@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
+import type { MessageKey } from '../../i18n/messages';
 import { VALUE_SET_LIBRARY } from '../../domain/valueSetLibrary';
 import { fieldOptions, makeValueKey, optionKeys, type FieldOption } from '../../domain/fieldOptions';
 import { OptionsEditor } from './OptionsEditor';
@@ -8,12 +9,16 @@ import { NOW_TOKEN, TODAY_TOKEN, defaultValueRisk, supportsDefaultValue } from '
 import { HISTORIC_MISSING_CODES, MISSING_CODES, allowedMissingReasons, type MissingCode } from '../../domain/validation';
 import {
   FORMULA_OPERATORS,
+  FORMULA_TIME_UNITS,
   checkFieldFormula,
   composeFormula,
   formulaProblemKey,
+  formulaUsesTemporalOperands,
+  normalizeFormulaTimeUnit,
   operandCandidates,
   parseFormula,
   type FormulaOperator,
+  type FormulaTimeUnit,
 } from '../../domain/fieldFormula';
 import type { FieldScope, FieldSection, FieldType, NewField, TemplateField, TemplateSection } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
@@ -29,6 +34,15 @@ const inputCls = 'input';
 
 /** Valeur du selecteur d'operande designant « une constante », par opposition a une variable. */
 const LITERAL_CHOICE = '__literal__';
+
+const FORMULA_TIME_UNIT_LABELS: Record<FormulaTimeUnit, MessageKey> = {
+  seconds: 'admin.formula_unit_seconds',
+  minutes: 'admin.formula_unit_minutes',
+  hours: 'admin.formula_unit_hours',
+  days: 'admin.formula_unit_days',
+  weeks: 'admin.formula_unit_weeks',
+  years: 'admin.formula_unit_years',
+};
 
 export function FieldForm({
   onSubmit,
@@ -130,6 +144,7 @@ export function FieldForm({
   const [rightLiteral, setRightLiteral] = useState(
     initialFormula && initialFormula.right.kind === 'literal' ? String(initialFormula.right.value) : '',
   );
+  const [formulaUnit, setFormulaUnit] = useState<FormulaTimeUnit>(() => normalizeFormulaTimeUnit(initial?.unit));
 
   const isChoice = type === 'select' || type === 'multiselect';
   // Les listes conservent leur perimetre historique (rencontre). L4 etend uniquement la
@@ -179,9 +194,15 @@ export function FieldForm({
     formulaOperator,
     operandToken(rightOperand, rightLiteral),
   );
+  const temporalFormula = formulaUsesTemporalOperands(formulaText, fields);
   // Meme regle que le serveur, appliquee ici pour que le motif se lise DANS le formulaire au
   // lieu de revenir en erreur a l'enregistrement. Le serveur revalide et reste seul juge.
-  const formulaCheck = checkFieldFormula(formulaText, { scope: effectiveScope, fieldKey: fieldKey.trim() }, fields);
+  const formulaCheck = checkFieldFormula(
+    formulaText,
+    { scope: effectiveScope, fieldKey: fieldKey.trim() },
+    fields,
+    temporalFormula ? formulaUnit : null,
+  );
   // Le type de sortie est DEDUIT, jamais choisi : c'est ce qui distingue une calculatrice
   // d'un champ numerique ordinaire dont on promettrait le contenu.
   const outputType = calculated && formulaCheck.ok ? formulaCheck.outputType ?? null : null;
@@ -232,7 +253,7 @@ export function FieldForm({
         allowedValues: null,
         minValue: null,
         maxValue: null,
-        unit: unit.trim() || null,
+        unit: temporalFormula ? formulaUnit : unit.trim() || null,
         allowMissingCodes: false,
         missingReasons: [],
         defaultValue: null,
@@ -290,6 +311,7 @@ export function FieldForm({
     setFormulaOperator('-');
     setRightOperand('');
     setRightLiteral('');
+    setFormulaUnit('days');
   }
 
   return (
@@ -558,8 +580,21 @@ export function FieldForm({
             </>
           )}
           <label className="form-label">
-            {t('admin.unit')}
-            <input className={inputCls + ' w-24'} value={unit} onChange={(e) => setUnit(e.target.value)} />
+            {temporalFormula ? t('admin.formula_unit') : t('admin.unit')}
+            {temporalFormula ? (
+              <select
+                className={inputCls}
+                aria-label={t('admin.formula_unit')}
+                value={formulaUnit}
+                onChange={(e) => setFormulaUnit(e.target.value as FormulaTimeUnit)}
+              >
+                {FORMULA_TIME_UNITS.map((item) => (
+                  <option key={item} value={item}>{t(FORMULA_TIME_UNIT_LABELS[item])}</option>
+                ))}
+              </select>
+            ) : (
+              <input className={inputCls + ' w-24'} value={unit} onChange={(e) => setUnit(e.target.value)} />
+            )}
           </label>
           </div>
         </details>

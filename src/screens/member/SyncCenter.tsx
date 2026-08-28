@@ -8,6 +8,10 @@ import {
   retryOutboxEntry, useOnline, useOutbox,
   type FlushDeps, type FlushReport, type OfflineMeta, type OutboxEntry,
 } from '../../data/offline';
+import {
+  discardIntake, flushIntake, retryIntake, useIntakeQueue,
+  type IntakeEntry, type IntakeFlushDeps, type IntakeFlushReport,
+} from '../../data/offlineIntake';
 import { mergeKeepBoth } from '../../domain/conflictMerge';
 import { recentClientErrors } from '../../lib/reportError';
 
@@ -20,8 +24,10 @@ export function SyncCenter() {
   const online = useOnline();
   const patients = usePatientRepository();
   const entries = useOutbox();
+  const intakeEntries = useIntakeQueue();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<FlushReport | null>(null);
+  const [intakeReport, setIntakeReport] = useState<IntakeFlushReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   // E3 : etat du systeme (instantanes hors-ligne disponibles + dernieres anomalies techniques).
   const [snapshots, setSnapshots] = useState<OfflineMeta[]>([]);
@@ -35,6 +41,12 @@ export function SyncCenter() {
     updateEncounter: (id, data, status, reason, exp, operationId) => patients.updateEncounter(id, data, status, reason, exp, operationId),
     getEncounter: (id) => patients.getEncounter(id),
   };
+  // Creations preparees hors-ligne : rejeu IDEMPOTENT via les RPC dediees ; l'ordre
+  // patient -> rencontres est garanti par flushIntake et par le serveur.
+  const intakeDeps: IntakeFlushDeps = {
+    replayPatientCreate: (input) => patients.replayPatientCreate(input.baseId, input),
+    replayEncounterCreate: (input) => patients.replayEncounterCreate(input),
+  };
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
   const sync = useCallback(async () => {
@@ -42,6 +54,7 @@ export function SyncCenter() {
     setError(null);
     try {
       setReport(await flushOutbox(deps));
+      setIntakeReport(await flushIntake(intakeDeps));
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -50,12 +63,25 @@ export function SyncCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patients]);
 
+  // Reprise AUTOMATIQUE au retour du reseau (feuille de route O4), seulement s'il
+  // reste du travail en attente ; la synchronisation manuelle reste toujours possible.
+  const hasUnsynced = entries.some((e) => e.state === 'pending' || e.state === 'syncing')
+    || intakeEntries.some((e) => e.state === 'pending' || e.state === 'syncing');
+  useEffect(() => {
+    if (!online || !hasUnsynced) return;
+    void sync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
+
   const pending = entries.filter((e) => e.state === 'pending');
   const syncing = entries.filter((e) => e.state === 'syncing');
   const conflicts = entries.filter((e) => e.state === 'conflict');
   const rejected = entries.filter((e) => e.state === 'rejected');
   const expired = entries.filter((e) => e.state === 'expired');
   const unresolvedCount = pending.length + syncing.length + conflicts.length + rejected.length;
+  // Creations hors-ligne en attente (patients + rencontres locales).
+  const intakePending = intakeEntries.filter((e) => e.state === 'pending' || e.state === 'syncing');
+  const intakeBlocked = intakeEntries.filter((e) => e.state === 'blocked' || e.state === 'rejected' || e.state === 'conflict' || e.state === 'expired');
 
   return (
     <section className="max-w-3xl space-y-5 sm:space-y-6">
@@ -71,7 +97,7 @@ export function SyncCenter() {
           </div>
           <div className="card p-3">
             <p className="text-xs text-slate-500">{t('status.pending_writes')}</p>
-            <p className="text-sm font-medium text-slate-700">{unresolvedCount}</p>
+            <p className="text-sm font-medium text-slate-700">{unresolvedCount + intakePending.length}</p>
           </div>
           <div className="card p-3">
             <p className="text-xs text-slate-500">{t('status.offline_bases')}</p>
@@ -127,8 +153,8 @@ export function SyncCenter() {
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="page-title">{t('sync.title')}</h2>
-        <button onClick={() => void sync()} disabled={busy || !online || pending.length === 0} className="btn-primary">
-          {busy ? t('offline.saving') : `${t('sync.now')}${pending.length ? ` (${pending.length})` : ''}`}
+        <button onClick={() => void sync()} disabled={busy || !online || (pending.length + intakePending.length) === 0} className="btn-primary">
+          {busy ? t('offline.saving') : `${t('sync.now')}${(pending.length + intakePending.length) ? ` (${pending.length + intakePending.length})` : ''}`}
         </button>
       </div>
       {!online && <p className="text-sm text-amber-700">{t('sync.offline_hint')}</p>}
@@ -138,9 +164,32 @@ export function SyncCenter() {
           {t('sync.synced')} : {report.synced} · {t('sync.conflicts')} : {report.conflicts} · {t('sync.failed')} : {report.failed}
         </p>
       )}
+      {intakeReport && (
+        <p className="text-sm text-slate-600">
+          {t('sync.intake_synced_patients')} : {intakeReport.syncedPatients}
+          {' · '}{t('sync.intake_synced_encounters')} : {intakeReport.syncedEncounters}
+          {' · '}{t('sync.failed')} : {intakeReport.failed + intakeReport.blocked}
+        </p>
+      )}
 
-      {entries.length === 0 && (
+      {entries.length === 0 && intakeEntries.length === 0 && (
         <div className="card border-dashed p-10 text-center text-slate-500">{t('sync.empty')}</div>
+      )}
+
+      {intakeEntries.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">
+            {t('sync.intake_section')} ({intakePending.length + intakeBlocked.length})
+          </h2>
+          {[...intakePending, ...intakeBlocked].map((entry) => (
+            <IntakeCard
+              key={entry.id}
+              entry={entry}
+              onRetry={async () => { await retryIntake(entry.id); await sync(); }}
+              onDiscard={() => discardIntake(entry.id)}
+            />
+          ))}
+        </div>
       )}
 
       {conflicts.length > 0 && (
@@ -290,6 +339,66 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
         </button>
         <button disabled={busy} onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>
         <button disabled={busy} onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700">{t('sync.delete')}</button>
+      </div>
+    </div>
+  );
+}
+
+// Carte d'une CREATION preparee hors-ligne (patient ou rencontre dependante).
+// L'identite affichee vient de la file cloisonnee locale ; le serveur reste seul juge
+// a la synchronisation (doublons, droits, collisions -> rejet visible, jamais silencieux).
+function IntakeCard({ entry, onRetry, onDiscard }: {
+  entry: IntakeEntry;
+  onRetry: () => Promise<void>;
+  onDiscard: (entryId: string) => Promise<number>;
+}) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    try { await action(); } finally { setBusy(false); }
+  };
+  const title = entry.kind === 'patient_create' ? t('sync.intake_patient') : t('sync.intake_encounter');
+  const label = entry.state === 'conflict' ? t('sync.conflicts')
+    : entry.state === 'rejected' ? t('sync.rejected')
+      : entry.state === 'expired' ? t('sync.expired')
+        : entry.state === 'blocked' ? t('sync.intake_blocked')
+          : entry.state === 'succeeded' ? t('sync.synced') : t('sync.pending');
+  return (
+    <div className={`card p-4 text-sm ${entry.state === 'rejected' || entry.state === 'blocked' || entry.state === 'conflict' ? 'border-red-200' : ''}`}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="font-medium text-slate-700">{title}</span>
+        <span className="badge bg-slate-100 text-slate-600">{label}</span>
+      </div>
+      {entry.kind === 'patient_create' ? (
+        <p className="font-mono text-xs text-slate-500">
+          {entry.payload.code}{entry.payload.fullName ? ` · ${entry.payload.fullName}` : ''}
+          {entry.payload.dateOfBirth ? ` · ${entry.payload.dateOfBirth}` : ''}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-500">{entry.payload.encounterType} · {entry.payload.encounterDate}</p>
+      )}
+      <dl className="mt-2 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
+        <div><dt className="inline font-semibold">{t('sync.attempts')} : </dt><dd className="inline">{entry.attemptCount ?? 0}</dd></div>
+        <div><dt className="inline font-semibold">{t('offline.expires_at')} : </dt><dd className="inline">{new Date(entry.expiresAt).toLocaleString()}</dd></div>
+      </dl>
+      {entry.lastError && <p role="alert" className="mt-1 text-xs text-red-700"><span className="font-semibold">{t('sync.last_error')} :</span> {entry.lastError}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(entry.state === 'pending' || entry.state === 'rejected') && (
+          <button disabled={busy} type="button" onClick={() => void run(onRetry)} className="btn-secondary">{t('sync.retry')}</button>
+        )}
+        {!confirming && entry.state !== 'syncing' && (
+          <button disabled={busy} type="button" onClick={() => setConfirming(true)} className="btn-secondary text-red-700">{t('sync.delete')}</button>
+        )}
+        {confirming && (
+          <>
+            <button disabled={busy} type="button" onClick={() => void run(() => onDiscard(entry.id).then(() => undefined))} className="btn-secondary text-red-700">
+              {t('logout.destroy_and_signout')}
+            </button>
+            <button disabled={busy} type="button" onClick={() => setConfirming(false)} className="btn-secondary">{t('common.cancel')}</button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,11 @@ import { useBaseRepository, useCurationRepository, usePatientRepository, useTemp
 import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isMultipleTerminology, type TemplateField, type ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
+import { newOfflineId, useOnline } from '../../data/offline';
+import {
+  enqueuePatientCreate, intakeContextCache, isOfflineIntakeEnabled, offlinePatientCode,
+  type OfflineIntakeContext,
+} from '../../data/offlineIntake';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
@@ -19,6 +24,7 @@ import { findProposalField, isProposalSource, proposalKeysOf } from '../../domai
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
+import { DatePickerInput } from '../../components/DatePickerInput';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -29,6 +35,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const { id: baseId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const online = useOnline();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
@@ -78,10 +85,40 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     return () => clearTimeout(handle);
   }, [baseId, canViewIdentity, fullName, dob, patients]);
 
+  // Applique un contexte de saisie prepare EN LIGNE : meme gabarit, memes regles,
+  // memes droits que le formulaire connecte — sans aucune ligne patient.
+  const applyIntakeContext = (ctx: OfflineIntakeContext): void => {
+    const patientFields = ctx.fields
+      .filter((f) => f.scope === 'patient')
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+    setRules(ctx.rules);
+    setIsCrossSectional(ctx.observationModel === 'cross_sectional');
+    setCanViewIdentity(ctx.permissions.canViewIdentity);
+    setFields(patientFields);
+    if (!defaultsApplied.current) {
+      defaultsApplied.current = true;
+      const proposed = initialValuesFromDefaults(patientFields);
+      setPermanent(proposed.values);
+      setPrefilled(proposed.prefilled);
+    }
+  };
+
   const load = useCallback(async () => {
     if (!baseId) return;
     setLoading(true);
     try {
+      // SAISIE HORS-LIGNE (intake-only) : la creation vient du contexte prepare en ligne ;
+      // la lecture de la base reste indisponible et rien d'autre n'est charge du reseau.
+      if (!online && isOfflineIntakeEnabled()) {
+        const ctx = await intakeContextCache.get(baseId);
+        if (!ctx) {
+          setError(t('intake.context_required'));
+          return;
+        }
+        applyIntakeContext(ctx);
+        setError(null);
+        return;
+      }
       const maybePatients = patients as Partial<PatientRepository>;
       const countPatients = maybePatients.listPatientsPage
         ? maybePatients.listPatientsPage(baseId, 1, 0).then((r) => r.total)
@@ -120,7 +157,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, bases, templates, patients]);
+  }, [baseId, bases, templates, patients, online]);
 
   useEffect(() => {
     void load();
@@ -133,9 +170,15 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, permanent]);
 
+  // Mode hors-ligne intake-only actif pour CET ecran (formulaire + soumission locaux).
+  const offlineIntakeActive = !online && isOfflineIntakeEnabled() && mode === 'manual';
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!baseId || !code.trim()) return;
+    // En hors-ligne intake-only, un code vide est ACCEPTED : il est genere depuis la cle
+    // d'operation (stable, improbable a collision) a la mise en file. En ligne, le code
+    // reste obligatoire (prefilled P-XXXX ou saisi).
+    if (!baseId || (!code.trim() && !offlineIntakeActive)) return;
     // Mode "confier au staff" : nom complet + date de naissance OBLIGATOIRES.
     if (mode === 'submit' && (!fullName.trim() || !dob)) {
       setError(t('patient.identity_required'));
@@ -188,6 +231,27 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         });
         toast(t('toast.patient_saved'));
         navigate(`/curation/${created.taskId}`);
+        return;
+      }
+      // SAISIE HORS-LIGNE : enregistrement LOCAL (aucun appel reseau requis), dans la file
+      // cloisonnee. La cle d'operation est posee ici et reste stable si l'utilisateur re-soumet.
+      if (offlineIntakeActive) {
+        const operationKey = newOfflineId();
+        const entry = await enqueuePatientCreate({
+          baseId,
+          operationKey,
+          payload: {
+            code: code.trim() || await offlinePatientCode(operationKey),
+            fullName: canViewIdentity ? (fullName.trim() || null) : null,
+            dateOfBirth: canViewIdentity ? (dob || null) : null,
+            phone: canViewIdentity ? (phone || null) : null,
+            address: canViewIdentity ? (address || null) : null,
+            externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
+            permanentData,
+          },
+        });
+        toast(`${t('intake.saved_pending')} (${entry.payload.code})`, 'success');
+        navigate(`/bases/${baseId}`); // la file locale est visible sur l'accueil de la base
         return;
       }
       const created = await patients.createPatient(baseId, {
@@ -254,7 +318,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">{t('patient.code')}</span>
-          <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} required />
+          {/* En hors-ligne intake-only, un code vide est genere a la mise en file :
+              le champ n'est donc pas `required` dans ce mode. */}
+          <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} required={!offlineIntakeActive} />
           <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
         </label>
 
@@ -272,10 +338,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             </label>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">
+            <div className="block text-sm">
               <span className="text-slate-700">{t('patient.dob')}{mode === 'submit' && <span className="text-red-500"> *</span>}</span>
-              <input type="date" className="input mt-1" value={dob} onChange={(e) => setDob(e.target.value)} required={mode === 'submit'} />
-            </label>
+              <div className="mt-1">
+                <DatePickerInput value={dob} ariaLabel={t('patient.dob')} onChange={(value) => setDob(value ?? '')} />
+              </div>
+            </div>
             <label className="block text-sm">
               <span className="text-slate-700">{t('patient.phone')}</span>
               <input className="input mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -324,7 +392,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                 <div className="flex flex-col text-sm">
                   {/* Meme libelle que le formulaire de rencontre : consigne de saisie et
                       mention « proposé » y sont rendues au meme endroit. */}
-                  <FieldLabel field={field} prefilled={prefilled.has(field.fieldKey)} />
+                  <FieldLabel field={field} fields={fields} prefilled={prefilled.has(field.fieldKey)} />
                   <div className="mt-1">
                     {/* L35 : meme regle qu'au formulaire de rencontre — une variable
                         calculee s'affiche, elle ne se saisit pas. */}

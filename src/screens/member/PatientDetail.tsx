@@ -10,9 +10,15 @@ import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
 import { offlineCache, useOnline } from '../../data/offline';
+import {
+  intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
+  type PatientCreateEntry,
+} from '../../data/offlineIntake';
 import { getTemplateFields } from '../../data/templates';
 import { displayFieldValue } from '../../data/types';
 import { isMissing, missingCodeOf } from '../../domain/validation';
+import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
+import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
 import { SkeletonList } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -30,13 +36,15 @@ import { groupFieldsBySection, sectionLabel } from '../../domain/templateSection
 type Column = {
   id: string; fieldKey: string; label: string; scope: string; section: string; displayOrder: number;
   sectionLabel?: string | null; sectionOrder?: number | null;
-  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+  type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
+  formula?: string | null;
 };
 
 type ColumnSource = {
   id: string; fieldKey: string; label: string; scope: string; section?: string | null; displayOrder: number;
   sectionLabel?: string | null; sectionOrder?: number | null;
-  type?: string; allowedValues?: unknown; allowedOptions?: unknown;
+  type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
+  formula?: string | null;
 };
 
 const toColumn = (field: ColumnSource): Column => ({
@@ -49,9 +57,25 @@ const toColumn = (field: ColumnSource): Column => ({
   sectionOrder: field.sectionOrder ?? null,
   displayOrder: field.displayOrder,
   type: field.type,
+  unit: field.unit ?? null,
   allowedValues: field.allowedValues,
   allowedOptions: field.allowedOptions,
+  formula: field.formula ?? null,
 });
+
+const formulaFieldsOf = (fields: readonly Column[]) => fields.map((field) => ({
+  fieldKey: field.fieldKey,
+  type: field.type ?? '',
+  formula: field.formula ?? null,
+}));
+
+const unitOf = (field: Column, fields: readonly Column[], t: (key: MessageKey) => string): string | null => {
+  const temporalFormula = Boolean(field.formula && formulaUsesTemporalOperands(field.formula, formulaFieldsOf(fields)));
+  const unit = temporalFormula ? normalizeFormulaTimeUnit(field.unit) : field.unit;
+  return temporalFormula && unit && (FORMULA_TIME_UNITS as readonly string[]).includes(unit)
+    ? t(`form.unit_${unit}` as MessageKey)
+    : unit ?? null;
+};
 
 // §11 : media d'une piece jointe. L'URL signee (et l'audit) ne sont generes qu'au CLIC :
 // une image s'affiche apres « Afficher l'image » ; un document s'ouvre dans un onglet.
@@ -111,6 +135,10 @@ export function PatientDetail() {
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  // Dossier patient ENCORE LOCAL (cree hors-ligne) : vue dediee, sans aucun appel reseau.
+  const [localPending, setLocalPending] = useState<PatientCreateEntry | null>(null);
+  // Identifiant SERVEUR demande hors-ligne en mode intake-only : blocage explicite.
+  const [blockedServerIdOffline, setBlockedServerIdOffline] = useState(false);
   const [patientFields, setPatientFields] = useState<Column[]>([]);
   const [encounterFields, setEncounterFields] = useState<Column[]>([]);
   const [offlineView, setOfflineView] = useState(false);
@@ -122,7 +150,11 @@ export function PatientDetail() {
   const [error, setError] = useState<string | null>(null);
 
   const fmt = useCallback(
-    (v: unknown, field?: Column): string => {
+    (v: unknown, field?: Column, data?: Record<string, unknown>, fields: readonly Column[] = []): string => {
+      if (field?.formula) {
+        const result = evaluateFormulaText(field.formula, data, formulaFieldIndex(formulaFieldsOf(fields)), field.unit);
+        return result === null ? '—' : String(result);
+      }
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
       if (typeof v === 'boolean') return v ? '✓' : '✗';
       // La variable est passee pour que le LIBELLE de l'option s'affiche, et non son code.
@@ -136,6 +168,34 @@ export function PatientDetail() {
     setLoading(true);
     try {
       if (!online) {
+        // MODE INTAKE-ONLY (feuille de route O3) : la fiche d'un patient EXISTANT n'est jamais
+        // reconstruite hors-ligne (invariant §3.11). Seul le dossier LOCAL en attente est
+        // consultable, depuis la file cloisonnee et sans aucun appel reseau.
+        if (isOfflineIntakeEnabled()) {
+          setAttachments([]);
+          setEncounters([]);
+          setOfflineView(false);
+          if (patientId && isLocalPatientId(patientId)) {
+            const local = await intakeQueue.localPatient(patientId);
+            if (!local) {
+              setLocalPending(null);
+              setPatient(null);
+              setError(t('intake.parent_missing'));
+              return;
+            }
+            setBlockedServerIdOffline(false);
+            setLocalPending(local);
+            setPatient(null);
+            setError(null);
+            return;
+          }
+          // Identifiant SERVEUR hors-ligne : bloque explicitement (hors perimetre §7).
+          setBlockedServerIdOffline(true);
+          setLocalPending(null);
+          setPatient(null);
+          setError(null);
+          return;
+        }
         // HORS-LIGNE : lecture seule depuis l'instantane (analytique, sans identite ni images).
         const snap = await offlineCache.get(baseId);
         const op = snap?.patients.find((pp) => pp.id === patientId) ?? null;
@@ -160,6 +220,7 @@ export function PatientDetail() {
       }
 
       setOfflineView(false);
+      setBlockedServerIdOffline(false);
       const [p, encs, base, atts] = await Promise.all([
         patients.getPatient(baseId, patientId),
         patients.listEncounters(patientId),
@@ -207,6 +268,24 @@ export function PatientDetail() {
   }
 
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
+  // Dossier LOCAL en attente : vue dediee, jamais melangee a une fiche serveur.
+  if (localPending && baseId) return <LocalPendingDetail baseId={baseId} entry={localPending} />;
+  if (blockedServerIdOffline && !online) {
+    return (
+      <section className="max-w-2xl space-y-5">
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+          ← {t('admin.back')}
+        </button>
+        <PageHeader
+          title={t('patient.detail')}
+          badge={<span className="badge bg-amber-100 text-amber-800">{t('offline.badge')}</span>}
+        />
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {t('intake.server_patient_unsupported')}
+        </p>
+      </section>
+    );
+  }
   if (!patient) return <p className="text-slate-500">{t('notfound.title')}</p>;
 
   return (
@@ -301,12 +380,17 @@ export function PatientDetail() {
                 {sectionLabel(t, { sectionKey: group.key, label: group.label })}
               </legend>
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                {group.fields.map((f) => (
-                  <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
-                    <dt className="text-xs text-slate-500">{f.label}</dt>
-                    <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f)}</dd>
-                  </div>
-                ))}
+                {group.fields.map((f) => {
+                  const renderedUnit = unitOf(f, patientFields, t);
+                  return (
+                    <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
+                      <dt className="text-xs text-slate-500">
+                        {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
+                      </dt>
+                      <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, patientFields)}</dd>
+                    </div>
+                  );
+                })}
               </dl>
             </fieldset>
           ))}
@@ -351,18 +435,23 @@ export function PatientDetail() {
                   )}
                 </div>
                 <div className="space-y-3">
-                  {groupFieldsBySection(encounterFields.filter((f) => f.fieldKey in e.data)).map((group) => (
+                  {groupFieldsBySection(encounterFields.filter((f) => f.formula || f.fieldKey in e.data)).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
                       <legend className="px-1 text-xs font-semibold text-slate-600">
                         {sectionLabel(t, { sectionKey: group.key, label: group.label })}
                       </legend>
                       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
-                        {group.fields.map((f) => (
-                          <div key={f.id} className="contents">
-                            <dt className="text-slate-500">{f.label}</dt>
-                            <dd>{fmt(e.data[f.fieldKey], f)}</dd>
-                          </div>
-                        ))}
+                        {group.fields.map((f) => {
+                          const renderedUnit = unitOf(f, encounterFields, t);
+                          return (
+                            <div key={f.id} className="contents">
+                              <dt className="text-slate-500">
+                                {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
+                              </dt>
+                              <dd>{fmt(e.data[f.fieldKey], f, e.data, encounterFields)}</dd>
+                            </div>
+                          );
+                        })}
                       </dl>
                     </fieldset>
                   ))}
@@ -425,6 +514,79 @@ export function PatientDetail() {
       )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    </section>
+  );
+}
+
+// Fiche LIMITEE d'un dossier encore local (cree hors-ligne, en attente de synchronisation).
+// Les donnees viennent exclusivement de l'operation cloisonnee de la file : aucun appel
+// Supabase, aucune fusion avec la liste serveur. Le serveur revalidera tout a la synchro.
+function LocalPendingDetail({ baseId, entry }: { baseId: string; entry: PatientCreateEntry }) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const online = useOnline();
+  const [labels, setLabels] = useState<Record<string, { label: string; field?: Column }>>({});
+
+  useEffect(() => {
+    let alive = true;
+    void intakeContextCache.get(baseId).then((ctx) => {
+      if (!alive || !ctx) return;
+      const map: typeof labels = {};
+      for (const f of ctx.fields) map[f.fieldKey] = { label: f.label, field: toColumn(f) };
+      setLabels(map);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [baseId]);
+
+  const permanentEntries = Object.entries(entry.payload.permanentData);
+  return (
+    <section className="max-w-2xl space-y-5 sm:space-y-6">
+      <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        ← {t('admin.back')}
+      </button>
+
+      <PageHeader
+        title={t('sync.intake_patient')}
+        eyebrow={<span className="font-mono">{entry.payload.code}</span>}
+        badge={(
+          <span className={`badge ${entry.state === 'rejected' || entry.state === 'blocked' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+            {entry.state === 'pending' ? t('sync.pending')
+              : entry.state === 'syncing' ? t('sync.syncing')
+                : entry.state === 'rejected' ? t('sync.rejected')
+                  : entry.state === 'conflict' ? t('sync.conflicts') : t('intake.pending_title')}
+          </span>
+        )}
+        actions={!online ? undefined : (
+          <button onClick={() => navigate(`/bases/${baseId}/patients/${entry.localPatientId}/encounters/new`)} className="btn-primary">
+            <Plus size={16} aria-hidden /> {t('encounter.add')}
+          </button>
+        )}
+      />
+
+      {(entry.payload.fullName || entry.payload.dateOfBirth) && (
+        <fieldset className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm shadow-sm">
+          <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
+          <div><span className="text-slate-500">{t('patient.full_name')} :</span> {entry.payload.fullName ?? '—'}</div>
+          <div><span className="text-slate-500">{t('patient.dob')} :</span> {entry.payload.dateOfBirth ?? '—'}</div>
+          {entry.payload.phone && <div><span className="text-slate-500">{t('patient.phone')} :</span> {entry.payload.phone}</div>}
+          {entry.payload.address && <div><span className="text-slate-500">{t('patient.address')} :</span> {entry.payload.address}</div>}
+          {entry.payload.externalIdentifier && <div><span className="text-slate-500">{t('patient.external_id')} :</span> {entry.payload.externalIdentifier}</div>}
+        </fieldset>
+      )}
+
+      {permanentEntries.length > 0 && (
+        <SectionCard title={t('patient.permanent_section')}>
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            {permanentEntries.map(([key, value]) => (
+              <div key={key} className="min-w-0">
+                <dt className="truncate text-xs font-medium uppercase tracking-wide text-slate-400">{labels[key]?.label ?? key}</dt>
+                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field)}</dd>
+              </div>
+            ))}
+          </dl>
+        </SectionCard>
+      )}
+      <p className="text-xs text-slate-400">{t('intake.saved_pending')}</p>
     </section>
   );
 }

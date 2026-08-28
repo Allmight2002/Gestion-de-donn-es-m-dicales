@@ -41,6 +41,8 @@ export interface ExportField {
    * la colonne est recalculee a l'export. Absent/null = variable saisie, comme avant le lot.
    */
   formula?: string | null;
+  /** Unite de restitution de la formule, rattachee a chaque version comme la formule elle-meme. */
+  formulaUnitByVersion?: Record<string, string | null>;
   /**
    * La formule appartient a la VERSION de gabarit (decision L35-A) : une fiche saisie sous
    * l'ancienne version garde le resultat de l'ancienne formule. `mergeExportFields` unit une
@@ -234,6 +236,30 @@ export const formatValue = (v: unknown, type?: string): unknown => {
 export const FORMULA_OPERATORS = ['+', '-', '*', '/'] as const;
 export type FormulaOperator = (typeof FORMULA_OPERATORS)[number];
 
+/** Unites de restitution d'une soustraction entre deux dates/date-heures. */
+export const FORMULA_TIME_UNITS = ['seconds', 'minutes', 'hours', 'days', 'weeks', 'years'] as const;
+export type FormulaTimeUnit = (typeof FORMULA_TIME_UNITS)[number];
+export const DEFAULT_FORMULA_TIME_UNIT: FormulaTimeUnit = 'days';
+
+const FORMULA_TIME_UNIT_FACTORS: Record<FormulaTimeUnit, number> = {
+  seconds: 86_400,
+  minutes: 1_440,
+  hours: 24,
+  days: 1,
+  weeks: 1 / 7,
+  // Convention explicite : une annee de rendu vaut 365,25 jours.
+  years: 1 / 365.25,
+};
+
+const INTEGER_FORMULA_TIME_UNITS = new Set<FormulaTimeUnit>(['seconds', 'minutes', 'hours', 'days']);
+
+export const isFormulaTimeUnit = (value: unknown): value is FormulaTimeUnit =>
+  typeof value === 'string' && (FORMULA_TIME_UNITS as readonly string[]).includes(value);
+
+/** Les formules historiques sans unite restent des durees en jours. */
+export const normalizeFormulaTimeUnit = (value: unknown): FormulaTimeUnit =>
+  isFormulaTimeUnit(value) ? value : DEFAULT_FORMULA_TIME_UNIT;
+
 export type FormulaOperand =
   | { kind: 'field'; fieldKey: string }
   | { kind: 'literal'; value: number };
@@ -341,6 +367,7 @@ export function checkFormula(
   text: string | null | undefined,
   selfFieldKey: string,
   peers: readonly FormulaFieldRef[],
+  resultUnit?: string | null,
 ): FormulaCheck {
   const parsed = parseFormula(text);
   if (!parsed) return { ok: false, problem: 'syntax' };
@@ -377,7 +404,10 @@ export function checkFormula(
     return {
       ok: true,
       parsed,
-      outputType: temporals.every((ref) => ref.type === 'date') ? 'integer' : 'number',
+      outputType: temporals.every((ref) => ref.type === 'date') &&
+          INTEGER_FORMULA_TIME_UNITS.has(normalizeFormulaTimeUnit(resultUnit))
+        ? 'integer'
+        : 'number',
     };
   }
   // Une date/date-heure melangee a un nombre n'a pas de sens ici : « date + 3 » demanderait
@@ -524,7 +554,15 @@ export function evaluateFormula(
   parsed: ParsedFormula,
   data: Record<string, unknown> | null | undefined,
   byKey: ReadonlyMap<string, FormulaFieldRef>,
+  resultUnit?: string | null,
 ): number | null {
+  const temporalOperands = [parsed.left, parsed.right].filter((
+    operand,
+  ): operand is { kind: 'field'; fieldKey: string } =>
+    operand.kind === 'field' &&
+    (byKey.get(operand.fieldKey)?.type === 'date' || byKey.get(operand.fieldKey)?.type === 'datetime')
+  );
+  if (temporalOperands.length === 2 && parsed.operator !== '-') return null;
   const left = operandValue(parsed.left, data, byKey);
   if (left === null) return null;
   const right = operandValue(parsed.right, data, byKey);
@@ -547,6 +585,8 @@ export function evaluateFormula(
       result = left / right;
       break;
   }
+  if (!Number.isFinite(result)) return null;
+  if (temporalOperands.length === 2) result *= FORMULA_TIME_UNIT_FACTORS[normalizeFormulaTimeUnit(resultUnit)];
   if (!Number.isFinite(result)) return null;
   return stripBinaryNoise(result);
 }
@@ -572,14 +612,27 @@ export const formulaForVersion = (
   return field.formula ?? null;
 };
 
+/** Unite applicable a CETTE fiche ; les formules versionnees peuvent changer d unite. */
+export const formulaUnitForVersion = (
+  field: Pick<ExportField, 'unit' | 'formulaUnitByVersion'>,
+  versionId: string | undefined,
+): string | null => {
+  const byVersion = field.formulaUnitByVersion;
+  if (versionId && byVersion && Object.prototype.hasOwnProperty.call(byVersion, versionId)) {
+    return byVersion[versionId] ?? null;
+  }
+  return field.unit ?? null;
+};
+
 /** Meme chose depuis le texte stocke : le chemin qu'empruntent l'ecran et l'export. */
 export function evaluateFormulaText(
   text: string | null | undefined,
   data: Record<string, unknown> | null | undefined,
   byKey: ReadonlyMap<string, FormulaFieldRef>,
+  resultUnit?: string | null,
 ): number | null {
   const parsed = parseFormula(text);
-  return parsed ? evaluateFormula(parsed, data, byKey) : null;
+  return parsed ? evaluateFormula(parsed, data, byKey, resultUnit) : null;
 }
 
 const codeOf = (v: unknown): string => {
@@ -646,6 +699,15 @@ function formulaEntries(field: ExportField): Record<string, string> {
   return entries;
 }
 
+/** Meme rattachement par version pour l unite de restitution. */
+function formulaUnitEntries(field: ExportField): Record<string, string | null> {
+  const entries: Record<string, string | null> = { ...field.formulaUnitByVersion };
+  if (field.formula) {
+    for (const versionId of field.templateVersionIds ?? []) entries[versionId] = field.unit;
+  }
+  return entries;
+}
+
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
 export function mergeExportFields(input: ExportField[]): ExportField[] {
   // D13 : préserver l'ordre du formulaire (scope -> display_order -> fieldKey)
@@ -682,6 +744,7 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // fiche v1 se verrait appliquer la formule corrigee en v2 — exactement ce que la
       // decision « la formule appartient a la version » interdit.
       previous.formulaByVersion = { ...previous.formulaByVersion, ...formulaEntries(field) };
+      previous.formulaUnitByVersion = { ...previous.formulaUnitByVersion, ...formulaUnitEntries(field) };
     } else {
       merged.set(key, {
         ...field,
@@ -689,6 +752,7 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
         templateVersionIds: [...new Set(versions)].sort(),
         missingReasons: field.missingReasons ? sortMissingReasons(field.missingReasons) : field.missingReasons,
         formulaByVersion: formulaEntries(field),
+        formulaUnitByVersion: formulaUnitEntries(field),
       });
     }
   }
@@ -730,7 +794,7 @@ function assignField(
   // retenue est celle de la version de LA FICHE, pas celle de la version courante.
   const formula = applicable ? formulaForVersion(field, versionId) : null;
   if (formula) {
-    const value = evaluateFormulaText(formula, data, peers);
+    const value = evaluateFormulaText(formula, data, peers, formulaUnitForVersion(field, versionId));
     // Resultat absent -> cellule vide, jamais zero : un zero se lirait comme une mesure.
     row[columnId(field)] = value === null ? '' : value;
     return;
