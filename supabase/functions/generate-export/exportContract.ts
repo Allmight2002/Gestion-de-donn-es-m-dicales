@@ -2,6 +2,15 @@
 // Les noms de colonnes sont volontairement des identifiants stables, jamais des labels.
 export type AggregationRule = 'first' | 'last';
 
+/**
+ * Profil d'export (L45). `analysis` : lisible directement pour l'analyse, qui se construit
+ * aux lots L46~L49 (code stable en colonne, feuilles `Modalités` puis `Métadonnées`).
+ * `complete` : conserve pendant la transition les colonnes techniques de reimportation et
+ * de tracabilite. Le generateur garde `complete` en defaut pour ne pas changer les sorties
+ * existantes ; c'est le handler qui injecte le profil resolu (analyse par defaut cote appel).
+ */
+export type ExportProfile = 'analysis' | 'complete';
+
 export interface ExportPatient {
   code: string;
   data: Record<string, unknown>;
@@ -107,6 +116,36 @@ export function assertNoIdentity(columns: string[]): void {
 }
 
 export const columnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `${field.scope}__${field.fieldKey}`;
+
+/**
+ * Identifiant analytique d'une variable (L46) : court, ASCII, unique et stable, distinct du
+ * libelle humain et des UUID techniques. C'est un REPLI DETERMINISTE sur `scope` + `field_key`
+ * (l'identifiant technique stable deja utilise comme cle de colonne) : rien n'est ajoute au
+ * gabarit, donc aucune migration, et l'interpretation des anciens gabarits est conservee telle
+ * quelle. Un libelle peut changer sans changer l'identifiant.
+ */
+export const analyticId = (field: Pick<ExportField, 'scope' | 'fieldKey'>): string => columnId(field);
+
+/**
+ * Refuse explicitement les collisions d'identifiants analytiques (L46). `mergeExportFields`
+ * unifie deja par colonne : au sein du jeu fusionne, deux variables ne partagent jamais le meme
+ * identifiant. La garde piege le cas pathologique ou deux cles de champ DIFFERENTES se
+ * normalisent vers le meme identifiant lisible (casse d'un renommage, separateurs), ce qui
+ * rendrait deux variables indiscernables dans le fichier. Fail-closed : on refuse plutot que
+ * de deviner.
+ */
+export function assertNoAnalyticIdCollisions(fields: readonly ExportField[]): void {
+  const seen = new Map<string, string>();
+  for (const field of fields) {
+    const normalized = field.fieldKey.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const key = `${field.scope}__${normalized}`;
+    const existing = seen.get(key);
+    if (existing !== undefined && existing !== field.fieldKey) {
+      throw new Error(`Collision d'identifiants analytiques: ${key}`);
+    }
+    seen.set(key, field.fieldKey);
+  }
+}
 
 /**
  * Colonne du CODE d'un champ de terminologie. Le libelle part dans la colonne principale
@@ -503,6 +542,53 @@ function datetimeToDays(raw: unknown): number | null {
   return (wallMs - offsetMinutes * 60_000) / MS_PER_DAY;
 }
 
+// L48 : dates et date-heures natives dans le classeur.
+//
+// Convention FIXEE pour les datetime : les valeurs stockees sont ISO ; elles sont rendues dans le
+// classeur en heure UTC (fraction de jour = heure/minute/seconde UTC de l'instant), secondes
+// comprises, ce qui est reproductible quel que soit le fuseau du lecteur. Le CSV, lui, conserve
+// la representation ISO telle quelle. Dans les deux formats, une date/datetime invalide reste
+// lisible et n'est JAMAIS masquee par un zero.
+/** Jours entre 1970-01-01 et l'origine d'Excel (systeme 1900). */
+export const EXCEL_EPOCH_OFFSET_DAYS = 25_569;
+
+/** Date ISO wall-clock -> nombre de serie Excel (cellule de date native, triable, soustraisable). */
+export function excelDateSerial(iso: string): number | null {
+  const days = dateToDays(iso);
+  return days === null ? null : days + EXCEL_EPOCH_OFFSET_DAYS;
+}
+
+/** Datetime ISO -> nombre de serie Excel (fraction de jour = heure UTC, secondes comprises). */
+export function excelDatetimeSerial(iso: string): number | null {
+  const days = datetimeToDays(iso);
+  return days === null ? null : days + EXCEL_EPOCH_OFFSET_DAYS;
+}
+
+/**
+ * Transforme les valeurs des colonnes date/datetime en nombres de serie Excel pour l'ecriture
+ * d'un classeur natif (L48). Ce que l'ecran CSV conserve en ISO, le classeur le chiffre. Une
+ * valeur vide reste vide ; une valeur invalide reste TEXTE tel quel (jamais effacee, jamais 0).
+ * Les autres colonnes (nombres, compteurs, indicatrices, textes) passent sans changement.
+ */
+export function withExcelDateSerials(
+  table: ExportTable,
+  temporalColumns: ReadonlyMap<string, 'date' | 'datetime'>,
+): ExportTable {
+  return {
+    columns: table.columns,
+    rows: table.rows.map((row) => {
+      const copy = { ...row };
+      for (const [column, kind] of temporalColumns) {
+        const value = row[column];
+        if (typeof value !== 'string' || value === '') continue;
+        const serial = kind === 'datetime' ? excelDatetimeSerial(value) : excelDateSerial(value);
+        if (serial !== null) copy[column] = serial;
+      }
+      return copy;
+    }),
+  };
+}
+
 function numericValue(raw: unknown): number | null {
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
   if (typeof raw === 'string' && raw.trim() !== '' && NUMERIC_LITERAL.test(raw.trim())) {
@@ -655,8 +741,11 @@ const nbOf = (field: ExportField, v: unknown): number | '' => {
 /**
  * Colonnes d'un jeu de champs : un champ de terminologie en occupe deux (ou trois si multivalué),
  * une liste contrôlée deux, et un multiselect ajoute son nombre avant les indicatrices.
+ *
+ * En profil `analysis` (L46), un `select` simple ne rend QU'UNE colonne : elle porte le code
+ * stable, le libellé ne se répète pas sur chaque ligne et vit une seule fois dans `Modalités`.
  */
-export const columnsForFields = (fields: ExportField[]): string[] =>
+export const columnsForFields = (fields: ExportField[], profile: ExportProfile = 'complete'): string[] =>
   fields.flatMap((f) => {
     // L35 : une variable calculee rend UNE colonne, comme le nombre qu'elle produit. Elle
     // n'a ni code, ni liste de modalites, ni indicatrices — il n'y a rien a coder.
@@ -667,8 +756,14 @@ export const columnsForFields = (fields: ExportField[]): string[] =>
       }
       return [columnId(f), codeColumnId(f)];
     }
-    if (f.type === 'multiselect') return [columnId(f), optionCodeColumnId(f), nbColumnId(f)];
-    if (isOptionList(f)) return [columnId(f), optionCodeColumnId(f)];
+    if (f.type === 'multiselect') {
+      // L47 : en Analyse, un multiselect ne rend QUE ses indicatrices binaires : ni libelle ni
+      // codes concatenes, ni compteur — ces formes sont celles du profil `complete`.
+      return profile === 'analysis' ? [] : [columnId(f), optionCodeColumnId(f), nbColumnId(f)];
+    }
+    // L46 : en Analyse, le select simple porte UNIQUEMENT son code stable dans la colonne
+    // principale, et le libelle vit en une fois dans `Modalites`.
+    if (isOptionList(f)) return profile === 'analysis' ? [columnId(f)] : [columnId(f), optionCodeColumnId(f)];
     return [columnId(f)];
   });
 
@@ -788,6 +883,8 @@ function assignField(
   field: ExportField,
   /** Operandes possibles, de la MEME portee que `field` (L35). Vide ailleurs. */
   peers: ReadonlyMap<string, FormulaFieldRef> = EMPTY_FORMULA_INDEX,
+  /** Profil d'export (L46) : le select simple rend son code stable en Analyse. */
+  profile: ExportProfile = 'complete',
 ): void {
   const applicable = Boolean(data) && belongsToField(versionId, field);
   // L35 : rien n'est stocke sous cette cle, la colonne est RECALCULEE ici. La formule
@@ -800,6 +897,9 @@ function assignField(
     return;
   }
   if (field.type === 'multiselect') {
+    // L47 : en Analyse, la feuille principale ne porte pas les formes techniques du multiselect
+    // (libelle/codes concatenes, compteur) ; seules les indicatrices, ecrites par l'appelant.
+    if (profile === 'analysis') return;
     const cells = applicable ? optionCells(field, data![field.fieldKey]) : { label: '', code: '' };
     row[columnId(field)] = cells.label;
     row[optionCodeColumnId(field)] = cells.code;
@@ -807,9 +907,17 @@ function assignField(
     return;
   }
   if (isOptionList(field)) {
+    const cells = applicable ? optionCells(field, data![field.fieldKey]) : { label: '', code: '' };
+    // L46 : en Analyse, la colonne principale porte le CODE stable. Le libellé ne se répète
+    // pas sur chaque ligne ; il vit une seule fois dans la feuille `Modalités`. Une raison de
+    // valeur manquante reste elle explicite (codage du dictionnaire), jamais effacée.
+    if (profile === 'analysis') {
+      const missing = applicable ? missingCodeOf(data![field.fieldKey]) : null;
+      row[columnId(field)] = missing ?? cells.code;
+      return;
+    }
     // L30 : le libelle dans la colonne principale, le code dans la sienne. C'est le code
     // qui reste stable quand un libelle est corrige, donc lui qui permet de compter.
-    const cells = applicable ? optionCells(field, data![field.fieldKey]) : { label: '', code: '' };
     row[columnId(field)] = cells.label;
     row[optionCodeColumnId(field)] = cells.code;
     return;
@@ -916,8 +1024,44 @@ export function extractMultivalueCodes(
 const hasCodeInValue = (field: ExportField, value: unknown, targetCode: string): boolean =>
   multivalueEntriesOf(field, value).some((item) => item.code === targetCode);
 
+/**
+ * Ecrit les indicatrices d'un champ multivalue (L22/L36, regles L47) :
+ * - `1` si le code est selectionne ;
+ * - `0` pour tout champ APPLICABLE sans cette modalite (liste vide ou non selectionnee) ;
+ * - cellule vide seulement quand le champ n'est pas applicable (absent de la version de la fiche) ;
+ * - une raison explicite de valeur manquante suit le codage du dictionnaire et ne devient
+ *   jamais une selection (toutes les indicatrices a `0`).
+ * En `complete`, une valeur absente sur un champ applicable reste `''` pour preserver
+ * strictement le comportement anterieur au lot.
+ */
+function assignIndicators(
+  row: Record<string, unknown>,
+  field: ExportField,
+  indicators: IndicatorMeta[],
+  data: Record<string, unknown> | null | undefined,
+  versionId: string | undefined,
+  profile: ExportProfile,
+): void {
+  const applicable = Boolean(data) && belongsToField(versionId, field);
+  for (const ind of indicators) {
+    if (!applicable || !data) {
+      row[ind.columnId] = '';
+    } else if (data[field.fieldKey] === undefined) {
+      row[ind.columnId] = profile === 'analysis' ? 0 : '';
+    } else if (missingCodeOf(data[field.fieldKey])) {
+      row[ind.columnId] = 0;
+    } else {
+      row[ind.columnId] = hasCodeInValue(field, data[field.fieldKey], ind.code) ? 1 : 0;
+    }
+  }
+}
+
 const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_value', 'age_unit'];
-export function buildEncounterExport(encounters: ExportEncounter[], fields: ExportField[]): ExportTable {
+export function buildEncounterExport(
+  encounters: ExportEncounter[],
+  fields: ExportField[],
+  profile: ExportProfile = 'complete',
+): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
   const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
   // L35 : les operandes d'une variable calculee sont de la MEME portee — l'index ne
@@ -927,7 +1071,7 @@ export function buildEncounterExport(encounters: ExportEncounter[], fields: Expo
   const columns = [
     ...ENCOUNTER_META,
     ...encFields.flatMap((f) => {
-      const base = columnsForFields([f]);
+      const base = columnsForFields([f], profile);
       const inds = (indicatorsByField.get(f.fieldKey) ?? []).map((i) => i.columnId);
       return [...base, ...inds];
     }),
@@ -946,18 +1090,8 @@ export function buildEncounterExport(encounters: ExportEncounter[], fields: Expo
       age_unit: e.ageUnit ?? '',
     };
     for (const f of encFields) {
-      assignField(row, e.data, e.templateVersionId, f, encPeers);
-      const indicators = indicatorsByField.get(f.fieldKey) ?? [];
-      const applicable = Boolean(e.data) && belongsToField(e.templateVersionId, f);
-      for (const ind of indicators) {
-        if (!applicable || !e.data || e.data[f.fieldKey] === undefined) {
-          row[ind.columnId] = '';
-        } else if (missingCodeOf(e.data[f.fieldKey])) {
-          row[ind.columnId] = 0;
-        } else {
-          row[ind.columnId] = hasCodeInValue(f, e.data[f.fieldKey], ind.code) ? 1 : 0;
-        }
-      }
+      assignField(row, e.data, e.templateVersionId, f, encPeers, profile);
+      assignIndicators(row, f, indicatorsByField.get(f.fieldKey) ?? [], e.data, e.templateVersionId, profile);
     }
     return row;
   });
@@ -975,6 +1109,7 @@ export function buildPatientExport(
   encounters: ExportEncounter[],
   fields: ExportField[],
   rule: AggregationRule,
+  profile: ExportProfile = 'complete',
 ): ExportTable {
   const all = mergeExportFields(fields);
   const patientFields = all.filter((f) => f.scope === 'patient');
@@ -988,12 +1123,12 @@ export function buildPatientExport(
   const encPeers = formulaFieldIndex(encounterFields);
 
   const patientCols = patientFields.flatMap((f) => {
-    const base = columnsForFields([f]);
+    const base = columnsForFields([f], profile);
     const inds = (patIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
     return [...base, ...inds];
   });
   const encounterCols = encounterFields.flatMap((f) => {
-    const base = columnsForFields([f]);
+    const base = columnsForFields([f], profile);
     const inds = (encIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
     return [...base, ...inds];
   });
@@ -1011,35 +1146,15 @@ export function buildPatientExport(
   const rows = [...patients].sort((a, b) => a.code.localeCompare(b.code)).map((p) => {
     const row: Record<string, unknown> = { patient_code: p.code };
     for (const f of patientFields) {
-      assignField(row, p.data, p.templateVersionId, f, patPeers);
-      const indicators = patIndicators.get(f.fieldKey) ?? [];
-      const applicable = Boolean(p.data) && belongsToField(p.templateVersionId, f);
-      for (const ind of indicators) {
-        if (!applicable || !p.data || p.data[f.fieldKey] === undefined) {
-          row[ind.columnId] = '';
-        } else if (missingCodeOf(p.data[f.fieldKey])) {
-          row[ind.columnId] = 0;
-        } else {
-          row[ind.columnId] = hasCodeInValue(f, p.data[f.fieldKey], ind.code) ? 1 : 0;
-        }
-      }
+      assignField(row, p.data, p.templateVersionId, f, patPeers, profile);
+      assignIndicators(row, f, patIndicators.get(f.fieldKey) ?? [], p.data, p.templateVersionId, profile);
     }
     const e = pickEncounter(byPatient.get(p.code) ?? [], rule);
     row.age_value = e ? formatAgeValue(e.ageValue ?? e.data.age_at_encounter) : '';
     row.age_unit = e?.ageUnit ?? '';
     for (const f of encounterFields) {
-      assignField(row, e ? e.data : null, e?.templateVersionId, f, encPeers);
-      const indicators = encIndicators.get(f.fieldKey) ?? [];
-      const applicable = Boolean(e?.data) && belongsToField(e?.templateVersionId, f);
-      for (const ind of indicators) {
-        if (!applicable || !e || !e.data || e.data[f.fieldKey] === undefined) {
-          row[ind.columnId] = '';
-        } else if (missingCodeOf(e.data[f.fieldKey])) {
-          row[ind.columnId] = 0;
-        } else {
-          row[ind.columnId] = hasCodeInValue(f, e.data[f.fieldKey], ind.code) ? 1 : 0;
-        }
-      }
+      assignField(row, e ? e.data : null, e?.templateVersionId, f, encPeers, profile);
+      assignIndicators(row, f, encIndicators.get(f.fieldKey) ?? [], e?.data, e?.templateVersionId, profile);
     }
     return row;
   });
@@ -1087,9 +1202,39 @@ export function buildMultivalueTable(
   return { columns, rows };
 }
 
+/**
+ * Feuille `Modalités` (L46) : documente une fois chaque option d'une liste controlee
+ * (`select`/`multiselect`), pour qu'une ligne de `Données` reste lisible sans recodage. Une
+ * ligne par option, un seul libellé — meme quand le libellé a été corrigé d'une version à
+ * l'autre, c'est le code qui identifie la modalité. Variable rangee par `analyticId`, ordre de
+ * la liste fusionnée, état actif du dernier gabarit qui la porte. La terminologie n'a pas de
+ * liste contrôlée : ses codes libres restent documentés par le dictionnaire et la feuille
+ * longue, pas ici.
+ */
+export function buildModalities(fields: ExportField[]): ExportTable {
+  const columns = ['variable', 'code', 'label', 'order', 'is_active'];
+  const rows: Record<string, unknown>[] = [];
+  for (const field of mergeExportFields(fields)) {
+    if (!isOptionList(field)) continue;
+    optionsOf(field).forEach((option, index) => {
+      rows.push({
+        variable: analyticId(field),
+        code: option.key,
+        label: option.label,
+        order: index + 1,
+        is_active: option.isActive ? 'true' : 'false',
+      });
+    });
+  }
+  return { columns, rows };
+}
+
 export interface DictionaryOptions {
   indicatorsByField?: Map<string, IndicatorMeta[]>;
   omittedFieldKeys?: Set<string>;
+  // L49 : le profil Analyse porte un dictionnaire reduit aux proprietes d'interpretation ; le
+  // profil `complete` conserve le dictionnaire detaille historique (versions, portee, multiplicite).
+  profile?: 'analysis' | 'complete';
 }
 
 /**
@@ -1104,37 +1249,55 @@ function formulaLabel(field: ExportField): string {
   return [...new Set(all)].sort().join('; ');
 }
 
+// L49 : dans `analysis`, le dictionnaire ne garde que ce qui sert a LIRE le fichier : la
+// variable (colonne exacte), son libelle, sa description, sa section et son type, son unite,
+// sa formule, ses valeurs autorisees (le cas echeant avec mention `(inactif)`) et les raisons
+// de valeur manquante. La portee (`scope`) se lit dans le prefixe de la variable ; les
+// versions de gabarit migrent vers la feuille `Métadonnées`.
+const ANALYSIS_DICTIONARY_COLUMNS = [
+  'column_id',
+  'label',
+  'description',
+  'section',
+  'section_label',
+  'type',
+  'unit',
+  'formula',
+  'allowed_values',
+  'missing_reasons',
+];
+
+const DETAILED_DICTIONARY_COLUMNS = [
+  'column_id',
+  'field_key',
+  'label',
+  'description',
+  'scope',
+  'section',
+  'section_label',
+  'type',
+  // L35 : une colonne calculee doit dire COMMENT elle a ete obtenue. Sans cette colonne,
+  // le fichier exporte porte un nombre que rien n'explique, et qui n'est nulle part dans
+  // les donnees brutes puisqu'il n'est jamais stocke.
+  'formula',
+  'is_multiple',
+  'unit',
+  'allowed_values',
+  'missing_reasons',
+  'template_versions',
+];
+
 export function buildDictionary(fields: ExportField[], options?: DictionaryOptions): ExportTable {
-  const columns = [
-    'column_id',
-    'field_key',
-    'label',
-    'description',
-    'scope',
-    'section',
-    'section_label',
-    'type',
-    // L35 : une colonne calculee doit dire COMMENT elle a ete obtenue. Sans cette colonne,
-    // le fichier exporte porte un nombre que rien n'explique, et qui n'est nulle part dans
-    // les donnees brutes puisqu'il n'est jamais stocke.
-    'formula',
-    'is_multiple',
-    'unit',
-    'allowed_values',
-    'missing_reasons',
-    'template_versions',
-  ];
+  const isAnalysis = options?.profile === 'analysis';
+  const columns = isAnalysis ? ANALYSIS_DICTIONARY_COLUMNS : DETAILED_DICTIONARY_COLUMNS;
   return {
     columns,
     rows: mergeExportFields(fields).flatMap((f) => {
       const optionsList = isOptionList(f) ? optionsOf(f) : [];
       const common = {
-        field_key: f.fieldKey,
         description: f.description ?? '',
-        scope: f.scope,
         section: f.section,
         section_label: f.sectionLabel ?? '',
-        is_multiple: f.isMultiple ? 'true' : 'false',
         unit: f.unit ?? '',
         allowed_values: isOptionList(f)
           ? optionsList.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
@@ -1142,7 +1305,12 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
           ? f.allowedValues.join('; ')
           : '',
         missing_reasons: (f.missingReasons ?? []).join('; '),
-        template_versions: (f.templateVersionIds ?? []).join('; '),
+        ...(isAnalysis ? {} : {
+          field_key: f.fieldKey,
+          scope: f.scope,
+          is_multiple: f.isMultiple ? 'true' : 'false',
+          template_versions: (f.templateVersionIds ?? []).join('; '),
+        }),
         // Les colonnes derivees (code, nombre, indicatrices) ne sont pas calculees par une
         // formule d'utilisateur : la case reste vide chez elles.
         formula: '',
@@ -1150,16 +1318,18 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
       const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common, formula: formulaLabel(f) };
       const derivedRows: Record<string, unknown>[] = [];
       if (isMultivalueField(f)) {
-        derivedRows.push({
-          ...common,
-          column_id: nbColumnId(f),
-          label: `${f.label} — nombre`,
-          type: 'computed_count',
-          is_multiple: 'false',
-          unit: '',
-          allowed_values: '',
-          missing_reasons: '',
-        });
+        // L47/L49 : en Analyse, le multiselect n'a NI colonne `option_code` NI colonne `nb` :
+        // seule l'indicatrice existe, et c'est elle seule que le dictionnaire documente ici.
+        const hasCountColumn = !(isAnalysis && f.type === 'multiselect');
+        if (hasCountColumn) {
+          derivedRows.push({
+            ...common,
+            column_id: nbColumnId(f),
+            label: `${f.label} — nombre`,
+            type: 'computed_count',
+            formula: '',
+          });
+        }
 
         const indicators = options?.indicatorsByField?.get(f.fieldKey) ?? [];
         for (const ind of indicators) {
@@ -1168,10 +1338,7 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
             column_id: ind.columnId,
             label: `${f.label} — ${ind.label}`,
             type: 'computed_indicator',
-            is_multiple: 'false',
-            unit: '',
             allowed_values: ind.code,
-            missing_reasons: '',
           });
         }
         if (options?.omittedFieldKeys?.has(f.fieldKey)) {
@@ -1180,26 +1347,21 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
             column_id: `has__${columnId(f)}`,
             label: `${f.label} — indicateurs (>100 codes, voir feuille dédiée)`,
             type: 'computed_indicator_omitted',
-            is_multiple: 'false',
-            unit: '',
-            allowed_values: '',
-            missing_reasons: '',
           });
         }
       }
       if (isOptionList(f)) {
         return [
           valueRow,
-          {
+          // L49 : en `analysis`, la colonne principale du select/multiselect porte deja le
+          // code stable et le libelle vit dans `Modalités` — pas de colonne `option_code__`.
+          ...(isAnalysis ? [] : [{
             ...common,
             column_id: optionCodeColumnId(f),
             label: `${f.label} — code`,
             type: `${f.type}_code`,
-            is_multiple: 'false',
-            unit: '',
             allowed_values: optionsList.map((o) => o.key).join('; '),
-            missing_reasons: '',
-          },
+          }]),
           ...derivedRows,
         ];
       }
@@ -1211,15 +1373,48 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
           column_id: codeColumnId(f),
           label: `${f.label} — code`,
           type: 'terminology_code',
-          is_multiple: 'false',
-          unit: '',
           allowed_values: '',
-          missing_reasons: '',
         },
         ...derivedRows,
       ];
     }),
   };
+}
+
+export interface MetadataInput {
+  profile: 'analysis' | 'complete';
+  generatedAt: string;
+  baseName: string;
+  cohortName: string;
+  mode: 'encounter' | 'patient';
+  selectionRule: string;
+  templateVersions: string[];
+  rowCount: number;
+  excludedPatientCount: number;
+  excludedEncounterCount: number;
+}
+
+/**
+ * L49 : feuille `Métadonnées` (profil Analyse). Les informations globales quittent le
+ * dictionnaire pour rendre le classeur autonome : qui l'a produit, quand, sur quelle base et
+ * quelle cohorte, quelles versions de gabarit, combien de lignes, quelles exclusions pile.
+ * Le fichier interroge ne s'explique pas seulement par ses colonnes, mais par ce qu'il a laisse
+ * de cote — les exclusions restent comptees et motivables.
+ */
+export function buildMetadata(input: MetadataInput): ExportTable {
+  const rows: Record<string, unknown>[] = [];
+  const add = (attribute: string, value: unknown) => rows.push({ attribute, value });
+  add('export_profile', input.profile);
+  add('generated_at', input.generatedAt);
+  add('base_name', input.baseName);
+  add('cohort_name', input.cohortName);
+  add('export_mode', input.mode);
+  add('selection_rule', input.selectionRule);
+  add('template_versions', input.templateVersions.join('; '));
+  add('row_count', input.rowCount);
+  add('excluded_patients_incomplete', input.excludedPatientCount);
+  add('excluded_encounters_incomplete', input.excludedEncounterCount);
+  return { columns: ['attribute', 'value'], rows };
 }
 
 const NUMERIC_LITERAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;

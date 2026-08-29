@@ -4,25 +4,34 @@
 // avant correction, elle tombait dans le `String(v)` final et toute la colonne rendait
 // « [object Object] » — la donnee etait en base, mais l'export inexploitable. Ce projet
 // avait deja connu ce defaut en juillet avec les codes de valeur manquante.
-import { assertEquals } from '@std/assert';
+import { assertAlmostEquals, assertEquals, assertStringIncludes, assertThrows } from '@std/assert';
 import {
+  analyticId,
+  assertNoAnalyticIdCollisions,
   buildDictionary,
   buildEncounterExport,
+  buildMetadata,
+  buildModalities,
   buildMultivalueTable,
   buildPatientExport,
   checkFormula,
   codeColumnId,
   columnId,
   evaluateFormulaText,
+  excelDateSerial,
+  excelDatetimeSerial,
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
+  type ExportTable,
   extractMultivalueCodes,
   formulaFieldIndex,
   type FormulaFieldRef,
   mergeExportFields,
   nbColumnId,
   optionCodeColumnId,
+  toCsv,
+  withExcelDateSerials,
 } from './exportContract.ts';
 import { FORMULA_CASE_FIELDS, FORMULA_CASES } from './formulaCases.ts';
 
@@ -328,6 +337,192 @@ Deno.test('L36 : au-delà de 100 codes, les indicatrices sont omises et le dicti
   assertEquals(indicatorsByField.get('signes'), []);
   assertEquals(table.columns.some((column) => column.startsWith(`has__${columnId(multi)}__`)), false);
   assertEquals(omittedRow?.type, 'computed_indicator_omitted');
+});
+
+Deno.test('L47 : en Analyse, un multiselect ne rend que ses indicatrices, sans concatenations ni compteur', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    label: 'Signes',
+    type: 'multiselect',
+    allowedValues: ['fievre', 'toux', 'douleur'],
+    allowedOptions: [
+      { value_key: 'fievre', label: 'Fievre', is_active: true },
+      { value_key: 'toux', label: 'Toux', is_active: true },
+      { value_key: 'douleur', label: 'Douleur', is_active: true },
+    ],
+  });
+  const fievre = `has__${columnId(multi)}__fievre`;
+  const toux = `has__${columnId(multi)}__toux`;
+  const douleur = `has__${columnId(multi)}__douleur`;
+  // Non applicable : le champ appartient a une autre version de gabarit.
+  const multiV2 = { ...multi, templateVersionIds: ['v2'] };
+  const r = (patientCode: string, data: Record<string, unknown>, templateVersionId?: string): ExportEncounter => ({
+    ...rencontre(data),
+    patientCode,
+    templateVersionId,
+  });
+  const table = buildEncounterExport(
+    [
+      r('P0001', { signes: ['toux', 'fievre'] }),
+      r('P0002', { signes: ['douleur'] }),
+      r('P0003', { signes: { __missing__: 'non_documente' } }),
+      r('P0004', { signes: [] }),
+      r('P0005', { autre: 1 }), // valeur absente sur un champ applicable
+      r('P0006', { signes: ['toux'] }, 'v1'), // champ absent de la version -> cellules vides
+    ],
+    [multiV2],
+    'analysis',
+  );
+
+  assertEquals(table.columns.includes(columnId(multi)), false);
+  assertEquals(table.columns.includes(optionCodeColumnId(multi)), false);
+  assertEquals(table.columns.includes(nbColumnId(multi)), false);
+  assertEquals(table.columns.slice(6), [douleur, fievre, toux]);
+  assertEquals(table.rows[0][fievre], 1);
+  assertEquals(table.rows[0][toux], 1);
+  assertEquals(table.rows[0][douleur], 0);
+  assertEquals(table.rows[1][fievre], 0);
+  assertEquals(table.rows[1][toux], 0);
+  assertEquals(table.rows[1][douleur], 1);
+  // Chaque indicatrice est un nombre 0/1, jamais une chaine.
+  assertEquals(typeof table.rows[0][fievre], 'number');
+  assertEquals(typeof table.rows[1][douleur], 'number');
+  // Raison de manque explicite -> AUCUNE indicatrice a 1, toutes a 0.
+  assertEquals([table.rows[2][fievre], table.rows[2][toux], table.rows[2][douleur]], [0, 0, 0]);
+  // Liste vide sur un champ applicable -> 0, jamais vide.
+  assertEquals([table.rows[3][fievre], table.rows[3][toux], table.rows[3][douleur]], [0, 0, 0]);
+  // Valeur absente sur un champ applicable -> 0 (champ applicable mais aucune modalite).
+  assertEquals([table.rows[4][fievre], table.rows[4][toux], table.rows[4][douleur]], [0, 0, 0]);
+  // Champ non applicable (absent de la version de la fiche) -> cellule vide.
+  assertEquals([table.rows[5][fievre], table.rows[5][toux], table.rows[5][douleur]], ['', '', '']);
+});
+
+Deno.test('L47 : Analyse, les indicatrices du multiselect et de la terminologie restent separees', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    type: 'multiselect',
+    allowedValues: ['fievre'],
+    allowedOptions: [{ value_key: 'fievre', label: 'Fievre', is_active: true }],
+  });
+  const diag = champ({
+    fieldKey: 'diagnostic',
+    type: 'terminology',
+    isMultiple: true,
+    allowedValues: null,
+  });
+  const encounter = rencontre({
+    signes: ['fievre'],
+    diagnostic: [
+      { code: '1A00', label: 'Cholera' },
+      { code: 'BA00', label: 'Hypertension' },
+    ],
+  });
+  const table = buildEncounterExport([encounter], [multi, diag], 'analysis');
+  // Le multiselect n'a ni concatenations ni compteur en Analyse...
+  assertEquals(table.columns.includes(columnId(multi)), false);
+  assertEquals(table.columns.includes(nbColumnId(multi)), false);
+  // ... mais la terminologie multivaluee garde ses formes (hors perimetre L47, L50).
+  assertEquals(table.columns.includes(columnId(diag)), true);
+  assertEquals(table.columns.includes(codeColumnId(diag)), true);
+  assertEquals(table.columns.includes(nbColumnId(diag)), true);
+  assertEquals(table.rows[0][columnId(diag)], 'Cholera; Hypertension');
+  assertEquals(table.rows[0][`has__${columnId(diag)}__1a00`], 1);
+  assertEquals(table.rows[0][`has__${columnId(multi)}__fievre`], 1);
+});
+
+Deno.test('L47 : Analyse, code historique inconnu et collision de suffixes restent distincts', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    type: 'multiselect',
+    allowedValues: ['fievre'],
+    allowedOptions: [{ value_key: 'fievre', label: 'Fievre', is_active: true }],
+  });
+  // Deux codes differents ('A-B' et 'a_b') se normalisent vers le meme suffixe : le second
+  // porte un compteur pour rester distinct, et chaque ligne garde la bonne indicatrice.
+  const r = (patientCode: string, signes: string[]): ExportEncounter => ({
+    ...rencontre({ signes }),
+    patientCode,
+  });
+  const table = buildEncounterExport(
+    [
+      r('P0001', ['code_historique_inconnu', 'A-B']),
+      r('P0002', ['a_b']),
+    ],
+    [multi],
+    'analysis',
+  );
+  const has = (suffix: string) => `has__${columnId(multi)}__${suffix}`;
+  const cols = table.columns.slice(6);
+  assertEquals(new Set(cols).size, cols.length);
+  assertEquals(cols.includes(has('code_historique_inconnu')), true);
+  assertEquals(cols.includes(has('a_b')), true);
+  assertEquals(cols.includes(has('a_b_2')), true);
+  // Un code inconnu historique n'est jamais efface : il existe, il est selectionne -> 1.
+  assertEquals(table.rows[0][has('code_historique_inconnu')], 1);
+  assertEquals(table.rows[0][has('a_b')], 1);
+  assertEquals(table.rows[0][has('a_b_2')], 0);
+  assertEquals(table.rows[1][has('a_b')], 0);
+  assertEquals(table.rows[1][has('a_b_2')], 1);
+});
+
+Deno.test('L47 : le profil complete conserve les formes du multiselect, sans perte', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    type: 'multiselect',
+    allowedValues: ['fievre', 'toux'],
+    allowedOptions: [
+      { value_key: 'fievre', label: 'Fievre', is_active: true },
+      { value_key: 'toux', label: 'Toux', is_active: true },
+    ],
+  });
+  const encounter = { ...rencontre({ signes: ['toux', 'fievre'] }), patientCode: 'P0001' };
+  const table = buildEncounterExport([encounter], [multi]);
+  assertEquals(table.columns.slice(6, 9), [columnId(multi), optionCodeColumnId(multi), nbColumnId(multi)]);
+  assertEquals(table.rows[0][columnId(multi)], 'Toux; Fievre');
+  assertEquals(table.rows[0][optionCodeColumnId(multi)], 'toux; fievre');
+  assertEquals(table.rows[0][nbColumnId(multi)], 2);
+  assertEquals(table.rows[0][`has__${columnId(multi)}__fievre`], 1);
+  assertEquals(table.rows[0][`has__${columnId(multi)}__toux`], 1);
+});
+
+Deno.test('L47 : Analyse par patient, le multiselect de rencontre rend aussi ses indicatrices seules', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    type: 'multiselect',
+    allowedValues: ['fievre', 'toux'],
+    allowedOptions: [
+      { value_key: 'fievre', label: 'Fievre', is_active: true },
+      { value_key: 'toux', label: 'Toux', is_active: true },
+    ],
+  });
+  const table = buildPatientExport(
+    [{ code: 'P1', data: {} }],
+    [
+      {
+        id: 'e1',
+        patientCode: 'P1',
+        encounterDate: '2026-01-01',
+        encounterType: 'consultation',
+        data: { signes: ['toux'] },
+      },
+      {
+        id: 'e2',
+        patientCode: 'P1',
+        encounterDate: '2026-01-02',
+        encounterType: 'consultation',
+        data: { signes: ['fievre'] },
+      },
+    ],
+    [multi],
+    'first',
+    'analysis',
+  );
+  assertEquals(table.columns.includes(columnId(multi)), false);
+  assertEquals(table.columns.includes(nbColumnId(multi)), false);
+  // 'first' retient la rencontre e1 : toux selectionne, fievre present dans la population mais
+  // non selectionne sur la ligne retenue -> 0 (le 0 n'est jamais confondu avec une absence).
+  assertEquals(table.rows[0][`has__${columnId(multi)}__toux`], 1);
+  assertEquals(table.rows[0][`has__${columnId(multi)}__fievre`], 0);
 });
 
 Deno.test('liste : une raison de valeur manquante part dans la colonne du libelle, pas dans celle du code', () => {
@@ -730,4 +925,343 @@ Deno.test('L35 : le dictionnaire cite la formule, sinon la colonne serait inexpl
   assertEquals(row?.formula, 'date_sortie - date_entree');
   // Une variable saisie n'a pas de formule : la case reste vide.
   assertEquals(dict.rows.find((r) => r.column_id === columnId(ENTREE))?.formula, '');
+});
+
+// =============================================================================
+// L46 — identifiants analytiques, colonne de code stable et feuille Modalites
+// =============================================================================
+
+Deno.test('L46 : analyticId est un repli deterministe court ASCII, stable sous renommage de libelle', () => {
+  const v1 = champ({ fieldKey: 'evolution', type: 'select', label: 'Evolution clinique', templateVersionIds: ['v1'] });
+  const v2 = champ({
+    fieldKey: 'evolution',
+    type: 'select',
+    label: 'Evolution (libelle corrige)',
+    templateVersionIds: ['v2'],
+  });
+  const merged = mergeExportFields([v1, v2]);
+  // Un libelle peut changer, l'identifiant ne change pas ; il reste le meme que la colonne.
+  assertEquals(analyticId(merged[0]), 'encounter__evolution');
+  assertEquals(analyticId(merged[0]), columnId(merged[0]));
+  assertEquals(/^[a-z0-9_]+$/.test(analyticId(merged[0])), true);
+});
+
+Deno.test('L46 : une collision d identifiant analytique est refusee explicitement', () => {
+  // Deux cles distinctes d'une version a l'autre se normalisent vers le meme identifiant :
+  // l'analyste verrait deux variables indiscernables. On refuse plutot que de deviner.
+  const v1 = champ({ fieldKey: 'systole', type: 'integer', templateVersionIds: ['v1'] });
+  const v2 = champ({ fieldKey: 'Systole', type: 'integer', templateVersionIds: ['v2'] });
+  assertThrows(() => assertNoAnalyticIdCollisions([v1, v2]));
+  // La meme cle d'une version a l'autre (union legitime) passe sans erreur.
+  assertNoAnalyticIdCollisions([
+    champ({ fieldKey: 'systole', type: 'integer', templateVersionIds: ['v1'] }),
+    champ({ fieldKey: 'systole', type: 'integer', templateVersionIds: ['v2'] }),
+  ]);
+});
+
+Deno.test('L46 : Modalites documente variable, code, libelle, ordre et etat actif', () => {
+  const table = buildModalities([EVOLUTION]);
+  assertEquals(table.columns, ['variable', 'code', 'label', 'order', 'is_active']);
+  assertEquals(table.rows, [
+    { variable: 'encounter__evolution', code: 'gueri', label: 'Gueri', order: 1, is_active: 'true' },
+    { variable: 'encounter__evolution', code: 'deces', label: 'Deces', order: 2, is_active: 'false' },
+  ]);
+});
+
+Deno.test('L46 : Modalites couvre select et multiselect, jamais la terminologie', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    type: 'multiselect',
+    allowedValues: ['fievre'],
+    allowedOptions: [{ value_key: 'fievre', label: 'Fievre', is_active: true }],
+  });
+  const table = buildModalities([DIAGNOSTIC, EVOLUTION, multi]);
+  // Le diagnostic n'a pas de liste controlee : ses codes libres restent ailleurs.
+  assertEquals(table.rows.some((r) => r.variable === 'encounter__diagnostic'), false);
+  assertEquals(table.rows, [
+    { variable: 'encounter__evolution', code: 'gueri', label: 'Gueri', order: 1, is_active: 'true' },
+    { variable: 'encounter__evolution', code: 'deces', label: 'Deces', order: 2, is_active: 'false' },
+    { variable: 'encounter__signes', code: 'fievre', label: 'Fievre', order: 1, is_active: 'true' },
+  ]);
+});
+
+Deno.test('L46 : un libelle corrige d une version a l autre ne change ni code ni variable, et le dictionnaire reste coherent', () => {
+  const v1 = champ({
+    fieldKey: 'evolution',
+    type: 'select',
+    templateVersionIds: ['v1'],
+    allowedValues: ['gueri'],
+    allowedOptions: [{ value_key: 'gueri', label: 'Gueri', is_active: true }],
+  });
+  const v2 = champ({
+    fieldKey: 'evolution',
+    type: 'select',
+    templateVersionIds: ['v2'],
+    allowedValues: ['gueri', 'perdu'],
+    allowedOptions: [
+      { value_key: 'gueri', label: 'Guerison complete', is_active: true },
+      { value_key: 'perdu', label: 'Perdu de vue', is_active: true },
+    ],
+  });
+  const modalities = buildModalities([v1, v2]);
+  const gueri = modalities.rows.find((r) => r.code === 'gueri');
+  assertEquals(gueri?.variable, 'encounter__evolution');
+  // Le libelle corrige apparait une fois (premier connu), le code stable n a pas bouge.
+  assertEquals(gueri?.label, 'Gueri');
+  // Le dictionnaire et Modalites citent exactement les memes codes.
+  const dict = buildDictionary([v1, v2]);
+  const codes = dict.rows.find((r) => r.column_id === optionCodeColumnId(v1));
+  assertEquals(codes?.allowed_values, 'gueri; perdu');
+  assertEquals(modalities.rows.map((r) => r.code).join('; '), codes?.allowed_values);
+});
+
+Deno.test('L46 : en Analyse, un select rend son CODE stable dans la colonne principale, sans colonne de code', () => {
+  const analysis = buildEncounterExport([rencontre({ evolution: 'gueri' })], [EVOLUTION], 'analysis');
+  assertEquals(analysis.columns.includes(optionCodeColumnId(EVOLUTION)), false);
+  assertEquals(analysis.rows[0][columnId(EVOLUTION)], 'gueri');
+  // En Complet, le libelle et la colonne de code restent, pour la reimportation.
+  const complete = buildEncounterExport([rencontre({ evolution: 'gueri' })], [EVOLUTION], 'complete');
+  assertEquals(complete.columns.includes(optionCodeColumnId(EVOLUTION)), true);
+  assertEquals(complete.rows[0][columnId(EVOLUTION)], 'Gueri');
+  assertEquals(complete.rows[0][optionCodeColumnId(EVOLUTION)], 'gueri');
+  // Defaut de generateur : Complet. Les sorties existantes ne changent pas.
+  const absent = buildEncounterExport([rencontre({ evolution: 'gueri' })], [EVOLUTION]);
+  assertEquals(absent.rows[0][columnId(EVOLUTION)], 'Gueri');
+});
+
+Deno.test('L46 : Analyse, un select a valeur manquante ou absent garde un rendu lisible', () => {
+  const manque = buildEncounterExport([rencontre({ evolution: { __missing__: 'inconnu' } })], [EVOLUTION], 'analysis');
+  assertEquals(manque.rows[0][columnId(EVOLUTION)], 'inconnu');
+  const vide = buildEncounterExport([rencontre({})], [EVOLUTION], 'analysis');
+  assertEquals(vide.rows[0][columnId(EVOLUTION)], '');
+});
+
+Deno.test('L46 : Analyse par patient, un select permanent rend aussi son code stable', () => {
+  const evoPatient = champ({
+    fieldKey: 'evolution',
+    type: 'select',
+    scope: 'patient',
+    allowedValues: ['gueri'],
+    allowedOptions: [{ value_key: 'gueri', label: 'Gueri', is_active: true }],
+  });
+  const table = buildPatientExport(
+    [{ code: 'P1', data: { evolution: 'gueri' } }],
+    [],
+    [evoPatient],
+    'first',
+    'analysis',
+  );
+  assertEquals(table.rows[0][columnId(evoPatient)], 'gueri');
+});
+
+Deno.test('L46 : le CSV Analyse du select porte le code stable et aucune identite', () => {
+  const table = buildEncounterExport([rencontre({ evolution: 'gueri' })], [EVOLUTION], 'analysis');
+  const csv = toCsv(table); // toCsv refuse toute colonne identifiante.
+  assertStringIncludes(csv, 'gueri');
+  assertStringIncludes(csv, 'patient_code');
+});
+
+Deno.test('L48 : une date devient un nombre de serie Excel, une invalide reste absente', () => {
+  assertEquals(excelDateSerial('2020-01-01'), 43_831);
+  // 2020-01-01T12:30:00Z : 12h30 / 24h = 0,5208333 j, ajoute a la partie entiere.
+  assertAlmostEquals(excelDatetimeSerial('2020-01-01T12:30:00Z')!, 43_831.5208333, 0.000_001);
+  // Un fuseau est translate vers l'heure UTC avant le chiffrage (12:30+02:00 -> 10:30Z).
+  assertEquals(excelDatetimeSerial('2020-01-01T12:30:00+02:00'), 43_831.4375);
+  // Une date invalide ou illisible vaut ABSENTE : jamais zero, jamais un chiffre invente.
+  assertEquals(excelDateSerial('2020-13-01'), null);
+  assertEquals(excelDateSerial('pas une date'), null);
+  assertEquals(excelDatetimeSerial('2020-02-30T10:00:00Z'), null);
+});
+
+Deno.test('L48 : withExcelDateSerials chiffre les dates et datetime, sans toucher au reste', () => {
+  const dateField = champ({ fieldKey: 'naissance', type: 'date' });
+  const instantField = champ({ fieldKey: 'debut_visite', type: 'datetime' });
+  const compteur = champ({ fieldKey: 'nb_visites', type: 'integer' });
+  const table: ExportTable = {
+    columns: ['patient_code', columnId(dateField), columnId(instantField), columnId(compteur)],
+    rows: [{
+      patient_code: 'P0001',
+      [columnId(dateField)]: '2020-01-01',
+      [columnId(instantField)]: '2020-01-01T12:30:00Z',
+      [columnId(compteur)]: 3,
+    }],
+  };
+  const temporalColumns = new Map<string, 'date' | 'datetime'>([
+    [columnId(dateField), 'date'],
+    [columnId(instantField), 'datetime'],
+  ]);
+  const converted = withExcelDateSerials(table, temporalColumns);
+  // Cells natives : type nombre, valeurs numeriques. Le compteur reste numerique tel quel.
+  assertEquals(converted.rows[0][columnId(dateField)], 43_831);
+  assertAlmostEquals(converted.rows[0][columnId(instantField)] as number, 43_831.5208333, 0.000_001);
+  assertEquals(typeof converted.rows[0][columnId(compteur)], 'number');
+  // La table d'origine reste en ISO : elle sert a ecrire le CSV sans conversion.
+  assertEquals(table.rows[0][columnId(dateField)], '2020-01-01');
+  // Vide conserve, invalide conservee en TEXTE (jamais masquee par un zero, jamais convertie).
+  const edge: ExportTable = {
+    columns: ['patient_code', columnId(dateField)],
+    rows: [
+      { patient_code: 'P1', [columnId(dateField)]: '' },
+      { patient_code: 'P2', [columnId(dateField)]: '2020-13-01' },
+    ],
+  };
+  const convertedEdge = withExcelDateSerials(edge, temporalColumns);
+  assertEquals(convertedEdge.rows[0][columnId(dateField)], '');
+  assertEquals(convertedEdge.rows[1][columnId(dateField)], '2020-13-01');
+});
+
+Deno.test('L48 : le CSV conserve la representation ISO des dates, jamais la serie Excel', () => {
+  const dateField = champ({ fieldKey: 'naissance', type: 'date' });
+  const table = buildEncounterExport([rencontre({ naissance: '2020-01-01' })], [dateField]);
+  const csv = toCsv(table);
+  assertStringIncludes(csv, '2020-01-01');
+  // Jamais le nombre de serie Excel correspondant (43831 pour le 2020-01-01).
+  assertEquals(csv.includes('43831'), false);
+  // La colonne porte l'ISO, pas un nombre de serie.
+  assertEquals(table.rows[0][columnId(dateField)], '2020-01-01');
+});
+
+Deno.test('L48 : le dictionnaire documente l unite du calcul d une duree', () => {
+  const ENTREE = champ({ fieldKey: 'date_entree', type: 'date' });
+  const SORTIE = champ({ fieldKey: 'date_sortie', type: 'date' });
+  const DUREE = champ({
+    fieldKey: 'duree_hospitalisation',
+    type: 'integer',
+    formula: 'date_sortie - date_entree',
+    unit: 'days',
+  });
+  const dict = buildDictionary([ENTREE, SORTIE, DUREE]);
+  const row = dict.rows.find((r) => r.column_id === columnId(DUREE));
+  assertEquals(row?.unit, 'days');
+  assertEquals(row?.formula, 'date_sortie - date_entree');
+  // Les deux operandes, eux, restent des dates sans unite de duree.
+  assertEquals(dict.rows.find((r) => r.column_id === columnId(ENTREE))?.unit, '');
+});
+
+Deno.test('L49 : en Analyse le dictionnaire est reduit et documente indicatrices, calculs et inactifs', () => {
+  const multi = champ({
+    fieldKey: 'signes',
+    label: 'Signes',
+    type: 'multiselect',
+    allowedValues: ['fievre'],
+    allowedOptions: [{ value_key: 'fievre', label: 'Fievre', is_active: true }],
+  });
+  const DUREE = champ({
+    fieldKey: 'duree_hospitalisation',
+    type: 'integer',
+    formula: 'date_sortie - date_entree',
+    unit: 'days',
+  });
+  const { indicatorsByField } = extractMultivalueCodes([multi], [rencontre({ signes: ['fievre'] })]);
+  const dict = buildDictionary([EVOLUTION, multi, DUREE], { indicatorsByField, profile: 'analysis' });
+
+  // Le dictionnaire Analyse ne garde que les proprietes d'interpretation.
+  assertEquals(dict.columns, [
+    'column_id',
+    'label',
+    'description',
+    'section',
+    'section_label',
+    'type',
+    'unit',
+    'formula',
+    'allowed_values',
+    'missing_reasons',
+  ]);
+  for (const removed of ['field_key', 'scope', 'is_multiple', 'template_versions']) {
+    assertEquals(dict.columns.includes(removed), false, removed);
+  }
+  // Select : en Analyse la colonne principale porte deja le code stable, pas de `option_code__`.
+  assertEquals(dict.rows.some((r) => r.column_id === optionCodeColumnId(EVOLUTION)), false);
+  // Modalite inactive toujours signalee dans les valeurs autorisees.
+  const evo = dict.rows.find((r) => r.column_id === columnId(EVOLUTION));
+  assertEquals(evo?.allowed_values, 'Gueri; Deces (inactif)');
+  // Multiselect : seule l'indicatrice est documentee, ni compteur ni code concatene.
+  assertEquals(dict.rows.some((r) => r.column_id === nbColumnId(multi)), false);
+  assertEquals(dict.rows.some((r) => r.column_id === optionCodeColumnId(multi)), false);
+  const indicator = dict.rows.find((r) => r.column_id === `has__${columnId(multi)}__fievre`);
+  assertEquals(indicator?.type, 'computed_indicator');
+  assertEquals(indicator?.allowed_values, 'fievre');
+  // Le calcul de duree garde sa formule ET son unite : la colonne s'explique seule.
+  const duree = dict.rows.find((r) => r.column_id === columnId(DUREE));
+  assertEquals(duree?.formula, 'date_sortie - date_entree');
+  assertEquals(duree?.unit, 'days');
+});
+
+Deno.test('L49 : en Complet le dictionnaire conserve le detail (portee, multiplicite, versions)', () => {
+  const dict = buildDictionary([EVOLUTION]);
+  for (
+    const kept of [
+      'column_id',
+      'field_key',
+      'scope',
+      'section',
+      'section_label',
+      'type',
+      'formula',
+      'is_multiple',
+      'unit',
+      'allowed_values',
+      'missing_reasons',
+      'template_versions',
+    ]
+  ) {
+    assertEquals(dict.columns.includes(kept), true, kept);
+  }
+  const evo = dict.rows.find((r) => r.column_id === columnId(EVOLUTION));
+  assertEquals(evo?.allowed_values, 'Gueri; Deces (inactif)');
+  assertEquals(evo?.template_versions, '');
+});
+
+Deno.test('L49 : une variable conditionnelle vide reste documentee et une colonne reste dans Donnees', () => {
+  const sexe = champ({
+    fieldKey: 'sexe',
+    label: 'Sexe',
+    type: 'select',
+    allowedValues: ['M', 'F'],
+    allowedOptions: [
+      { value_key: 'M', label: 'M', is_active: true },
+      { value_key: 'F', label: 'F', is_active: true },
+    ],
+  });
+  // La fiche ne porte pas la variable : la colonne existe, les cellules sont vides.
+  const table = buildEncounterExport([rencontre({ evolution: 'gueri' })], [EVOLUTION, sexe], 'analysis');
+  assertEquals(table.columns.includes(columnId(sexe)), true);
+  assertEquals(table.rows[0][columnId(sexe)], '');
+  const dict = buildDictionary([EVOLUTION, sexe], { profile: 'analysis' });
+  assertEquals(dict.rows.some((r) => r.column_id === columnId(sexe)), true);
+});
+
+Deno.test('L49 : export vide, le dictionnaire reste complet', () => {
+  const table = buildEncounterExport([], [EVOLUTION], 'analysis');
+  assertEquals(table.rows, []);
+  const dict = buildDictionary([EVOLUTION], { profile: 'analysis' });
+  assertEquals(dict.rows.some((r) => r.column_id === columnId(EVOLUTION)), true);
+});
+
+Deno.test('L49 : buildMetadata documente profil, population, versions, lignes et exclusions', () => {
+  const metadata = buildMetadata({
+    profile: 'analysis',
+    generatedAt: '2026-07-12T00:00:00.000Z',
+    baseName: 'Base Test',
+    cohortName: 'Cohorte Test',
+    mode: 'encounter',
+    selectionRule: 'first',
+    templateVersions: ['v1', 'v2'],
+    rowCount: 3,
+    excludedPatientCount: 1,
+    excludedEncounterCount: 2,
+  });
+  assertEquals(metadata.columns, ['attribute', 'value']);
+  const by = new Map(metadata.rows.map((r) => [r.attribute, r.value]));
+  assertEquals(by.get('export_profile'), 'analysis');
+  assertEquals(by.get('generated_at'), '2026-07-12T00:00:00.000Z');
+  assertEquals(by.get('base_name'), 'Base Test');
+  assertEquals(by.get('cohort_name'), 'Cohorte Test');
+  assertEquals(by.get('export_mode'), 'encounter');
+  assertEquals(by.get('selection_rule'), 'first');
+  assertEquals(by.get('template_versions'), 'v1; v2');
+  assertEquals(by.get('row_count'), 3);
+  assertEquals(by.get('excluded_patients_incomplete'), 1);
+  assertEquals(by.get('excluded_encounters_incomplete'), 2);
 });
