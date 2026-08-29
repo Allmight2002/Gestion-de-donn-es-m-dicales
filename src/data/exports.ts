@@ -8,6 +8,8 @@ import { signedRead } from './signedRead';
 
 export const EXPORTS_BUCKET = 'scientific-exports';
 export type EncounterScopeOption = 'matching' | 'all' | 'both';
+/** Profil d'export (L45) : Analyse par defaut, Complet pour la structure technique. */
+export type ExportProfile = 'analysis' | 'complete';
 
 export interface ExportLogItem {
   id: string;
@@ -19,6 +21,7 @@ export interface ExportLogItem {
   storedFilePath: string | null;
   fileName?: string | null;
   generationMode?: 'client' | 'server' | null;
+  profile?: ExportProfile | null;
 }
 
 export interface RecordExportInput {
@@ -28,6 +31,8 @@ export interface RecordExportInput {
   templateVersions: string[];
   format: 'csv' | 'xlsx';
   options: Record<string, unknown>;
+  /** Profil d'export (L45). Absent = `analysis` : le serveur traite aussi un appel sans profil. */
+  profile?: ExportProfile;
 }
 
 export interface ExportRepository {
@@ -57,7 +62,8 @@ export function makeExportRepository(client: SupabaseClient | null): ExportRepos
         baseId: input.baseId,
         templateVersions: input.templateVersions,
         format: input.format,
-        options: input.options,
+        // `profile` explicite, meme si `options` en portait deja un : le champ d'entree prime.
+        options: { ...input.options, profile: input.profile },
       });
       return mapLog(data as LogRow);
     },
@@ -100,13 +106,17 @@ type LogRow = {
   id: string; format: string; exported_at: string; patient_count: number | null;
   encounter_count: number | null; file_hash: string | null; stored_file_path: string | null;
   generation_mode?: 'client' | 'server' | null;
-  export_options?: { download_filename?: unknown } | null;
+  export_options?: {
+    download_filename?: unknown;
+    profile?: 'analysis' | 'complete' | null;
+  } | null;
 };
 const mapLog = (r: LogRow): ExportLogItem => ({
   id: r.id, format: r.format, exportedAt: r.exported_at, patientCount: r.patient_count,
   encounterCount: r.encounter_count, fileHash: r.file_hash, storedFilePath: r.stored_file_path,
   fileName: typeof r.export_options?.download_filename === 'string' ? r.export_options.download_filename : null,
   generationMode: r.generation_mode ?? null,
+  profile: r.export_options?.profile ?? null,
 });
 
 export const exportRepository: ExportRepository = makeExportRepository(supabase);

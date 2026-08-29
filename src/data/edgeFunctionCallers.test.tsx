@@ -54,6 +54,48 @@ describe('refus des Edge Functions — un test par appelant', () => {
     })).rejects.toThrow('Export refuse : donnees incompletes ou incoherentes (EXPORT_INCOMPLETE)');
   });
 
+  test('generate-export : le profil voyage dans options, absent = analysis par defaut (L45)', async () => {
+    const invoke = vi.fn(async () => ({
+      data: {
+        id: 'e1', format: 'csv', exported_at: '2026-01-01T00:00:00Z', patient_count: 1,
+        encounter_count: 0, file_hash: 'h', stored_file_path: 'x', generation_mode: 'server',
+        export_options: { profile: 'complete', download_filename: 'meddata_x.csv' },
+      },
+      error: null,
+    }));
+    const repo = makeExportRepository({ functions: { invoke } } as never);
+    const item = await repo.recordExport({
+      cohortId: 'c1', baseId: 'b1', templateVersions: [], format: 'csv',
+      options: { mode: 'patient' }, profile: 'complete',
+    });
+    expect(invoke).toHaveBeenCalledWith(
+      'generate-export',
+      { body: expect.objectContaining({ options: expect.objectContaining({ mode: 'patient', profile: 'complete' }) }) },
+    );
+    expect(item.profile).toBe('complete');
+    expect(item.fileName).toBe('meddata_x.csv');
+  });
+
+  test('generate-export : un appel sans profil reste valide et expose analysis', async () => {
+    const invoke = vi.fn(async () => ({
+      data: {
+        id: 'e1', format: 'csv', exported_at: '2026-01-01T00:00:00Z', patient_count: 1,
+        encounter_count: 0, file_hash: 'h', stored_file_path: 'x', generation_mode: 'server',
+        export_options: {},
+      },
+      error: null,
+    }));
+    const repo = makeExportRepository({ functions: { invoke } } as never);
+    const item = await repo.recordExport({
+      cohortId: 'c1', baseId: 'b1', templateVersions: [], format: 'csv', options: { mode: 'encounter' },
+    });
+    expect(invoke).toHaveBeenCalledWith(
+      'generate-export',
+      { body: expect.objectContaining({ options: expect.objectContaining({ mode: 'encounter', profile: undefined }) }) },
+    );
+    expect(item.profile).toBeNull();
+  });
+
   test('create-mission-account : creation refusee sur une base invalide', async () => {
     const { client } = refusingClient(400, { error: 'Base invalide' });
     const repo = makeMissionRepository(client);

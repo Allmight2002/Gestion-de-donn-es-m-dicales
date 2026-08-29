@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertStringIncludes, assertThrows } from '@std/assert';
+import { assert, assertAlmostEquals, assertEquals, assertStringIncludes, assertThrows } from '@std/assert';
 import * as XLSX from 'xlsx';
 import {
   assertExportShapeWithinLimits,
@@ -196,16 +196,28 @@ function deps(opts: Opts = {}): GenerateExportDeps {
 
 const body = (format: 'csv' | 'xlsx' = 'csv') => ({ cohortId: COHORT, format });
 
-Deno.test('nom export : base, cohorte, mode, horodatage et format sont lisibles', () => {
+Deno.test('nom export : base, cohorte, mode, profil, horodatage et format sont lisibles', () => {
   assertEquals(
     buildExportFilename(
       'Urgences pediatriques',
       'Traumatismes craniens',
       'encounter',
+      'analysis',
       '2026-07-28T06:15:09.123Z',
       'xlsx',
     ),
-    'meddata_urgences-pediatriques_traumatismes-craniens_rencontres_2026-07-28_06-15-09Z.xlsx',
+    'meddata_urgences-pediatriques_traumatismes-craniens_rencontres_analyse_2026-07-28_06-15-09Z.xlsx',
+  );
+  assertEquals(
+    buildExportFilename(
+      'Base',
+      'Cohorte',
+      'patient',
+      'complete',
+      '2026-07-28T06:15:09.123Z',
+      'csv',
+    ),
+    'meddata_base_cohorte_patients_complet_2026-07-28_06-15-09Z.csv',
   );
 });
 
@@ -269,9 +281,58 @@ Deno.test('generate-export: le chemin conserve un identifiant unique et expose u
   );
   assertEquals(
     downloadFilename,
-    'meddata_hopital-central-de-yaounde_diabete-suivi-annuel_patients_2026-07-12_00-00-00Z.csv',
+    'meddata_hopital-central-de-yaounde_diabete-suivi-annuel_patients_analyse_2026-07-12_00-00-00Z.csv',
   );
   assertEquals(responseBody.stored_file_path, 'x');
+});
+
+Deno.test('generate-export: profil par defaut = analyse, journalise et identifiable dans le nom (L45)', async () => {
+  let logged: Record<string, unknown> | undefined;
+  const d = deps({
+    fromResponder: (call) => {
+      if (call.table !== 'export_log') return undefined;
+      logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body() }), d));
+  assertEquals(status, 200);
+  const options = (logged?.export_options ?? {}) as { profile?: unknown; download_filename?: unknown };
+  // Un appel sans profil (compatibilite ancienne) est bien un export Analyse.
+  assertEquals(options.profile, 'analysis');
+  assertStringIncludes(String(options.download_filename), '_analyse_');
+});
+
+Deno.test('generate-export: profil explicite complete conserve la structure et le journal (L45)', async () => {
+  let logged: Record<string, unknown> | undefined;
+  const d = deps({
+    fromResponder: (call) => {
+      if (call.table !== 'export_log') return undefined;
+      logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { ...body('csv'), options: { profile: 'complete' } } }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  const options = (logged?.export_options ?? {}) as { profile?: unknown; download_filename?: unknown };
+  assertEquals(options.profile, 'complete');
+  assertStringIncludes(String(options.download_filename), '_complet_');
+});
+
+Deno.test('generate-export: profil inconnu -> 400 (refus explicite, aucun export possible)', async () => {
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { ...body('csv'), options: { profile: 'cible' } } }),
+      deps(),
+    ),
+  );
+  assertEquals(status, 400);
+  assertEquals(b.error, 'options invalides');
 });
 
 Deno.test('generate-export: cohorte inexistante -> 404', async () => {
@@ -671,7 +732,7 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
   assert(uploadedBytes !== null);
 
   const wb = XLSX.read(uploadedBytes!, { type: 'array' });
-  assertEquals(wb.SheetNames.includes('Export'), true);
+  assertEquals(wb.SheetNames.includes('Données'), true);
   assertEquals(wb.SheetNames.includes('Dictionnaire'), true);
   assertEquals(wb.SheetNames.includes('diagnostics'), true);
 
@@ -685,8 +746,28 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
   assertEquals(diagSheet[1].code, 'BA00');
   assertEquals(diagSheet[1].label, 'Hypertension');
 
-  assertEquals(wb.SheetNames.includes('signes'), true);
-  const signsSheet = XLSX.utils.sheet_to_json(wb.Sheets['signes']) as Record<string, unknown>[];
+  // L47 : le profil Analyse n'exprime pas un multiselect par une feuille relationnelle ni par
+  // des colonnes concatennees — uniquement par ses indicatrices binaires (0/1 numeriques).
+  assertEquals(wb.SheetNames.includes('signes'), false);
+  const exportSheet = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  assertEquals(exportSheet[0]['has__encounter__signes__code_historique_inconnu'], 1);
+  assertEquals(exportSheet[0]['has__encounter__signes__fievre'], 1);
+  assertEquals(typeof exportSheet[0]['has__encounter__signes__fievre'], 'number');
+  assertEquals('nb__encounter__signes' in exportSheet[0], false);
+  assertEquals('option_code__encounter__signes' in exportSheet[0], false);
+
+  // L47 : en `complete`, toutes les formes du multiselect restent presentes, sans perte : la
+  // feuille relationnelle, le libelle concatenne, le compteur, les codes et les indicatrices.
+  uploadedBytes = null;
+  const completeRes = await readResponse(
+    await handleGenerateExport(makeRequest({ body: { ...body('xlsx'), options: { profile: 'complete' } } }), custom),
+  );
+  assertEquals(completeRes.status, 200);
+  assert(uploadedBytes !== null);
+  const wbComplete = XLSX.read(uploadedBytes!, { type: 'array' });
+
+  assertEquals(wbComplete.SheetNames.includes('signes'), true);
+  const signsSheet = XLSX.utils.sheet_to_json(wbComplete.Sheets['signes']) as Record<string, unknown>[];
   assertEquals(signsSheet, [
     {
       patient_code: 'P0001',
@@ -703,6 +784,471 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
       label: 'Fièvre',
     },
   ]);
+  const completeMain = XLSX.utils.sheet_to_json(wbComplete.Sheets['Export']) as Record<string, unknown>[];
+  assertEquals(completeMain[0]['encounter__signes'], 'code_historique_inconnu; Fièvre');
+  assertEquals(completeMain[0]['option_code__encounter__signes'], 'code_historique_inconnu; fievre');
+  assertEquals(completeMain[0]['nb__encounter__signes'], 2);
+  assertEquals(completeMain[0]['has__encounter__signes__fievre'], 1);
+  assertEquals(completeMain[0]['has__encounter__signes__code_historique_inconnu'], 1);
+});
+
+Deno.test('generate-export: XLSX -> dates natives (serie + format), date invalide conservee en texte (L48)', async () => {
+  let uploadedBytes: Uint8Array | null = null;
+  const naissanceField = {
+    id: 'f_nai',
+    template_version_id: TV,
+    field_key: 'naissance',
+    label: 'Naissance',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'date',
+    unit: null,
+    allowed_values: null,
+    display_order: 6,
+  } as const;
+  const debutVisiteField = {
+    id: 'f_dv',
+    template_version_id: TV,
+    field_key: 'debut_visite',
+    label: 'Debut de visite',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'datetime',
+    unit: null,
+    allowed_values: null,
+    display_order: 7,
+  } as const;
+  const validEncounter = {
+    ...ENCOUNTER,
+    id: 'e1',
+    data: { ...ENCOUNTER.data, naissance: '2020-01-01', debut_visite: '2020-01-01T12:30:00Z' },
+  };
+  // Date invalide : elle reste TEXTE lisible dans le classeur, jamais masquee par un zero.
+  const invalidEncounter = {
+    ...ENCOUNTER,
+    id: 'e2',
+    encounter_date: '2020-13-01',
+    data: { ...ENCOUNTER.data, naissance: '2020-13-01', debut_visite: '2020-01-01T12:30:00Z' },
+  };
+
+  const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
+    if (call.kind === 'storage' && call.method === 'upload') {
+      const blob = call.args[1] as Blob;
+      return blob.arrayBuffer().then((buf) => {
+        uploadedBytes = new Uint8Array(buf);
+        return okResult({ path: 'p' });
+      });
+    }
+    if (call.kind === 'storage') return okResult([{}]);
+    if (call.kind === 'from') {
+      switch (call.table) {
+        case 'cohort':
+          return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
+        case 'base':
+          return okResult({ name: 'Base Test' });
+        case 'cohort_member':
+          return okResult([{ patient_id: 'p1' }]);
+        case 'patient':
+          return okResult([{ id: 'p1', patient_code: 'P0001', template_version_id: TV, data: {} }]);
+        case 'cohort_encounter_member':
+          return okResult([{ encounter_id: 'e1' }, { encounter_id: 'e2' }]);
+        case 'encounter':
+          return okResult([validEncounter, invalidEncounter]);
+        case 'template_field':
+          return okResult([...FIELDS, naissanceField, debutVisiteField]);
+        case 'template_section':
+          return okResult(SECTIONS);
+        case 'export_log':
+          return okResult({ id: 'exp1', format: 'xlsx' });
+      }
+    }
+    return okResult(null);
+  };
+  const admin = fakeSupabaseClient({ role: 'admin', responder: adminResponder });
+  const asUser = fakeSupabaseClient({
+    role: 'user',
+    user: { data: { user: { id: 'u1' } } },
+    responder: (c) => c.kind === 'rpc' ? okResult(true) : okResult(null),
+  });
+  const custom: GenerateExportDeps = {
+    buildClients: () => ({ asUser, admin }),
+    newId: () => 'fixed-uuid',
+    now: () => 1_700_000_000_000,
+    nowIso: () => '2026-07-12T00:00:00.000Z',
+  };
+
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('xlsx') }), custom));
+  assertEquals(status, 200);
+  assert(uploadedBytes !== null);
+  const wb = XLSX.read(uploadedBytes!, { type: 'array' });
+  const exportRows = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+
+  // Valeurs relues : les dates valides sont des NOMBRES natifs (serie Excel), pas des textes.
+  assertEquals(exportRows[0]['encounter_date'], 43_831);
+  assertEquals(exportRows[0]['encounter__naissance'], 43_831);
+  assertAlmostEquals(exportRows[0]['encounter__debut_visite'] as number, 43_831.5208333, 0.000_001);
+  // La date invalide reste telle quelle en texte ; la datetime, elle, grandit en serie.
+  assertEquals(exportRows[1]['encounter_date'], '2020-13-01');
+  assertEquals(exportRows[1]['encounter__naissance'], '2020-13-01');
+  assertAlmostEquals(exportRows[1]['encounter__debut_visite'] as number, 43_831.5208333, 0.000_001);
+
+  // Formats de cellule poses (z) : date lisible, datetime lisible avec les secondes.
+  const sheetCells = wb.Sheets['Données'] as Record<string, unknown> & { '!ref'?: string };
+  const range = XLSX.utils.decode_range(sheetCells['!ref']!);
+  const headerIndex = (name: string): number => {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheetCells[XLSX.utils.encode_cell({ r: 0, c })] as { v?: unknown } | undefined;
+      if (cell?.v === name) return c;
+    }
+    throw new Error(`Colonne absente du classeur : ${name}`);
+  };
+  const cellAt = (name: string, row: number): { t?: string; z?: string } | undefined => {
+    const address = XLSX.utils.encode_cell({ r: row, c: headerIndex(name) });
+    const cell = sheetCells[address];
+    return cell as { t?: string; z?: string } | undefined;
+  };
+  // Type natif des cellules : nombres (t:n), pas de texte. La plage de serie est le chiffrage.
+  assertEquals(cellAt('encounter_date', 1)?.t, 'n');
+  // Le classeur contient bien le flux de styles (xl/styles.xml) : SheetJS n'y ecrit les formats
+  // de date (cellules `z`) que lorsque cellStyles est actif. C'est lui qui rend lisible les
+  // series « yyyy-mm-dd » et « yyyy-mm-dd hh:mm:ss » au lieu d'un entier nu.
+  const latin = new TextDecoder('latin1').decode(uploadedBytes!);
+  assertStringIncludes(latin, 'xl/styles.xml');
+  // La ligne invalide reste du texte (t:s), sans valeur inventeepar la conversion.
+  assertEquals(cellAt('encounter__naissance', 2)?.t, 's');
+  assertEquals(cellAt('encounter_date', 2)?.t, 's');
+});
+
+Deno.test('generate-export: Analyse produit la feuille Modalites, pas Complet (L46)', async () => {
+  let uploadedBytes: Uint8Array | null = null;
+  const selectField = {
+    id: 'f_evo',
+    template_version_id: TV,
+    field_key: 'evolution',
+    label: 'Evolution',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'select',
+    unit: null,
+    allowed_values: ['gueri', 'deces'],
+    allowed_options: [
+      { value_key: 'gueri', label: 'Gueri', is_active: true },
+      { value_key: 'deces', label: 'Deces', is_active: false },
+    ],
+    display_order: 6,
+  };
+  const enc = { ...ENCOUNTER, data: { ...ENCOUNTER.data, evolution: 'gueri' } };
+
+  const run = (profile?: 'analysis' | 'complete'): Promise<Response> => {
+    const adminResponder: Responder = (call) => {
+      if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
+      if (call.kind === 'storage' && call.method === 'upload') {
+        const blob = call.args[1] as Blob;
+        return blob.arrayBuffer().then((buf) => {
+          uploadedBytes = new Uint8Array(buf);
+          return okResult({ path: 'p' });
+        });
+      }
+      if (call.kind === 'storage') return okResult([{}]);
+      if (call.kind === 'from') {
+        switch (call.table) {
+          case 'cohort':
+            return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
+          case 'base':
+            return okResult({ name: 'Base Test' });
+          case 'cohort_member':
+            return okResult([{ patient_id: 'p1' }]);
+          case 'patient':
+            return okResult([{ id: 'p1', patient_code: 'P0001', template_version_id: TV, data: {} }]);
+          case 'cohort_encounter_member':
+            return okResult([{ encounter_id: 'e1' }]);
+          case 'encounter':
+            return okResult([enc]);
+          case 'template_field':
+            return okResult([...FIELDS, selectField]);
+          case 'template_section':
+            return okResult(SECTIONS);
+          case 'export_log':
+            return okResult({ id: 'exp1', format: 'xlsx' });
+        }
+      }
+      return okResult(null);
+    };
+    const admin = fakeSupabaseClient({ role: 'admin', responder: adminResponder });
+    const asUser = fakeSupabaseClient({
+      role: 'user',
+      user: { data: { user: { id: 'u1' } } },
+      responder: (c) => (c.kind === 'rpc' ? okResult(true) : okResult(null)),
+    });
+    const custom: GenerateExportDeps = {
+      buildClients: () => ({ asUser, admin }),
+      newId: () => 'fixed-uuid',
+      now: () => 1_700_000_000_000,
+      nowIso: () => '2026-07-12T00:00:00.000Z',
+    };
+    const payload = profile ? { ...body('xlsx'), options: { profile } } : body('xlsx');
+    return handleGenerateExport(makeRequest({ body: payload }), custom);
+  };
+
+  const analysisRes = await readResponse(await run());
+  assertEquals(analysisRes.status, 200);
+  assert(uploadedBytes !== null);
+  const wb = XLSX.read(uploadedBytes!, { type: 'array' });
+  assertEquals(wb.SheetNames.includes('Modalités'), true);
+  const sheet = XLSX.utils.sheet_to_json(wb.Sheets['Modalités']) as Record<string, unknown>[];
+  assertEquals(sheet, [
+    { variable: 'encounter__evolution', code: 'gueri', label: 'Gueri', order: 1, is_active: 'true' },
+    { variable: 'encounter__evolution', code: 'deces', label: 'Deces', order: 2, is_active: 'false' },
+  ]);
+  // Analyse : la colonne principale du select porte le code stable, pas de colonne de code separee.
+  const mainSheet = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  assertEquals(mainSheet[0]['encounter__evolution'], 'gueri');
+  assertEquals('option_code__encounter__evolution' in mainSheet[0], false);
+
+  uploadedBytes = null;
+  const completeRes = await readResponse(await run('complete'));
+  assertEquals(completeRes.status, 200);
+  assert(uploadedBytes !== null);
+  const wbComplete = XLSX.read(uploadedBytes!, { type: 'array' });
+  assertEquals(wbComplete.SheetNames.includes('Modalités'), false);
+  // Complet : libelle en colonne principale, code dans sa colonne dediee (reimportation).
+  const completeMain = XLSX.utils.sheet_to_json(wbComplete.Sheets['Export']) as Record<string, unknown>[];
+  assertEquals(completeMain[0]['encounter__evolution'], 'Gueri');
+  assertEquals(completeMain[0]['option_code__encounter__evolution'], 'gueri');
+});
+
+Deno.test('generate-export: XLSX Analyse -> Donnees, Dictionnaire simplifie, Modalites, Metadonnees (L49)', async () => {
+  let uploadedBytes: Uint8Array | null = null;
+  const selectEvo = {
+    id: 'f_evo',
+    template_version_id: TV,
+    field_key: 'evolution',
+    label: 'Evolution',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'select',
+    unit: null,
+    allowed_values: ['gueri', 'deces'],
+    allowed_options: [
+      { value_key: 'gueri', label: 'Gueri', is_active: true },
+      { value_key: 'deces', label: 'Deces', is_active: false },
+    ],
+    display_order: 4,
+  } as const;
+  const multiSignes = {
+    id: 'f_signes',
+    template_version_id: TV,
+    field_key: 'signes',
+    label: 'Signes',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'multiselect',
+    unit: null,
+    allowed_values: ['fievre'],
+    allowed_options: [{ value_key: 'fievre', label: 'Fievre', is_active: true }],
+    display_order: 5,
+  } as const;
+  const encounter = {
+    ...ENCOUNTER,
+    data: { ...ENCOUNTER.data, evolution: 'gueri', signes: ['fievre'] },
+  };
+
+  const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
+    if (call.kind === 'storage' && call.method === 'upload') {
+      const blob = call.args[1] as Blob;
+      return blob.arrayBuffer().then((buf) => {
+        uploadedBytes = new Uint8Array(buf);
+        return okResult({ path: 'p' });
+      });
+    }
+    if (call.kind === 'storage') return okResult([{}]);
+    if (call.kind === 'from') {
+      switch (call.table) {
+        case 'cohort':
+          return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
+        case 'base':
+          return okResult({ name: 'Base Test' });
+        case 'cohort_member':
+          return okResult([{ patient_id: 'p1' }]);
+        case 'patient':
+          return okResult([{ id: 'p1', patient_code: 'P0001', template_version_id: TV, data: {} }]);
+        case 'cohort_encounter_member':
+          return okResult([{ encounter_id: 'e1' }]);
+        case 'encounter':
+          return okResult([encounter]);
+        case 'template_field':
+          return okResult([...FIELDS, selectEvo, multiSignes]);
+        case 'template_section':
+          return okResult(SECTIONS);
+        case 'export_log':
+          return okResult({ id: 'exp1', format: 'xlsx' });
+      }
+    }
+    return okResult(null);
+  };
+  const admin = fakeSupabaseClient({ role: 'admin', responder: adminResponder });
+  const asUser = fakeSupabaseClient({
+    role: 'user',
+    user: { data: { user: { id: 'u1' } } },
+    responder: (c) => c.kind === 'rpc' ? okResult(true) : okResult(null),
+  });
+  const custom: GenerateExportDeps = {
+    buildClients: () => ({ asUser, admin }),
+    newId: () => 'fixed-uuid',
+    now: () => 1_700_000_000_000,
+    nowIso: () => '2026-07-12T00:00:00.000Z',
+  };
+
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('xlsx') }), custom));
+  assertEquals(status, 200);
+  assert(uploadedBytes !== null);
+  const wb = XLSX.read(uploadedBytes!, { type: 'array' });
+  // L49 : les quatre feuilles du profil Analyse, dans l'ordre du classeur autonome.
+  assertEquals(wb.SheetNames.slice(0, 4), ['Données', 'Dictionnaire', 'Modalités', 'Métadonnées']);
+
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  assertEquals(rows[0]['encounter__evolution'], 'gueri');
+  assertEquals(rows[0]['has__encounter__signes__fievre'], 1);
+  assertEquals('nb__encounter__signes' in rows[0], false);
+  assertEquals('option_code__encounter__signes' in rows[0], false);
+
+  // Dictionnaire Analyse : reduit aux proprietes d'interpretation, sans identifiants techniques.
+  const dictRows = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const dictColumns = Object.keys(dictRows[0]);
+  for (
+    const kept of [
+      'column_id',
+      'label',
+      'description',
+      'section',
+      'type',
+      'formula',
+      'unit',
+      'allowed_values',
+      'missing_reasons',
+    ]
+  ) {
+    assertEquals(dictColumns.includes(kept), true, `colonne ${kept} attendue`);
+  }
+  for (const removed of ['field_key', 'scope', 'is_multiple', 'template_versions']) {
+    assertEquals(dictColumns.includes(removed), false, `colonne ${removed} absente`);
+  }
+  const evoRow = dictRows.find((r) => r.column_id === 'encounter__evolution');
+  assertEquals(evoRow?.allowed_values, 'Gueri; Deces (inactif)');
+  const indicatorRow = dictRows.find((r) => r.column_id === 'has__encounter__signes__fievre');
+  assertEquals(indicatorRow?.type, 'computed_indicator');
+  assertEquals(indicatorRow?.allowed_values, 'fievre');
+
+  // Metadonnees : le fichier s'explique seul (population, versions, exclusions, regle).
+  const meta = new Map(
+    (XLSX.utils.sheet_to_json(wb.Sheets['Métadonnées']) as Array<{ attribute: string; value: unknown }>)
+      .map((r) => [r.attribute, r.value]),
+  );
+  assertEquals(meta.get('export_profile'), 'analysis');
+  assertEquals(meta.get('base_name'), 'Base Test');
+  assertEquals(meta.get('cohort_name'), 'Cohorte Test');
+  assertEquals(meta.get('export_mode'), 'encounter');
+  assertEquals(meta.get('selection_rule'), 'last');
+  assertEquals(meta.get('template_versions'), TV);
+  assertEquals(meta.get('row_count'), 1);
+  assertEquals(meta.get('excluded_patients_incomplete'), 0);
+  assertEquals(meta.get('excluded_encounters_incomplete'), 0);
+
+  // Complet : pas de Metadonnees, dictionnaire detaille (versions et portee conserves).
+  uploadedBytes = null;
+  const completeRes = await readResponse(
+    await handleGenerateExport(makeRequest({ body: { ...body('xlsx'), options: { profile: 'complete' } } }), custom),
+  );
+  assertEquals(completeRes.status, 200);
+  assert(uploadedBytes !== null);
+  const wbComplete = XLSX.read(uploadedBytes!, { type: 'array' });
+  assertEquals(wbComplete.SheetNames.includes('Métadonnées'), false);
+  const completeDict = XLSX.utils.sheet_to_json(wbComplete.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  for (const kept of ['field_key', 'scope', 'is_multiple', 'template_versions']) {
+    assertEquals(Object.keys(completeDict[0]).includes(kept), true, `complete colonne ${kept}`);
+  }
+});
+
+Deno.test('generate-export: Analyse refuse un multiselect au-dela de 100 codes, pas Complet (L47)', async () => {
+  const codes = Array.from({ length: 101 }, (_, index) => `code_${index}`);
+  const hugeField = {
+    id: 'f_signes',
+    template_version_id: TV,
+    field_key: 'signes',
+    label: 'Signes',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'multiselect',
+    unit: null,
+    allowed_values: codes,
+    allowed_options: null,
+    display_order: 6,
+  };
+  const enc = {
+    ...ENCOUNTER,
+    data: { ...ENCOUNTER.data, signes: codes },
+  };
+
+  const makeRun = (responder: Responder) => {
+    const admin = fakeSupabaseClient({ role: 'admin', responder });
+    const asUser = fakeSupabaseClient({
+      role: 'user',
+      user: { data: { user: { id: 'u1' } } },
+      responder: (c) => (c.kind === 'rpc' ? okResult(true) : okResult(null)),
+    });
+    const custom: GenerateExportDeps = {
+      buildClients: () => ({ asUser, admin }),
+      newId: () => 'fixed-uuid',
+      now: () => 1_700_000_000_000,
+      nowIso: () => '2026-07-12T00:00:00.000Z',
+    };
+    return (payload: unknown) => handleGenerateExport(makeRequest({ body: payload }), custom);
+  };
+
+  const runWith = async (profile?: 'analysis' | 'complete') =>
+    readResponse(
+      await makeRun((call) => {
+        if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
+        if (call.kind === 'storage' && call.method === 'upload') return okResult({ path: 'p' });
+        if (call.kind === 'storage') return okResult([{}]);
+        if (call.kind === 'from') {
+          switch (call.table) {
+            case 'cohort':
+              return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
+            case 'base':
+              return okResult({ name: 'Base Test' });
+            case 'cohort_member':
+              return okResult([{ patient_id: 'p1' }]);
+            case 'patient':
+              return okResult([{ id: 'p1', patient_code: 'P0001', template_version_id: TV, data: {} }]);
+            case 'cohort_encounter_member':
+              return okResult([{ encounter_id: 'e1' }]);
+            case 'encounter':
+              return okResult([enc]);
+            case 'template_field':
+              return okResult([...FIELDS, hugeField]);
+            case 'template_section':
+              return okResult(SECTIONS);
+            case 'export_log':
+              return okResult({ id: 'exp1', format: 'xlsx' });
+          }
+        }
+        return okResult(null);
+      })(profile ? { ...body('xlsx'), options: { profile } } : body('xlsx')),
+    );
+
+  // Analyse : jamais de fichier tronque silencieusement, refus explicite du seuil.
+  const refused = await runWith();
+  assertEquals(refused.status, 413);
+  assertEquals(refused.body.code, 'EXPORT_INDICATOR_CARDINALITY');
+  assertEquals(refused.body.limit, 100);
+  assertEquals(refused.body.fields, ['signes']);
+
+  // Complet : les codes concatenes conservent l'information sans seuil a faire respecter.
+  const complete = await runWith('complete');
+  assertEquals(complete.status, 200);
 });
 
 Deno.test('generate-export: XLSX -> 200', async () => {
