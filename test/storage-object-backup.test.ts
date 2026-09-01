@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   decryptPayload,
+  downloadObjectWithRetry,
   encryptPayload,
   isLoopbackStorageUrl,
   parseEncryptionKey,
@@ -67,6 +68,57 @@ describe('sauvegarde chiffree des objets Storage', () => {
     const traversal = validManifest();
     traversal.buckets[0].objects[0].blobFile = '../secret.bin';
     expect(() => validateManifest(traversal)).toThrow(/Objet invalide/);
+  });
+
+  test('reprend un telechargement apres une erreur transitoire sans exposer son identite', async () => {
+    const download = vi.fn()
+      .mockResolvedValueOnce({ data: null, error: new Error('secret fournisseur') })
+      .mockResolvedValueOnce({ data: new Blob(['fixture fictive']), error: null });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    const data = await downloadObjectWithRetry<Blob>(download, {
+      maxAttempts: 3,
+      retryBaseMs: 0,
+      sleep,
+    });
+
+    expect(await data.text()).toBe('fixture fictive');
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  test('refuse de reprendre une erreur permanente et masque le detail sensible', async () => {
+    const download = vi.fn().mockResolvedValue({
+      data: null,
+      error: { status: 403, message: 'bucket-secret/document-secret.pdf' },
+    });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(downloadObjectWithRetry(download, {
+      maxAttempts: 3,
+      retryBaseMs: 0,
+      sleep,
+    })).rejects.toThrow('Telechargement d un objet Storage a echoue (HTTP 403); detail masque.');
+    await expect(downloadObjectWithRetry(download, {
+      maxAttempts: 1,
+      retryBaseMs: 0,
+      sleep,
+    })).rejects.not.toThrow(/bucket-secret|document-secret|fournisseur/);
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  test('borne les reprises et masque la derniere erreur transitoire', async () => {
+    const download = vi.fn().mockRejectedValue(new Error('timeout sur objet-secret'));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(downloadObjectWithRetry(download, {
+      maxAttempts: 3,
+      retryBaseMs: 0,
+      sleep,
+    })).rejects.toThrow('Telechargement d un objet Storage a echoue; detail masque.');
+    expect(download).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
   });
 });
 
