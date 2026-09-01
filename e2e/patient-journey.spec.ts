@@ -48,7 +48,12 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     await page.getByRole('button', { name: /Nouveau patient|New patient/i }).click();
     await page.getByLabel(/Code patient|Patient code/i).fill(code);
     await page.getByLabel(/Nom complet|Full name/i).fill(fullName);
-    await page.getByLabel(/Date de naissance|Date of birth/i).fill('1990-01-01');
+    await page.getByRole('button', { name: /Date de naissance|Date of birth/i }).click();
+    const datePicker = page.getByRole('dialog', { name: /Sélecteur de date|Date picker/i });
+    await datePicker.getByRole('textbox', { name: /Jour|Day/i }).fill('01');
+    await datePicker.getByRole('textbox', { name: /Mois|Month/i }).fill('01');
+    await datePicker.getByRole('textbox', { name: /Année|Year/i }).fill('1990');
+    await datePicker.getByRole('button', { name: /Utiliser cette date|Use this date/i }).click();
     await page.getByRole('button', { name: /Enregistrer le patient|Save patient/i }).click();
 
     // La fiche s'ouvre : on capte l'identifiant pour le nettoyage du residu eventuel.
