@@ -3294,3 +3294,36 @@ un preview isolé avec service worker réel, variables d'intake activées et don
 reste ensuite à décider : mise à jour finale des preuves de release et éventuelle activation sur
 un environnement autorisé. Les builds persistants conservent `VITE_OFFLINE_MODE=disabled`,
 `VITE_OFFLINE_ADMIN_ACK=false` et `VITE_OFFLINE_INTAKE=disabled`.
+
+## Lot L45 — profils d’export Analyse et Complet (2026-09-01)
+
+### Résultat
+
+- Le contrat serveur L45, déjà intégré dans `develop` avec L46 à L49 par la PR 264, expose les
+  profils explicites `analysis` et `complete`. Un appel sans profil reste compatible et utilise
+  `analysis` ; une valeur inconnue est refusée. Le profil est conservé dans
+  `export_log.export_options.profile` et apparaît dans le nom du fichier CSV ou XLSX.
+- Le parcours utilisateur permet maintenant de choisir le profil depuis l’écran partagé par
+  l’export direct d’une base et l’export d’une cohorte figée. `analysis` est présélectionné ;
+  `complete` est présenté comme la structure historique de transition.
+- L’historique affiche le profil journalisé. Les entrées créées avant L45 et dépourvues de cette
+  métadonnée sont indiquées comme « Profil antérieur », sans leur attribuer rétroactivement un
+  profil supposé.
+- Les listes anti-identité, le contrôle d’accès serveur, le figeage, le hash, l’upload privé et
+  la journalisation existants restent côté serveur et inchangés. Aucune colonne, migration
+  appliquée, sémantique multiselect ou garantie de sécurité n’a été déplacée vers l’interface.
+
+### Validation et incidents de release connexes
+
+- Test web ciblé `ExportPanel` : **7/7 verts**, couvrant le défaut `analysis`, le choix
+  `complete`, CSV/XLSX, l’export direct, l’export de cohorte et l’affichage dans l’historique.
+  ESLint ciblé du composant, du test et des traductions française/anglaise : vert.
+- Coordinated release 170 : échec navigateur identifié sur l’ancien usage de `fill()` contre le
+  bouton du nouveau sélecteur de date. Le correctif isolé est proposé par la PR 265, dont la CI
+  est verte.
+- Coordinated release 171 : les quatre exports PostgreSQL et l’inventaire Storage avaient
+  réussi ; l’échec provenait du téléchargement d’un objet Storage sans statut HTTP. Une reprise
+  bornée des seules erreurs transitoires, sans fuite de bucket, chemin ou détail fournisseur,
+  est proposée par la PR 266, dont la CI est verte.
+- Aucun workflow « Coordinated release » n’a été relancé. Aucune fusion, migration distante,
+  modification cloud ou opération sur des données réelles n’a été effectuée.

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Test de rendu de l'export (cahier §9.2/§9.3) avec repos INJECTES.
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -76,6 +76,7 @@ describe('ExportPanel', () => {
     await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
     const arg = recordExport.mock.calls[0][0];
     expect(arg.format).toBe('csv');
+    expect(arg.profile).toBe('analysis');
     expect(arg.options).toMatchObject({ mode: 'encounter', rule: 'last', scope: 'matching' });
     expect('content' in arg).toBe(false);
   });
@@ -130,6 +131,19 @@ describe('ExportPanel', () => {
     expect(screen.queryByText('Une ligne par participant')).toBeNull();
   });
 
+  test('permet de choisir le profil complet et le format XLSX', async () => {
+    const recordExport = await exportWithModel('longitudinal');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /profil de données/i }),
+      'complete',
+    );
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /format/i }), 'xlsx');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+    await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+    expect(recordExport.mock.calls[0][0]).toMatchObject({ profile: 'complete', format: 'xlsx' });
+  });
+
   // Parcours principal : l'export ne demande plus de constituer une cohorte. Le figeage a
   // toujours lieu -- il cesse d'etre une demarche a la charge du medecin.
   test('sans cohorte : la population est figee a la volee, puis exportee', async () => {
@@ -166,6 +180,7 @@ describe('ExportPanel', () => {
       false,
     );
     expect(recordExport.mock.calls[0][0].cohortId).toBe('auto-1');
+    expect(recordExport.mock.calls[0][0].profile).toBe('analysis');
   });
 
   test('telecharge un export conserve via URL signee (et trace best-effort en local)', async () => {
@@ -182,6 +197,7 @@ describe('ExportPanel', () => {
         return [{
           id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 2, fileHash: 'deadbeef', storedFilePath: 'b/c/export.csv',
           fileName: 'meddata_base_cohorte_patients_2024-01-01_08-30-00Z.csv',
+          profile: 'complete',
         }];
       },
       getExportDownloadUrl,
@@ -204,7 +220,10 @@ describe('ExportPanel', () => {
       </I18nProvider>,
     );
 
-    await screen.findByText(/deadbeef/);
+    const historyHash = await screen.findByText(/deadbeef/);
+    const historyEntry = historyHash.closest('li');
+    expect(historyEntry).not.toBeNull();
+    expect(within(historyEntry as HTMLLIElement).getByText(/Complet — structure actuelle/)).toBeTruthy();
     const buttons = screen.getAllByRole('button');
     await userEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(getExportDownloadUrl).toHaveBeenCalledWith('x', 'b/c/export.csv'));
