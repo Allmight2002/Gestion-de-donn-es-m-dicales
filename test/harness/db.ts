@@ -12,6 +12,7 @@
 import EmbeddedPostgres from 'embedded-postgres';
 import type { Client } from 'pg';
 import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -32,9 +33,31 @@ export interface TestDb {
   stop(): Promise<void>;
 }
 
+// Sous Windows, de larges plages de ports peuvent etre RESERVEES par le systeme
+// (Hyper-V) : un bind TCP y est refuse ("could not bind IPv4 address"). On sonde
+// donc la possibilite de bind AVANT de lancer le couteux initdb, et on reessaie
+// sur un autre port : l'echec d'un tirage ne doit pas faire echouer la suite.
+function canBind(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, '127.0.0.1', () => {
+      probe.close(() => resolve(true));
+    });
+  });
+}
+
+async function pickBindablePort(): Promise<number> {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const port = 50000 + Math.floor(Math.random() * 10000);
+    if (await canBind(port)) return port;
+  }
+  throw new Error('Aucun port TCP disponible pour PostgreSQL embarque');
+}
+
 export async function startTestDb(opts: { seed?: boolean } = {}): Promise<TestDb> {
   const databaseDir = mkdtempSync(join(tmpdir(), 'rls-pg-'));
-  const port = 50000 + Math.floor(Math.random() * 10000);
+  const port = await pickBindablePort();
 
   // persistent:true => embedded-postgres ne tente PAS de supprimer le data dir au
   // stop (sous Windows, le verrou fichier provoque sinon un EBUSY intermittent).

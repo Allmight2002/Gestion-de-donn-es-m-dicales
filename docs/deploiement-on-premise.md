@@ -350,6 +350,8 @@ Renseignez dans `.env.production` :
 | `VITE_USE_SIGNED_READ` | `true` (lectures de fichiers journalisées via Edge) |
 | `VITE_REQUIRE_SERVER_INSPECTION` | vide ou `false` (mode inspection en pause) |
 | `VITE_OFFLINE_MODE` | `disabled` (défaut des releases — pas de cache clinique hors-ligne) |
+| `VITE_OFFLINE_ADMIN_ACK` | `false` |
+| `VITE_OFFLINE_INTAKE` | `disabled` (la création patient hors-ligne reste réservée aux previews fictifs) |
 | `SUPABASE_SERVICE_ROLE_KEY` | La clé secrète (utilisée par les scripts serveur, jamais par le frontend) |
 
 Puis :

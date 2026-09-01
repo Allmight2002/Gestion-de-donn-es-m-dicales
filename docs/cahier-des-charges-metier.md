@@ -264,6 +264,15 @@ exporte des données **sans identité**.
   par code présent (jusqu'à 100 codes distincts), et une **feuille dédiée** sans perte — une ligne
   par valeur, avec son rang. Une raison de valeur manquante remplit la colonne principale et
   laisse le compteur **vide**, jamais `0`, qui signifierait « aucun diagnostic ».
+- **EF-28 quinquies (cible Export Analyse, 2026-08-24).** Le profil d'export proposé par défaut
+  est destiné à une utilisation directe dans Excel, R, SPSS ou Stata. Il produit les feuilles
+  `Données`, `Dictionnaire`, `Modalités` et `Métadonnées`, conserve le code stable des `select`
+  dans les données, transforme les multiselect en indicatrices binaires initialisées à `0` (une
+  modalité non sélectionnée vaut `0`) et réserve les colonnes techniques, compteurs et feuilles
+  relationnelles au profil **Export complet**. La distinction entre `0`, valeur vide et raison de
+  valeur manquante est obligatoire. Cette cible est
+  **documentée mais non implémentée** ; son découpage est dans
+  [`chantiers-export-analyse.md`](chantiers-export-analyse.md).
 
 ### 4.10 Mode hors-ligne (application installable / PWA)
 - **EF-29.** Une base peut être rendue **disponible hors-ligne** : un **instantané analytique**
@@ -276,6 +285,11 @@ exporte des données **sans identité**.
   Elle n'est **proposée que si elle sauve réellement au moins une valeur** : un bouton qui
   promettrait un sauvetage sans l'accomplir serait pire que pas de bouton. L'écran affiche
   l'aperçu exact de ce qui sera écrit.
+- **EF-30 ter (intake-only, O0–O5).** Après préparation en ligne du contexte d'une base, un
+  utilisateur peut, dans le mode de démonstration autorisé, créer hors-ligne un nouveau patient et
+  une première rencontre. La saisie reste dans une file locale dédiée, séparée des patients déjà
+  enregistrés ; au retour du réseau, les créations sont rejouées dans l'ordre et une même opération
+  ne produit qu'une seule ligne serveur.
 - **RG-16.** Le cache hors-ligne est **cloisonné par compte** (un autre utilisateur du même
   appareil n'y accède pas), **expire au bout de 24 heures** (`OFFLINE_TTL_MS`, appliqué à la
   lecture et au démarrage) et est **purgé à la déconnexion**.
@@ -340,8 +354,10 @@ preparing ──soumission (≥1 doc)──► open ──réservation──► 
 - Auto-inscription publique depuis l'app ; gestion fine des comptes en self-service.
 - Exploitation clinique de l'inspection antivirus : activer le vrai moteur ClamAV, les secrets Edge
   et la politique stricte en production.
-- Création **hors-ligne** de patients / identité / documents (l'outbox se limite volontairement aux
-  corrections de rencontres).
+- Usage clinique réel de la création **hors-ligne** de patients / identité / documents : le code
+  *intake-only* O0–O5 existe pour des previews explicitement autorisés, mais reste désactivé dans
+  les builds persistants tant que la preuve navigateur O6, la revue de risque et l'activation O7 ne
+  sont pas terminées. Les images et documents hors-ligne restent hors périmètre.
 - Chiffrement local du cache, politique d'« appareil de confiance », verrouillage de session.
 - Détection automatique fine des doublons inter-fichiers au-delà de l'avertissement.
 

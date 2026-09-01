@@ -10,6 +10,11 @@ import type { TemplateField, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
+import { newOfflineId, useOnline } from '../../data/offline';
+import {
+  enqueueEncounterCreate, intakeContextCache, intakeQueue, isLocalPatientId,
+  isOfflineIntakeEnabled, type PatientCreateEntry,
+} from '../../data/offlineIntake';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
@@ -32,6 +37,7 @@ export function EncounterForm() {
   const { id: baseId, patientId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const online = useOnline();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
@@ -40,6 +46,10 @@ export function EncounterForm() {
   const { profile } = useAuth();
   // Meme regle que pour le patient : la voie curation est fermee aux comptes de mission.
   const maySubmitToCuration = !isMissionAccount(profile);
+
+  // Dossier patient ENCORE LOCAL (cree hors-ligne, en attente de synchronisation).
+  const [localParent, setLocalParent] = useState<PatientCreateEntry | null>(null);
+  const offlineIntakeMode = !!patientId && isLocalPatientId(patientId) && isOfflineIntakeEnabled();
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -82,6 +92,31 @@ export function EncounterForm() {
     if (!baseId) return;
     setLoading(true);
     try {
+      // RENCONTRE D'UN DOSSIER LOCAL (patient cree hors-ligne) : tout vient du contexte
+      // de saisie et de la file cloisonnee — aucun appel reseau, jamais la base existante.
+      if (offlineIntakeMode && patientId) {
+        const parent = await intakeQueue.localPatient(patientId);
+        if (!parent) {
+          setError(t('intake.parent_missing'));
+          return;
+        }
+        const ctx = await intakeContextCache.get(baseId);
+        if (!ctx) {
+          setError(t('intake.context_required'));
+          return;
+        }
+        setLocalParent(parent);
+        const encounterFields = ctx.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder);
+        setFields(encounterFields);
+        setRules(ctx.rules);
+        setError(null);
+        return;
+      }
+      if (!online && isOfflineIntakeEnabled()) {
+        // Les rencontres des patients DEJA ENREGISTRES ne se saisissent pas hors-ligne.
+        setError(t('intake.server_patient_unsupported'));
+        return;
+      }
       const base = await bases.getBase(baseId);
       if (!base?.base.currentTemplateVersionId) {
         setError(t('common.error'));
@@ -114,7 +149,7 @@ export function EncounterForm() {
       draftReady.current = true; // autosave actif seulement apres ce premier chargement
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patientId, bases, templates]);
+  }, [baseId, patientId, bases, templates, online]);
 
   // A4 : sauvegarde continue (debounce) du brouillon ANALYTIQUE tant qu'il y a du contenu.
   useEffect(() => {
@@ -143,10 +178,24 @@ export function EncounterForm() {
   }, [load]);
 
   // Apercu de l'age : calcule par le systeme des que la date est posee (DOB jamais exposee).
+  // HORS-LIGNE (dossier local) : l'age est calcule LOCALEMENT depuis la date de naissance
+  // de l'operation parente — le serveur le recalcule de toute facon a la synchronisation.
   useEffect(() => {
     let on = true;
     if (!patientId || !encounterDate) {
       setAge(null);
+      return;
+    }
+    if (offlineIntakeMode && localParent) {
+      const dob = localParent.payload.dateOfBirth;
+      if (!dob) { setAge(null); return; }
+      const d = new Date(`${dob}T00:00:00`);
+      const ref = new Date(`${encounterDate}T00:00:00`);
+      let years = ref.getFullYear() - d.getFullYear();
+      const beforeBirthday = ref.getMonth() < d.getMonth()
+        || (ref.getMonth() === d.getMonth() && ref.getDate() < d.getDate());
+      if (beforeBirthday) years -= 1;
+      setAge(years >= 0 ? years : null);
       return;
     }
     patients
@@ -156,7 +205,7 @@ export function EncounterForm() {
     return () => {
       on = false;
     };
-  }, [patientId, encounterDate, patients]);
+  }, [patientId, encounterDate, patients, offlineIntakeMode, localParent]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -187,6 +236,22 @@ export function EncounterForm() {
 
     setBusy(true);
     try {
+      // RENCONTRE D'UN DOSSIER LOCAL : mise en file DEPENDANTE du patient en attente
+      // (aucun appel reseau ; le serveur rejouera patient puis rencontre, dans l'ordre).
+      if (offlineIntakeMode && localParent) {
+        await enqueueEncounterCreate({
+          baseId,
+          operationKey: newOfflineId(),
+          parentOperationKey: localParent.id,
+          payload: {
+            encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
+          },
+        });
+        clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
+        toast(t('intake.encounter_saved_pending'));
+        navigate(`/bases/${baseId}`);
+        return;
+      }
       await patients.createEncounter(patientId, {
         encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
       });
@@ -220,12 +285,12 @@ export function EncounterForm() {
   return (
     <section className="max-w-2xl space-y-5 sm:space-y-6">
       <div>
-        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        <button onClick={() => navigate(offlineIntakeMode ? `/bases/${baseId}` : `/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
         </button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="page-title">{t('encounter.new')}</h1>
-          {maySubmitToCuration && (
+          {maySubmitToCuration && !offlineIntakeMode && (
             <button type="button" onClick={() => void submitToStaff()} disabled={busy} className="btn-secondary">
               <Send size={16} aria-hidden /> {t('create.submit')}
             </button>

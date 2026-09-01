@@ -15,11 +15,16 @@ import type { Profile, SessionUser } from './types';
 import {
   buildSnapshot, getOfflineUser, initializeOfflineForUser, offlineCache, outbox, purgeAllOfflineData, setOfflineUser,
 } from '../data/offline';
+import {
+  enqueuePatientCreate, intakeContextCache, intakeQueue,
+  type OfflineIntakeContext,
+} from '../data/offlineIntake';
 import { isPwaRegistrationAllowed, setPwaRegistrationAllowed } from '../pwa/registrationPolicy';
 
 beforeAll(() => {
   vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
   vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
+  vi.stubEnv('VITE_OFFLINE_INTAKE', 'demo');
 });
 afterAll(() => vi.unstubAllEnvs());
 
@@ -278,6 +283,20 @@ describe('gating par role', () => {
       data: { score: 1 }, reason: 'A', validationStatus: 'draft', baseUpdatedAt: null,
       createdAt: Date.now(), expiresAt: Date.now() + 60_000, state: 'pending', ownerUserId: 'fresh-A',
     });
+    // Saisie hors-ligne : identite EN ATTENTE + contexte, dans la MEME IndexedDB cloisonnee.
+    setOfflineUser('fresh-A');
+    const intakeCtx: OfflineIntakeContext = {
+      dataType: 'intake_context', baseId: 'fresh-base-A', baseName: 'A', templateVersionId: 'v1',
+      observationModel: 'longitudinal', fields: [], rules: [],
+      permissions: { canCreateStructuredData: true, canEditStructuredData: true, canViewIdentity: true },
+      preparedAt: Date.now(), expiresAt: Date.now() + 3600_000,
+    };
+    await intakeContextCache.save(intakeCtx);
+    const intakeEntry = await enqueuePatientCreate({
+      baseId: 'fresh-base-A', operationKey: 'fresh-intake-A',
+      payload: { code: 'H-FRESH001', fullName: 'Identite A En Attente', dateOfBirth: '1990-01-01', phone: null, address: null, externalIdentifier: null, permanentData: {} },
+    });
+    expect((await intakeQueue.list()).map((e) => e.id)).toContain('fresh-intake-A');
     setOfflineUser(null); // nouveau chargement du module : plus d ancien utilisateur en memoire
 
     render(
@@ -291,6 +310,10 @@ describe('gating par role', () => {
     expect(localStorage.getItem('meddata:offline-cache-owner')).toBe('fresh-B');
     expect(await offlineCache.get('fresh-base-A')).toBeNull();
     expect(await outbox.count()).toBe(0);
+    // L'identite en attente du compte A ne survit PAS au changement de compte (invariant §9).
+    setOfflineUser('fresh-B'); // le filtre du compte courant est celui de la session active
+    expect(await intakeQueue.get(intakeEntry.id)).toBeNull();
+    expect(await intakeContextCache.get('fresh-base-A')).toBeNull();
     await purgeAllOfflineData();
     setOfflineUser(null);
   });

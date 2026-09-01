@@ -47,13 +47,25 @@ Deno.test('validation responses expose their safe message to browser callers', a
 
 Deno.test('generate-export accepts stable defaults and rejects identifiers/enums', () => {
   const cohortId = '123e4567-e89b-42d3-a456-426614174000';
+  // Un appel sans profil (ancien appel) produit Analyse, le profil par defaut (L45).
   assertEquals(parseExportRequest({ cohortId }), {
     cohortId,
     format: 'csv',
-    options: { mode: 'encounter', rule: 'last', scope: 'matching' },
+    options: { mode: 'encounter', rule: 'last', scope: 'matching', profile: 'analysis' },
   });
   assertThrows(() => parseExportRequest({ cohortId: 'not-an-id' }), RequestValidationError);
   assertThrows(() => parseExportRequest({ cohortId, format: 'pdf' }), RequestValidationError);
+});
+
+Deno.test('generate-export accepts both explicit profiles and refuses an unknown one (L45)', () => {
+  const cohortId = '123e4567-e89b-42d3-a456-426614174000';
+  assertEquals(parseExportRequest({ cohortId, options: { profile: 'analysis' } }).options.profile, 'analysis');
+  assertEquals(parseExportRequest({ cohortId, options: { profile: 'complete' } }).options.profile, 'complete');
+  assertEquals(
+    parseExportRequest({ cohortId, options: { profile: 'complete', mode: 'patient' } }).options,
+    { mode: 'patient', rule: 'last', scope: 'matching', profile: 'complete' },
+  );
+  assertThrows(() => parseExportRequest({ cohortId, options: { profile: 'cible' } }), RequestValidationError);
 });
 
 Deno.test('inspect-upload and signed-read require supported entity and UUID', () => {

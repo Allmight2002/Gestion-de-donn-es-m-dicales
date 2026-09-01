@@ -81,7 +81,17 @@ export function parseEntityId(
 export interface ExportRequest {
   cohortId: string;
   format: 'csv' | 'xlsx';
-  options: { mode: 'patient' | 'encounter'; rule: 'first' | 'last'; scope: 'matching' | 'all' | 'both' };
+  options: {
+    mode: 'patient' | 'encounter';
+    rule: 'first' | 'last';
+    scope: 'matching' | 'all' | 'both';
+    /**
+     * Profil d'export (L45). `analysis` est le profil par defaut du parcours quotidien ;
+     * `complete` conserve la structure technique pendant la transition. Un appel sans
+     * profil produit donc toujours Analyse.
+     */
+    profile: 'analysis' | 'complete';
+  };
 }
 
 export function parseExportRequest(body: Record<string, unknown>): ExportRequest {
@@ -99,11 +109,17 @@ export function parseExportRequest(body: Record<string, unknown>): ExportRequest
   const mode = options.mode ?? 'encounter';
   const rule = options.rule ?? 'last';
   const scope = options.scope ?? 'matching';
+  const profile = options.profile ?? 'analysis';
   if (
     !['patient', 'encounter'].includes(String(mode)) || !['first', 'last'].includes(String(rule)) ||
-    !['matching', 'all', 'both'].includes(String(scope))
+    !['matching', 'all', 'both'].includes(String(scope)) ||
+    !['analysis', 'complete'].includes(String(profile))
   ) throw new RequestValidationError(400, 'options invalides');
-  return { cohortId: body.cohortId, format: body.format ?? 'csv', options: { mode, rule, scope } } as ExportRequest;
+  return {
+    cohortId: body.cohortId,
+    format: body.format ?? 'csv',
+    options: { mode, rule, scope, profile },
+  } as ExportRequest;
 }
 
 export function parseReconcileRequest(body: Record<string, unknown>): { limit: number } {

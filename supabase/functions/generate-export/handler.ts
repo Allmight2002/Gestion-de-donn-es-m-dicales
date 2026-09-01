@@ -5,18 +5,24 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 import {
+  assertNoAnalyticIdCollisions,
   assertNoIdentity,
   buildDictionary,
   buildEncounterExport,
+  buildMetadata,
+  buildModalities,
   buildMultivalueTable,
   buildPatientExport,
+  columnId,
   type ExportTable,
   extractMultivalueCodes,
   isMultivalueField,
+  MAX_INDICATOR_CODES,
   mergeExportFields,
   neutralizeExportTable,
   referencedTemplateVersions,
   toCsv,
+  withExcelDateSerials,
 } from './exportContract.ts';
 import { parseExportRequest, readJsonObject, validationResponse } from '../_shared/contracts.ts';
 import { assertXlsxExportWithinLimits, assertXlsxGenerationTime, assertXlsxOutputSize } from './xlsxLimits.ts';
@@ -225,10 +231,58 @@ export function exportFilenameSegment(value: unknown, fallback: string): string 
   return safe || fallback;
 }
 
+/**
+ * Mappe les colonnes date/datetime de la feuille principale pour l'ecriture de cellules
+ * Excel natives (L48). En mode RENCONTRE, `encounter_date` est une colonne de date meta ;
+ * en mode PATIENT, seuls les champs rendus (patient + rencontre agreges) portent des dates.
+ */
+function temporalColumnsOf(
+  fields: ReturnType<typeof mergeExportFields>,
+  mode: 'encounter' | 'patient',
+): Map<string, 'date' | 'datetime'> {
+  const map = new Map<string, 'date' | 'datetime'>();
+  const rendered = mode === 'patient' ? fields : fields.filter((f) => f.scope === 'encounter');
+  for (const f of rendered) {
+    if (f.type === 'date') map.set(columnId(f), 'date');
+    else if (f.type === 'datetime') map.set(columnId(f), 'datetime');
+  }
+  if (mode === 'encounter') map.set('encounter_date', 'date');
+  return map;
+}
+
+type WorkSheetCells = Record<string, unknown> & { '!ref'?: string };
+
+/**
+ * Pose le format d'affichage (cellule Excel native, type nombre) sur les colonnes de date :
+ * `yyyy-mm-dd` pour les dates, `yyyy-mm-dd hh:mm:ss` pour les datetime (secondes fixes, UTC).
+ * Sans ce format, un nombre de serie s'afficherait comme un entier illisible.
+ */
+function applyExcelDateFormats(
+  sheet: WorkSheetCells,
+  columns: readonly string[],
+  temporalColumns: ReadonlyMap<string, 'date' | 'datetime'>,
+): void {
+  const ref = sheet['!ref'];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+  for (const [column, kind] of temporalColumns) {
+    const columnIndex = columns.indexOf(column);
+    if (columnIndex < 0 || columnIndex > range.e.c) continue;
+    const format = kind === 'datetime' ? 'yyyy-mm-dd hh:mm:ss' : 'yyyy-mm-dd';
+    for (let row = range.s.r + 1; row <= range.e.r; row++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r: row, c: columnIndex })] as
+        | { t?: string; z?: string }
+        | undefined;
+      if (cell && cell.t === 'n') cell.z = format;
+    }
+  }
+}
+
 export function buildExportFilename(
   baseName: unknown,
   cohortName: unknown,
   mode: 'encounter' | 'patient',
+  profile: 'analysis' | 'complete',
   generatedAt: string,
   format: 'csv' | 'xlsx',
 ): string {
@@ -237,11 +291,14 @@ export function buildExportFilename(
     ? `${timestamp[1]}_${timestamp[2]}-${timestamp[3]}-${timestamp[4]}Z`
     : 'date-inconnue';
   const readableMode = mode === 'patient' ? 'patients' : 'rencontres';
+  // L45 : le profil est visible dans le nom du fichier, comme il l'est dans le journal.
+  const readableProfile = profile === 'analysis' ? 'analyse' : 'complet';
   return [
     'meddata',
     exportFilenameSegment(baseName, 'base'),
     exportFilenameSegment(cohortName, 'cohorte'),
     readableMode,
+    readableProfile,
     readableTimestamp,
   ].join('_') + `.${format}`;
 }
@@ -624,17 +681,50 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       })),
     );
 
+    // L46 : deux cles de champ distinctes ne doivent jamais se normaliser vers le meme
+    // identifiant analytique, sinon le fichier porterait deux variables indiscernables.
+    assertNoAnalyticIdCollisions(fields);
+
     const multivalueFields = fields.filter((f) => isMultivalueField(f));
     const multivalueDataRows = options.mode === 'patient' ? patients : encounters;
     const { indicatorsByField, omittedFieldKeys } = extractMultivalueCodes(fields, multivalueDataRows);
 
+    // L47 : le profil Analyse exprime chaque modalite par une indicatrice. Au-dela du seuil de
+    // cardinalite, des colonnes seraient DROPPEES silencieusement : l'export echoue donc
+    // explicitement, jamais de fichier tronque sans le signaler. Le profil `complete` conserve
+    // les codes concatenes, exhaustivement, il n'a pas ce seuil a faire respecter ici.
+    if (options.profile === 'analysis') {
+      const renderedMultiselectKeys = new Set(
+        fields
+          .filter((f) => f.type === 'multiselect' && (options.mode === 'patient' || f.scope === 'encounter'))
+          .map((f) => f.fieldKey),
+      );
+      const refused = [...omittedFieldKeys].filter((key) => renderedMultiselectKeys.has(key));
+      if (refused.length > 0) {
+        return json(413, {
+          code: 'EXPORT_INDICATOR_CARDINALITY',
+          error: `Export Analyse refuse : une variable multiselect depasse ${MAX_INDICATOR_CODES} modalites`,
+          limit: MAX_INDICATOR_CODES,
+          fields: refused,
+        });
+      }
+    }
+
     const main = options.mode === 'patient'
-      ? buildPatientExport(patients, encounters, fields, options.rule)
-      : buildEncounterExport(encounters, fields);
-    const dict = buildDictionary(fields, { indicatorsByField, omittedFieldKeys });
+      ? buildPatientExport(patients, encounters, fields, options.rule, options.profile)
+      : buildEncounterExport(encounters, fields, options.profile);
+    // L49 : le dictionnaire suit le profil — reduit a l'interpretation en Analyse, detaille en Complet.
+    const dict = buildDictionary(fields, { indicatorsByField, omittedFieldKeys, profile: options.profile });
+    // L46 : la feuille Modalites accompagne l'Export Analyse (XLSX). Le CSV ne tient qu'une
+    // feuille : la colonne principale porte deja le code stable et le libelle reste une fois
+    // dans Modalites au format classeur.
+    const modalities = options.profile === 'analysis' ? buildModalities(fields) : null;
 
     const multivalueTables: { name: string; table: ExportTable }[] = [];
     for (const f of multivalueFields) {
+      // L47 : le profil Analyse exprime un multiselect par ses indicatrices dans `Export` ; il
+      // ne porte pas de feuille relationnelle pour ces champs (les terminologies restent intactes).
+      if (options.profile === 'analysis' && f.type === 'multiselect') continue;
       const table = buildMultivalueTable(f, patients, encounters);
       const safeTable = neutralizeExportTable(table);
       const sheetName = exportFilenameSegment(f.label, f.fieldKey).slice(0, 31) || f.fieldKey.slice(0, 31);
@@ -642,10 +732,37 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     }
 
     const dictionaryCells = format === 'xlsx' ? (dict.rows.length + 1) * dict.columns.length : 0;
+    const modalitiesCells = format === 'xlsx' && modalities
+      ? (modalities.rows.length + 1) * modalities.columns.length
+      : 0;
+    // L49 : la feuille `Métadonnées` (profil Analyse, classeur) rend le fichier autonome :
+    // profil, date, base, cohorte, mode, regle de selection, versions, nombre de lignes,
+    // exclusions. Elle quitte le dictionnaire, qui n'en a plus besoin pour etre lisible.
+    const generatedAt = deps.nowIso();
+    const metadata = options.profile === 'analysis'
+      ? buildMetadata({
+        profile: options.profile,
+        generatedAt,
+        baseName: base.name,
+        cohortName: cohort.name,
+        mode: options.mode,
+        selectionRule: options.rule,
+        templateVersions,
+        rowCount: main.rows.length,
+        excludedPatientCount,
+        excludedEncounterCount,
+      })
+      : null;
+    const metadataCells = format === 'xlsx' && metadata ? (metadata.rows.length + 1) * metadata.columns.length : 0;
     const multivalueCells = format === 'xlsx'
       ? multivalueTables.reduce((acc, m) => acc + (m.table.rows.length + 1) * m.table.columns.length, 0)
       : 0;
-    assertExportShapeWithinLimits(main.rows.length, main.columns.length, format, dictionaryCells + multivalueCells);
+    assertExportShapeWithinLimits(
+      main.rows.length,
+      main.columns.length,
+      format,
+      dictionaryCells + modalitiesCells + multivalueCells + metadataCells,
+    );
     assertNoIdentity(main.columns);
     for (const m of multivalueTables) assertNoIdentity(m.table.columns);
 
@@ -653,16 +770,47 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     let contentType: string;
     if (format === 'xlsx') {
       const generationStartedAt = performance.now();
-      const safeMain = neutralizeExportTable(main);
+      // L48 : les colonnes date/datetime deviennent des cellules Excel NATIVES (nombre de serie
+      // plus format d'affichage). Le CSV, plus haut, garde l'ISO. Les dates invalides restent
+      // texte, jamais masquees par un zero.
+      const temporalColumns = temporalColumnsOf(fields, options.mode);
+      const safeMain = neutralizeExportTable(withExcelDateSerials(main, temporalColumns));
       const safeDict = neutralizeExportTable(dict);
-      assertXlsxExportWithinLimits([safeMain, safeDict, ...multivalueTables.map((m) => m.table)]);
+      const safeModalities = modalities ? neutralizeExportTable(modalities) : null;
+      const safeMetadata = metadata ? neutralizeExportTable(metadata) : null;
+      assertXlsxExportWithinLimits([
+        safeMain,
+        safeDict,
+        ...(safeModalities ? [safeModalities] : []),
+        ...(safeMetadata ? [safeMetadata] : []),
+        ...multivalueTables.map((m) => m.table),
+      ]);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safeMain.rows, { header: safeMain.columns }), 'Export');
+      const mainSheet = XLSX.utils.json_to_sheet(safeMain.rows, { header: safeMain.columns });
+      applyExcelDateFormats(mainSheet, safeMain.columns, temporalColumns);
+      // L49 : en Analyse, la feuille principale se nomme `Données` (elle est l'objet du
+      // classeur) ; en Complet, le nom historique `Export` est conserve.
+      const mainSheetName = options.profile === 'analysis' ? 'Données' : 'Export';
+      XLSX.utils.book_append_sheet(wb, mainSheet, mainSheetName);
       XLSX.utils.book_append_sheet(
         wb,
         XLSX.utils.json_to_sheet(safeDict.rows, { header: safeDict.columns }),
         'Dictionnaire',
       );
+      if (safeModalities) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(safeModalities.rows, { header: safeModalities.columns }),
+          'Modalités',
+        );
+      }
+      if (safeMetadata) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(safeMetadata.rows, { header: safeMetadata.columns }),
+          'Métadonnées',
+        );
+      }
       for (const m of multivalueTables) {
         XLSX.utils.book_append_sheet(
           wb,
@@ -670,7 +818,9 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
           m.name,
         );
       }
-      bytes = new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }));
+      // cellStyles : les formats de date natifs (cellule `z`) sont ecrits dans le classeur ;
+      // sinon SheetJS les jetterait et le nombre de serie s'afficherait sans format lisible.
+      bytes = new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true }));
       assertXlsxGenerationTime(generationStartedAt);
       assertXlsxOutputSize(bytes);
       contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -680,8 +830,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     }
 
     const fileHash = await sha256Hex(bytes);
-    const generatedAt = deps.nowIso();
-    const filename = buildExportFilename(base.name, cohort.name, options.mode, generatedAt, format);
+    const filename = buildExportFilename(base.name, cohort.name, options.mode, options.profile, generatedAt, format);
     // Le chemin Storage reste pseudonymise : le nom metier n'est conserve que dans le journal
     // autorise et transmis comme Content-Disposition au moment de la lecture signee.
     const path = `${cohort.base_id}/${cohortId}/${deps.now()}-${deps.newId()}.${format}`;

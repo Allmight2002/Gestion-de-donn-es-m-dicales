@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuditRepository, useBaseRepository, useCohortRepository, useExportRepository } from '../../data/RepositoryProvider';
-import type { EncounterScopeOption, ExportLogItem } from '../../data/exports';
+import type { EncounterScopeOption, ExportLogItem, ExportProfile } from '../../data/exports';
 import type { ObservationModel } from '../../data/bases';
 import { formatDateTime } from '../../lib/formatDate';
 import type { AggregationRule } from '../../domain/export';
@@ -53,6 +53,7 @@ export function ExportPanel() {
   const [chosenShape, setChosenShape] = useState<'encounter' | 'patient'>('encounter');
   const [rule, setRule] = useState<AggregationRule>('last');
   const [format, setFormat] = useState<'csv' | 'xlsx'>('csv');
+  const [profile, setProfile] = useState<ExportProfile>('analysis');
   const [busy, setBusy] = useState(false);
   const [downloadId, setDownloadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export function ExportPanel() {
       )).id;
       const item = await exportsRepo.recordExport({
         cohortId: exportedCohortId, baseId, templateVersions: tvId ? [tvId] : [], format,
+        profile,
         options: { mode, rule, scope: ENCOUNTER_SCOPE },
       });
       if (item.storedFilePath) {
@@ -200,6 +202,14 @@ export function ExportPanel() {
             <option value="xlsx">XLSX</option>
           </select>
         </label>
+        <label className="flex flex-col">
+          <span className="text-slate-700">{t('export.profile')}</span>
+          <select className="input mt-1" value={profile} onChange={(e) => setProfile(e.target.value as ExportProfile)}>
+            <option value="analysis">{t('export.profile_analysis')}</option>
+            <option value="complete">{t('export.profile_complete')}</option>
+          </select>
+          <span className="mt-0.5 text-xs text-slate-500">{t('export.profile_hint')}</span>
+        </label>
       </div>
 
       <button onClick={() => void run()} disabled={busy} className="btn-primary">
@@ -231,6 +241,11 @@ export function ExportPanel() {
               <li key={h.id} className="card flex items-center justify-between gap-3 px-3 py-2">
                 <span>
                   {formatDateTime(h.exportedAt, lang)} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
+                  {h.profile === 'analysis'
+                    ? t('export.profile_analysis')
+                    : h.profile === 'complete'
+                      ? t('export.profile_complete')
+                      : t('export.profile_legacy')} ·{' '}
                   <span className="font-mono text-slate-400">{h.fileHash?.slice(0, 12)}…</span>
                 </span>
                 {h.storedFilePath && (
