@@ -24,6 +24,11 @@ const TAG_LENGTH = 16;
 const DEFAULT_MAX_OBJECTS = 10_000;
 const DEFAULT_MAX_BYTES = 1024 * 1024 * 1024;
 const DEFAULT_HTTP_TIMEOUT_MS = 30_000;
+const DEFAULT_DOWNLOAD_MAX_ATTEMPTS = 3;
+const DEFAULT_DOWNLOAD_RETRY_BASE_MS = 1_000;
+const MAX_DOWNLOAD_ATTEMPTS = 5;
+const MAX_DOWNLOAD_RETRY_BASE_MS = 10_000;
+const MAX_DOWNLOAD_RETRY_DELAY_MS = 30_000;
 
 const clean = (value) => value?.trim() ?? '';
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
@@ -87,6 +92,14 @@ function integerEnv(name, fallback) {
   return Number(value);
 }
 
+function boundedIntegerEnv(name, fallback, maximum) {
+  const value = integerEnv(name, fallback);
+  if (value > maximum) {
+    throw new Error(`${name} ne peut pas depasser ${maximum}.`);
+  }
+  return value;
+}
+
 function option(name) {
   const prefix = `--${name}=`;
   return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length) ?? '';
@@ -133,9 +146,63 @@ function storageClient(apiUrl, serviceKey) {
   );
 }
 
+function storageStatus(error) {
+  const rawStatus = error?.status ?? error?.statusCode;
+  if (Number.isInteger(rawStatus)) return rawStatus;
+  if (typeof rawStatus === 'string' && /^\d{3}$/.test(rawStatus)) return Number(rawStatus);
+  return undefined;
+}
+
 function storageError(operation, error) {
-  const status = Number.isInteger(error?.status) ? ` (HTTP ${error.status})` : '';
+  const numericStatus = storageStatus(error);
+  const status = numericStatus ? ` (HTTP ${numericStatus})` : '';
   return new Error(`${operation} a echoue${status}; detail masque.`);
+}
+
+function retryableStorageError(error) {
+  const status = storageStatus(error);
+  return status === undefined || status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+const wait = (milliseconds) => new Promise((resolvePromise) => {
+  setTimeout(resolvePromise, milliseconds);
+});
+
+export async function downloadObjectWithRetry(download, options = {}) {
+  const maxAttempts = options.maxAttempts ?? DEFAULT_DOWNLOAD_MAX_ATTEMPTS;
+  const retryBaseMs = options.retryBaseMs ?? DEFAULT_DOWNLOAD_RETRY_BASE_MS;
+  const sleep = options.sleep ?? wait;
+  if (typeof download !== 'function'
+      || !Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > MAX_DOWNLOAD_ATTEMPTS
+      || !Number.isSafeInteger(retryBaseMs) || retryBaseMs < 0
+      || retryBaseMs > MAX_DOWNLOAD_RETRY_BASE_MS
+      || typeof sleep !== 'function') {
+    throw new Error('Configuration de reprise Storage invalide.');
+  }
+
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const { data, error } = await download();
+      if (!error && data) return data;
+      lastError = error ?? new Error('Reponse Storage incomplete.');
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt === maxAttempts || !retryableStorageError(lastError)) {
+      throw storageError('Telechargement d un objet Storage', lastError);
+    }
+    console.warn(
+      `Telechargement Storage transitoirement indisponible; nouvelle tentative ${attempt + 1}/${maxAttempts} (identifiants masques).`,
+    );
+    const retryDelay = Math.min(
+      retryBaseMs * (2 ** (attempt - 1)),
+      MAX_DOWNLOAD_RETRY_DELAY_MS,
+    );
+    await sleep(retryDelay);
+  }
+  throw storageError('Telechargement d un objet Storage', lastError);
 }
 
 function ensureOutsideRepository(path) {
@@ -284,6 +351,16 @@ async function backup() {
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
   const maxObjects = integerEnv('STORAGE_BACKUP_MAX_OBJECTS', DEFAULT_MAX_OBJECTS);
   const maxBytes = integerEnv('STORAGE_BACKUP_MAX_BYTES', DEFAULT_MAX_BYTES);
+  const downloadMaxAttempts = boundedIntegerEnv(
+    'STORAGE_DOWNLOAD_MAX_ATTEMPTS',
+    DEFAULT_DOWNLOAD_MAX_ATTEMPTS,
+    MAX_DOWNLOAD_ATTEMPTS,
+  );
+  const downloadRetryBaseMs = boundedIntegerEnv(
+    'STORAGE_DOWNLOAD_RETRY_BASE_MS',
+    DEFAULT_DOWNLOAD_RETRY_BASE_MS,
+    MAX_DOWNLOAD_RETRY_BASE_MS,
+  );
   await ensureAbsent(destination);
 
   const partial = `${destination}.partial-${randomUUID()}`;
@@ -317,8 +394,14 @@ async function backup() {
       objects: [],
     };
     for (const listedObject of listed) {
-      const { data, error } = await client.from(bucket.id).download(listedObject.name);
-      if (error) throw storageError('Telechargement d un objet Storage', error);
+      const bucketClient = client.from(bucket.id);
+      const data = await downloadObjectWithRetry(
+        () => bucketClient.download(listedObject.name),
+        {
+          maxAttempts: downloadMaxAttempts,
+          retryBaseMs: downloadRetryBaseMs,
+        },
+      );
       const plaintext = Buffer.from(await data.arrayBuffer());
       manifest.totalBytes += plaintext.length;
       if (manifest.totalBytes > maxBytes) {
