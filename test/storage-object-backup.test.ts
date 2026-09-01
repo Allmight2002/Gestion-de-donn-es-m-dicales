@@ -76,7 +76,7 @@ describe('sauvegarde chiffree des objets Storage', () => {
       .mockResolvedValueOnce({ data: new Blob(['fixture fictive']), error: null });
     const sleep = vi.fn().mockResolvedValue(undefined);
 
-    const data = await downloadObjectWithRetry(download, {
+    const data = await downloadObjectWithRetry<Blob>(download, {
       maxAttempts: 3,
       retryBaseMs: 0,
       sleep,
