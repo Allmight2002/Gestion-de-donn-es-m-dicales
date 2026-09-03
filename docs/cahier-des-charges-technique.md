@@ -146,6 +146,15 @@ Voir le diagramme ER complet dans [architecture.md §3](architecture.md).
   sont tracées par une RPC dédiée appelée **au moment de la révélation**.
 - **ET-13. Anti-fuite à l'export** (`assert_export_columns_safe`) : liste blanche analytique ; tout
   champ identifiant est **rejeté**.
+- **ET-13 bis. Profils d'export (L45 à L49)** : `generate-export` accepte `options.profile`,
+  `analysis` (défaut) ou `complete` ; une valeur inconnue est refusée en HTTP 400, un appel sans
+  profil reste accepté. Le profil est résolu **côté serveur**, inscrit dans
+  `export_log.export_options.profile` et dans le nom du fichier. Il ne décide que de la **forme**
+  du fichier : l'autorisation `can_export_data`, la liste blanche ET-13, le figeage, l'empreinte et
+  la journalisation sont identiques dans les deux profils. En `analysis`, un multiselect de plus de
+  100 codes ferme le chemin en HTTP 413 `EXPORT_INDICATOR_CARDINALITY` : jamais de fichier tronqué
+  en HTTP 200. Le détail des feuilles et des colonnes est dans
+  [`edge-functions.md`](edge-functions.md).
 - **ET-14. Lecture de fichiers privés auditée** : en production, la consultation passe
   **obligatoirement** par l'Edge Function `signed-read` (autorisation RLS → vérification du statut
   d'inspection → écriture de l'audit → URL signée courte). **Le build de production échoue si

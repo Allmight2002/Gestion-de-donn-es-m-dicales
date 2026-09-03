@@ -108,7 +108,8 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
    nouvelle variable → relancer l'aperçu → importer → la valeur apparaît sur la fiche patient.
 
 ### 4.7 Cohortes & exports
-21. Onglet **Analyse › Exporter**, choisir CSV, cliquer « **Exporter les données** » → le fichier se télécharge + bandeau de succès, **sans avoir constitué de cohorte**.
+21. Onglet **Analyse › Exporter**, vérifier que **Profil de données** vaut **Analyse** par défaut, choisir CSV, cliquer « **Exporter les données** » → le fichier se télécharge + bandeau de succès, **sans avoir constitué de cohorte**. Le nom du fichier contient `_analyse_`.
+21 ter. Refaire l'export en **Complet** → nom contenant `_complet_`, et structure historique (libellés concaténés, compteur `nb__`, feuille dédiée) là où **Analyse** ne rend que des indicatrices `0/1`. L'historique doit afficher le profil de chaque export.
 21 bis. Voie avancée : créer une cohorte figée, l'exporter depuis sa carte → même résultat, population choisie.
 22. Dans l'historique des exports : « **Télécharger** » un export conservé → le fichier arrive (teste l'Edge `kind=export`).
 
