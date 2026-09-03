@@ -131,6 +131,10 @@ analytique explicite la justifie.
 | ~~L48~~ | ~~Dates XLSX natives, CSV ISO et unités des durées~~ | **Livré le 2026-08-28** (série Excel UTC, formats posés, date invalide laissée en texte) | — |
 | ~~L49~~ | ~~Dictionnaire simplifié et feuille `Métadonnées`~~ | **Livré le 2026-08-28** (classeur Analyse à quatre feuilles ; Complet inchangé) | — |
 | **L50** | Concepts diagnostiques et référentiel terminologique dans l'export | référentiel, contrat d'export, tests | **différé ; après L46** |
+| **L51** | Blocs pathologiques : opérateur d’appartenance `contains_any` dans le moteur de règles | moteur de règles, `templateRules.ts`, `RuleForm.tsx` | L54 ; **jamais avec L52** |
+| **L54** | Blocs pathologiques : deux niveaux de sections (bloc et sous-section) | `template_section`, les six fonctions de recopie de version, éditeur de sections, rendu | L51 ; **avant L52 et L53** |
+| **L52** | Blocs pathologiques : visibilité au niveau **bloc** | moteur de règles, `templateRules.ts`, `RuleForm.tsx` | L53 ; **après L51 et L54**, jamais avec L51 |
+| **L53** | Blocs pathologiques : projection d’export par blocs | `exportContract.ts`, `handler.ts`, `exports.ts`, `ExportPanel.tsx` | L52 ; **après L54** ; **jamais avec L50** |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
