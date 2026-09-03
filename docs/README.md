@@ -35,7 +35,7 @@
 
 | Document | Contenu |
 |---|---|
-| [edge-functions.md](edge-functions.md) | Les 8 fonctions serveur : lecture signée auditée, inspection antivirus, export, comptes de mission et purge D10 |
+| [edge-functions.md](edge-functions.md) | Les 8 fonctions serveur : lecture signée auditée, inspection antivirus, export (profils `analysis`/`complete`), comptes de mission et purge D10 |
 | [security-definer.md](security-definer.md) | Inventaire normatif des 112 fonctions privilégiées + contrôle d'ACL |
 | [upload-inspection-operations.md](upload-inspection-operations.md) | Exploitation de la chaîne d'inspection des fichiers déposés |
 | [xlsx-security.md](xlsx-security.md) | Risques propres au traitement des tableurs |
@@ -92,7 +92,7 @@
 | [lots-paralleles.md](lots-paralleles.md) | Découpage des chantiers en lots parallélisables |
 | [prompts-lots.md](prompts-lots.md) · [prompt-execution-autonome-feuille-route.md](prompt-execution-autonome-feuille-route.md) | Prompts de travail prêts à l'emploi (outillage interne) |
 | [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md) | Problèmes ouverts sur les interactions entre comptes, options écartées comprises |
-| [chantiers-export-analyse.md](chantiers-export-analyse.md) | Cible et lots L45-L50 pour un export directement exploitable dans Excel, R, SPSS ou Stata |
+| [chantiers-export-analyse.md](chantiers-export-analyse.md) | 🟢 **L45 à L49 livrés** (2026-08-28, choix du profil dans l'interface le 2026-09-01) — export directement exploitable dans Excel, R, SPSS ou Stata ; **L50** différé |
 | [idees-post-readiness.md](idees-post-readiness.md) | File d'attente produit tenue à jour |
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
@@ -148,5 +148,5 @@
 
 ---
 
-*Index vérifié le 24 août 2026. Pour rester juste, il doit être relu à chaque ajout de document
-dans `docs/`.*
+*Index vérifié le 2 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
+document dans `docs/`.*

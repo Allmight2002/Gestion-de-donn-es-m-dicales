@@ -14,6 +14,10 @@
 - **Révisé le 2026-08-24** : six prompts ajoutés (L45 à L50), issus de
   [`chantiers-export-analyse.md`](chantiers-export-analyse.md). L45 à L49 forment une file
   séquentielle ; L50 est différé.
+- **Révisé le 2026-09-02** : état des lots réaligné sur
+  [`lots-paralleles.md`](lots-paralleles.md) — 31 prompts de lots soldés sont désormais barrés
+  (L4, L11 à L25, L27 à L33, L35 à L37, L45 à L49) et l'ancien tableau d'état de août est replié.
+  Ne restent à lancer que **L34**, **L38 à L44**, **L50** (différé), **O6** et **O7**.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -42,19 +46,35 @@ rapport. **L14, L16, L20 et L31 doivent tourner seuls.** (L26 est clos ; voir pl
 > deux `src/domain/imageUpload.ts` — ne jamais les lancer ensemble non plus. Le reste (L38, L39,
 > L43) est isolé et parallélisable avec tout.
 
-> **L45 à L49 ne sont pas parallélisables entre eux** : ils écrivent dans le contrat et le
-> générateur d'export. L47 requalifie L36 et L37 n'est pas à lancer pour le profil Analyse. **L50**
-> est différé et ne doit pas retarder le jalon MVP L49.
+> **L45 à L49 sont livrés** (contrat serveur le 2026-08-28, choix du profil dans l'interface le
+> 2026-09-01) : leurs prompts sont barrés et ne doivent plus être relancés. Ils n'étaient pas
+> parallélisables entre eux — ils écrivent tous dans le contrat et le générateur d'export.
+> **L50** reste différé ; il n'a jamais eu à retarder le jalon MVP, désormais atteint.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État au 2026-08-10
+## État au 2026-09-02
 
-**Vérifier cette liste avant de lancer un thread**, pour ne pas faire refaire du
-travail déjà fait :
+**Vérifier cet état avant de lancer un thread**, pour ne pas faire refaire du travail déjà fait.
+La source de vérité du suivi reste le tableau et la section « Ordre suggéré » de
+[`lots-paralleles.md`](lots-paralleles.md) ; ce qui suit n'en est qu'un résumé.
+
+| Reste à lancer | Objet |
+|---|---|
+| **L34** | Filtre d'une variable Diagnostic à valeur unique |
+| **L38 à L44** | Lots issus de l'audit du 2026-08-18 (L38 prioritaire : `inspection=paused` en production) |
+| **L50** | Concepts diagnostiques dans l'export — **différé**, il attend un référentiel gouverné |
+| **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
+
+**Tout le reste est soldé** : L1 à L33 (dont L26, clos sans exécution), L35, L36, L37 (écarté du
+profil Analyse), L45 à L49 et D10. Leurs prompts sont **barrés** ci-dessous et conservés pour
+mémoire — ne pas les relancer.
+
+<details>
+<summary>Tableau d'origine du 2026-08-10 (conservé pour mémoire)</summary>
 
 | Lot | État |
 |---|---|
@@ -68,21 +88,10 @@ travail déjà fait :
 | L9 | **Livré** le 2026-08-01 (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
 | L10 | **Livré** le 2026-07-29. Prompt conservé pour mémoire. |
 
-> ⚠️ **Le tableau ci-dessus est daté du 2026-08-10 et a été dépassé.** L'état qui fait foi est la
-> section « Ordre suggéré » de [`lots-paralleles.md`](lots-paralleles.md), tenue à jour : L4, L12,
-> L13 et L15 à L19 y sont également marqués intégrés, et L11 est en travail. **Les lots restant à
-> lancer sont L14, L20 à L26 (listes de diagnostics) et L27 à L33 (moteur de formulaires).**
-> Vérifier là-bas avant d'ouvrir un thread.
+Ce tableau ne couvrait que L1 à L10 et a été dépassé dès le 2026-08-13. Il est conservé pour
+l'historique, pas comme état courant.
 
-**La liste ci-dessous date de la révision du 2026-08-10** : L4, L11, L12, L13, L14, les cinq
-**L15, L16, L17, L18 et L19** (campagne de vérification des flux multi-comptes, cf.
-[`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)), et les sept nouveaux
-**L20 à L26** (listes de diagnostics, cf.
-[`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)).
-
-> **L16 est prioritaire parmi les nouveaux** : il porte une décision produit déjà tranchée par le
-> porteur, que rien ne traduit encore en base. Tant que la migration n'existe pas, la
-> spécification et le code se contredisent.
+</details>
 
 ## Le déploiement n'est pas automatique
 
@@ -194,7 +203,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L45 — Contrat des profils Export Analyse / Export complet
+## ~~L45 — Contrat des profils Export Analyse / Export complet~~ — **livré le 2026-08-28 ; choix du profil dans l’interface le 2026-09-01**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -234,7 +243,7 @@ sans demande explicite.
 
 ---
 
-## L46 — Identifiants analytiques, colonnes et feuille `Modalités`
+## ~~L46 — Identifiants analytiques, colonnes et feuille `Modalités`~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, puis L46 dans
@@ -271,7 +280,7 @@ sans demande explicite.
 
 ---
 
-## L47 — Multiselect en indicatrices binaires dans le profil Analyse
+## ~~L47 — Multiselect en indicatrices binaires dans le profil Analyse~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L47
@@ -311,7 +320,7 @@ sont verts. Ne committe, ne pousse et ne déploie rien sans demande explicite.
 
 ---
 
-## L48 — Dates XLSX natives, CSV ISO et unités des durées
+## ~~L48 — Dates XLSX natives, CSV ISO et unités des durées~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L48
@@ -343,7 +352,7 @@ explicite.
 
 ---
 
-## L49 — Dictionnaire simplifié et feuille `Métadonnées`
+## ~~L49 — Dictionnaire simplifié et feuille `Métadonnées`~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L49
@@ -472,7 +481,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L4 — Soupape sur le champ de terminologie
+## ~~L4 — Soupape sur le champ de terminologie~~ — **livré le 2026-08-13**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1005,7 +1014,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L11 — Observabilité des erreurs (P3)
+## ~~L11 — Observabilité des erreurs (P3)~~ — **livré et promu sur `main`**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1063,7 +1072,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L12 — Traitement des propositions
+## ~~L12 — Traitement des propositions~~ — **livré**
 
 ```
 Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
@@ -1114,7 +1123,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L13 — Rafraîchissement de la copie locale
+## ~~L13 — Rafraîchissement de la copie locale~~ — **livré**
 
 ```
 Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
@@ -1165,7 +1174,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L14 — Chargement de la seule langue active (à lancer SEUL)
+## ~~L14 — Chargement de la seule langue active (à lancer SEUL)~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1216,7 +1225,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L15 — Comptes de mission : identifiant et mot de passe générés
+## ~~L15 — Comptes de mission : identifiant et mot de passe générés~~ — **livré le 2026-08-11**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1285,7 +1294,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)
+## ~~L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)~~ — **livré le 2026-08-11**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1422,7 +1431,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L17 — Messages d'erreur des Edge Functions
+## ~~L17 — Messages d'erreur des Edge Functions~~ — **livré**
 
 ```
 Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
@@ -1487,7 +1496,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L18 — Cohorte dynamique : compteur vivant et « Figer maintenant »
+## ~~L18 — Cohorte dynamique : compteur vivant et « Figer maintenant »~~ — **livré**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1559,7 +1568,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L19 — Archivage d'une cohorte
+## ~~L19 — Archivage d'une cohorte~~ — **livré**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1625,7 +1634,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L20 — Listes de diagnostics : surface base (à lancer SEUL)
+## ~~L20 — Listes de diagnostics : surface base (à lancer SEUL)~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1718,7 +1727,7 @@ résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L21 — Listes de diagnostics : saisie et constructeur
+## ~~L21 — Listes de diagnostics : saisie et constructeur~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1803,7 +1812,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L22 — Listes de diagnostics : export
+## ~~L22 — Listes de diagnostics : export~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1890,7 +1899,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L23 — Listes de diagnostics : cohortes
+## ~~L23 — Listes de diagnostics : cohortes~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1952,7 +1961,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L24 — Listes de diagnostics : refus au mappage d'import
+## ~~L24 — Listes de diagnostics : refus au mappage d'import~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2019,7 +2028,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L25 — Conflit hors-ligne : issue « garder les deux »
+## ~~L25 — Conflit hors-ligne : issue « garder les deux »~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2181,7 +2190,7 @@ de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L27 — Texte d'aide par variable
+## ~~L27 — Texte d'aide par variable~~ — **livré le 2026-08-13**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2249,7 +2258,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L28 — Valeur par défaut et unicité
+## ~~L28 — Valeur par défaut et unicité~~ — **livré le 2026-08-14**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2315,7 +2324,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L29 — Prévisualisation du formulaire
+## ~~L29 — Prévisualisation du formulaire~~ — **livré le 2026-08-14**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2376,7 +2385,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L30 — Options de liste : code interne stable
+## ~~L30 — Options de liste : code interne stable~~ — **livré le 2026-08-15**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2451,7 +2460,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L31 — Sections personnalisables
+## ~~L31 — Sections personnalisables~~ — **livré le 2026-08-15**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2525,7 +2534,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L32 — Affichage conditionnel
+## ~~L32 — Affichage conditionnel~~ — **livré le 2026-08-15**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2603,7 +2612,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L33 — Raisons de valeur manquante par variable
+## ~~L33 — Raisons de valeur manquante par variable~~ — **livré le 2026-08-14**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2786,7 +2795,7 @@ Si une commande t'est refusée, donne-la-moi telle quelle.
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
 
-## L35 — Variables calculées : arithmétique définie par l'utilisateur
+## ~~L35 — Variables calculées : arithmétique définie par l'utilisateur~~ — **livré le 2026-08-21**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2917,7 +2926,7 @@ commande t'est refusée, donne-la-moi telle quelle.
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
 
-## L36 — Parité d'export des listes à choix multiples
+## ~~L36 — Parité d'export des listes à choix multiples~~ — **livré le 2026-08-20 dans le profil Export complet**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -3058,7 +3067,7 @@ quelle.
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
 
-## L37 — Feuille de fréquences prête à l'analyse
+## ~~L37 — Feuille de fréquences prête à l'analyse~~ — **écarté du profil Analyse le 2026-08-24**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné

@@ -78,7 +78,7 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Groupes de recherche.
 - Export direct (onglet Analyse > Exporter), sans cohorte.
 - Cohortes (voie avancee).
-- Generation export CSV/Excel.
+- Generation export CSV/Excel, dans les deux profils (`Analyse` par defaut, `Complet`).
 - Telechargement depuis historique des exports.
 - Profils d'acces.
 - Invitations, revocation.
@@ -277,7 +277,8 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Sections personnalisables : creer, renommer, reordonner ; verifier le gel sur version publiee.
 - Apercu du formulaire : ouvrir l'apercu depuis l'editeur de version.
 - Codes d'options : donner un code interne a une option, verifier qu'il apparait a l'export et pas
-  a la saisie.
+  a la saisie. En profil `Analyse` il occupe la colonne principale ; en profil `Complet` il vit
+  dans `option_code__<colonne>`, a cote du libelle.
 - Variable a plusieurs valeurs : sur une variable de type referentiel, cocher
   `Accepte plusieurs valeurs`. Verifier que la case N'APPARAIT PAS sur les autres types, et
   qu'elle se verrouille des que la version n'est plus en brouillon.
@@ -422,6 +423,8 @@ QA-UNK-2,2026-07-08,165
 ### A tester
 
 - Exporter directement depuis l'onglet Analyse > Exporter, sans passer par une cohorte.
+- Verifier le selecteur `Profil de donnees` : `Analyse` doit etre PRESELECTIONNE, `Complet`
+  disponible. Le meme selecteur doit apparaitre pour l'export d'une cohorte figee.
 - Generer un export CSV.
 - Generer un export Excel si disponible.
 - Verifier que la forme des lignes est ANNONCEE (base transversale, registre) et DEMANDEE
@@ -431,15 +434,38 @@ QA-UNK-2,2026-07-08,165
 - Verifier le fichier dans le dossier de telechargements.
 - Ouvrir le fichier et verifier son contenu.
 - Re-telecharger depuis l'historique.
-- Sur une base portant une variable a plusieurs valeurs, verifier dans le fichier :
-  - la colonne principale (libelles separes par `; `) ;
-  - la colonne de codes ;
-  - la colonne `nb__...`, VIDE et non `0` en presence d'un code de donnee manquante ;
-  - les colonnes indicatrices `has__...` en `0/1` ;
-  - la feuille dediee (une ligne par valeur, avec son rang) ;
-  - la ligne `is_multiple` au dictionnaire.
+- Verifier que l'historique affiche le profil de chaque export, et `Profil anterieur` pour une
+  entree creee avant l'introduction des profils.
+- Generer les DEUX profils sur la meme base, et comparer.
 - Exporter une base melangeant d'anciennes rencontres et des rencontres saisies apres le passage
   a plusieurs valeurs.
+
+**Profil `Analyse` (defaut)** — sur une base portant une variable a plusieurs valeurs :
+
+- nom de fichier contenant le segment `_analyse_` ;
+- classeur a quatre feuilles, dans l'ordre : `Donnees`, `Dictionnaire`, `Modalites`,
+  `Metadonnees` ;
+- une liste a choix unique rend UNE colonne portant le CODE (pas le libelle) ; le libelle se lit
+  une seule fois dans `Modalites` ;
+- une variable a plusieurs valeurs rend UNIQUEMENT ses colonnes `has__...` en `0`/`1` : ni
+  libelles concatenes, ni colonne `nb__...`, ni feuille dediee ;
+- `0` et cellule vide ne veulent pas dire la meme chose : `0` = modalite non selectionnee,
+  vide = champ non applicable ou absent de la version de gabarit ;
+- une raison de valeur manquante laisse toutes les indicatrices a `0` et n'apparait jamais comme
+  une selection ;
+- les dates sont de vraies cellules date dans Excel (triables, soustraisables), pas du texte ;
+- `Metadonnees` explique un export partiel (lignes exclues pour incompletude) sans identite.
+
+**Profil `Complet`** — memes donnees, structure historique :
+
+- nom de fichier contenant le segment `_complet_` ;
+- feuille principale `Export`, pas de feuille `Modalites` ni `Metadonnees` ;
+- la colonne principale (libelles separes par `; `) ;
+- la colonne de codes ;
+- la colonne `nb__...`, VIDE et non `0` en presence d'un code de donnee manquante ;
+- les colonnes indicatrices `has__...` en `0/1` ;
+- la feuille dediee (une ligne par valeur, avec son rang) ;
+- la ligne `is_multiple` au dictionnaire.
 
 ### Attendu
 
@@ -448,6 +474,8 @@ QA-UNK-2,2026-07-08,165
 - Les donnees identifiantes ne sont pas presentes.
 - Les documents bruts ne sont pas presents.
 - Le telechargement depuis historique passe par l'Edge Function signee.
+- Les deux profils appliquent les MEMES protections : pas d'identite, pas de document brut, meme
+  controle d'acces. Un profil ne doit jamais faire sortir une colonne que l'autre refuse.
 - Si le navigateur bloque les telechargements multiples, marquer `BLOQUE / non verifie`, pas `OK`.
 
 ## 16. Acces et invitations

@@ -2501,41 +2501,41 @@ inline).
 La publication (commit, PR, staging) reste volontairement non engagée : niveau A — s'arrête avant
 le commit, en attente de la validation du porteur.
 
-## Lot L20 ÔÇö Socle PostgreSQL des listes de diagnostics (branche d'int├®gration, 2026-08-16)
+## Lot L20 — Socle PostgreSQL des listes de diagnostics (branche d'intégration, 2026-08-16)
 
 La migration additive `20260818045033_multivalue_terminology_foundation.sql` ajoute
-`template_field.is_multiple`, faux par d├®faut et r├®serv├® au type `terminology`. Une liste valide
-porte de 1 ├á 50 couples `code`/`label`, sans code r├®p├®t├® ; chaque couple est v├®rifi├® dans toutes les
-publications conserv├®es. Une raison de valeur manquante continue de remplacer la liste.
+`template_field.is_multiple`, faux par défaut et réservé au type `terminology`. Une liste valide
+porte de 1 à 50 couples `code`/`label`, sans code répété ; chaque couple est vérifié dans toutes les
+publications conservées. Une raison de valeur manquante continue de remplacer la liste.
 
-`jsonb_matches` comprend d├®sormais `has_any` et `has_none`. La compl├®tude n'a pas ├®t├® r├®├®crite :
-sa d├®finition actuelle utilise d├®j├á `rule_value_present`, qui distingue correctement `[]` d'une
-liste non vide. La duplication de version, la nouvelle surcharge de modification et l'instantan├®
+`jsonb_matches` comprend désormais `has_any` et `has_none`. La complétude n'a pas été réécrite :
+sa définition actuelle utilise déjà `rule_value_present`, qui distingue correctement `[]` d'une
+liste non vide. La duplication de version, la nouvelle surcharge de modification et l'instantané
 hors-ligne conservent tous `isMultiple`.
 
-### Synth├¿se `meddata-db-safety`
+### Synthèse `meddata-db-safety`
 
-- compatibilit├® : les champs et donn├®es existants restent unitaires par d├®faut ; aucune donn├®e
+- compatibilité : les champs et données existants restent unitaires par défaut ; aucune donnée
   clinique n'est convertie par L20 ;
-- int├®grit├® : contrainte de type, cardinalit├®, forme stricte, unicit├® des codes et validation du
-  r├®f├®rentiel sont impos├®es c├┤t├® serveur ;
-- RLS et privil├¿ges : aucune table ni policy nouvelle ; **42 tables et 63 policies inchang├®es** ;
-  la nouvelle RPC reste refus├®e ├á `anon` et accord├®e ├á `authenticated` ;
-- concurrence et idempotence : aucune ├®criture de donn├®es ni traitement de reprise ; la migration
-  est transactionnelle et sa valeur par d├®faut constante n'impose pas de conversion ;
-- sauvegarde et r├®cup├®ration : aucune sauvegarde de donn├®es requise pour ce lot non destructif ;
-  toute correction ult├®rieure doit rester additive. Aucune migration distante n'a ├®t├® appliqu├®e.
+- intégrité : contrainte de type, cardinalité, forme stricte, unicité des codes et validation du
+  référentiel sont imposées côté serveur ;
+- RLS et privilèges : aucune table ni policy nouvelle ; **42 tables et 63 policies inchangées** ;
+  la nouvelle RPC reste refusée à `anon` et accordée à `authenticated` ;
+- concurrence et idempotence : aucune écriture de données ni traitement de reprise ; la migration
+  est transactionnelle et sa valeur par défaut constante n'impose pas de conversion ;
+- sauvegarde et récupération : aucune sauvegarde de données requise pour ce lot non destructif ;
+  toute correction ultérieure doit rester additive. Aucune migration distante n'a été appliquée.
 
-### Validation locale ÔÇö niveau 1
+### Validation locale — niveau 1
 
 - tests L20 : **10/10 verts** ;
-- non-r├®gression terminologie, statistiques et cohortes : **30/30 verts** ;
-- `npm run db:verify` : **128 migrations** appliqu├®es depuis z├®ro, 42 tables, 63 policies et
+- non-régression terminologie, statistiques et cohortes : **30/30 verts** ;
+- `npm run db:verify` : **128 migrations** appliquées depuis zéro, 42 tables, 63 policies et
   64 triggers ;
 - `npm run typecheck` et `npm run lint` : verts.
 
-D├®cision du contr├┤le de lot : **pr├¬t pour la suite s├®quentielle L21**, sous r├®serve de la validation
-ind├®pendante commune avant publication.
+Décision du contrôle de lot : **prêt pour la suite séquentielle L21**, sous réserve de la validation
+indépendante commune avant publication.
 
 ## Incident de séquence — D13/D14 livrés hors lot, L22 annulé, L20 livré (2026-08-18)
 
@@ -2623,7 +2623,7 @@ retrouveront.
 
 ### Défaut d'encodage à corriger
 
-L'entrée « Lot L20 » qui précède a été écrite avec un encodage erroné (`ÔÇö` pour `—`, `├®` pour
+L'entrée « Lot L20 » qui précède a été écrite avec un encodage erroné (`—` pour `—`, `é` pour
 `é`). La corruption est **non réversible automatiquement** : la remettre d'aplomb suppose de
 retaper le texte. Le fond reste exact ; seule la lecture est pénible.
 
@@ -3327,3 +3327,48 @@ un environnement autorisé. Les builds persistants conservent `VITE_OFFLINE_MODE
   est proposée par la PR 266, dont la CI est verte.
 - Aucun workflow « Coordinated release » n’a été relancé. Aucune fusion, migration distante,
   modification cloud ou opération sur des données réelles n’a été effectuée.
+
+## Alignement de la documentation sur `develop` (2026-09-02)
+
+### Contexte
+
+Mise à jour de la branche locale sur `origin/develop` (`4190f2a`), qui apportait les lots
+d'export **L45 à L49** (contrat serveur intégré le 2026-08-28 par la PR 264, choix du profil
+exposé à l'utilisateur le 2026-09-01 par la PR 267). Plusieurs documents vivants décrivaient
+encore ce chantier comme une cible non implémentée.
+
+### Ce qui a été aligné
+
+- [`chantiers-export-analyse.md`](chantiers-export-analyse.md) : statut passé de « cible décidée,
+  non implémentée » à « jalon MVP atteint » ; livraison de l'interface consignée sous L45 ;
+  section « Ce qui reste ouvert » ajoutée (L50 différé, preuve sur site déployé à produire).
+- [`lots-paralleles.md`](lots-paralleles.md) : L45 à L49 barrés dans le tableau d'ensemble,
+  « Ordre suggéré » et « Restent ouverts » recalés sur L34, L38 à L44, L50, O6 et O7.
+- [`prompts-lots.md`](prompts-lots.md) : **31 prompts de lots soldés** barrés (L4, L11 à L25,
+  L27 à L33, L35 à L37, L45 à L49) — ils invitaient à refaire du travail déjà livré ; l'ancien
+  tableau d'état du 2026-08-10, qui annonçait encore L14, L20 à L26 et L27 à L33 « à lancer »,
+  est replié et remplacé par l'état courant.
+- [`edge-functions.md`](edge-functions.md) : §10.3 complétée — résolution serveur de
+  `options.profile`, tableau comparatif des deux profils, feuille `Metadonnees`, refus 413
+  `EXPORT_INDICATOR_CARDINALITY`. **Correction factuelle** : le contrat de nom de fichier omettait
+  le segment de profil (`_analyse_` / `_complet_`) réellement produit par le handler.
+- [`cahier-des-charges-metier.md`](cahier-des-charges-metier.md) : EF-28 bis cadrée sur le profil
+  Complet, EF-28 quinquies passée en implémentée, ajout d'EF-28 sexies (choix du profil) et de
+  RG-15 bis (un profil ne relâche jamais une garantie).
+- [`cahier-des-charges-technique.md`](cahier-des-charges-technique.md) : ajout d'ET-13 bis
+  (profils d'export résolus côté serveur).
+- [`architecture.md`](architecture.md), [`qa-parcours-site.md`](qa-parcours-site.md),
+  [`checklist-fonctionnalites-site.md`](checklist-fonctionnalites-site.md) : parcours d'export et
+  attendus de test séparés par profil — la checklist décrivait comme universelles des colonnes
+  (`nb__`, libellés concaténés, feuille dédiée) qui n'existent plus en profil Analyse.
+- [`README.md`](README.md) : index et date de vérification.
+- [`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md) : **63 séquences de
+  caractères corrompues** réparées dans la section du lot L20 (texte UTF-8 relu en CP850 lors de
+  sa rédaction) ; aucun contenu modifié, seulement l'encodage.
+
+### Périmètre et vérifications
+
+Modification de documentation uniquement : aucun fichier de `src/`, `supabase/`, `scripts/` ou
+`test/` touché. `npm run typecheck` vert sur l'arbre mis à jour. Les liens relatifs de `docs/`
+ont été revérifiés. Aucun commit, aucune fusion, aucune migration distante, aucune modification
+cloud.
