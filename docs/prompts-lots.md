@@ -18,6 +18,12 @@
   [`lots-paralleles.md`](lots-paralleles.md) — 31 prompts de lots soldés sont désormais barrés
   (L4, L11 à L25, L27 à L33, L35 à L37, L45 à L49) et l'ancien tableau d'état de août est replié.
   Ne restent à lancer que **L34**, **L38 à L44**, **L50** (différé), **O6** et **O7**.
+- **Révisé le 2026-09-03** : quatre prompts ajoutés (**L51 à L54**), issus de
+  [`spec-blocs-pathologies.md`](spec-blocs-pathologies.md) et de la synthèse de décision
+  [`decision-blocs-pathologies-2026-09-03.md`](decision-blocs-pathologies-2026-09-03.md).
+  Ordre d’exécution : **L51 et L54** en parallèle, puis **L52**, puis ou en même temps
+  **L53**. L51 et L52 écrivent dans les mêmes fichiers : jamais ensemble. L54 doit
+  précéder L52 et L53, qui reposent sur la notion de bloc racine.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -56,7 +62,7 @@ dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État au 2026-09-02
+## État au 2026-09-03
 
 **Vérifier cet état avant de lancer un thread**, pour ne pas faire refaire du travail déjà fait.
 La source de vérité du suivi reste le tableau et la section « Ordre suggéré » de
@@ -67,6 +73,9 @@ La source de vérité du suivi reste le tableau et la section « Ordre suggéré
 | **L34** | Filtre d'une variable Diagnostic à valeur unique |
 | **L38 à L44** | Lots issus de l'audit du 2026-08-18 (L38 prioritaire : `inspection=paused` en production) |
 | **L50** | Concepts diagnostiques dans l'export — **différé**, il attend un référentiel gouverné |
+| **L51**, **L54** | Blocs pathologiques : opérateur d’appartenance, et deux niveaux de sections — parallélisables entre eux |
+| **L52** | Visibilité au niveau bloc — **après L51 et L54**, jamais avec L51 |
+| **L53** | Projection d’export par blocs — **après L54** ; ne pas lancer avec L50 |
 | **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
 
 **Tout le reste est soldé** : L1 à L33 (dont L26, clos sans exécution), L35, L36, L37 (écarté du
@@ -422,6 +431,311 @@ version, CSV/XLSX, règles RLS/RPC si elles sont touchées.
 TERMINÉ SIGNIFIE : référentiel gouverné, contrat d'export documenté, tests
 ciblés verts et aucune fusion automatique non justifiée. Ne committe, ne pousse
 et ne déploie rien sans demande explicite.
+```
+
+---
+
+## L51 — Opérateur d'appartenance dans le moteur de règles
+
+```
+Lis les instructions du dépôt, puis §3 de docs/spec-blocs-pathologies.md et §4
+(décision D4) de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi tes
+questions AVANT de commencer si un point du contrat te paraît ambigu.
+
+CONTEXTE. Le moteur de règles n'a aucune façon d'exprimer « ou ». Plusieurs
+règles visant la même variable se combinent en ET dans visibility_hidden_fields,
+et l'opérateur `in` de rule_apply_op compare `a #>> '{}'` : sur une liste, il
+compare le texte du tableau entier au lieu de ses éléments. Une variable utile à
+deux blocs pathologiques est donc inexprimable.
+
+OBJECTIF.
+
+1. Ajouter un opérateur de condition `contains_any` : vrai si AU MOINS UN élément
+   d'un pilote multivalué figure dans la liste configurée ; pour un pilote
+   scalaire, vrai si sa valeur y figure. Laisser `in` strictement inchangé.
+2. Rendre faux, sans exception, les cas suivants : pilote absent, pilote null,
+   liste du pilote vide, et valeur manquante codifiée {"__missing__": ...}. Une
+   raison de valeur manquante ne déclenche jamais un bloc.
+3. Comparer des CODES d'option, jamais des libellés.
+4. Refuser à la définition de la règle : un pilote dont le type n'est ni `select`
+   ni `multiselect` ; un `value` absent, non-tableau ou vide ; un code de `value`
+   absent des codes d'option du pilote. Message nommant la variable, jamais son
+   contenu.
+5. NE PAS ajouter l'opérateur à la liste des comparaisons
+   {operator,left_field,right_field} : il n'a de sens que dans une clause `if`.
+6. Implémenter la même sémantique dans src/domain/templateRules.ts. La PARITÉ
+   stricte avec PL/pgSQL est la propriété centrale du lot : une divergence
+   produit un aperçu différent de la décision serveur.
+
+COMPATIBILITÉ DESCENDANTE — À ÉTABLIR, PAS À SUPPOSER. Détermine par lecture ce
+que fait un client non rafraîchi face à un opérateur `if` inconnu, et documente-le
+dans la migration. Contrairement à un `then` inconnu, traité comme « respecté »,
+un `if` inconnu peut masquer la cible. Si c'est le cas, écris explicitement que
+le frontend doit être livré AVANT toute publication d'une version utilisant
+l'opérateur.
+
+SÉCURITÉ DES DONNÉES : nouvelle migration horodatée, additive ; ne modifie aucune
+migration déjà appliquée ; ne fais pas reposer la décision sur l'interface. Toute
+nouvelle fonction SECURITY DEFINER doit être justifiée dans
+supabase/security-definer-allowlist.json et passer le contrôle d'ACL.
+
+COUVERTURE EXIGÉE : pilote multivalué avec un élément correspondant, avec aucun,
+et vide ; pilote scalaire correspondant et non correspondant ; pilote absent,
+null et valeur manquante codifiée ; les quatre refus de définition ; parité
+serveur/client sur les mêmes jeux de valeurs ; une base sans règle `contains_any`
+se comporte à l'identique.
+
+TERMINÉ SIGNIFIE : opérateur disponible côté serveur et côté client avec la même
+sémantique, refus de définition explicites, compatibilité descendante documentée,
+tests ciblés verts. Ne committe, ne pousse et ne déploie rien sans demande
+explicite.
+```
+
+---
+
+## L54 — Deux niveaux de sections : bloc et sous-section
+
+```
+Ce lot est INDÉPENDANT de L51 et peut tourner en parallèle. Il doit être fusionné
+AVANT L52 et AVANT L53, qui reposent tous deux sur la notion de bloc racine.
+
+Lis les instructions du dépôt, puis §4 de docs/spec-blocs-pathologies.md et la
+décision D9 de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi tes
+questions AVANT de commencer.
+
+CONTEXTE. Le chantier des blocs pathologiques fait d'un bloc une
+`template_section`. Or template_section est PLATE : section_key, label,
+display_order, sans hiérarchie. Le seul niveau de regroupement disponible est
+donc consommé par le bloc, et un bloc de 20 variables devient une liste continue
+sans séparation clinique / biologie / imagerie / traitement. Aucune convention de
+nommage ne remplace ce niveau : un préfixe dans section_key deviendrait porteur
+de sémantique, ce que le produit refuse ailleurs.
+
+OBJECTIF.
+
+1. Ajouter `template_section.parent_section_id`, nullable, auto-référence,
+   `on delete restrict`. Parent nul = BLOC ; parent non nul = SOUS-SECTION.
+   `section_key` reste unique par version, tous niveaux confondus : le miroir
+   texte en dépend. Ajouter l'index de lecture par niveau.
+2. Refuser côté serveur, par trigger ou contrainte : un parent appartenant à une
+   AUTRE version ; une sous-section prise comme parent (UN SEUL niveau
+   d'imbrication, c'est la contrainte qui garde tout le reste simple) ;
+   l'auto-parenté ; la suppression d'un bloc portant encore des sous-sections.
+3. GARDE SUPPLÉMENTAIRE À NE PAS OUBLIER. template_field.section_id est
+   `on delete set null` : supprimer une section détache ses variables, qui
+   retombent sur le filet. Dans le modèle à blocs, une variable détachée devient
+   du TRONC COMMUN, donc visible pour TOUS les patients — l'inverse exact de
+   l'intention. Refuse donc la suppression d'une section qui est la cible d'une
+   règle d'affichage, avec un message explicite. Cette garde est additive et sans
+   effet sur une base sans règle de section.
+4. Laisser une variable s'attacher directement à un bloc qui possède par ailleurs
+   des sous-sections : refuser ce cas forcerait à créer des sous-sections
+   artificielles. Ordre de rendu normatif : variables directes du bloc d'abord,
+   par display_order, puis les sous-sections par display_order avec leurs
+   variables.
+5. RECOPIE DE VERSION EN DEUX PASSES. Insérer d'abord toutes les sections par
+   section_key comme aujourd'hui, PUIS résoudre parent_section_id en rapprochant
+   la section_key du parent source. Une seule passe échouerait ou produirait un
+   pointeur vers l'ancienne version selon l'ordre d'insertion. Redéfinis dans la
+   nouvelle migration la version courante de copy_template_fields,
+   duplicate_template_version, create_next_personal_template_version,
+   promote_template_to_global, create_base_from_model_observation et
+   create_template_bundle. AUCUNE section ne doit jamais pointer vers une section
+   d'une autre version.
+6. Éditeur : créer une sous-section sous un bloc, réordonner par niveau, déplacer
+   une section d'un niveau à l'autre UNIQUEMENT sur une version encore inutilisée,
+   distinguer visuellement les deux niveaux sans laisser croire qu'une
+   sous-section peut porter une règle.
+
+À VÉRIFIER, PAS À SUPPOSER : le trigger de synchronisation du miroir texte
+`template_field.section` doit continuer de fonctionner à l'identique et porter la
+section_key de la FEUILLE — sous-section si la variable y est attachée, bloc
+sinon. Un client non rafraîchi voit alors une liste plate : vue dégradée mais
+cohérente, sans perte de donnée. Corrige dans ce lot si ce n'est pas le cas.
+
+SÉCURITÉ DES DONNÉES : nouvelle migration horodatée, additive ; aucune migration
+appliquée n'est modifiée ; aucune donnée clinique réécrite ; toute base existante
+conserve ses sections telles quelles, devenues des blocs sans sous-section, et
+aucun formulaire ne change d'apparence au déploiement.
+
+COUVERTURE EXIGÉE : parent d'une autre version, sous-section prise comme parent,
+auto-parenté, suppression d'un bloc à sous-sections, suppression d'une section
+cible d'une règle — tous refusés ; recopie de version sur LES SIX voies de
+duplication avec remappage des parents et aucun pointeur inter-versions ; miroir
+texte aux deux niveaux ; variable attachée directement à un bloc à sous-sections ;
+ordre de rendu par niveau ; base à sections plates strictement inchangée.
+
+TERMINÉ SIGNIFIE : deux niveaux disponibles et bornés à deux, recopie de version
+fidèle sur les six voies, gardes de suppression en place, base existante
+inchangée, tests ciblés verts, docs/schema-etat-final.md régénéré. Ne committe, ne
+pousse et ne déploie rien sans demande explicite.
+```
+
+---
+
+## L52 — Visibilité au niveau bloc
+
+```
+NE LANCE PAS CE LOT AVANT QUE L51 ET L54 SOIENT FUSIONNÉS. L51 apporte l'opérateur
+`contains_any` ; L54 apporte la distinction bloc / sous-section sans laquelle une
+règle visant « un bloc » n'a pas de sens. L51 et L52 écrivent en outre dans les
+mêmes fichiers — moteur de règles, src/domain/templateRules.ts,
+src/screens/staff/RuleForm.tsx — donc jamais ensemble.
+
+Lis les instructions du dépôt, puis §5 de docs/spec-blocs-pathologies.md et les
+décisions D2, D3 et D8 de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi
+tes questions AVANT de commencer.
+
+CONTEXTE. Une règle d'affichage vise `then.field`, jamais une section. Simuler 12
+blocs pathologiques de 20 variables impose donc environ 240 règles, avec un mode
+de défaillance silencieux : une règle oubliée n'échoue pas, elle affiche la
+variable à tout le monde. La visibilité de bloc ramène ce chiffre à 12.
+
+OBJECTIF.
+
+1. Accepter { "then": { "section": <section_key>, "operator": "visible" } } à côté
+   de la forme existante visant un champ. La clé est celle d'un BLOC — section
+   sans parent — et elle est STABLE, jamais l'UUID.
+2. Quand la règle n'est pas satisfaite, masquer TOUTES les variables du bloc dans
+   cette version : celles attachées directement au bloc ET celles de toutes ses
+   sous-sections. Une sous-section est visible si et seulement si son bloc l'est ;
+   elle ne porte jamais de condition propre.
+3. Ne jamais concerner les variables sans section : elles sont le tronc commun.
+4. Cumuler les deux mécanismes : une variable est masquée si son bloc est masqué
+   OU si sa propre règle échoue. Le point fixe existant doit continuer de
+   converger, cascade comprise (un pilote masqué vaut pilote absent).
+5. N'accepter que `visible` pour une cible de section. PAS de `required` au
+   niveau bloc : c'est une autre sémantique, hors périmètre.
+6. Refuser à la définition : section_key inexistante ; section_key désignant une
+   SOUS-SECTION, seul un bloc pouvant porter une règle ; pilote APPARTENANT au
+   bloc qu'il commande, sous-sections comprises (il se masquerait lui-même et le
+   bloc ne réapparaîtrait jamais) ; bloc contenant des variables d'un scope
+   différent de celui du pilote — le refus est préféré à une application
+   partielle silencieuse.
+7. Étendre assert_visibility_acyclic : une règle de bloc crée une arête du pilote
+   vers CHAQUE variable du bloc, SOUS-SECTIONS COMPRISES. La détection doit
+   rester faite à l'enregistrement de la règle, comme aujourd'hui. C'est la
+   partie la plus délicate du lot, traite-la explicitement.
+8. Refléter la même sémantique dans src/domain/templateRules.ts, et permettre de
+   choisir un bloc comme cible dans RuleForm.tsx — les sous-sections ne doivent
+   pas être proposées.
+
+DEUX VÉRIFICATIONS À FAIRE, ET À CORRIGER DANS CE LOT SI ELLES ÉCHOUENT.
+  a) Le décompte des valeurs effacées annoncé AVANT enregistrement doit couvrir
+     L'INTÉGRALITÉ du bloc, sous-sections comprises, et pas seulement les
+     variables visées nommément par une règle. À 20 variables par bloc, un
+     effacement non annoncé serait une régression grave.
+  b) Un bloc dont toutes les variables sont masquées ne doit rien rendre, ni son
+     titre ni son cadre ; une sous-section sans variable visible non plus.
+
+SÉCURITÉ DES DONNÉES : nouvelle migration horodatée, additive ; aucune migration
+appliquée n'est modifiée ; le gel de version reste en vigueur (une règle ne
+s'ajoute pas à une version portant des données) ; la duplication d'une version
+doit recopier les règles de bloc et les rattacher aux nouvelles sections.
+
+COUVERTURE EXIGÉE : bloc masqué masquant toutes ses variables, sous-sections
+comprises ; variable sans section jamais masquée ainsi ; cumul bloc + règle
+propre ; cascade et convergence ; les quatre refus de définition ; cycle détecté à
+l'enregistrement ; une variable masquée par bloc n'est jamais exigée par la
+complétude ; refus serveur d'une fiche portant la valeur d'une variable d'un bloc
+masqué ; duplication de version ; rendu à deux niveaux et décompte d'effacement
+côté web.
+
+TERMINÉ SIGNIFIE : 12 blocs se définissent avec 12 règles quel que soit le nombre
+de sous-sections, l'acyclicité tient, l'effacement est annoncé intégralement,
+serveur et client décident pareil, tests ciblés verts. Ne committe, ne pousse et
+ne déploie rien sans demande explicite.
+```
+
+---
+
+## L53 — Projection d'export par blocs
+
+```
+NE LANCE PAS CE LOT AVANT QUE L54 SOIT FUSIONNÉ : la projection filtre sur le BLOC
+RACINE, notion qu'apporte L54. En revanche L53 ne dépend ni de L51 ni de L52 — il
+peut être livré avant que les règles de bloc n'existent, sur des blocs pilotés par
+de simples cases à cocher. Il partage exportContract.ts et handler.ts avec L50,
+différé : ne jamais lancer L53 et L50 ensemble.
+
+Lis les instructions du dépôt, puis §6 de docs/spec-blocs-pathologies.md et la
+décision D6 de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi tes
+questions AVANT de commencer.
+
+CONTEXTE. L'export rend l'union de toutes les variables de la population. Avec 12
+blocs pathologiques dans une base unique, le fichier devient large et clairsemé,
+et rien ne permet d'extraire « le tronc commun plus une pathologie ». Le contrat
+porte DÉJÀ la section de chaque variable (champs `section` et `sectionLabel` de
+ExportField), et toute la construction des colonnes, du dictionnaire, de la
+feuille Modalités et des limites part d'un SEUL tableau de variables dans le
+handler. Il manque un filtre, pas une architecture.
+
+OBJECTIF.
+
+1. Porter les DEUX niveaux dans ExportField. `section` et `sectionLabel` gardent
+   leur sens actuel — la FEUILLE, donc la sous-section quand il y en a une — et
+   deux champs sont ajoutés pour la racine : `blockKey` et `blockLabel`. Pour une
+   base à sections plates, blockKey === section : la compatibilité descendante est
+   acquise par construction. Le dictionnaire XLSX gagne une colonne « bloc » à
+   côté de sa colonne section.
+2. Étendre export_options avec :
+     { "sectionProjection": { "mode": "all" | "selected",
+                              "blockKeys": ["..."] } }
+   `all` est le défaut et reproduit exactement le comportement actuel. L'absence
+   de sectionProjection équivaut à `all`. Les clés désignent des BLOCS, jamais des
+   sous-sections.
+3. Filtrer sur `blockKey`, jamais sur la feuille : sélectionner « tuberculose »
+   doit ramener les variables de la sous-section « tb_biologie ». Appliquer le
+   filtre en UN SEUL point, juste après la fusion des variables et avant la
+   construction des colonnes, pour que dictionnaire, Modalités, métadonnées,
+   limites et garde anti-identité suivent sans traitement propre.
+4. Toujours exporter les variables SANS section, quelle que soit la projection.
+   Elles ne se listent pas dans blockKeys et ne sont pas décochables.
+5. Ne JAMAIS filtrer la population : c'est la cohorte qui définit les lignes. Un
+   patient ne relevant d'aucun bloc sélectionné ressort avec ses seules colonnes
+   communes renseignées.
+6. Refuser l'export AVANT génération, avec une erreur structurée, dans quatre cas :
+   mode `selected` avec blockKeys absent ou vide ; clé inconnue de toutes les
+   versions présentes dans la cohorte ; clé désignant une sous-section et non un
+   bloc ; et — c'est le point important — un même field_key rattaché à des BLOCS
+   différents selon les versions présentes.
+7. Offrir le choix dans l'écran d'export : les BLOCS présents dans la cohorte,
+   sélectionnables. Les sous-sections ne sont pas proposées séparément, elles
+   suivent leur bloc. Variables sans section signalées comme toujours incluses.
+   Traductions française et anglaise.
+
+POURQUOI LE QUATRIÈME REFUS, ET SA LIMITE EXACTE. mergeExportFields fusionne par
+field_key et retient la section de la PREMIÈRE version rencontrée. Une variable
+ayant changé de bloc entre deux versions serait classée arbitrairement, sans que
+rien ne le signale. Le refus transforme un résultat faux et silencieux en une
+erreur visible. MAIS le contrôle porte sur le BLOC, pas sur la feuille : déplacer
+une variable d'une sous-section à une autre À L'INTÉRIEUR DU MÊME BLOC ne doit PAS
+provoquer de refus. Ne tente pas de résoudre le cas complet — un bloc par version,
+sur le modèle des formules qui ne fusionnent délibérément pas — c'est une suite
+possible, hors périmètre.
+
+DISPERSION : un mode « blocs présents dans la cohorte » a été envisagé et écarté
+(le jeu de colonnes deviendrait dépendant des données). Ne l'implémente pas.
+
+SÉCURITÉ DES DONNÉES : aucun changement de schéma n'est attendu côté export. La
+garde anti-identité doit s'appliquer au jeu de colonnes FILTRÉ. La projection
+résolue doit se retrouver dans export_log.export_options.
+
+COUVERTURE EXIGÉE : export sans projection strictement identique à aujourd'hui ;
+base à sections plates avec blockKey === section et sortie inchangée ; projection
+d'un bloc puis de plusieurs ; variables d'une sous-section incluses quand leur
+bloc est sélectionné ; variables sans section toujours présentes ; population
+inchangée ; dictionnaire portant les deux niveaux ; Modalités et métadonnées
+cohérents ; garde anti-identité sur le jeu filtré ; les quatre refus ; le
+NON-refus d'un déplacement entre sous-sections du même bloc ;
+export_log.export_options portant la projection ; hash de fichier stable ; CSV et
+XLSX.
+
+TERMINÉ SIGNIFIE : un export « tronc commun + un bloc » sort les variables de
+toutes les sous-sections de ce bloc sans changer la population, les quatre refus
+sont explicites, le journal porte la projection, tests ciblés verts et
+npm run release:edge:check passe. Ne committe, ne pousse et ne déploie rien sans
+demande explicite.
 ```
 
 ---
