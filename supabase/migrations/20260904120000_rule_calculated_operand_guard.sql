@@ -118,6 +118,14 @@ language sql immutable set search_path = public, pg_temp as $$
   where s.f is not null and s.pb is not null
 $$;
 
+-- Depuis 20260714213326, `alter default privileges` retire EXECUTE a tout le monde sur
+-- CHAQUE NOUVELLE fonction : une fonction sans GRANT explicite est injoignable. Ces trois
+-- aides sont appelees a l'interieur de declencheurs `security invoker`, donc AVEC les droits
+-- de la personne qui ecrit -- sans ce grant, enregistrer une regle echouerait sur
+-- « permission denied » au lieu d'etre validee. Elles ne lisent que des metadonnees de
+-- gabarit, sous la RLS de l'appelant.
+grant execute on function public.rule_operand_positions(jsonb) to authenticated;
+
 -- Libelle de la variable SI elle est calculee, sinon null. Une seule lecture de gabarit,
 -- partagee : `field_key` est unique par version, toutes portees confondues.
 create or replace function public.rule_calculated_field_label(p_version_id uuid, p_field_key text)
@@ -129,6 +137,7 @@ returns text language sql stable set search_path = public, pg_temp as $$
      and nullif(btrim(tf.formula), '') is not null
    limit 1
 $$;
+grant execute on function public.rule_calculated_field_label(uuid, text) to authenticated;
 
 -- La phrase vit a UN SEUL endroit : le refus a l'ecriture d'une regle, le refus a l'ajout
 -- d'une formule et le diagnostic disent donc exactement la meme chose.
@@ -154,6 +163,7 @@ returns text language sql immutable set search_path = public, pg_temp as $$
       'Regle incompatible avec la variable calculee « ' || p_label || ' »'
   end
 $$;
+grant execute on function public.rule_calculated_operand_message(text, text) to authenticated;
 
 -- -----------------------------------------------------------------------------
 -- 2. Refus a l'ECRITURE de la regle
@@ -170,6 +180,9 @@ begin
     end if;
   end loop;
 end $$;
+-- Appelee par `guard_validation_rule_structure`, qui s'execute avec les droits de la personne
+-- qui enregistre la regle : meme raison que pour les trois aides ci-dessus.
+grant execute on function public.assert_rule_calculated_operands(uuid, jsonb) to authenticated;
 
 -- Reprise a l'IDENTIQUE de la definition L32 (20260815090000), plus le controle ci-dessus.
 -- Il se place APRES la structure -- inutile de parler de variables calculees a une regle dont
