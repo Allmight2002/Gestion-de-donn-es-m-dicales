@@ -21,6 +21,7 @@ import {
   type FormulaOutputType,
   type FormulaProblem,
 } from './export';
+import { ruleOperandPositions, type RuleOperandProblem } from './templateRules';
 import type { TemplateField } from '../data/types';
 
 export {
@@ -41,6 +42,28 @@ export {
 /** Variable dont la valeur est un calcul : elle n'est jamais saisissable. */
 export const isCalculatedField = (field: Pick<TemplateField, 'formula'>): boolean =>
   Boolean(field.formula && field.formula.trim());
+
+/**
+ * Une regle designe-t-elle une variable CALCULEE la ou celle-ci ne peut pas fonctionner ?
+ *
+ * Le resultat d'un calcul n'est jamais enregistre : la cle est absente de toutes les fiches.
+ * Selon la position, la regle masque alors une variable pour toujours, rend la fiche
+ * infinalisable, ou ne se declenche jamais — jamais rien d'utile. Le serveur refuse ces
+ * regles a l'enregistrement (`assert_rule_calculated_operands`) ; ce controle dit la MEME
+ * chose avant l'envoi, avec le libelle sous les yeux.
+ *
+ * Rend le PREMIER conflit rencontre, dans l'ordre du serveur, ou `null`.
+ */
+export function calculatedOperandConflict(
+  rule: unknown,
+  fields: readonly TemplateField[],
+): { field: TemplateField; problem: RuleOperandProblem } | null {
+  for (const position of ruleOperandPositions(rule)) {
+    const field = fields.find((candidate) => candidate.fieldKey === position.fieldKey);
+    if (field && isCalculatedField(field)) return { field, problem: position.problem };
+  }
+  return null;
+}
 
 /**
  * Variables admissibles comme operande : meme portee, saisies (jamais calculees), de type

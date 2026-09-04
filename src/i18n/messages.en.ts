@@ -887,6 +887,16 @@ export const messages = {
     'rule.visible_field': 'Variable shown under the condition',
     'rule.visible': 'is shown',
     'rule.cycle': 'Circular display rule: these variables would end up depending on themselves, and none of them could ever be shown.',
+    'rule.calculated_excluded':
+      'Calculated variables are not offered as a condition variable, as a variable made required, or in a comparison: their result is not stored in records, so the rule could never fire. They can still be shown under a condition.',
+    'rule.calculated_visible_driver':
+      'Display rule: this variable is calculated and its result is not stored. The condition could never be checked and the variable to show would stay hidden forever. Drive the display with an entered variable.',
+    'rule.calculated_required_driver':
+      'Conditional rule: this variable is calculated and its result is not stored. The condition could never be checked and the rule would never fire. Base the requirement on an entered variable.',
+    'rule.calculated_required_target':
+      'Conditional rule: this variable is calculated, nothing is entered in it. Requiring it would make the record impossible to finalise.',
+    'rule.calculated_comparison_operand':
+      'Consistency rule: this variable is calculated and its result is not stored. The rule would never fire. Compare the entered variables the calculation depends on.',
     'rule.left_field': 'Variable to check',
     'rule.right_field': 'Reference variable',
     'rule.condition_field': 'Condition variable',
