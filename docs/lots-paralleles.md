@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-24**
+- Établi le 2026-07-27 · **révisé le 2026-09-05**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -77,6 +77,12 @@ analytique explicite la justifie.
 > navigateur) et **O7** (activation/release) restent à faire. Cette révision corrige aussi l'état
 > contradictoire de **L14**, livré le 2026-08-18.
 
+> **Révision du 2026-09-05 — retour terrain** : les blocs cliniques restent des extensions
+> conditionnelles d'une base au périmètre cohérent. Le diagnostic déjà établi devient le pilote
+> nominal ; l'agent doit pouvoir enregistrer le socle même si aucun bloc ne couvre encore le code.
+> **L55/L56** portent cette extension et **L57** cadre ultérieurement la reprise/notification.
+> Contrat : [`spec-collecte-diagnostique.md`](spec-collecte-diagnostique.md).
+
 ## Vue d'ensemble
 
 | Lot | Objet | Fichiers principaux | Lancer en même temps que |
@@ -131,10 +137,13 @@ analytique explicite la justifie.
 | ~~L48~~ | ~~Dates XLSX natives, CSV ISO et unités des durées~~ | **Livré le 2026-08-28** (série Excel UTC, formats posés, date invalide laissée en texte) | — |
 | ~~L49~~ | ~~Dictionnaire simplifié et feuille `Métadonnées`~~ | **Livré le 2026-08-28** (classeur Analyse à quatre feuilles ; Complet inchangé) | — |
 | **L50** | Concepts diagnostiques et référentiel terminologique dans l'export | référentiel, contrat d'export, tests | **différé ; après L46** |
-| **L51** | Blocs pathologiques : opérateur d’appartenance `contains_any` dans le moteur de règles | moteur de règles, `templateRules.ts`, `RuleForm.tsx` | L54 ; **jamais avec L52** |
-| **L54** | Blocs pathologiques : deux niveaux de sections (bloc et sous-section) | `template_section`, les six fonctions de recopie de version, éditeur de sections, rendu | L51 ; **avant L52 et L53** |
-| **L52** | Blocs pathologiques : visibilité au niveau **bloc** | moteur de règles, `templateRules.ts`, `RuleForm.tsx` | L53 ; **après L51 et L54**, jamais avec L51 |
-| **L53** | Blocs pathologiques : projection d’export par blocs | `exportContract.ts`, `handler.ts`, `exports.ts`, `ExportPanel.tsx` | L52 ; **après L54** ; **jamais avec L50** |
+| **L51** | Blocs cliniques conditionnels : opérateur d’appartenance `contains_any` dans le moteur de règles | moteur SQL, `templateRules.ts`, `validation.ts`, `RuleForm.tsx`, i18n | L54 ; **jamais avec L52** |
+| **L55** | Pilote diagnostique et couverture versionnée | règles, templates, éditeurs, copies, RPC | Après L51/L54/L52 ; jamais avec eux |
+| **L56** | Socle enregistrable et suivi autorisé | formulaires, patients/bases, RPC, routes | Après L55 ; collisions L41/L42/offline ; preuve avec L53 |
+| **L57** | Reprise et notifications : cadrage différé | documentation seulement | Après observations pilote L56 ; pas prêt à coder |
+| **L54** | Blocs cliniques conditionnels : deux niveaux de sections et tronc commun créable explicitement | `template_section`, `template_field.section`, primitive de recopie, commandes atomiques, éditeur, rendu, hors-ligne | L51 ; **avant L52 et L53** |
+| **L52** | Blocs cliniques conditionnels : visibilité au niveau **bloc** et invariants de version | moteur SQL, `templateRules.ts`, `validation.ts`, mutations de champs/sections, `RuleForm.tsx` | L53 ; **après L51 et L54**, jamais avec L51 |
+| **L53** | Blocs cliniques conditionnels : projection d’export par blocs | `exportContract.ts`, `handler.ts`, `exports.ts`, `ExportPanel.tsx` | L52 ; **après L54** ; **jamais avec L50** |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
@@ -1032,7 +1041,21 @@ avant ses lots.
   mono-personne saute) qui revient au porteur. À consigner comme décision plutôt qu'à découper en
   lot le jour où un second relecteur rejoint le projet.
 
-## Ordre suggéré — état au 2026-09-02
+## Complément terrain — L55 à L57
+
+**Non implémenté, révision du 2026-09-05.** [Contrat détaillé](spec-collecte-diagnostique.md)
+et [prompts](prompts-lots.md). L51 inclut désormais les codes terminologiques exacts ; L52
+confirme les retraits de données après changement diagnostique ; L53 conserve les cas non
+couverts éligibles. L55 configure le pilote et calcule la couverture sans statut redondant.
+L56 livre le parcours et la file sécurisée. L57 cadre ultérieurement la reprise des versions
+et les notifications, sans implémentation anticipée. La mission reste mono-base.
+
+Ordre conseillé avec un agent : **L51 → L54 → L52 → L55 → L56 → L53 → preuve pilote**,
+puis cadrage L57. L53 peut être avancé après L54. Les compatibilités de fichiers indiquent
+des possibilités, pas une consigne de déléguer. Les travaux de L55 partagent aussi les copies
+de version ; séquencer avec L54. La preuve intégrée L56 inclut l’export après L53.
+
+## Ordre suggéré — état documentaire au 2026-09-05
 
 **Niveau atteint.** Les lots **L1 à L33** sont soldés : 32 sont livrés et **L26 est clos sans
 exécution**. **L14 est bien livré le 2026-08-18**. **L35** est livré le 2026-08-21. **L36** a
@@ -1045,9 +1068,10 @@ l'interface le 2026-09-01.
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
 Restent ouverts : **L34**, les lots d'audit **L38 à L44**, **L50** (différé, il attend un
-référentiel diagnostique gouverné), ainsi que **O6** et **O7** pour la preuve et l'activation du
-mode *intake-only*. **L37** est écarté du profil Analyse et **L36** ne doit plus être relancé
-séparément ; voir les révisions en tête du document.
+référentiel diagnostique gouverné), les blocs cliniques conditionnels **L51 à L54**, la collecte **L55/L56**, le cadrage différé
+**L57**, ainsi que **O6** et
+**O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté du profil Analyse
+et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du document.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -1079,7 +1103,12 @@ séparément ; voir les révisions en tête du document.
    site déployé reste à produire.
 7. **L50**, différé après L46 : il dépend du référentiel diagnostique et ne doit pas retarder le
    jalon MVP de l'Export Analyse.
-8. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
+8. **L51** et **L54** peuvent être menés en parallèle : opérateur `contains_any` d'un côté,
+   hiérarchie de sections et tronc commun créable explicitement de l'autre. **L54** doit être fusionné avant
+   L52 et L53 ; L51 et L52 ne tournent jamais ensemble.
+9. Après L51 + L54, **L52** sécurise la visibilité de bloc et les invariants de version. Après
+   L54, **L53** peut avancer en parallèle de L52 ; ne pas le lancer avec L50.
+10. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
    d'activation et preuve de release. Aucun de ces deux lots n'autorise l'usage de données réelles.
 
 > **Historique de coordination** : L21, L22 et L24 ont été livrés le 2026-08-18, puis L23 et L25 ;

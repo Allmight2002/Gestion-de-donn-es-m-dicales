@@ -24,6 +24,11 @@ en reste la **vue d'ensemble développeur**.
 
 ---
 
+> **Évolution spécifiée, non implémentée (2026-09-05)** : la
+> [collecte diagnostique](spec-collecte-diagnostique.md) complète les blocs L51–L54 par L55/L56
+> (socle enregistrable même sans bloc) ; L57 cadre ultérieurement les reprises et notifications.
+> Ce chantier ne change pas encore les comportements décrits ci-dessous.
+
 ## 1. Principe central : un registre, trois zones
 
 Le produit est **registre-centré** : l'objet central est le **patient**, pas l'étude.
