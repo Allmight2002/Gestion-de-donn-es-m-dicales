@@ -38,6 +38,7 @@
     "create-account": "node scripts/create-account.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
     "schema": "node scripts/dump-schema.mjs",
+    "schema:check": "node scripts/check-schema-snapshot.mjs",
     "manifest": "node scripts/deploy-manifest.mjs",
     "env:check": "node scripts/check-inspection-env.mjs",
     "env:check:cloud": "node scripts/check-inspection-env.mjs --cloud",

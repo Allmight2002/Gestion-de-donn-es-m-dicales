@@ -9,12 +9,13 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listMigrations, schemaSnapshotState } from './check-schema-snapshot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const git = (args) => execSync(`git ${args}`, { cwd: ROOT }).toString().trim();
 
-const migrations = readdirSync(join(ROOT, 'supabase', 'migrations')).filter((f) => f.endsWith('.sql')).sort();
+const migrations = listMigrations(ROOT);
 const lastMigration = migrations[migrations.length - 1];
 // `_shared` = code partage entre fonctions (convention Supabase), non deployable : exclu ici comme
 // dans le workflow et scripts/verify-edge-functions.mjs, pour que le manifeste liste les 5 vraies fonctions.
@@ -24,12 +25,14 @@ const storageSha = createHash('sha256').update(readFileSync(join(ROOT, 'supabase
 
 // Le snapshot docs/schema-etat-final.md embarque le nom de la derniere migration incluse :
 // s'il differe, le document est EN RETARD -> relancer `npm run schema`.
-const schemaPath = join(ROOT, 'docs', 'schema-etat-final.md');
-let schemaState = 'ABSENT (lancer `npm run schema`)';
-if (existsSync(schemaPath)) {
-  const m = readFileSync(schemaPath, 'utf8').match(/Dernière migration incluse : `([^`]+)`/);
-  schemaState = m && m[1] === lastMigration ? `à jour (${m[1]})` : `EN RETARD (contient ${m?.[1] ?? '?'}, attendu ${lastMigration}) -> npm run schema`;
-}
+// Critere porte par scripts/check-schema-snapshot.mjs, que la CI de PR execute via
+// `npm run schema:check` : les deux gardes ne peuvent donc pas diverger.
+const snapshot = schemaSnapshotState(ROOT);
+const schemaState = snapshot.status === 'absent'
+  ? 'ABSENT (lancer `npm run schema`)'
+  : snapshot.status === 'a-jour'
+    ? `à jour (${snapshot.included})`
+    : `EN RETARD (contient ${snapshot.included ?? '?'}, attendu ${snapshot.expected}) -> npm run schema`;
 
 const manifest = {
   generatedAt: new Date().toISOString(),
