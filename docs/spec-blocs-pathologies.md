@@ -1,7 +1,7 @@
 # Spécification — blocs cliniques conditionnels dans une même base
 
-- Statut : 📋 **spécifiée, revue le 2026-09-05, non implémentée** — lots **L51**, **L54**, **L52**, **L53**
-  (L51 et L54 en parallèle, puis L52 et L53 ; voir §7)
+- Statut : 📋 **revue le 2026-09-05, partiellement implémentée** — **L51**, **L54** et **L53**
+  implémentés et non déployés ; **L52** reste à faire (voir §7)
 - Origine : [decision-blocs-pathologies-2026-09-03.md](decision-blocs-pathologies-2026-09-03.md)
 - Surface serveur : `rule_apply_op`, `rule_holds`, `visibility_hidden_fields`,
   le contrôle de forme des règles, `assert_visibility_acyclic`, `template_section`,
@@ -465,6 +465,8 @@ ensuite un ancien client de persister des valeurs sous un bloc masqué.
 
 > **Dépend de L54.** La projection filtre sur le **bloc racine** : sélectionner `tuberculose`
 > doit ramener les variables de la sous-section `tb_biologie`.
+
+Implémentation L53 et procédure d’activation : [l53-projection-export.md](l53-projection-export.md).
 
 ### 6.1 Problème résolu
 

@@ -2,11 +2,13 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
-import { useAuditRepository, useBaseRepository, useCohortRepository, useExportRepository } from '../../data/RepositoryProvider';
+import { useAuditRepository, useBaseRepository, useCohortRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem, ExportProfile } from '../../data/exports';
 import type { ObservationModel } from '../../data/bases';
+import type { TemplateSection } from '../../data/types';
 import { formatDateTime } from '../../lib/formatDate';
-import type { AggregationRule } from '../../domain/export';
+import { sectionLabel } from '../../domain/templateSections';
+import type { AggregationRule, SectionProjectionMode } from '../../domain/export';
 
 function downloadUrl(url: string, filename: string) {
   try {
@@ -45,6 +47,7 @@ export function ExportPanel() {
   const exportsRepo = useExportRepository();
   const cohorts = useCohortRepository();
   const audit = useAuditRepository();
+  const templates = useTemplateRepository();
 
   const [tvId, setTvId] = useState<string | null>(null);
   const [history, setHistory] = useState<ExportLogItem[]>([]);
@@ -54,6 +57,11 @@ export function ExportPanel() {
   const [rule, setRule] = useState<AggregationRule>('last');
   const [format, setFormat] = useState<'csv' | 'xlsx'>('csv');
   const [profile, setProfile] = useState<ExportProfile>('analysis');
+  // L53 : projection de COLONNES par bloc. Les blocs proposes sont les sections RACINES de la
+  // version courante ; les sous-sections ne se choisissent pas, elles suivent leur bloc.
+  const [blocks, setBlocks] = useState<TemplateSection[]>([]);
+  const [projectionMode, setProjectionMode] = useState<SectionProjectionMode>('all');
+  const [selectedBlocks, setSelectedBlocks] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [downloadId, setDownloadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,26 +70,45 @@ export function ExportPanel() {
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const imposedShape = rowShapeOf(observationModel);
   const mode = imposedShape ?? chosenShape;
+  const projectionIncomplete = projectionMode === 'selected' && selectedBlocks.length === 0;
 
   const load = useCallback(async () => {
     if (!baseId) return;
     try {
       const base = await bases.getBase(baseId);
-      setTvId(base?.base.currentTemplateVersionId ?? null);
+      const versionId = base?.base.currentTemplateVersionId ?? null;
+      setTvId(versionId);
       setObservationModel(base?.base.observationModel ?? 'longitudinal');
       setHistory(cohortId ? await exportsRepo.listExports(cohortId) : await exportsRepo.listBaseExports(baseId));
+      // Le choix des blocs est un CONFORT : si les sections ne se lisent pas, l'ecran garde
+      // son export complet plutot que de se bloquer sur une option facultative.
+      try {
+        const sections = versionId && templates.getSections ? await templates.getSections(versionId) : [];
+        setBlocks(sections.filter((s) => !s.parentSectionKey));
+      } catch {
+        setBlocks([]);
+      }
     } catch (e) {
       setError(msg(e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, cohortId, bases, exportsRepo]);
+  }, [baseId, cohortId, bases, exportsRepo, templates]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  function toggleBlock(key: string) {
+    setSelectedBlocks((current) => current.includes(key) ? current.filter((k) => k !== key) : [...current, key]);
+  }
+
   async function run() {
     if (!baseId) return;
+    // Le serveur refuse deja une projection vide ; l'ecran evite le detour.
+    if (projectionIncomplete) {
+      setError(t('export.projection_empty'));
+      return;
+    }
     setBusy(true);
     setDone(false);
     try {
@@ -98,7 +125,15 @@ export function ExportPanel() {
       const item = await exportsRepo.recordExport({
         cohortId: exportedCohortId, baseId, templateVersions: tvId ? [tvId] : [], format,
         profile,
-        options: { mode, rule, scope: ENCOUNTER_SCOPE },
+        options: {
+          mode,
+          rule,
+          scope: ENCOUNTER_SCOPE,
+          // L53 : `all` est le defaut et reproduit exactement le comportement anterieur.
+          sectionProjection: projectionMode === 'selected'
+            ? { mode: 'selected', blockKeys: selectedBlocks }
+            : { mode: 'all' },
+        },
       });
       if (item.storedFilePath) {
         const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
@@ -212,7 +247,48 @@ export function ExportPanel() {
         </label>
       </div>
 
-      <button onClick={() => void run()} disabled={busy} className="btn-primary">
+      {/* L53 : projection de COLONNES. Elle ne touche jamais la population, et les variables
+          du tronc commun restent presentes dans toutes les projections. */}
+      {blocks.length > 0 && (
+        <div className="card space-y-3 p-4 text-sm">
+          <label className="flex flex-col">
+            <span className="text-slate-700">{t('export.projection')}</span>
+            <select
+              className="input mt-1"
+              value={projectionMode}
+              onChange={(e) => setProjectionMode(e.target.value as SectionProjectionMode)}
+            >
+              <option value="all">{t('export.projection_all')}</option>
+              <option value="selected">{t('export.projection_selected')}</option>
+            </select>
+            <span className="mt-0.5 text-xs text-slate-500">{t('export.projection_hint')}</span>
+          </label>
+          {projectionMode === 'selected' && (
+            <fieldset className="space-y-2">
+              <legend className="sr-only">{t('export.projection')}</legend>
+              <ul className="space-y-1">
+                {blocks.map((block) => (
+                  <li key={block.sectionKey}>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedBlocks.includes(block.sectionKey)}
+                        onChange={() => toggleBlock(block.sectionKey)}
+                      />
+                      <span>{sectionLabel(t, block)}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-500">{t('export.projection_subsections')}</p>
+              <p className="text-xs text-slate-500">{t('export.projection_always')}</p>
+              {projectionIncomplete && <p className="text-xs text-amber-700">{t('export.projection_empty')}</p>}
+            </fieldset>
+          )}
+        </div>
+      )}
+
+      <button onClick={() => void run()} disabled={busy || projectionIncomplete} className="btn-primary">
         {t('export.run')}
       </button>
 
