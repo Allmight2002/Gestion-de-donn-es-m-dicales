@@ -45,6 +45,7 @@ function operatorLabel(
   operator: ComparisonOperator | ConditionOperator,
   field: TemplateField | undefined,
 ) {
+  if (operator === 'contains_any') return t('rule.operator.contains_any');
   if (operator === 'in') return t('rule.operator.in');
   return t(isDateField(field) ? DATE_OPERATOR_KEYS[operator] : OPERATOR_KEYS[operator]);
 }
@@ -97,6 +98,7 @@ type RuleDraft = {
   conditionField: string;
   conditionValue: string;
   conditionChoices: string[];
+  terminologyReleaseId?: string;
   requiredField: string;
 };
 
@@ -131,7 +133,8 @@ function ruleDraftOf(rule: unknown): RuleDraft | null {
     rightField: '',
     conditionOperator: parsed.value.if.operator,
     conditionField: parsed.value.if.field,
-    conditionValue: Array.isArray(conditionValue) ? '' : inputValue(conditionValue),
+    conditionValue: Array.isArray(conditionValue) ? conditionValue.map(inputValue).join(', ') : inputValue(conditionValue),
+    terminologyReleaseId: parsed.value.if.terminologyReleaseId,
     conditionChoices: Array.isArray(conditionValue) ? conditionValue.map(inputValue) : [],
     requiredField: parsed.value.then.field,
   };
@@ -192,6 +195,7 @@ export function RuleForm({
   const [conditionField, setConditionField] = useState(draft?.conditionField ?? '');
   const [conditionValue, setConditionValue] = useState(draft?.conditionValue ?? '');
   const [conditionChoices, setConditionChoices] = useState<string[]>(draft?.conditionChoices ?? []);
+  const [terminologyReleaseId, setTerminologyReleaseId] = useState(draft?.terminologyReleaseId ?? '');
   const [requiredField, setRequiredField] = useState(draft?.requiredField ?? '');
   const [message, setMessage] = useState(initialMessage ?? '');
   const [severity, setSeverity] = useState<RuleSeverity>(initialSeverity ?? 'block');
@@ -233,6 +237,7 @@ export function RuleForm({
     setConditionValue('');
     setConditionChoices([]);
     setRequiredField('');
+    setTerminologyReleaseId('');
   }
 
   function guidedJson() {
@@ -244,13 +249,16 @@ export function RuleForm({
       });
     }
 
-    const value = conditionOperator === 'in'
+    const value = (conditionOperator === 'in' || conditionOperator === 'contains_any')
       ? (conditionOptions.length > 0 ? conditionChoices : conditionValue.split(',').map((item) => item.trim()).filter(Boolean))
         .map((item) => coerceValue(selectedConditionField, item))
       : coerceValue(selectedConditionField, conditionValue);
 
     return JSON.stringify({
-      if: { field: conditionField, operator: conditionOperator, value },
+      if: { field: conditionField, operator: conditionOperator, value,
+        ...(conditionOperator === 'contains_any' && selectedConditionField?.type === 'terminology'
+          ? { terminologyReleaseId } : {}),
+      },
       then: { field: requiredField, operator: kind === 'visibility' ? 'visible' : 'required' },
     });
   }
@@ -259,6 +267,10 @@ export function RuleForm({
     e.preventDefault();
     // Le constructeur guide produit le format historique. Le serveur reste la source
     // de verite et revalide la regle lors de l'enregistrement.
+    if (conditionOperator === 'contains_any' && kind !== 'comparison'
+      && !['select', 'multiselect', 'terminology'].includes(selectedConditionField?.type ?? '')) {
+      setError(t('rule.contains_any_driver')); return;
+    }
     const res = parseRule(guidedJson());
     if (!res.ok) {
       setError(`${t('admin.rule_invalid')} : ${res.error}`);
@@ -289,7 +301,7 @@ export function RuleForm({
   }
 
   function conditionValueInput() {
-    if (conditionOperator === 'in') {
+    if (conditionOperator === 'in' || conditionOperator === 'contains_any') {
       if (conditionOptions.length > 0) {
         return (
           <fieldset className="rounded-lg border border-slate-200 p-3">
@@ -354,7 +366,7 @@ export function RuleForm({
   }
 
   const preview = parseRule(guidedJson());
-  const hasConditionValue = conditionOperator === 'in'
+  const hasConditionValue = (conditionOperator === 'in' || conditionOperator === 'contains_any')
     ? (conditionOptions.length > 0 ? conditionChoices.length > 0 : conditionValue.trim() !== '')
     : conditionValue !== '';
   const canPreview = kind === 'comparison'
@@ -416,7 +428,7 @@ export function RuleForm({
                   <select
                     className="input mt-1"
                     value={conditionField}
-                    onChange={(e) => { setConditionField(e.target.value); setConditionValue(''); setConditionChoices([]); }}
+                    onChange={(e) => { setConditionField(e.target.value); setConditionValue(''); setConditionChoices([]); setTerminologyReleaseId(''); }}
                   >
                     <option value="">{t('rule.choose')}</option>
                     {fieldOptions()}
@@ -430,12 +442,21 @@ export function RuleForm({
                     onChange={(e) => { setConditionOperator(e.target.value as ConditionOperator | ''); setConditionValue(''); setConditionChoices([]); }}
                   >
                     <option value="">{t('rule.choose')}</option>
-                    {CONDITION_OPERATORS.map((operator) => (
+                    {CONDITION_OPERATORS.filter((operator) => operator !== 'contains_any'
+                      || ['select', 'multiselect', 'terminology'].includes(selectedConditionField?.type ?? '')).map((operator) => (
                       <option key={operator} value={operator}>{operatorLabel(t, operator, selectedConditionField)}</option>
                     ))}
                   </select>
                 </label>
               </div>
+              {conditionOperator === 'contains_any' && selectedConditionField?.type === 'terminology' && (
+                <label className="flex flex-col text-xs text-slate-600">
+                  {t('rule.terminology_release')}
+                  <input className="input mt-1" value={terminologyReleaseId} required
+                    placeholder={t('rule.terminology_release_hint')}
+                    onChange={(e) => setTerminologyReleaseId(e.target.value)} />
+                </label>
+              )}
               {conditionValueInput()}
               <label className="flex flex-col text-xs text-slate-600">
                 {isVisibility ? t('rule.visible_field') : t('rule.required_field')}

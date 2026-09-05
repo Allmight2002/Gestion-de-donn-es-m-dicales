@@ -171,6 +171,8 @@ La normalisation des codes pour l'évaluation ne réécrit jamais les valeurs en
 
 ### 3.5 Points de vigilance
 
+Implémentation L51 et procédure d’activation : [l51-contains-any.md](l51-contains-any.md).
+
 - Ne **pas** ajouter `contains_any` à la liste des opérateurs de comparaison
   `{operator, left_field, right_field}` : il n'a de sens que dans une clause `if`.
 - Ne pas réutiliser `a #>> '{}'` sur un pilote multivalué : c'est exactement le défaut à éviter.

@@ -917,6 +917,10 @@ export const messages = {
     'rule.operator.date_greater_or_equal': 'is after or on the same date as',
     'rule.operator.date_less_than': 'is before',
     'rule.operator.date_less_or_equal': 'is before or on the same date as',
+    'rule.operator.contains_any': 'contains at least one of these codes',
+    'rule.contains_any_driver': 'Choose a selection or diagnosis variable.',
+    'rule.terminology_release': 'Reference publication linked to this rule',
+    'rule.terminology_release_hint': 'Publication identifier (UUID)',
     'rule.operator.in': 'is one of',
     // --- Mission accounts (L10) ---------------------------------------------------
     'mission.title': 'Mission accounts',
