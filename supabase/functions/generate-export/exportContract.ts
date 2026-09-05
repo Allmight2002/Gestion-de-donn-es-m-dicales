@@ -31,10 +31,23 @@ export interface ExportField {
   label: string;
   description?: string | null;
   scope: 'patient' | 'encounter';
-  /** CODE de la section (L31) : stable, c'est lui qui survit a une correction de libelle. */
-  section: string;
-  /** Libelle de la section, lisible. Absent = version anterieure au lot, ou section detachee. */
+  /**
+   * CODE de la FEUILLE (L31, L53) : la sous-section quand il y en a une, sinon le bloc.
+   * Stable, c'est lui qui survit a une correction de libelle. `null` = TRONC COMMUN : L54 a
+   * rendu `template_field.section` nullable pour en faire un choix d'edition de premier rang.
+   */
+  section: string | null;
+  /** Libelle de la feuille, lisible. Absent = version anterieure au lot, ou section detachee. */
   sectionLabel?: string | null;
+  /**
+   * CODE du BLOC racine (L53). Egal a `section` quand la section est plate ; egal a la section
+   * PARENTE quand `section` est une sous-section. `null` au tronc commun et pour un rattachement
+   * ancien non resolu — dans les deux cas la variable est TOUJOURS exportee, quelle que soit la
+   * projection, et ne se liste jamais dans `blockKeys`.
+   */
+  blockKey?: string | null;
+  /** Libelle du bloc racine. `null` quand `blockKey` est nul. */
+  blockLabel?: string | null;
   type: string;
   /** Variable multivaluee (L22) : accepte une liste ordonnee de couples terminologiques. */
   isMultiple?: boolean | null;
@@ -835,6 +848,12 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // de section (version anterieure au lot, ou section detachee). On garde le premier
       // libelle connu plutot que de laisser la colonne sans nom lisible.
       previous.sectionLabel = previous.sectionLabel ?? field.sectionLabel;
+      // L53 : meme raison pour le libelle du BLOC, mais seulement quand les deux versions
+      // designent le MEME bloc. Emprunter le libelle d'un autre bloc renommerait la colonne ;
+      // ce cas-la est de toute facon refuse par `findAmbiguousBlockFields` quand il compte.
+      if (previous.blockKey != null && previous.blockKey === field.blockKey) {
+        previous.blockLabel = previous.blockLabel ?? field.blockLabel;
+      }
       // L35 : la formule NE SE FUSIONNE PAS. Chaque version garde la sienne, sinon une
       // fiche v1 se verrait appliquer la formule corrigee en v2 — exactement ce que la
       // decision « la formule appartient a la version » interdit.
@@ -857,6 +876,90 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
     (a.displayOrder ?? 0) - (b.displayOrder ?? 0) ||
     a.fieldKey.localeCompare(b.fieldKey)
   );
+}
+
+/**
+ * Projection d'export par BLOCS (L53). `all` est le defaut et reproduit exactement le
+ * comportement anterieur ; l'absence de projection lui equivaut. Les cles designent des BLOCS
+ * racines, jamais des sous-sections.
+ */
+export type SectionProjectionMode = 'all' | 'selected';
+export interface SectionProjection {
+  mode: SectionProjectionMode;
+  blockKeys?: string[];
+}
+
+/**
+ * Le POINT UNIQUE de restitution (L53) : filtre sur `blockKey`, jamais sur la feuille, donc
+ * selectionner « tuberculose » ramene bien les variables de sa sous-section « tb_biologie ».
+ *
+ * Une variable sans bloc — tronc commun, variable partagee, rattachement ancien non resolu —
+ * traverse TOUTES les projections. La POPULATION n'est jamais touchee ici : c'est la cohorte
+ * qui definit les lignes, la projection ne choisit que des colonnes.
+ */
+export function projectFields(
+  fields: ExportField[],
+  projection?: SectionProjection | null,
+): ExportField[] {
+  if (!projection || projection.mode !== 'selected') return fields;
+  const selected = new Set(projection.blockKeys ?? []);
+  return fields.filter((f) => f.blockKey === null || f.blockKey === undefined || selected.has(f.blockKey));
+}
+
+/** Vrai des qu'une variable est rattachee a une SOUS-section, donc que le bloc dit autre chose que la feuille. */
+export const hasSubsectionFields = (fields: readonly ExportField[]): boolean =>
+  fields.some((f) => f.blockKey != null && f.section != null && f.blockKey !== f.section);
+
+/** Roles observes sur TOUTES les versions presentes : une meme cle peut etre racine ici, feuille la. */
+export interface BlockRoleIndex {
+  roots: ReadonlySet<string>;
+  leaves: ReadonlySet<string>;
+}
+
+export type ProjectionProblem =
+  | { kind: 'unknown_block'; keys: string[] }
+  | { kind: 'not_a_block'; keys: string[] };
+
+/**
+ * Controles de `mode: "selected"` (L53 §6.5), AVANT generation. Une cle inconnue de toutes les
+ * versions est un refus ; une cle qui designe une sous-section dans au moins une version aussi —
+ * ce qui couvre du meme geste le role racine/feuille divergent d'une version a l'autre.
+ */
+export function findProjectionProblem(
+  blockKeys: readonly string[],
+  index: BlockRoleIndex,
+): ProjectionProblem | null {
+  const unique = [...new Set(blockKeys)].sort();
+  const unknown = unique.filter((k) => !index.roots.has(k) && !index.leaves.has(k));
+  if (unknown.length > 0) return { kind: 'unknown_block', keys: unknown };
+  const notRoot = unique.filter((k) => index.leaves.has(k));
+  if (notRoot.length > 0) return { kind: 'not_a_block', keys: notRoot };
+  return null;
+}
+
+/**
+ * Variables analytiques `(scope, field_key)` rattachees a des BLOCS differents selon les
+ * versions — passage tronc commun <-> bloc COMPRIS. A appliquer sur la liste NON FUSIONNEE :
+ * `mergeExportFields` retient la section de la premiere version rencontree, donc classerait la
+ * variable au hasard de l'ordre de lecture. Le refus rend visible ce resultat autrement faux.
+ *
+ * Le controle porte sur le BLOC, jamais sur la feuille : deplacer une variable d'une
+ * sous-section a une autre A L'INTERIEUR DU MEME BLOC ne produit aucune ambiguite.
+ */
+export function findAmbiguousBlockFields(fields: readonly ExportField[]): string[] {
+  const blocksByColumn = new Map<string, Set<string>>();
+  for (const field of fields) {
+    const key = columnId(field);
+    const seen = blocksByColumn.get(key) ?? new Set<string>();
+    // Chaine vide = aucun bloc (tronc commun ou rattachement non resolu) : les deux disent la
+    // meme chose du point de vue de la projection, ils ne divergent donc pas entre eux.
+    seen.add(field.blockKey ?? '');
+    blocksByColumn.set(key, seen);
+  }
+  return [...blocksByColumn.entries()]
+    .filter(([, blocks]) => blocks.size > 1)
+    .map(([key]) => key)
+    .sort();
 }
 
 export function referencedTemplateVersions(patients: ExportPatient[], encounters: ExportEncounter[]): string[] {
@@ -1061,12 +1164,20 @@ export function buildEncounterExport(
   encounters: ExportEncounter[],
   fields: ExportField[],
   profile: ExportProfile = 'complete',
+  /**
+   * L53 : dictionnaire NON PROJETE des operandes possibles. Une formule projetee doit rester
+   * calculable avec des operandes hors projection, sans que leurs colonnes soient restituees.
+   * Absent = les colonnes servent aussi d'operandes, comportement anterieur au lot.
+   */
+  operandFields?: ExportField[],
 ): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
   const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
   // L35 : les operandes d'une variable calculee sont de la MEME portee — l'index ne
   // contient donc que les variables de rencontre, et il est construit une seule fois.
-  const encPeers = formulaFieldIndex(encFields);
+  const encPeers = formulaFieldIndex(
+    operandFields ? mergeExportFields(operandFields).filter((f) => f.scope === 'encounter') : encFields,
+  );
 
   const columns = [
     ...ENCOUNTER_META,
@@ -1110,17 +1221,20 @@ export function buildPatientExport(
   fields: ExportField[],
   rule: AggregationRule,
   profile: ExportProfile = 'complete',
+  /** L53 : dictionnaire NON PROJETE des operandes possibles (voir `buildEncounterExport`). */
+  operandFields?: ExportField[],
 ): ExportTable {
   const all = mergeExportFields(fields);
   const patientFields = all.filter((f) => f.scope === 'patient');
   const encounterFields = all.filter((f) => f.scope === 'encounter');
+  const operands = operandFields ? mergeExportFields(operandFields) : all;
 
   const { indicatorsByField: patIndicators } = extractMultivalueCodes(patientFields, patients);
   const { indicatorsByField: encIndicators } = extractMultivalueCodes(encounterFields, encounters);
   // L35 : un index d'operandes PAR PORTEE. Une variable calculee permanente ne lit que des
   // donnees permanentes, une variable de rencontre que des donnees de rencontre.
-  const patPeers = formulaFieldIndex(patientFields);
-  const encPeers = formulaFieldIndex(encounterFields);
+  const patPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'patient'));
+  const encPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'encounter'));
 
   const patientCols = patientFields.flatMap((f) => {
     const base = columnsForFields([f], profile);
@@ -1235,6 +1349,13 @@ export interface DictionaryOptions {
   // L49 : le profil Analyse porte un dictionnaire reduit aux proprietes d'interpretation ; le
   // profil `complete` conserve le dictionnaire detaille historique (versions, portee, multiplicite).
   profile?: 'analysis' | 'complete';
+  /**
+   * L53 : ajoute `block` et `block_label` apres la feuille. Vrai quand une projection est
+   * demandee OU qu'au moins une sous-section est presente. Sur une base historique plate SANS
+   * projection, ces colonnes restent absentes : la structure de sortie est alors strictement
+   * identique a celle d'avant le lot.
+   */
+  blockColumns?: boolean;
 }
 
 /**
@@ -1287,17 +1408,28 @@ const DETAILED_DICTIONARY_COLUMNS = [
   'template_versions',
 ];
 
+/** L53 : les deux niveaux se lisent cote a cote — le bloc racine juste apres la feuille. */
+const withBlockColumns = (columns: readonly string[]): string[] => {
+  const at = columns.indexOf('section_label');
+  return [...columns.slice(0, at + 1), 'block', 'block_label', ...columns.slice(at + 1)];
+};
+
 export function buildDictionary(fields: ExportField[], options?: DictionaryOptions): ExportTable {
   const isAnalysis = options?.profile === 'analysis';
-  const columns = isAnalysis ? ANALYSIS_DICTIONARY_COLUMNS : DETAILED_DICTIONARY_COLUMNS;
+  const base = isAnalysis ? ANALYSIS_DICTIONARY_COLUMNS : DETAILED_DICTIONARY_COLUMNS;
+  const blockColumns = options?.blockColumns === true;
+  const columns = blockColumns ? withBlockColumns(base) : [...base];
   return {
     columns,
     rows: mergeExportFields(fields).flatMap((f) => {
       const optionsList = isOptionList(f) ? optionsOf(f) : [];
       const common = {
         description: f.description ?? '',
-        section: f.section,
+        // L54 : une variable du TRONC COMMUN n'a pas de section ; la case reste vide, jamais
+        // le mot `null`, qui se lirait comme un code de section.
+        section: f.section ?? '',
         section_label: f.sectionLabel ?? '',
+        ...(blockColumns ? { block: f.blockKey ?? '', block_label: f.blockLabel ?? '' } : {}),
         unit: f.unit ?? '',
         allowed_values: isOptionList(f)
           ? optionsList.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
@@ -1392,6 +1524,11 @@ export interface MetadataInput {
   rowCount: number;
   excludedPatientCount: number;
   excludedEncounterCount: number;
+  /**
+   * L53 : projection resolue. Seule une projection `selected` ajoute sa ligne — un export sans
+   * projection garde donc exactement la feuille `Métadonnées` d'avant le lot.
+   */
+  sectionProjection?: SectionProjection | null;
 }
 
 /**
@@ -1414,6 +1551,11 @@ export function buildMetadata(input: MetadataInput): ExportTable {
   add('row_count', input.rowCount);
   add('excluded_patients_incomplete', input.excludedPatientCount);
   add('excluded_encounters_incomplete', input.excludedEncounterCount);
+  // L53 : un fichier projete doit dire de quels blocs il vient. La POPULATION, elle, n'a pas
+  // bouge : `row_count` ci-dessus reste celui de la cohorte entiere.
+  if (input.sectionProjection?.mode === 'selected') {
+    add('section_projection_blocks', (input.sectionProjection.blockKeys ?? []).join('; '));
+  }
   return { columns: ['attribute', 'value'], rows };
 }
 

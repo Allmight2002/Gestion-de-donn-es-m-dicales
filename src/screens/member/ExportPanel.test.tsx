@@ -12,7 +12,7 @@ import type { TemplateRepository } from '../../data/templates';
 import type { ExportRepository, RecordExportInput, ExportLogItem } from '../../data/exports';
 import type { CohortRepository } from '../../data/cohorts';
 import type { AuditRepository } from '../../data/audit';
-import type { TemplateField } from '../../data/types';
+import type { TemplateField, TemplateSection } from '../../data/types';
 
 beforeAll(() => {
   // jsdom n'implemente pas createObjectURL ; le composant le protege deja par try/catch.
@@ -234,5 +234,94 @@ describe('ExportPanel', () => {
     expect(downloadLink.rel).toBe('noopener');
     // En local/demo (pas d'Edge), le telechargement laisse une trace via la RPC log_export_read.
     await waitFor(() => expect(logExportRead).toHaveBeenCalledWith('x'));
+  });
+
+  // L53 — projection d'export par BLOCS. L'ecran ne propose que les sections RACINES de la
+  // version courante ; les sous-sections suivent leur bloc et ne se choisissent jamais seules.
+  describe('projection par blocs (L53)', () => {
+    const SECTIONS: TemplateSection[] = [
+      { id: 's1', sectionKey: 'tuberculose', label: 'Tuberculose', displayOrder: 0, parentSectionKey: null },
+      { id: 's2', sectionKey: 'tb_biologie', label: 'Biologie', displayOrder: 1, parentSectionKey: 'tuberculose' },
+      { id: 's3', sectionKey: 'malnutrition', label: 'Malnutrition', displayOrder: 2, parentSectionKey: null },
+    ];
+
+    async function renderWithSections(sections: TemplateSection[] | Error) {
+      const recordExport = vi.fn(async (_i: RecordExportInput): Promise<ExportLogItem> => ({
+        id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'deadbeef', storedFilePath: null,
+      }));
+      const repo = {
+        ...templateRepo,
+        async getSections() {
+          if (sections instanceof Error) throw sections;
+          return sections;
+        },
+      } as unknown as TemplateRepository;
+      const exportsRepo = { recordExport, async listExports() { return []; } } as unknown as ExportRepository;
+      render(
+        <I18nProvider>
+          <RepositoryProvider bases={baseRepo} templates={repo} exports={exportsRepo}>
+            <MemoryRouter initialEntries={['/bases/b1/cohorts/c1/export']}>
+              <Routes>
+                <Route path="/bases/:id/cohorts/:cohortId/export" element={<ExportPanel />} />
+              </Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+      await screen.findByText('Exporter une cohorte');
+      return recordExport;
+    }
+
+    test('seules les sections RACINES sont proposees, jamais les sous-sections', async () => {
+      await renderWithSections(SECTIONS);
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /blocs à exporter/i }), 'selected');
+      expect(screen.getByRole('checkbox', { name: 'Tuberculose' })).toBeTruthy();
+      expect(screen.getByRole('checkbox', { name: 'Malnutrition' })).toBeTruthy();
+      // `tb_biologie` suit son bloc : elle n'a pas de case a elle.
+      expect(screen.queryByRole('checkbox', { name: 'Biologie' })).toBeNull();
+      // Le tronc commun est annonce comme toujours inclus, donc jamais decochable.
+      expect(screen.getByText(/tronc commun/i)).toBeTruthy();
+    });
+
+    test('la projection choisie part telle quelle dans les options', async () => {
+      const recordExport = await renderWithSections(SECTIONS);
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /blocs à exporter/i }), 'selected');
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Tuberculose' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(recordExport.mock.calls[0][0].options).toMatchObject({
+        sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] },
+      });
+    });
+
+    test('par defaut la projection resolue est `all` : le fichier ne change pas', async () => {
+      const recordExport = await renderWithSections(SECTIONS);
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(recordExport.mock.calls[0][0].options).toMatchObject({ sectionProjection: { mode: 'all' } });
+    });
+
+    test('selection vide : l export est retenu et l ecran dit pourquoi', async () => {
+      const recordExport = await renderWithSections(SECTIONS);
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /blocs à exporter/i }), 'selected');
+      expect(screen.getByRole('button', { name: 'Exporter les données' })).toHaveProperty('disabled', true);
+      expect(screen.getByText(/Choisissez au moins un bloc/)).toBeTruthy();
+      expect(recordExport).not.toHaveBeenCalled();
+    });
+
+    test('aucune section : l ecran ne propose pas de projection', async () => {
+      await renderWithSections([]);
+      expect(screen.queryByRole('combobox', { name: /blocs à exporter/i })).toBeNull();
+    });
+
+    test('lecture des sections en echec : l export complet reste possible', async () => {
+      // Le choix des blocs est un confort ; il ne doit jamais bloquer l'export.
+      const recordExport = await renderWithSections(new Error('sections illisibles'));
+      expect(screen.queryByRole('combobox', { name: /blocs à exporter/i })).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(recordExport.mock.calls[0][0].options).toMatchObject({ sectionProjection: { mode: 'all' } });
+    });
   });
 });

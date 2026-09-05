@@ -91,7 +91,44 @@ export interface ExportRequest {
      * profil produit donc toujours Analyse.
      */
     profile: 'analysis' | 'complete';
+    /**
+     * Projection d'export par BLOCS (L53). `all` est le defaut et reproduit exactement le
+     * comportement anterieur ; l'absence de l'option lui equivaut. Les cles designent des blocs
+     * RACINES, jamais des sous-sections — le serveur refuse une cle qui designe une feuille.
+     * La projection resolue est toujours renvoyee, donc toujours journalisee.
+     */
+    sectionProjection: { mode: 'all' | 'selected'; blockKeys?: string[] };
   };
+}
+
+/** Meme forme que `template_section.section_key` en base : un code, jamais un libelle. */
+const SECTION_KEY_RE = /^[a-z][a-z0-9_]{0,62}$/;
+/** Un gabarit a quelques dizaines de blocs ; au-dela, la demande n'est plus une projection. */
+const MAX_PROJECTION_BLOCKS = 200;
+
+/**
+ * L53 : `mode: "selected"` sans `blockKeys` utilisable est refuse ICI, avant toute lecture de
+ * cohorte. Les cles bien formees mais inconnues ou non racines sont refusees plus loin, par le
+ * handler, qui seul connait les versions reellement presentes.
+ */
+function parseSectionProjection(raw: unknown): { mode: 'all' | 'selected'; blockKeys?: string[] } {
+  if (raw === undefined || raw === null) return { mode: 'all' };
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new RequestValidationError(400, 'sectionProjection invalide');
+  }
+  const projection = raw as Record<string, unknown>;
+  const mode = projection.mode ?? 'all';
+  if (mode !== 'all' && mode !== 'selected') throw new RequestValidationError(400, 'sectionProjection invalide');
+  // `all` ignore les cles : la projection resolue et journalisee dit alors la verite du fichier.
+  if (mode === 'all') return { mode: 'all' };
+  const keys = projection.blockKeys;
+  if (!Array.isArray(keys) || keys.length === 0 || keys.length > MAX_PROJECTION_BLOCKS) {
+    throw new RequestValidationError(400, 'sectionProjection invalide');
+  }
+  if (!keys.every((k) => typeof k === 'string' && SECTION_KEY_RE.test(k))) {
+    throw new RequestValidationError(400, 'sectionProjection invalide');
+  }
+  return { mode: 'selected', blockKeys: [...new Set(keys as string[])].sort() };
 }
 
 export function parseExportRequest(body: Record<string, unknown>): ExportRequest {
@@ -115,10 +152,11 @@ export function parseExportRequest(body: Record<string, unknown>): ExportRequest
     !['matching', 'all', 'both'].includes(String(scope)) ||
     !['analysis', 'complete'].includes(String(profile))
   ) throw new RequestValidationError(400, 'options invalides');
+  const sectionProjection = parseSectionProjection(options.sectionProjection);
   return {
     cohortId: body.cohortId,
     format: body.format ?? 'csv',
-    options: { mode, rule, scope, profile },
+    options: { mode, rule, scope, profile, sectionProjection },
   } as ExportRequest;
 }
 

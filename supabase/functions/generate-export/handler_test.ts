@@ -1358,3 +1358,519 @@ Deno.test('generate-export: filtre de completude illisible -> refus (aucun expor
   assertEquals(b.code, 'EXPORT_READ_FAILED');
   assertEquals(b.resource, 'completeness');
 });
+
+// ---------------------------------------------------------------------------
+// L53 — projection d'export par BLOCS, bout en bout.
+//
+// La projection choisit des COLONNES. Elle ne touche jamais la population, les variables du
+// tronc commun traversent toutes les projections, et la projection RESOLUE est journalisee.
+// ---------------------------------------------------------------------------
+
+const TV2 = '423e4567-e89b-42d3-a456-426614174000';
+
+/** Base a DEUX niveaux : `tb_biologie` est une sous-section de `tuberculose`. */
+const BLOCK_SECTIONS = [
+  {
+    id: 'sb1',
+    template_version_id: TV,
+    section_key: 'tuberculose',
+    label: 'Tuberculose',
+    parent_section_id: null,
+    display_order: 0,
+  },
+  {
+    id: 'sb2',
+    template_version_id: TV,
+    section_key: 'tb_biologie',
+    label: 'Biologie',
+    parent_section_id: 'sb1',
+    display_order: 1,
+  },
+  {
+    id: 'sb3',
+    template_version_id: TV,
+    section_key: 'malnutrition',
+    label: 'Malnutrition',
+    parent_section_id: null,
+    display_order: 2,
+  },
+];
+
+const blockField = (
+  id: string,
+  fieldKey: string,
+  section: string | null,
+  order: number,
+  versionId = TV,
+) => ({
+  id,
+  template_version_id: versionId,
+  field_key: fieldKey,
+  label: fieldKey,
+  description: null,
+  scope: 'encounter',
+  section,
+  type: 'number',
+  is_multiple: false,
+  unit: null,
+  allowed_values: null,
+  allowed_options: null,
+  missing_reasons: null,
+  formula: null,
+  display_order: order,
+});
+
+const BLOCK_FIELDS = [
+  // L54 : tronc commun explicite — aucune section, donc aucun bloc, donc jamais decochable.
+  blockField('bf1', 'age', null, 1),
+  blockField('bf2', 'tb_statut', 'tuberculose', 2),
+  blockField('bf3', 'tb_crp', 'tb_biologie', 3),
+  blockField('bf4', 'poids', 'malnutrition', 4),
+];
+
+const BLOCK_ENCOUNTER = {
+  ...ENCOUNTER,
+  data: { age: 7, tb_statut: 1, tb_crp: 12, poids: 9 },
+};
+
+/** Cohorte a deux niveaux, avec des surcharges de gabarit quand le cas l'exige. */
+function blocDeps(
+  opts: Opts & { fields?: unknown[]; sections?: unknown[] } = {},
+): GenerateExportDeps {
+  const fields = opts.fields ?? BLOCK_FIELDS;
+  const sections = opts.sections ?? BLOCK_SECTIONS;
+  return deps({
+    ...opts,
+    encounterRows: opts.encounterRows ?? [BLOCK_ENCOUNTER],
+    fromResponder: (call) => {
+      if (call.table === 'template_field') {
+        return queriedRows(call, fields as Array<Record<string, unknown>>, 'id');
+      }
+      if (call.table === 'template_section') {
+        return queriedRows(call, sections as Array<Record<string, unknown>>, 'id');
+      }
+      return opts.fromResponder?.(call);
+    },
+  });
+}
+
+Deno.test('L53 : projeter un bloc filtre les COLONNES, jamais la population, et se journalise', async () => {
+  let uploaded: Blob | null = null;
+  let logged: Record<string, unknown> | undefined;
+  const d = blocDeps({
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+    fromResponder: (call) => {
+      if (call.table !== 'export_log') return undefined;
+      logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: {
+          ...body('csv'),
+          options: { profile: 'complete', sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] } },
+        },
+      }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  const uploadedBlob = uploaded as Blob | null;
+  assert(uploadedBlob !== null);
+  const csv = await uploadedBlob.text();
+  const entete = csv.split('\n')[0];
+  // Le tronc commun est la, le bloc choisi aussi — sous-section comprise. L'autre bloc, non.
+  assertStringIncludes(entete, 'encounter__age');
+  assertStringIncludes(entete, 'encounter__tb_statut');
+  assertStringIncludes(entete, 'encounter__tb_crp');
+  assertEquals(entete.includes('encounter__poids'), false);
+  // La POPULATION ne bouge pas : une rencontre dans la cohorte, une ligne dans le fichier.
+  assertEquals(csv.trim().split('\n').length, 2);
+  assertEquals(logged?.encounter_count, 1);
+  const options = (logged?.export_options ?? {}) as { sectionProjection?: unknown };
+  assertEquals(options.sectionProjection, { mode: 'selected', blockKeys: ['tuberculose'] });
+});
+
+Deno.test('L53 : sans projection, le journal porte la projection RESOLUE `all`', async () => {
+  let logged: Record<string, unknown> | undefined;
+  const d = blocDeps({
+    fromResponder: (call) => {
+      if (call.table !== 'export_log') return undefined;
+      logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body() }), d));
+  assertEquals(status, 200);
+  const options = (logged?.export_options ?? {}) as { sectionProjection?: unknown };
+  assertEquals(options.sectionProjection, { mode: 'all' });
+});
+
+Deno.test('L53 : les cles sont dedupliquees et triees avant journalisation', async () => {
+  let logged: Record<string, unknown> | undefined;
+  const d = blocDeps({
+    fromResponder: (call) => {
+      if (call.table !== 'export_log') return undefined;
+      logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: {
+          ...body('csv'),
+          options: {
+            sectionProjection: { mode: 'selected', blockKeys: ['tuberculose', 'malnutrition', 'tuberculose'] },
+          },
+        },
+      }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  const options = (logged?.export_options ?? {}) as { sectionProjection?: { blockKeys?: string[] } };
+  assertEquals(options.sectionProjection?.blockKeys, ['malnutrition', 'tuberculose']);
+});
+
+Deno.test('L53 : refus 400 — `selected` sans blockKeys utilisable, avant toute generation', async () => {
+  for (const projection of [{ mode: 'selected' }, { mode: 'selected', blockKeys: [] }, { mode: 'ciblee' }]) {
+    let uploaded = false;
+    const d = blocDeps({
+      onStorage: (method) => {
+        if (method === 'upload') uploaded = true;
+      },
+    });
+    const { status, body: b } = await readResponse(
+      await handleGenerateExport(
+        makeRequest({ body: { ...body('csv'), options: { sectionProjection: projection } } }),
+        d,
+      ),
+    );
+    assertEquals(status, 400);
+    assertEquals(b.error, 'sectionProjection invalide');
+    assertEquals(uploaded, false);
+  }
+});
+
+Deno.test('L53 : refus 400 — bloc inconnu de toutes les versions de la cohorte', async () => {
+  let uploaded = false;
+  const d = blocDeps({
+    onStorage: (method) => {
+      if (method === 'upload') uploaded = true;
+    },
+  });
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('csv'), options: { sectionProjection: { mode: 'selected', blockKeys: ['paludisme'] } } },
+      }),
+      d,
+    ),
+  );
+  assertEquals(status, 400);
+  assertEquals(b.code, 'EXPORT_PROJECTION_UNKNOWN_BLOCK');
+  assertEquals(b.blocks, ['paludisme']);
+  // Aucun fichier n'a ete produit : le refus precede la generation.
+  assertEquals(uploaded, false);
+});
+
+Deno.test('L53 : refus 400 — la cle designe une SOUS-SECTION, pas un bloc', async () => {
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('csv'), options: { sectionProjection: { mode: 'selected', blockKeys: ['tb_biologie'] } } },
+      }),
+      blocDeps(),
+    ),
+  );
+  assertEquals(status, 400);
+  assertEquals(b.code, 'EXPORT_PROJECTION_NOT_A_BLOCK');
+  assertEquals(b.blocks, ['tb_biologie']);
+});
+
+Deno.test('L53 : refus 400 — role racine/feuille divergent entre versions', async () => {
+  // `malnutrition` est racine en v1 et sous-section de `tuberculose` en v2 : le bloc designe
+  // par cette cle depend de la version lue, donc la projection ne veut plus rien dire.
+  const sections = [
+    ...BLOCK_SECTIONS,
+    {
+      id: 'sc1',
+      template_version_id: TV2,
+      section_key: 'tuberculose',
+      label: 'Tuberculose',
+      parent_section_id: null,
+      display_order: 0,
+    },
+    {
+      id: 'sc2',
+      template_version_id: TV2,
+      section_key: 'malnutrition',
+      label: 'Malnutrition',
+      parent_section_id: 'sc1',
+      display_order: 1,
+    },
+  ];
+  const fields = [...BLOCK_FIELDS, blockField('bf5', 'poids', 'malnutrition', 4, TV2)];
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('csv'), options: { sectionProjection: { mode: 'selected', blockKeys: ['malnutrition'] } } },
+      }),
+      blocDeps({
+        sections,
+        fields,
+        encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+        encounterRows: [BLOCK_ENCOUNTER, { ...BLOCK_ENCOUNTER, id: 'e2', template_version_id: TV2 }],
+      }),
+    ),
+  );
+  assertEquals(status, 400);
+  assertEquals(b.code, 'EXPORT_PROJECTION_NOT_A_BLOCK');
+});
+
+Deno.test('L53 : refus 409 — une variable rattachee a des BLOCS differents selon les versions', async () => {
+  const sections = [
+    ...BLOCK_SECTIONS,
+    {
+      id: 'sc1',
+      template_version_id: TV2,
+      section_key: 'tuberculose',
+      label: 'Tuberculose',
+      parent_section_id: null,
+      display_order: 0,
+    },
+    {
+      id: 'sc2',
+      template_version_id: TV2,
+      section_key: 'malnutrition',
+      label: 'Malnutrition',
+      parent_section_id: null,
+      display_order: 1,
+    },
+  ];
+  // `tb_crp` vit sous `tuberculose` en v1 et sous `malnutrition` en v2 : la fusion la classerait
+  // au hasard de l'ordre de lecture.
+  const fields = [...BLOCK_FIELDS, blockField('bf6', 'tb_crp', 'malnutrition', 3, TV2)];
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('csv'), options: { sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] } } },
+      }),
+      blocDeps({
+        sections,
+        fields,
+        encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+        encounterRows: [BLOCK_ENCOUNTER, { ...BLOCK_ENCOUNTER, id: 'e2', template_version_id: TV2 }],
+      }),
+    ),
+  );
+  assertEquals(status, 409);
+  assertEquals(b.code, 'EXPORT_BLOCK_AMBIGUOUS');
+  assertEquals(b.fields, ['encounter__tb_crp']);
+});
+
+Deno.test('L53 : PAS de refus — deplacement entre SOUS-SECTIONS du meme bloc', async () => {
+  const sections = [
+    ...BLOCK_SECTIONS,
+    {
+      id: 'sd1',
+      template_version_id: TV2,
+      section_key: 'tuberculose',
+      label: 'Tuberculose',
+      parent_section_id: null,
+      display_order: 0,
+    },
+    {
+      id: 'sd2',
+      template_version_id: TV2,
+      section_key: 'tb_imagerie',
+      label: 'Imagerie',
+      parent_section_id: 'sd1',
+      display_order: 1,
+    },
+  ];
+  // `tb_crp` passe de `tb_biologie` a `tb_imagerie` : la FEUILLE change, le BLOC non.
+  const fields = [...BLOCK_FIELDS, blockField('bf7', 'tb_crp', 'tb_imagerie', 3, TV2)];
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('csv'), options: { sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] } } },
+      }),
+      blocDeps({
+        sections,
+        fields,
+        encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+        encounterRows: [BLOCK_ENCOUNTER, { ...BLOCK_ENCOUNTER, id: 'e2', template_version_id: TV2 }],
+      }),
+    ),
+  );
+  assertEquals(status, 200);
+});
+
+Deno.test('L53 : base historique PLATE sans projection — acceptee malgre un changement de section', async () => {
+  // Aucune sous-section, aucune projection : le nouveau controle de bloc reste eteint et
+  // l'export continue de reussir, exactement comme avant le lot.
+  const sections = [
+    {
+      id: 'sp1',
+      template_version_id: TV,
+      section_key: 'clinique',
+      label: 'Clinique',
+      parent_section_id: null,
+      display_order: 0,
+    },
+    {
+      id: 'sp2',
+      template_version_id: TV,
+      section_key: 'biologie',
+      label: 'Biologie',
+      parent_section_id: null,
+      display_order: 1,
+    },
+    {
+      id: 'sp3',
+      template_version_id: TV2,
+      section_key: 'clinique',
+      label: 'Clinique',
+      parent_section_id: null,
+      display_order: 0,
+    },
+    {
+      id: 'sp4',
+      template_version_id: TV2,
+      section_key: 'biologie',
+      label: 'Biologie',
+      parent_section_id: null,
+      display_order: 1,
+    },
+  ];
+  const fields = [
+    blockField('pf1', 'crp', 'clinique', 1),
+    blockField('pf2', 'crp', 'biologie', 1, TV2),
+  ];
+  let uploadedBlob: Blob | null = null;
+  const d = blocDeps({
+    sections,
+    fields,
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+    encounterRows: [
+      { ...BLOCK_ENCOUNTER, data: { crp: 5 } },
+      { ...BLOCK_ENCOUNTER, id: 'e2', template_version_id: TV2, data: { crp: 6 } },
+    ],
+    onStorage: (method, args) => {
+      if (method === 'upload') uploadedBlob = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('xlsx') }), d));
+  assertEquals(status, 200);
+  const blob1 = uploadedBlob as Blob | null;
+  assert(blob1 !== null);
+  const uploadedBytes = new Uint8Array(await blob1.arrayBuffer());
+  const wb = XLSX.read(uploadedBytes, { type: 'array' });
+  const entetes = (XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire'], { header: 1 }) as string[][])[0];
+  // Le dictionnaire garde STRICTEMENT sa forme d'avant L53 : aucune colonne de bloc.
+  assertEquals(entetes.includes('block'), false);
+  assertEquals(entetes.includes('block_label'), false);
+});
+
+Deno.test('L53 : XLSX — dictionnaire aux deux niveaux et Metadonnees porteuse de la projection', async () => {
+  let uploadedBlob: Blob | null = null;
+  const d = blocDeps({
+    onStorage: (method, args) => {
+      if (method === 'upload') uploadedBlob = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: {
+          ...body('xlsx'),
+          options: { sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] } },
+        },
+      }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  const blob2 = uploadedBlob as Blob | null;
+  assert(blob2 !== null);
+  const uploadedBytes = new Uint8Array(await blob2.arrayBuffer());
+  const wb = XLSX.read(uploadedBytes, { type: 'array' });
+  const dictionnaire = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const parCle = new Map(dictionnaire.map((r) => [r.column_id, r]));
+  // La sous-section garde SA feuille et porte le bloc racine.
+  assertEquals(parCle.get('encounter__tb_crp')?.section, 'tb_biologie');
+  assertEquals(parCle.get('encounter__tb_crp')?.block, 'tuberculose');
+  assertEquals(parCle.get('encounter__tb_crp')?.block_label, 'Tuberculose');
+  // Le bloc exclu n'est plus documente : le dictionnaire decrit le fichier, pas le gabarit.
+  assertEquals(parCle.has('encounter__poids'), false);
+  const metadonnees = XLSX.utils.sheet_to_json(wb.Sheets['Métadonnées']) as Record<string, unknown>[];
+  const parAttribut = new Map(metadonnees.map((r) => [r.attribute, r.value]));
+  assertEquals(parAttribut.get('section_projection_blocks'), 'tuberculose');
+});
+
+Deno.test('L53 : hash de fichier — stable a projection egale, distinct a projection differente', async () => {
+  const hashPour = async (projection: unknown) => {
+    let logged: Record<string, unknown> | undefined;
+    const d = blocDeps({
+      fromResponder: (call) => {
+        if (call.table !== 'export_log') return undefined;
+        logged = call.ops.find((operation) => operation.m === 'insert')?.a[0] as Record<string, unknown>;
+        return undefined;
+      },
+    });
+    const { status } = await readResponse(
+      await handleGenerateExport(
+        makeRequest({ body: { ...body('csv'), options: { sectionProjection: projection } } }),
+        d,
+      ),
+    );
+    assertEquals(status, 200);
+    return String(logged?.file_hash);
+  };
+  const tb = { mode: 'selected', blockKeys: ['tuberculose'] };
+  assertEquals(await hashPour(tb), await hashPour(tb));
+  // Deux projections differentes ne peuvent pas produire le meme fichier.
+  assert((await hashPour(tb)) !== (await hashPour({ mode: 'all' })));
+});
+
+Deno.test('L53 : les gardes de sortie voient le jeu FILTRE, meta comprise', async () => {
+  let uploaded: Blob | null = null;
+  const d = blocDeps({
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: {
+          ...body('csv'),
+          options: { profile: 'complete', sectionProjection: { mode: 'selected', blockKeys: ['malnutrition'] } },
+        },
+      }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  const gardeBlob = uploaded as Blob | null;
+  assert(gardeBlob !== null);
+  const csv = await gardeBlob.text();
+  // Le jeu de colonnes soumis a `assertNoIdentity` et aux limites est exactement celui-ci :
+  // meta de rencontre, tronc commun, bloc choisi. Rien du bloc ecarte.
+  assertEquals(csv.split('\n')[0].split(','), [
+    'patient_code',
+    'encounter_id',
+    'encounter_date',
+    'encounter_type',
+    'age_value',
+    'age_unit',
+    'encounter__age',
+    'encounter__poids',
+  ]);
+});
