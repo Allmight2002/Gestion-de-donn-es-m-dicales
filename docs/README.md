@@ -97,7 +97,8 @@
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
 | [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | 🟢 **Implémentée** (L20 à L25, 2026-08-18) — listes de diagnostics : saisie, export, cohortes, hors-ligne. Son **§12 seul** reste une cible non implémentée, close le 2026-08-19 |
-| [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | 📋 **Spécifiée, non implémentée** (L51, L54, L52, L53) — plusieurs blocs pathologiques dans une base unique : opérateur d’appartenance, sections à deux niveaux, visibilité au niveau bloc, projection d’export par bloc |
+| [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | 📋 **Spécifiée, revue le 2026-09-05, non implémentée** (L51, L54, L52, L53) — blocs cliniques conditionnels dans une base de même gouvernance, tronc commun pour les variables partagées, sections à deux niveaux et projection d’export sûre pour les formules |
+| [spec-collecte-diagnostique.md](spec-collecte-diagnostique.md) | 📋 **Non implémentée, 2026-09-05** — diagnostic pilote, socle enregistrable sans bloc, couverture versionnée et suivi (L55/L56) ; reprise/notifications en cadrage différé L57 |
 | [brief-audit-prochain.md](brief-audit-prochain.md) | Cadrage du prochain audit |
 | [strategie-produit-post-mvp.md](strategie-produit-post-mvp.md) · [-claude.md](strategie-produit-post-mvp-claude.md) · [-synthese.md](strategie-produit-post-mvp-synthese.md) | 🗄️ Études de marché datées (juillet) + synthèse d'arbitrage |
 
@@ -119,7 +120,7 @@
 | [decision-environnement-production-tests-2026-07-29.md](decision-environnement-production-tests-2026-07-29.md) | 2026-07-29 | Décision sur l'environnement `production` persistant |
 | [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md) | 2026-08-12 | Décision de mise en pause du parcours antivirus (ClamAV non requis) |
 | [decision-export-simple-2026-08-17.md](decision-export-simple-2026-08-17.md) | 2026-08-17 | Décision de simplification de l'export (statut non gating, complétude, écran par modèle d'observation) |
-| [decision-blocs-pathologies-2026-09-03.md](decision-blocs-pathologies-2026-09-03.md) | 2026-09-03 | Parcours de décision sur les blocs pathologiques dans une base unique : options écartées (bases filles, modules spécialisés, scope rencontre, groupes répétables), huit décisions retenues et ce qui reste différé — non implémentée |
+| [decision-blocs-pathologies-2026-09-03.md](decision-blocs-pathologies-2026-09-03.md) | 2026-09-03, amendée le 2026-09-05 | Parcours de décision issu d'un problème observé sur le terrain : base bornée par la gouvernance, blocs cliniques conditionnels, options écartées, dix décisions retenues et critères de réévaluation — non implémentée |
 | [decision-recherche-patient-2026-08-20.md](decision-recherche-patient-2026-08-20.md) | 2026-08-20 | Décision sur la recherche patient dans une base (visibilité `medecin`, portée code/nom selon `can_view_identity`, recherche serveur sur toute la base) — non implémentée |
 | [decision-notifications-v1-2026-08-20.md](decision-notifications-v1-2026-08-20.md) | 2026-08-20 | Décision sur le périmètre v1 des notifications in-app (clarification de curation seulement, médecin + curateur, in-app, table dédiée) — non implémentée |
 
@@ -150,5 +151,5 @@
 
 ---
 
-*Index vérifié le 2 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
+*Index vérifié le 5 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
 document dans `docs/`.*
