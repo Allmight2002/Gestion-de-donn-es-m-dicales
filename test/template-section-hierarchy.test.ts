@@ -50,7 +50,8 @@ test('deferred FK rejects isolated root deletion at commit, allows whole version
   const b = await fixture();
   await as(`insert into public.template_field(template_version_id, field_key, label, scope, section, type)
     values ($1, 'direct', 'Direct', 'patient', 'bloc', 'text'), ($1, 'child', 'Child', 'patient', 'bio', 'text')`, [b.versionId]);
-  await as('delete from public.template where id=$1', [b.templateId]);
+  // La RLS interdit tout DELETE direct sur `template` : la suppression passe par delete_template().
+  await as('select public.delete_template($1)', [b.templateId]);
   expect(await tree(b.versionId)).toEqual([]);
 });
 
