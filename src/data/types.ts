@@ -23,7 +23,7 @@ export type FieldScope = 'patient' | 'encounter';
  * libelle affiche vient de `TemplateSection`, jamais de ce code — sauf pour les trois codes
  * historiques, qui restent traduits (voir `domain/templateSections`).
  */
-export type FieldSection = string;
+export type FieldSection = string | null;
 export type FieldType =
   | 'number' | 'integer' | 'text' | 'date' | 'datetime' | 'boolean' | 'select' | 'multiselect'
   // Valeurs resolues dans le referentiel plutot que recopiees dans le gabarit.
@@ -127,6 +127,8 @@ export interface TemplateField {
   sectionLabel?: string | null;
   /** Rang de la section voulu par le proprietaire. Absent -> ordre historique. */
   sectionOrder?: number | null;
+  parentSectionKey?: string | null;
+  parentSectionLabel?: string | null;
   type: FieldType;
   /**
    * Accepte PLUSIEURS valeurs (L21) : reserve au type `terminology`. Absent d'un instantane
@@ -174,6 +176,7 @@ export interface TemplateField {
  * fiches, le miroir serveur et les instantanes hors-ligne. `label` seul est corrigeable.
  */
 export interface TemplateSection {
+  parentSectionKey?: string | null;
   id: string;
   sectionKey: string;
   label: string;

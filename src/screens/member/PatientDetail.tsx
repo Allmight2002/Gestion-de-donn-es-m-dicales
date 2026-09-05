@@ -14,7 +14,7 @@ import {
   intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
   type PatientCreateEntry,
 } from '../../data/offlineIntake';
-import { getTemplateFields } from '../../data/templates';
+import { getTemplateFields, withSections } from '../../data/templates';
 import { displayFieldValue } from '../../data/types';
 import { isMissing, missingCodeOf } from '../../domain/validation';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
@@ -35,14 +35,14 @@ import { groupFieldsBySection, sectionLabel } from '../../domain/templateSection
 // LIBELLE de l'option et non son code -- en ligne comme depuis un instantane.
 type Column = {
   id: string; fieldKey: string; label: string; scope: string; section: string; displayOrder: number;
-  sectionLabel?: string | null; sectionOrder?: number | null;
+  sectionLabel?: string | null; sectionOrder?: number | null; parentSectionKey?: string | null; parentSectionLabel?: string | null;
   type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
   formula?: string | null;
 };
 
 type ColumnSource = {
   id: string; fieldKey: string; label: string; scope: string; section?: string | null; displayOrder: number;
-  sectionLabel?: string | null; sectionOrder?: number | null;
+  sectionLabel?: string | null; sectionOrder?: number | null; parentSectionKey?: string | null; parentSectionLabel?: string | null;
   type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
   formula?: string | null;
 };
@@ -53,6 +53,7 @@ const toColumn = (field: ColumnSource): Column => ({
   label: field.label,
   scope: field.scope,
   section: field.section ?? '',
+  parentSectionKey: field.parentSectionKey, parentSectionLabel: field.parentSectionLabel,
   sectionLabel: field.sectionLabel ?? null,
   sectionOrder: field.sectionOrder ?? null,
   displayOrder: field.displayOrder,
@@ -209,11 +210,11 @@ export function PatientDetail() {
         setEncounters(op.encounters.map((e) => ({ ...e })));
         // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
         // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
-        const dictFor = (vid?: string | null): Column[] => ((vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || []).map(toColumn);
+        const dictFor = (vid?: string | null): Column[] => withSections((vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || [], (vid && snap?.sectionsByVersion?.[vid]) || snap?.sections || []).map(toColumn);
         setPatientFields(dictFor(op.templateVersionId).sort((a, b) => a.displayOrder - b.displayOrder).filter((f) => f.scope === 'patient'));
         const encFields = new Map<string, Column>();
         for (const e of op.encounters) for (const f of dictFor(e.templateVersionId)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
-        if (encFields.size === 0) for (const f of (snap?.fields ?? []).map(toColumn)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
+        if (encFields.size === 0) for (const f of dictFor(snap?.templateVersionId)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
         setEncounterFields([...encFields.values()].sort((a, b) => a.displayOrder - b.displayOrder));
         setError(null);
         return;

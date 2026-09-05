@@ -142,7 +142,7 @@ export function SectionedFields({
   return (
     <>
       {groupFieldsBySection(fields, sections).map((group) => (
-        <fieldset key={group.key} className="card space-y-3 p-4">
+        <fieldset key={group.key} className={`card space-y-3 p-4 ${group.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
           <legend className="px-1 text-sm font-semibold text-slate-700">
             {sectionLabel(t, { sectionKey: group.key, label: group.label })}
           </legend>

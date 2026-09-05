@@ -130,7 +130,9 @@ export function TemplateVersionEditor({
       total: fields.filter((field) => field.section === section.sectionKey).length,
       fields: filteredFields.filter((field) => field.section === section.sectionKey),
     }));
-    const orphanFields = filteredFields.filter((field) => !sections.some((section) => section.sectionKey === field.section));
+    const commonFields = filteredFields.filter((field) => field.section === null);
+    if (commonFields.length > 0) groups.unshift({ key: '__common__', label: t('section.common'), total: fields.filter((field) => field.section === null).length, fields: commonFields });
+    const orphanFields = filteredFields.filter((field) => field.section !== null && !sections.some((section) => section.sectionKey === field.section));
     if (orphanFields.length > 0 || sections.length === 0) {
       groups.push({ key: '__other__', label: t('section.other'), total: fields.filter((field) => !sections.some((section) => section.sectionKey === field.section)).length, fields: orphanFields });
     }
@@ -138,7 +140,7 @@ export function TemplateVersionEditor({
   })();
 
   function openFieldEditor(field: TemplateField) {
-    setOpenSections((current) => new Set(current).add(field.section));
+    setOpenSections((current) => new Set(current).add(field.section ?? '__common__'));
     setEditing(field);
     setFieldFormOpen('edit');
   }
@@ -311,7 +313,9 @@ export function TemplateVersionEditor({
           sections={sections}
           fields={fields}
           busy={busy}
-          onAdd={(sectionKey, label) => void run(() => repo.addSection!(version.id, sectionKey, label))}
+          onAdd={(sectionKey, label, parentKey) => void run(() => repo.addSection!(version.id, sectionKey, label, parentKey))}
+          onMove={(id, parentKey) => void run(() => repo.moveSection!(version.id, id, parentKey))}
+          onReorderSiblings={(parentKey, ids) => void run(() => repo.reorderSectionSiblings!(version.id, parentKey, ids))}
           onRename={(sectionId, label) => void run(() => repo.renameSection!(sectionId, label))}
           onDelete={(sectionId) => void run(() => repo.deleteSection!(sectionId))}
           onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}

@@ -33,9 +33,13 @@ describe('inventaire SECURITY DEFINER', () => {
     // +2 (saisie hors-ligne O1) : replay_patient_create et replay_encounter_create. Le rejeu
     // des creations hors-ligne passe par des RPC securisees pour que l'idempotence, les droits,
     // les doublons et l'integrite restent controles par le serveur.
-    expect(signatures).toHaveLength(114);
+    // +3 (L54) : add_template_section, move_template_section et reorder_template_section_siblings.
+    // La hierarchie de sections se pilote par RPC parce que le parent, la fratrie et le preordre
+    // d'affichage doivent rester coherents sous verrou de version, ce qu'une ecriture directe ne
+    // saurait garantir.
+    expect(signatures).toHaveLength(117);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(126);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(129);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
