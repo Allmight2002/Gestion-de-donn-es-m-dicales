@@ -6,6 +6,7 @@
 // analytiques, meme si on lui passe un patient complet -> garantie par construction. L'identite
 // reste accessible UNIQUEMENT en ligne (via la RLS).
 import { useEffect, useState } from 'react';
+import type { TemplateSection } from './types';
 import { mergeKeepBoth } from '../domain/conflictMerge';
 
 export interface OfflineEncounter {
@@ -90,6 +91,8 @@ export interface OfflineSnapshot {
   fields: OfflineField[];
   /** §5.7 : dictionnaire PAR VERSION (toutes les versions presentes) ; `fields` = version courante. */
   fieldsByVersion?: Record<string, OfflineField[]>;
+  sections?: TemplateSection[];
+  sectionsByVersion?: Record<string, TemplateSection[]>;
   rulesByVersion?: Record<string, OfflineRule[]>;
   patients: OfflinePatient[];
   cachedAt: number; // epoch ms
@@ -155,6 +158,8 @@ export function buildSnapshot(
   now = Date.now(),
   fieldsByVersion?: Record<string, OfflineField[]>, // §5.7
   rulesByVersion?: Record<string, OfflineRule[]>,
+  sections?: TemplateSection[],
+  sectionsByVersion?: Record<string, TemplateSection[]>,
 ): OfflineSnapshot {
   return {
     dataType: 'analytic_snapshot',
@@ -178,6 +183,8 @@ export function buildSnapshot(
       missingReasons: f.missingReasons ?? null, formula: f.formula ?? null,
       encounterTypes: f.encounterTypes ?? null,
     })),
+    sections,
+    sectionsByVersion,
     fieldsByVersion,
     rulesByVersion,
     patients: patients.map((p) => ({
@@ -758,6 +765,8 @@ export interface RawSnapshotData {
   fields: OfflineField[];
   /** §5.7 : dictionnaire par version (toutes les versions presentes dans l'instantane). */
   fieldsByVersion?: Record<string, OfflineField[]>;
+  sections?: TemplateSection[];
+  sectionsByVersion?: Record<string, TemplateSection[]>;
   rulesByVersion?: Record<string, OfflineRule[]>;
   patients: {
     id: string; code: string; templateVersionId: string; data: Record<string, unknown>;
@@ -795,7 +804,7 @@ export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, 
       if (s && s.base) {
         const byPatient: Record<string, OfflineEncounter[]> = {};
         for (const p of s.patients) byPatient[p.id] = p.encounters ?? [];
-        const snap = buildSnapshot(s.base, s.patients, byPatient, s.fields ?? [], now, s.fieldsByVersion, s.rulesByVersion);
+        const snap = buildSnapshot(s.base, s.patients, byPatient, s.fields ?? [], now, s.fieldsByVersion, s.rulesByVersion, s.sections, s.sectionsByVersion);
         await offlineCache.save(snap);
         return snapshotMeta(snap);
       }

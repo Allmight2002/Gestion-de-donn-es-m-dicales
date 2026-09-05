@@ -1,3 +1,4 @@
+import { withSections } from '../../data/templates';
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -76,12 +77,12 @@ export function EditEncounter() {
         // §7.4/§7.5 : dictionnaire de LA VERSION DE LA RENCONTRE (fieldsByVersion), pas celui de la
         // version courante de la base ; repli sur `fields` (instantane ancien, sans multi-versions).
         const dict = (enc?.templateVersionId && snap?.fieldsByVersion?.[enc.templateVersionId]) || snap?.fields || [];
-        const encFields = dict
+        const encFields = withSections(dict, (enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || [])
           .filter((f) => f.scope === 'encounter')
           .sort((a, b) => a.displayOrder - b.displayOrder)
           // §7.5 : un instantane ANTERIEUR (dictionnaire minimal, sans `section`) doit rester
           // editable -> section par defaut, sinon EncounterFields (groupe par section) n'affiche rien.
-          .map((f) => ({ ...f, section: f.section ?? 'clinique' }));
+          .map((f) => ({ ...f, section: f.section === undefined ? 'clinique' : f.section }));
         setFields(encFields as unknown as TemplateField[]);
         const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
