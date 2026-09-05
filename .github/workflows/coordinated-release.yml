@@ -667,8 +667,15 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
-          VITE_OFFLINE_MODE: disabled
-          VITE_OFFLINE_ADMIN_ACK: 'false'
+          # PHASE DE TEST (decision du 2026-09-05, donnees fictives) : la production porte le
+          # hors-ligne de DEMONSTRATION, saisie comprise. Chaque appareil connecte conserve alors
+          # des donnees cliniques en IndexedDB pendant 24 h au plus. A la fin de la phase, remettre
+          # les quatre variables ci-dessous a l'etat de la politique produit
+          # (docs/securite-mode-hors-ligne.md) : disabled / 'false', et retirer les deux dernieres.
+          VITE_OFFLINE_MODE: demo
+          VITE_OFFLINE_ADMIN_ACK: 'true'
+          VITE_OFFLINE_INTAKE: demo
+          ALLOW_OFFLINE_DEMO_BUILD: 'true'
           INSPECTION_MODE: ${{ inputs.inspection }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -740,8 +747,14 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_USE_SIGNED_READ: 'true'
           VITE_REQUIRE_SERVER_INSPECTION: ${{ inputs.inspection == 'strict' && 'true' || 'false' }}
-          VITE_OFFLINE_MODE: disabled
-          VITE_OFFLINE_ADMIN_ACK: 'false'
+          # PHASE DE TEST (decision du 2026-09-05) : ce build est celui qui part reellement en
+          # production. Il doit declarer le meme hors-ligne de demonstration que *production_env,
+          # sinon le bundle expedie n'aurait pas la saisie hors-ligne. ALLOW_OFFLINE_DEMO_BUILD
+          # est indispensable ici : sans elle, scripts/offline-build-policy.mjs refuse le build.
+          VITE_OFFLINE_MODE: demo
+          VITE_OFFLINE_ADMIN_ACK: 'true'
+          VITE_OFFLINE_INTAKE: demo
+          ALLOW_OFFLINE_DEMO_BUILD: 'true'
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
