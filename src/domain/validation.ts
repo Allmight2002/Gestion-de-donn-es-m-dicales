@@ -193,8 +193,26 @@ function order(a: unknown, b: unknown): number | null {
   return null;
 }
 
+/** L51: exact codes, no JSON coercion; invalid lists fail as a whole. Mirrors SQL. */
+export function containsAny(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(b) || b.length === 0
+    || !b.every((code) => typeof code === 'string' && code.trim() !== '')
+    || new Set(b).size !== b.length) return false;
+  const values = Array.isArray(a) ? a : [a];
+  if (values.length === 0) return false;
+  if (values.every((v) => typeof v === 'string' && v.trim() !== '')) {
+    return values.some((v) => b.includes(v));
+  }
+  if (values.length > 50 || !values.every((v) => isTerminologyValue(v)
+    && Object.keys(v).every((key) => key === 'code' || key === 'label'))) return false;
+  const codes = values.map((v) => (v as { code: string }).code);
+  return new Set(codes).size === codes.length && codes.some((code) => b.includes(code));
+}
+
 function applyOp(op: string, a: unknown, b: unknown): boolean {
   switch (op) {
+    case 'contains_any':
+      return containsAny(a, b);
     case 'equals':
       return String(a) === String(b);
     case 'not_equals':

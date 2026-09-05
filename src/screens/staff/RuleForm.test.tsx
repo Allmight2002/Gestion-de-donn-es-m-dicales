@@ -79,6 +79,37 @@ function renderForm(onSubmit = vi.fn()) {
 }
 
 describe('RuleForm', () => {
+  test('contains_any conserve les codes de choix et reste absent des comparaisons', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderForm();
+    expect(screen.queryByRole('option', { name: 'contient au moins un de ces codes' })).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'conditional');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'intervention_type');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'contains_any');
+    await user.click(screen.getByRole('checkbox', { name: 'Chirurgie' }));
+    await user.selectOptions(screen.getByLabelText('Variable rendue obligatoire'), 'operative_report');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      if: { field: 'intervention_type', operator: 'contains_any', value: ['Chirurgie'] },
+      then: { field: 'operative_report', operator: 'required' },
+    }, '', 'block');
+  });
+
+  test('une règle diagnostique éditée conserve explicitement sa release et ses codes', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const initialRule = {
+      if: { field: 'diagnosis', operator: 'contains_any', value: ['A', 'B'], terminologyReleaseId: 'aaaaaaaa-0000-0000-0000-000000000001' },
+      then: { field: 'operative_report', operator: 'visible' },
+    };
+    render(<I18nProvider><RuleForm fields={[...fields, { ...fields[0], id: 'diagnosis', fieldKey: 'diagnosis', type: 'terminology', label: 'Diagnostic' }]}
+      initialRule={initialRule} onSubmit={onSubmit} /></I18nProvider>);
+    expect(screen.getByLabelText('Publication du référentiel liée à cette règle')).toHaveValue(initialRule.if.terminologyReleaseId);
+    expect(screen.getByLabelText('Valeurs de la condition')).toHaveValue('A, B');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith(initialRule, '', 'block');
+  });
+
   test('assemble une comparaison de dates avec le JSON historique', async () => {
     const user = userEvent.setup();
     const onSubmit = renderForm();

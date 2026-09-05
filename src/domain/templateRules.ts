@@ -12,7 +12,7 @@ export const COMPARISON_OPERATORS = [
 ] as const;
 export type ComparisonOperator = (typeof COMPARISON_OPERATORS)[number];
 
-export const CONDITION_OPERATORS = [...COMPARISON_OPERATORS, 'in'] as const;
+export const CONDITION_OPERATORS = [...COMPARISON_OPERATORS, 'in', 'contains_any'] as const;
 export type ConditionOperator = (typeof CONDITION_OPERATORS)[number];
 
 /** { operator, left_field, right_field } : compare deux champs. */
@@ -31,7 +31,7 @@ export type ThenOperator = (typeof THEN_OPERATORS)[number];
 
 /** { if: {field, operator, value}, then: {field, operator: 'required'} }. */
 export interface ConditionalRule {
-  if: { field: string; operator: ConditionOperator; value: unknown };
+  if: { field: string; operator: ConditionOperator; value: unknown; terminologyReleaseId?: string };
   then: { field: string; operator: 'required' };
 }
 
@@ -43,7 +43,7 @@ export interface ConditionalRule {
  * une imagerie a ete faite » se lit strictement, sinon un formulaire vierge montrerait tout.
  */
 export interface VisibilityRule {
-  if: { field: string; operator: ConditionOperator; value: unknown };
+  if: { field: string; operator: ConditionOperator; value: unknown; terminologyReleaseId?: string };
   then: { field: string; operator: 'visible' };
 }
 
@@ -82,6 +82,21 @@ export function validateRule(rule: unknown): RuleValidation {
     }
     if (!('value' in cond)) {
       return { ok: false, error: 'Regle conditionnelle : "value" requis dans if' };
+    }
+    if (cond.operator === 'contains_any') {
+      if ('operator' in rule || 'left_field' in rule || 'right_field' in rule
+        || Object.keys(cond).some((key) => !['field', 'operator', 'value', 'terminologyReleaseId'].includes(key))) {
+        return { ok: false, error: `contains_any (${cond.field}) : une seule condition de champ est autorisée` };
+      }
+      if (!Array.isArray(cond.value) || cond.value.length === 0
+        || !cond.value.every(isNonEmptyString) || new Set(cond.value).size !== cond.value.length) {
+        return { ok: false, error: `contains_any (${cond.field}) : liste de codes non vides et sans doublons requise` };
+      }
+    }
+    if ('terminologyReleaseId' in cond && (cond.operator !== 'contains_any'
+      || typeof cond.terminologyReleaseId !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cond.terminologyReleaseId))) {
+      return { ok: false, error: `Release terminologique invalide (${cond.field})` };
     }
     if (!THEN_OPERATORS.includes(then.operator as ThenOperator)) {
       return { ok: false, error: 'Regle conditionnelle : "then.operator" doit etre "required" ou "visible"' };

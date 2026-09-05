@@ -927,6 +927,10 @@ export const messages = {
     'rule.operator.date_greater_or_equal': 'est postérieure ou égale à',
     'rule.operator.date_less_than': 'est antérieure à',
     'rule.operator.date_less_or_equal': 'est antérieure ou égale à',
+    'rule.operator.contains_any': 'contient au moins un de ces codes',
+    'rule.contains_any_driver': 'Choisissez une variable de type liste de choix ou diagnostic.',
+    'rule.terminology_release': 'Publication du référentiel liée à cette règle',
+    'rule.terminology_release_hint': 'Identifiant de la publication (UUID)',
     'rule.operator.in': 'fait partie de',
     // --- Comptes de mission (L10) -------------------------------------------------
     'mission.title': 'Comptes de mission',
