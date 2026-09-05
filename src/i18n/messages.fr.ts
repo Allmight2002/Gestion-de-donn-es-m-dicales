@@ -887,6 +887,16 @@ export const messages = {
     'rule.visible_field': 'Variable affichée sous condition',
     'rule.visible': 'est affichée',
     'rule.cycle': 'Règle d’affichage circulaire : ces variables finiraient par dépendre d’elles-mêmes, et aucune ne pourrait plus s’afficher.',
+    'rule.calculated_excluded':
+      'Les variables calculées ne sont proposées ni comme variable d’une condition, ni comme variable rendue obligatoire, ni dans une comparaison : leur résultat n’est pas enregistré dans les fiches, la règle ne pourrait donc jamais se déclencher. Elles restent affichables sous condition.',
+    'rule.calculated_visible_driver':
+      'Règle d’affichage : cette variable est calculée et son résultat n’est pas enregistré. La condition ne serait jamais vérifiable et la variable à afficher resterait masquée pour toujours. Pilotez l’affichage par une variable saisie.',
+    'rule.calculated_required_driver':
+      'Règle conditionnelle : cette variable est calculée et son résultat n’est pas enregistré. La condition ne serait jamais vérifiable et la règle ne se déclencherait jamais. Conditionnez l’obligation à une variable saisie.',
+    'rule.calculated_required_target':
+      'Règle conditionnelle : cette variable est calculée, rien n’y est saisi. L’exiger rendrait la fiche impossible à finaliser.',
+    'rule.calculated_comparison_operand':
+      'Règle de cohérence : cette variable est calculée et son résultat n’est pas enregistré. La règle ne se déclencherait jamais. Comparez les variables saisies dont le calcul dépend.',
     'rule.left_field': 'Variable à contrôler',
     'rule.right_field': 'Variable de référence',
     'rule.condition_field': 'Variable de la condition',

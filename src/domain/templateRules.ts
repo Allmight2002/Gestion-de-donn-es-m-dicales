@@ -108,6 +108,72 @@ export function validateRule(rule: unknown): RuleValidation {
   return { ok: false, error: 'Forme de regle non reconnue' };
 }
 
+/**
+ * Consequence d'un operande dont la valeur n'est JAMAIS enregistree — le cas d'une variable
+ * calculee (L35), dont le resultat n'existe ni dans `patient.data` ni dans `encounter.data`.
+ * Elle depend de la position occupee, et c'est elle qui decide de ce qui est refusable :
+ *
+ *  - `visible_driver`     : la cible reste masquee POUR TOUJOURS — destructeur ;
+ *  - `required_target`    : la regle est toujours violee, la fiche devient infinalisable ;
+ *  - `required_driver`    : la regle ne se declenche jamais — exigence affichee, jamais appliquee ;
+ *  - `comparison_operand` : idem, pour une comparaison.
+ *
+ * Une variable calculee CIBLE d'un affichage n'y figure pas : masquer un resultat affiche est
+ * legitime et ne detruit rien.
+ *
+ * Codes IDENTIQUES a ceux de `public.rule_operand_positions` : le constructeur et le serveur
+ * nomment le meme probleme, sinon l'ecran et la base raconteraient deux histoires.
+ */
+export const RULE_OPERAND_PROBLEMS = [
+  'visible_driver',
+  'required_driver',
+  'required_target',
+  'comparison_operand',
+] as const;
+export type RuleOperandProblem = (typeof RULE_OPERAND_PROBLEMS)[number];
+
+export interface RuleOperandPosition {
+  fieldKey: string;
+  problem: RuleOperandProblem;
+}
+
+/**
+ * Positions ou une regle DESIGNE une variable, avec la consequence associee. Fonction PURE de
+ * la regle : elle ne connait pas le gabarit et ne dit pas si la variable est calculee — c'est
+ * `calculatedOperandConflict` (domain/fieldFormula) qui croise les deux.
+ */
+export function ruleOperandPositions(rule: unknown): RuleOperandPosition[] {
+  if (!isPlainObject(rule)) return [];
+  const positions: RuleOperandPosition[] = [];
+
+  // Comparaison : { operator, left_field, right_field }
+  if ('operator' in rule && 'left_field' in rule && 'right_field' in rule) {
+    for (const key of [rule.left_field, rule.right_field]) {
+      if (isNonEmptyString(key)) positions.push({ fieldKey: key, problem: 'comparison_operand' });
+    }
+  }
+
+  // Conditionnelle : { if, then }
+  if ('if' in rule && 'then' in rule) {
+    const cond = isPlainObject(rule.if) ? rule.if : null;
+    const then = isPlainObject(rule.then) ? rule.then : null;
+    const verb = then?.operator;
+    const driverField = cond?.field;
+    const targetField = then?.field;
+    const driverProblem: RuleOperandProblem | null = verb === 'visible'
+      ? 'visible_driver'
+      : verb === 'required' ? 'required_driver' : null;
+    if (driverProblem && isNonEmptyString(driverField)) {
+      positions.push({ fieldKey: driverField, problem: driverProblem });
+    }
+    if (verb === 'required' && isNonEmptyString(targetField)) {
+      positions.push({ fieldKey: targetField, problem: 'required_target' });
+    }
+  }
+
+  return positions;
+}
+
 /** La regle est-elle une regle d'AFFICHAGE ? (structure validee, sinon null). */
 export function visibilityRuleOf(rule: unknown): VisibilityRule | null {
   const res = validateRule(rule);

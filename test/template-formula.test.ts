@@ -274,8 +274,16 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       'download_base_snapshot',
       'enforce_template_field_formula',
       'enforce_template_field_formula_operand',
+      // L32 x L35 : refuse d'ajouter une formule a une variable qui occupe deja, dans une
+      // regle, une position ou un calcul ne peut pas fonctionner. Il LIT `new.formula` pour
+      // savoir s'il a quelque chose a verifier -- il n'analyse jamais son contenu.
+      'enforce_template_field_formula_rules',
       'guard_template_field_update',
       'missing_required_fields',
+      // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
+      // seule lecture de la colonne partagee par le refus a l'ecriture d'une regle et par le
+      // diagnostic d'une version.
+      'rule_calculated_field_label',
       'update_template_field',
     ]);
   });

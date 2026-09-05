@@ -257,3 +257,114 @@ describe('RuleForm — regle d\'affichage (L32)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Compte rendu opératoire');
   });
 });
+
+describe('RuleForm — variables calculees (L35 x L32)', () => {
+  // Le resultat d'un calcul n'est jamais enregistre : la cle est absente de toutes les fiches.
+  const withCalculated: TemplateField[] = [
+    ...fields,
+    {
+      id: 'f5',
+      fieldKey: 'sejour_jours',
+      label: 'Durée de séjour',
+      scope: 'encounter',
+      section: 'clinique',
+      type: 'integer',
+      unit: 'days',
+      allowedValues: null,
+      required: false,
+      minValue: null,
+      maxValue: null,
+      allowMissingCodes: false,
+      displayOrder: 5,
+      formula: 'discharge_date - admission_date',
+    },
+  ];
+
+  function renderWithCalculated(props: { initialRule?: unknown; submitLabel?: string } = {}) {
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm
+          fields={withCalculated}
+          onSubmit={onSubmit}
+          initialRule={props.initialRule}
+          submitLabel={props.submitLabel}
+        />
+      </I18nProvider>,
+    );
+    return onSubmit;
+  }
+
+  test('absente des comparaisons et des conditions, et l\'ecran dit pourquoi', () => {
+    renderWithCalculated();
+
+    for (const label of ['Variable à contrôler', 'Variable de référence']) {
+      expect(within(screen.getByLabelText(label)).queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+    }
+    // Absente sans un mot, elle serait cherchee puis supposee perdue.
+    expect(screen.getByRole('status')).toHaveTextContent('Durée de séjour');
+    expect(screen.getByRole('status')).toHaveTextContent(/jamais se déclencher/);
+  });
+
+  test('absente de la condition et de l\'obligation d\'une regle conditionnelle', async () => {
+    const user = userEvent.setup();
+    renderWithCalculated();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'conditional');
+    expect(within(screen.getByLabelText('Variable de la condition'))
+      .queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+    expect(within(screen.getByLabelText('Variable rendue obligatoire'))
+      .queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+  });
+
+  test('reste proposee comme variable AFFICHEE sous condition', async () => {
+    // Masquer un resultat affiche ne detruit rien : aucune valeur a saisir, aucune fiche a
+    // refuser. La seule position ou une variable calculee fonctionne reste ouverte.
+    const user = userEvent.setup();
+    renderWithCalculated();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    expect(within(screen.getByLabelText('Variable de la condition'))
+      .queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+    expect(within(screen.getByLabelText('Variable affichée sous condition'))
+      .getByRole('option', { name: /Durée de séjour/ })).toBeInTheDocument();
+  });
+
+  test('une regle HERITEE portant un calcul est expliquee, pas renvoyee muette', async () => {
+    // Ecrite avant le garde-fou serveur : le selecteur ne peut plus la representer. L'ecran
+    // donne le motif du serveur d'entree, puis refuse l'envoi.
+    const user = userEvent.setup();
+    const onSubmit = renderWithCalculated({
+      initialRule: {
+        if: { field: 'sejour_jours', operator: 'less_than', value: 3 },
+        then: { field: 'operative_report', operator: 'visible' },
+      },
+      submitLabel: 'Enregistrer la règle',
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Durée de séjour');
+    expect(screen.getByRole('alert')).toHaveTextContent(/masquée pour toujours/);
+
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  test('la liste des regles signale une regle heritee qui ne peut pas fonctionner', () => {
+    // La phrase se lit parfaitement — c'est precisement pourquoi elle doit etre commentee :
+    // sans diagnostic, la liste affirmerait un controle qui n'a jamais lieu.
+    render(
+      <I18nProvider>
+        <RuleSummary
+          fields={withCalculated}
+          rule={{
+            if: { field: 'sejour_jours', operator: 'less_than', value: 3 },
+            then: { field: 'operative_report', operator: 'visible' },
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(/Compte rendu opératoire est affichée/)).toBeInTheDocument();
+    expect(screen.getByText(/masquée pour toujours/)).toBeInTheDocument();
+  });
+});
