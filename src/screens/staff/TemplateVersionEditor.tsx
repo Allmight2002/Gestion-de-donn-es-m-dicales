@@ -11,6 +11,7 @@ import { sectionLabel } from '../../domain/templateSections';
 import { fieldTypeLabel } from '../../domain/templateLabels';
 import { FormPreview } from './FormPreview';
 import { RuleForm, RuleSummary, ruleHasSeverity } from './RuleForm';
+import { DiagnosisConfigurationEditor } from './DiagnosisConfigurationEditor';
 import { SectionsEditor } from './SectionsEditor';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -308,6 +309,11 @@ export function TemplateVersionEditor({
 
       {/* L31 : les sections avant les variables — on choisit ses regroupements, puis on
           range ses variables dedans. Gelees avec la version, donc invisibles hors brouillon. */}
+      {/* L55 : `undefined` signale un serveur qui ignore la colonne. On ne propose alors pas
+          une configuration qu'il ne saurait pas enregistrer ; le gabarit reste consultable. */}
+      {version.diagnosisConfiguration !== undefined && (
+        <DiagnosisConfigurationEditor version={version} fields={fields} rules={rules} sections={sections} repo={repo} busy={busy} run={run} />
+      )}
       {editable && (
         <SectionsEditor
           sections={sections}

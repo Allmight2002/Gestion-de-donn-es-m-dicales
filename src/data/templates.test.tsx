@@ -80,3 +80,91 @@ describe('TemplateRepository.addField', () => {
     expect(created.fieldKey).toBe('diagnostic');
   });
 });
+
+// ---------------------------------------------------------------------------
+// L55 — un serveur ANTERIEUR a la migration ne connait pas
+// `template_version.diagnosis_configuration`. Un gabarit historique doit rester
+// consultable : la lecture se replie, et l'absence de colonne se distingue d'une
+// configuration vide pour que l'ecran ne propose pas ce que le serveur refuserait.
+// ---------------------------------------------------------------------------
+type QueryResult = { data: unknown; error: unknown };
+
+/** Requete Supabase minimale : chainable ET thenable, comme le vrai constructeur. */
+function fakeQuery(result: QueryResult) {
+  const query: Record<string, unknown> = {};
+  const same = () => query;
+  query.select = vi.fn(same);
+  query.eq = vi.fn(same);
+  query.order = vi.fn(same);
+  query.single = vi.fn(async () => result);
+  query.then = (ok: (v: QueryResult) => unknown, ko?: (e: unknown) => unknown) =>
+    Promise.resolve(result).then(ok, ko);
+  return query;
+}
+
+function makeVersionClient(onVersionSelect: (columns: string) => QueryResult) {
+  const selectedColumns: string[] = [];
+  const client = {
+    from: vi.fn((table: string) => {
+      if (table !== 'template_version') return fakeQuery({ data: [], error: null });
+      return {
+        select: vi.fn((columns: string) => {
+          selectedColumns.push(columns);
+          return fakeQuery(onVersionSelect(columns));
+        }),
+      };
+    }),
+    rpc: vi.fn(async () => ({ data: [], error: null })),
+  } as unknown as SupabaseClient;
+  return { client, selectedColumns };
+}
+
+describe('TemplateRepository.getVersion — compatibilite serveur anterieur a L55', () => {
+  const row = { id: 'v1', template_id: 't1', version_number: 1, status: 'draft' as const };
+  const missingColumn = {
+    code: '42703',
+    message: 'column template_version.diagnosis_configuration does not exist',
+  };
+
+  test('colonne absente : le gabarit se charge, et l ecran sait que le serveur l ignore', async () => {
+    const { client, selectedColumns } = makeVersionClient((columns) =>
+      (columns.includes('diagnosis_configuration')
+        ? { data: null, error: missingColumn }
+        : { data: row, error: null }));
+
+    const result = await makeTemplateRepository(client).getVersion('v1');
+
+    expect(result.version.id).toBe('v1');
+    expect(result.version.versionNumber).toBe(1);
+    // `undefined`, et surtout PAS `[]` : l'editeur doit pouvoir se retirer.
+    expect(result.version.diagnosisConfiguration).toBeUndefined();
+    expect(result.version.diagnosisContext).toBeUndefined();
+    // Exactement une relecture, sans la colonne inconnue.
+    expect(selectedColumns).toHaveLength(2);
+    expect(selectedColumns[1]).not.toContain('diagnosis_configuration');
+  });
+
+  test('serveur L55 sans configuration : tableau vide, aucune seconde lecture', async () => {
+    const { client, selectedColumns } = makeVersionClient(() =>
+      ({ data: { ...row, diagnosis_configuration: [] }, error: null }));
+
+    const result = await makeTemplateRepository(client).getVersion('v1');
+
+    expect(result.version.diagnosisConfiguration).toEqual([]);
+    expect(selectedColumns).toHaveLength(1);
+  });
+
+  test('une AUTRE erreur ne declenche jamais le repli : elle remonte telle quelle', async () => {
+    for (const error of [
+      { code: '42501', message: 'permission denied for table template_version' },
+      // Meme code, autre colonne : ce n'est pas l'absence que l'on tolere.
+      { code: '42703', message: 'column template_version.autre_colonne does not exist' },
+      { code: 'PGRST301', message: 'JWT expired' },
+    ]) {
+      const { client, selectedColumns } = makeVersionClient(() => ({ data: null, error }));
+      await expect(makeTemplateRepository(client).getVersion('v1'))
+        .rejects.toMatchObject({ code: error.code });
+      expect(selectedColumns).toHaveLength(1);
+    }
+  });
+});

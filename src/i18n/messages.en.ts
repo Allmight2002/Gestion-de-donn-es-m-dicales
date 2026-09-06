@@ -1,6 +1,22 @@
 import type { MessageDictionary } from './messages.fr';
 
 export const messages = {
+    'diagnosis.config_title': "Optional diagnostic collection",
+    'diagnosis.config_help': "Diagnoses remain selectable even without a block. Coverage uses the case version and is independent of completeness.",
+    'diagnosis.scope': "Record scope",
+    'diagnosis.driver': "Common-core diagnosis driver",
+    'diagnosis.disabled': "Not configured",
+    'diagnosis.release': "Local release identifier (explicit)",
+    'diagnosis.proposal': "Existing proposal field",
+    'diagnosis.proposal_missing': "Add the “value not listed” companion to the driver before configuring this collection.",
+    'diagnosis.common_codes': "Codes for which the common core is sufficient (one exact code per line)",
+    'diagnosis.save': "Save configuration",
+    'diagnosis.associations': "Diagnosis → block associations",
+    'diagnosis.block': "Root block",
+    'diagnosis.block_codes': "Alternative codes triggering this block (one per line)",
+    'diagnosis.block_taken': "This block already carries another visibility condition. Pick another block, or remove that condition in the rules before associating it with a diagnosis.",
+    'diagnosis.save_association': "Save association",
+
     'observation.model_label': 'Observation model',
     'observation.cross_sectional': 'One entry per participant',
     'observation.longitudinal': 'Repeated follow-up',

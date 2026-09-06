@@ -12,9 +12,12 @@ import type {
   TemplateSection,
   TemplateVersion,
   ValidationRule,
+  DiagnosisConfiguration,
+  DiagnosisContext,
 } from './types';
 
 export interface TemplateRepository {
+  setDiagnosisConfiguration?(versionId: string, configuration: DiagnosisConfiguration[]): Promise<void>;
   listTemplates(): Promise<(Template & { versions: TemplateVersion[] })[]>;
   createTemplate(name: string, specialty: string | null): Promise<{ template: Template; version: TemplateVersion }>;
   /** Medecin : cree un gabarit PERSONNEL vierge (brouillon v1) qu'il pourra remplir puis utiliser
@@ -79,6 +82,7 @@ type VersionRow = {
   template_id: string;
   version_number: number;
   status: TemplateVersion['status'];
+  diagnosis_configuration?: DiagnosisConfiguration[];
   template_field?: { id: string }[];
 };
 type FieldRow = {
@@ -103,6 +107,10 @@ const mapVersion = (r: VersionRow): TemplateVersion => ({
   templateId: r.template_id,
   versionNumber: r.version_number,
   status: r.status,
+  // `[]` = configuration vide sur un serveur L55 ; `undefined` = serveur qui ignore la
+  // colonne. La distinction est portee jusqu'a l'editeur, qui ne propose pas une
+  // configuration que le serveur ne saurait pas enregistrer.
+  diagnosisConfiguration: Array.isArray(r.diagnosis_configuration) ? r.diagnosis_configuration : undefined,
   fieldCount: Array.isArray(r.template_field) ? r.template_field.length : undefined,
 });
 const mapSection = (r: SectionRow, rows: SectionRow[] = []): TemplateSection => ({
@@ -111,6 +119,20 @@ const mapSection = (r: SectionRow, rows: SectionRow[] = []): TemplateSection => 
 });
 
 const SECTION_COLUMNS = 'parent_section_id, id, section_key, label, display_order';
+const VERSION_COLUMNS = 'id, template_id, version_number, status, diagnosis_configuration';
+const LEGACY_VERSION_COLUMNS = 'id, template_id, version_number, status';
+
+// Compatibilite de lecture pendant une promotion coordonnee : un schema anterieur a L55 ne
+// possede pas template_version.diagnosis_configuration, et un gabarit historique doit rester
+// consultable. Le repli est volontairement etroit — ce code d'erreur ET cette colonne — afin
+// de ne jamais masquer une erreur RLS, reseau ou serveur sous une compatibilite silencieuse.
+function isMissingDiagnosisConfiguration(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === '42703'
+    && typeof candidate.message === 'string'
+    && /\bdiagnosis_configuration\b/i.test(candidate.message);
+}
 
 /**
  * Attache a chaque variable le libelle et le rang de SA section (L31), pour que les ecrans
@@ -168,6 +190,13 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
   const clearVersionCache = () => { versionCache.clear(); fieldsCache.clear(); };
 
   return {
+    async setDiagnosisConfiguration(versionId, configuration) {
+      const { error } = await client.rpc('set_diagnosis_configuration', {
+        p_version_id: versionId, p_configuration: configuration,
+      });
+      if (error) throw error;
+      clearVersionCache();
+    },
     async createTemplateBundle(input) {
       const { data, error } = await client.rpc('create_template_bundle', {
         p_payload: {
@@ -223,14 +252,22 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       const cached = versionCache.get(versionId);
       if (cached) return cached;
       // Les 5 lectures sont INDEPENDANTES -> en parallele (1 aller-retour au lieu de 5).
+      const readVersion = (columns: string) => client
+        .from('template_version').select(columns).eq('id', versionId).single();
       const [vRes, fRes, rRes, uRes, sRes] = await Promise.all([
-        client.from('template_version').select('id, template_id, version_number, status').eq('id', versionId).single(),
+        readVersion(VERSION_COLUMNS),
         client.from('template_field').select('*').eq('template_version_id', versionId).order('display_order', { ascending: true }),
         client.from('validation_rule').select('id, rule, message, severity').eq('template_version_id', versionId),
         client.rpc('template_version_fields_in_use', { p_version_id: versionId }),
         client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),
       ]);
-      if (vRes.error) throw vRes.error;
+      let versionRow = vRes.data as unknown as VersionRow | null;
+      if (vRes.error) {
+        if (!isMissingDiagnosisConfiguration(vRes.error)) throw vRes.error;
+        const legacy = await readVersion(LEGACY_VERSION_COLUMNS);
+        if (legacy.error) throw legacy.error;
+        versionRow = legacy.data as unknown as VersionRow;
+      }
       if (fRes.error) throw fRes.error;
       if (rRes.error) throw rRes.error;
       if (uRes.error) throw uRes.error;
@@ -240,7 +277,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       );
       const sections = ((sRes.data as SectionRow[]) ?? []).map((row, _index, rows) => mapSection(row, rows));
       const result = {
-        version: mapVersion(vRes.data as VersionRow),
+        version: mapVersion(versionRow as VersionRow),
         fields: withSections(
           ((fRes.data as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
           sections,
@@ -248,6 +285,14 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         rules: ((rRes.data as RuleRow[]) ?? []).map(mapRule),
         sections,
       };
+      if (result.version.diagnosisConfiguration?.length) {
+        const context = await client.rpc('get_diagnosis_context', { p_version_id: versionId });
+        if (context.error) throw context.error;
+        result.version.diagnosisContext = context.data as DiagnosisContext[];
+        if (result.version.diagnosisContext.length !== result.version.diagnosisConfiguration.length) {
+          throw new Error('DIAGNOSIS_CONTEXT_INVALID');
+        }
+      }
       versionCache.set(versionId, result);
       fieldsCache.set(versionId, result.fields);
       return result;

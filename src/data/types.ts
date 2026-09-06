@@ -107,6 +107,21 @@ export interface TemplateVersion {
   status: VersionStatus;
   /** Nombre de variables connu par les lectures de liste ; absent des lectures de détail. */
   fieldCount?: number;
+  /** L55 : absence = collecte historique. La version du dossier reste la source. */
+  diagnosisConfiguration?: DiagnosisConfiguration[];
+  diagnosisContext?: DiagnosisContext[];
+}
+
+export interface DiagnosisConfiguration {
+  scope: FieldScope;
+  diagnosisFieldKey: string;
+  terminologyReleaseId: string | null;
+  commonOnlyCodes: string[];
+}
+
+export interface DiagnosisContext extends DiagnosisConfiguration {
+  proposalFieldKey: string;
+  recognizedCodes: string[];
 }
 
 export interface TemplateField {
