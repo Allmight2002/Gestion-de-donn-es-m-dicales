@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
-import type { TemplateField } from '../../data/types';
+import type { TemplateField, TemplateSection } from '../../data/types';
 import { RuleForm, RuleSummary } from './RuleForm';
 
 const fields: TemplateField[] = [
@@ -286,6 +286,41 @@ describe('RuleForm — regle d\'affichage (L32)', () => {
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(/circulaire/i);
     expect(screen.getByRole('alert')).toHaveTextContent('Compte rendu opératoire');
+  });
+
+  test('permet de cibler un bloc racine et ne propose jamais sa sous-section', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const blockSections: TemplateSection[] = [
+      { id: 'root', sectionKey: 'bloc_clinique', label: 'Bloc clinique', displayOrder: 0, parentSectionKey: null },
+      { id: 'child', sectionKey: 'sous_bloc', label: 'Sous-section interdite', displayOrder: 1, parentSectionKey: 'bloc_clinique' },
+    ];
+    const blockFields: TemplateField[] = [
+      ...fields,
+      { ...fields[0], id: 'direct', fieldKey: 'direct', label: 'Variable du bloc', section: 'bloc_clinique', displayOrder: 10 },
+      { ...fields[0], id: 'child', fieldKey: 'child', label: 'Variable de la sous-section', section: 'sous_bloc', parentSectionKey: 'bloc_clinique', displayOrder: 11 },
+    ];
+    render(
+      <I18nProvider>
+        <RuleForm fields={blockFields} sections={blockSections} onSubmit={onSubmit} />
+      </I18nProvider>,
+    );
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'admission_date');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.type(screen.getByLabelText('Valeur de la condition'), '2026-01-01');
+    await user.selectOptions(screen.getByLabelText('Cible de visibilité'), 'section');
+    const target = screen.getByLabelText('Bloc affiché sous condition');
+    expect(within(target).getByRole('option', { name: 'Bloc clinique' })).toBeInTheDocument();
+    expect(within(target).queryByRole('option', { name: 'Sous-section interdite' })).toBeNull();
+    await user.selectOptions(target, 'bloc_clinique');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      if: { field: 'admission_date', operator: 'equals', value: '2026-01-01' },
+      then: { section: 'bloc_clinique', operator: 'visible' },
+    }, '', 'block');
   });
 });
 

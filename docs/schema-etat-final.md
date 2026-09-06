@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260905143319_template_section_hierarchy.sql`
-- Tables : 45 · Policies RLS : 63 · Triggers : 70 · Fonctions : 285
+- Dernière migration incluse : `20260905160000_block_visibility.sql`
+- Tables : 45 · Policies RLS : 63 · Triggers : 73 · Fonctions : 289
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -846,6 +846,7 @@ Triggers :
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
+- `trg_template_version_invariants_field` — AFTER INSERT/UPDATE/DELETE → `run_template_version_invariants()`
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
@@ -880,6 +881,7 @@ Policies :
 
 Triggers :
 - `trg_template_section_write` — BEFORE INSERT/UPDATE/DELETE → `guard_template_section_write()`
+- `trg_template_version_invariants_section` — AFTER INSERT/UPDATE/DELETE → `run_template_version_invariants()`
 
 ### template_version · RLS activée
 
@@ -992,6 +994,7 @@ Policies :
 
 Triggers :
 - `trg_00_contains_any_lock` — BEFORE INSERT/UPDATE → `lock_contains_any_configuration()`
+- `trg_template_version_invariants_rule` — AFTER INSERT/UPDATE/DELETE → `run_template_version_invariants()`
 - `trg_vr_inuse` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_inuse()`
 - `trg_vr_locked` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_locked()`
 - `trg_vr_structure` — BEFORE INSERT/UPDATE → `guard_validation_rule_structure()`
@@ -1008,6 +1011,7 @@ Triggers :
 | armor | bytea | INVOKER | c |
 | armor | bytea, text[], text[] | INVOKER | c |
 | assert_access_change_allowed | p_base_id uuid, p_target_user_id uuid, p_new_can_view_identity boolean, p_new_can_view_raw_documents boolean, p_new_can_edit_structured_data boolean, p_new_can_export_data boolean, p_new_can_manage_access boolean, p_old_can_view_identity boolean, p_old_can_view_raw_documents boolean, p_old_can_edit_structured_data boolean, p_old_can_export_data boolean, p_old_can_manage_access boolean | DEFINER | plpgsql |
+| assert_block_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_contains_any_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_curated_complete | — | INVOKER | plpgsql |
 | assert_data_valid | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
@@ -1240,6 +1244,7 @@ Triggers :
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
 | rule_value_present | v jsonb | INVOKER | sql |
+| run_template_version_invariants | — | DEFINER | plpgsql |
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
 | scrub_client_error_text | p_value text, p_max_length integer | INVOKER | plpgsql |
 | search_terminology | p_query text, p_limit integer | INVOKER | sql |
@@ -1257,6 +1262,7 @@ Triggers :
 | template_field_option_keys | p_options jsonb | INVOKER | sql |
 | template_field_options_from_values | p_values jsonb, p_previous jsonb | INVOKER | sql |
 | template_of_version | p_version uuid | DEFINER | sql |
+| template_section_field_keys | p_version_id uuid, p_section_key text | INVOKER | sql |
 | template_version_fields_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_locked | p_version_id uuid | DEFINER | sql |
@@ -1280,6 +1286,7 @@ Triggers :
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | upload_ticket_authorized | p_base_id uuid, p_bucket text | DEFINER | sql |
+| validate_template_version_invariants | p_version_id uuid | DEFINER | plpgsql |
 | validation_rank | p_status text | INVOKER | sql |
 | value_cmp | a text, b text | INVOKER | plpgsql |
 | value_documented | v jsonb | INVOKER | sql |

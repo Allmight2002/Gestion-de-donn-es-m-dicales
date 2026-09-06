@@ -82,7 +82,11 @@ describe('§13 verrou optimiste (synchronisation hors-ligne)', () => {
     // Rejouer avec l'ANCIEN updated_at (la rencontre a change entre-temps) -> conflit.
     await expect(
       rowsAs(aliceId, UPDATE_ENC5, [encounterId, JSON.stringify({ glasgow_score: 14, diagnosis: 'TC' }), 'curated', 'sync perimee', before.toISOString()]),
-    ).rejects.toThrow(/CONFLIT_VERSION/);
+    ).rejects.toMatchObject({
+      code: 'P0001',
+      hint: 'refresh_required',
+      detail: expect.stringContaining('conflict_version'),
+    });
 
     // Forcage (expected = null) : applique malgre le decalage (resolution « garder ma version »).
     const forced = await rowsAs(aliceId, UPDATE_ENC5, [encounterId, JSON.stringify({ glasgow_score: 15, diagnosis: 'TC' }), 'curated', 'forcage', null]);
@@ -256,7 +260,11 @@ describe('update_patient (donnees permanentes)', () => {
     expect((await db.admin.query("select 1 from public.field_change_log where entity='patient' and entity_id=$1 and field_key='sexe'", [pid])).rows.length).toBeGreaterThan(0);
     // Une seconde lecture faite avant la premiere ecriture ne peut pas ecraser son resultat.
     await expect(rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'M' }), 'draft', 'version obsolete', before]))
-      .rejects.toThrow(/CONFLIT_VERSION/);
+      .rejects.toMatchObject({
+        code: 'P0001',
+        hint: 'refresh_required',
+        detail: expect.stringContaining('conflict_version'),
+      });
     expect((await db.admin.query('select data from public.patient where id=$1', [pid])).rows[0].data.sexe).toBe('F');
     const fresh = Number((await db.admin.query('select row_version from public.patient where id=$1', [pid])).rows[0].row_version);
     const retried = await rowsAs(aliceId, UPDATE_PAT, [pid, JSON.stringify({ sexe: 'M' }), 'draft', 'apres rechargement', fresh]);

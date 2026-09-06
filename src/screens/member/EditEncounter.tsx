@@ -1,5 +1,5 @@
 import { withSections } from '../../data/templates';
-import { errorMessage } from '../../lib/errorMessage';
+import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
@@ -7,15 +7,16 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
-import { displayFieldValue, type TemplateField, type ValidationRule } from '../../data/types';
+import { displayFieldValue, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import {
   validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues, isMissing, missingCodeOf,
 } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, HiddenValuesNotice } from './EncounterFields';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
+import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
@@ -34,6 +35,7 @@ export function EditEncounter() {
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
+  const [sections, setSections] = useState<TemplateSection[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [reason, setReason] = useState('');
@@ -43,6 +45,8 @@ export function EditEncounter() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocking, setBlocking] = useState<string[]>([]);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [reloadRequired, setReloadRequired] = useState(false);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
@@ -50,17 +54,29 @@ export function EditEncounter() {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
     return displayFieldValue(v, '—');
   };
+  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
 
   // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
   const { hidden, removed, data: submittedData } = useMemo(() => {
-    const hiddenKeys = hiddenFieldKeys(rules, values);
+    const hiddenKeys = hiddenFieldKeys(rules, values, fields, sections);
     const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [rules, values]);
+  }, [rules, values, fields, sections]);
+
+  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+
+  function updateEncounterValue(key: string, value: unknown, remove = false) {
+    const next = { ...values };
+    if (remove) delete next[key];
+    else next[key] = value;
+    trackVisibilityWithdrawal(values, next);
+    setValues(next);
+  }
 
   const load = useCallback(async () => {
     if (!baseId || !encounterId) return;
     setLoading(true);
+    setReloadRequired(false);
     try {
       if (!online) {
         // HORS-LIGNE : la rencontre et les champs viennent de l'instantane local.
@@ -86,6 +102,7 @@ export function EditEncounter() {
         setFields(encFields as unknown as TemplateField[]);
         const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
+        setSections((enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || []);
         setError(null);
         return;
       }
@@ -111,6 +128,7 @@ export function EditEncounter() {
         const version = await templates.getVersion(versionId);
         setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
+        setSections(version.sections ?? []);
       }
       setError(null);
     } catch (e) {
@@ -147,6 +165,17 @@ export function EditEncounter() {
     setBlocking(block);
     if (block.length > 0) return;
 
+    if (diagnosticRemoved.length > 0 && !confirmationOpen) {
+      setConfirmationOpen(true);
+      return;
+    }
+    await persistEncounter();
+  }
+
+  async function persistEncounter() {
+    if (!baseId || !patientId || !encounterId) return;
+    setConfirmationOpen(false);
+
     setBusy(true);
     try {
       if (!online) {
@@ -163,7 +192,12 @@ export function EditEncounter() {
       toast(t(online ? 'toast.encounter_saved' : 'toast.encounter_queued')); // UI-2
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
-      setError(msg(e));
+      if (isRefreshRequiredError(e)) {
+        setReloadRequired(true);
+        setError(t('form.refresh_required'));
+      } else {
+        setError(msg(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -204,14 +238,21 @@ export function EditEncounter() {
           fields={fields}
           values={values}
           hiddenKeys={hidden}
-          onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
-          onRemove={(key) => setValues((current) => {
-            const { [key]: _removed, ...remaining } = current;
-            return remaining;
-          })}
+          sections={sections}
+          onChange={(k, v) => updateEncounterValue(k, v)}
+          onRemove={(key) => updateEncounterValue(key, undefined, true)}
         />
 
         <HiddenValuesNotice removedKeys={removed} fields={fields} />
+
+        {confirmationOpen && (
+          <HiddenValuesConfirmation
+            removedKeys={diagnosticRemoved}
+            fields={fields}
+            onConfirm={() => void persistEncounter()}
+            onCancel={() => setConfirmationOpen(false)}
+          />
+        )}
 
         <label className="flex flex-col text-sm">
           <span className="font-medium text-slate-700">
@@ -237,6 +278,7 @@ export function EditEncounter() {
           <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
+          {reloadRequired && <button type="button" onClick={() => { setReloadRequired(false); void load(); }} className="btn-secondary">{t('form.reload_data')}</button>}
           <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>

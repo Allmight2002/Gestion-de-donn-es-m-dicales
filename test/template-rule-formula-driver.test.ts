@@ -199,13 +199,21 @@ describe('une regle deja enregistree avant le garde-fou', () => {
     await addField(legacy, 'bloc_malnutrition', 'Bloc malnutrition', 'text', 13);
 
     // Exactement ce qu'une base existante peut contenir : la regle a ete acceptee a une epoque
-    // ou rien ne la refusait. Le declencheur est ecarte le temps de l'ecrire.
+    // ou rien ne la refusait. Les deux gardes sont ecartes uniquement pour cette fixture historique.
     await db.admin.query('alter table public.validation_rule disable trigger trg_vr_structure');
-    await addRule(legacy, {
-      if: { field: 'rapport_pt', operator: 'less_than', value: 18 },
-      then: { field: 'bloc_malnutrition', operator: 'visible' },
-    });
-    await db.admin.query('alter table public.validation_rule enable trigger trg_vr_structure');
+    try {
+      await db.admin.query('alter table public.validation_rule disable trigger trg_template_version_invariants_rule');
+      try {
+        await addRule(legacy, {
+          if: { field: 'rapport_pt', operator: 'less_than', value: 18 },
+          then: { field: 'bloc_malnutrition', operator: 'visible' },
+        });
+      } finally {
+        await db.admin.query('alter table public.validation_rule enable trigger trg_template_version_invariants_rule');
+      }
+    } finally {
+      await db.admin.query('alter table public.validation_rule enable trigger trg_vr_structure');
+    }
 
     const baseId = (await db.admin.query(
       "insert into public.base(name, owner_user_id, current_template_version_id) values('Base heritee', $1, $2) returning id",

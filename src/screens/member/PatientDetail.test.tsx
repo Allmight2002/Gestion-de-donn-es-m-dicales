@@ -208,6 +208,44 @@ describe('PatientDetail (fiche)', () => {
     expect(within(examen).getByText('Glasgow')).toBeInTheDocument();
   });
 
+  test('ne rend ni le bloc ni sa sous-section quand la visibilité du bloc est fausse', async () => {
+    const blockTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'encounter', type: 'terminology', section: null }),
+            field({ fieldKey: 'mesure_bloc', label: 'Mesure du bloc', scope: 'encounter', type: 'number', section: 'bloc' }),
+            field({ fieldKey: 'detail_bloc', label: 'Détail de la sous-section', scope: 'encounter', type: 'text', section: 'bloc_detail', parentSectionKey: 'bloc' }),
+          ],
+          rules: [{
+            id: 'r-block',
+            rule: { if: { field: 'diagnostic', operator: 'equals', value: 'actif' }, then: { section: 'bloc', operator: 'visible' } },
+            message: null,
+            severity: 'block' as const,
+          }],
+          sections: [
+            { id: 's-block', sectionKey: 'bloc', label: 'Bloc clinique', displayOrder: 0, parentSectionKey: null },
+            { id: 's-detail', sectionKey: 'bloc_detail', label: 'Sous-section', displayOrder: 1, parentSectionKey: 'bloc' },
+          ],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patients = makePatients({
+      async listEncounters() {
+        return [{ ...encounter, data: { diagnostic: 'inactif', mesure_bloc: 42, detail_bloc: 'secret fictif' } }];
+      },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, blockTemplateRepo);
+
+    await screen.findByText('Diagnostic');
+    expect(screen.queryByText('Bloc clinique')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sous-section')).not.toBeInTheDocument();
+    expect(screen.queryByText('Mesure du bloc')).not.toBeInTheDocument();
+    expect(screen.queryByText('Détail de la sous-section')).not.toBeInTheDocument();
+  });
+
   // Chantier D : un refus de `signed-read` etait avale en silence ; l'utilisateur ne voyait
   // qu'un libelle « Erreur » indiscernable d'un fichier manquant.
   test('affiche le motif du refus renvoye par signed-read', async () => {
@@ -544,7 +582,7 @@ describe('EditPatient (verrou optimiste)', () => {
       7,
     );
     expect(await screen.findByRole('alert')).toHaveTextContent(/modifie par une autre personne/i);
-    const reload = screen.getByRole('button', { name: /recharger les donnees/i });
+    const reload = screen.getByRole('button', { name: /recharger les données/i });
     await userEvent.click(reload);
     await waitFor(() => expect(getPatient).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('button', { name: /recharger les donnees/i })).not.toBeInTheDocument());

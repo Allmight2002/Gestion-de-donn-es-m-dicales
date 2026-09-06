@@ -122,6 +122,42 @@ export function HiddenValuesNotice({
   );
 }
 
+/**
+ * Confirmation explicite requise uniquement lorsqu'un retrait de diagnostic va masquer
+ * des valeurs déjà saisies. Annuler ferme l'annonce mais ne touche jamais aux valeurs du
+ * formulaire ; l'appelant ne retire les clés qu'au moment de la persistance confirmée.
+ */
+export function HiddenValuesConfirmation({
+  removedKeys,
+  fields,
+  onConfirm,
+  onCancel,
+}: {
+  removedKeys: readonly string[];
+  fields: TemplateField[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  if (removedKeys.length === 0) return null;
+  const labels = removedKeys.map((key) => fields.find((f) => f.fieldKey === key)?.label ?? key);
+  return (
+    <div role="dialog" aria-label={t('form.diagnostic_withdrawal_title')} className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">{t('form.diagnostic_withdrawal_title')}</p>
+      <p className="mt-1">{t('form.diagnostic_withdrawal_body').replace('{n}', String(removedKeys.length))}</p>
+      <p className="mt-1 text-xs">{labels.join(', ')}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className="btn-primary" onClick={onConfirm}>
+          {t('form.diagnostic_withdrawal_confirm')}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          {t('form.diagnostic_withdrawal_cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Regroupement visuel commun aux variables patient et rencontre. La section de
 // secours evite qu'une ancienne variable incomplete disparaisse du formulaire.
 export function SectionedFields({

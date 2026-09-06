@@ -151,7 +151,17 @@ export function groupFieldsBySection<T extends Pick<TemplateField, 'section' | '
       });
     }
   }
-  return [...groups.values()]
+  // Une hiérarchie peut avoir créé le groupe racine uniquement pour porter un enfant. Il ne
+  // reste affichable que si cet enfant porte encore au moins une variable visible ; un bloc
+  // entièrement masqué ne doit laisser ni titre ni cadre, et une sous-section vide ne doit
+  // pas laisser un fieldset fantôme.
+  const visibleGroups = [...groups.values()].filter(({ group }) =>
+    group.fields.length > 0
+      || (!group.parentSectionKey && [...groups.values()].some(({ group: child }) =>
+        child.parentSectionKey === group.key && child.fields.length > 0)),
+  );
+
+  return visibleGroups
     .sort((a, b) => {
       if (a.group.key === '__common__' || b.group.key === '__common__') return a.group.key === '__common__' ? -1 : 1;
       if (hierarchical && !a.group.isFallback && !b.group.isFallback) {
