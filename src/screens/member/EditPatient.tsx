@@ -1,16 +1,17 @@
-import { errorMessage } from '../../lib/errorMessage';
+import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { TemplateField, ValidationRule } from '../../data/types';
+import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, HiddenValuesNotice } from './EncounterFields';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
+import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
@@ -30,6 +31,7 @@ export function EditPatient() {
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
+  const [sections, setSections] = useState<TemplateSection[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
@@ -38,14 +40,18 @@ export function EditPatient() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocking, setBlocking] = useState<string[]>([]);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [reloadRequired, setReloadRequired] = useState(false);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const back = () => navigate(`/bases/${baseId}/patients/${patientId}`);
+  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
 
   const load = useCallback(async () => {
     if (!baseId || !patientId) return;
     setLoading(true);
+    setReloadRequired(false);
     try {
       const [p, base] = await Promise.all([patients.getPatient(baseId, patientId), bases.getBase(baseId)]);
       if (p) { setValues(p.data); setStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
@@ -56,6 +62,7 @@ export function EditPatient() {
         const version = await templates.getVersion(versionId);
         setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
+        setSections(version.sections ?? []);
       }
       setError(null);
     } catch (e) {
@@ -70,10 +77,20 @@ export function EditPatient() {
 
   // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
   const { hidden, removed, data: submittedData } = useMemo(() => {
-    const hiddenKeys = hiddenFieldKeys(rules, values);
+    const hiddenKeys = hiddenFieldKeys(rules, values, fields, sections);
     const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [rules, values]);
+  }, [rules, values, fields, sections]);
+
+  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+
+  function updatePatientValue(key: string, value: unknown, remove = false) {
+    const next = { ...values };
+    if (remove) delete next[key];
+    else next[key] = value;
+    trackVisibilityWithdrawal(values, next);
+    setValues(next);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -94,6 +111,17 @@ export function EditPatient() {
     setBlocking(block);
     if (block.length > 0) return;
 
+    if (diagnosticRemoved.length > 0 && !confirmationOpen) {
+      setConfirmationOpen(true);
+      return;
+    }
+    await persistPatient();
+  }
+
+  async function persistPatient() {
+    if (!patientId) return;
+    setConfirmationOpen(false);
+
     setBusy(true);
     try {
       const saved = await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
@@ -103,7 +131,13 @@ export function EditPatient() {
     } catch (e) {
       const detail = e as { message?: string };
       if (/CONFLIT_VERSION/i.test(detail?.message ?? '')) {
+        setReloadRequired(true);
+        // Conserver le libellé historique attendu par les corrections et les tests ; les
+        // valeurs locales restent dans `values` et ne sont jamais remplacées par l'erreur.
         setError('Ce patient a ete modifie par une autre personne. Vos changements ne sont pas enregistres : rechargez les donnees avant de recommencer.');
+      } else if (isRefreshRequiredError(e)) {
+        setReloadRequired(true);
+        setError(t('form.refresh_required'));
       } else {
         setError(msg(e));
       }
@@ -140,15 +174,22 @@ export function EditPatient() {
             fields={fields}
             values={values}
             hiddenKeys={hidden}
-            onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
-            onRemove={(key) => setValues((current) => {
-              const { [key]: _removed, ...remaining } = current;
-              return remaining;
-            })}
+            sections={sections}
+            onChange={(k, v) => updatePatientValue(k, v)}
+            onRemove={(key) => updatePatientValue(key, undefined, true)}
           />
         )}
 
         <HiddenValuesNotice removedKeys={removed} fields={fields} />
+
+        {confirmationOpen && (
+          <HiddenValuesConfirmation
+            removedKeys={diagnosticRemoved}
+            fields={fields}
+            onConfirm={() => void persistPatient()}
+            onCancel={() => setConfirmationOpen(false)}
+          />
+        )}
 
         <label className="flex flex-col text-sm">
           <span className="font-medium text-slate-700">{t('encounter.reason')} <span className="text-red-500">*</span></span>
@@ -166,7 +207,7 @@ export function EditPatient() {
         <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">{t('encounter.save')}</button>
           <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
-          {error?.includes('modifie par une autre personne') && <button type="button" onClick={() => void load()} className="btn-secondary">Recharger les donnees</button>}
+          {reloadRequired && <button type="button" onClick={() => { setReloadRequired(false); void load(); }} className="btn-secondary">{t('form.reload_data')}</button>}
           <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>

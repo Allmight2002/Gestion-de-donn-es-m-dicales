@@ -113,8 +113,10 @@ test('rule-targeted empty root refuses deletion and reparenting, including rollb
   await db.admin.query('begin');
   try {
     await db.admin.query('alter table public.validation_rule disable trigger trg_vr_structure');
+    await db.admin.query('alter table public.validation_rule disable trigger trg_template_version_invariants_rule');
     await db.admin.query(`insert into public.validation_rule(template_version_id,rule,message,severity)
       values ($1,'{"kind":"visibility","then":{"section":"bloc"}}','Fictif','block')`, [f.versionId]);
+    await db.admin.query('alter table public.validation_rule enable trigger trg_template_version_invariants_rule');
     await db.admin.query('alter table public.validation_rule enable trigger trg_vr_structure');
     await db.admin.query('commit');
   } catch(e) { await db.admin.query('rollback'); throw e; }

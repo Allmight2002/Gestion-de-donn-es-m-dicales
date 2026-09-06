@@ -2,6 +2,8 @@
 // on n'autorise que des operateurs d'une liste blanche. Ces regles ne sont JAMAIS
 // executees comme du code ; l'evaluation (etape 7) lira ces champs de maniere sure.
 
+import type { TemplateField, TemplateSection } from '../data/types';
+
 export const COMPARISON_OPERATORS = [
   'equals',
   'not_equals',
@@ -44,7 +46,9 @@ export interface ConditionalRule {
  */
 export interface VisibilityRule {
   if: { field: string; operator: ConditionOperator; value: unknown; terminologyReleaseId?: string };
-  then: { field: string; operator: 'visible' };
+  then:
+    | { field: string; operator: 'visible' }
+    | { section: string; operator: 'visible' };
 }
 
 export type TemplateRule = ComparisonRule | ConditionalRule | VisibilityRule;
@@ -74,8 +78,22 @@ export function validateRule(rule: unknown): RuleValidation {
     if (!isPlainObject(cond) || !isPlainObject(then)) {
       return { ok: false, error: 'Regle conditionnelle : "if" et "then" sont requis' };
     }
-    if (!isNonEmptyString(cond.field) || !isNonEmptyString(then.field)) {
-      return { ok: false, error: 'Regle conditionnelle : "field" requis dans if et then' };
+    if (!isNonEmptyString(cond.field)) {
+      return { ok: false, error: 'Regle conditionnelle : "field" requis dans if' };
+    }
+    const hasTargetField = 'field' in then;
+    const hasTargetSection = 'section' in then;
+    if (hasTargetField && hasTargetSection) {
+      return { ok: false, error: 'Regle conditionnelle : then.field et then.section sont exclusifs' };
+    }
+    if (!hasTargetField && !hasTargetSection) {
+      return { ok: false, error: 'Regle conditionnelle : une cible then.field ou then.section est requise' };
+    }
+    if (hasTargetField && !isNonEmptyString(then.field)) {
+      return { ok: false, error: 'Regle conditionnelle : "field" requis dans then' };
+    }
+    if (hasTargetSection && !isNonEmptyString(then.section)) {
+      return { ok: false, error: 'Regle conditionnelle : "section" requis dans then' };
     }
     if (!CONDITION_OPERATORS.includes(cond.operator as ConditionOperator)) {
       return { ok: false, error: `Operateur de condition non autorise: ${String(cond.operator)}` };
@@ -101,7 +119,10 @@ export function validateRule(rule: unknown): RuleValidation {
     if (!THEN_OPERATORS.includes(then.operator as ThenOperator)) {
       return { ok: false, error: 'Regle conditionnelle : "then.operator" doit etre "required" ou "visible"' };
     }
-    if (then.operator === 'visible' && cond.field === then.field) {
+    if (hasTargetSection && then.operator !== 'visible') {
+      return { ok: false, error: 'Une cible de bloc n\'accepte que l\'operateur visible' };
+    }
+    if (then.operator === 'visible' && hasTargetField && cond.field === then.field) {
       // Une variable qui commande son propre affichage ne peut jamais s'afficher.
       return { ok: false, error: 'Regle d\'affichage : une variable ne peut pas commander son propre affichage' };
     }
@@ -201,6 +222,45 @@ export function visibilityRulesOf(rules: readonly unknown[]): VisibilityRule[] {
 }
 
 /**
+ * Déplie la cible d'affichage d'une règle en variables réellement masquées.
+ *
+ * Une section racine porte la règle ; ses enfants directs ne peuvent pas en porter une.
+ * Quand le dictionnaire de sections n'est pas disponible (client ancien ou instantané
+ * antérieur à L54), une cible `then.section` reste volontairement indéterminée et n'ajoute
+ * aucune variable cachée : le vieux client continue donc à montrer le bloc, tandis que le
+ * serveur reste la barrière de compatibilité au moment de l'enregistrement.
+ */
+export function visibilityTargetFieldKeys(
+  rule: unknown,
+  fields: readonly TemplateField[] = [],
+  sections?: readonly TemplateSection[] | null,
+): string[] {
+  const visibility = visibilityRuleOf(rule);
+  if (!visibility) return [];
+  if ('field' in visibility.then) return [visibility.then.field];
+
+  const target = visibility.then.section;
+  const sectionKeys = new Set<string>([target]);
+  if (sections !== undefined && sections !== null) {
+    const root = sections.find((section) => section.sectionKey === target);
+    if (!root || root.parentSectionKey) return [];
+    for (const section of sections) {
+      if (section.parentSectionKey === target) sectionKeys.add(section.sectionKey);
+    }
+  } else {
+    // Repli pour les lectures qui ne portent que les métadonnées jointes aux variables.
+    // `parentSectionKey` identifie alors directement les variables des sous-sections.
+    if (!fields.some((field) => field.section === target || field.parentSectionKey === target)) return [];
+  }
+
+  return [...new Set(
+    fields
+      .filter((field) => typeof field.section === 'string' && sectionKeys.has(field.section))
+      .map((field) => field.fieldKey),
+  )];
+}
+
+/**
  * Cherche un CYCLE dans le graphe des dependances d'affichage : A masque par B, B masque
  * par A. Un cycle rend les deux variables definitivement invisibles — aucune des deux ne
  * peut etre renseignee, donc aucune des deux ne peut satisfaire la condition de l'autre.
@@ -209,11 +269,17 @@ export function visibilityRulesOf(rules: readonly unknown[]): VisibilityRule[] {
  * Le controle appartient a l'ENREGISTREMENT de la regle, pas a la saisie : une fiche ne doit
  * jamais avoir a se defendre contre un gabarit incoherent.
  */
-export function findVisibilityCycle(rules: readonly unknown[]): string[] | null {
+export function findVisibilityCycle(
+  rules: readonly unknown[],
+  fields: readonly TemplateField[] = [],
+  sections?: readonly TemplateSection[] | null,
+): string[] | null {
   // Arete pilote -> pilotee : l'affichage de `then.field` DEPEND de `if.field`.
   const dependsOn = new Map<string, string[]>();
   for (const rule of visibilityRulesOf(rules)) {
-    dependsOn.set(rule.then.field, [...(dependsOn.get(rule.then.field) ?? []), rule.if.field]);
+    for (const target of visibilityTargetFieldKeys(rule, fields, sections)) {
+      dependsOn.set(target, [...(dependsOn.get(target) ?? []), rule.if.field]);
+    }
   }
 
   const done = new Set<string>();

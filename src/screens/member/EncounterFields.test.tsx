@@ -5,8 +5,8 @@ import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
-import type { TemplateField } from '../../data/types';
-import { EncounterFields, HiddenValuesNotice } from './EncounterFields';
+import type { TemplateField, TemplateSection } from '../../data/types';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 
 describe('EncounterFields description', () => {
   test('opens the accessible guidance without extending the form initially', async () => {
@@ -71,6 +71,32 @@ describe('EncounterFields — affichage conditionnel (L32)', () => {
     );
     expect(screen.getByText('Type d’imagerie')).toBeInTheDocument();
   });
+
+  test('un bloc entierement masque ne laisse ni titre ni cadre, et une sous-section vide disparait', () => {
+    const sections: TemplateSection[] = [
+      { id: 'root', sectionKey: 'bloc', label: 'Bloc clinique', displayOrder: 0, parentSectionKey: null },
+      { id: 'child', sectionKey: 'sous_bloc', label: 'Sous-section', displayOrder: 1, parentSectionKey: 'bloc' },
+    ];
+    const fields: TemplateField[] = [
+      { ...imagerie[0], id: 'direct', fieldKey: 'direct', label: 'Direct', section: 'bloc' },
+      { ...imagerie[1], id: 'child', fieldKey: 'child', label: 'Enfant', section: 'sous_bloc', parentSectionKey: 'bloc' },
+    ];
+    const { rerender } = render(
+      <I18nProvider>
+        <EncounterFields fields={fields} sections={sections} values={{}} hiddenKeys={new Set(['direct', 'child'])} onChange={() => undefined} onRemove={() => undefined} />
+      </I18nProvider>,
+    );
+    expect(screen.queryByRole('group', { name: 'Bloc clinique' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Sous-section' })).toBeNull();
+
+    rerender(
+      <I18nProvider>
+        <EncounterFields fields={fields} sections={sections} values={{}} hiddenKeys={new Set(['child'])} onChange={() => undefined} onRemove={() => undefined} />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole('group', { name: 'Bloc clinique' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Sous-section' })).toBeNull();
+  });
 });
 
 describe('HiddenValuesNotice — l\'effacement s\'annonce (L32)', () => {
@@ -92,6 +118,38 @@ describe('HiddenValuesNotice — l\'effacement s\'annonce (L32)', () => {
       </I18nProvider>,
     );
     expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+describe('HiddenValuesConfirmation — retrait de diagnostic (L52)', () => {
+  test('annuler conserve les vingt saisies et confirmer reste une action explicite', async () => {
+    const fields = Array.from({ length: 20 }, (_, index) => ({
+      ...imagerie[0],
+      id: `bloc_${index}`,
+      fieldKey: `bloc_${index}`,
+      label: `Variable ${index + 1}`,
+    }));
+    const removedKeys = fields.map((item) => item.fieldKey);
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+
+    render(
+      <I18nProvider>
+        <HiddenValuesConfirmation removedKeys={removedKeys} fields={fields} onConfirm={onConfirm} onCancel={onCancel} />
+      </I18nProvider>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Retrait du diagnostic : confirmation nécessaire' });
+    expect(dialog).toHaveTextContent('20 valeur(s)');
+    expect(dialog).toHaveTextContent('Variable 1');
+    expect(dialog).toHaveTextContent('Variable 20');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler et conserver la saisie' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmer le retrait et enregistrer' }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
 

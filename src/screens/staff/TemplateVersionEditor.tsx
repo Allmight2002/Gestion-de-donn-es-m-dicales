@@ -551,7 +551,7 @@ export function TemplateVersionEditor({
         <ul className="space-y-2 text-sm">
           {rules.map((r) => (
             <li key={r.id} className="card flex items-start justify-between gap-3 px-3 py-2">
-              <RuleSummary rule={r.rule} fields={fields} />
+              <RuleSummary rule={r.rule} fields={fields} sections={sections} />
               <span className="flex items-center gap-2">
                 {/* Une regle d'affichage ne bloque ni n'avertit : lui coller « Bloquant » la
                     decrirait faux. */}
@@ -581,6 +581,7 @@ export function TemplateVersionEditor({
             <RuleForm
               key={editingRule?.id ?? 'new-rule'}
               fields={fields}
+              sections={sections}
               busy={busy}
               existingRules={editingRule ? rules.filter((rule) => rule.id !== editingRule.id) : rules}
               initialRule={editingRule?.rule}

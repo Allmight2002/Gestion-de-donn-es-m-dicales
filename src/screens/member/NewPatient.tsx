@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
-import { isMultipleTerminology, type TemplateField, type ValidationRule } from '../../data/types';
+import { isMultipleTerminology, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { newOfflineId, useOnline } from '../../data/offline';
 import {
@@ -17,7 +17,7 @@ import {
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { FieldInput } from './FieldInput';
-import { CalculatedValue, FieldLabel, HiddenValuesNotice, SectionedFields } from './EncounterFields';
+import { CalculatedValue, FieldLabel, HiddenValuesConfirmation, HiddenValuesNotice, SectionedFields } from './EncounterFields';
 import { isCalculatedField } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
@@ -25,6 +25,7 @@ import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../.
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
 import { DatePickerInput } from '../../components/DatePickerInput';
+import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -50,6 +51,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
+  const [sections, setSections] = useState<TemplateSection[]>([]);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [canViewIdentity, setCanViewIdentity] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -68,9 +70,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
   const [matches, setMatches] = useState<IdentityMatch[]>([]);
   const [ackDuplicate, setAckDuplicate] = useState(false); // B5 : confirmation « patient different »
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
+  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
 
   // Detection de doublon (confort) : des que nom + date de naissance sont saisis, on cherche
   // un patient existant a la meme identite. Non bloquant ; on propose d'ouvrir sa fiche ou
@@ -92,6 +96,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       .filter((f) => f.scope === 'patient')
       .sort((a, b) => a.displayOrder - b.displayOrder);
     setRules(ctx.rules);
+    setSections(ctx.sections ?? []);
     setIsCrossSectional(ctx.observationModel === 'cross_sectional');
     setCanViewIdentity(ctx.permissions.canViewIdentity);
     setFields(patientFields);
@@ -136,6 +141,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       const version = await templates.getVersion(base.base.currentTemplateVersionId);
       const fields = version.fields;
       setRules(version.rules);
+      setSections(version.sections ?? []);
       setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       setCanViewIdentity(base.role === 'owner' || base.permissions.canViewIdentity);
       const patientFields = fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder);
@@ -165,10 +171,20 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
   // L32 — une variable masquee ne se saisit pas et sa valeur ne part pas au serveur.
   const { hidden, removed, data: permanentData } = useMemo(() => {
-    const hiddenKeys = hiddenFieldKeys(rules, permanent);
+    const hiddenKeys = hiddenFieldKeys(rules, permanent, fields, sections);
     const stripped = withoutHiddenValues(permanent, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [rules, permanent]);
+  }, [rules, permanent, fields, sections]);
+
+  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+
+  function updatePermanent(key: string, value: unknown, remove = false) {
+    const next = { ...permanent };
+    if (remove) delete next[key];
+    else next[key] = value;
+    trackVisibilityWithdrawal(permanent, next);
+    setPermanent(next);
+  }
 
   // Mode hors-ligne intake-only actif pour CET ecran (formulaire + soumission locaux).
   const offlineIntakeActive = !online && isOfflineIntakeEnabled() && mode === 'manual';
@@ -194,6 +210,15 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         return;
       }
     }
+    if (mode === 'manual' && diagnosticRemoved.length > 0 && !confirmationOpen) {
+      setConfirmationOpen(true);
+      return;
+    }
+    await persistPatient();
+  }
+
+  async function persistPatient() {
+    if (!baseId) return;
     const patientCurationInput = mode === 'submit' ? {
       code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
       address: address || null, externalIdentifier: externalId.trim() || null,
@@ -201,6 +226,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     const submitFingerprint = patientCurationInput ? JSON.stringify(patientCurationInput) : null;
     const isSameOperationRetry = submitFingerprint !== null
       && submitAttempt.current?.fingerprint === submitFingerprint;
+    setConfirmationOpen(false);
     setBusy(true);
     try {
       // B5 : verification FRAICHE au moment de l'enregistrement. La detection debouncee (400 ms)
@@ -386,6 +412,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           ) : (
             <SectionedFields
               fields={visibleFields}
+              sections={sections}
               renderField={(field) => {
                 const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
                 return (
@@ -404,17 +431,14 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                         proposal={proposal}
                         value={permanent[field.fieldKey]}
                         proposalValue={permanent[proposal.fieldKey]}
-                        onChange={(key, value) => {
-                          setPrefilled((current) => forgetPrefilled(current, key));
-                          setPermanent((current) => ({ ...current, [key]: value }));
-                        }}
-                        onRemove={(key) => {
-                          setPrefilled((current) => forgetPrefilled(current, key));
-                          setPermanent((current) => {
-                            const { [key]: _removed, ...remaining } = current;
-                            return remaining;
-                          });
-                        }}
+                         onChange={(key, value) => {
+                           setPrefilled((current) => forgetPrefilled(current, key));
+                           updatePermanent(key, value);
+                         }}
+                         onRemove={(key) => {
+                           setPrefilled((current) => forgetPrefilled(current, key));
+                           updatePermanent(key, undefined, true);
+                         }}
                       />
                     ) : (
                       <FieldInput
@@ -422,19 +446,13 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                         value={permanent[field.fieldKey]}
                         onChange={(value) => {
                           // Une proposition effacee ne laisse rien : elle n'a jamais ete une valeur.
-                          const wasProposed = prefilled.has(field.fieldKey);
+                           const wasProposed = prefilled.has(field.fieldKey);
                           // L21 : retirer la derniere valeur d'une liste retire la CLE. Le
                           // tableau vide est refuse par la base, deliberement.
-                          const emptiedList = isMultipleTerminology(field) && isClearedValue(value);
-                          setPrefilled((current) => forgetPrefilled(current, field.fieldKey));
-                          setPermanent((current) => {
-                            if (emptiedList || (wasProposed && isClearedValue(value))) {
-                              const { [field.fieldKey]: _cleared, ...rest } = current;
-                              return rest;
-                            }
-                            return { ...current, [field.fieldKey]: value };
-                          });
-                        }}
+                           const emptiedList = isMultipleTerminology(field) && isClearedValue(value);
+                           setPrefilled((current) => forgetPrefilled(current, field.fieldKey));
+                           updatePermanent(field.fieldKey, value, emptiedList || (wasProposed && isClearedValue(value)));
+                         }}
                       />
                     )}
                   </div>
@@ -446,6 +464,15 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         )}
 
         {mode === 'manual' && <HiddenValuesNotice removedKeys={removed} fields={fields} />}
+
+        {mode === 'manual' && confirmationOpen && (
+          <HiddenValuesConfirmation
+            removedKeys={diagnosticRemoved}
+            fields={fields}
+            onConfirm={() => void persistPatient()}
+            onCancel={() => setConfirmationOpen(false)}
+          />
+        )}
 
         <div className="flex items-center gap-2">
           <button type="submit" disabled={busy} className="btn-primary">

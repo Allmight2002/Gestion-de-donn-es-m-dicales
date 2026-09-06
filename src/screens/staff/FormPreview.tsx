@@ -113,8 +113,8 @@ export function FormPreview({
   const patientCompanions = proposalKeysOf(patientFields);
   // L32 — l'apercu montre EXACTEMENT ce que la saisie montrera, regles d'affichage comprises :
   // c'est la seule facon de verifier une regle qu'on vient d'ecrire sans creer de fiche d'essai.
-  const patientHidden = useMemo(() => hiddenFieldKeys(rules, patientValues), [rules, patientValues]);
-  const encounterHidden = useMemo(() => hiddenFieldKeys(rules, encounterValues), [rules, encounterValues]);
+  const patientHidden = useMemo(() => hiddenFieldKeys(rules, patientValues, patientFields, sections), [rules, patientValues, patientFields, sections]);
+  const encounterHidden = useMemo(() => hiddenFieldKeys(rules, encounterValues, applicable, sections), [rules, encounterValues, applicable, sections]);
   const patientVisible = patientFields.filter(
     (f) => !patientCompanions.has(f.fieldKey) && !patientHidden.has(f.fieldKey),
   );
