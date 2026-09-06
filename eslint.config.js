@@ -13,6 +13,10 @@ export default tseslint.config(
       'dist/**',
       'dev-dist/**',
       'coverage/**',
+      // Outillage d'agent, deja ignore par git. Les copies de travail qu'il y depose
+      // portent leur propre tsconfig.json : sans cette exclusion, typescript-eslint ne
+      // sait plus quelle racine choisir et refuse d'analyser TOUT le depot.
+      '.claude/**',
       // Source tierce integree telle quelle, controlee par version + SHA-256.
       'supabase/functions/_shared/vendor/**',
     ],
