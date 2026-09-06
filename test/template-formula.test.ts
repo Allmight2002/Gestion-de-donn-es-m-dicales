@@ -268,9 +268,15 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
         order by p.proname`,
     )).rows.map((r) => r.proname as string);
     expect(readers).toEqual([
+      // L55 : refuse un pilote diagnostique calcule, et refuse de declarer couvert un bloc
+      // dont aucune variable n'est saisissable. Il LIT la colonne pour ecarter les variables
+      // calculees -- il n'analyse jamais leur contenu.
+      'assert_diagnosis_configuration',
       'base_completeness_stats',
       'base_completion_queue_page',
       'copy_template_fields',
+      // L55 : meme lecture que ci-dessus, cote calcul de couverture.
+      'diagnosis_coverage',
       'download_base_snapshot',
       'enforce_template_field_formula',
       'enforce_template_field_formula_operand',
