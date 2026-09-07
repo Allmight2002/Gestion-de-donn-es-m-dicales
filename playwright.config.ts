@@ -25,7 +25,11 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: isCi,
-  retries: 0,
+  // Release 177 : un incident reseau transitoire (preflight CORS servi en 200, POST jamais
+  // parti) a fait echouer une release alors que le backend etait sain. Une reprise en CI
+  // distingue le hoquet reseau du vrai echec. En local, aucune reprise : une regression doit
+  // rester visible du premier coup.
+  retries: isCi ? 2 : 0,
   workers: isCi ? 2 : undefined,
   timeout: 30_000,
   expect: { timeout: 8_000 },
