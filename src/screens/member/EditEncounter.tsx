@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
-import { displayFieldValue, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import {
   validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues, isMissing, missingCodeOf,
@@ -17,6 +17,7 @@ import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
@@ -41,6 +42,9 @@ export function EditEncounter() {
   const [reason, setReason] = useState('');
   const [history, setHistory] = useState<FieldChange[]>([]);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
+  // L55/L56 : contrat diagnostique de LA VERSION de la rencontre (absent = collecte historique).
+  const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
+  const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +68,7 @@ export function EditEncounter() {
   }, [rules, values, fields, sections]);
 
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+  const coverage = useDiagnosisCoverage(diagnosisVersionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
 
   function updateEncounterValue(key: string, value: unknown, remove = false) {
     const next = { ...values };
@@ -103,6 +108,9 @@ export function EditEncounter() {
         const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
         setSections((enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || []);
+        // L'instantane transporte le contrat par version : il n'ouvre aucun hors-ligne nouveau.
+        setDiagnosisVersionId(enc?.templateVersionId ?? null);
+        setDiagnosisContext(enc?.templateVersionId ? snap?.diagnosisContextByVersion?.[enc.templateVersionId] : undefined);
         setError(null);
         return;
       }
@@ -129,6 +137,8 @@ export function EditEncounter() {
         setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
         setSections(version.sections ?? []);
+        setDiagnosisVersionId(version.version.id);
+        setDiagnosisContext(version.version.diagnosisContext);
       }
       setError(null);
     } catch (e) {
@@ -242,6 +252,10 @@ export function EditEncounter() {
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}
         />
+
+        {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
+            ni la validation, ni le statut, et n'est jamais enregistree. */}
+        <DiagnosisCoverageNotice coverage={coverage} />
 
         <HiddenValuesNotice removedKeys={removed} fields={fields} />
 

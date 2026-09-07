@@ -1433,6 +1433,53 @@ const BLOCK_ENCOUNTER = {
   data: { age: 7, tb_statut: 1, tb_crp: 12, poids: 9 },
 };
 
+Deno.test('L56/L53 : un diagnostic non couvert eligible reste exporte avec le socle, sans dispenser de completude', async () => {
+  let uploaded: Blob | null = null;
+  const diagnostics = {
+    ...blockField('diagnosis', 'diagnostics', null, 0),
+    type: 'select',
+    allowed_values: ['A', 'B'],
+    allowed_options: [
+      { value_key: 'A', label: 'Fictif couvert', is_active: true },
+      { value_key: 'B', label: 'Fictif sans bloc', is_active: true },
+    ],
+  };
+  // La RPC SQL de completude est doublee ici : ce test exerce le vrai handler Edge,
+  // sa projection et son CSV. Les refus et l'eligibilite SQL sont testes dans PostgreSQL.
+  const d = blocDeps({
+    fields: [diagnostics, ...BLOCK_FIELDS],
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }, { encounter_id: 'e3' }],
+    encounterRows: [
+      { ...ENCOUNTER, id: 'e1', data: { diagnostics: 'A', age: 7, tb_statut: 1, tb_crp: 12 } },
+      { ...ENCOUNTER, id: 'e2', data: { diagnostics: 'B', age: 9 } },
+      { ...ENCOUNTER, id: 'e3', data: { diagnostics: 'B' } },
+    ],
+    incompleteRecords: [{ record_kind: 'encounter', record_id: 'e3' }],
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('csv'), options: { sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] } } },
+      }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  const result = uploaded as Blob | null;
+  assert(result !== null);
+  const csv = await result.text();
+  const rows = csv.trim().split('\n');
+  assertEquals(rows.length, 3);
+  assertStringIncludes(rows[0], 'encounter__diagnostics');
+  assertStringIncludes(rows[0], 'encounter__age');
+  assertEquals(rows[0].includes('encounter__poids'), false);
+  assert(rows.some((row) => row.includes(',e2,') && row.includes(',B,')));
+  assertEquals(rows.some((row) => row.includes(',e3,')), false);
+});
+
 /** Cohorte a deux niveaux, avec des surcharges de gabarit quand le cas l'exige. */
 function blocDeps(
   opts: Opts & { fields?: unknown[]; sections?: unknown[] } = {},

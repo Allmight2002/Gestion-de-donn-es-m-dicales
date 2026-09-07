@@ -1,7 +1,8 @@
 # Spécification — collecte avec diagnostics et couverture progressive
 
-- Révision : **2026-09-05** ; **L55 implémenté et non déployé** ([détail](l55-configuration-diagnostique.md)),
-  L56 et L57 non implémentés.
+- Révision : **2026-09-05** ; **L55 implémenté et non déployé** ([détail](l55-configuration-diagnostique.md))
+  et **L56 implémenté et non déployé** ([détail](l56-parcours-et-suivi.md)), sa preuve navigateur
+  restant à produire ; L57 non implémenté.
 - Origine : retour du porteur pendant les essais de terrain. Les patients disposent
   habituellement déjà d'un diagnostic, mais le saisisseur ne trouve pas toujours une base ou
   un formulaire spécialisé approprié.

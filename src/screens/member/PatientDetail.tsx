@@ -15,7 +15,7 @@ import {
   type PatientCreateEntry,
 } from '../../data/offlineIntake';
 import { withSections } from '../../data/templates';
-import { displayFieldValue, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
@@ -26,6 +26,7 @@ import { DeleteWithReason } from './DeleteWithReason';
 import { useSignedFile } from '../../lib/useSignedFile';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
+import { DiagnosisCoverageNotice, diagnosisCoverageOrNull } from './DiagnosisCoverageNotice';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
@@ -71,12 +72,15 @@ type DisplayVersion = {
   ruleFields: TemplateField[];
   rules: ValidationRule[];
   sections: TemplateSection[];
+  /** L55/L56 : contrat diagnostique de CETTE version. Absent = collecte historique. */
+  diagnosisContext?: DiagnosisContext[];
 };
 
 function displayVersionOf(
   fields: readonly TemplateField[],
   rules: readonly ValidationRule[],
   sections: readonly TemplateSection[],
+  diagnosisContext?: DiagnosisContext[],
 ): DisplayVersion {
   const sorted = [...fields].sort((a, b) => a.displayOrder - b.displayOrder);
   return {
@@ -85,6 +89,7 @@ function displayVersionOf(
     ruleFields: sorted,
     rules: [...rules],
     sections: [...sections],
+    diagnosisContext,
   };
 }
 
@@ -248,7 +253,7 @@ export function PatientDetail() {
           const fields = (snap?.fieldsByVersion?.[versionId] ?? snap?.fields ?? []) as unknown as TemplateField[];
           const rules = (snap?.rulesByVersion?.[versionId] ?? []) as unknown as ValidationRule[];
           const sections = snap?.sectionsByVersion?.[versionId] ?? snap?.sections ?? [];
-          return [versionId, displayVersionOf(fields, rules, sections)] as const;
+          return [versionId, displayVersionOf(fields, rules, sections, snap?.diagnosisContextByVersion?.[versionId])] as const;
         });
         const views = Object.fromEntries(viewEntries) as Record<string, DisplayVersion>;
         setVersions(views);
@@ -288,7 +293,7 @@ export function PatientDetail() {
         ])];
         const entries = await Promise.all(versionIds.map(async (versionId) => {
           const version = await templates.getVersion(versionId);
-          return [versionId, displayVersionOf(version.fields, version.rules, version.sections ?? [])] as const;
+          return [versionId, displayVersionOf(version.fields, version.rules, version.sections ?? [], version.version.diagnosisContext)] as const;
         }));
         const views = Object.fromEntries(entries) as Record<string, DisplayVersion>;
         setVersions(views);
@@ -456,6 +461,14 @@ export function PatientDetail() {
           )}
         >
           <div className="space-y-4">
+          {/* L56 : meme information NON BLOQUANTE qu'a la saisie, calculee dans LA VERSION
+              du dossier. Elle ne dit rien de sa completude et n'invite a rien changer. */}
+          <DiagnosisCoverageNotice
+            coverage={diagnosisCoverageOrNull(
+              patient.templateVersionId, patientVersion?.diagnosisContext, 'patient', patient.data,
+              patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
+            )}
+          />
           {groupFieldsBySection(visiblePatientFields, patientVersion?.sections).map((group) => (
             <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
               <legend className="px-1 text-sm font-semibold text-slate-700">
@@ -529,6 +542,13 @@ export function PatientDetail() {
                   )}
                 </div>
                 <div className="space-y-3">
+                  {/* L56 : couverture de LA VERSION de cette rencontre, information seulement. */}
+                  <DiagnosisCoverageNotice
+                    coverage={diagnosisCoverageOrNull(
+                      e.templateVersionId, encounterVersion?.diagnosisContext, 'encounter', e.data,
+                      encounterRuleFields, encounterVersion?.rules ?? [], sectionsForEncounter,
+                    )}
+                  />
                   {groupFieldsBySection(fieldsForEncounter, sectionsForEncounter).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
                       <legend className="px-1 text-xs font-semibold text-slate-600">

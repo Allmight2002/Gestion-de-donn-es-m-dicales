@@ -275,8 +275,11 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       'base_completeness_stats',
       'base_completion_queue_page',
       'copy_template_fields',
-      // L55 : meme lecture que ci-dessus, cote calcul de couverture.
-      'diagnosis_coverage',
+      // L55 : meme lecture que ci-dessus, cote calcul de couverture. L56 en a extrait le corps
+      // pour que la file de suivi resolve le contexte UNE fois par version au lieu d'une fois
+      // par dossier ; `diagnosis_coverage` n'est plus que l'appel qui resout ce contexte, et
+      // ne mentionne donc plus la colonne.
+      'diagnosis_coverage_in_context',
       'download_base_snapshot',
       'enforce_template_field_formula',
       'enforce_template_field_formula_operand',

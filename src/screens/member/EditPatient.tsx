@@ -5,13 +5,14 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
+import type { DiagnosisContext, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
@@ -35,6 +36,9 @@ export function EditPatient() {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
+  // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
+  const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
+  const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,6 +67,8 @@ export function EditPatient() {
         setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
         setSections(version.sections ?? []);
+        setDiagnosisVersionId(version.version.id);
+        setDiagnosisContext(version.version.diagnosisContext);
       }
       setError(null);
     } catch (e) {
@@ -83,6 +89,7 @@ export function EditPatient() {
   }, [rules, values, fields, sections]);
 
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+  const coverage = useDiagnosisCoverage(diagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
 
   function updatePatientValue(key: string, value: unknown, remove = false) {
     const next = { ...values };
@@ -179,6 +186,10 @@ export function EditPatient() {
             onRemove={(key) => updatePatientValue(key, undefined, true)}
           />
         )}
+
+        {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
+            ni la validation, ni le statut, et n'est jamais enregistree. */}
+        <DiagnosisCoverageNotice coverage={coverage} />
 
         <HiddenValuesNotice removedKeys={removed} fields={fields} />
 

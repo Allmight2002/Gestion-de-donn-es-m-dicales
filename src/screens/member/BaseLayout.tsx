@@ -70,10 +70,13 @@ export function BaseLayout() {
     {
       labelKey: 'base.tab_queue',
       Icon: ClipboardCheck,
-      active: under(`${base}/queue`) || under(`${base}/propositions`) || under(`${base}/curation`),
+      active: under(`${base}/queue`) || under(`${base}/propositions`) || under(`${base}/diagnostics`)
+        || under(`${base}/curation`),
       subs: [
         { to: `${base}/queue`, labelKey: 'base.tab_queue', when: !!canEdit },
         { to: `${base}/propositions`, labelKey: 'base.tab_proposals', when: !!isOwner },
+        // L56 : la vue transversale des cas non couverts appartient au medecin proprietaire.
+        { to: `${base}/diagnostics`, labelKey: 'base.tab_diagnostics', when: !!isOwner },
         { to: `${base}/curation`, labelKey: 'base.tab_curation', when: !!isOwner },
       ],
     },

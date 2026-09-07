@@ -77,8 +77,10 @@ describe('BaseLayout — quatre destinations', () => {
     renderLayout(listingWith('owner'));
     await userEvent.click(await screen.findByRole('link', { name: 'À compléter' }));
     const subs = await screen.findByRole('navigation', { name: 'À compléter' });
+    // L56 : la file des diagnostics sans bloc rejoint ce groupe, elle aussi reservee au
+    // proprietaire (la RPC le verifie de son cote).
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['À compléter', 'Propositions', 'Curation']);
+      .toEqual(['À compléter', 'Propositions', 'Diagnostics', 'Curation']);
   });
 
   test('le journal et les statistiques restent accessibles a un lecteur, ranges dans leur groupe', async () => {
