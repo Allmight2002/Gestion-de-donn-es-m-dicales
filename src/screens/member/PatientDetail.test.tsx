@@ -116,6 +116,29 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
+  // Regression release 177 : un gabarit SANS variable permanente visible masquait la carte
+  // ENTIERE, emportant avec elle le statut du dossier, la correction des donnees permanentes
+  // et la finalisation -- inatteignables depuis la fiche. La condition ne doit porter que sur
+  // la LISTE des variables, jamais sur les actions de la carte.
+  test('garde les actions permanentes quand le gabarit n a aucune variable de patient', async () => {
+    const sansVariablePatient = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [field({ fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer' })],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, sansVariablePatient);
+
+    expect(await screen.findByText('Jean Test')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
+    // La liste, elle, reste vide : la condition a ete DEPLACEE, pas supprimee.
+    expect(screen.queryByText('Sexe')).not.toBeInTheDocument();
+  });
+
   test('affiche l unite des variables numeriques dans la consultation', async () => {
     const consultationTemplateRepo = {
       async getVersion() {

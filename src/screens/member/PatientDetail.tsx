@@ -429,69 +429,71 @@ export function PatientDetail() {
         </fieldset>
       )}
 
-      {visiblePatientFields.length > 0 && (
-        <SectionCard
-          title={t('patient.permanent_section')}
-          actions={(
-            <span className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={patient.validationStatus} />
-              {canEdit && (
-                <button
-                  onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
-                  className="text-xs font-medium text-teal-700 hover:underline"
-                >
-                  {t('patient.edit_permanent')}
-                </button>
-              )}
-              {canEdit && patient.validationStatus !== 'curated' && (
-                <button
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    try { await patients.finalizePatient(patientId!); await load(); setError(null); }
-                    catch (e) { setError(errorMessage(e, t('common.error'))); }
-                    finally { setBusy(false); }
-                  }}
-                  className="text-xs font-medium text-teal-700 hover:underline"
-                >
-                  {t('patient.finalize')}
-                </button>
-              )}
-            </span>
-          )}
-        >
-          <div className="space-y-4">
-          {/* L56 : meme information NON BLOQUANTE qu'a la saisie, calculee dans LA VERSION
-              du dossier. Elle ne dit rien de sa completude et n'invite a rien changer. */}
-          <DiagnosisCoverageNotice
-            coverage={diagnosisCoverageOrNull(
-              patient.templateVersionId, patientVersion?.diagnosisContext, 'patient', patient.data,
-              patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
+      {/* L52 corrige : la condition de visibilite porte sur la LISTE des variables, jamais
+          sur la carte. Le statut du dossier, la correction des donnees permanentes et la
+          finalisation doivent rester atteignables meme quand aucune variable permanente
+          n'est visible -- gabarit sans variable de patient, ou toutes masquees par une regle. */}
+      <SectionCard
+        title={t('patient.permanent_section')}
+        actions={(
+          <span className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={patient.validationStatus} />
+            {canEdit && (
+              <button
+                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
+                className="text-xs font-medium text-teal-700 hover:underline"
+              >
+                {t('patient.edit_permanent')}
+              </button>
             )}
-          />
-          {groupFieldsBySection(visiblePatientFields, patientVersion?.sections).map((group) => (
-            <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
-              <legend className="px-1 text-sm font-semibold text-slate-700">
-                {sectionLabel(t, { sectionKey: group.key, label: group.label })}
-              </legend>
-              <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                {group.fields.map((f) => {
-                  const renderedUnit = unitOf(f, visiblePatientFields, t);
-                  return (
-                    <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
-                      <dt className="text-xs text-slate-500">
-                        {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
-                      </dt>
-                      <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields)}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </fieldset>
-          ))}
-          </div>
-        </SectionCard>
-      )}
+            {canEdit && patient.validationStatus !== 'curated' && (
+              <button
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try { await patients.finalizePatient(patientId!); await load(); setError(null); }
+                  catch (e) { setError(errorMessage(e, t('common.error'))); }
+                  finally { setBusy(false); }
+                }}
+                className="text-xs font-medium text-teal-700 hover:underline"
+              >
+                {t('patient.finalize')}
+              </button>
+            )}
+          </span>
+        )}
+      >
+        <div className="space-y-4">
+        {/* L56 : meme information NON BLOQUANTE qu'a la saisie, calculee dans LA VERSION
+            du dossier. Elle ne dit rien de sa completude et n'invite a rien changer. */}
+        <DiagnosisCoverageNotice
+          coverage={diagnosisCoverageOrNull(
+            patient.templateVersionId, patientVersion?.diagnosisContext, 'patient', patient.data,
+            patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
+          )}
+        />
+        {groupFieldsBySection(visiblePatientFields, patientVersion?.sections).map((group) => (
+          <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">
+              {sectionLabel(t, { sectionKey: group.key, label: group.label })}
+            </legend>
+            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+              {group.fields.map((f) => {
+                const renderedUnit = unitOf(f, visiblePatientFields, t);
+                return (
+                  <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
+                    <dt className="text-xs text-slate-500">
+                      {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
+                    </dt>
+                    <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields)}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </fieldset>
+        ))}
+        </div>
+      </SectionCard>
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>

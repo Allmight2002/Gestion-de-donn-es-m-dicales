@@ -14,6 +14,12 @@ import { exportBaseId, exportCohortId, hasCredentials, signIn } from './fixtures
 const exportReady = () => Boolean(exportBaseId() && exportCohortId());
 
 test.describe('parcours export critique (medecin)', () => {
+  // Le budget du test doit DEPASSER la somme de ses attentes serveur : 30 s pour la generation
+  // de l'export, 30 s pour le rechargement de l'historique, plus la connexion, la navigation et
+  // le telechargement. Avec les 30 s globales, l'assertion d'attente de l'export ne pouvait
+  // jamais consommer son propre budget : le test expirait avant elle.
+  test.describe.configure({ timeout: 120_000 });
+
   test.beforeAll(() => {
     if (!hasCredentials('MEDECIN') || !exportReady()) {
       test.skip(true, 'Fixture export indisponible : identifiants medecin + E2E_EXPORT_BASE_ID/E2E_EXPORT_COHORT_ID requis.');
