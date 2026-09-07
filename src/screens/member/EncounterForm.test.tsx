@@ -286,3 +286,71 @@ describe('EncounterForm — valeur proposée (L28)', () => {
     expect(screen.queryByText('proposé')).toBeNull();
   });
 });
+
+// F5 — une liste a SOUPAPE (« valeur hors liste ») rend le champ source et son compagnon
+// ENSEMBLE. Choisir une valeur controlee emet donc DEUX mises a jour dans le meme
+// gestionnaire : poser la valeur, puis effacer la proposition. Construites toutes deux sur
+// l'instantane du rendu, la seconde repartait d'un etat qui ignorait la premiere et
+// l'ecrasait : la case se decochait seule, et aucun bloc conditionnel ne s'ouvrait.
+const valveTemplateRepo = {
+  async getVersion() {
+    return {
+      version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+      fields: [
+        field({
+          fieldKey: 'diagnostic', label: 'Diagnostics', type: 'multiselect', displayOrder: 0,
+          allowedValues: ['tuberculose_pulmonaire', 'paludisme_grave'],
+          allowedOptions: [
+            { valueKey: 'tuberculose_pulmonaire', label: 'Tuberculose pulmonaire', isActive: true },
+            { valueKey: 'paludisme_grave', label: 'Paludisme grave', isActive: true },
+          ],
+        }),
+        // Sa seule presence declenche le rendu couple (`ChoiceWithProposal`).
+        field({ fieldKey: 'diagnostic_autre', label: 'Diagnostics — valeur proposée', type: 'text', displayOrder: 1 }),
+      ],
+      rules: [],
+    };
+  },
+} as unknown as TemplateRepository;
+
+function renderValveForm(patientRepo: PatientRepository) {
+  return render(
+    <I18nProvider>
+      <RepositoryProvider bases={baseRepo} templates={valveTemplateRepo} patients={patientRepo}>
+        <MemoryRouter initialEntries={['/bases/b1/patients/p1/encounters/new']}>
+          <Routes>
+            <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterForm />} />
+            <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+          </Routes>
+        </MemoryRouter>
+      </RepositoryProvider>
+    </I18nProvider>,
+  );
+}
+
+describe('EncounterForm — liste à soupape (F5)', () => {
+  afterEach(() => localStorage.clear());
+
+  test('une option cochée le reste, et part dans la fiche', async () => {
+    const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
+    renderValveForm(makePatientRepo(createEncounter));
+
+    const option = await screen.findByLabelText('Tuberculose pulmonaire');
+    await userEvent.click(option);
+    expect(option).toBeChecked();
+
+    fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
+    expect(createEncounter.mock.calls[0][1].data).toEqual({ diagnostic: ['tuberculose_pulmonaire'] });
+  });
+
+  test('une seconde option s ajoute à la première', async () => {
+    renderValveForm(makePatientRepo(vi.fn(async () => ({ id: 'e1' }))));
+
+    await userEvent.click(await screen.findByLabelText('Tuberculose pulmonaire'));
+    await userEvent.click(screen.getByLabelText('Paludisme grave'));
+    expect(screen.getByLabelText('Tuberculose pulmonaire')).toBeChecked();
+    expect(screen.getByLabelText('Paludisme grave')).toBeChecked();
+  });
+});

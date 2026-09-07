@@ -99,11 +99,21 @@ export function EncounterForm() {
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
   const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
 
+  // Un MEME gestionnaire peut emettre DEUX mises a jour : choisir une valeur controlee pose
+  // la valeur, puis efface la proposition compagnon (`ChoiceWithProposal`). Construite sur
+  // l'instantane du rendu, la seconde repartait d'un etat qui ignorait la premiere et
+  // l'ecrasait — la valeur choisie disparaissait sans erreur. On enchaine donc sur la
+  // derniere valeur connue, resynchronisee a chaque commit.
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; }, [values]);
+
   function updateEncounterValue(key: string, value: unknown, remove = false) {
-    const next = { ...values };
+    const current = valuesRef.current;
+    const next = { ...current };
     if (remove) delete next[key];
     else next[key] = value;
-    trackVisibilityWithdrawal(values, next);
+    valuesRef.current = next;
+    trackVisibilityWithdrawal(current, next);
     setValues(next);
   }
 

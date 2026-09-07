@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
@@ -75,6 +75,10 @@ export function CurationTask() {
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const { keys: patientDiagnosticWithdrawalKeys, track: trackPatientVisibilityWithdrawal } = useVisibilityWithdrawal(rules, patientFields, sections);
   const { keys: encounterDiagnosticWithdrawalKeys, track: trackEncounterVisibilityWithdrawal } = useVisibilityWithdrawal(rules, encounterFields, sections);
+  // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
+  // ne doit pas repartir de l'instantane du rendu.
+  const patientDataRef = useRef(patientData);
+  useEffect(() => { patientDataRef.current = patientData; }, [patientData]);
 
   // L32 — affichage conditionnel. Le poste de curation nourrit une fiche FINALISEE : une
   // variable masquee ne s'y saisit pas, et sa valeur ne part pas au serveur, qui la refuserait.
@@ -187,10 +191,12 @@ export function CurationTask() {
   }
 
   function updatePatientValue(key: string, value: unknown, remove = false) {
-    const next = { ...patientData };
+    const current = patientDataRef.current;
+    const next = { ...current };
     if (remove) delete next[key];
     else next[key] = value;
-    trackPatientVisibilityWithdrawal(patientData, next);
+    patientDataRef.current = next;
+    trackPatientVisibilityWithdrawal(current, next);
     setPatientData(next);
   }
 
@@ -200,6 +206,16 @@ export function CurationTask() {
       const next = { ...encounter, ...patch };
       if (patch.data) trackEncounterVisibilityWithdrawal(encounter.data, patch.data);
       return next;
+    }));
+  }
+
+  /** Meme regle pour une rencontre du brouillon : le patch part de la donnee la plus recente. */
+  function updateEncounterData(i: number, mutate: (data: Record<string, unknown>) => Record<string, unknown>) {
+    setEncounters((list) => list.map((encounter, index) => {
+      if (index !== i) return encounter;
+      const data = mutate(encounter.data);
+      trackEncounterVisibilityWithdrawal(encounter.data, data);
+      return { ...encounter, data };
     }));
   }
 
@@ -481,11 +497,11 @@ export function CurationTask() {
                     hiddenKeys={curated.encounterHidden[i]}
                     sections={sections}
                     values={enc.data}
-                    onChange={(k, v) => updateEncounter(i, { data: { ...enc.data, [k]: v } })}
-                    onRemove={(key) => {
-                      const { [key]: _removed, ...remaining } = enc.data;
-                      updateEncounter(i, { data: remaining });
-                    }}
+                    onChange={(k, v) => updateEncounterData(i, (data) => ({ ...data, [k]: v }))}
+                    onRemove={(key) => updateEncounterData(i, (data) => {
+                      const { [key]: _removed, ...remaining } = data;
+                      return remaining;
+                    })}
                   />
                 </div>
               ))}
