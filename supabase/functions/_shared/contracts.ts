@@ -39,7 +39,7 @@ export function validationResponse(error: unknown): Response {
     status: validation.status,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-meddata-diagnosis-contract',
       'content-type': 'application/json',
     },
   });

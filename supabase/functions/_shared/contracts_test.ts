@@ -40,7 +40,7 @@ Deno.test('validation responses expose their safe message to browser callers', a
   assertEquals(response.headers.get('access-control-allow-origin'), '*');
   assertEquals(
     response.headers.get('access-control-allow-headers'),
-    'authorization, x-client-info, apikey, content-type',
+    'authorization, x-client-info, apikey, content-type, x-meddata-diagnosis-contract',
   );
   assertEquals(await response.json(), { error: 'Identifiant invalide' });
 });
