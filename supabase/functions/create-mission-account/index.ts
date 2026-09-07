@@ -81,7 +81,8 @@ Deno.serve(async (req: Request) => {
       status: 500,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-meddata-diagnosis-contract',
+        'Access-Control-Allow-Headers':
+          'authorization, x-client-info, apikey, content-type, x-meddata-diagnosis-contract',
         'content-type': 'application/json',
       },
     });
