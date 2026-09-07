@@ -268,14 +268,31 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
         order by p.proname`,
     )).rows.map((r) => r.proname as string);
     expect(readers).toEqual([
+      // L55 : refuse un pilote diagnostique calcule, et refuse de declarer couvert un bloc
+      // dont aucune variable n'est saisissable. Il LIT la colonne pour ecarter les variables
+      // calculees -- il n'analyse jamais leur contenu.
+      'assert_diagnosis_configuration',
       'base_completeness_stats',
       'base_completion_queue_page',
       'copy_template_fields',
+      // L55 : meme lecture que ci-dessus, cote calcul de couverture. L56 en a extrait le corps
+      // pour que la file de suivi resolve le contexte UNE fois par version au lieu d'une fois
+      // par dossier ; `diagnosis_coverage` n'est plus que l'appel qui resout ce contexte, et
+      // ne mentionne donc plus la colonne.
+      'diagnosis_coverage_in_context',
       'download_base_snapshot',
       'enforce_template_field_formula',
       'enforce_template_field_formula_operand',
+      // L32 x L35 : refuse d'ajouter une formule a une variable qui occupe deja, dans une
+      // regle, une position ou un calcul ne peut pas fonctionner. Il LIT `new.formula` pour
+      // savoir s'il a quelque chose a verifier -- il n'analyse jamais son contenu.
+      'enforce_template_field_formula_rules',
       'guard_template_field_update',
       'missing_required_fields',
+      // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
+      // seule lecture de la colonne partagee par le refus a l'ecriture d'une regle et par le
+      // diagnostic d'une version.
+      'rule_calculated_field_label',
       'update_template_field',
     ]);
   });

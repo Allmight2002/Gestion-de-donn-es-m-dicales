@@ -14,6 +14,17 @@
 - **Révisé le 2026-08-24** : six prompts ajoutés (L45 à L50), issus de
   [`chantiers-export-analyse.md`](chantiers-export-analyse.md). L45 à L49 forment une file
   séquentielle ; L50 est différé.
+- **Révisé le 2026-09-02** : état des lots réaligné sur
+  [`lots-paralleles.md`](lots-paralleles.md) — 31 prompts de lots soldés sont désormais barrés
+  (L4, L11 à L25, L27 à L33, L35 à L37, L45 à L49) et l'ancien tableau d'état de août est replié.
+  Ne restent à lancer que **L34**, **L38 à L44**, **L50** (différé), **L51 à L57**, **O6** et **O7**.
+- **Révisé le 2026-09-05** : quatre prompts ajoutés (**L51 à L54**) puis corrigés
+  après revue contradictoire, issus de
+  [`spec-blocs-pathologies.md`](spec-blocs-pathologies.md) et de la synthèse de décision
+  [`decision-blocs-pathologies-2026-09-03.md`](decision-blocs-pathologies-2026-09-03.md).
+  Ordre d’exécution : **L51 et L54** en parallèle, puis **L52**, puis ou en même temps
+  **L53**. L51 et L52 écrivent dans les mêmes fichiers : jamais ensemble. L54 doit
+  précéder L52 et L53, qui reposent sur la notion de bloc racine.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -42,19 +53,41 @@ rapport. **L14, L16, L20 et L31 doivent tourner seuls.** (L26 est clos ; voir pl
 > deux `src/domain/imageUpload.ts` — ne jamais les lancer ensemble non plus. Le reste (L38, L39,
 > L43) est isolé et parallélisable avec tout.
 
-> **L45 à L49 ne sont pas parallélisables entre eux** : ils écrivent dans le contrat et le
-> générateur d'export. L47 requalifie L36 et L37 n'est pas à lancer pour le profil Analyse. **L50**
-> est différé et ne doit pas retarder le jalon MVP L49.
+> **L45 à L49 sont livrés** (contrat serveur le 2026-08-28, choix du profil dans l'interface le
+> 2026-09-01) : leurs prompts sont barrés et ne doivent plus être relancés. Ils n'étaient pas
+> parallélisables entre eux — ils écrivent tous dans le contrat et le générateur d'export.
+> **L50** reste différé ; il n'a jamais eu à retarder le jalon MVP, désormais atteint.
 
 Chaque prompt est autonome : le copier tel quel, dans une session ouverte sur le
 dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État au 2026-08-10
+## État documentaire au 2026-09-05
 
-**Vérifier cette liste avant de lancer un thread**, pour ne pas faire refaire du
-travail déjà fait :
+**Vérifier cet état avant de lancer un thread**, pour ne pas faire refaire du travail déjà fait.
+La source de vérité du suivi reste le tableau et la section « Ordre suggéré » de
+[`lots-paralleles.md`](lots-paralleles.md) ; ce qui suit n'en est qu'un résumé.
+
+| Reste à lancer | Objet |
+|---|---|
+| **L34** | Filtre d'une variable Diagnostic à valeur unique |
+| **L38 à L44** | Lots issus de l'audit du 2026-08-18 (L38 prioritaire : `inspection=paused` en production) |
+| **L50** | Concepts diagnostiques dans l'export — **différé**, il attend un référentiel gouverné |
+| **L51**, **L54** | Blocs cliniques conditionnels : opérateur d’appartenance et deux niveaux de sections — parallélisables entre eux |
+| **L55** | Configuration diagnostique et couverture — après L51/L54/L52 |
+| **L56** | Socle et suivi — après L55 ; preuve complète avec L53 |
+| **L57** | Cadrage différé de la reprise/notifications — après pilote L56 |
+| **L52** | Visibilité au niveau bloc — **après L51 et L54**, jamais avec L51 |
+| **L53** | Projection d’export par blocs — **après L54** ; ne pas lancer avec L50 |
+| **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
+
+**Tout le reste est soldé** : L1 à L33 (dont L26, clos sans exécution), L35, L36, L37 (écarté du
+profil Analyse), L45 à L49 et D10. Leurs prompts sont **barrés** ci-dessous et conservés pour
+mémoire — ne pas les relancer.
+
+<details>
+<summary>Tableau d'origine du 2026-08-10 (conservé pour mémoire)</summary>
 
 | Lot | État |
 |---|---|
@@ -68,21 +101,10 @@ travail déjà fait :
 | L9 | **Livré** le 2026-08-01 (migration, UI, staging et cible technique production). Prompt conservé pour mémoire. |
 | L10 | **Livré** le 2026-07-29. Prompt conservé pour mémoire. |
 
-> ⚠️ **Le tableau ci-dessus est daté du 2026-08-10 et a été dépassé.** L'état qui fait foi est la
-> section « Ordre suggéré » de [`lots-paralleles.md`](lots-paralleles.md), tenue à jour : L4, L12,
-> L13 et L15 à L19 y sont également marqués intégrés, et L11 est en travail. **Les lots restant à
-> lancer sont L14, L20 à L26 (listes de diagnostics) et L27 à L33 (moteur de formulaires).**
-> Vérifier là-bas avant d'ouvrir un thread.
+Ce tableau ne couvrait que L1 à L10 et a été dépassé dès le 2026-08-13. Il est conservé pour
+l'historique, pas comme état courant.
 
-**La liste ci-dessous date de la révision du 2026-08-10** : L4, L11, L12, L13, L14, les cinq
-**L15, L16, L17, L18 et L19** (campagne de vérification des flux multi-comptes, cf.
-[`chantiers-interactions-comptes.md`](chantiers-interactions-comptes.md)), et les sept nouveaux
-**L20 à L26** (listes de diagnostics, cf.
-[`spec-variables-multivaluees.md`](spec-variables-multivaluees.md)).
-
-> **L16 est prioritaire parmi les nouveaux** : il porte une décision produit déjà tranchée par le
-> porteur, que rien ne traduit encore en base. Tant que la migration n'existe pas, la
-> spécification et le code se contredisent.
+</details>
 
 ## Le déploiement n'est pas automatique
 
@@ -194,7 +216,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L45 — Contrat des profils Export Analyse / Export complet
+## ~~L45 — Contrat des profils Export Analyse / Export complet~~ — **livré le 2026-08-28 ; choix du profil dans l’interface le 2026-09-01**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -234,7 +256,7 @@ sans demande explicite.
 
 ---
 
-## L46 — Identifiants analytiques, colonnes et feuille `Modalités`
+## ~~L46 — Identifiants analytiques, colonnes et feuille `Modalités`~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, puis L46 dans
@@ -271,7 +293,7 @@ sans demande explicite.
 
 ---
 
-## L47 — Multiselect en indicatrices binaires dans le profil Analyse
+## ~~L47 — Multiselect en indicatrices binaires dans le profil Analyse~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L47
@@ -311,7 +333,7 @@ sont verts. Ne committe, ne pousse et ne déploie rien sans demande explicite.
 
 ---
 
-## L48 — Dates XLSX natives, CSV ISO et unités des durées
+## ~~L48 — Dates XLSX natives, CSV ISO et unités des durées~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L48
@@ -343,7 +365,7 @@ explicite.
 
 ---
 
-## L49 — Dictionnaire simplifié et feuille `Métadonnées`
+## ~~L49 — Dictionnaire simplifié et feuille `Métadonnées`~~ — **livré le 2026-08-28**
 
 ```
 Tu reprends un chantier sur MedData. Lis les instructions du dépôt, la fiche L49
@@ -417,6 +439,503 @@ et ne déploie rien sans demande explicite.
 
 ---
 
+> **Révision terrain du 2026-09-05 :** lire aussi `docs/spec-collecte-diagnostique.md`.
+> L51 couvre la terminologie exacte ; L52 confirme les retraits de valeurs ; L53 conserve
+> les diagnostics non couverts. L55/L56 complètent le parcours ; L57 est un cadrage différé.
+> Ces prompts ne constituent pas une autorisation de déploiement.
+
+## L51 — Opérateur d'appartenance dans le moteur de règles
+
+```
+Lis les instructions du dépôt, puis §3 de docs/spec-blocs-pathologies.md et §4
+(décision D4) de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi tes
+questions AVANT de commencer si un point du contrat te paraît ambigu.
+
+CADRAGE PRODUIT. Un bloc est une situation clinique conditionnelle, pas
+nécessairement une pathologie. Une base ne regroupe ces blocs que s'ils partagent
+finalité, équipe, droits, protocole et conservation ; ce lot ne fusionne aucune
+base et ne crée aucune identité inter-bases.
+
+CONTEXTE. Le moteur de règles n'a aucune façon d'exprimer « ou » sur les valeurs
+d'un même pilote. Plusieurs règles visant la même variable se combinent en ET
+dans visibility_hidden_fields,
+et l'opérateur `in` de rule_apply_op compare `a #>> '{}'` : sur une liste, il
+compare le texte du tableau entier au lieu de ses éléments. Une variable utile à
+deux valeurs de ce pilote est donc placée dans le tronc commun et a besoin d'une
+seule règle de champ nommant ses différents déclencheurs.
+
+OBJECTIF.
+
+1. Ajouter un opérateur de condition `contains_any` : vrai si AU MOINS UN élément
+   d'un pilote multivalué figure dans la liste configurée ; pour un pilote
+   scalaire, vrai si sa valeur y figure. Laisser `in` strictement inchangé.
+2. Rendre faux, sans exception, les cas suivants : pilote absent, pilote null,
+   liste du pilote vide, et valeur manquante codifiée {"__missing__": ...}. Une
+   raison de valeur manquante ne déclenche jamais un bloc.
+3. Comparer des codes, jamais des libellés. Couvrir aussi `terminology` simple
+   et multiple en extrayant les codes des objets valides, sans coercition JSON.
+   Correspondance exacte dans la release explicitement liée à la configuration,
+   sans inférence de famille CIM ni dépendance à L50. Voir §2 du complément.
+   L51 livre aussi if.terminologyReleaseId, obligatoire pour ces règles, avec
+   validation et recopie ; L55 vérifiera ensuite sa cohérence avec le pilote.
+4. Refuser les types autres que select/multiselect/terminology, une liste
+   configurée absente ou vide, les doublons et les codes absents des options ou
+   de la release résolue. Les formes diagnostiques invalides ne déclenchent
+   aucun bloc. Ne jamais réinterpréter les anciennes données avec une nouvelle release.
+5. NE PAS ajouter l'opérateur à la liste des comparaisons
+   {operator,left_field,right_field} : il n'a de sens que dans une clause `if`.
+6. Implémenter la même sémantique dans src/domain/validation.ts, où vivent
+   `applyOp` et `hiddenFieldKeys`. Mettre aussi à jour templateRules.ts pour le
+   type et la validation de forme, RuleForm.tsx et les traductions fr/en. La
+   PARITÉ stricte avec PL/pgSQL est la propriété centrale du lot.
+7. Une modification ultérieure des options du pilote doit relancer la validation
+   des règles de la version. Refuser de retirer un code encore cité par
+   `contains_any`, y compris par une voie d'écriture directe autorisée. Revalider
+   également l'ensemble lors de publish_template_version.
+8. Pour une cible gouvernée par au moins une règle `contains_any`, refuser côté
+   serveur une valeur lorsque la cible est masquée, quel que soit le statut de la
+   fiche. Borne ce durcissement au nouvel opérateur : ne change pas la sémantique
+   des règles de champ historiques.
+
+LIMITE DE CONTRAT. `contains_any` exprime un OR entre plusieurs valeurs d'un MÊME
+champ. Il n'ajoute ni groupe de conditions ni OR entre plusieurs champs pilotes ;
+ce langage général est hors de L51.
+
+COMPATIBILITÉ DESCENDANTE — ÉTABLIE PAR LA REVUE. Le client actuel rejette
+l'opérateur inconnu dans validateRule, ignore la règle d'affichage et MONTRE la
+cible ; le serveur à jour peut la masquer. Documente ce comportement. Le
+support serveur additif est déployé d'abord sans règle `contains_any`, puis le
+frontend compatible ; aucune version utilisant l'opérateur n'est publiée avant
+sa disponibilité. Une release coordonnée peut regrouper ces deux étapes, mais
+l'activation reste dernière. Si un ancien client tente malgré tout de persister
+une valeur masquée, le serveur refuse avec une erreur structurée demandant un
+rafraîchissement ; il n'efface rien en silence.
+
+SÉCURITÉ DES DONNÉES : nouvelle migration horodatée, additive ; ne modifie aucune
+migration déjà appliquée ; ne fais pas reposer la décision sur l'interface. Toute
+nouvelle fonction SECURITY DEFINER doit être justifiée dans
+supabase/security-definer-allowlist.json et passer le contrôle d'ACL.
+
+COUVERTURE EXIGÉE : pilote multivalué avec un élément correspondant, avec aucun,
+et vide ; pilote scalaire correspondant et non correspondant ; pilote absent,
+null et valeur manquante codifiée ; refus de définition ; retrait ultérieur d'un
+code référencé refusé ; parité serveur/client sur les mêmes jeux de valeurs ;
+client ancien montrant la cible mais ne pouvant enregistrer sa valeur masquée en
+draft/complete/curated ; une base sans règle `contains_any` se comporte à
+l'identique.
+
+TERMINÉ SIGNIFIE : opérateur disponible côté serveur et côté client avec la même
+sémantique, refus de définition explicites, compatibilité descendante documentée,
+tests ciblés verts. Ne committe, ne pousse et ne déploie rien sans demande
+explicite.
+```
+
+---
+
+## L54 — Deux niveaux de sections : bloc et sous-section
+
+```
+Ce lot est INDÉPENDANT de L51 et peut tourner en parallèle. Il doit être fusionné
+AVANT L52 et AVANT L53, qui reposent tous deux sur la notion de bloc racine.
+
+Lis les instructions du dépôt, puis §4 de docs/spec-blocs-pathologies.md et la
+décision D9 de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi tes
+questions AVANT de commencer.
+
+CADRAGE PRODUIT. Un bloc est une situation clinique conditionnelle, pas
+nécessairement une pathologie. Une base ne regroupe ces blocs que s'ils partagent
+finalité, équipe, droits, protocole et conservation ; ce lot ne fusionne aucune
+base et ne crée aucune identité inter-bases.
+
+CONTEXTE. Le chantier des blocs cliniques conditionnels fait d'un bloc une
+`template_section`. Or template_section est PLATE : section_key, label,
+display_order, sans hiérarchie. Le seul niveau de regroupement disponible est
+donc consommé par le bloc, et un bloc de 20 variables devient une liste continue
+sans séparation clinique / biologie / imagerie / traitement. Aucune convention de
+nommage ne remplace ce niveau : un préfixe dans section_key deviendrait porteur
+de sémantique, ce que le produit refuse ailleurs.
+
+OBJECTIF.
+
+1. Ajouter `template_section.parent_section_id`, nullable, auto-référence,
+   `on delete no action deferrable initially deferred`. Garantir la MÊME VERSION
+   par une FK composite
+   `(parent_section_id, template_version_id)` vers
+   `(id, template_version_id)`, avec la clé unique technique nécessaire. Parent
+   nul = BLOC ; parent non nul = SOUS-SECTION. `section_key` reste unique par
+   version, tous niveaux confondus. Ajouter l'index de lecture par niveau. Le
+   caractère différable doit refuser un parent supprimé seul au commit tout en
+   laissant la cascade d'une version retirer parents et enfants ensemble ; ne le
+   remplace pas par `restrict`, qui n'est pas différable.
+2. Rendre le TRONC COMMUN explicitement créable dans l'éditeur :
+   `template_field.section` devient nullable ; `section_id=null` ET
+   `section=null` est l'état canonique.
+   Un ancien `section_id=null` avec un code `section` non nul reste un
+   rattachement non résolu sur le filet, jamais un état nouvellement créé.
+   Adapter contrats TypeScript, RPC, éditeur et miroir sans réécrire les lignes
+   existantes.
+3. Refuser côté serveur : une sous-section prise comme parent (UN SEUL niveau),
+   l'auto-parenté et la suppression d'un bloc portant encore des sous-sections.
+   Sérialiser les mutations de hiérarchie par verrou de template_version (ou
+   équivalent) : deux transactions `A -> B` / `B -> A` ne doivent jamais toutes
+   deux réussir sur des lectures périmées.
+4. GARDE SUPPLÉMENTAIRE. guard_template_section_write refuse DÉJÀ la suppression
+   d'une section non vide. Le nouveau risque est une section vidée mais encore
+   ciblée par `then.section`. Refuser la suppression OU la transformation en
+   sous-section d'un tel bloc, pour ne laisser aucune règle orpheline. Les gardes
+   existante et nouvelle ne doivent pas bloquer la cascade explicite d'une version
+   ou d'un gabarit entier.
+5. Laisser une variable s'attacher directement à un bloc qui possède par ailleurs
+   des sous-sections : refuser ce cas forcerait à créer des sous-sections
+   artificielles. Ordre de rendu normatif : variables directes du bloc d'abord,
+   par display_order, puis les sous-sections par display_order avec leurs
+   variables.
+6. RECOPIE DE VERSION EN DEUX PASSES. Insérer d'abord toutes les sections par
+   section_key comme aujourd'hui, PUIS résoudre parent_section_id en rapprochant
+   la section_key du parent source. Une seule passe échouerait ou produirait un
+   pointeur vers l'ancienne version. Redéfinis copy_template_fields. Ne redéfinis
+   les wrappers duplicate_template_version, create_next_personal_template_version,
+   promote_template_to_global et create_base_from_model_observation que si leur
+   corps courant l'exige : ils appellent déjà la primitive. Le chemin explicite de
+   create_template_bundle accepte `{key,label,parentKey}` et résout les parents en
+   seconde passe. TESTER les six voies, même si elles ne sont pas toutes réécrites.
+7. Éditeur : proposer « Tronc commun », créer une sous-section sous un bloc,
+   réordonner des FRÈRES et déplacer une section d'un niveau à l'autre uniquement
+   sur une version inutilisée. Les commandes de réordonnancement/déplacement sont
+   des RPC atomiques ; aucune orchestration multi-écritures dans le navigateur.
+   Avant commit, elles renumérotent TOUTE la version selon le préordre canonique,
+   pour que display_order reste un ordre total lisible par les anciens clients.
+   Conserver la RPC plate historique pour les anciens clients : comportement
+   inchangé sur une version plate ; sur une hiérarchie, elle ne reparente rien,
+   reprend seulement l'ordre relatif entre frères et recalcule le préordre.
+8. Transporter `parentSectionKey` dans `sections` et `sectionsByVersion` de
+   l'instantané hors-ligne. Un ancien client ignore le champ ; le client récent
+   reconstruit le même arbre en ligne et hors ligne.
+
+À VÉRIFIER, PAS À SUPPOSER : le trigger de synchronisation du miroir texte
+`template_field.section` doit porter la section_key de la FEUILLE — sous-section
+si la variable y est attachée, bloc sinon — ou null pour le tronc commun. Il doit
+distinguer ce null intentionnel d'un ancien code non résolu. Conserver un ordre
+total déterministe en préordre : un client non rafraîchi voit alors une liste
+plate cohérente et place le tronc commun sur son filet « Autre », sans perte.
+
+SÉCURITÉ DES DONNÉES : nouvelle migration horodatée, additive ; aucune migration
+appliquée n'est modifiée ; aucune donnée clinique réécrite ; toute base existante
+conserve ses sections telles quelles, devenues des blocs sans sous-section, et
+aucun formulaire ne change d'apparence au déploiement.
+
+COMPATIBILITÉ. Déployer d'abord l'extension serveur avec tous les parents existants
+nuls et les miroirs existants inchangés, puis le client/PWA compatible. Ne créer ni
+tronc commun intentionnel ni sous-section avant cette seconde étape. Une release
+coordonnée peut regrouper les deux, mais l'activation dans l'éditeur reste dernière.
+
+COUVERTURE EXIGÉE : parent d'une autre version, sous-section prise comme parent,
+auto-parenté, deux reparentages concurrents formant un cycle, suppression d'un
+bloc à sous-sections, suppression/reparentage d'un bloc cible d'une règle — tous
+refusés ; suppression d'une version et d'un gabarit continuant de cascader ;
+recopie sur LES SIX voies sans pointeur inter-versions ; tronc commun canonique et
+ancien code non résolu ; miroir aux deux niveaux ; payload parentKey ; rollback
+atomique du déplacement/réordonnancement ; renumérotation globale en préordre ;
+RPC historique sans reparentage implicite ; ordre déterministe pour ancien client ;
+instantané hors-ligne hiérarchique ; base plate strictement inchangée.
+
+TERMINÉ SIGNIFIE : deux niveaux bornés et sûrs sous concurrence, tronc commun
+créable explicitement, commandes atomiques, recopie fidèle sur les six voies,
+instantané hors-ligne hiérarchique, gardes de suppression/reparentage en place, base
+existante inchangée, tests ciblés verts, docs/schema-etat-final.md régénéré. Ne
+committe, ne pousse et ne déploie rien sans demande explicite.
+```
+
+---
+
+## L52 — Visibilité au niveau bloc
+
+```
+AMENDEMENT TERRAIN : lire §2 de docs/spec-collecte-diagnostique.md. Lorsqu'un
+retrait de diagnostic masque des valeurs, présenter l'impact et obtenir une
+confirmation explicite avant soumission ; annuler conserve les saisies. Tester
+conflit et échec réseau. Aucun effacement au simple changement du sélecteur.
+
+NE LANCE PAS CE LOT AVANT QUE L51 ET L54 SOIENT FUSIONNÉS. L51 apporte l'opérateur
+`contains_any` ; L54 apporte la distinction bloc / sous-section sans laquelle une
+règle visant « un bloc » n'a pas de sens. L51 et L52 écrivent en outre dans les
+mêmes fichiers — moteur de règles, src/domain/templateRules.ts,
+src/domain/validation.ts, src/screens/staff/RuleForm.tsx — donc jamais ensemble.
+
+Lis les instructions du dépôt, puis §5 de docs/spec-blocs-pathologies.md et les
+décisions D2, D3 et D8 de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi
+tes questions AVANT de commencer.
+
+CADRAGE PRODUIT. Un bloc est une situation clinique conditionnelle, pas
+nécessairement une pathologie. Une base ne regroupe ces blocs que s'ils partagent
+finalité, équipe, droits, protocole et conservation ; ce lot ne fusionne aucune
+base et ne crée aucune identité inter-bases.
+
+CONTEXTE. Une règle d'affichage vise `then.field`, jamais une section. Simuler 12
+blocs cliniques de 20 variables impose donc environ 240 règles, avec un mode
+de défaillance silencieux : une règle oubliée n'échoue pas, elle affiche la
+variable à tout le monde. La visibilité de bloc ramène ce chiffre à 12.
+
+OBJECTIF.
+
+1. Accepter { "then": { "section": <section_key>, "operator": "visible" } } à côté
+   de la forme existante visant un champ. La clé est celle d'un BLOC — section
+   sans parent — et elle est STABLE, jamais l'UUID.
+2. Quand la règle n'est pas satisfaite, masquer TOUTES les variables du bloc dans
+   cette version : celles attachées directement au bloc ET celles de toutes ses
+   sous-sections. Une sous-section est visible si et seulement si son bloc l'est ;
+   elle ne porte jamais de condition propre.
+3. Ne jamais concerner les variables sans section : elles sont le tronc commun.
+   Une variable partagée entre plusieurs valeurs du même pilote y porte sa propre
+   règle de CHAMP `contains_any` ; ne l'enferme jamais dans un bloc qui la
+   masquerait pour l'un de ses autres usages. Le partage entre pilotes différents
+   reste hors de cette v1.
+4. Cumuler les deux mécanismes : une variable est masquée si son bloc est masqué
+   OU si sa propre règle échoue. Le point fixe existant doit continuer de
+   converger, cascade comprise (un pilote masqué vaut pilote absent).
+5. N'accepter que `visible` pour une cible de section. PAS de `required` au
+   niveau bloc : c'est une autre sémantique, hors périmètre.
+6. Refuser à la définition : section_key inexistante ; section_key désignant une
+   SOUS-SECTION, seul un bloc pouvant porter une règle ; pilote APPARTENANT au
+   bloc qu'il commande, sous-sections comprises (il se masquerait lui-même et le
+   bloc ne réapparaîtrait jamais) ; bloc contenant des variables d'un scope
+   différent de celui du pilote — le refus est préféré à une application
+   partielle silencieuse.
+7. Étendre assert_visibility_acyclic : une règle de bloc crée une arête du pilote
+   vers CHAQUE variable du bloc, SOUS-SECTIONS COMPRISES. La détection doit
+   rester faite à l'enregistrement de la règle, comme aujourd'hui. C'est la
+   partie la plus délicate du lot, traite-la explicitement.
+8. Faire de ces contrôles des INVARIANTS DE VERSION. Créer un validateur serveur
+   unique, appelé après écriture d'une règle, après ajout/déplacement/changement
+   de scope d'un champ, après reparentage d'une section, après modification des
+   options d'un pilote contains_any, et par publish_template_version. Couvrir les
+   écritures directes autorisées par trigger ; une RPC multi-écritures peut
+   valider à la fin de sa transaction. Sérialiser ces mutations par version.
+9. Refléter la même sémantique dans src/domain/validation.ts, où vivent applyOp et
+   hiddenFieldKeys, et dans templateRules.ts pour le contrat. Permettre de choisir
+   un bloc comme cible dans RuleForm.tsx ; ne jamais proposer une sous-section.
+10. Refuser côté serveur une valeur appartenant à un BLOC masqué QUEL QUE SOIT le
+   statut de la fiche, brouillon compris. Ce durcissement est limité aux nouvelles
+   règles de bloc : ne change pas rétroactivement la sémantique des règles de champ
+   existantes. Erreur structurée, aucun effacement serveur silencieux.
+
+DEUX VÉRIFICATIONS À FAIRE, ET À CORRIGER DANS CE LOT SI ELLES ÉCHOUENT.
+  a) Le décompte des valeurs effacées annoncé AVANT enregistrement doit couvrir
+     L'INTÉGRALITÉ du bloc, sous-sections comprises, et pas seulement les
+     variables visées nommément par une règle. À 20 variables par bloc, un
+     effacement non annoncé serait une régression grave.
+  b) Un bloc dont toutes les variables sont masquées ne doit rien rendre, ni son
+     titre ni son cadre ; une sous-section sans variable visible non plus.
+
+SÉCURITÉ DES DONNÉES : nouvelle migration horodatée, additive ; aucune migration
+appliquée n'est modifiée ; le gel de version reste en vigueur (une règle ne
+s'ajoute pas à une version portant des données) ; la duplication d'une version
+doit recopier les règles de bloc par `section_key` stable et vérifier que chaque
+clé se résout vers un bloc de la nouvelle version.
+
+COMPATIBILITÉ. Le client actuel exige then.field et ignore donc then.section : il
+montre un bloc que le serveur peut masquer. Déployer le support serveur additif
+sans règle de bloc active, puis frontend + support PWA ; ne publier aucune version
+utilisant une règle de bloc avant cette seconde étape. Une release coordonnée peut
+regrouper les deux, mais l'activation reste dernière. Le filet serveur sur les
+brouillons refuse ensuite une écriture issue d'un ancien client en demandant un
+rafraîchissement.
+
+COUVERTURE EXIGÉE : bloc masqué masquant toutes ses variables, sous-sections
+comprises ; variable sans section jamais masquée ainsi ; cumul bloc + règle
+propre ; cascade et convergence ; les quatre refus de définition ; cycle détecté à
+l'enregistrement ; une variable masquée par bloc n'est jamais exigée par la
+complétude ; refus serveur d'une fiche portant la valeur d'une variable d'un bloc
+masqué ; duplication de version ; rendu à deux niveaux et décompte d'effacement
+côté web ; mutations ultérieures de champ/section/options qui tentent de créer un
+pilote interne, un scope mixte ou un cycle ; deux mutations concurrentes ; refus
+d'une valeur de bloc masqué en draft/complete/curated ; ancien client montrant la
+cible mais ne pouvant pas persister une valeur interdite.
+
+TERMINÉ SIGNIFIE : 12 blocs se définissent avec 12 règles quel que soit le nombre
+de sous-sections, les invariants restent vrais après toute mutation et sous
+concurrence, l'effacement est annoncé intégralement, serveur et client décident
+pareil, un ancien client échoue explicitement sans perte, tests ciblés verts. Ne
+committe, ne pousse et ne déploie rien sans demande explicite.
+```
+
+---
+
+## L53 — Projection d'export par blocs
+
+```
+AMENDEMENT TERRAIN : lire §2 de docs/spec-collecte-diagnostique.md. Le diagnostic
+du tronc commun reste exporté ; l'absence de bloc n'exclut pas un cas éligible.
+Ne pas confondre projection de colonnes et filtre de population.
+
+NE LANCE PAS CE LOT AVANT QUE L54 SOIT FUSIONNÉ : la projection filtre sur le BLOC
+RACINE, notion qu'apporte L54. En revanche L53 ne dépend ni de L51 ni de L52 — il
+peut être livré avant que les règles de bloc n'existent, sur des blocs pilotés par
+de simples cases à cocher. Il partage exportContract.ts et handler.ts avec L50,
+différé : ne jamais lancer L53 et L50 ensemble.
+
+Lis les instructions du dépôt, puis §6 de docs/spec-blocs-pathologies.md et la
+décision D6 de docs/decision-blocs-pathologies-2026-09-03.md. Pose-moi tes
+questions AVANT de commencer.
+
+CADRAGE PRODUIT. Un bloc est une situation clinique conditionnelle, pas
+nécessairement une pathologie. Une base ne regroupe ces blocs que s'ils partagent
+finalité, équipe, droits, protocole et conservation ; ce lot ne fusionne aucune
+base et ne crée aucune identité inter-bases.
+
+CONTEXTE. L'export rend l'union de toutes les variables de la population. Avec 12
+blocs cliniques dans une même base, le fichier devient large et clairsemé,
+et rien ne permet d'extraire « le tronc commun plus une pathologie ». Le contrat
+porte DÉJÀ la section de chaque variable (champs `section` et `sectionLabel` de
+ExportField), et toute la construction des colonnes, du dictionnaire, de la
+feuille Modalités et des limites part d'un SEUL tableau de variables dans le
+handler. Il manque un filtre, pas une architecture.
+
+OBJECTIF.
+
+1. Porter les DEUX niveaux dans ExportField. `section` et `sectionLabel` gardent
+   leur sens actuel — la FEUILLE, donc la sous-section quand il y en a une — et
+   deux champs sont ajoutés pour la racine : `blockKey` et `blockLabel`. Pour une
+   base à sections plates, blockKey === section : la compatibilité descendante est
+   acquise par construction. Pour le tronc commun ou un rattachement ancien non
+   résolu, blockKey et blockLabel sont null.
+2. Étendre export_options avec :
+     { "sectionProjection": { "mode": "all" | "selected",
+                              "blockKeys": ["..."] } }
+   `all` est le défaut et reproduit exactement le comportement actuel. L'absence
+   de sectionProjection équivaut à `all`. Les clés désignent des BLOCS, jamais des
+   sous-sections.
+3. Filtrer sur `blockKey`, jamais sur la feuille : sélectionner « tuberculose »
+   doit ramener les variables de la sous-section « tb_biologie ». Appliquer le
+   filtre en UN SEUL point de restitution, juste après la fusion. MAIS conserver
+   deux tableaux : `allFields` non projeté pour les validations et les index
+   d'opérandes de formule ; `projectedFields` pour les colonnes, dictionnaire,
+   Modalités, feuilles multivaluées, limites et garde anti-identité. Une formule
+   projetée reste calculable avec des opérandes hors projection, sans exporter les
+   colonnes de ces opérandes.
+4. Toujours exporter les variables SANS section, quelle que soit la projection.
+   Elles ne se listent pas dans blockKeys et ne sont pas décochables. Cela inclut
+   les variables partagées : leur colonne existe dans toutes les projections,
+   mais leur règle de champ interdit une valeur hors de leurs cas d'application.
+5. Ne JAMAIS filtrer la population : c'est la cohorte qui définit les lignes. Un
+   patient ne relevant d'aucun bloc sélectionné ressort avec ses seules colonnes
+   communes renseignées.
+6. En mode `selected`, refuser l'export AVANT génération si blockKeys est absent
+   ou vide, si une clé est inconnue de toutes les versions, ou si elle désigne une
+   sous-section dans une version où elle existe / change de rôle selon la version.
+7. Lorsque la projection est `selected` OU qu'une hiérarchie ajoute les colonnes
+   de bloc au dictionnaire, refuser aussi une même variable analytique
+   `(scope, field_key)` rattachée à des BLOCS différents selon les versions, Y
+   COMPRIS un passage tronc commun <-> bloc. Sur une base historique plate SANS
+   projection, ne lance pas ce nouveau contrôle : l'export doit continuer de
+   réussir même si une variable a changé de section au fil des versions.
+8. Offrir le choix dans l'écran d'export : les BLOCS présents dans la cohorte,
+   sélectionnables. Les sous-sections ne sont pas proposées séparément, elles
+   suivent leur bloc. Variables sans section signalées comme toujours incluses.
+   Une clé absente de certaines versions reste valide si elle est racine partout
+   où elle existe. Si son libellé varie, afficher celui de la version courante et
+   signaler les libellés historiques. Traductions française et anglaise.
+9. Le dictionnaire XLSX gagne `block` et `block_label` lorsqu'une projection est
+   demandée ou qu'au moins une sous-section est présente. Pour une base historique
+   plate SANS sectionProjection, ne pas ajouter ces colonnes : la structure CSV et
+   XLSX reste strictement identique à celle d'avant L53.
+
+POURQUOI LE REFUS DE DÉRIVE, ET SA LIMITE EXACTE. mergeExportFields fusionne par
+`(scope, field_key)` et retient la section de la PREMIÈRE version rencontrée. Une
+variable ayant changé de bloc, ou passée du tronc commun à un bloc, serait classée
+arbitrairement. Le refus transforme ce résultat faux en erreur visible. MAIS le
+contrôle porte sur le BLOC racine, pas sur la feuille : déplacer une variable
+d'une sous-section à une autre À L'INTÉRIEUR DU MÊME BLOC ne doit PAS provoquer de
+refus. Ne tente pas de résoudre le cas complet par version : c'est une suite
+possible, hors périmètre.
+
+DISPERSION : un mode « blocs présents dans la cohorte » a été envisagé et écarté
+(le jeu de colonnes deviendrait dépendant des données). Ne l'implémente pas.
+
+SÉCURITÉ DES DONNÉES : aucun changement de schéma n'est attendu côté export. La
+garde anti-identité doit s'appliquer au jeu de colonnes FILTRÉ. La projection
+résolue doit se retrouver dans export_log.export_options.
+
+COMPATIBILITÉ. Le support serveur de l'option peut être livré avec `all` par défaut,
+sans changer aucun fichier produit par un client existant. Livrer ensuite le
+sélecteur web ; ne proposer `selected` qu'une fois le serveur compatible disponible.
+
+COUVERTURE EXIGÉE : export sans projection d'une base plate strictement identique
+à aujourd'hui, dictionnaire compris ; base plate avec blockKey === section ; projection
+d'un bloc puis de plusieurs ; variables d'une sous-section incluses quand leur
+bloc est sélectionné ; variables sans section toujours présentes ; population
+inchangée ; dictionnaire portant les deux niveaux ; Modalités et métadonnées
+cohérents ; garde anti-identité sur le jeu filtré ; les refus de projection ; le
+refus tronc commun <-> bloc et rôle racine/feuille divergent ; export historique
+plat sans projection restant accepté malgré un changement de section ; le NON-refus d'un
+déplacement entre sous-sections du même bloc ; formule projetée calculée avec ses
+opérandes hors projection sans restituer leurs colonnes ;
+export_log.export_options portant la projection ; hash de fichier stable ; CSV et
+XLSX.
+
+TERMINÉ SIGNIFIE : un export « tronc commun + un bloc » sort les variables de
+toutes les sous-sections sans changer la population, les formules restent justes,
+une base plate sans projection garde exactement son ancien contrat, les refus
+sont explicites, le journal porte la projection, tests ciblés verts et
+npm run release:edge:check passe. Ne committe, ne pousse et ne déploie rien sans
+demande explicite.
+```
+
+---
+
+## L55 — Configuration diagnostique et couverture versionnées
+
+```
+Lis AGENTS.md, les skills applicables, docs/spec-collecte-diagnostique.md §1–3
+et docs/spec-blocs-pathologies.md. L51, L54 et L52 doivent être intégrés.
+Implémente uniquement L55 : pilote par scope, release explicite pour terminology,
+associations exactes par les règles L52 (aucune seconde table de mapping),
+commonOnlyCodes et calcul de couverture par diagnostic dans la version source.
+Réutilise la soupape de proposition existante. Ne filtre jamais les diagnostics
+sur les blocs disponibles. Configuration optionnelle, gel et recopie fidèles,
+RLS du gabarit, validation des invariants sous verrou. Aucun statut clinique ajouté.
+Périmètre : migrations, types/repository templates, règles, éditeurs, contexte
+offline et tests ciblés ; aucune activation du hors-ligne. Teste la parité SQL/TS,
+les codes multiples, versions, copies, permissions et anciennes bases.
+Terminé : §3.3 satisfait, contrôles réellement exécutés consignés. Pas de commit,
+push, migration distante ou déploiement sans demande explicite. Ne redemande pas
+les décisions déjà fixées par la spécification ; signale une contradiction réelle.
+```
+
+## L56 — Socle enregistrable et suivi des diagnostics non couverts
+
+```
+Lis AGENTS.md, les skills applicables et docs/spec-collecte-diagnostique.md §4.
+L55 doit être intégré. Implémente le parcours dans la base autorisée : socle,
+diagnostics, blocs disponibles, enregistrement sans bloc spécialisé. Garde les
+obligations applicables et toutes les contraintes de mission côté serveur.
+Réutilise le calcul L55 dans une RPC paginée réservée au propriétaire médecin,
+sans identité ni texte libre dans les agrégats, et un écran de suivi. Aucun
+élargissement d'accès, de statut complet ou de capacité d'import/hors-ligne.
+Teste tous les scénarios §4.3 et les refus serveur directs ; vérifie les fichiers
+partagés avec L41/L42 et offline avant édition. Pas de notifications ni de reprise
+implicite d'ancienne version. La preuve complète exige L53 et le scénario export.
+Terminé : scénario navigateur avec données fictives et validations ciblées réelles ;
+ne prétends pas avoir testé le cloud depuis un run local. Aucun commit, push ou
+déploiement sans demande explicite. Les choix fixés ne nécessitent pas reconfirmation.
+```
+
+## L57 — Reprise versionnée et notifications : cadrage différé
+
+```
+LOT DOCUMENTAIRE DIFFÉRÉ, PAS UN PROMPT D'IMPLÉMENTATION.
+Après les observations du pilote L56, lire docs/spec-collecte-diagnostique.md §5
+et la décision notifications du 2026-08-20. Produire une décision argumentée et
+des lots bornés sur la reprise : complément historisé ou changement explicite
+de version, données préservées, exports, droits de mission, concurrence,
+idempotence et informations devenues indisponibles. Définir ensuite les seuls
+signaux de notification ouvrant une action autorisée, sans contenu clinique.
+Ne créer ni migration, ni service de notification ; ne modifier aucun dossier,
+n'envoyer aucun message. Le lancement attend les observations du pilote.
+```
+
+---
+
 ## ~~L2 — Formulaires patient : sections~~ — livré
 
 > **Livré** le 2026-07-28 (PR #89). **Ne pas relancer ce prompt.**
@@ -472,7 +991,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L4 — Soupape sur le champ de terminologie
+## ~~L4 — Soupape sur le champ de terminologie~~ — **livré le 2026-08-13**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1005,7 +1524,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L11 — Observabilité des erreurs (P3)
+## ~~L11 — Observabilité des erreurs (P3)~~ — **livré et promu sur `main`**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1063,7 +1582,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L12 — Traitement des propositions
+## ~~L12 — Traitement des propositions~~ — **livré**
 
 ```
 Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
@@ -1114,7 +1633,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L13 — Rafraîchissement de la copie locale
+## ~~L13 — Rafraîchissement de la copie locale~~ — **livré**
 
 ```
 Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
@@ -1165,7 +1684,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L14 — Chargement de la seule langue active (à lancer SEUL)
+## ~~L14 — Chargement de la seule langue active (à lancer SEUL)~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1216,7 +1735,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L15 — Comptes de mission : identifiant et mot de passe générés
+## ~~L15 — Comptes de mission : identifiant et mot de passe générés~~ — **livré le 2026-08-11**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1285,7 +1804,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)
+## ~~L16 — Compte de mission : écriture de l'identité et écarts d'interface (à lancer SEUL)~~ — **livré le 2026-08-11**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1422,7 +1941,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L17 — Messages d'erreur des Edge Functions
+## ~~L17 — Messages d'erreur des Edge Functions~~ — **livré**
 
 ```
 Tu reprends une dette du projet MedData (registre-clinique), déjà cloné dans le
@@ -1487,7 +2006,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L18 — Cohorte dynamique : compteur vivant et « Figer maintenant »
+## ~~L18 — Cohorte dynamique : compteur vivant et « Figer maintenant »~~ — **livré**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1559,7 +2078,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L19 — Archivage d'une cohorte
+## ~~L19 — Archivage d'une cohorte~~ — **livré**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1625,7 +2144,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L20 — Listes de diagnostics : surface base (à lancer SEUL)
+## ~~L20 — Listes de diagnostics : surface base (à lancer SEUL)~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1718,7 +2237,7 @@ résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L21 — Listes de diagnostics : saisie et constructeur
+## ~~L21 — Listes de diagnostics : saisie et constructeur~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1803,7 +2322,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L22 — Listes de diagnostics : export
+## ~~L22 — Listes de diagnostics : export~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1890,7 +2409,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L23 — Listes de diagnostics : cohortes
+## ~~L23 — Listes de diagnostics : cohortes~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -1952,7 +2471,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L24 — Listes de diagnostics : refus au mappage d'import
+## ~~L24 — Listes de diagnostics : refus au mappage d'import~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2019,7 +2538,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L25 — Conflit hors-ligne : issue « garder les deux »
+## ~~L25 — Conflit hors-ligne : issue « garder les deux »~~ — **livré le 2026-08-18**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2181,7 +2700,7 @@ de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L27 — Texte d'aide par variable
+## ~~L27 — Texte d'aide par variable~~ — **livré le 2026-08-13**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2249,7 +2768,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L28 — Valeur par défaut et unicité
+## ~~L28 — Valeur par défaut et unicité~~ — **livré le 2026-08-14**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2315,7 +2834,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L29 — Prévisualisation du formulaire
+## ~~L29 — Prévisualisation du formulaire~~ — **livré le 2026-08-14**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2376,7 +2895,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L30 — Options de liste : code interne stable
+## ~~L30 — Options de liste : code interne stable~~ — **livré le 2026-08-15**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2451,7 +2970,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L31 — Sections personnalisables
+## ~~L31 — Sections personnalisables~~ — **livré le 2026-08-15**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2525,7 +3044,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L32 — Affichage conditionnel
+## ~~L32 — Affichage conditionnel~~ — **livré le 2026-08-15**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2603,7 +3122,7 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## L33 — Raisons de valeur manquante par variable
+## ~~L33 — Raisons de valeur manquante par variable~~ — **livré le 2026-08-14**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2786,7 +3305,7 @@ Si une commande t'est refusée, donne-la-moi telle quelle.
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
 
-## L35 — Variables calculées : arithmétique définie par l'utilisateur
+## ~~L35 — Variables calculées : arithmétique définie par l'utilisateur~~ — **livré le 2026-08-21**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -2917,7 +3436,7 @@ commande t'est refusée, donne-la-moi telle quelle.
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
 
-## L36 — Parité d'export des listes à choix multiples
+## ~~L36 — Parité d'export des listes à choix multiples~~ — **livré le 2026-08-20 dans le profil Export complet**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné
@@ -3058,7 +3577,7 @@ quelle.
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
 
-## L37 — Feuille de fréquences prête à l'analyse
+## ~~L37 — Feuille de fréquences prête à l'analyse~~ — **écarté du profil Analyse le 2026-08-24**
 
 ```
 Tu reprends un chantier sur le projet MedData (registre-clinique), déjà cloné

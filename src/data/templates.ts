@@ -12,9 +12,12 @@ import type {
   TemplateSection,
   TemplateVersion,
   ValidationRule,
+  DiagnosisConfiguration,
+  DiagnosisContext,
 } from './types';
 
 export interface TemplateRepository {
+  setDiagnosisConfiguration?(versionId: string, configuration: DiagnosisConfiguration[]): Promise<void>;
   listTemplates(): Promise<(Template & { versions: TemplateVersion[] })[]>;
   createTemplate(name: string, specialty: string | null): Promise<{ template: Template; version: TemplateVersion }>;
   /** Medecin : cree un gabarit PERSONNEL vierge (brouillon v1) qu'il pourra remplir puis utiliser
@@ -28,13 +31,15 @@ export interface TemplateRepository {
   /** Sections de la version (L31). Lecture seule, dans l'ordre voulu par le proprietaire. */
   getSections?(versionId: string): Promise<TemplateSection[]>;
   /** Cree une section. Refusee sur une version publiee (garde serveur). */
-  addSection?(versionId: string, sectionKey: string, label: string): Promise<TemplateSection>;
+  addSection?(versionId: string, sectionKey: string, label: string, parentKey?: string | null): Promise<TemplateSection>;
   /** Corrige le LIBELLE d'une section. Son code interne, lui, ne se modifie jamais (L31). */
   renameSection?(sectionId: string, label: string): Promise<void>;
   /** Supprime une section. Refusee si elle porte encore une variable (garde serveur). */
   deleteSection?(sectionId: string): Promise<void>;
   /** Reordonne les sections d'une version : `orderedIds` dans le nouvel ordre. */
   reorderSections?(versionId: string, orderedIds: string[]): Promise<void>;
+  reorderSectionSiblings?(versionId: string, parentKey: string | null, orderedIds: string[]): Promise<void>;
+  moveSection?(versionId: string, sectionId: string, parentKey: string | null): Promise<void>;
   /** Ajoute un champ et, le cas echeant, son compagnon dans la meme requete atomique. */
   addField(versionId: string, field: NewField, companion?: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
@@ -63,6 +68,7 @@ export interface TemplateBundleInput {
   name: string;
   specialty: string | null;
   fields?: NewField[];
+  sections?: { key: string; label: string; parentKey?: string | null }[];
   sourceVersionId?: string;
   withBase?: boolean;
   baseName?: string;
@@ -76,6 +82,7 @@ type VersionRow = {
   template_id: string;
   version_number: number;
   status: TemplateVersion['status'];
+  diagnosis_configuration?: DiagnosisConfiguration[];
   template_field?: { id: string }[];
 };
 type FieldRow = {
@@ -93,20 +100,39 @@ type FieldRow = {
   encounter_types: string[] | null;
 };
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
-type SectionRow = { id: string; section_key: string; label: string; display_order: number };
+type SectionRow = { parent_section_id?: string | null; id: string; section_key: string; label: string; display_order: number };
 
 const mapVersion = (r: VersionRow): TemplateVersion => ({
   id: r.id,
   templateId: r.template_id,
   versionNumber: r.version_number,
   status: r.status,
+  // `[]` = configuration vide sur un serveur L55 ; `undefined` = serveur qui ignore la
+  // colonne. La distinction est portee jusqu'a l'editeur, qui ne propose pas une
+  // configuration que le serveur ne saurait pas enregistrer.
+  diagnosisConfiguration: Array.isArray(r.diagnosis_configuration) ? r.diagnosis_configuration : undefined,
   fieldCount: Array.isArray(r.template_field) ? r.template_field.length : undefined,
 });
-const mapSection = (r: SectionRow): TemplateSection => ({
+const mapSection = (r: SectionRow, rows: SectionRow[] = []): TemplateSection => ({
+  parentSectionKey: rows.find((p) => p.id === r.parent_section_id)?.section_key ?? null,
   id: r.id, sectionKey: r.section_key, label: r.label, displayOrder: r.display_order,
 });
 
-const SECTION_COLUMNS = 'id, section_key, label, display_order';
+const SECTION_COLUMNS = 'parent_section_id, id, section_key, label, display_order';
+const VERSION_COLUMNS = 'id, template_id, version_number, status, diagnosis_configuration';
+const LEGACY_VERSION_COLUMNS = 'id, template_id, version_number, status';
+
+// Compatibilite de lecture pendant une promotion coordonnee : un schema anterieur a L55 ne
+// possede pas template_version.diagnosis_configuration, et un gabarit historique doit rester
+// consultable. Le repli est volontairement etroit — ce code d'erreur ET cette colonne — afin
+// de ne jamais masquer une erreur RLS, reseau ou serveur sous une compatibilite silencieuse.
+function isMissingDiagnosisConfiguration(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === '42703'
+    && typeof candidate.message === 'string'
+    && /\bdiagnosis_configuration\b/i.test(candidate.message);
+}
 
 /**
  * Attache a chaque variable le libelle et le rang de SA section (L31), pour que les ecrans
@@ -115,13 +141,13 @@ const SECTION_COLUMNS = 'id, section_key, label, display_order';
  * Une variable dont la section n'est pas dans la liste ressort telle quelle : elle garde
  * son code et retombe sur le filet a l'affichage, au lieu de disparaitre.
  */
-const withSections = (fields: TemplateField[], sections: TemplateSection[]): TemplateField[] => {
+export const withSections = <T extends { section?: string | null }>(fields: T[], sections: readonly TemplateSection[]): T[] => {
   if (sections.length === 0) return fields;
   const bySectionKey = new Map(sections.map((s) => [s.sectionKey, s]));
   return fields.map((field) => {
-    const section = bySectionKey.get(field.section);
+    const section = bySectionKey.get(field.section ?? '');
     return section
-      ? { ...field, sectionId: section.id, sectionLabel: section.label, sectionOrder: section.displayOrder }
+      ? { ...field, sectionId: section.id, parentSectionKey: section.parentSectionKey, parentSectionLabel: bySectionKey.get(section.parentSectionKey ?? '')?.label, sectionLabel: section.label, sectionOrder: section.displayOrder }
       : field;
   });
 };
@@ -164,12 +190,20 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
   const clearVersionCache = () => { versionCache.clear(); fieldsCache.clear(); };
 
   return {
+    async setDiagnosisConfiguration(versionId, configuration) {
+      const { error } = await client.rpc('set_diagnosis_configuration', {
+        p_version_id: versionId, p_configuration: configuration,
+      });
+      if (error) throw error;
+      clearVersionCache();
+    },
     async createTemplateBundle(input) {
       const { data, error } = await client.rpc('create_template_bundle', {
         p_payload: {
           name: input.name,
           specialty: input.specialty,
           fields: input.fields ?? [],
+          sections: input.sections ?? [],
           sourceVersionId: input.sourceVersionId ?? null,
           withBase: input.withBase ?? false,
           baseName: input.baseName ?? null,
@@ -218,14 +252,22 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       const cached = versionCache.get(versionId);
       if (cached) return cached;
       // Les 5 lectures sont INDEPENDANTES -> en parallele (1 aller-retour au lieu de 5).
+      const readVersion = (columns: string) => client
+        .from('template_version').select(columns).eq('id', versionId).single();
       const [vRes, fRes, rRes, uRes, sRes] = await Promise.all([
-        client.from('template_version').select('id, template_id, version_number, status').eq('id', versionId).single(),
+        readVersion(VERSION_COLUMNS),
         client.from('template_field').select('*').eq('template_version_id', versionId).order('display_order', { ascending: true }),
         client.from('validation_rule').select('id, rule, message, severity').eq('template_version_id', versionId),
         client.rpc('template_version_fields_in_use', { p_version_id: versionId }),
         client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),
       ]);
-      if (vRes.error) throw vRes.error;
+      let versionRow = vRes.data as unknown as VersionRow | null;
+      if (vRes.error) {
+        if (!isMissingDiagnosisConfiguration(vRes.error)) throw vRes.error;
+        const legacy = await readVersion(LEGACY_VERSION_COLUMNS);
+        if (legacy.error) throw legacy.error;
+        versionRow = legacy.data as unknown as VersionRow;
+      }
       if (fRes.error) throw fRes.error;
       if (rRes.error) throw rRes.error;
       if (uRes.error) throw uRes.error;
@@ -233,9 +275,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       const used = new Set(
         ((uRes.data ?? []) as (string | { id?: string })[]).map((x) => (typeof x === 'string' ? x : x.id ?? '')),
       );
-      const sections = ((sRes.data as SectionRow[]) ?? []).map(mapSection);
+      const sections = ((sRes.data as SectionRow[]) ?? []).map((row, _index, rows) => mapSection(row, rows));
       const result = {
-        version: mapVersion(vRes.data as VersionRow),
+        version: mapVersion(versionRow as VersionRow),
         fields: withSections(
           ((fRes.data as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
           sections,
@@ -243,6 +285,14 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         rules: ((rRes.data as RuleRow[]) ?? []).map(mapRule),
         sections,
       };
+      if (result.version.diagnosisConfiguration?.length) {
+        const context = await client.rpc('get_diagnosis_context', { p_version_id: versionId });
+        if (context.error) throw context.error;
+        result.version.diagnosisContext = context.data as DiagnosisContext[];
+        if (result.version.diagnosisContext.length !== result.version.diagnosisConfiguration.length) {
+          throw new Error('DIAGNOSIS_CONTEXT_INVALID');
+        }
+      }
       versionCache.set(versionId, result);
       fieldsCache.set(versionId, result.fields);
       return result;
@@ -265,7 +315,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (sRes.error) throw sRes.error;
       const fields = withSections(
         ((fRes.data as FieldRow[]) ?? []).map(mapField),
-        ((sRes.data as SectionRow[]) ?? []).map(mapSection),
+        ((sRes.data as SectionRow[]) ?? []).map((row, _index, rows) => mapSection(row, rows)),
       );
       fieldsCache.set(versionId, fields);
       return fields;
@@ -278,33 +328,32 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .eq('template_version_id', versionId)
         .order('display_order', { ascending: true });
       if (error) throw error;
-      return ((data as SectionRow[]) ?? []).map(mapSection);
+      return ((data as SectionRow[]) ?? []).map((row, _index, rows) => mapSection(row, rows));
     },
 
-    async addSection(versionId, sectionKey, label) {
-      // Nouvelles sections EN FIN de liste, comme les variables.
-      const { data: last } = await client
-        .from('template_section')
-        .select('display_order')
-        .eq('template_version_id', versionId)
-        .order('display_order', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const { data, error } = await client
-        .from('template_section')
-        .insert({
-          template_version_id: versionId,
-          section_key: sectionKey,
-          label,
-          display_order: ((last?.display_order as number | undefined) ?? -1) + 1,
-        })
-        .select(SECTION_COLUMNS)
-        .single();
+    async addSection(versionId, sectionKey, label, parentKey = null) {
+      const { data, error } = await client.rpc('add_template_section', {
+        p_version_id: versionId, p_key: sectionKey, p_label: label, p_parent_key: parentKey,
+      });
       if (error) throw error;
       clearVersionCache();
-      return mapSection(data as SectionRow);
+      return { ...mapSection(data as SectionRow), parentSectionKey: parentKey };
     },
 
+    async reorderSectionSiblings(versionId, parentKey, orderedIds) {
+      const { error } = await client.rpc('reorder_template_section_siblings', {
+        p_version_id: versionId, p_parent_key: parentKey, p_section_ids: orderedIds,
+      });
+      if (error) throw error;
+      clearVersionCache();
+    },
+    async moveSection(versionId, sectionId, parentKey) {
+      const { error } = await client.rpc('move_template_section', {
+        p_version_id: versionId, p_section_id: sectionId, p_parent_key: parentKey,
+      });
+      if (error) throw error;
+      clearVersionCache();
+    },
     async renameSection(sectionId, label) {
       // SEUL le libelle part : le code interne est la reference stable des variables et
       // des instantanes hors-ligne, et le declencheur serveur refuse de le voir changer.

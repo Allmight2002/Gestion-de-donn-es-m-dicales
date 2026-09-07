@@ -14,12 +14,17 @@ import {
   buildMultivalueTable,
   buildPatientExport,
   columnId,
+  type ExportField,
   type ExportTable,
   extractMultivalueCodes,
+  findAmbiguousBlockFields,
+  findProjectionProblem,
+  hasSubsectionFields,
   isMultivalueField,
   MAX_INDICATOR_CODES,
   mergeExportFields,
   neutralizeExportTable,
+  projectFields,
   referencedTemplateVersions,
   toCsv,
   withExcelDateSerials,
@@ -377,7 +382,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       label: string;
       description: string | null;
       scope: 'patient' | 'encounter';
-      section: string;
+      /** L54 : nullable. `null` = variable du TRONC COMMUN, toujours exportee. */
+      section: string | null;
       type: string;
       is_multiple?: boolean | null;
       unit: string | null;
@@ -393,6 +399,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       template_version_id: string;
       section_key: string;
       label: string;
+      /** L54 : nul = BLOC racine ; non nul = sous-section, dont le parent est le bloc. */
+      parent_section_id: string | null;
     }
 
     const cm = await readAllPages<CohortMemberRow>({
@@ -646,7 +654,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       keyOf: (row) => row.id,
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_section')
-          .select('id, template_version_id, section_key, label', { count: 'exact' })
+          .select('id, template_version_id, section_key, label, parent_section_id', { count: 'exact' })
           .in('template_version_id', chunk)
           .order('template_version_id', { ascending: true })
           .order('display_order', { ascending: true })
@@ -655,18 +663,47 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         return { data: result.data as TemplateSectionRow[] | null, error: result.error, count: result.count };
       },
     });
-    const sectionLabels = new Map(
-      rawSections.map((s) => [`${s.template_version_id} ${s.section_key}`, s.label]),
+    // L53 : la section est lue AVEC son parent, pour porter les DEUX niveaux dans le contrat.
+    // `section_key` est unique par version et le parent vit dans la meme version : une entree
+    // par `version + code` suffit, et l'id du parent se retraduit en code par `keyById`.
+    const sectionByVersionKey = new Map(
+      rawSections.map((s) => [`${s.template_version_id} ${s.section_key}`, s]),
     );
+    const keyById = new Map(rawSections.map((s) => [s.id, s.section_key]));
+    // Roles observes, toutes versions confondues. Une cle racine ici et feuille la est
+    // ambigue : elle apparait dans les DEUX ensembles, et `findProjectionProblem` la refuse.
+    const blockRoles = {
+      roots: new Set(rawSections.filter((s) => !s.parent_section_id).map((s) => s.section_key)),
+      leaves: new Set(rawSections.filter((s) => s.parent_section_id).map((s) => s.section_key)),
+    };
 
-    const fields = mergeExportFields(
-      rawFields.map((f) => ({
+    /**
+     * Feuille et bloc racine d'une variable, DANS SA VERSION. Une section introuvable est un
+     * rattachement ancien non resolu : la variable garde son code de section, n'a pas de bloc,
+     * et reste donc exportee dans toutes les projections — le filet de L31 est preserve.
+     */
+    const levelsOf = (f: TemplateFieldRow) => {
+      const own = f.section === null ? undefined : sectionByVersionKey.get(`${f.template_version_id} ${f.section}`);
+      if (!own) return { sectionLabel: null, blockKey: null, blockLabel: null };
+      const parentKey = own.parent_section_id ? keyById.get(own.parent_section_id) ?? null : null;
+      if (!parentKey) return { sectionLabel: own.label, blockKey: own.section_key, blockLabel: own.label };
+      const parent = sectionByVersionKey.get(`${f.template_version_id} ${parentKey}`);
+      return { sectionLabel: own.label, blockKey: parentKey, blockLabel: parent?.label ?? null };
+    };
+
+    const versionedFields: ExportField[] = rawFields.map((f) => {
+      const levels = levelsOf(f);
+      return {
         fieldKey: f.field_key,
         label: f.label,
         description: f.description,
         scope: f.scope,
         section: f.section,
-        sectionLabel: sectionLabels.get(`${f.template_version_id} ${f.section}`) ?? null,
+        sectionLabel: levels.sectionLabel,
+        // L53 : bloc RACINE. Egal a `section` sur une base plate, donc la compatibilite
+        // descendante est acquise par construction ; nul au tronc commun.
+        blockKey: levels.blockKey,
+        blockLabel: levels.blockLabel,
         type: f.type,
         isMultiple: Boolean(f.is_multiple),
         unit: f.unit,
@@ -678,12 +715,60 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         formula: f.formula ?? null,
         displayOrder: f.display_order,
         templateVersionIds: [f.template_version_id],
-      })),
-    );
+      };
+    });
+
+    // L53 : `allFields` est le dictionnaire COMPLET — il sert aux validations et aux operandes
+    // de formule. `fields`, plus bas, est le jeu RESTITUE : colonnes, dictionnaire, Modalites,
+    // feuilles multivaluees, limites et garde anti-identite.
+    const allFields = mergeExportFields(versionedFields);
 
     // L46 : deux cles de champ distinctes ne doivent jamais se normaliser vers le meme
     // identifiant analytique, sinon le fichier porterait deux variables indiscernables.
-    assertNoAnalyticIdCollisions(fields);
+    assertNoAnalyticIdCollisions(allFields);
+
+    // L53 : la projection est refusee AVANT toute generation. Une cle inconnue de toutes les
+    // versions, ou qui designe une sous-section dans l'une d'elles, ne peut pas produire un
+    // fichier honnete : mieux vaut un refus explicite qu'un fichier silencieusement vide.
+    const projection = options.sectionProjection;
+    if (projection.mode === 'selected') {
+      const problem = findProjectionProblem(projection.blockKeys ?? [], blockRoles);
+      if (problem?.kind === 'unknown_block') {
+        return json(400, {
+          code: 'EXPORT_PROJECTION_UNKNOWN_BLOCK',
+          error: 'Projection refusee : bloc inconnu des versions de la cohorte',
+          blocks: problem.keys,
+        });
+      }
+      if (problem?.kind === 'not_a_block') {
+        return json(400, {
+          code: 'EXPORT_PROJECTION_NOT_A_BLOCK',
+          error: 'Projection refusee : cette cle designe une sous-section, pas un bloc',
+          blocks: problem.keys,
+        });
+      }
+    }
+
+    // L53 : le bloc ne devient une information du fichier que si une projection est demandee ou
+    // qu'une sous-section existe. C'est exactement la ou l'ambiguite compte — et donc la seule
+    // ou on la refuse : une base historique plate SANS projection garde son contrat d'export,
+    // meme si une variable a change de section au fil des versions.
+    const blockColumns = projection.mode === 'selected' || hasSubsectionFields(allFields);
+    if (blockColumns) {
+      // Sur la liste NON FUSIONNEE : c'est la seule ou les versions parlent encore chacune
+      // pour elle. `mergeExportFields` retiendrait la premiere section rencontree.
+      const ambiguous = findAmbiguousBlockFields(versionedFields);
+      if (ambiguous.length > 0) {
+        return json(409, {
+          code: 'EXPORT_BLOCK_AMBIGUOUS',
+          error: 'Export refuse : une variable est rattachee a des blocs differents selon les versions',
+          fields: ambiguous,
+        });
+      }
+    }
+
+    // Le point UNIQUE de restitution, juste apres la fusion.
+    const fields = projectFields(allFields, projection);
 
     const multivalueFields = fields.filter((f) => isMultivalueField(f));
     const multivalueDataRows = options.mode === 'patient' ? patients : encounters;
@@ -710,11 +795,19 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       }
     }
 
+    // L53 : les colonnes viennent du jeu PROJETE, les operandes de formule du jeu complet. Une
+    // formule projetee reste donc juste meme quand ses operandes vivent hors de la projection,
+    // sans que leurs colonnes soient restituees.
     const main = options.mode === 'patient'
-      ? buildPatientExport(patients, encounters, fields, options.rule, options.profile)
-      : buildEncounterExport(encounters, fields, options.profile);
+      ? buildPatientExport(patients, encounters, fields, options.rule, options.profile, allFields)
+      : buildEncounterExport(encounters, fields, options.profile, allFields);
     // L49 : le dictionnaire suit le profil — reduit a l'interpretation en Analyse, detaille en Complet.
-    const dict = buildDictionary(fields, { indicatorsByField, omittedFieldKeys, profile: options.profile });
+    const dict = buildDictionary(fields, {
+      indicatorsByField,
+      omittedFieldKeys,
+      profile: options.profile,
+      blockColumns,
+    });
     // L46 : la feuille Modalites accompagne l'Export Analyse (XLSX). Le CSV ne tient qu'une
     // feuille : la colonne principale porte deja le code stable et le libelle reste une fois
     // dans Modalites au format classeur.
@@ -751,6 +844,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         rowCount: main.rows.length,
         excludedPatientCount,
         excludedEncounterCount,
+        sectionProjection: projection,
       })
       : null;
     const metadataCells = format === 'xlsx' && metadata ? (metadata.rows.length + 1) * metadata.columns.length : 0;

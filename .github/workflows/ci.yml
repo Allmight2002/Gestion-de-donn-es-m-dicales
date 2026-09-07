@@ -29,6 +29,17 @@ jobs:
         with:
           deno-version: '2.9.2'
 
+      - name: Snapshot de schema a jour (docs/schema-etat-final.md)
+        # Meme critere que `npm run manifest`, porte du job `validate` de
+        # coordinated-release.yml : les deux executent scripts/check-schema-snapshot.mjs.
+        # Sans ce controle, une PR qui ajoutait une migration sans regenerer le document
+        # passait la CI en vert et n'echouait qu'a la release. On CONSTATE seulement le
+        # retard : la regeneration (`npm run schema`) exige un PostgreSQL embarque.
+        # Lecture de deux chemins du depot — aucun secret, et aucune information de
+        # deploiement dans les logs. Place avant `npm ci` (modules Node natifs seulement)
+        # pour que l'oubli le plus frequent echoue en quelques secondes.
+        run: npm run schema:check
+
       - name: Install dependencies
         run: npm ci
 

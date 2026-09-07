@@ -10,7 +10,7 @@ import {
   invokeEdgeFunction,
   readEdgeFunctionFailure,
 } from './edgeFunctionError';
-import { errorMessage } from './errorMessage';
+import { errorMessage, isRefreshRequiredError, structuredErrorCode } from './errorMessage';
 
 const TRANSPORT = 'Edge Function returned a non-2xx status code';
 
@@ -131,6 +131,20 @@ describe('edgeFunctionError', () => {
     expect(error).toBeInstanceOf(EdgeFunctionError);
     expect(error.status).toBe(400);
     expect(errorMessage(error, 'repli generique')).toBe('Base invalide');
+  });
+});
+
+describe('erreurs de rechargement', () => {
+  test('reconnait un conflit structure et garde un message sans detail clinique', () => {
+    const error = {
+      code: 'P0001',
+      message: 'CONFLIT_VERSION : le patient a ete modifie entre-temps',
+      details: JSON.stringify({ code: 'conflict_version', entity: 'patient', action: 'refresh_required' }),
+      hint: 'refresh_required',
+    };
+    expect(structuredErrorCode(error)).toBe('conflict_version');
+    expect(isRefreshRequiredError(error)).toBe(true);
+    expect(errorMessage(error, 'Erreur')).toMatch(/saisies sont conservées.*rechargez/i);
   });
 });
 

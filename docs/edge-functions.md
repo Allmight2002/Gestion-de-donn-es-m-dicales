@@ -114,6 +114,10 @@ navigateur. Le frontend appelle
 [`generate-export`](../supabase/functions/generate-export/index.ts), qui :
 
 1. verifie le JWT utilisateur et l'autorisation `can_export_data(base_id)` ;
+1 bis. resout le **profil de donnees** `options.profile` : `analysis` (defaut) ou `complete`. Un
+   appel qui n'envoie pas de profil reste accepte et recoit `analysis` ; une valeur inconnue est
+   refusee en HTTP 400. Le profil ne change ni l'autorisation, ni la liste anti-identite, ni le
+   figeage, ni le hash : il ne decide que de la FORME du fichier ;
 2. relit la cohorte figee cote serveur par pages de 500, avec comptage exact et ordre stable ; les
    filtres de listes sont decoupes par groupes de 200 identifiants ;
 2 bis. ecarte les fiches auxquelles il manque un champ obligatoire -- `export_incomplete_records`,
@@ -121,19 +125,44 @@ navigateur. Le frontend appelle
    validation ; les exclusions sont comptees dans `export_options.excluded_records` ;
 3. applique la liste blanche analytique et refuse toute colonne identifiante ;
 4. genere le CSV ou le XLSX, calcule `file_hash`, stocke le fichier dans `scientific-exports` ;
-5. insere `export_log` avec `generation_mode='server'` et le nom de telechargement dans
+5. insere `export_log` avec `generation_mode='server'`, le profil dans
+   `export_options.profile` et le nom de telechargement dans
    `export_options.download_filename`.
 
-Pour un champ de terminologie, l'export produit deux colonnes distinctes : la colonne principale
-contient le libelle lisible et `terminology_code__<colonne>` contient le code stable utilise pour
-l'analyse. Le dictionnaire XLSX decrit egalement cette colonne comme `terminology_code`. Les deux
-colonnes comptent dans les limites de largeur de l'export.
+### Les deux profils de donnees (L45 a L49)
+
+| | `analysis` (defaut) | `complete` |
+|---|---|---|
+| Feuille principale XLSX | `Donnees` | `Export` |
+| Autres feuilles XLSX | `Dictionnaire`, `Modalites`, `Metadonnees` | `Dictionnaire` + feuilles relationnelles multiselect |
+| Liste controlee (`select`) | une colonne portant le **code stable** ; le libelle vit une seule fois dans `Modalites` | libelle en colonne principale + `option_code__<colonne>` |
+| `multiselect` | uniquement des indicatrices `has__<colonne>__<modalite>` en `0`/`1` | libelles concatenes, `option_code__`, `nb__`, feuille relationnelle ET indicatrices |
+| Dates et datetime XLSX | valeurs Excel natives (serie, heure UTC, formats `yyyy-mm-dd` et `yyyy-mm-dd hh:mm:ss`) | idem |
+| Dictionnaire | reduit aux colonnes utiles a l'interpretation | detaille, forme historique |
+
+En `analysis`, une cellule **vide** signifie « champ non applicable ou absent de la version de
+gabarit » ; un `0` d'indicatrice signifie « champ applicable, modalite non selectionnee ». Une
+raison explicite de valeur manquante met les indicatrices a `0` et n'est jamais lisible comme une
+selection. Le CSV n'a qu'une feuille : il porte les memes colonnes que la feuille principale du
+profil demande, et conserve les dates au format ISO sans conversion.
+
+La feuille `Metadonnees` (profil `analysis`) rend le fichier autonome sans exposer d'identite :
+`export_profile`, `generated_at`, `base_name`, `cohort_name`, `export_mode`, `selection_rule`,
+`template_versions`, `row_count`, `excluded_patients_incomplete`,
+`excluded_encounters_incomplete`. Aucun UUID, code patient ou date de naissance n'y figure.
+
+Pour un champ de terminologie, l'export produit deux colonnes distinctes **dans les deux
+profils** : la colonne principale contient le libelle lisible et `terminology_code__<colonne>`
+contient le code stable utilise pour l'analyse. Le dictionnaire XLSX decrit egalement cette
+colonne comme `terminology_code`. Les deux colonnes comptent dans les limites de largeur de
+l'export. Le traitement analytique des concepts diagnostiques releve du lot L50, **differe**.
 
 Le nom presente a l'utilisateur suit le contrat :
-`meddata_<base>_<cohorte>_<patients|rencontres>_<AAAA-MM-JJ_HH-mm-ssZ>.<csv|xlsx>`. Les noms de base
+`meddata_<base>_<cohorte>_<patients|rencontres>_<analyse|complet>_<AAAA-MM-JJ_HH-mm-ssZ>.<csv|xlsx>`.
+Le segment de profil rend le fichier identifiable hors de l'application. Les noms de base
 et de cohorte sont normalises (accents, caracteres de chemin et ponctuation retires, segments
 bornes) avant usage. Exemple :
-`meddata_urgences-pediatriques_traumatismes-craniens_rencontres_2026-07-28_06-15-09Z.xlsx`.
+`meddata_urgences-pediatriques_traumatismes-craniens_rencontres_analyse_2026-07-28_06-15-09Z.xlsx`.
 Ce nom metier n'est pas utilise comme cle Storage : `stored_file_path` reste pseudonymise avec les
 identifiants techniques de la base et de la cohorte.
 
@@ -142,7 +171,10 @@ dictionnaire, 1 000 000 cellules, 1 000 colonnes CSV ou 256 colonnes XLSX. Un de
 HTTP 413 avec `EXPORT_LIMIT_EXCEEDED`. Un compte ou une pagination incoherente, une page
 intermediaire incomplete ou un doublon entre pages ferme le chemin avec HTTP 409
 `EXPORT_INCOMPLETE`; une lecture serveur en echec renvoie HTTP 500 `EXPORT_READ_FAILED`. Aucune de
-ces situations ne peut produire un export HTTP 200 partiel.
+ces situations ne peut produire un export HTTP 200 partiel. En profil `analysis`, un multiselect
+de plus de **100 codes** ferme aussi le chemin en HTTP 413 `EXPORT_INDICATOR_CARDINALITY` plutot
+que de produire un fichier tronque ; le profil `complete`, qui concatene les codes au lieu d'ouvrir
+une colonne par modalite, n'a pas ce seuil.
 
 Le telechargement reste separe : l'historique passe par `signed-read`, qui journalise
 `export_read` avant de delivrer l'URL signee avec le nom lisible en `Content-Disposition`. Pour les

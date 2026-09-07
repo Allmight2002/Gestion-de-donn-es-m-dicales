@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-08-24**
+- Établi le 2026-07-27 · **révisé le 2026-09-05**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -61,8 +61,9 @@ n'ont aucun rapport.
 Un prompt prêt à l'emploi existe pour chaque lot dans
 [`prompts-lots.md`](prompts-lots.md).
 
-**Révision du 2026-08-24** : le chantier d'export directement exploitable pour l'analyse est
-découpé en **L45 à L50**. Le détail, les règles de données et les critères d'acceptation sont
+**Révision du 2026-08-24, mise à jour le 2026-09-02** : le chantier d'export directement
+exploitable pour l'analyse était découpé en **L45 à L50** ; **L45 à L49 sont livrés** et seul
+**L50** reste différé. Le détail, les règles de données et les critères d'acceptation sont
 dans [`chantiers-export-analyse.md`](chantiers-export-analyse.md). Les anciens **L36** et **L37**
 ne doivent pas être lancés séparément pour ce chantier : L36 est requalifié par L47 et L37 est
 écarté du profil Analyse ; une feuille de fréquences ne sera réintroduite que si un besoin
@@ -75,6 +76,12 @@ analytique explicite la justifie.
 > (saisie hors-ligne *intake-only*) sont également déjà présents dans le code ; **O6** (preuve
 > navigateur) et **O7** (activation/release) restent à faire. Cette révision corrige aussi l'état
 > contradictoire de **L14**, livré le 2026-08-18.
+
+> **Révision du 2026-09-05 — retour terrain** : les blocs cliniques restent des extensions
+> conditionnelles d'une base au périmètre cohérent. Le diagnostic déjà établi devient le pilote
+> nominal ; l'agent doit pouvoir enregistrer le socle même si aucun bloc ne couvre encore le code.
+> **L55/L56** portent cette extension et **L57** cadre ultérieurement la reprise/notification.
+> Contrat : [`spec-collecte-diagnostique.md`](spec-collecte-diagnostique.md).
 
 ## Vue d'ensemble
 
@@ -124,12 +131,19 @@ analytique explicite la justifie.
 | **L42** | Génération du code patient côté serveur (audit P2) | migration (RPC d'allocation), `src/screens/member/NewPatient.tsx`, `src/data/patients.ts` | **jamais avec L41** (même fichier) |
 | **L43** | Gestion explicite de l'échec de `getSession()` (audit P2) | `src/auth/AuthProvider.tsx` | — |
 | **L44** | Validation DOCX/XLSX et nettoyage des métadonnées d'upload locales (audit P3 ×2) | `src/domain/imageUpload.ts`, `src/data/attachments.ts`, `src/data/inspection.ts` | **jamais avec L40** |
-| **L45** | Contrat des profils Export Analyse / Export complet | `docs/chantiers-export-analyse.md`, contrat et handler d'export, interface | **avant L46 à L50** |
-| **L46** | Identifiants analytiques, noms de colonnes et feuille `Modalités` | `supabase/functions/generate-export/exportContract.ts`, gabarits, tests | **après L45 ; jamais avec L36/L37** |
-| **L47** | Multiselect en indicatrices binaires dans le profil Analyse | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L45 ; remplace L36 ; jamais avec L22/L35** |
-| **L48** | Dates XLSX natives, CSV ISO et unités des durées | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L45 ; jamais avec L35** |
-| **L49** | Dictionnaire simplifié et feuille `Métadonnées` | `supabase/functions/generate-export/exportContract.ts`, `handler.ts`, tests | **après L46 à L48** |
+| ~~L45~~ | ~~Contrat des profils Export Analyse / Export complet~~ | **Livré le 2026-08-28** (`analysis`/`complete`, Analyse par défaut, profil au journal et au nom de fichier) ; **choix du profil dans l’interface le 2026-09-01** | — |
+| ~~L46~~ | ~~Identifiants analytiques, noms de colonnes et feuille `Modalités`~~ | **Livré le 2026-08-28** (repli déterministe `scope__field_key`, collisions refusées, aucune migration) | — |
+| ~~L47~~ | ~~Multiselect en indicatrices binaires dans le profil Analyse~~ | **Livré le 2026-08-28** (`has__…` en `0`/`1`, refus 413 au-delà de 100 codes ; Complet inchangé) | — |
+| ~~L48~~ | ~~Dates XLSX natives, CSV ISO et unités des durées~~ | **Livré le 2026-08-28** (série Excel UTC, formats posés, date invalide laissée en texte) | — |
+| ~~L49~~ | ~~Dictionnaire simplifié et feuille `Métadonnées`~~ | **Livré le 2026-08-28** (classeur Analyse à quatre feuilles ; Complet inchangé) | — |
 | **L50** | Concepts diagnostiques et référentiel terminologique dans l'export | référentiel, contrat d'export, tests | **différé ; après L46** |
+| **L51** | Blocs cliniques conditionnels : opérateur d’appartenance `contains_any` dans le moteur de règles | moteur SQL, `templateRules.ts`, `validation.ts`, `RuleForm.tsx`, i18n | L54 ; **jamais avec L52** |
+| **L55** | Pilote diagnostique et couverture versionnée | règles, templates, éditeurs, copies, RPC | Après L51/L54/L52 ; jamais avec eux |
+| **L56** | Socle enregistrable et suivi autorisé | formulaires, patients/bases, RPC, routes | Après L55 ; collisions L41/L42/offline ; preuve avec L53 |
+| **L57** | Reprise et notifications : cadrage différé | documentation seulement | Après observations pilote L56 ; pas prêt à coder |
+| **L54** | Blocs cliniques conditionnels : deux niveaux de sections et tronc commun créable explicitement | `template_section`, `template_field.section`, primitive de recopie, commandes atomiques, éditeur, rendu, hors-ligne | L51 ; **avant L52 et L53** |
+| **L52** | Blocs cliniques conditionnels : visibilité au niveau **bloc** et invariants de version | moteur SQL, `templateRules.ts`, `validation.ts`, mutations de champs/sections, `RuleForm.tsx` | L53 ; **après L51 et L54**, jamais avec L51 |
+| **L53** | Blocs cliniques conditionnels : projection d’export par blocs | `exportContract.ts`, `handler.ts`, `exports.ts`, `ExportPanel.tsx` | L52 ; **après L54** ; **jamais avec L50** |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
@@ -1027,20 +1041,37 @@ avant ses lots.
   mono-personne saute) qui revient au porteur. À consigner comme décision plutôt qu'à découper en
   lot le jour où un second relecteur rejoint le projet.
 
-## Ordre suggéré — état au 2026-08-24
+## Complément terrain — L55 à L57
+
+**Non implémenté, révision du 2026-09-05.** [Contrat détaillé](spec-collecte-diagnostique.md)
+et [prompts](prompts-lots.md). L51 inclut désormais les codes terminologiques exacts ; L52
+confirme les retraits de données après changement diagnostique ; L53 conserve les cas non
+couverts éligibles. L55 configure le pilote et calcule la couverture sans statut redondant.
+L56 livre le parcours et la file sécurisée. L57 cadre ultérieurement la reprise des versions
+et les notifications, sans implémentation anticipée. La mission reste mono-base.
+
+Ordre conseillé avec un agent : **L51 → L54 → L52 → L55 → L56 → L53 → preuve pilote**,
+puis cadrage L57. L53 peut être avancé après L54. Les compatibilités de fichiers indiquent
+des possibilités, pas une consigne de déléguer. Les travaux de L55 partagent aussi les copies
+de version ; séquencer avec L54. La preuve intégrée L56 inclut l’export après L53.
+
+## Ordre suggéré — état documentaire au 2026-09-05
 
 **Niveau atteint.** Les lots **L1 à L33** sont soldés : 32 sont livrés et **L26 est clos sans
 exécution**. **L14 est bien livré le 2026-08-18**. **L35** est livré le 2026-08-21. **L36** a
 été livré dans son périmètre historique le 2026-08-20, puis requalifié par L47 pour le profil
-Export Analyse. **D10** et **O0 à O5** sont livrés hors de la séquence L1–L50.
+Export Analyse. **D10** et **O0 à O5** sont livrés hors de la séquence L1–L50. Le chantier
+d'export **L45 à L49** est livré : contrat serveur le 2026-08-28, choix du profil dans
+l'interface le 2026-09-01.
 
 **Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
-Restent ouverts : **L34**, les lots d'audit **L38 à L44**, le chantier d'export **L45 à L50**,
-ainsi que **O6** et **O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté
-du profil Analyse et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du
-document.
+Restent ouverts : **L34**, les lots d'audit **L38 à L44**, **L50** (différé, il attend un
+référentiel diagnostique gouverné), les blocs cliniques conditionnels **L51 à L54**, la collecte **L55/L56**, le cadrage différé
+**L57**, ainsi que **O6** et
+**O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté du profil Analyse
+et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du document.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -1067,11 +1098,17 @@ document.
 5. **L38 à L44**, dans l'ordre décidé par l'audit et en respectant les collisions L40/L44 et
    L41/L42. L38 reste prioritaire : il n'est pas couvert par la livraison offline, qui demeure
    désactivée en production.
-6. **L45 à L49**, dans l'ordre décrit par [`chantiers-export-analyse.md`](chantiers-export-analyse.md) :
-   ils redéfinissent le profil d'export et touchent tous le contrat du générateur.
+6. ~~**L45 à L49**~~ — **livrés** ; le jalon MVP de l'Export Analyse est atteint. Le détail par
+   lot est dans [`chantiers-export-analyse.md`](chantiers-export-analyse.md). La preuve sur le
+   site déployé reste à produire.
 7. **L50**, différé après L46 : il dépend du référentiel diagnostique et ne doit pas retarder le
    jalon MVP de l'Export Analyse.
-8. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
+8. **L51** et **L54** peuvent être menés en parallèle : opérateur `contains_any` d'un côté,
+   hiérarchie de sections et tronc commun créable explicitement de l'autre. **L54** doit être fusionné avant
+   L52 et L53 ; L51 et L52 ne tournent jamais ensemble.
+9. Après L51 + L54, **L52** sécurise la visibilité de bloc et les invariants de version. Après
+   L54, **L53** peut avancer en parallèle de L52 ; ne pas le lancer avec L50.
+10. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
    d'activation et preuve de release. Aucun de ces deux lots n'autorise l'usage de données réelles.
 
 > **Historique de coordination** : L21, L22 et L24 ont été livrés le 2026-08-18, puis L23 et L25 ;

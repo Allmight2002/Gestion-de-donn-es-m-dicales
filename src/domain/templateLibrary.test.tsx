@@ -16,7 +16,7 @@ describe('TEMPLATE_LIBRARY (F3)', () => {
       for (const f of m.fields) {
         expect(TYPES.has(f.type)).toBe(true);
         expect(SCOPES.has(f.scope)).toBe(true);
-        expect(SECTIONS.has(f.section)).toBe(true);
+        expect(SECTIONS.has(f.section ?? '')).toBe(true);
         if (f.type === 'select') expect((f.allowedValues ?? []).length).toBeGreaterThan(0);
       }
     }

@@ -31,7 +31,53 @@ function humanize(message: string): string {
   return message;
 }
 
+type StructuredError = { code?: unknown; action?: unknown; hint?: unknown };
+
+function structuredDetails(e: unknown): StructuredError | null {
+  if (!e || typeof e !== 'object') return null;
+  const object = e as Record<string, unknown>;
+  for (const detailKey of ['details', 'detail'] as const) {
+    if (typeof object[detailKey] !== 'string') continue;
+    try {
+      const parsed: unknown = JSON.parse(object[detailKey] as string);
+      if (parsed && typeof parsed === 'object') return parsed as StructuredError;
+    } catch {
+      // Certaines bibliothèques utilisent `details` pour une phrase. Dans ce cas,
+      // on conserve les attributs structurés directs éventuels.
+    }
+  }
+  const direct = object as StructuredError;
+  if ((typeof direct.code === 'string' && direct.code !== 'P0001') || typeof direct.action === 'string') return direct;
+  return null;
+}
+
+/** Code fonctionnel renvoyé par une RPC, sans exposer ses détails cliniques. */
+export function structuredErrorCode(e: unknown): string | null {
+  const details = structuredDetails(e);
+  return typeof details?.code === 'string' ? details.code : null;
+}
+
+/** Ces erreurs indiquent qu'une copie locale doit être rechargée avant toute nouvelle écriture. */
+export function isRefreshRequiredError(e: unknown): boolean {
+  const details = structuredDetails(e);
+  const code = typeof details?.code === 'string' ? details.code : '';
+  const action = typeof details?.action === 'string' ? details.action : '';
+  const hint = typeof details?.hint === 'string' ? details.hint : '';
+  const message = e instanceof Error ? e.message : e && typeof e === 'object'
+    ? String((e as Record<string, unknown>).message ?? '') : String(e ?? '');
+  return /^(block_hidden_value|contains_any_hidden_value|conflict_version)$/.test(code)
+    || action === 'refresh_required' || hint === 'refresh_required'
+    || /CONFLIT_VERSION/i.test(message);
+}
+
 export function errorMessage(e: unknown, fallback: string): string {
+  const code = structuredErrorCode(e);
+  if (code === 'block_hidden_value' || code === 'contains_any_hidden_value') {
+    return 'La fiche a été modifiée ou sa visibilité a changé entre-temps. Vos saisies sont conservées : rechargez les données avant de recommencer.';
+  }
+  if (code === 'conflict_version') {
+    return 'La fiche a été modifiée entre-temps. Vos saisies sont conservées : rechargez les données avant de recommencer.';
+  }
   if (e instanceof Error && e.message) return humanize(e.message);
   if (typeof e === 'string' && e) return humanize(e);
   if (e && typeof e === 'object') {

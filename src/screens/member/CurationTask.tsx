@@ -8,12 +8,13 @@ import { useAuditRepository, useCurationRepository, useTemplateRepository } from
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
-import type { TemplateField, ValidationRule } from '../../data/types';
+import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
+import { EncounterFields, HiddenValuesConfirmation, SectionedFields, fieldAppliesToType } from './EncounterFields';
 import { FieldInput } from './FieldInput';
-import { EncounterFields, fieldAppliesToType } from './EncounterFields';
 import { useSignedFile } from '../../lib/useSignedFile';
 import { SkeletonList } from '../../components/Skeleton';
+import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 const newEncounter = (): DraftEncounter => ({ encounter_type: 'consultation', encounter_date: '', age_unit: 'years', data: {} });
@@ -55,6 +56,7 @@ export function CurationTask() {
   const [bundle, setBundle] = useState<TaskBundle | null>(null);
   const [patientFields, setPatientFields] = useState<TemplateField[]>([]);
   const [encounterFields, setEncounterFields] = useState<TemplateField[]>([]);
+  const [sections, setSections] = useState<TemplateSection[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [patientData, setPatientData] = useState<Record<string, unknown>>({});
   const [encounters, setEncounters] = useState<DraftEncounter[]>([]);
@@ -67,24 +69,47 @@ export function CurationTask() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [pendingPersistence, setPendingPersistence] = useState<'save' | 'finalize' | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
+  const { keys: patientDiagnosticWithdrawalKeys, track: trackPatientVisibilityWithdrawal } = useVisibilityWithdrawal(rules, patientFields, sections);
+  const { keys: encounterDiagnosticWithdrawalKeys, track: trackEncounterVisibilityWithdrawal } = useVisibilityWithdrawal(rules, encounterFields, sections);
 
   // L32 — affichage conditionnel. Le poste de curation nourrit une fiche FINALISEE : une
   // variable masquee ne s'y saisit pas, et sa valeur ne part pas au serveur, qui la refuserait.
   const curated = useMemo(() => {
-    const patientHidden = hiddenFieldKeys(rules, patientData);
+    const patientHidden = hiddenFieldKeys(rules, patientData, patientFields, sections);
+    const patientStripped = withoutHiddenValues(patientData, patientHidden);
     const cleanedEncounters = encounters.map((enc) => {
-      const hidden = hiddenFieldKeys(rules, enc.data);
-      return { hidden, encounter: { ...enc, data: withoutHiddenValues(enc.data, hidden).values } };
+      const applicable = encounterFields.filter((field) => fieldAppliesToType(field, enc.encounter_type));
+      const hidden = hiddenFieldKeys(rules, enc.data, applicable, sections);
+      const stripped = withoutHiddenValues(enc.data, hidden);
+      return { hidden, removed: stripped.removed, encounter: { ...enc, data: stripped.values } };
     });
+    const encounterRemoved = cleanedEncounters.flatMap((entry) => entry.removed);
     return {
       patientHidden,
-      patientData: withoutHiddenValues(patientData, patientHidden).values,
+      patientData: patientStripped.values,
+      patientRemoved: patientStripped.removed,
       encounterHidden: cleanedEncounters.map((e) => e.hidden),
+      encounterRemoved,
       encounters: cleanedEncounters.map((e) => e.encounter),
     };
-  }, [rules, patientData, encounters]);
+  }, [rules, patientData, encounters, patientFields, encounterFields, sections]);
+
+  const diagnosticRemoved = useMemo(() => {
+    const keys = new Set([...patientDiagnosticWithdrawalKeys, ...encounterDiagnosticWithdrawalKeys]);
+    return [...new Set([...curated.patientRemoved, ...curated.encounterRemoved])]
+      .filter((key) => keys.has(key));
+  }, [curated.patientRemoved, curated.encounterRemoved, patientDiagnosticWithdrawalKeys, encounterDiagnosticWithdrawalKeys]);
+
+  useEffect(() => {
+    if (confirmationOpen && diagnosticRemoved.length === 0) {
+      setConfirmationOpen(false);
+      setPendingPersistence(null);
+    }
+  }, [confirmationOpen, diagnosticRemoved.length]);
 
   const load = useCallback(async () => {
     if (!taskId) return;
@@ -104,6 +129,7 @@ export function CurationTask() {
         setPatientFields(sorted.filter((f) => f.scope === 'patient'));
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
         setRules(version.rules);
+        setSections(version.sections ?? []);
       }
       setError(null);
     } catch (e) {
@@ -160,8 +186,41 @@ export function CurationTask() {
     await run(() => curation.retryDocumentInspection(id), t('inspection.retry_done'));
   }
 
-  const updateEncounter = (i: number, patch: Partial<DraftEncounter>) =>
-    setEncounters((list) => list.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+  function updatePatientValue(key: string, value: unknown, remove = false) {
+    const next = { ...patientData };
+    if (remove) delete next[key];
+    else next[key] = value;
+    trackPatientVisibilityWithdrawal(patientData, next);
+    setPatientData(next);
+  }
+
+  function updateEncounter(i: number, patch: Partial<DraftEncounter>) {
+    setEncounters((list) => list.map((encounter, index) => {
+      if (index !== i) return encounter;
+      const next = { ...encounter, ...patch };
+      if (patch.data) trackEncounterVisibilityWithdrawal(encounter.data, patch.data);
+      return next;
+    }));
+  }
+
+  async function persistDraft(finalize: boolean) {
+    if (!draft) return;
+    setConfirmationOpen(false);
+    setPendingPersistence(null);
+    await run(async () => {
+      await curation.saveDraft(draft.id, curated.patientData, curated.encounters, draft.revision);
+      if (finalize) await curation.finalizeTask(task.id);
+    }, t(finalize ? 'curation.finalized' : 'curation.saved'));
+  }
+
+  function requestPersistence(finalize: boolean) {
+    if (diagnosticRemoved.length > 0) {
+      setPendingPersistence(finalize ? 'finalize' : 'save');
+      setConfirmationOpen(true);
+      return;
+    }
+    void persistDraft(finalize);
+  }
 
   return (
     <section className="max-w-2xl space-y-5 sm:space-y-6">
@@ -375,14 +434,18 @@ export function CurationTask() {
             {task.scope !== 'encounter' && (
               <div className="card p-4">
                 <h2 className="mb-2 text-sm font-semibold text-slate-700">{t('patient.permanent_section')}</h2>
-                {patientFields.filter((f) => !curated.patientHidden.has(f.fieldKey)).map((f) => (
-                  <label key={f.id} className="mb-2 flex flex-col text-sm">
-                    <span className="text-slate-700">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
-                    <div className="mt-1">
-                      <FieldInput field={f} value={patientData[f.fieldKey]} onChange={(v) => setPatientData((p) => ({ ...p, [f.fieldKey]: v }))} />
-                    </div>
-                  </label>
-                ))}
+                <SectionedFields
+                  fields={patientFields.filter((f) => !curated.patientHidden.has(f.fieldKey))}
+                  sections={sections}
+                  renderField={(f) => (
+                    <label className="flex flex-col text-sm">
+                      <span className="text-slate-700">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
+                      <div className="mt-1">
+                        <FieldInput field={f} value={patientData[f.fieldKey]} onChange={(v) => updatePatientValue(f.fieldKey, v)} />
+                      </div>
+                    </label>
+                  )}
+                />
               </div>
             )}
 
@@ -416,6 +479,7 @@ export function CurationTask() {
                   <EncounterFields
                     fields={encounterFields.filter((f) => fieldAppliesToType(f, enc.encounter_type))}
                     hiddenKeys={curated.encounterHidden[i]}
+                    sections={sections}
                     values={enc.data}
                     onChange={(k, v) => updateEncounter(i, { data: { ...enc.data, [k]: v } })}
                     onRemove={(key) => {
@@ -431,29 +495,32 @@ export function CurationTask() {
           {canEdit && (
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() =>
-                  void run(
-                    () => curation.saveDraft(draft.id, curated.patientData, curated.encounters, draft.revision),
-                    t('curation.saved'),
-                  )}
-                disabled={busy}
+                onClick={() => requestPersistence(false)}
+                disabled={busy || confirmationOpen}
                 className="btn-secondary"
               >
                 {t('curation.save_draft')}
               </button>
               {/* Le curateur finalise directement (plus de validateur) : enregistre puis finalise. */}
               <button
-                onClick={() =>
-                  void run(async () => {
-                    await curation.saveDraft(draft.id, curated.patientData, curated.encounters, draft.revision);
-                    await curation.finalizeTask(task.id);
-                  }, t('curation.finalized'))}
-                disabled={busy}
+                onClick={() => requestPersistence(true)}
+                disabled={busy || confirmationOpen}
                 className="btn-primary"
               >
                 {t('curation.finalize')}
               </button>
             </div>
+          )}
+          {confirmationOpen && pendingPersistence && (
+            <HiddenValuesConfirmation
+              removedKeys={diagnosticRemoved}
+              fields={[...patientFields, ...encounterFields]}
+              onConfirm={() => void persistDraft(pendingPersistence === 'finalize')}
+              onCancel={() => {
+                setConfirmationOpen(false);
+                setPendingPersistence(null);
+              }}
+            />
           )}
         </div>
       ))}

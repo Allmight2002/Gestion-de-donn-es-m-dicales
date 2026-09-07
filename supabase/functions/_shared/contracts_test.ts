@@ -51,7 +51,15 @@ Deno.test('generate-export accepts stable defaults and rejects identifiers/enums
   assertEquals(parseExportRequest({ cohortId }), {
     cohortId,
     format: 'csv',
-    options: { mode: 'encounter', rule: 'last', scope: 'matching', profile: 'analysis' },
+    // L53 : la projection RESOLUE accompagne toujours les options, donc toujours le journal.
+    // Son defaut `all` reproduit exactement le fichier produit avant le lot.
+    options: {
+      mode: 'encounter',
+      rule: 'last',
+      scope: 'matching',
+      profile: 'analysis',
+      sectionProjection: { mode: 'all' },
+    },
   });
   assertThrows(() => parseExportRequest({ cohortId: 'not-an-id' }), RequestValidationError);
   assertThrows(() => parseExportRequest({ cohortId, format: 'pdf' }), RequestValidationError);
@@ -63,9 +71,48 @@ Deno.test('generate-export accepts both explicit profiles and refuses an unknown
   assertEquals(parseExportRequest({ cohortId, options: { profile: 'complete' } }).options.profile, 'complete');
   assertEquals(
     parseExportRequest({ cohortId, options: { profile: 'complete', mode: 'patient' } }).options,
-    { mode: 'patient', rule: 'last', scope: 'matching', profile: 'complete' },
+    { mode: 'patient', rule: 'last', scope: 'matching', profile: 'complete', sectionProjection: { mode: 'all' } },
   );
   assertThrows(() => parseExportRequest({ cohortId, options: { profile: 'cible' } }), RequestValidationError);
+});
+
+Deno.test('L53 : sectionProjection — defaut `all`, cles normalisees, formes invalides refusees', () => {
+  const cohortId = '123e4567-e89b-42d3-a456-426614174000';
+  const projectionDe = (sectionProjection: unknown) =>
+    parseExportRequest({ cohortId, options: { sectionProjection } }).options.sectionProjection;
+
+  // L'ABSENCE de projection equivaut a `all` : aucun fichier existant ne change de forme.
+  assertEquals(parseExportRequest({ cohortId }).options.sectionProjection, { mode: 'all' });
+  assertEquals(projectionDe(undefined), { mode: 'all' });
+  assertEquals(projectionDe({ mode: 'all' }), { mode: 'all' });
+  // `all` ignore les cles : la projection journalisee dit alors la verite du fichier.
+  assertEquals(projectionDe({ mode: 'all', blockKeys: ['tuberculose'] }), { mode: 'all' });
+  // Dedoublonnage et tri : le journal reste canonique quel que soit l'ordre des cases cochees.
+  assertEquals(projectionDe({ mode: 'selected', blockKeys: ['tuberculose', 'malnutrition', 'tuberculose'] }), {
+    mode: 'selected',
+    blockKeys: ['malnutrition', 'tuberculose'],
+  });
+
+  // `selected` sans cle utilisable est refuse AVANT toute lecture de cohorte.
+  for (
+    const invalide of [
+      { mode: 'selected' },
+      { mode: 'selected', blockKeys: [] },
+      { mode: 'selected', blockKeys: 'tuberculose' },
+      { mode: 'selected', blockKeys: [42] },
+      // Une cle n'est pas un libelle : elle suit la forme de `template_section.section_key`.
+      { mode: 'selected', blockKeys: ['Tuberculose'] },
+      { mode: 'selected', blockKeys: ['tuberculose', ''] },
+      { mode: 'ciblee' },
+      ['tuberculose'],
+      'tuberculose',
+    ]
+  ) {
+    assertThrows(
+      () => parseExportRequest({ cohortId, options: { sectionProjection: invalide } }),
+      RequestValidationError,
+    );
+  }
 });
 
 Deno.test('inspect-upload and signed-read require supported entity and UUID', () => {

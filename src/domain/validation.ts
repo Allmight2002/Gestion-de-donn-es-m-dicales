@@ -4,12 +4,14 @@
 //    du vide (§6) ;
 //  * évaluation des règles de cohérence JSON (opérateurs whitelist, jamais exécutées
 //    comme du code) -> erreurs bloquantes (block) ou avertissements (warn).
-import { isTerminologyList, isTerminologyValue, type TemplateField } from '../data/types';
+import { isTerminologyList, isTerminologyValue, type TemplateField, type TemplateSection } from '../data/types';
 import {
   COMPARISON_OPERATORS,
   CONDITION_OPERATORS,
+  visibilityTargetFieldKeys,
   visibilityRulesOf,
   type ConditionOperator,
+  type VisibilityRule,
 } from './templateRules';
 import { MISSING_CODES, sortMissingReasons, type MissingCode } from './export';
 
@@ -193,8 +195,26 @@ function order(a: unknown, b: unknown): number | null {
   return null;
 }
 
-function applyOp(op: string, a: unknown, b: unknown): boolean {
+/** L51: exact codes, no JSON coercion; invalid lists fail as a whole. Mirrors SQL. */
+export function containsAny(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(b) || b.length === 0
+    || !b.every((code) => typeof code === 'string' && code.trim() !== '')
+    || new Set(b).size !== b.length) return false;
+  const values = Array.isArray(a) ? a : [a];
+  if (values.length === 0) return false;
+  if (values.every((v) => typeof v === 'string' && v.trim() !== '')) {
+    return values.some((v) => b.includes(v));
+  }
+  if (values.length > 50 || !values.every((v) => isTerminologyValue(v)
+    && Object.keys(v).every((key) => key === 'code' || key === 'label'))) return false;
+  const codes = values.map((v) => (v as { code: string }).code);
+  return new Set(codes).size === codes.length && codes.some((code) => b.includes(code));
+}
+
+export function applyOp(op: string, a: unknown, b: unknown): boolean {
   switch (op) {
+    case 'contains_any':
+      return containsAny(a, b);
     case 'equals':
       return String(a) === String(b);
     case 'not_equals':
@@ -230,6 +250,8 @@ function applyOp(op: string, a: unknown, b: unknown): boolean {
 export function hiddenFieldKeys(
   rules: readonly { rule: unknown }[],
   values: Record<string, unknown>,
+  fields: readonly TemplateField[] = [],
+  sections?: readonly TemplateSection[] | null,
 ): Set<string> {
   const hidden = new Set<string>();
   const visibility = visibilityRulesOf(rules.map((r) => r.rule));
@@ -238,16 +260,87 @@ export function hiddenFieldKeys(
   for (let pass = 0; pass <= visibility.length; pass += 1) {
     let changed = false;
     for (const rule of visibility) {
-      if (hidden.has(rule.then.field)) continue;
       const driver = hidden.has(rule.if.field) ? undefined : values[rule.if.field];
       if (!present(driver) || !applyOp(rule.if.operator, driver, rule.if.value)) {
-        hidden.add(rule.then.field);
-        changed = true;
+        for (const target of visibilityTargetFieldKeys(rule, fields, sections)) {
+          if (!hidden.has(target)) {
+            hidden.add(target);
+            changed = true;
+          }
+        }
       }
     }
     if (!changed) break;
   }
   return hidden;
+}
+
+/**
+ * Déplie une perte de visibilité en incluant les cibles qui deviennent masquées par
+ * cascade. Les racines sont les variables directement gouvernées par la règle qui vient
+ * d'échouer ; une cible de bloc y ajoute déjà toutes ses sous-sections.
+ */
+export function visibilityCascadeFieldKeys(
+  rules: readonly unknown[],
+  roots: ReadonlySet<string>,
+  fields: readonly TemplateField[],
+  sections?: readonly TemplateSection[] | null,
+): Set<string> {
+  const affected = new Set(roots);
+  const visibility = visibilityRulesOf(rules);
+  for (let pass = 0; pass <= visibility.length; pass += 1) {
+    let changed = false;
+    for (const rule of visibility) {
+      if (!affected.has(rule.if.field)) continue;
+      for (const target of visibilityTargetFieldKeys(rule, fields, sections)) {
+        if (!affected.has(target)) {
+          affected.add(target);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return affected;
+}
+
+/** Condition d'affichage satisfaite, sans prendre en compte la visibilité d'un autre champ. */
+export function visibilityConditionHolds(
+  rule: VisibilityRule,
+  values: Record<string, unknown>,
+): boolean {
+  const driver = values[rule.if.field];
+  return present(driver) && applyOp(rule.if.operator, driver, rule.if.value);
+}
+
+/**
+ * Variables dont la visibilité vient de basculer après le retrait d'un diagnostic.
+ *
+ * Cette fonction ne décide ni de l'effacement ni de l'enregistrement : elle signale
+ * uniquement la transition `condition vraie -> condition fausse` pour un pilote de type
+ * terminologie. L'écran l'intersecte ensuite avec les valeurs réellement présentes afin de
+ * demander une confirmation seulement lorsqu'une saisie va effectivement disparaître.
+ */
+export function diagnosticVisibilityWithdrawalKeys(
+  rules: readonly { rule: unknown }[],
+  fields: readonly TemplateField[],
+  previousValues: Record<string, unknown>,
+  nextValues: Record<string, unknown>,
+  sections?: readonly TemplateSection[] | null,
+): Set<string> {
+  const byKey = new Map(fields.map((field) => [field.fieldKey, field]));
+  const directTargets = new Set<string>();
+  for (const rule of visibilityRulesOf(rules.map((item) => item.rule))) {
+    if (byKey.get(rule.if.field)?.type !== 'terminology') continue;
+    const wasVisible = present(previousValues[rule.if.field])
+      && applyOp(rule.if.operator, previousValues[rule.if.field], rule.if.value);
+    const isVisible = present(nextValues[rule.if.field])
+      && applyOp(rule.if.operator, nextValues[rule.if.field], rule.if.value);
+    if (wasVisible && !isVisible) {
+      for (const target of visibilityTargetFieldKeys(rule, fields, sections)) directTargets.add(target);
+    }
+  }
+  return visibilityCascadeFieldKeys(rules.map((item) => item.rule), directTargets, fields, sections);
 }
 
 /**

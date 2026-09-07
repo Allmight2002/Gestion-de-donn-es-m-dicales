@@ -14,9 +14,9 @@ import {
   intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
   type PatientCreateEntry,
 } from '../../data/offlineIntake';
-import { getTemplateFields } from '../../data/templates';
-import { displayFieldValue } from '../../data/types';
-import { isMissing, missingCodeOf } from '../../domain/validation';
+import { withSections } from '../../data/templates';
+import { displayFieldValue, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
@@ -26,6 +26,7 @@ import { DeleteWithReason } from './DeleteWithReason';
 import { useSignedFile } from '../../lib/useSignedFile';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
+import { DiagnosisCoverageNotice, diagnosisCoverageOrNull } from './DiagnosisCoverageNotice';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
@@ -34,15 +35,15 @@ import { groupFieldsBySection, sectionLabel } from '../../domain/templateSection
 // L30 : `type` et les options voyagent avec la colonne pour que la fiche affiche le
 // LIBELLE de l'option et non son code -- en ligne comme depuis un instantane.
 type Column = {
-  id: string; fieldKey: string; label: string; scope: string; section: string; displayOrder: number;
-  sectionLabel?: string | null; sectionOrder?: number | null;
+  id: string; fieldKey: string; label: string; scope: string; section: string | null; displayOrder: number;
+  sectionLabel?: string | null; sectionOrder?: number | null; parentSectionKey?: string | null; parentSectionLabel?: string | null;
   type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
   formula?: string | null;
 };
 
 type ColumnSource = {
   id: string; fieldKey: string; label: string; scope: string; section?: string | null; displayOrder: number;
-  sectionLabel?: string | null; sectionOrder?: number | null;
+  sectionLabel?: string | null; sectionOrder?: number | null; parentSectionKey?: string | null; parentSectionLabel?: string | null;
   type?: string; unit?: string | null; allowedValues?: unknown; allowedOptions?: unknown;
   formula?: string | null;
 };
@@ -52,7 +53,10 @@ const toColumn = (field: ColumnSource): Column => ({
   fieldKey: field.fieldKey,
   label: field.label,
   scope: field.scope,
-  section: field.section ?? '',
+  // Une section explicitement nulle = tronc commun ; une métadonnée absente d'un ancien
+  // instantané reste sur le filet historique « autre ».
+  section: field.section === undefined ? '' : field.section ?? null,
+  parentSectionKey: field.parentSectionKey, parentSectionLabel: field.parentSectionLabel,
   sectionLabel: field.sectionLabel ?? null,
   sectionOrder: field.sectionOrder ?? null,
   displayOrder: field.displayOrder,
@@ -62,6 +66,32 @@ const toColumn = (field: ColumnSource): Column => ({
   allowedOptions: field.allowedOptions,
   formula: field.formula ?? null,
 });
+
+type DisplayVersion = {
+  fields: Column[];
+  ruleFields: TemplateField[];
+  rules: ValidationRule[];
+  sections: TemplateSection[];
+  /** L55/L56 : contrat diagnostique de CETTE version. Absent = collecte historique. */
+  diagnosisContext?: DiagnosisContext[];
+};
+
+function displayVersionOf(
+  fields: readonly TemplateField[],
+  rules: readonly ValidationRule[],
+  sections: readonly TemplateSection[],
+  diagnosisContext?: DiagnosisContext[],
+): DisplayVersion {
+  const sorted = [...fields].sort((a, b) => a.displayOrder - b.displayOrder);
+  return {
+    fields: withSections(sorted, sections).map(toColumn),
+    // L52 : le même dictionnaire complet sert à déplier une cible de bloc en variables.
+    ruleFields: sorted,
+    rules: [...rules],
+    sections: [...sections],
+    diagnosisContext,
+  };
+}
 
 const formulaFieldsOf = (fields: readonly Column[]) => fields.map((field) => ({
   fieldKey: field.fieldKey,
@@ -141,6 +171,8 @@ export function PatientDetail() {
   const [blockedServerIdOffline, setBlockedServerIdOffline] = useState(false);
   const [patientFields, setPatientFields] = useState<Column[]>([]);
   const [encounterFields, setEncounterFields] = useState<Column[]>([]);
+  const [versions, setVersions] = useState<Record<string, DisplayVersion>>({});
+  const [currentVersionId, setCurrentVersionId] = useState<string | null>(null);
   const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [canCorrectIdentity, setCanCorrectIdentity] = useState(false);
@@ -166,6 +198,8 @@ export function PatientDetail() {
   const load = useCallback(async () => {
     if (!baseId || !patientId) return;
     setLoading(true);
+    setVersions({});
+    setCurrentVersionId(null);
     try {
       if (!online) {
         // MODE INTAKE-ONLY (feuille de route O3) : la fiche d'un patient EXISTANT n'est jamais
@@ -205,15 +239,32 @@ export function PatientDetail() {
         setIsCrossSectional(false);
         setAttachments([]);
         if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
+        setCurrentVersionId(snap?.templateVersionId ?? null);
         setPatient({ id: op.id, code: op.code, templateVersionId: op.templateVersionId, data: op.data, validationStatus: op.validationStatus, identity: null });
         setEncounters(op.encounters.map((e) => ({ ...e })));
         // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
         // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
-        const dictFor = (vid?: string | null): Column[] => ((vid && snap?.fieldsByVersion?.[vid]) || snap?.fields || []).map(toColumn);
-        setPatientFields(dictFor(op.templateVersionId).sort((a, b) => a.displayOrder - b.displayOrder).filter((f) => f.scope === 'patient'));
+        const versionIds = [...new Set([
+          op.templateVersionId,
+          ...op.encounters.map((encounter) => encounter.templateVersionId).filter((id): id is string => !!id),
+          snap?.templateVersionId,
+        ].filter((id): id is string => !!id))];
+        const viewEntries = versionIds.map((versionId) => {
+          const fields = (snap?.fieldsByVersion?.[versionId] ?? snap?.fields ?? []) as unknown as TemplateField[];
+          const rules = (snap?.rulesByVersion?.[versionId] ?? []) as unknown as ValidationRule[];
+          const sections = snap?.sectionsByVersion?.[versionId] ?? snap?.sections ?? [];
+          return [versionId, displayVersionOf(fields, rules, sections, snap?.diagnosisContextByVersion?.[versionId])] as const;
+        });
+        const views = Object.fromEntries(viewEntries) as Record<string, DisplayVersion>;
+        setVersions(views);
+        const patientView = views[op.templateVersionId] ?? views[snap?.templateVersionId ?? ''];
+        setPatientFields((patientView?.fields ?? []).filter((f) => f.scope === 'patient'));
         const encFields = new Map<string, Column>();
-        for (const e of op.encounters) for (const f of dictFor(e.templateVersionId)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
-        if (encFields.size === 0) for (const f of (snap?.fields ?? []).map(toColumn)) if (f.scope === 'encounter') encFields.set(f.fieldKey, f);
+        for (const versionId of versionIds) {
+          for (const f of views[versionId]?.fields ?? []) {
+            if (f.scope === 'encounter' && !encFields.has(f.fieldKey)) encFields.set(f.fieldKey, f);
+          }
+        }
         setEncounterFields([...encFields.values()].sort((a, b) => a.displayOrder - b.displayOrder));
         setError(null);
         return;
@@ -234,12 +285,27 @@ export function PatientDetail() {
       setCanCorrectIdentity(canCorrectPatientIdentity(base, p));
       setIsCrossSectional((base?.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       if (base?.base.currentTemplateVersionId) {
-        const fields = await getTemplateFields(templates, base.base.currentTemplateVersionId);
-        const sorted: Column[] = fields
-          .map(toColumn)
-          .sort((a, b) => a.displayOrder - b.displayOrder);
-        setPatientFields(sorted.filter((f) => f.scope === 'patient'));
-        setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
+        setCurrentVersionId(base.base.currentTemplateVersionId);
+        const versionIds = [...new Set([
+          p?.templateVersionId ?? base.base.currentTemplateVersionId,
+          ...encs.map((encounter) => encounter.templateVersionId).filter((id): id is string => !!id),
+          base.base.currentTemplateVersionId,
+        ])];
+        const entries = await Promise.all(versionIds.map(async (versionId) => {
+          const version = await templates.getVersion(versionId);
+          return [versionId, displayVersionOf(version.fields, version.rules, version.sections ?? [], version.version.diagnosisContext)] as const;
+        }));
+        const views = Object.fromEntries(entries) as Record<string, DisplayVersion>;
+        setVersions(views);
+        const patientView = views[p?.templateVersionId ?? base.base.currentTemplateVersionId];
+        setPatientFields((patientView?.fields ?? []).filter((f) => f.scope === 'patient'));
+        const encFields = new Map<string, Column>();
+        for (const versionId of versionIds) {
+          for (const f of views[versionId]?.fields ?? []) {
+            if (f.scope === 'encounter' && !encFields.has(f.fieldKey)) encFields.set(f.fieldKey, f);
+          }
+        }
+        setEncounterFields([...encFields.values()].sort((a, b) => a.displayOrder - b.displayOrder));
       }
       setError(null);
     } catch (e) {
@@ -287,6 +353,26 @@ export function PatientDetail() {
     );
   }
   if (!patient) return <p className="text-slate-500">{t('notfound.title')}</p>;
+
+  // La fiche de lecture doit suivre la même décision que les formulaires : une règle de bloc
+  // ne se contente pas d'empêcher une nouvelle saisie, elle retire aussi le groupe vide de la
+  // restitution. Les versions historiques gardent leur propre dictionnaire et leurs propres
+  // règles ; le gabarit courant reste le repli des instantanés anciens.
+  const fallbackVersion = versions[currentVersionId ?? '']
+    ?? versions[patient.templateVersionId]
+    ?? Object.values(versions)[0];
+  const versionFor = (versionId?: string | null): DisplayVersion | undefined =>
+    (versionId ? versions[versionId] : undefined) ?? fallbackVersion;
+  const patientVersion = versionFor(patient.templateVersionId);
+  const patientHidden = patientVersion
+    ? hiddenFieldKeys(
+      patientVersion.rules,
+      patient.data,
+      patientVersion.ruleFields.filter((field) => field.scope === 'patient'),
+      patientVersion.sections,
+    )
+    : new Set<string>();
+  const visiblePatientFields = patientFields.filter((field) => !patientHidden.has(field.fieldKey));
 
   return (
     <section className="max-w-4xl space-y-5 sm:space-y-6">
@@ -343,59 +429,69 @@ export function PatientDetail() {
         </fieldset>
       )}
 
-      <SectionCard
-        title={t('patient.permanent_section')}
-        actions={(
-          <span className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={patient.validationStatus} />
-            {canEdit && (
-              <button
-                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
-                className="text-xs font-medium text-teal-700 hover:underline"
-              >
-                {t('patient.edit_permanent')}
-              </button>
+      {visiblePatientFields.length > 0 && (
+        <SectionCard
+          title={t('patient.permanent_section')}
+          actions={(
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusBadge status={patient.validationStatus} />
+              {canEdit && (
+                <button
+                  onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
+                  className="text-xs font-medium text-teal-700 hover:underline"
+                >
+                  {t('patient.edit_permanent')}
+                </button>
+              )}
+              {canEdit && patient.validationStatus !== 'curated' && (
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try { await patients.finalizePatient(patientId!); await load(); setError(null); }
+                    catch (e) { setError(errorMessage(e, t('common.error'))); }
+                    finally { setBusy(false); }
+                  }}
+                  className="text-xs font-medium text-teal-700 hover:underline"
+                >
+                  {t('patient.finalize')}
+                </button>
+              )}
+            </span>
+          )}
+        >
+          <div className="space-y-4">
+          {/* L56 : meme information NON BLOQUANTE qu'a la saisie, calculee dans LA VERSION
+              du dossier. Elle ne dit rien de sa completude et n'invite a rien changer. */}
+          <DiagnosisCoverageNotice
+            coverage={diagnosisCoverageOrNull(
+              patient.templateVersionId, patientVersion?.diagnosisContext, 'patient', patient.data,
+              patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
             )}
-            {canEdit && patient.validationStatus !== 'curated' && (
-              <button
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try { await patients.finalizePatient(patientId!); await load(); setError(null); }
-                  catch (e) { setError(errorMessage(e, t('common.error'))); }
-                  finally { setBusy(false); }
-                }}
-                className="text-xs font-medium text-teal-700 hover:underline"
-              >
-                {t('patient.finalize')}
-              </button>
-            )}
-          </span>
-        )}
-      >
-        <div className="space-y-4">
-          {groupFieldsBySection(patientFields).map((group) => (
+          />
+          {groupFieldsBySection(visiblePatientFields, patientVersion?.sections).map((group) => (
             <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
               <legend className="px-1 text-sm font-semibold text-slate-700">
                 {sectionLabel(t, { sectionKey: group.key, label: group.label })}
               </legend>
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 {group.fields.map((f) => {
-                  const renderedUnit = unitOf(f, patientFields, t);
+                  const renderedUnit = unitOf(f, visiblePatientFields, t);
                   return (
                     <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
                       <dt className="text-xs text-slate-500">
                         {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
                       </dt>
-                      <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, patientFields)}</dd>
+                      <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields)}</dd>
                     </div>
                   );
                 })}
               </dl>
             </fieldset>
           ))}
-        </div>
-      </SectionCard>
+          </div>
+        </SectionCard>
+      )}
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>
@@ -403,7 +499,18 @@ export function PatientDetail() {
           <EmptyState icon={CalendarDays} title={t('patient.no_encounters')} compact />
         ) : (
           <ul className="space-y-3">
-            {encounters.map((e) => (
+            {encounters.map((e) => {
+              const encounterVersion = versionFor(e.templateVersionId);
+              const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter') ?? [];
+              const encounterHidden = encounterVersion
+                ? hiddenFieldKeys(encounterVersion.rules, e.data, encounterRuleFields, encounterVersion.sections)
+                : new Set<string>();
+              const fieldsForEncounter = (encounterVersion?.fields ?? encounterFields)
+                .filter((field) => field.scope === 'encounter' && (field.formula || field.fieldKey in e.data))
+                .filter((field) => !encounterHidden.has(field.fieldKey));
+              const sectionsForEncounter = encounterVersion?.sections;
+              const formulaFields = encounterVersion?.fields ?? encounterFields;
+              return (
               <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">
@@ -435,20 +542,27 @@ export function PatientDetail() {
                   )}
                 </div>
                 <div className="space-y-3">
-                  {groupFieldsBySection(encounterFields.filter((f) => f.formula || f.fieldKey in e.data)).map((group) => (
+                  {/* L56 : couverture de LA VERSION de cette rencontre, information seulement. */}
+                  <DiagnosisCoverageNotice
+                    coverage={diagnosisCoverageOrNull(
+                      e.templateVersionId, encounterVersion?.diagnosisContext, 'encounter', e.data,
+                      encounterRuleFields, encounterVersion?.rules ?? [], sectionsForEncounter,
+                    )}
+                  />
+                  {groupFieldsBySection(fieldsForEncounter, sectionsForEncounter).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
                       <legend className="px-1 text-xs font-semibold text-slate-600">
                         {sectionLabel(t, { sectionKey: group.key, label: group.label })}
                       </legend>
                       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
                         {group.fields.map((f) => {
-                          const renderedUnit = unitOf(f, encounterFields, t);
+                          const renderedUnit = unitOf(f, formulaFields, t);
                           return (
                             <div key={f.id} className="contents">
                               <dt className="text-slate-500">
                                 {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
                               </dt>
-                              <dd>{fmt(e.data[f.fieldKey], f, e.data, encounterFields)}</dd>
+                              <dd>{fmt(e.data[f.fieldKey], f, e.data, formulaFields)}</dd>
                             </div>
                           );
                         })}
@@ -457,7 +571,8 @@ export function PatientDetail() {
                   ))}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

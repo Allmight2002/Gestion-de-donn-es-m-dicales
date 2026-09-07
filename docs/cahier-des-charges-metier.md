@@ -259,20 +259,32 @@ exporte des données **sans identité**.
   cohorte n'offre que **« contient l'un de »** et **« ne contient aucun de »**. L'égalité est
   retirée de l'interface plutôt que de produire un résultat faux en silence. Un patient portant
   cinq diagnostics compte pour **un patient**.
-- **EF-28 bis (exporter une liste, L22).** Une variable à plusieurs valeurs produit une colonne de
-  **libellés** joints, une colonne de **codes**, un **compteur**, une colonne indicatrice `0/1`
-  par code présent (jusqu'à 100 codes distincts), et une **feuille dédiée** sans perte — une ligne
-  par valeur, avec son rang. Une raison de valeur manquante remplit la colonne principale et
-  laisse le compteur **vide**, jamais `0`, qui signifierait « aucun diagnostic ».
-- **EF-28 quinquies (cible Export Analyse, 2026-08-24).** Le profil d'export proposé par défaut
-  est destiné à une utilisation directe dans Excel, R, SPSS ou Stata. Il produit les feuilles
-  `Données`, `Dictionnaire`, `Modalités` et `Métadonnées`, conserve le code stable des `select`
-  dans les données, transforme les multiselect en indicatrices binaires initialisées à `0` (une
-  modalité non sélectionnée vaut `0`) et réserve les colonnes techniques, compteurs et feuilles
-  relationnelles au profil **Export complet**. La distinction entre `0`, valeur vide et raison de
-  valeur manquante est obligatoire. Cette cible est
-  **documentée mais non implémentée** ; son découpage est dans
-  [`chantiers-export-analyse.md`](chantiers-export-analyse.md).
+- **EF-28 bis (exporter une liste, L22 puis L47).** En profil **Export complet**, une variable à
+  plusieurs valeurs produit une colonne de **libellés** joints, une colonne de **codes**, un
+  **compteur**, une colonne indicatrice `0/1` par code présent, et une **feuille dédiée** sans
+  perte — une ligne par valeur, avec son rang. Une raison de valeur manquante remplit la colonne
+  principale et laisse le compteur **vide**, jamais `0`, qui signifierait « aucun diagnostic ». En
+  profil **Export Analyse**, seules subsistent les **indicatrices** (voir EF-28 quinquies).
+- **EF-28 quinquies (Export Analyse, 2026-08-24 — implémenté le 2026-08-28).** Le profil d'export
+  proposé par défaut est destiné à une utilisation directe dans Excel, R, SPSS ou Stata. Il produit
+  les feuilles `Données`, `Dictionnaire`, `Modalités` et `Métadonnées`, conserve le code stable des
+  `select` dans les données, transforme les multiselect en indicatrices binaires initialisées à
+  `0` (une modalité non sélectionnée vaut `0`), écrit des dates Excel natives et réserve les
+  colonnes techniques, compteurs et feuilles relationnelles au profil **Export complet**. La
+  distinction entre `0`, valeur vide et raison de valeur manquante est obligatoire. **Livré par les
+  lots L45 à L49** ; le détail est dans
+  [`chantiers-export-analyse.md`](chantiers-export-analyse.md). Seul **L50** (concepts
+  diagnostiques et terminologie) reste différé.
+- **EF-28 sexies (choisir son profil, L45 — 2026-09-01).** L'écran d'export laisse choisir entre
+  **Analyse** (présélectionné) et **Complet**. Le profil retenu est inscrit au journal des exports
+  et **visible dans le nom du fichier**, pour qu'un fichier reste identifiable hors de
+  l'application. Un export réalisé avant l'introduction des profils est présenté comme « Profil
+  antérieur », sans qu'un profil lui soit attribué rétroactivement.
+- **RG-15 bis (un profil ne relâche jamais une garantie).** Les deux profils partagent le même
+  contrôle d'accès, la même liste anti-identité, le même figeage, la même empreinte et la même
+  journalisation. Le profil décide de la **forme** du fichier, jamais de ce qu'un utilisateur a le
+  droit d'en sortir. Un export **Analyse** dont un multiselect dépasse le seuil d'indicatrices est
+  **refusé explicitement** plutôt que tronqué en silence.
 
 ### 4.10 Mode hors-ligne (application installable / PWA)
 - **EF-29.** Une base peut être rendue **disponible hors-ligne** : un **instantané analytique**

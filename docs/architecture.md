@@ -24,6 +24,11 @@ en reste la **vue d'ensemble développeur**.
 
 ---
 
+> **Évolution spécifiée, non implémentée (2026-09-05)** : la
+> [collecte diagnostique](spec-collecte-diagnostique.md) complète les blocs L51–L54 par L55/L56
+> (socle enregistrable même sans bloc) ; L57 cadre ultérieurement les reprises et notifications.
+> Ce chantier ne change pas encore les comportements décrits ci-dessous.
+
 ## 1. Principe central : un registre, trois zones
 
 Le produit est **registre-centré** : l'objet central est le **patient**, pas l'étude.
@@ -212,6 +217,11 @@ population à la volée, sous un nom daté, puis exporte. La constitution manuel
 (`/bases/:id/cohorts`) reste offerte pour choisir une population précise. Le fichier
 d'export est conservé immuable (`file_hash`) et tracé. `assert_export_columns_safe()`
 **refuse tout champ identifiant** (liste blanche analytique).
+Depuis les lots L45 à L49, le fichier existe en deux **profils** : `analysis` (défaut, prêt pour
+Excel/R/SPSS/Stata — feuilles `Données`, `Dictionnaire`, `Modalités`, `Métadonnées`) et
+`complete` (structure historique). Le profil est choisi dans l'interface, résolu côté serveur,
+journalisé et visible dans le nom du fichier ; il ne change **aucune** garantie d'accès ou
+d'anti-fuite. Voir [`chantiers-export-analyse.md`](chantiers-export-analyse.md).
 
 **Audit** (`audit_log`) — trace des actions sensibles (§14) : consultation d'identité,
 vue/téléchargement d'image, changement d'accès, invitation, figement de cohorte, export,

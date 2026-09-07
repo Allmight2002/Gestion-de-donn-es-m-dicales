@@ -94,7 +94,7 @@ export function FieldForm({
   // Une base qui a supprime « clinique » ne doit pas se voir proposer une section qui
   // n'existe plus : a defaut de valeur initiale, on prend la PREMIERE de la version.
   const [section, setSection] = useState<FieldSection>(
-    initial?.section ?? sections?.[0]?.sectionKey ?? 'clinique',
+    initial ? initial.section : sections?.[0]?.sectionKey ?? 'clinique',
   );
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
@@ -356,7 +356,8 @@ export function FieldForm({
       </label>
       <label className="form-label">
         {t('admin.section')}
-        <select className={inputCls} value={section} onChange={(e) => setSection(e.target.value as FieldSection)}>
+        <select className={inputCls} value={section ?? ''} onChange={(e) => setSection(e.target.value || null)}>
+          <option value="">{t('section.common')}</option>
           {sectionChoices.map((s) => (
             <option key={s.sectionKey} value={s.sectionKey}>
               {sectionLabel(t, s)}

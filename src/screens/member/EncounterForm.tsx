@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { TemplateField, ValidationRule } from '../../data/types';
+import type { DiagnosisContext, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
@@ -16,9 +16,11 @@ import {
   isOfflineIntakeEnabled, type PatientCreateEntry,
 } from '../../data/offlineIntake';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
+import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
 interface EncounterDraft {
@@ -53,6 +55,10 @@ export function EncounterForm() {
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
+  const [sections, setSections] = useState<TemplateSection[]>([]);
+  // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,11 +72,13 @@ export function EncounterForm() {
   const [age, setAge] = useState<number | null>(null);
   const [blocking, setBlocking] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false); // A4
   const draftReady = useRef(false); // A4 : autorise l'autosave seulement apres chargement + restauration
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
+  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal, reset: resetVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
 
   // L32 — la visibilite s'evalue sur EXACTEMENT ce qui partira au serveur : les champs
   // applicables au type choisi. Evaluer sur autre chose ferait diverger l'ecran du serveur
@@ -83,10 +91,21 @@ export function EncounterForm() {
     const applicableData = Object.fromEntries(
       Object.entries(values).filter(([k]) => applicableFields.some((f) => f.fieldKey === k)),
     );
-    const hiddenKeys = hiddenFieldKeys(rules, applicableData);
+    const hiddenKeys = hiddenFieldKeys(rules, applicableData, applicableFields, sections);
     const stripped = withoutHiddenValues(applicableData, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [values, applicableFields, rules]);
+  }, [values, applicableFields, rules, sections]);
+
+  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+  const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
+
+  function updateEncounterValue(key: string, value: unknown, remove = false) {
+    const next = { ...values };
+    if (remove) delete next[key];
+    else next[key] = value;
+    trackVisibilityWithdrawal(values, next);
+    setValues(next);
+  }
 
   const load = useCallback(async () => {
     if (!baseId) return;
@@ -109,6 +128,11 @@ export function EncounterForm() {
         const encounterFields = ctx.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder);
         setFields(encounterFields);
         setRules(ctx.rules);
+        setSections(ctx.sections ?? []);
+        // Le contexte prepare EN LIGNE transporte deja le contrat et sa version : rien de
+        // nouveau n'est ouvert au hors-ligne, l'information s'affiche simplement a l'identique.
+        setVersionId(ctx.templateVersionId);
+        setDiagnosisContext(ctx.diagnosisContext);
         setError(null);
         return;
       }
@@ -126,6 +150,9 @@ export function EncounterForm() {
       const encounterFields = version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder);
       setFields(encounterFields);
       setRules(version.rules);
+      setSections(version.sections ?? []);
+      setVersionId(version.version.id);
+      setDiagnosisContext(version.version.diagnosisContext);
       // A4 : restaurer un brouillon local eventuel (saisie non enregistree recuperee).
       const draft = patientId ? loadDraft<EncounterDraft>('encounter', patientId) : null;
       if (draft) {
@@ -166,6 +193,7 @@ export function EncounterForm() {
     setEncounterType('consultation');
     setEncounterDate('');
     setStatus('draft');
+    resetVisibilityWithdrawal();
     // Abandonner le brouillon rend un formulaire NEUF : les propositions reviennent.
     const proposed = initialValuesFromDefaults(fields);
     setValues(proposed.values);
@@ -234,6 +262,17 @@ export function EncounterForm() {
     setWarnings(ruleEval.warnings);
     if (block.length > 0) return;
 
+    if (diagnosticRemoved.length > 0 && !confirmationOpen) {
+      setConfirmationOpen(true);
+      return;
+    }
+    await persistEncounter();
+  }
+
+  async function persistEncounter() {
+    if (!baseId || !patientId) return;
+    setConfirmationOpen(false);
+
     setBusy(true);
     try {
       // RENCONTRE D'UN DOSSIER LOCAL : mise en file DEPENDANTE du patient en attente
@@ -244,7 +283,7 @@ export function EncounterForm() {
           operationKey: newOfflineId(),
           parentOperationKey: localParent.id,
           payload: {
-            encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
+            encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: submittedData,
           },
         });
         clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
@@ -253,7 +292,7 @@ export function EncounterForm() {
         return;
       }
       await patients.createEncounter(patientId, {
-        encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: applicableData,
+        encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: submittedData,
       });
       clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
       toast(t('toast.encounter_saved')); // UI-2 : la reussite se voit
@@ -353,24 +392,29 @@ export function EncounterForm() {
             // une valeur vide la ou une fiche non preremplie n'aurait rien du tout.
             const wasProposed = prefilled.has(k);
             setPrefilled((current) => forgetPrefilled(current, k));
-            setValues((p) => {
-              if (wasProposed && isClearedValue(v)) {
-                const { [k]: _cleared, ...rest } = p;
-                return rest;
-              }
-              return { ...p, [k]: v };
-            });
+            updateEncounterValue(k, v, wasProposed && isClearedValue(v));
           }}
           onRemove={(key) => {
             setPrefilled((current) => forgetPrefilled(current, key));
-            setValues((current) => {
-              const { [key]: _removed, ...remaining } = current;
-              return remaining;
-            });
+            updateEncounterValue(key, undefined, true);
           }}
+          sections={sections}
         />
 
+        {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
+            ni la validation, ni le statut, et n'est jamais enregistree. */}
+        <DiagnosisCoverageNotice coverage={coverage} />
+
         <HiddenValuesNotice removedKeys={removed} fields={fields} />
+
+        {confirmationOpen && (
+          <HiddenValuesConfirmation
+            removedKeys={diagnosticRemoved}
+            fields={fields}
+            onConfirm={() => void persistEncounter()}
+            onCancel={() => setConfirmationOpen(false)}
+          />
+        )}
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

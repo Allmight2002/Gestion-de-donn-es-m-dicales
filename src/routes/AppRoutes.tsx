@@ -29,6 +29,7 @@ const MissionAccounts = lazy(() => import('../screens/member/MissionAccounts').t
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
 const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
+const DiagnosisFollowup = lazy(() => import('../screens/member/DiagnosisFollowup').then((m) => ({ default: m.DiagnosisFollowup })));
 const BaseProposals = lazy(() => import('../screens/member/BaseProposals').then((m) => ({ default: m.BaseProposals })));
 const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
 const BaseSettings = lazy(() => import('../screens/member/BaseSettings').then((m) => ({ default: m.BaseSettings })));
@@ -180,6 +181,9 @@ export function AppRoutes() {
           <Route path="stats" element={<BaseStats />} />
           <Route path="queue" element={<CompletionQueue />} />
           <Route path="propositions" element={<BaseProposals />} />
+          {/* L56 : file des cas non couverts. Le medecin PROPRIETAIRE seul y accede ; la RPC
+              le verifie de son cote, ce filtre de route n'est qu'un confort d'affichage. */}
+          <Route path="diagnostics" element={<RequireGlobalRole globalRoles={['medecin']}><DiagnosisFollowup /></RequireGlobalRole>} />
           <Route path="activity" element={<ActivityLog />} />
           <Route path="access" element={<AccessManagement />} />
           <Route path="missions" element={<RequireGlobalRole globalRoles={['medecin']}><MissionAccounts /></RequireGlobalRole>} />

@@ -8,11 +8,14 @@ import {
   parseRule,
   type ComparisonOperator,
   type ConditionOperator,
+  type RuleOperandProblem,
   type TemplateRule,
 } from '../../domain/templateRules';
-import type { RuleSeverity, TemplateField } from '../../data/types';
+import { sectionLabel } from '../../domain/templateSections';
+import type { RuleSeverity, TemplateField, TemplateSection } from '../../data/types';
 // Alias : `fieldOptions` designe deja, dans cet ecran, la liste des VARIABLES proposees.
 import { fieldOptions as listOptionsOf } from '../../domain/fieldOptions';
+import { calculatedOperandConflict, isCalculatedField } from '../../domain/fieldFormula';
 import { Checkbox } from '../../components/Checkbox';
 
 type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
@@ -40,11 +43,24 @@ function isDateField(field: TemplateField | undefined) {
   return field?.type === 'date' || field?.type === 'datetime';
 }
 
+/**
+ * L35 x L32 : ce qu'une variable CALCULEE rend impossible, selon la position qu'elle occupe.
+ * Memes cas et meme decoupage que `public.rule_calculated_operand_message` — l'ecran et la
+ * base doivent donner le meme motif, sinon la correction du serveur arrive sans explication.
+ */
+const CALCULATED_PROBLEM_KEYS: Record<RuleOperandProblem, MessageKey> = {
+  visible_driver: 'rule.calculated_visible_driver',
+  required_driver: 'rule.calculated_required_driver',
+  required_target: 'rule.calculated_required_target',
+  comparison_operand: 'rule.calculated_comparison_operand',
+};
+
 function operatorLabel(
   t: Translate,
   operator: ComparisonOperator | ConditionOperator,
   field: TemplateField | undefined,
 ) {
+  if (operator === 'contains_any') return t('rule.operator.contains_any');
   if (operator === 'in') return t('rule.operator.in');
   return t(isDateField(field) ? DATE_OPERATOR_KEYS[operator] : OPERATOR_KEYS[operator]);
 }
@@ -63,7 +79,12 @@ function formatRuleValue(t: Translate, value: unknown): string {
   return String(value);
 }
 
-function ruleSentence(t: Translate, rule: TemplateRule, fields: TemplateField[]) {
+function ruleSentence(
+  t: Translate,
+  rule: TemplateRule,
+  fields: TemplateField[],
+  sections: readonly TemplateSection[] = [],
+) {
   if ('operator' in rule) {
     const left = fields.find((field) => field.fieldKey === rule.left_field);
     return `${fieldLabel(fields, rule.left_field)} ${operatorLabel(t, rule.operator, left)} ${fieldLabel(fields, rule.right_field)}.`;
@@ -71,7 +92,17 @@ function ruleSentence(t: Translate, rule: TemplateRule, fields: TemplateField[])
 
   const conditionField = fields.find((field) => field.fieldKey === rule.if.field);
   const verb = rule.then.operator === 'visible' ? t('rule.visible') : t('rule.required');
-  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value)}, ${t('rule.then')} ${fieldLabel(fields, rule.then.field)} ${verb}.`;
+  let target: string;
+  const sectionKey = (rule.then as { section?: unknown }).section;
+  if (typeof sectionKey === 'string') {
+    target = sectionLabel(t, {
+      sectionKey,
+      label: sections.find((section) => section.sectionKey === sectionKey)?.label ?? sectionKey,
+    });
+  } else {
+    target = fieldLabel(fields, (rule.then as { field: string }).field);
+  }
+  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value)}, ${t('rule.then')} ${target} ${verb}.`;
 }
 
 /** Une regle d'affichage ne bloque ni n'avertit : afficher une severite la decrirait mal. */
@@ -97,7 +128,10 @@ type RuleDraft = {
   conditionField: string;
   conditionValue: string;
   conditionChoices: string[];
+  terminologyReleaseId?: string;
   requiredField: string;
+  visibilityTarget: 'field' | 'section';
+  sectionTarget: string;
 };
 
 function inputValue(value: unknown): string {
@@ -121,6 +155,8 @@ function ruleDraftOf(rule: unknown): RuleDraft | null {
       conditionValue: '',
       conditionChoices: [],
       requiredField: '',
+      visibilityTarget: 'field',
+      sectionTarget: '',
     };
   }
   const conditionValue = parsed.value.if.value;
@@ -131,21 +167,37 @@ function ruleDraftOf(rule: unknown): RuleDraft | null {
     rightField: '',
     conditionOperator: parsed.value.if.operator,
     conditionField: parsed.value.if.field,
-    conditionValue: Array.isArray(conditionValue) ? '' : inputValue(conditionValue),
+    conditionValue: Array.isArray(conditionValue) ? conditionValue.map(inputValue).join(', ') : inputValue(conditionValue),
+    terminologyReleaseId: parsed.value.if.terminologyReleaseId,
     conditionChoices: Array.isArray(conditionValue) ? conditionValue.map(inputValue) : [],
-    requiredField: parsed.value.then.field,
+    requiredField: 'field' in parsed.value.then ? parsed.value.then.field : '',
+    visibilityTarget: parsed.value.then.operator === 'visible' && 'section' in parsed.value.then ? 'section' : 'field',
+    sectionTarget: 'section' in parsed.value.then ? parsed.value.then.section : '',
   };
 }
 
-export function RuleSummary({ rule, fields }: { rule: unknown; fields: TemplateField[] }) {
+export function RuleSummary({ rule, fields, sections = [] }: { rule: unknown; fields: TemplateField[]; sections?: readonly TemplateSection[] | null }) {
   const { t } = useI18n();
   const parsed = parseRule(serializeRule(rule));
+  // L35 : une regle ENREGISTREE AVANT le garde-fou peut porter une variable calculee la ou
+  // celle-ci ne peut pas fonctionner. Sa phrase se lit parfaitement et le controle n'a jamais
+  // lieu : sans ce diagnostic, la liste affirmerait une garantie qui n'existe pas.
+  const conflict = calculatedOperandConflict(rule, fields);
 
   if (!parsed.ok || !parsed.value) {
     return <p className="text-xs text-amber-700">{t('rule.unreadable')}</p>;
   }
 
-  return <p className="min-w-0 text-sm text-slate-700">{ruleSentence(t, parsed.value, fields)}</p>;
+  return (
+    <div className="min-w-0">
+      <p className="text-sm text-slate-700">{ruleSentence(t, parsed.value, fields, sections ?? [])}</p>
+      {conflict && (
+        <p className="mt-1 text-xs text-amber-700">
+          {t(CALCULATED_PROBLEM_KEYS[conflict.problem])} — {conflict.field.label}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function coerceValue(field: TemplateField | undefined, raw: string): unknown {
@@ -160,6 +212,7 @@ function coerceValue(field: TemplateField | undefined, raw: string): unknown {
 
 export function RuleForm({
   fields,
+  sections,
   onSubmit,
   busy,
   existingRules = [],
@@ -170,6 +223,8 @@ export function RuleForm({
   onCancel,
 }: {
   fields: TemplateField[];
+  /** Sections de la version ; seules les sections racines sont proposées comme cible. */
+  sections?: readonly TemplateSection[] | null;
   onSubmit: (rule: unknown, message: string, severity: RuleSeverity) => void;
   busy?: boolean;
   /** Regles deja enregistrees sur cette version : sert a refuser un cycle d'affichage. */
@@ -184,6 +239,22 @@ export function RuleForm({
   const { t } = useI18n();
   const draft = useMemo(() => (initialRule === undefined ? null : ruleDraftOf(initialRule)), [initialRule]);
   const editing = initialRule !== undefined;
+
+  // L35 x L32 : le resultat d'un calcul n'est jamais enregistre. Une variable calculee ne peut
+  // donc ni porter une condition, ni etre rendue obligatoire, ni etre comparee — elle n'est
+  // proposee QUE la ou elle fonctionne : comme variable affichee sous condition.
+  const enteredFields = useMemo(() => fields.filter((field) => !isCalculatedField(field)), [fields]);
+  const calculatedLabels = useMemo(
+    () => fields.filter(isCalculatedField).map((field) => field.label),
+    [fields],
+  );
+  // Une regle HERITEE, ecrite avant le garde-fou, porte une variable absente des listes
+  // ci-dessous : sans ce message, le selecteur s'ouvrirait vide et l'ecran laisserait croire
+  // a un oubli. Le motif est affiche d'entree.
+  const inheritedConflict = useMemo(
+    () => (initialRule === undefined ? null : calculatedOperandConflict(initialRule, fields)),
+    [initialRule, fields],
+  );
   const [kind, setKind] = useState<GuidedRuleKind>(draft?.kind ?? 'comparison');
   const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>(draft?.comparisonOperator ?? '');
   const [leftField, setLeftField] = useState(draft?.leftField ?? '');
@@ -192,14 +263,25 @@ export function RuleForm({
   const [conditionField, setConditionField] = useState(draft?.conditionField ?? '');
   const [conditionValue, setConditionValue] = useState(draft?.conditionValue ?? '');
   const [conditionChoices, setConditionChoices] = useState<string[]>(draft?.conditionChoices ?? []);
+  const [terminologyReleaseId, setTerminologyReleaseId] = useState(draft?.terminologyReleaseId ?? '');
   const [requiredField, setRequiredField] = useState(draft?.requiredField ?? '');
+  const [visibilityTarget, setVisibilityTarget] = useState<'field' | 'section'>(draft?.visibilityTarget ?? 'field');
+  const [sectionTarget, setSectionTarget] = useState(draft?.sectionTarget ?? '');
   const [message, setMessage] = useState(initialMessage ?? '');
   const [severity, setSeverity] = useState<RuleSeverity>(initialSeverity ?? 'block');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    inheritedConflict
+      ? `${t(CALCULATED_PROBLEM_KEYS[inheritedConflict.problem])} — ${inheritedConflict.field.label}`
+      : null,
+  );
 
   const fieldsByKey = useMemo(() => new Map(fields.map((field) => [field.fieldKey, field])), [fields]);
   const selectedLeftField = fieldsByKey.get(leftField);
   const selectedConditionField = fieldsByKey.get(conditionField);
+  const rootSections = useMemo(
+    () => (sections ?? []).filter((section) => !section.parentSectionKey),
+    [sections],
+  );
   const labelCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const field of fields) counts.set(field.label, (counts.get(field.label) ?? 0) + 1);
@@ -233,6 +315,9 @@ export function RuleForm({
     setConditionValue('');
     setConditionChoices([]);
     setRequiredField('');
+    setVisibilityTarget('field');
+    setSectionTarget('');
+    setTerminologyReleaseId('');
   }
 
   function guidedJson() {
@@ -244,14 +329,19 @@ export function RuleForm({
       });
     }
 
-    const value = conditionOperator === 'in'
+    const value = (conditionOperator === 'in' || conditionOperator === 'contains_any')
       ? (conditionOptions.length > 0 ? conditionChoices : conditionValue.split(',').map((item) => item.trim()).filter(Boolean))
         .map((item) => coerceValue(selectedConditionField, item))
       : coerceValue(selectedConditionField, conditionValue);
 
     return JSON.stringify({
-      if: { field: conditionField, operator: conditionOperator, value },
-      then: { field: requiredField, operator: kind === 'visibility' ? 'visible' : 'required' },
+      if: { field: conditionField, operator: conditionOperator, value,
+        ...(conditionOperator === 'contains_any' && selectedConditionField?.type === 'terminology'
+          ? { terminologyReleaseId } : {}),
+      },
+      then: kind === 'visibility' && visibilityTarget === 'section'
+        ? { section: sectionTarget, operator: 'visible' }
+        : { field: requiredField, operator: kind === 'visibility' ? 'visible' : 'required' },
     });
   }
 
@@ -259,15 +349,27 @@ export function RuleForm({
     e.preventDefault();
     // Le constructeur guide produit le format historique. Le serveur reste la source
     // de verite et revalide la regle lors de l'enregistrement.
+    if (conditionOperator === 'contains_any' && kind !== 'comparison'
+      && !['select', 'multiselect', 'terminology'].includes(selectedConditionField?.type ?? '')) {
+      setError(t('rule.contains_any_driver')); return;
+    }
     const res = parseRule(guidedJson());
     if (!res.ok) {
       setError(`${t('admin.rule_invalid')} : ${res.error}`);
       return;
     }
     // Cycle d'affichage : refuse ici pour l'expliquer en clair, refuse a nouveau en base.
-    const cycle = findVisibilityCycle([...existingRules.map((r) => r.rule), res.value]);
+    const cycle = findVisibilityCycle([...existingRules.map((r) => r.rule), res.value], fields, sections);
     if (cycle) {
       setError(`${t('rule.cycle')} ${cycle.map((key) => fieldLabel(fields, key)).join(' → ')}`);
+      return;
+    }
+    // Variable calculee a une position ou elle ne peut pas fonctionner. Les listes ne la
+    // proposent plus, mais une regle relue depuis la base peut encore en porter une : le
+    // filet est ici, avec le meme motif que le refus du serveur.
+    const conflict = calculatedOperandConflict(res.value, fields);
+    if (conflict) {
+      setError(`${t(CALCULATED_PROBLEM_KEYS[conflict.problem])} — ${conflict.field.label}`);
       return;
     }
     setError(null);
@@ -280,8 +382,10 @@ export function RuleForm({
     }
   }
 
-  function fieldOptions() {
-    return fields.map((field) => (
+  /** Par defaut, les variables SAISIES seulement : une variable calculee ne se propose que la
+   *  ou elle peut fonctionner, et l'appelant le dit explicitement. */
+  function fieldOptions(list: TemplateField[] = enteredFields) {
+    return list.map((field) => (
       <option key={field.id} value={field.fieldKey}>
         {optionLabel(field)}
       </option>
@@ -289,7 +393,7 @@ export function RuleForm({
   }
 
   function conditionValueInput() {
-    if (conditionOperator === 'in') {
+    if (conditionOperator === 'in' || conditionOperator === 'contains_any') {
       if (conditionOptions.length > 0) {
         return (
           <fieldset className="rounded-lg border border-slate-200 p-3">
@@ -354,13 +458,14 @@ export function RuleForm({
   }
 
   const preview = parseRule(guidedJson());
-  const hasConditionValue = conditionOperator === 'in'
+  const hasConditionValue = (conditionOperator === 'in' || conditionOperator === 'contains_any')
     ? (conditionOptions.length > 0 ? conditionChoices.length > 0 : conditionValue.trim() !== '')
     : conditionValue !== '';
+  const isVisibility = kind === 'visibility';
   const canPreview = kind === 'comparison'
     ? comparisonOperator !== '' && leftField !== '' && rightField !== ''
-    : conditionOperator !== '' && conditionField !== '' && hasConditionValue && requiredField !== '';
-  const isVisibility = kind === 'visibility';
+    : conditionOperator !== '' && conditionField !== '' && hasConditionValue
+      && (isVisibility && visibilityTarget === 'section' ? sectionTarget !== '' : requiredField !== '');
 
   return (
     <form onSubmit={submit} className="card space-y-4 p-4">
@@ -416,7 +521,7 @@ export function RuleForm({
                   <select
                     className="input mt-1"
                     value={conditionField}
-                    onChange={(e) => { setConditionField(e.target.value); setConditionValue(''); setConditionChoices([]); }}
+                    onChange={(e) => { setConditionField(e.target.value); setConditionValue(''); setConditionChoices([]); setTerminologyReleaseId(''); }}
                   >
                     <option value="">{t('rule.choose')}</option>
                     {fieldOptions()}
@@ -430,27 +535,76 @@ export function RuleForm({
                     onChange={(e) => { setConditionOperator(e.target.value as ConditionOperator | ''); setConditionValue(''); setConditionChoices([]); }}
                   >
                     <option value="">{t('rule.choose')}</option>
-                    {CONDITION_OPERATORS.map((operator) => (
+                    {CONDITION_OPERATORS.filter((operator) => operator !== 'contains_any'
+                      || ['select', 'multiselect', 'terminology'].includes(selectedConditionField?.type ?? '')).map((operator) => (
                       <option key={operator} value={operator}>{operatorLabel(t, operator, selectedConditionField)}</option>
                     ))}
                   </select>
                 </label>
               </div>
+              {conditionOperator === 'contains_any' && selectedConditionField?.type === 'terminology' && (
+                <label className="flex flex-col text-xs text-slate-600">
+                  {t('rule.terminology_release')}
+                  <input className="input mt-1" value={terminologyReleaseId} required
+                    placeholder={t('rule.terminology_release_hint')}
+                    onChange={(e) => setTerminologyReleaseId(e.target.value)} />
+                </label>
+              )}
               {conditionValueInput()}
-              <label className="flex flex-col text-xs text-slate-600">
-                {isVisibility ? t('rule.visible_field') : t('rule.required_field')}
-                <select className="input mt-1" value={requiredField} onChange={(e) => setRequiredField(e.target.value)}>
-                  <option value="">{t('rule.choose')}</option>
-                  {fieldOptions()}
-                </select>
-              </label>
+              {isVisibility && rootSections.length > 0 && (
+                <label className="flex flex-col text-xs text-slate-600">
+                  {t('rule.visibility_target')}
+                  <select
+                    className="input mt-1"
+                    value={visibilityTarget}
+                    onChange={(e) => {
+                      const next = e.target.value as 'field' | 'section';
+                      setVisibilityTarget(next);
+                      if (next === 'section') setRequiredField('');
+                      else setSectionTarget('');
+                    }}
+                  >
+                    <option value="field">{t('rule.visibility_target_field')}</option>
+                    <option value="section">{t('rule.visibility_target_section')}</option>
+                  </select>
+                </label>
+              )}
+              {isVisibility && visibilityTarget === 'section' ? (
+                <label className="flex flex-col text-xs text-slate-600">
+                  {t('rule.visible_section')}
+                  <select className="input mt-1" value={sectionTarget} onChange={(e) => setSectionTarget(e.target.value)}>
+                    <option value="">{t('rule.choose')}</option>
+                    {rootSections.map((section) => (
+                      <option key={section.id} value={section.sectionKey}>{sectionLabel(t, section)}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="flex flex-col text-xs text-slate-600">
+                  {isVisibility ? t('rule.visible_field') : t('rule.required_field')}
+                  <select className="input mt-1" value={requiredField} onChange={(e) => setRequiredField(e.target.value)}>
+                    <option value="">{t('rule.choose')}</option>
+                    {/* Seule position ou une variable calculee a un sens : on masque un resultat
+                        affiche, il n'y a aucune valeur a saisir ni aucune fiche a refuser. */}
+                    {fieldOptions(isVisibility ? fields : enteredFields)}
+                  </select>
+                </label>
+              )}
             </div>
+          )}
+
+          {/* L35 : ces variables sont absentes des listes ci-dessus. Sans cette phrase, elles
+              seraient cherchees, puis supposees perdues. */}
+          {calculatedLabels.length > 0 && (
+            <p role="status" className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {t('rule.calculated_excluded')} <span className="font-medium">{calculatedLabels.join(', ')}</span>
+            </p>
           )}
 
           {canPreview && preview.ok && preview.value && (
             <div className="rounded-lg bg-teal-50 px-3 py-2" aria-live="polite">
               <span className="text-xs font-medium text-teal-800">{t('rule.preview')}</span>
-              <p className="text-sm text-teal-900">{ruleSentence(t, preview.value, fields)}</p>
+              <p className="text-sm text-teal-900">{ruleSentence(t, preview.value, fields, sections ?? [])}</p>
             </div>
           )}
       </div>

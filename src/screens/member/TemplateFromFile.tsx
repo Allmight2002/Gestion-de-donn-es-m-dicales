@@ -18,7 +18,7 @@ const SCOPES: FieldScope[] = ['patient', 'encounter'];
 // L31 : le jeu de variables n'existe pas encore, donc ses sections non plus. L'assistant
 // part des trois sections historiques, que le constructeur permettra ensuite de renommer,
 // reordonner et completer — c'est exactement ce qu'il proposait avant le lot.
-const SECTIONS: FieldSection[] = [...LEGACY_SECTION_KEYS];
+const SECTIONS = [...LEGACY_SECTION_KEYS];
 
 // F1 — Assistant « creer un jeu de variables depuis mon Excel » : on lit le fichier existant du
 // medecin, on propose les variables detectees (type infere), il ajuste et valide -> un jeu personnel.
@@ -165,7 +165,7 @@ export function TemplateFromFile() {
                       </select>
                     </td>
                     <td className="px-2 py-1">
-                      <select className="input py-1" value={f.section} onChange={(e) => patch(i, { section: e.target.value as FieldSection })}>
+                      <select className="input py-1" value={f.section ?? ''} onChange={(e) => patch(i, { section: e.target.value as FieldSection })}>
                         {SECTIONS.map((x) => <option key={x} value={x}>{sectionLabel(t, { sectionKey: x })}</option>)}
                       </select>
                     </td>

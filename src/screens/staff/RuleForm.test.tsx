@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
-import type { TemplateField } from '../../data/types';
+import type { TemplateField, TemplateSection } from '../../data/types';
 import { RuleForm, RuleSummary } from './RuleForm';
 
 const fields: TemplateField[] = [
@@ -79,6 +79,37 @@ function renderForm(onSubmit = vi.fn()) {
 }
 
 describe('RuleForm', () => {
+  test('contains_any conserve les codes de choix et reste absent des comparaisons', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderForm();
+    expect(screen.queryByRole('option', { name: 'contient au moins un de ces codes' })).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'conditional');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'intervention_type');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'contains_any');
+    await user.click(screen.getByRole('checkbox', { name: 'Chirurgie' }));
+    await user.selectOptions(screen.getByLabelText('Variable rendue obligatoire'), 'operative_report');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      if: { field: 'intervention_type', operator: 'contains_any', value: ['Chirurgie'] },
+      then: { field: 'operative_report', operator: 'required' },
+    }, '', 'block');
+  });
+
+  test('une règle diagnostique éditée conserve explicitement sa release et ses codes', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const initialRule = {
+      if: { field: 'diagnosis', operator: 'contains_any', value: ['A', 'B'], terminologyReleaseId: 'aaaaaaaa-0000-0000-0000-000000000001' },
+      then: { field: 'operative_report', operator: 'visible' },
+    };
+    render(<I18nProvider><RuleForm fields={[...fields, { ...fields[0], id: 'diagnosis', fieldKey: 'diagnosis', type: 'terminology', label: 'Diagnostic' }]}
+      initialRule={initialRule} onSubmit={onSubmit} /></I18nProvider>);
+    expect(screen.getByLabelText('Publication du référentiel liée à cette règle')).toHaveValue(initialRule.if.terminologyReleaseId);
+    expect(screen.getByLabelText('Valeurs de la condition')).toHaveValue('A, B');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith(initialRule, '', 'block');
+  });
+
   test('assemble une comparaison de dates avec le JSON historique', async () => {
     const user = userEvent.setup();
     const onSubmit = renderForm();
@@ -255,5 +286,151 @@ describe('RuleForm — regle d\'affichage (L32)', () => {
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(/circulaire/i);
     expect(screen.getByRole('alert')).toHaveTextContent('Compte rendu opératoire');
+  });
+
+  test('permet de cibler un bloc racine et ne propose jamais sa sous-section', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const blockSections: TemplateSection[] = [
+      { id: 'root', sectionKey: 'bloc_clinique', label: 'Bloc clinique', displayOrder: 0, parentSectionKey: null },
+      { id: 'child', sectionKey: 'sous_bloc', label: 'Sous-section interdite', displayOrder: 1, parentSectionKey: 'bloc_clinique' },
+    ];
+    const blockFields: TemplateField[] = [
+      ...fields,
+      { ...fields[0], id: 'direct', fieldKey: 'direct', label: 'Variable du bloc', section: 'bloc_clinique', displayOrder: 10 },
+      { ...fields[0], id: 'child', fieldKey: 'child', label: 'Variable de la sous-section', section: 'sous_bloc', parentSectionKey: 'bloc_clinique', displayOrder: 11 },
+    ];
+    render(
+      <I18nProvider>
+        <RuleForm fields={blockFields} sections={blockSections} onSubmit={onSubmit} />
+      </I18nProvider>,
+    );
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'admission_date');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.type(screen.getByLabelText('Valeur de la condition'), '2026-01-01');
+    await user.selectOptions(screen.getByLabelText('Cible de visibilité'), 'section');
+    const target = screen.getByLabelText('Bloc affiché sous condition');
+    expect(within(target).getByRole('option', { name: 'Bloc clinique' })).toBeInTheDocument();
+    expect(within(target).queryByRole('option', { name: 'Sous-section interdite' })).toBeNull();
+    await user.selectOptions(target, 'bloc_clinique');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      if: { field: 'admission_date', operator: 'equals', value: '2026-01-01' },
+      then: { section: 'bloc_clinique', operator: 'visible' },
+    }, '', 'block');
+  });
+});
+
+describe('RuleForm — variables calculees (L35 x L32)', () => {
+  // Le resultat d'un calcul n'est jamais enregistre : la cle est absente de toutes les fiches.
+  const withCalculated: TemplateField[] = [
+    ...fields,
+    {
+      id: 'f5',
+      fieldKey: 'sejour_jours',
+      label: 'Durée de séjour',
+      scope: 'encounter',
+      section: 'clinique',
+      type: 'integer',
+      unit: 'days',
+      allowedValues: null,
+      required: false,
+      minValue: null,
+      maxValue: null,
+      allowMissingCodes: false,
+      displayOrder: 5,
+      formula: 'discharge_date - admission_date',
+    },
+  ];
+
+  function renderWithCalculated(props: { initialRule?: unknown; submitLabel?: string } = {}) {
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm
+          fields={withCalculated}
+          onSubmit={onSubmit}
+          initialRule={props.initialRule}
+          submitLabel={props.submitLabel}
+        />
+      </I18nProvider>,
+    );
+    return onSubmit;
+  }
+
+  test('absente des comparaisons et des conditions, et l\'ecran dit pourquoi', () => {
+    renderWithCalculated();
+
+    for (const label of ['Variable à contrôler', 'Variable de référence']) {
+      expect(within(screen.getByLabelText(label)).queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+    }
+    // Absente sans un mot, elle serait cherchee puis supposee perdue.
+    expect(screen.getByRole('status')).toHaveTextContent('Durée de séjour');
+    expect(screen.getByRole('status')).toHaveTextContent(/jamais se déclencher/);
+  });
+
+  test('absente de la condition et de l\'obligation d\'une regle conditionnelle', async () => {
+    const user = userEvent.setup();
+    renderWithCalculated();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'conditional');
+    expect(within(screen.getByLabelText('Variable de la condition'))
+      .queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+    expect(within(screen.getByLabelText('Variable rendue obligatoire'))
+      .queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+  });
+
+  test('reste proposee comme variable AFFICHEE sous condition', async () => {
+    // Masquer un resultat affiche ne detruit rien : aucune valeur a saisir, aucune fiche a
+    // refuser. La seule position ou une variable calculee fonctionne reste ouverte.
+    const user = userEvent.setup();
+    renderWithCalculated();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    expect(within(screen.getByLabelText('Variable de la condition'))
+      .queryByRole('option', { name: /Durée de séjour/ })).toBeNull();
+    expect(within(screen.getByLabelText('Variable affichée sous condition'))
+      .getByRole('option', { name: /Durée de séjour/ })).toBeInTheDocument();
+  });
+
+  test('une regle HERITEE portant un calcul est expliquee, pas renvoyee muette', async () => {
+    // Ecrite avant le garde-fou serveur : le selecteur ne peut plus la representer. L'ecran
+    // donne le motif du serveur d'entree, puis refuse l'envoi.
+    const user = userEvent.setup();
+    const onSubmit = renderWithCalculated({
+      initialRule: {
+        if: { field: 'sejour_jours', operator: 'less_than', value: 3 },
+        then: { field: 'operative_report', operator: 'visible' },
+      },
+      submitLabel: 'Enregistrer la règle',
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Durée de séjour');
+    expect(screen.getByRole('alert')).toHaveTextContent(/masquée pour toujours/);
+
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  test('la liste des regles signale une regle heritee qui ne peut pas fonctionner', () => {
+    // La phrase se lit parfaitement — c'est precisement pourquoi elle doit etre commentee :
+    // sans diagnostic, la liste affirmerait un controle qui n'a jamais lieu.
+    render(
+      <I18nProvider>
+        <RuleSummary
+          fields={withCalculated}
+          rule={{
+            if: { field: 'sejour_jours', operator: 'less_than', value: 3 },
+            then: { field: 'operative_report', operator: 'visible' },
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(/Compte rendu opératoire est affichée/)).toBeInTheDocument();
+    expect(screen.getByText(/masquée pour toujours/)).toBeInTheDocument();
   });
 });

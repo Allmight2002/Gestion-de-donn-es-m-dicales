@@ -38,17 +38,22 @@ export function SectionsEditor({
   onRename,
   onDelete,
   onReorder,
+  onMove,
+  onReorderSiblings,
 }: {
   sections: TemplateSection[];
   /** Sert a dire, avant tout clic, combien de variables une section porte. */
   fields: TemplateField[];
   busy?: boolean;
-  onAdd: (sectionKey: string, label: string) => void;
+  onAdd: (sectionKey: string, label: string, parentKey?: string | null) => void;
   onRename: (sectionId: string, label: string) => void;
   onDelete: (sectionId: string) => void;
+  onMove?: (id: string, parentKey: string | null) => void;
+  onReorderSiblings?: (parentKey: string | null, ids: string[]) => void;
   onReorder: (orderedIds: string[]) => void;
 }) {
   const { t } = useI18n();
+  const [parentKey, setParentKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
@@ -56,12 +61,14 @@ export function SectionsEditor({
   const countIn = (sectionKey: string) => fields.filter((f) => f.section === sectionKey).length;
 
   function move(sectionId: string, delta: -1 | 1) {
-    const ordered = [...sections];
+    const parent = sections.find((s) => s.id === sectionId)?.parentSectionKey ?? null;
+    const ordered = sections.filter((s) => (s.parentSectionKey ?? null) === parent);
     const from = ordered.findIndex((s) => s.id === sectionId);
     const to = from + delta;
     if (from < 0 || to < 0 || to >= ordered.length) return;
     [ordered[from], ordered[to]] = [ordered[to], ordered[from]];
-    onReorder(ordered.map((s) => s.id));
+    if (onReorderSiblings) onReorderSiblings(parent, ordered.map((s) => s.id));
+    else onReorder(ordered.map((s) => s.id));
   }
 
   return (
@@ -69,10 +76,13 @@ export function SectionsEditor({
       <h3 className="mb-1 text-sm font-semibold text-slate-700">{t('admin.sections')}</h3>
 
       <ul className="space-y-2 text-sm">
-        {sections.map((section, index) => {
+        {sections.map((section) => {
+          const siblings = sections.filter((s) => (s.parentSectionKey ?? null) === (section.parentSectionKey ?? null));
+          const index = siblings.findIndex((s) => s.id === section.id);
+          const hasChildren = sections.some((s) => s.parentSectionKey === section.sectionKey);
           const used = countIn(section.sectionKey);
           return (
-            <li key={section.id} className="card flex flex-wrap items-center gap-2 px-3 py-2">
+            <li key={section.id} className={`card flex flex-wrap items-center gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
               <span className="flex flex-col">
                 <button
                   type="button"
@@ -86,7 +96,7 @@ export function SectionsEditor({
                 <button
                   type="button"
                   onClick={() => move(section.id, 1)}
-                  disabled={busy || index === sections.length - 1}
+                  disabled={busy || index === siblings.length - 1}
                   aria-label={t('admin.move_down')}
                   className="min-h-6 px-1 text-slate-400 disabled:opacity-30 hover:text-slate-700"
                 >
@@ -139,7 +149,12 @@ export function SectionsEditor({
                   >
                     {t('admin.rename')}
                   </button>
-                  {used > 0 ? (
+                  {onMove && <select aria-label={t('section.parent')} className="input w-auto" value={section.parentSectionKey ?? ''}
+                    disabled={busy || hasChildren} onChange={(e) => onMove(section.id, e.target.value || null)}>
+                    <option value="">{t('section.root')}</option>
+                    {sections.filter((s) => !s.parentSectionKey && s.id !== section.id).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
+                  </select>}
+                  {used > 0 || hasChildren ? (
                     // Supprimer une section peuplee ferait basculer ses variables sur
                     // « Autre » : le formulaire changerait d'apparence sans decision.
                     <button
@@ -173,7 +188,7 @@ export function SectionsEditor({
           e.preventDefault();
           const label = newLabel.trim();
           if (label === '') return;
-          onAdd(makeSectionKey(label, sections.map((s) => s.sectionKey)), label);
+          onAdd(makeSectionKey(label, sections.map((s) => s.sectionKey)), label, parentKey || null);
           setNewLabel('');
         }}
       >
@@ -185,6 +200,12 @@ export function SectionsEditor({
             onChange={(e) => setNewLabel(e.target.value)}
             placeholder={t('admin.section_placeholder')}
           />
+        </label>
+        <label className="form-label">{t('section.parent')}
+          <select className="input" value={parentKey} onChange={(e) => setParentKey(e.target.value)}>
+            <option value="">{t('section.root')}</option>
+            {sections.filter((s) => !s.parentSectionKey).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
+          </select>
         </label>
         <button type="submit" className="btn-secondary" disabled={busy || newLabel.trim() === ''}>
           {t('admin.section_add')}

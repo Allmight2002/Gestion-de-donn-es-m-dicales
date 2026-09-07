@@ -380,9 +380,24 @@ describe('configuration de deploiement', () => {
     expect(workflow).not.toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(workflow).toContain("node-version: '22'");
     expect(workflow).not.toContain("node-version: '20'");
-    expect(workflow.match(/VITE_OFFLINE_MODE: disabled/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(workflow.match(/VITE_OFFLINE_ADMIN_ACK: 'false'/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(workflow.match(/ALLOW_OFFLINE_DEMO_BUILD: 'true'/g)).toHaveLength(1);
+    // PHASE DE TEST (decision du 2026-09-05) : la production porte volontairement le hors-ligne
+    // de demonstration, saisie comprise. Restent desactives le build de validation (jamais
+    // deploye) et le frontend staging -> deux occurrences exactement, ni plus ni moins : une
+    // troisieme signalerait un bloc de production revenu a l'etat desactive sans qu'on le voie.
+    expect(workflow.match(/VITE_OFFLINE_MODE: disabled/g)).toHaveLength(2);
+    expect(workflow.match(/VITE_OFFLINE_ADMIN_ACK: 'false'/g)).toHaveLength(2);
+    // L'invariant qui compte : `demo` n'apparait JAMAIS seul. Chaque declaration doit etre
+    // accompagnee de son acquittement admin et de l'autorisation explicite de build, sans quoi
+    // scripts/offline-build-policy.mjs refuse le build (preview LOT 13 + les deux blocs de
+    // production = 3). C'est ce couplage, et non un plafond fixe, qui empeche une activation
+    // silencieuse du hors-ligne.
+    const demoDeclarations = workflow.match(/VITE_OFFLINE_MODE: demo/g)?.length ?? 0;
+    expect(demoDeclarations).toBe(3);
+    expect(workflow.match(/VITE_OFFLINE_ADMIN_ACK: 'true'/g)).toHaveLength(demoDeclarations);
+    expect(workflow.match(/ALLOW_OFFLINE_DEMO_BUILD: 'true'/g)).toHaveLength(demoDeclarations);
+    // La saisie hors-ligne n'est armee que dans les deux blocs de production : le preview
+    // LOT 13 reste en lecture seule.
+    expect(workflow.match(/VITE_OFFLINE_INTAKE: demo/g)).toHaveLength(2);
     const edgeDeploy = workflow.indexOf('Deploy all Edge Functions');
     const frontendDeploy = workflow.indexOf('vercel@$VERCEL_CLI_VERSION" deploy --prebuilt');
     const strictActivation = workflow.indexOf('npm run inspection:activate -- --target=staging');

@@ -11,6 +11,13 @@ build/
 # Local embedded-postgres data dirs (tests)
 .pgdata*/
 
+# Artefacts locaux des scripts de schema et de release (npm run schema,
+# reproductions de release) : instances PostgreSQL temporaires, cache de
+# compilation Node et cache npm dedie. Volumineux (plusieurs centaines de Mo)
+# et jetables — ils n'ont jamais a etre versionnes.
+.schema-tmp/
+.npm-cache/
+
 # Supabase CLI local files
 supabase/.branches/
 supabase/.temp/

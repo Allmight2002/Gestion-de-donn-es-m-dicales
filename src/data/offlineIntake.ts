@@ -21,7 +21,7 @@ import type {
   EncounterCreateEntry, EncounterCreatePayload, IntakeEntry,
   OutboxRecord, PatientCreateEntry, PatientCreatePayload,
 } from './offline';
-import type { TemplateField, ValidationRule } from './types';
+import type { DiagnosisContext, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from './types';
 
 // Le contrat des operations vit dans offline.ts (union discriminée du store) ;
 // on le re-exporte ici pour que les ecrans n'aient qu'un seul point d'entree.
@@ -128,6 +128,9 @@ export interface OfflineIntakeContext {
   fields: TemplateField[];
   /** Regles de coherence versionnees (re-evaluees par le serveur a la synchronisation). */
   rules: ValidationRule[];
+  /** Sections stables de la version ; absent dans les contextes préparés avant L52. */
+  sections?: TemplateSection[];
+  diagnosisContext?: DiagnosisContext[];
   permissions: OfflineIntakePermissions;
   preparedAt: number;
   expiresAt: number;
@@ -157,7 +160,7 @@ export interface IntakeContextSource {
     /** Echeance de l'acces (compte de mission) : la saisie hors-ligne ne lui est pas proposee. */
     expiresAt?: string | null;
   } | null>;
-  getVersion(versionId: string): Promise<{ fields: TemplateField[]; rules: ValidationRule[] }>;
+  getVersion(versionId: string): Promise<{ fields: TemplateField[]; rules: ValidationRule[]; sections?: TemplateSection[]; version?: TemplateVersion }>;
 }
 
 /** Prepare EN LIGNE le contexte de saisie d'une base : metadonnees du formulaire SEUL.
@@ -182,6 +185,8 @@ export async function downloadIntakeContext(
     observationModel: listing.base.observationModel ?? 'longitudinal',
     fields: version.fields,
     rules: version.rules,
+    sections: version.sections ?? [],
+    diagnosisContext: version.version?.diagnosisContext ?? [],
     permissions: {
       canCreateStructuredData: listing.role === 'owner'
         || listing.canCreateStructuredData === true

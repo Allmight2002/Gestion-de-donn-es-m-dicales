@@ -7,6 +7,6 @@ import { createReadTimeoutFetch } from './network';
 // plutot que de planter.
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(SUPABASE_URL as string, SUPABASE_ANON_KEY as string, {
-    global: { fetch: createReadTimeoutFetch() },
+    global: { fetch: createReadTimeoutFetch(), headers: { 'x-meddata-diagnosis-contract': '1' } },
   })
   : null;

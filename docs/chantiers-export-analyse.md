@@ -1,16 +1,22 @@
 # Chantier — Export directement exploitable pour l’analyse
 
-- Statut : **cible décidée, non implémentée**
-- Dernière mise à jour : **2026-08-24**
+- Statut : **jalon MVP atteint — L45 à L49 livrés, L50 différé**
+- Dernière mise à jour : **2026-09-02**
 - Nature : document vivant de spécification et de suivi des lots
 - Périmètre : export CSV/XLSX des données analytiques ; données fictives uniquement tant que le
   cadre juridique et éthique n’est pas validé
 
+> **État au 2026-09-02.** Le contrat serveur des profils `analysis` / `complete` et les quatre
+> feuilles du classeur Analyse sont en place sur `develop` : lots **L45 à L49**, intégrés par la
+> PR 264, puis choix du profil exposé à l’utilisateur par la PR 267 le 2026-09-01. Le profil
+> **Analyse est le défaut**, y compris pour un appel qui ne précise aucun profil. **L50** reste
+> différé. Les sections de lots ci-dessous conservent le détail de ce qui a été livré : elles ne
+> décrivent plus un travail à faire.
+
 > Ce document complète la décision datée
 > [`decision-export-simple-2026-08-17.md`](decision-export-simple-2026-08-17.md). La décision
 > datée conserve le raisonnement et l’état de son jour ; ce document décrit la cible actuelle et
-> les lots à réaliser. En cas d’écart avec le code, le code et les migrations font foi jusqu’à la
-> livraison d’un lot.
+> l’état des lots. En cas d’écart avec le code, le code et les migrations font foi.
 
 ## 1. Décision de cadrage
 
@@ -85,6 +91,17 @@ Livré le 2026-08-28 :
 - Le repository frontend (`src/data/exports.ts`) expose `profile` (entrant facultatif et sortant
   `ExportLogItem.profile`) ; aucun appel ne modifie le format des colonnes à ce stade.
 - Testé en Deno (`contracts_test`, `handler_test`) et vitest (`edgeFunctionCallers.test.tsx`).
+
+Complété le 2026-09-01 (PR 267) — **choix du profil dans l’interface** :
+
+- `ExportPanel` porte un sélecteur `export.profile` (`Analyse` présélectionné, `Complet` présenté
+  comme la structure historique de transition), partagé par l’export direct d’une base et
+  l’export d’une cohorte figée.
+- L’historique des exports affiche le profil journalisé ; une entrée antérieure à L45, dépourvue
+  de `options.profile`, est étiquetée « Profil antérieur » sans se voir attribuer rétroactivement
+  un profil supposé.
+- Rien n’a été déplacé vers l’interface : contrôle d’accès, listes anti-identité, figeage, hash,
+  upload privé et journalisation restent serveur. Couverture : `ExportPanel.test.tsx` (7 tests).
 
 ### L46 — Colonnes analytiques et modalités
 
@@ -224,6 +241,16 @@ L45 → L46 → L47 → L48 → L49
              └──────────────→ L50 (différé)
 ```
 
-Chaque lot doit ajouter ou adapter des tests ciblés CSV et XLSX. Le jalon MVP est atteint après
-L49, avec un fichier Analyse lisible sans connaissance de l’architecture interne. L50 pourra être
-livré ensuite sans réintroduire les colonnes techniques dans le profil Analyse.
+Chaque lot doit ajouter ou adapter des tests ciblés CSV et XLSX. Le jalon MVP était fixé après
+L49, avec un fichier Analyse lisible sans connaissance de l’architecture interne : **il est
+atteint depuis le 2026-08-28** pour le contrat serveur, et depuis le 2026-09-01 pour le choix du
+profil dans l’interface. L50 pourra être livré ensuite sans réintroduire les colonnes techniques
+dans le profil Analyse.
+
+### Ce qui reste ouvert
+
+- **L50** — terminologie diagnostique, différé : il attend un référentiel gouverné (voir
+  ci-dessus), pas une décision de calendrier.
+- **Preuve sur environnement déployé** : le profil Analyse n’a pas encore été exercé bout-en-bout
+  sur le site déployé. Le plan de test des lots livrés est tenu dans
+  [`plan-test-preuves-2026-08-19.md`](plan-test-preuves-2026-08-19.md).
