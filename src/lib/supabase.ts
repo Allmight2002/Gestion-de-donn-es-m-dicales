@@ -7,6 +7,10 @@ import { createReadTimeoutFetch } from './network';
 // plutot que de planter.
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(SUPABASE_URL as string, SUPABASE_ANON_KEY as string, {
+    // ATTENTION : ces en-tetes partent sur TOUTES les requetes Supabase, Edge Functions
+    // comprises. Tout ajout ici doit etre repris dans les listes `Access-Control-Allow-Headers`
+    // des Edge Functions, sinon le navigateur rejette leur preflight et la requete n'est jamais
+    // envoyee -- sans aucune trace serveur. Verrouille par test/cors-contract.test.ts.
     global: { fetch: createReadTimeoutFetch(), headers: { 'x-meddata-diagnosis-contract': '1' } },
   })
   : null;
