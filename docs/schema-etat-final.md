@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260906061539_diagnosis_configuration.sql`
-- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 297
+- Dernière migration incluse : `20260906143000_diagnosis_followup.sql`
+- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 299
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1091,7 +1091,9 @@ Triggers :
 | delete_template | p_template_id uuid | DEFINER | plpgsql |
 | delete_template_field | p_field_id uuid | DEFINER | plpgsql |
 | detect_import_duplicates | p_base_id uuid, p_rows jsonb | DEFINER | plpgsql |
-| diagnosis_coverage | p_version_id uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
+| diagnosis_coverage | p_version_id uuid, p_scope text, p_data jsonb | INVOKER | sql |
+| diagnosis_coverage_in_context | p_version_id uuid, p_scope text, p_data jsonb, p_context jsonb | INVOKER | plpgsql |
+| diagnosis_followup | p_base_id uuid, p_scope text, p_version_id uuid, p_code text, p_limit integer, p_offset integer | INVOKER | plpgsql |
 | digest | bytea, text | INVOKER | c |
 | digest | text, text | INVOKER | c |
 | download_base_snapshot | p_base_id uuid | INVOKER | sql |

@@ -58,6 +58,12 @@ function mockBases(): BaseRepository {
     async getBaseProposalsPage() {
       return { items: [], total: 0, limit: 50, offset: 0, hasMore: false };
     },
+    async getDiagnosisFollowupPage() {
+      return {
+        items: [], total: 0, limit: 50, offset: 0, hasMore: false,
+        unclassifiedRecords: 0, byCode: [], currentVersionId: null,
+      };
+    },
     async previewOptionKeyRepair() {
       return { records: { repairable: 0, blocked: 0 }, fields: [] };
     },

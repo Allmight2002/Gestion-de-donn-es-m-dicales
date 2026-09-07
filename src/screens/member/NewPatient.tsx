@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
-import { isMultipleTerminology, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { isMultipleTerminology, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { newOfflineId, useOnline } from '../../data/offline';
 import {
@@ -26,6 +26,7 @@ import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
 import { DatePickerInput } from '../../components/DatePickerInput';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -52,6 +53,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [canViewIdentity, setCanViewIdentity] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -97,6 +101,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       .sort((a, b) => a.displayOrder - b.displayOrder);
     setRules(ctx.rules);
     setSections(ctx.sections ?? []);
+    // Le contexte prepare EN LIGNE transporte deja le contrat et sa version : le hors-ligne
+    // n'ouvre rien de plus, l'information s'affiche simplement a l'identique.
+    setVersionId(ctx.templateVersionId);
+    setDiagnosisContext(ctx.diagnosisContext);
     setIsCrossSectional(ctx.observationModel === 'cross_sectional');
     setCanViewIdentity(ctx.permissions.canViewIdentity);
     setFields(patientFields);
@@ -142,6 +150,8 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       const fields = version.fields;
       setRules(version.rules);
       setSections(version.sections ?? []);
+      setVersionId(version.version.id);
+      setDiagnosisContext(version.version.diagnosisContext);
       setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       setCanViewIdentity(base.role === 'owner' || base.permissions.canViewIdentity);
       const patientFields = fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder);
@@ -177,6 +187,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   }, [rules, permanent, fields, sections]);
 
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+  const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'patient', permanentData, fields, rules, sections);
 
   function updatePermanent(key: string, value: unknown, remove = false) {
     const next = { ...permanent };
@@ -462,6 +473,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             />
           )
         )}
+
+        {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
+            ni la validation, ni le statut, et n'est jamais enregistree. */}
+        {mode === 'manual' && <DiagnosisCoverageNotice coverage={coverage} />}
 
         {mode === 'manual' && <HiddenValuesNotice removedKeys={removed} fields={fields} />}
 

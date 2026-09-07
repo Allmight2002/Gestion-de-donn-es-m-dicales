@@ -1,44 +1,38 @@
 # MedData — instructions permanentes
 
-## Contexte essentiel
+## Contexte et sources
 
-MedData (`registre-clinique`) est une PWA React 19 + TypeScript strict + Vite, adossée à Supabase (PostgreSQL, Auth, RLS, Storage et Edge Functions). Le cloisonnement entre identité, données analytiques et documents bruts est une propriété de sécurité du produit. Utiliser uniquement des données fictives tant que le cadre juridique et éthique n’est pas validé. Pour l’architecture, lire `docs/architecture.md`.
+MedData (`registre-clinique`) est une PWA React/TypeScript/Vite avec Supabase. Le cloisonnement identité, données analytiques et documents bruts est une propriété de sécurité. Utiliser uniquement des données fictives tant que le cadre juridique et éthique n'est pas validé.
 
-## Chemins principaux
+Pour une décision d'architecture, consulter `docs/architecture.md`; pour une procédure spécialisée, utiliser l'index `docs/README.md`. Lire seulement les documents utiles à la tâche. Le schéma versionné est dans `supabase/migrations/`, les Edge Functions dans `supabase/functions/`, les politiques Storage dans `supabase/storage.sql`. Les commandes actuelles sont dans `package.json`.
 
-- `src/` : frontend, règles de domaine et accès aux données.
-- `test/` : tests PostgreSQL/RLS et domaine ; `src/**/*.test.tsx` : tests web.
-- `supabase/migrations/` : source de vérité versionnée du schéma.
-- `supabase/functions/` : Edge Functions ; `supabase/storage.sql` : buckets et politiques Storage.
-- `services/` : services annexes, notamment le scanner ClamAV.
-- `scripts/` : validations et opérations explicites.
-- `docs/` : architecture, déploiement et procédures spécialisées ; `docs/README.md` en est l’index et distingue les documents vivants des preuves datées.
+## Invariants
 
-## Règles toujours applicables
+- Ne jamais exposer de secret, de `service_role`, de donnée sensible ou d'erreur interne brute au frontend ou dans les logs.
+- La base et l'autorisation serveur garantissent sécurité, intégrité, RLS, idempotence et concurrence; l'UI seule ne suffit pas.
+- Ne pas modifier une migration potentiellement appliquée. Créer une migration horodatée additive et compatible; préserver données, provenance et interfaces.
+- Sur conflit de version, préserver tous les inputs locaux, éviter toute écriture ou suppression partielle, et signaler un conflit structuré nécessitant rechargement ou résolution explicite.
+- Préserver les modifications utilisateur hors périmètre. Ne pas committer, pousser, fusionner, déployer, appliquer de migration distante ou modifier le cloud sans demande explicite.
 
-- Ne jamais exposer de secret, de `service_role`, de donnée médicale sensible ni d’erreur interne brute au frontend ou dans les logs.
-- La base et l’autorisation serveur sont la source de vérité : ne pas déplacer sécurité, intégrité, RLS, idempotence ou contrôle de concurrence vers l’UI seule.
-- Ne jamais modifier une migration susceptible d’avoir déjà été appliquée. Créer une nouvelle migration horodatée, additive et compatible avec les données existantes.
-- Préserver les données, les interfaces compatibles et les modifications utilisateur hors périmètre.
-- Ne pas committer, pousser, fusionner, déployer, appliquer de migration distante ni modifier le cloud sans demande explicite.
-- Respecter le périmètre demandé et ne jamais déclarer exécutée une vérification qui ne l’a pas été.
+## Travail et coordination
 
-## Resource usage policy
+Choisir la solution complète la plus simple répondant au besoin actuel. Continuer les étapes et vérifications autorisées jusqu'au résultat demandé; une première implémentation n'est pas un arrêt automatique. Examiner les informations disponibles avant de demander une décision métier encore ambiguë. Rapporter les limites sans déclarer exécuté un contrôle qui ne l'a pas été.
 
-- Use one agent by default.
-- Do not create subagents for routine tasks.
-- Use no more than one read-only subagent for security, RLS, migrations,
-  transactions, concurrency, idempotence, or possible data loss.
-- Do not use multi-agent workflows solely to reduce cost.
-- Keep repository exploration limited to the requested flow.
-- Use concise final reports and do not reproduce full command logs.
+Pour un travail substantiel comportant des parties indépendantes, déléguer avec le skill `orchestrate`. Les petites tâches et les étapes étroitement couplées restent directes. Le coordinateur possède l'intégration et la fin de tâche; chaque modification couplée, notamment migration/RPC/appelants, a un seul responsable d'écriture. L'investigation et la revue indépendantes peuvent se dérouler en parallèle. Les missions de validation restent en lecture seule. Respecter les limites du runtime et transmettre les restrictions essentielles à chaque agent.
 
-## Validation générale
+## Vérification
 
-Commencer par les contrôles ciblés, puis élargir selon le risque :
+Commencer par les tests et le lint pertinents pour les fichiers et comportements touchés, puis élargir selon le risque. Vérifier la cible locale/jetable avant tout script ou test qui écrit des données. Ne pas lancer de tests contre la production.
 
-`npm run typecheck` · `npm run lint` · `npm run test:web` · `npm run test:rls` · `npm test` · `npm run db:verify` · `npm run release:edge:check` · `npm run build`.
+Après une nouvelle migration en implémentation: `npm run schema`, inspection du snapshot, puis `npm run schema:check`. En revue seule, vérifier sans régénérer. Pour un build de production, `VITE_USE_SIGNED_READ=true` est requis; ne pas contourner ce garde-fou. Les commandes détaillées et cas de readiness sont dans `meddata-release-check`.
 
-## Skills à charger selon la tâche
+## Skills
 
-Utiliser les Skills sous `.claude/skills/` : `apply-audit-lot`, `validate-audit-lots`, `meddata-db-safety` et `meddata-release-check`. Leurs procédures détaillées ne doivent pas être recopiées ici.
+Source canonique: `.agents/skills/`; `.claude/skills/` est une copie de compatibilité. Modifier la source puis synchroniser les copies avec `python .agents/sync-skills.py` (vérification), puis `python .agents/sync-skills.py --apply`. Les copies modifiées séparément sont signalées comme conflits et ne sont pas écrasées.
+
+- `orchestrate`: collaboration pour les travaux substantiels indépendants.
+- `apply-audit-lot`: implémenter un lot identifié.
+- `validate-audit-lots`: vérifier des corrections en lecture seule.
+- `meddata-db-safety`: règles détaillées selon le risque base/autorisation/intégrité.
+- `meddata-release-check`: readiness au niveau explicitement demandé.
+- `resoudre-simplement`: arbitrer une complexité ou plusieurs approches; inutile pour une retouche courante.

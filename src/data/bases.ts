@@ -118,6 +118,50 @@ export interface BaseProposalPage {
 }
 
 /**
+ * L56 — un cas non couvert de la file de suivi.
+ *
+ * La file ne transporte NI identite, NI document, NI texte libre : seulement des codes de
+ * diagnostic, des identifiants techniques et des comptes. Une proposition hors liste est
+ * comptee (`counts.unclassified`), jamais citee — elle reste consultable dans son parcours
+ * autorise existant. `sourceVersion*` decrit la version du dossier ; `codesCoveredInCurrentVersion`
+ * signale une evolution du gabarit SANS annoncer aucune reprise (celle-ci appartient a L57).
+ */
+export interface DiagnosisFollowupItem {
+  scope: 'patient' | 'encounter';
+  patientId: string;
+  patientCode: string;
+  encounterId: string | null;
+  encounterType: string | null;
+  encounterDate: string | null;
+  status: string;
+  sourceVersionId: string;
+  sourceVersionNumber: number;
+  onCurrentVersion: boolean;
+  counts: Record<'covered' | 'common_only' | 'uncovered' | 'unclassified', number>;
+  uncoveredCodes: string[];
+  codesCoveredInCurrentVersion: string[];
+}
+
+export interface DiagnosisFollowupFilters {
+  scope?: 'patient' | 'encounter' | null;
+  versionId?: string | null;
+  code?: string | null;
+}
+
+export interface DiagnosisFollowupPage {
+  items: DiagnosisFollowupItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  /** Nombre de dossiers portant une proposition non encore rattachee a un code. */
+  unclassifiedRecords: number;
+  /** Agregat par code, sans libelle ni fiche : de quoi decider, pas de quoi identifier. */
+  byCode: { code: string; records: number }[];
+  currentVersionId: string | null;
+}
+
+/**
  * L30 — apercu de la conversion des valeurs orphelines d'une liste.
  *
  * Une valeur orpheline est la sequelle d'un renommage anterieur au lot : la fiche porte
@@ -175,6 +219,10 @@ export interface BaseRepository {
   getCompletenessStats(baseId: string, mode?: 'historical' | 'current' | 'both'): Promise<CompletenessRow[]>;
   /** L12 : propositions de valeurs hors liste. RPC paginee reservee au proprietaire de la base. */
   getBaseProposalsPage(baseId: string, limit: number, offset: number): Promise<BaseProposalPage>;
+  /** L56 : cas non couverts. RPC paginee reservee au MEDECIN proprietaire, verifiee cote base. */
+  getDiagnosisFollowupPage(
+    baseId: string, filters: DiagnosisFollowupFilters, limit: number, offset: number,
+  ): Promise<DiagnosisFollowupPage>;
   /** L30 : apercu EN LECTURE SEULE de la conversion des options de liste. N'ecrit rien. */
   previewOptionKeyRepair(baseId: string): Promise<OptionKeyRepairPreview>;
   /** L30 : conversion opt-in. Le serveur refuse d'agir sans confirmation explicite. */
@@ -222,6 +270,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       softDeleteBase: fail, restoreDeletedBase: fail, purgeDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
       setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail,
       getBaseProposalsPage: fail,
+      getDiagnosisFollowupPage: fail,
       previewOptionKeyRepair: fail,
       repairOptionKeys: fail,
     };
@@ -430,6 +479,29 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
         limit: page.limit ?? limit,
         offset: page.offset ?? offset,
         hasMore: page.hasMore ?? false,
+      };
+    },
+
+    async getDiagnosisFollowupPage(baseId, filters, limit, offset) {
+      const { data, error } = await client.rpc('diagnosis_followup', {
+        p_base_id: baseId,
+        p_scope: filters.scope ?? null,
+        p_version_id: filters.versionId ?? null,
+        p_code: filters.code ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (error) throw error;
+      const page = (data ?? {}) as Partial<DiagnosisFollowupPage>;
+      return {
+        items: page.items ?? [],
+        total: page.total ?? 0,
+        limit: page.limit ?? limit,
+        offset: page.offset ?? offset,
+        hasMore: page.hasMore ?? false,
+        unclassifiedRecords: page.unclassifiedRecords ?? 0,
+        byCode: page.byCode ?? [],
+        currentVersionId: page.currentVersionId ?? null,
       };
     },
 

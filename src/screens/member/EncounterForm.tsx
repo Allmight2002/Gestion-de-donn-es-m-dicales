@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
+import type { DiagnosisContext, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
@@ -20,6 +20,7 @@ import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, fieldApp
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
 interface EncounterDraft {
@@ -55,6 +56,9 @@ export function EncounterForm() {
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +97,7 @@ export function EncounterForm() {
   }, [values, applicableFields, rules, sections]);
 
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
+  const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
 
   function updateEncounterValue(key: string, value: unknown, remove = false) {
     const next = { ...values };
@@ -124,6 +129,10 @@ export function EncounterForm() {
         setFields(encounterFields);
         setRules(ctx.rules);
         setSections(ctx.sections ?? []);
+        // Le contexte prepare EN LIGNE transporte deja le contrat et sa version : rien de
+        // nouveau n'est ouvert au hors-ligne, l'information s'affiche simplement a l'identique.
+        setVersionId(ctx.templateVersionId);
+        setDiagnosisContext(ctx.diagnosisContext);
         setError(null);
         return;
       }
@@ -142,6 +151,8 @@ export function EncounterForm() {
       setFields(encounterFields);
       setRules(version.rules);
       setSections(version.sections ?? []);
+      setVersionId(version.version.id);
+      setDiagnosisContext(version.version.diagnosisContext);
       // A4 : restaurer un brouillon local eventuel (saisie non enregistree recuperee).
       const draft = patientId ? loadDraft<EncounterDraft>('encounter', patientId) : null;
       if (draft) {
@@ -389,6 +400,10 @@ export function EncounterForm() {
           }}
           sections={sections}
         />
+
+        {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
+            ni la validation, ni le statut, et n'est jamais enregistree. */}
+        <DiagnosisCoverageNotice coverage={coverage} />
 
         <HiddenValuesNotice removedKeys={removed} fields={fields} />
 
