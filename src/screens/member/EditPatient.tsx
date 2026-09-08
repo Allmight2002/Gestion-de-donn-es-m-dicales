@@ -1,5 +1,5 @@
 import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
@@ -91,11 +91,18 @@ export function EditPatient() {
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
   const coverage = useDiagnosisCoverage(diagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
 
+  // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
+  // ne doit pas repartir de l'instantane du rendu.
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; }, [values]);
+
   function updatePatientValue(key: string, value: unknown, remove = false) {
-    const next = { ...values };
+    const current = valuesRef.current;
+    const next = { ...current };
     if (remove) delete next[key];
     else next[key] = value;
-    trackVisibilityWithdrawal(values, next);
+    valuesRef.current = next;
+    trackVisibilityWithdrawal(current, next);
     setValues(next);
   }
 

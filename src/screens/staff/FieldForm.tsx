@@ -147,9 +147,13 @@ export function FieldForm({
   const [formulaUnit, setFormulaUnit] = useState<FormulaTimeUnit>(() => normalizeFormulaTimeUnit(initial?.unit));
 
   const isChoice = type === 'select' || type === 'multiselect';
-  // Les listes conservent leur perimetre historique (rencontre). L4 etend uniquement la
-  // terminologie, pour laquelle la soupape est utile aussi dans les donnees permanentes.
-  const supportsProposal = type === 'terminology' || (isChoice && scope === 'encounter');
+  // La soupape suit desormais le TYPE, plus la portee. La restriction « rencontre seulement »
+  // datait du temps ou la saisie couplee n'existait que sur les ecrans de rencontre ; L4 a
+  // porte `ChoiceWithProposal` sur les donnees permanentes (NewPatient, EditPatient) sans lever
+  // la restriction des listes, et la file de relecture scanne les deux portees depuis L12.
+  // Consequence concrete : dans une base TRANSVERSALE, tout est en portee patient — un pilote
+  // diagnostique L55 y etait donc inconfigurable, la soupape lui etant obligatoire.
+  const supportsProposal = type === 'terminology' || isChoice;
   const isNumber = type === 'number' || type === 'integer';
   const toggleEncType = (x: string) =>
     setEncounterTypes((prev) => (prev.includes(x) ? prev.filter((y) => y !== x) : [...prev, x]));
