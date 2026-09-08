@@ -95,7 +95,9 @@ Ce chantier dépasse les urgences : tout service qui recueille des données en t
 
 Conséquence : la colonne analysable ne contient que des valeurs de la liste, et aucune surface serveur n'est nécessaire — `assert_data_valid` refuse toute valeur hors `allowed_values` pour un `select`, mais accepte un champ texte tel quel.
 
-Reste ouvert : la **boucle d'amélioration** (relire les propositions, promouvoir les récurrentes) n'est pas outillée — rien ne liste les propositions en attente à l'échelle d'une base. La soupape n'est proposée que pour les champs de **rencontre**, seul endroit où la saisie couplée est rendue. Au-delà d'environ 30 items, un menu déroulant redevient pénible : cascade catégorie → diagnostic, ou typeahead (4b).
+Reste ouvert : la **boucle d'amélioration** (relire les propositions, promouvoir les récurrentes) n'est pas outillée — rien ne liste les propositions en attente à l'échelle d'une base. Au-delà d'environ 30 items, un menu déroulant redevient pénible : cascade catégorie → diagnostic, ou typeahead (4b).
+
+> Deux limites de ce paragraphe ont été levées depuis : l'écran **Propositions** (L12) liste les propositions d'une base, dans les deux portées ; et la soupape, longtemps réservée aux champs de **rencontre**, suit désormais le **type** de la variable — la saisie couplée est rendue aussi sur les données permanentes. C'était un prérequis pour un pilote diagnostique L55 dans une base transversale.
 
 ### 6. Soupape sur le champ de terminologie
 

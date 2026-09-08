@@ -210,13 +210,27 @@ describe('FieldForm — soupape (F5)', () => {
     expect(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' })).toBeInTheDocument();
   });
 
-  // La saisie couplee n'est rendue que pour les champs de rencontre : ne pas proposer la
-  // soupape ailleurs, plutot que de promettre un comportement absent.
-  test('la soupape n est pas proposee pour un champ patient', async () => {
-    renderForm();
+  // La saisie couplee est rendue dans les deux portees (NewPatient / EditPatient depuis L4) et
+  // la file de relecture scanne les deux : la soupape suit le type, plus la portee. Sans cela,
+  // une base transversale — ou tout est en portee patient — ne pouvait porter aucun pilote
+  // diagnostique L55, qui exige son champ compagnon.
+  test('la soupape est proposee aussi pour un champ patient', async () => {
+    const onSubmit = renderForm();
     await chooseSelectType();
     await userEvent.selectOptions(screen.getByLabelText('Portée'), 'patient');
-    expect(screen.queryByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'diagnostic');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Diagnostic');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Permettre de proposer une valeur hors liste' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
+
+    // Le compagnon herite de la portee de sa source : un compagnon de rencontre ne serait
+    // jamais retrouve par `findProposalField`, ni accepte par la garde L55.
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldKey: 'diagnostic', scope: 'patient' }),
+      expect.objectContaining({ fieldKey: 'diagnostic_autre', type: 'text', scope: 'patient', required: false }),
+    );
   });
 
   test('sans la case cochee, aucun champ compagnon n est demande', async () => {
