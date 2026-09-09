@@ -40,9 +40,15 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 (L55) : set_diagnosis_configuration. La configuration diagnostique doit etre ecrite
     // sous le verrou de version, apres controle de propriete du gabarit, de gel de la version
     // et de compatibilite du client ; une ecriture directe de la colonne les contournerait.
-    expect(signatures).toHaveLength(118);
+    // +2 (L58) : import_template_section et preview_template_section_import. L'import d'un
+    // bloc doit prendre le verrou de version et renumeroter les sections -- deux primitives
+    // revoquees de authenticated --, et lire une version source lisible via can_read_template
+    // sans en etre proprietaire ; sous invoker une source interdite ne leverait pas, elle
+    // rendrait zero ligne. La previsualisation partage le MEME prologue d'autorisation, sans
+    // quoi les deux chemins divergeraient.
+    expect(signatures).toHaveLength(120);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(130);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(132);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
