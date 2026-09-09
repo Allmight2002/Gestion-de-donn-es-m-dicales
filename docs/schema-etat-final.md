@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260908090000_reusable_block_import.sql`
+- Dernière migration incluse : `20260909025040_reusable_block_preview_guards.sql`
 - Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 304
 
 ## Tables (colonnes, RLS, policies, triggers)

@@ -170,6 +170,7 @@ Chaque refus porte un code stable, à traduire côté web comme les codes de L55
 | `IMPORT_REUSE_IN_BLOCK` | la variable réutilisée vit dans un **autre bloc** de la cible |
 | `IMPORT_FORMULA_OPERAND_MISSING` | une formule cite un opérande absent du bloc et de la cible |
 | `IMPORT_FORMULA_OPERAND_INCOMPATIBLE` | un opérande présent dans la cible a une portée incompatible, est calculé, ou change la nature nombre/date de la formule |
+| `IMPORT_VISIBILITY_CYCLE` | l'ensemble des règles de visibilité existantes et importées forme un cycle, y compris à travers une règle de bloc |
 
 `IMPORT_REUSE_IN_BLOCK` est le refus le plus important à ne pas contourner : réutiliser une
 variable enfermée dans un autre bloc rendrait le bloc importé troué dès que cet autre bloc est
@@ -302,7 +303,7 @@ le client. Le frontend ne doit jamais dépendre d'une RPC absente.
    source.
 3. Règles : une règle interne au bloc est copiée ; une règle citant une clé extérieure ne l'est
    pas ; la règle d'activation ne l'est jamais ; l'acyclicité est revérifiée.
-4. Chacun des onze refus du §4.4, un test par code.
+4. Chacun des douze refus du §4.4, un test par code.
 5. Réutilisation : clé compatible dans le tronc commun acceptée ; type différent refusé ; scope
    différent refusé ; variable située dans un autre bloc refusée.
 6. Version cible `published`, `archived`, et `draft` portant un patient : trois refus distincts.
@@ -319,7 +320,7 @@ le client. Le frontend ne doit jamais dépendre d'une RPC absente.
 **L59** — liste des blocs importables non vide et filtrée par lisibilité ; aperçu fidèle ;
 rapport de conflits rendu clé par clé ; réutilisation proposée seulement quand le serveur l'a
 jugée compatible ; avertissement `required` affiché quand et seulement quand il s'applique ;
-aucune écriture avant confirmation ; message d'erreur pour chacun des onze codes ; état de
+aucune écriture avant confirmation ; message d'erreur pour chacun des douze codes ; état de
 chargement et double clic sans double import.
 
 **L60** — proposition affichée seulement si toutes les compatibilités sont réunies ; release
@@ -377,3 +378,26 @@ Validation locale uniquement : aucune migration distante appliquée ni aucun dé
 Le rafraîchissement GitHub, initialement bloqué par le réseau, a réussi le 2026-09-09
 avant préparation de la PR. Le contenu de `origin/develop` est identique à celui de la
 révision utilisée pour ces contrôles ; seuls deux commits de fusion les séparent.
+
+### Correction de revue — 2026-09-09
+
+La migration additive `20260909025040_reusable_block_preview_guards.sql` complète
+la prévisualisation par le contrôle du graphe de visibilité proposé : règles cibles et
+règles importées sont examinées ensemble, avec expansion des cibles de bloc. Un cycle
+produit `IMPORT_VISIBILITY_CYCLE` dans l'aperçu et le même refus typé à l'import, avant
+toute écriture. Les gardes d'invariants à l'écriture restent actives.
+
+L'exception d'immuabilité pour la suppression d'une source exige maintenant l'égalité
+de toutes les autres colonnes, `created_at` compris. Les tests vérifient le refus d'un
+changement simultané de timestamp, la conservation de la provenance après ce refus et
+le succès d'un effacement de provenance légitime.
+
+Validation de cette correction, avec Vitest `4.1.11` :
+
+- **64 tests réussis** : import, formules et ACL, dont les deux variantes de cycle et
+  le refus d'une modification simultanée de `created_at`.
+- Installation propre par `npm ci` et audit strict des dépendances réussis. La mise à
+  jour de Vitest `4.1.10` vers `4.1.11` corrige l'avis `GHSA-82fw-gwwq-j7x9`, qui bloquait
+  la CI ; aucune exception d'audit n'est ajoutée.
+- Schéma régénéré et inspecté, `schema:check`, typecheck et `git diff --check` réussis.
+- Lint global réussi, sans avertissement.

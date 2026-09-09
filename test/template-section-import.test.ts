@@ -295,7 +295,7 @@ describe('L58 import nominal', () => {
     expect(await rules(src.versionId)).toHaveLength(4);
   });
 
-  test('9.1-3 bis l acyclicite est REVERIFIEE sur la cible : un cycle referme par la reutilisation est refuse', async () => {
+  test.each([false, true])('9.1-3 un cycle avec cible bloc=%s est annonce sans ecriture puis refuse', async (sectionTarget) => {
     // Source : `c` masque par `b`, `a` masque par `c`. Aucun cycle tant que `b` ne depend de rien.
     const src = await newVersion();
     await db.admin.query(
@@ -322,19 +322,45 @@ describe('L58 import nominal', () => {
     const tgt = await newVersion();
     await addField(tgt.versionId, 'a_cycle', { type: 'text' });
     await addField(tgt.versionId, 'b_cycle', { type: 'text' });
+    if (sectionTarget) {
+      // La cible intermediaire est dans un bloc : le graphe doit deplier then.section.
+      await db.admin.query(
+        "insert into public.template_section(template_version_id, section_key, label, display_order) values ($1,'existant','Existant',0)",
+        [tgt.versionId],
+      );
+      await addField(tgt.versionId, 'd_cycle', { type: 'text', section: 'existant' });
+      await db.admin.query(
+        "insert into public.validation_rule(template_version_id, rule, message, severity) values($1,$2,'L58 fictif','block')",
+        [tgt.versionId, JSON.stringify({ if: { field: 'd_cycle', operator: 'equals', value: 'x' }, then: { field: 'b_cycle', operator: 'visible' } })],
+      );
+    }
     await db.admin.query(
       "insert into public.validation_rule(template_version_id, rule, message, severity) values($1,$2,'L58 fictif','block')",
-      [tgt.versionId, JSON.stringify({ if: { field: 'a_cycle', operator: 'equals', value: 'x' }, then: { field: 'b_cycle', operator: 'visible' } })],
+      [tgt.versionId, JSON.stringify({ if: { field: 'a_cycle', operator: 'equals', value: 'x' }, then: sectionTarget
+        ? { section: 'existant', operator: 'visible' }
+        : { field: 'b_cycle', operator: 'visible' } })],
     );
     const before = await counts();
-    await expect(importBlock(src.versionId, 'bloc_cycle', tgt.versionId, ['a_cycle', 'b_cycle']))
-      .rejects.toThrow(/circulaire/);
+    const sourceBefore = { sections: await tree(src.versionId), fields: await fields(src.versionId), rules: await rules(src.versionId) };
+    const targetBefore = { sections: await tree(tgt.versionId), fields: await fields(tgt.versionId), rules: await rules(tgt.versionId) };
+    const report = await preview(src.versionId, 'bloc_cycle', tgt.versionId, ['a_cycle', 'b_cycle']);
+    expect(report.conflicts).toEqual([expect.objectContaining({ code: 'IMPORT_VISIBILITY_CYCLE' })]);
     expect(await counts()).toEqual(before);
+    await expectRefusal(importBlock(src.versionId, 'bloc_cycle', tgt.versionId, ['a_cycle', 'b_cycle']), 'IMPORT_VISIBILITY_CYCLE');
+    expect(await counts()).toEqual(before);
+    expect({ sections: await tree(src.versionId), fields: await fields(src.versionId), rules: await rules(src.versionId) }).toEqual(sourceBefore);
+    expect({ sections: await tree(tgt.versionId), fields: await fields(tgt.versionId), rules: await rules(tgt.versionId) }).toEqual(targetBefore);
+
+    // En supprimant seulement l'arete de fermeture, le meme import devient valide.
+    await db.admin.query("delete from public.validation_rule where template_version_id = $1 and rule -> 'if' ->> 'field' = 'a_cycle'", [tgt.versionId]);
+    const allowed = await preview(src.versionId, 'bloc_cycle', tgt.versionId, ['a_cycle', 'b_cycle']);
+    expect(allowed.conflicts).toEqual([]);
+    expect(await importBlock(src.versionId, 'bloc_cycle', tgt.versionId, ['a_cycle', 'b_cycle'])).toEqual(allowed);
   });
 });
 
 // =============================================================================
-// 9.1-4 — chacun des dix refus types, un test par code
+// 9.1-4 — refus types (formule incompatible et cycle couverts dans leurs scenarios)
 // =============================================================================
 
 describe('9.1-4 refus types', () => {
@@ -720,6 +746,26 @@ test('supprimer le gabarit source efface la provenance, meme sur une version cib
     [tgt.versionId],
   )).rejects.toThrow();
   expect((await tree(tgt.versionId))[0].src_version).toBe(src.versionId);
+
+  // Meme lors d'un SET NULL legitime, une autre colonne ne peut changer en meme temps.
+  const createdAtBefore = (await db.admin.query(
+    'select created_at from public.template_section where template_version_id = $1', [tgt.versionId],
+  )).rows[0].created_at;
+  await db.admin.query(`
+    create function public.l58_test_change_timestamp() returns trigger language plpgsql as $$
+    begin new.created_at := old.created_at + interval '1 day'; return new; end $$;
+    create trigger aaa_l58_test_change_timestamp before update of source_template_version_id
+      on public.template_section for each row execute function public.l58_test_change_timestamp();
+  `);
+  try {
+    await expect(as('select public.delete_template($1)', [src.templateId])).rejects.toThrow(/immuable/);
+    expect((await tree(tgt.versionId))[0].src_version).toBe(src.versionId);
+    expect((await db.admin.query(
+      'select created_at from public.template_section where template_version_id = $1', [tgt.versionId],
+    )).rows[0].created_at).toEqual(createdAtBefore);
+  } finally {
+    await db.admin.query('drop trigger aaa_l58_test_change_timestamp on public.template_section; drop function public.l58_test_change_timestamp()');
+  }
 
   await as('select public.delete_template($1)', [src.templateId]);
   const copied = await tree(tgt.versionId);

@@ -990,7 +990,7 @@ OBJECTIF.
    pilote du tronc commun de la SOURCE —, toute règle citant une clé extérieure au
    bloc, et diagnosis_configuration de la cible. Le rapport décrit la règle
    d'activation non copiée : c'est la matière de L60.
-6. Les onze refus typés du §4.4, un code stable par cas. IMPORT_TARGET_IN_USE est
+6. Les douze refus typés du §4.4, un code stable par cas. IMPORT_TARGET_IN_USE est
    structurant : guard_validation_rule_inuse interdit d'écrire une règle sur une
    version portant déjà un patient ou une rencontre, donc un import y produirait
    un demi-bloc silencieux. Refuse, et laisse l'utilisateur créer la version
@@ -1019,7 +1019,7 @@ refus ; la réutilisation compatible, incompatible, et enfermée dans un autre b
 l'échec en cours d'import ne laissant aucune section, variable ni règle partielle ;
 la provenance conservée par les six voies de recopie.
 
-TERMINÉ SIGNIFIE : import et prévisualisation bornés et sûrs sous concurrence, onze
+TERMINÉ SIGNIFIE : import et prévisualisation bornés et sûrs sous concurrence, douze
 refus typés atteignables par un test, aucune règle extérieure copiée, provenance
 posée et transportée, tests ciblés verts, npm run schema puis schema:check passés
 après inspection du snapshot. Ne committe, ne pousse et ne déploie rien sans
@@ -1065,7 +1065,7 @@ OBJECTIF.
    required et qu'aucune règle ne l'active, elles deviendront obligatoires POUR
    TOUS LES PATIENTS tant que le bloc n'est pas conditionné. Dis-le avant ; ne le
    laisse pas découvrir au premier formulaire.
-6. Traduire les onze codes de refus de L58 en messages compréhensibles, fr et en.
+6. Traduire les douze codes de refus de L58 en messages compréhensibles, fr et en.
    Clés ajoutées à la FIN de chaque section de messages.
 7. Après succès : compte rendu reprenant le rapport, bloc visible en fin de
    version, et passage à l'activation proposé — c'est le point d'entrée de L60.
@@ -1082,7 +1082,7 @@ absente) et le catalogue vide (état vide explicite, pas un écran blanc).
 
 TERMINÉ SIGNIFIE : un bloc de vingt variables est inséré en une opération depuis
 un autre gabarit lisible, conflits rendus clé par clé, avertissement required
-affiché quand et seulement quand il s'applique, onze messages d'erreur traduits,
+affiché quand et seulement quand il s'applique, douze messages d'erreur traduits,
 typecheck, lint et tests ciblés verts. Ne committe, ne pousse et ne déploie rien
 sans demande explicite.
 ```
