@@ -40,6 +40,7 @@ export function SectionsEditor({
   onReorder,
   onMove,
   onReorderSiblings,
+  onImportBlock,
 }: {
   sections: TemplateSection[];
   /** Sert a dire, avant tout clic, combien de variables une section porte. */
@@ -51,6 +52,9 @@ export function SectionsEditor({
   onMove?: (id: string, parentKey: string | null) => void;
   onReorderSiblings?: (parentKey: string | null, ids: string[]) => void;
   onReorder: (orderedIds: string[]) => void;
+  /** L59 : ouvre le choix d'un bloc reutilisable. Absente quand le serveur ne sait pas
+   *  encore lister les blocs importables : la commande ne se rend alors pas du tout. */
+  onImportBlock?: () => void;
 }) {
   const { t } = useI18n();
   const [parentKey, setParentKey] = useState('');
@@ -210,6 +214,15 @@ export function SectionsEditor({
         <button type="submit" className="btn-secondary" disabled={busy || newLabel.trim() === ''}>
           {t('admin.section_add')}
         </button>
+        {/* L59 : ressaisir un bloc de vingt variables coute vingt formulaires de creation.
+            La commande est ici, a cote de la creation manuelle, parce que c'est le meme
+            geste vu par l'utilisateur : ajouter un regroupement a cette version. Elle
+            n'existe que sur une version editable, l'ecran entier n'etant rendu que la. */}
+        {onImportBlock && (
+          <button type="button" className="btn-ghost" disabled={busy} onClick={onImportBlock}>
+            {t('blockimport.command')}
+          </button>
+        )}
       </form>
     </div>
   );

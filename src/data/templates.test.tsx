@@ -168,3 +168,66 @@ describe('TemplateRepository.getVersion — compatibilite serveur anterieur a L5
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// L59 — l'import d'un bloc est une ECRITURE de gabarit comme une autre : il ajoute une
+// section, des variables et des regles a la version cible. Le cache de session doit donc
+// tomber, sinon l'editeur reafficherait la version d'avant l'import et le bloc paraitrait
+// perdu. Verifie, pas suppose.
+// ---------------------------------------------------------------------------
+
+describe('TemplateRepository.importSection — cache de version', () => {
+  const row = { id: 'v1', template_id: 't1', version_number: 1, status: 'draft' as const };
+  const report = {
+    sectionKey: 'tuberculose', subsections: [], importedFields: ['bk'], reusedFields: [],
+    copiedRules: 0, activationRule: null, conflicts: [],
+  };
+
+  function makeClient() {
+    const versionReads: string[] = [];
+    const rpcCalls: string[] = [];
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table !== 'template_version') return fakeQuery({ data: [], error: null });
+        return {
+          select: vi.fn((columns: string) => {
+            versionReads.push(columns);
+            return fakeQuery({ data: row, error: null });
+          }),
+        };
+      }),
+      rpc: vi.fn(async (name: string) => {
+        rpcCalls.push(name);
+        return { data: name === 'import_template_section' ? report : [], error: null };
+      }),
+    } as unknown as SupabaseClient;
+    return { client, versionReads, rpcCalls };
+  }
+
+  test('vide le cache apres un import, comme toute autre ecriture de gabarit', async () => {
+    const { client, versionReads, rpcCalls } = makeClient();
+    const repo = makeTemplateRepository(client);
+
+    await repo.getVersion('v1');
+    await repo.getVersion('v1');
+    // La seconde lecture est servie par le cache : c'est bien lui que l'import doit vider.
+    expect(versionReads).toHaveLength(1);
+
+    await repo.importSection!('source', 'tuberculose', 'v1');
+    expect(rpcCalls).toContain('import_template_section');
+
+    await repo.getVersion('v1');
+    expect(versionReads).toHaveLength(2);
+  });
+
+  test('la previsualisation ne vide rien : elle n ecrit pas', async () => {
+    const { client, versionReads } = makeClient();
+    const repo = makeTemplateRepository(client);
+
+    await repo.getVersion('v1');
+    await repo.previewSectionImport!('source', 'tuberculose', 'v1');
+    await repo.getVersion('v1');
+
+    expect(versionReads).toHaveLength(1);
+  });
+});

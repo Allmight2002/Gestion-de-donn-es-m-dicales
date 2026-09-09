@@ -1189,6 +1189,79 @@ export const messages = {
       'Colonne(s) ignorée(s), car la variable visée est calculée par le formulaire : sa valeur vient du calcul, pas du fichier.',
     'cohort.calculated_excluded':
       'Les variables calculées ne peuvent pas servir de filtre : leur résultat n’est pas enregistré dans les fiches, donc il n’y a rien à comparer. Filtrez plutôt sur les variables qui servent au calcul.',
+
+    // --- L59 : importer un bloc reutilisable dans une version (spec-blocs-reutilisables §5) ---
+    'blockimport.command': 'Importer un bloc',
+    'blockimport.title': 'Importer un bloc réutilisable',
+    'blockimport.help':
+      'Le bloc est recopié dans cette version avec ses sous-sections, ses variables et ses règles internes. Rien n’est écrit avant votre confirmation, et la version source n’est pas modifiée.',
+    'blockimport.catalog_label': 'Bloc à importer',
+    'blockimport.catalog_loading': 'Recherche des blocs disponibles…',
+    'blockimport.catalog_empty':
+      'Aucun bloc à importer pour l’instant : les jeux de variables que vous pouvez lire n’ont pas encore de bloc, ou le seul disponible est celui-ci. Créez un bloc dans un autre jeu de variables, puis revenez ici.',
+    'blockimport.catalog_choose': '— choisir un bloc —',
+    'blockimport.source_version': 'Version {n}',
+    'blockimport.source_unnamed': 'Jeu de variables partagé',
+    'blockimport.source_global': 'modèle global',
+    'blockimport.block_summary': '{n} variable(s) · {s} sous-section(s)',
+    'blockimport.preview_title': 'Ce qui sera écrit',
+    'blockimport.preview_loading': 'Vérification auprès du serveur…',
+    'blockimport.preview_fields': 'Variables importées',
+    'blockimport.preview_reused': 'Variables réutilisées telles quelles',
+    'blockimport.preview_subsections': 'Sous-sections : {list}',
+    'blockimport.preview_rules': '{n} règle(s) interne(s) au bloc seront recopiées.',
+    'blockimport.activation_not_copied':
+      'La règle qui affiche ce bloc dans son jeu de variables d’origine (si « {field} » …) n’est PAS copiée : elle nomme une variable de l’autre jeu, qui n’existe pas forcément ici. Le bloc arrivera donc visible sans condition.',
+    'blockimport.activation_none': 'Ce bloc n’a pas de règle d’affichage dans son jeu de variables d’origine.',
+    'blockimport.required_warning':
+      'Attention : {n} variable(s) de ce bloc sont obligatoires. Comme aucune règle ne conditionne encore le bloc, elles deviendront obligatoires POUR TOUS LES PATIENTS dès l’import : {list}. Conditionnez le bloc juste après pour limiter cette exigence aux patients concernés.',
+    'blockimport.conflicts_title': 'Conflits à régler avant d’importer',
+    'blockimport.conflict_reusable':
+      'Ce code de variable est déjà pris dans cette version, par une variable compatible du tronc commun.',
+    'blockimport.conflict_reuse_action': 'Réutiliser la variable déjà présente',
+    'blockimport.conflict_reuse_chosen': 'Variable existante réutilisée ; elle ne sera pas réécrite.',
+    'blockimport.conflict_location_common': 'tronc commun',
+    'blockimport.conflict_location_section': 'bloc « {section} »',
+    'blockimport.conflict_lives_in': 'Variable existante : {where}.',
+    'blockimport.conflict_operand': 'Élément du calcul en cause : {key}.',
+    'blockimport.conflict_no_rename':
+      'Aucun code n’est renommé automatiquement : renommer « sexe » en « sexe_2 » rendrait les deux bases incomparables, ce qui est précisément ce que ce produit sert à éviter.',
+    'blockimport.confirm': 'Importer ce bloc',
+    'blockimport.importing': 'Import en cours…',
+    'blockimport.cancel': 'Annuler',
+    'blockimport.close': 'Fermer',
+    'blockimport.success_title': 'Bloc importé',
+    'blockimport.success_summary':
+      '« {block} » a été ajouté en fin de version : {imported} variable(s) créée(s), {reused} réutilisée(s), {rules} règle(s) interne(s) et {subsections} sous-section(s).',
+    'blockimport.success_activation':
+      'Le bloc est visible sans condition. Ajoutez-lui une règle d’affichage pour ne le montrer qu’aux patients concernés.',
+    'blockimport.activate_cta': 'Conditionner ce bloc',
+    // Les douze refus typés de L58 (§4.4). Le serveur les rend dans `detail` ; l’écran
+    // n’en anticipe aucun, il traduit celui qui revient.
+    'blockimport.error.source_forbidden':
+      'Ce jeu de variables source ne vous est plus accessible. Rechargez la page : la liste des blocs a peut-être changé.',
+    'blockimport.error.target_forbidden':
+      'Vous ne pouvez pas modifier ce jeu de variables. Seul son propriétaire peut y importer un bloc.',
+    'blockimport.error.not_a_block':
+      'Ce code ne désigne pas un bloc : une sous-section ne s’importe pas seule, elle vient avec son bloc.',
+    'blockimport.error.target_locked':
+      'Cette version est publiée ou archivée : elle ne se modifie plus. Créez la version suivante, puis importez le bloc dedans.',
+    'blockimport.error.target_in_use':
+      'Cette version porte déjà des dossiers. Un bloc importé y arriverait sans ses règles, donc incomplet. Créez la version suivante, puis importez le bloc dedans.',
+    'blockimport.error.section_exists':
+      'Un bloc ou une sous-section porte déjà ce code dans cette version. Renommez ou supprimez la section existante avant d’importer.',
+    'blockimport.error.field_conflict':
+      'Une variable de même code existe déjà dans cette version. Réutilisez-la si elle est proposée ci-dessus, sinon changez son code dans le jeu de variables source.',
+    'blockimport.error.reuse_incompatible':
+      'La variable à réutiliser n’a pas le même type, la même portée ou le même caractère multivalué. Les réunir changerait le sens des données déjà saisies.',
+    'blockimport.error.reuse_in_block':
+      'La variable à réutiliser appartient à un autre bloc : le bloc importé se viderait dès que cet autre bloc est masqué. Remontez-la d’abord au tronc commun, avec sa propre règle d’affichage.',
+    'blockimport.error.formula_operand_missing':
+      'Une variable calculée du bloc utilise un élément absent du bloc et de cette version. Le calcul resterait muet : ajoutez d’abord l’élément manquant ici.',
+    'blockimport.error.formula_operand_incompatible':
+      'Un élément utilisé par un calcul existe déjà ici, mais avec une portée ou un type incompatible, ou il est lui-même calculé. Le résultat n’aurait pas le même sens que dans le jeu de variables source.',
+    'blockimport.error.visibility_cycle':
+      'Les règles du bloc formeraient une dépendance circulaire avec celles de cette version : chaque règle attendrait l’autre, et le formulaire ne saurait plus quoi afficher.',
   } as const;
 
 export type MessageKey = keyof typeof messages;

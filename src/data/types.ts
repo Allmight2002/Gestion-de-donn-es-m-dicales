@@ -236,3 +236,62 @@ export interface NewField {
   /** Calcul defini par l'utilisateur (L35), forme canonique « A op B ». Null = variable saisie. */
   formula?: string | null;
 }
+
+// --- L59 : import d'un bloc reutilisable ---------------------------------------------------
+
+/** Un bloc racine proposé au catalogue d'import, tel que le serveur le rend lisible. */
+export interface ImportableBlock {
+  templateId: string;
+  /** Nul quand la RLS du gabarit masque son nom alors que la version reste lisible
+   *  (lecture par base partagée) : l'écran retombe alors sur le numéro de version. */
+  templateName: string | null;
+  isGlobal: boolean;
+  versionId: string;
+  versionNumber: number;
+  versionStatus: VersionStatus;
+  sectionKey: string;
+  label: string;
+  displayOrder: number;
+  subsectionCount: number;
+  /** Variables portées par le bloc, sous-sections comprises. */
+  fieldCount: number;
+}
+
+/** Les douze refus typés de L58 (§4.4 de spec-blocs-reutilisables.md). */
+export type SectionImportRefusalCode =
+  | 'IMPORT_SOURCE_FORBIDDEN'
+  | 'IMPORT_TARGET_FORBIDDEN'
+  | 'IMPORT_SOURCE_NOT_A_BLOCK'
+  | 'IMPORT_TARGET_LOCKED'
+  | 'IMPORT_TARGET_IN_USE'
+  | 'IMPORT_SECTION_EXISTS'
+  | 'IMPORT_FIELD_CONFLICT'
+  | 'IMPORT_REUSE_INCOMPATIBLE'
+  | 'IMPORT_REUSE_IN_BLOCK'
+  | 'IMPORT_FORMULA_OPERAND_MISSING'
+  | 'IMPORT_FORMULA_OPERAND_INCOMPATIBLE'
+  | 'IMPORT_VISIBILITY_CYCLE';
+
+export interface SectionImportConflict {
+  code: SectionImportRefusalCode;
+  fieldKey: string | null;
+  /** Section de la version CIBLE où vit la variable en conflit ; null = tronc commun. */
+  existingSection: string | null;
+  /** Vrai seulement quand le SERVEUR a jugé la réutilisation possible. L'écran ne
+   *  propose jamais de réutiliser une variable qu'il aurait jugée compatible lui-même. */
+  reusable: boolean;
+  /** Opérande fautif d'une formule, le cas échéant. */
+  operandKey?: string | null;
+}
+
+/** Rapport rendu à l'identique par la prévisualisation et par l'import (§4.1). */
+export interface SectionImportReport {
+  sectionKey: string;
+  subsections: string[];
+  importedFields: string[];
+  reusedFields: string[];
+  copiedRules: number;
+  /** Règle d'activation du bloc dans la SOURCE, jamais copiée (D7). Matière de L60. */
+  activationRule: { field?: string; operator?: string; value?: unknown; terminologyReleaseId?: string | null } | null;
+  conflicts: SectionImportConflict[];
+}

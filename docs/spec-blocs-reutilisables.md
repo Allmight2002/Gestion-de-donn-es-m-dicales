@@ -1,13 +1,15 @@
 # Spécification — blocs réutilisables entre jeux de variables
 
-- Statut : **L58 implémenté localement le 2026-09-08, non déployé** ; **L59 et L60 spécifiés, non implémentés**.
+- Statut : **L58 et L59 implémentés localement, non déployés** (L58 le 2026-09-08, L59 le
+  2026-09-09) ; **L60 spécifié, non implémenté**.
 - Origine : question du porteur du 2026-09-07 — réduire le temps de réglage d'un jeu de
   variables, une fois les lots L51 à L56 en place
 - Prolonge [spec-blocs-pathologies.md](spec-blocs-pathologies.md) (un bloc **est** une section
   racine) et [spec-collecte-diagnostique.md](spec-collecte-diagnostique.md) (pilote diagnostique).
   Ne les révise pas : aucune sémantique de bloc, de visibilité ou d'export n'est modifiée ici
 - Surface serveur : deux colonnes de provenance sur `template_section`, une fonction de
-  prévisualisation, une RPC d'import, les gardes existantes de section / champ / règle
+  prévisualisation, une RPC d'import, une fonction de catalogue en lecture seule (L59), les
+  gardes existantes de section / champ / règle
 - Surface web : `src/data/templates.ts`, `src/screens/staff/SectionsEditor.tsx`,
   `src/screens/staff/TemplateVersionEditor.tsx`, `src/domain/templateSections.ts`,
   `src/screens/staff/RuleForm.tsx` (L60 seul), `src/i18n/`
@@ -401,3 +403,56 @@ Validation de cette correction, avec Vitest `4.1.11` :
   la CI ; aucune exception d'audit n'est ajoutée.
 - Schéma régénéré et inspecté, `schema:check`, typecheck et `git diff --check` réussis.
 - Lint global réussi, sans avertissement.
+
+## 12. État de l'implémentation L59 — 2026-09-09
+
+La migration locale `20260909170000_importable_block_catalog.sql` ajoute **une seule**
+fonction, `list_importable_template_sections()` — `stable security invoker`, révoquée de
+`anon`, accordée à `authenticated`. Elle rend, pour chaque version lisible, ses blocs
+racines avec le nombre de sous-sections et le nombre de variables portées. Aucune table,
+aucune donnée, aucune garde et aucune des deux RPC de L58 n'est touchée.
+
+Deux points ne relèvent pas du détail :
+
+- **`template` n'est pas joint en `inner join`.** Sa policy `template_read`
+  (`is_global or owner or admin`) est strictement plus étroite que `can_read_template`, qui
+  couvre en plus le gabarit d'une base partagée et le staff de curation. Un `inner join`
+  aurait donc amputé le catalogue de sources que l'import accepte. Le nom du gabarit est un
+  confort d'affichage : il arrive quand la RLS le laisse passer, il est nul sinon, et
+  l'écran retombe sur le numéro de version. Un test le vérifie dans les deux sens.
+- **Le compte de variables réutilise `template_section_field_keys`**, la primitive
+  d'appartenance de l'import, et non un second comptage. Un compte établi autrement finirait
+  par diverger de ce que l'import copie, et l'écart se lirait sur l'aperçu.
+
+Côté web : trois méthodes de dépôt (`listImportableSections`, `previewSectionImport`,
+`importSection`, cette dernière vidant le cache de version comme toute autre écriture de
+gabarit), un module de domaine pur `templateSectionImport.ts`, le panneau
+`SectionImportDialog.tsx`, la commande « Importer un bloc » à côté de « Ajouter une
+section » dans `SectionsEditor`, et 49 clés de message en français et en anglais dont les
+douze refus du §4.4. La commande n'est rendue que sur une version éditable et seulement si
+le dépôt sait lister les blocs : le frontend ne dépend jamais d'une RPC absente.
+
+**Écart assumé avec le §5.** `RuleForm.tsx`, que la liste de surfaces réservait à L60, reçoit
+une seule propriété optionnelle d'affichage, `initialSectionTarget` : après un import, le
+constructeur de règles s'ouvre sur le bloc qui vient d'arriver. Aucune sémantique de L60 n'y
+entre — ni contrôle de compatibilité, ni reprise de la règle d'activation de la source ; le
+pilote reste choisi par l'utilisateur.
+
+Contrôles exécutés sur PostgreSQL embarqué jetable, avec données fictives :
+
+- Base — `test/template-section-catalog.test.ts` : **7 tests réussis**, dont le parcours
+  complet d'un bloc de vingt variables (catalogue, aperçu sans écriture, import en une
+  opération) depuis un gabarit lisible par base partagée, le filtrage RLS dans les deux
+  sens, le comptage d'une variable rattachée par le seul code texte, et l'ACL de la
+  fonction. Régressions L58 et ACL rejouées : **42 tests réussis** au total avec
+  `template-section-import` et `security-definer-acl`.
+- Web — `SectionImportDialog.test.tsx` : **11 tests réussis** couvrant le §9.2 point par
+  point, plus le catalogue vide ; `TemplateVersionEditor.test.tsx` : **5 tests**, dont la
+  version non éditable (commande absente) et le serveur sans catalogue ;
+  `templates.test.tsx` : **6 tests**, dont le vidage du cache après import et son absence
+  après une simple prévisualisation. Suite web complète : **601 tests réussis**.
+- `npm run typecheck`, `npm run lint`, `npm run schema`, inspection du snapshot
+  (une fonction `INVOKER` de plus, rien d'autre), `npm run schema:check` et
+  `git diff --check` : réussis.
+
+Validation locale uniquement : aucune migration distante appliquée, aucun déploiement.
