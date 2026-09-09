@@ -189,11 +189,18 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
   const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'patient', permanentData, fields, rules, sections);
 
+  // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
+  // ne doit pas repartir de l'instantane du rendu.
+  const permanentRef = useRef(permanent);
+  useEffect(() => { permanentRef.current = permanent; }, [permanent]);
+
   function updatePermanent(key: string, value: unknown, remove = false) {
-    const next = { ...permanent };
+    const current = permanentRef.current;
+    const next = { ...current };
     if (remove) delete next[key];
     else next[key] = value;
-    trackVisibilityWithdrawal(permanent, next);
+    permanentRef.current = next;
+    trackVisibilityWithdrawal(current, next);
     setPermanent(next);
   }
 

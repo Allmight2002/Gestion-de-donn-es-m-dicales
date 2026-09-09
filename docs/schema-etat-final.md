@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260906143000_diagnosis_followup.sql`
-- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 299
+- Dernière migration incluse : `20260909025040_reusable_block_preview_guards.sql`
+- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 304
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -876,6 +876,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | display_order | integer | non | `0` |
 | created_at | timestamp with time zone | non | `now()` |
 | parent_section_id | uuid | oui |  |
+| source_template_version_id | uuid | oui |  |
+| source_section_key | text | oui |  |
 
 Policies :
 - `ts_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -1068,6 +1070,7 @@ Triggers :
 | complete_mission_credential_operation | p_operation_id uuid, p_actor_id uuid | DEFINER | plpgsql |
 | complete_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_entity text, p_metadata jsonb, p_verified_file_hash text, p_verified_file_size bigint, p_verified_mime_type text | DEFINER | plpgsql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
+| copy_template_field_rows | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean, p_field_keys text[] | INVOKER | sql |
 | copy_template_fields | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean | INVOKER | plpgsql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
 | create_base_from_model_observation | p_name text, p_specialty text, p_source_version_id uuid, p_observation_model text | DEFINER | plpgsql |
@@ -1168,6 +1171,7 @@ Triggers :
 | import_records | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_legacy | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_with_receipts | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
+| import_template_section | p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[] | DEFINER | plpgsql |
 | invitation_permissions_still_valid | p_base_id uuid, p_actor uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | sql |
 | is_active_assigned_curator | p_task_id uuid | DEFINER | sql |
 | is_assigned_curator | p_task_id uuid | DEFINER | sql |
@@ -1226,6 +1230,7 @@ Triggers :
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
 | prepare_base_purge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
 | preview_option_key_repair | p_base_id uuid | DEFINER | plpgsql |
+| preview_template_section_import | p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[] | DEFINER | plpgsql |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
@@ -1281,8 +1286,10 @@ Triggers :
 | template_field_in_use | p_field_id uuid | DEFINER | sql |
 | template_field_option_keys | p_options jsonb | INVOKER | sql |
 | template_field_options_from_values | p_values jsonb, p_previous jsonb | INVOKER | sql |
+| template_import_refusal | p_code text, p_details jsonb | INVOKER | plpgsql |
 | template_of_version | p_version uuid | DEFINER | sql |
 | template_section_field_keys | p_version_id uuid, p_section_key text | INVOKER | sql |
+| template_section_import_plan | p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[], p_apply boolean | INVOKER | plpgsql |
 | template_version_fields_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_locked | p_version_id uuid | DEFINER | sql |
