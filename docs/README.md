@@ -68,6 +68,7 @@
 | [continuite.md](continuite.md) | Sauvegarde, restauration, reprise |
 | [qa-parcours-site.md](qa-parcours-site.md) · [instructions-agent-qa.md](instructions-agent-qa.md) | Plan de test du site déployé et cadrage de l'agent QA |
 | [plan-test-preuves-2026-08-19.md](plan-test-preuves-2026-08-19.md) | Plan de test des lots livrés (L14, corbeille, D9/D12, L20-L25, L27-L33, L11) en attente de preuve de fonctionnement sur le site déployé |
+| [guide-test-collecte-diagnostique.md](guide-test-collecte-diagnostique.md) | 🟢 Guide de test manuel des lots **L51 à L56** (blocs cliniques, visibilité de bloc, projection d'export, configuration diagnostique et suivi des cas non couverts) — preuve navigateur encore à produire |
 | [redaction-diagnostic-sauvegarde.md](redaction-diagnostic-sauvegarde.md) | Expurger un diagnostic de sauvegarde avant de le journaliser |
 
 ## 5. État courant et readiness
@@ -97,7 +98,7 @@
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
 | [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | 🟢 **Implémentée** (L20 à L25, 2026-08-18) — listes de diagnostics : saisie, export, cohortes, hors-ligne. Son **§12 seul** reste une cible non implémentée, close le 2026-08-19 |
-| [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | 📋 **Revue le 2026-09-05, partiellement implémentée** — **L51** ([l51-contains-any.md](l51-contains-any.md)), **L54** et **L53** ([l53-projection-export.md](l53-projection-export.md)) implémentés et non déployés ; **L52** reste à faire — blocs cliniques conditionnels dans une base de même gouvernance, tronc commun pour les variables partagées, sections à deux niveaux et projection d’export sûre pour les formules |
+| [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | 📋 **Revue le 2026-09-05, partiellement implémentée** — **L51** ([l51-contains-any.md](l51-contains-any.md)), **L54**, **L52** et **L53** ([l53-projection-export.md](l53-projection-export.md)) implémentés et non déployés — blocs cliniques conditionnels dans une base de même gouvernance, tronc commun pour les variables partagées, sections à deux niveaux et projection d’export sûre pour les formules |
 | [spec-collecte-diagnostique.md](spec-collecte-diagnostique.md) | 📋 **Partiellement implémentée, revue le 2026-09-05** — **L55** ([l55-configuration-diagnostique.md](l55-configuration-diagnostique.md)) et **L56** ([l56-parcours-et-suivi.md](l56-parcours-et-suivi.md)) implémentés et non déployés : diagnostic pilote versionné et couverture, puis socle enregistrable sans bloc et file des cas non couverts réservée au médecin propriétaire. La preuve navigateur de L56 manque encore ; reprise/notifications en cadrage différé L57 |
 | [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md) | **L58 implémenté et validé localement, non déployé** — import serveur d'un bloc par copie ; **L59 et L60 restent spécifiés**. File séquentielle, après L52 et L54 |
 | [brief-audit-prochain.md](brief-audit-prochain.md) | Cadrage du prochain audit |

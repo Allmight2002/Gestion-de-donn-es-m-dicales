@@ -1,7 +1,8 @@
 # Spécification — blocs cliniques conditionnels dans une même base
 
-- Statut : 📋 **revue le 2026-09-05, partiellement implémentée** — **L51**, **L54** et **L53**
-  implémentés et non déployés ; **L52** reste à faire (voir §7)
+- Statut : 📋 **revue le 2026-09-05, partiellement implémentée** — **L51**, **L54**, **L52**
+  et **L53** implémentés et non déployés — L52 livré le 2026-09-05 (migration
+  `20260905160000_block_visibility.sql`) ; le §7 décrit encore l’ordre d’origine
 - Origine : [decision-blocs-pathologies-2026-09-03.md](decision-blocs-pathologies-2026-09-03.md)
 - Surface serveur : `rule_apply_op`, `rule_holds`, `visibility_hidden_fields`,
   le contrôle de forme des règles, `assert_visibility_acyclic`, `template_section`,
