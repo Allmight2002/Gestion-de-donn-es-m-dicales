@@ -5,12 +5,14 @@ import { supabase } from '../lib/supabase';
 import type { MissingCode } from '../domain/export';
 import { optionKeys, toRawOptions } from '../domain/fieldOptions';
 import type {
+  ImportableBlock,
   NewField,
   RuleSeverity,
   Template,
   TemplateField,
   TemplateSection,
   TemplateVersion,
+  SectionImportReport,
   ValidationRule,
   DiagnosisConfiguration,
   DiagnosisContext,
@@ -40,6 +42,15 @@ export interface TemplateRepository {
   reorderSections?(versionId: string, orderedIds: string[]): Promise<void>;
   reorderSectionSiblings?(versionId: string, parentKey: string | null, orderedIds: string[]): Promise<void>;
   moveSection?(versionId: string, sectionId: string, parentKey: string | null): Promise<void>;
+  /** L59 : blocs racines de toutes les versions LISIBLES, avec le nombre de variables
+   *  portees (sous-sections comprises). UNE seule lecture serveur : recouper les versions
+   *  cote client serait N+1 sur un catalogue qui grandit avec l'usage. */
+  listImportableSections?(): Promise<ImportableBlock[]>;
+  /** L59 : rapport d'import SANS aucune ecriture. Sert l'apercu et le rapport de conflits. */
+  previewSectionImport?(sourceVersionId: string, sectionKey: string, targetVersionId: string, reuseFieldKeys?: string[]): Promise<SectionImportReport>;
+  /** L59 : ecrit le bloc. Le serveur rejoue le meme plan sous verrou et ne fait jamais
+   *  confiance au rapport d'apercu. */
+  importSection?(sourceVersionId: string, sectionKey: string, targetVersionId: string, reuseFieldKeys?: string[]): Promise<SectionImportReport>;
   /** Ajoute un champ et, le cas echeant, son compagnon dans la meme requete atomique. */
   addField(versionId: string, field: NewField, companion?: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
@@ -169,6 +180,14 @@ export async function getTemplateFields(repo: TemplateRepository, versionId: str
   return repo.getFields ? repo.getFields(versionId) : (await repo.getVersion(versionId)).fields;
 }
 
+/** Ligne brute de `list_importable_template_sections` (snake_case PostgreSQL). */
+interface ImportableBlockRow {
+  template_id: string; template_name: string | null; is_global: boolean;
+  version_id: string; version_number: number; version_status: string;
+  section_key: string; label: string; display_order: number;
+  subsection_count: number; field_count: number;
+}
+
 export function makeTemplateRepository(client: SupabaseClient | null): TemplateRepository {
   if (!client) {
     const fail = async (): Promise<never> => {
@@ -177,6 +196,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     return {
       listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, createTemplateBundle: fail, getVersion: fail, addField: fail, updateField: fail,
       getSections: fail, addSection: fail, renameSection: fail, deleteSection: fail, reorderSections: fail,
+      listImportableSections: fail, previewSectionImport: fail, importSection: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, updateRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
@@ -354,6 +374,51 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (error) throw error;
       clearVersionCache();
     },
+    // --- L59 : import d'un bloc reutilisable ---------------------------------------------
+    // Les trois appels traversent le MEME chemin serveur que L58 a livre. Le web n'anticipe
+    // aucun refus et ne rejoue aucune garde : il affiche ce que le serveur repond.
+
+    async listImportableSections() {
+      const { data, error } = await client.rpc('list_importable_template_sections');
+      if (error) throw error;
+      return ((data as ImportableBlockRow[]) ?? []).map((row) => ({
+        templateId: row.template_id,
+        templateName: row.template_name ?? null,
+        isGlobal: row.is_global ?? false,
+        versionId: row.version_id,
+        versionNumber: row.version_number,
+        versionStatus: row.version_status as TemplateVersion['status'],
+        sectionKey: row.section_key,
+        label: row.label,
+        displayOrder: row.display_order,
+        subsectionCount: row.subsection_count ?? 0,
+        fieldCount: row.field_count ?? 0,
+      }));
+    },
+
+    async previewSectionImport(sourceVersionId, sectionKey, targetVersionId, reuseFieldKeys = []) {
+      // Lecture seule : aucun vidage de cache, il n'y a rien a invalider.
+      const { data, error } = await client.rpc('preview_template_section_import', {
+        p_source_version_id: sourceVersionId, p_source_section_key: sectionKey,
+        p_target_version_id: targetVersionId, p_reuse_field_keys: reuseFieldKeys,
+      });
+      if (error) throw error;
+      return data as SectionImportReport;
+    },
+
+    async importSection(sourceVersionId, sectionKey, targetVersionId, reuseFieldKeys = []) {
+      const { data, error } = await client.rpc('import_template_section', {
+        p_source_version_id: sourceVersionId, p_source_section_key: sectionKey,
+        p_target_version_id: targetVersionId, p_reuse_field_keys: reuseFieldKeys,
+      });
+      if (error) throw error;
+      // Un import ajoute une section, des variables et des regles a la version cible : le
+      // cache de session doit tomber comme apres toute autre ecriture de gabarit, sinon
+      // l'editeur reafficherait la version d'avant l'import.
+      clearVersionCache();
+      return data as SectionImportReport;
+    },
+
     async renameSection(sectionId, label) {
       // SEUL le libelle part : le code interne est la reference stable des variables et
       // des instantanes hors-ligne, et le declencheur serveur refuse de le voir changer.

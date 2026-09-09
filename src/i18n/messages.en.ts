@@ -1187,4 +1187,77 @@ export const messages = {
       'Column(s) skipped, because the target variable is computed by the form: its value comes from the calculation, not from the file.',
     'cohort.calculated_excluded':
       'Calculated variables cannot be used as a filter: their result is not stored in records, so there is nothing to compare. Filter on the variables that feed the calculation instead.',
+
+    // --- L59: import a reusable block into a version (spec-blocs-reutilisables §5) ---
+    'blockimport.command': 'Import a block',
+    'blockimport.title': 'Import a reusable block',
+    'blockimport.help':
+      'The block is copied into this version with its subsections, variables and internal rules. Nothing is written before you confirm, and the source version is left untouched.',
+    'blockimport.catalog_label': 'Block to import',
+    'blockimport.catalog_loading': 'Looking for available blocks…',
+    'blockimport.catalog_empty':
+      'No block to import yet: the variable sets you can read have no block, or the only one available is this version itself. Create a block in another variable set, then come back here.',
+    'blockimport.catalog_choose': '— choose a block —',
+    'blockimport.source_version': 'Version {n}',
+    'blockimport.source_unnamed': 'Shared variable set',
+    'blockimport.source_global': 'global model',
+    'blockimport.block_summary': '{n} variable(s) · {s} subsection(s)',
+    'blockimport.preview_title': 'What will be written',
+    'blockimport.preview_loading': 'Checking with the server…',
+    'blockimport.preview_fields': 'Imported variables',
+    'blockimport.preview_reused': 'Variables reused as they are',
+    'blockimport.preview_subsections': 'Subsections: {list}',
+    'blockimport.preview_rules': '{n} rule(s) internal to the block will be copied.',
+    'blockimport.activation_not_copied':
+      'The rule that shows this block in its original variable set (if “{field}” …) is NOT copied: it names a variable of that other set, which may not exist here. The block will therefore arrive visible without any condition.',
+    'blockimport.activation_none': 'This block has no display rule in its original variable set.',
+    'blockimport.required_warning':
+      'Warning: {n} variable(s) in this block are mandatory. Since no rule conditions the block yet, they will become mandatory FOR EVERY PATIENT as soon as it is imported: {list}. Add a display rule right after the import to limit that requirement to the patients concerned.',
+    'blockimport.conflicts_title': 'Conflicts to settle before importing',
+    'blockimport.conflict_reusable':
+      'This variable code is already taken in this version, by a compatible variable of the common trunk.',
+    'blockimport.conflict_reuse_action': 'Reuse the variable already present',
+    'blockimport.conflict_reuse_chosen': 'Existing variable reused; it will not be overwritten.',
+    'blockimport.conflict_location_common': 'common trunk',
+    'blockimport.conflict_location_section': 'block “{section}”',
+    'blockimport.conflict_lives_in': 'Existing variable: {where}.',
+    'blockimport.conflict_operand': 'Element of the calculation at fault: {key}.',
+    'blockimport.conflict_no_rename':
+      'No code is ever renamed automatically: turning “sex” into “sex_2” would make the two databases incomparable, which is precisely what this product exists to prevent.',
+    'blockimport.confirm': 'Import this block',
+    'blockimport.importing': 'Importing…',
+    'blockimport.cancel': 'Cancel',
+    'blockimport.close': 'Close',
+    'blockimport.success_title': 'Block imported',
+    'blockimport.success_summary':
+      '“{block}” was added at the end of the version: {imported} variable(s) created, {reused} reused, {rules} internal rule(s) and {subsections} subsection(s).',
+    'blockimport.success_activation':
+      'The block is visible without any condition. Give it a display rule so that it only shows for the patients concerned.',
+    'blockimport.activate_cta': 'Add a condition to this block',
+    // The twelve typed refusals of L58 (§4.4). The server returns them in `detail`; the
+    // screen anticipates none of them, it translates whichever comes back.
+    'blockimport.error.source_forbidden':
+      'That source variable set is no longer available to you. Reload the page: the list of blocks may have changed.',
+    'blockimport.error.target_forbidden':
+      'You cannot modify this variable set. Only its owner can import a block into it.',
+    'blockimport.error.not_a_block':
+      'That code does not designate a block: a subsection cannot be imported on its own, it comes with its block.',
+    'blockimport.error.target_locked':
+      'This version is published or archived: it can no longer be modified. Create the next version, then import the block into it.',
+    'blockimport.error.target_in_use':
+      'This version already carries records. An imported block would land there without its rules, hence incomplete. Create the next version, then import the block into it.',
+    'blockimport.error.section_exists':
+      'A block or a subsection already uses that code in this version. Rename or delete the existing section before importing.',
+    'blockimport.error.field_conflict':
+      'A variable with the same code already exists in this version. Reuse it if it is offered above, otherwise change its code in the source variable set.',
+    'blockimport.error.reuse_incompatible':
+      'The variable to reuse does not have the same type, scope or multi-value nature. Merging them would change the meaning of data already entered.',
+    'blockimport.error.reuse_in_block':
+      'The variable to reuse belongs to another block: the imported block would empty itself as soon as that other block is hidden. Move it up to the common trunk first, with its own display rule.',
+    'blockimport.error.formula_operand_missing':
+      'A calculated variable of the block uses an element absent from both the block and this version. The calculation would stay silent: add the missing element here first.',
+    'blockimport.error.formula_operand_incompatible':
+      'An element used by a calculation already exists here, but with an incompatible scope or type, or it is itself calculated. The result would not mean the same thing as in the source variable set.',
+    'blockimport.error.visibility_cycle':
+      'The block rules would form a circular dependency with those of this version: each rule would wait for the other, and the form would no longer know what to display.',
   } as const satisfies MessageDictionary;

@@ -219,6 +219,7 @@ export function RuleForm({
   initialRule,
   initialMessage,
   initialSeverity,
+  initialSectionTarget,
   submitLabel,
   onCancel,
 }: {
@@ -233,6 +234,10 @@ export function RuleForm({
   initialRule?: unknown;
   initialMessage?: string | null;
   initialSeverity?: RuleSeverity;
+  /** L59 : bloc a conditionner, propose apres un import. Ne fait qu'ouvrir le
+   *  constructeur sur la bonne cible ; le pilote, lui, reste choisi par l'utilisateur.
+   *  Ignore des qu'une regle existante est editee, qui porte deja sa propre cible. */
+  initialSectionTarget?: string | null;
   submitLabel?: string;
   onCancel?: () => void;
 }) {
@@ -255,7 +260,10 @@ export function RuleForm({
     () => (initialRule === undefined ? null : calculatedOperandConflict(initialRule, fields)),
     [initialRule, fields],
   );
-  const [kind, setKind] = useState<GuidedRuleKind>(draft?.kind ?? 'comparison');
+  // L59 : la graine ne sert QUE si aucune regle existante n'est editee — une regle en
+  // cours de modification porte deja sa cible, et la lui reprendre serait une surprise.
+  const seededSection = draft ? null : (initialSectionTarget || null);
+  const [kind, setKind] = useState<GuidedRuleKind>(draft?.kind ?? (seededSection ? 'visibility' : 'comparison'));
   const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>(draft?.comparisonOperator ?? '');
   const [leftField, setLeftField] = useState(draft?.leftField ?? '');
   const [rightField, setRightField] = useState(draft?.rightField ?? '');
@@ -265,8 +273,10 @@ export function RuleForm({
   const [conditionChoices, setConditionChoices] = useState<string[]>(draft?.conditionChoices ?? []);
   const [terminologyReleaseId, setTerminologyReleaseId] = useState(draft?.terminologyReleaseId ?? '');
   const [requiredField, setRequiredField] = useState(draft?.requiredField ?? '');
-  const [visibilityTarget, setVisibilityTarget] = useState<'field' | 'section'>(draft?.visibilityTarget ?? 'field');
-  const [sectionTarget, setSectionTarget] = useState(draft?.sectionTarget ?? '');
+  const [visibilityTarget, setVisibilityTarget] = useState<'field' | 'section'>(
+    draft?.visibilityTarget ?? (seededSection ? 'section' : 'field'),
+  );
+  const [sectionTarget, setSectionTarget] = useState(draft?.sectionTarget ?? seededSection ?? '');
   const [message, setMessage] = useState(initialMessage ?? '');
   const [severity, setSeverity] = useState<RuleSeverity>(initialSeverity ?? 'block');
   const [error, setError] = useState<string | null>(

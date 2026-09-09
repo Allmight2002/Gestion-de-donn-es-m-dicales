@@ -13,6 +13,7 @@ import { FormPreview } from './FormPreview';
 import { RuleForm, RuleSummary, ruleHasSeverity } from './RuleForm';
 import { DiagnosisConfigurationEditor } from './DiagnosisConfigurationEditor';
 import { SectionsEditor } from './SectionsEditor';
+import { SectionImportDialog } from './SectionImportDialog';
 import { SkeletonList } from '../../components/Skeleton';
 
 interface Loaded {
@@ -60,6 +61,12 @@ export function TemplateVersionEditor({
   const [requiredOnly, setRequiredOnly] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const sectionsInitialized = useRef<string | null>(null);
+  // L59 : import d'un bloc reutilisable. `activationSection` porte le bloc qui vient
+  // d'arriver jusqu'au constructeur de regles — c'est le point d'entree de L60, et rien
+  // de plus : aucune regle n'est creee ici, aucun pilote n'est devine.
+  const [importOpen, setImportOpen] = useState(false);
+  const [activationSection, setActivationSection] = useState<string | null>(null);
+  const rulesRef = useRef<HTMLDivElement | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -325,6 +332,7 @@ export function TemplateVersionEditor({
           onRename={(sectionId, label) => void run(() => repo.renameSection!(sectionId, label))}
           onDelete={(sectionId) => void run(() => repo.deleteSection!(sectionId))}
           onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}
+          onImportBlock={repo.listImportableSections ? () => setImportOpen(true) : undefined}
         />
       )}
 
@@ -552,7 +560,23 @@ export function TemplateVersionEditor({
         )}
       </div>
 
-      <div>
+      {editable && importOpen && (
+        <SectionImportDialog
+          repo={repo}
+          targetVersionId={version.id}
+          onClose={() => setImportOpen(false)}
+          // Le cache de session est deja vide par `importSection` ; ce rechargement
+          // rapporte le bloc, ses variables et ses regles dans l'ecran.
+          onImported={reload}
+          onActivate={(sectionKey) => {
+            setImportOpen(false);
+            setActivationSection(sectionKey);
+            rulesRef.current?.scrollIntoView({ block: 'start' });
+          }}
+        />
+      )}
+
+      <div ref={rulesRef}>
         <h3 className="mb-3 text-sm font-semibold text-slate-700">{t('admin.rules')}</h3>
         <ul className="space-y-2 text-sm">
           {rules.map((r) => (
@@ -584,8 +608,18 @@ export function TemplateVersionEditor({
         </ul>
         {editable && (
           <div className="mt-3">
+            {/* L59 : apres un import, le bloc est visible SANS condition (D7 n'a pas
+                copie sa regle d'activation). Le constructeur s'ouvre donc sur ce bloc,
+                et l'utilisateur choisit le pilote : c'est L60 qui verifiera un jour la
+                compatibilite d'un pilote repris de la source. */}
+            {activationSection && !editingRule && (
+              <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {t('blockimport.success_activation')}
+              </p>
+            )}
             <RuleForm
-              key={editingRule?.id ?? 'new-rule'}
+              key={editingRule?.id ?? `new-rule-${activationSection ?? ''}`}
+              initialSectionTarget={editingRule ? null : activationSection}
               fields={fields}
               sections={sections}
               busy={busy}
@@ -601,7 +635,11 @@ export function TemplateVersionEditor({
                     if (ok) setEditingRule(null);
                   });
                 } else {
-                  void run(() => repo.addRule(version.id, rule, message, severity));
+                  void run(() => repo.addRule(version.id, rule, message, severity)).then((ok) => {
+                    // Le bloc importe est desormais conditionne : le renvoi vers
+                    // l'activation a fait son office et n'a plus lieu d'etre affiche.
+                    if (ok) setActivationSection(null);
+                  });
                 }
               }}
             />

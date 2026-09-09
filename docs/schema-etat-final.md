@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260909025040_reusable_block_preview_guards.sql`
-- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 304
+- Dernière migration incluse : `20260909170000_importable_block_catalog.sql`
+- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 305
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1188,6 +1188,7 @@ Triggers :
 | is_system_admin | — | DEFINER | sql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
 | list_deleted_bases | — | DEFINER | plpgsql |
+| list_importable_template_sections | — | INVOKER | sql |
 | list_recent_client_errors | p_limit integer, p_since timestamp with time zone, p_context text | DEFINER | plpgsql |
 | lock_contains_any_configuration | — | INVOKER | plpgsql |
 | lock_template_section_version | p_version_id uuid | INVOKER | plpgsql |

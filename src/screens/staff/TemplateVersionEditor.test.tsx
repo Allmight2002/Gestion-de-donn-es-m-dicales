@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TemplateRepository } from '../../data/templates';
-import type { TemplateField, TemplateSection, TemplateVersion } from '../../data/types';
+import type { ImportableBlock, TemplateField, TemplateSection, TemplateVersion } from '../../data/types';
 import { TemplateVersionEditor } from './TemplateVersionEditor';
 
 const version: TemplateVersion = {
@@ -39,6 +39,13 @@ function makeField(overrides: Partial<TemplateField> & Pick<TemplateField, 'id' 
     ...rest,
   };
 }
+
+const block: ImportableBlock = {
+  templateId: 'template-2', templateName: 'Pneumologie', isGlobal: false,
+  versionId: 'version-2', versionNumber: 1, versionStatus: 'draft',
+  sectionKey: 'tuberculose', label: 'Tuberculose', displayOrder: 0,
+  subsectionCount: 1, fieldCount: 4,
+};
 
 function makeRepository() {
   let fields: TemplateField[] = [
@@ -109,5 +116,47 @@ describe('TemplateVersionEditor', () => {
 
     await waitFor(() => expect(updateField).toHaveBeenCalledWith('field-1', expect.objectContaining({ label: 'Tension corrigée' })));
     await waitFor(() => expect(within(screen.getByRole('dialog', { name: 'Modifier la variable' })).getByLabelText('Libellé')).toHaveValue('Hémoglobine'));
+  });
+
+  // --- L59 : la commande d'import ---------------------------------------------------------
+
+  test('offre « Importer un bloc » a cote de « Ajouter une section » et ouvre le panneau', async () => {
+    const user = userEvent.setup();
+    const { repo } = makeRepository();
+    const listImportableSections = vi.fn(async () => []);
+    renderEditor(Object.assign(repo, { listImportableSections }));
+
+    const command = await screen.findByRole('button', { name: 'Importer un bloc' });
+    // La commande est bien dans le formulaire de creation de section, pas ailleurs.
+    expect(command.closest('form')).toContainElement(screen.getByRole('button', { name: 'Ajouter la section' }));
+
+    await user.click(command);
+    const dialog = await screen.findByRole('dialog', { name: 'Importer un bloc réutilisable' });
+    // Catalogue vide : etat explicite, jamais un ecran blanc.
+    expect(await within(dialog).findByText(/Aucun bloc à importer pour l’instant/)).toBeInTheDocument();
+    expect(listImportableSections).toHaveBeenCalledTimes(1);
+  });
+
+  test('version publiee : aucune commande d import, l editeur de sections n existe pas', async () => {
+    const { repo } = makeRepository();
+    const published = { ...version, status: 'published' as const };
+    renderEditor(Object.assign(repo, {
+      getVersion: vi.fn(async () => ({ version: published, fields: [], rules: [], sections })),
+      listImportableSections: vi.fn(async () => [block]),
+    }));
+
+    expect(await screen.findByText(/Version publiée/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ajouter la section' })).not.toBeInTheDocument();
+  });
+
+  test('serveur sans catalogue : la commande ne se rend pas du tout', async () => {
+    const { repo } = makeRepository();
+    renderEditor(repo);
+
+    // Le frontend ne doit jamais dependre d'une RPC absente : sans `listImportableSections`,
+    // la commande disparait au lieu d'echouer au clic.
+    expect(await screen.findByRole('button', { name: 'Ajouter la section' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
   });
 });
