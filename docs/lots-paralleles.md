@@ -83,6 +83,11 @@ analytique explicite la justifie.
 > **L55/L56** portent cette extension et **L57** cadre ultérieurement la reprise/notification.
 > Contrat : [`spec-collecte-diagnostique.md`](spec-collecte-diagnostique.md).
 
+> **Révision du 2026-09-07** : trois lots sont ajoutés, **L58 à L60**, issus de
+> [`spec-blocs-reutilisables.md`](spec-blocs-reutilisables.md) — réutiliser un bloc clinique
+> d’un jeu de variables à l’autre, par copie et sans catalogue partagé. Ils forment une file
+> séquentielle et supposent **L52 et L54 fusionnés**.
+
 ## Vue d'ensemble
 
 | Lot | Objet | Fichiers principaux | Lancer en même temps que |
@@ -144,6 +149,9 @@ analytique explicite la justifie.
 | **L54** | Blocs cliniques conditionnels : deux niveaux de sections et tronc commun créable explicitement | `template_section`, `template_field.section`, primitive de recopie, commandes atomiques, éditeur, rendu, hors-ligne | L51 ; **avant L52 et L53** |
 | **L52** | Blocs cliniques conditionnels : visibilité au niveau **bloc** et invariants de version | moteur SQL, `templateRules.ts`, `validation.ts`, mutations de champs/sections, `RuleForm.tsx` | L53 ; **après L51 et L54**, jamais avec L51 |
 | **L53** | Blocs cliniques conditionnels : projection d’export par blocs | `exportContract.ts`, `handler.ts`, `exports.ts`, `ExportPanel.tsx` | L52 ; **après L54** ; **jamais avec L50** |
+| **L58** | Blocs réutilisables : import serveur d’un bloc dans une version | migration (provenance sur `template_section`, prévisualisation et RPC d’import), tests SQL | **après L52 et L54** ; jamais avec un lot qui redéfinit `copy_template_fields` |
+| **L59** | Blocs réutilisables : choisir un bloc dans l’éditeur | `templates.ts`, `SectionsEditor.tsx`, `TemplateVersionEditor.tsx`, i18n | **après L58** ; **jamais avec L41** (`TemplateVersionEditor.tsx`) |
+| **L60** | Blocs réutilisables : reconnexion de la règle d’activation | `templateRules.ts`, `RuleForm.tsx`, i18n | **après L59** ; jamais avec un lot du moteur de règles |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
@@ -1055,6 +1063,18 @@ puis cadrage L57. L53 peut être avancé après L54. Les compatibilités de fich
 des possibilités, pas une consigne de déléguer. Les travaux de L55 partagent aussi les copies
 de version ; séquencer avec L54. La preuve intégrée L56 inclut l’export après L53.
 
+## Blocs réutilisables — L58 à L60
+
+**L58 implémenté localement le 2026-09-08, non déployé ; L59 et L60 restent spécifiés, non implémentés.** [Contrat détaillé](spec-blocs-reutilisables.md).
+Ces trois lots ne changent aucune sémantique de bloc : ils ajoutent le seul verbe qui manque,
+**insérer un bloc lisible dans une version en cours d’édition**, avec ses sous-sections, ses
+variables et ses règles internes. Le bloc reste une `template_section` sans parent (L54) ; aucun
+objet, rôle ni partage nouveau n’est introduit, et l’insertion se fait **par copie**.
+
+La file est strictement séquentielle — **L58 → L59 → L60** — et ne commence qu’une fois **L52 et
+L54 fusionnés**. Deux collisions à connaître : L58 ouvre `copy_template_fields`, territoire de
+L54 ; L59 touche `TemplateVersionEditor.tsx`, l’un des fichiers de **L41**.
+
 ## Ordre suggéré — état documentaire au 2026-09-05
 
 **Niveau atteint.** Les lots **L1 à L33** sont soldés : 32 sont livrés et **L26 est clos sans
@@ -1069,7 +1089,7 @@ l'interface le 2026-09-01.
 
 Restent ouverts : **L34**, les lots d'audit **L38 à L44**, **L50** (différé, il attend un
 référentiel diagnostique gouverné), les blocs cliniques conditionnels **L51 à L54**, la collecte **L55/L56**, le cadrage différé
-**L57**, ainsi que **O6** et
+**L57**, les blocs réutilisables **L58 à L60**, ainsi que **O6** et
 **O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté du profil Analyse
 et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du document.
 
@@ -1108,7 +1128,10 @@ et **L36** ne doit plus être relancé séparément ; voir les révisions en tê
    L52 et L53 ; L51 et L52 ne tournent jamais ensemble.
 9. Après L51 + L54, **L52** sécurise la visibilité de bloc et les invariants de version. Après
    L54, **L53** peut avancer en parallèle de L52 ; ne pas le lancer avec L50.
-10. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
+10. **L58 → L59 → L60**, blocs réutilisables entre jeux de variables : import serveur, choix du
+   bloc dans l’éditeur, reconnexion de l’activation. Strictement séquentiels, après L52 et L54 ;
+   **L59 ne tourne jamais avec L41**.
+11. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
    d'activation et preuve de release. Aucun de ces deux lots n'autorise l'usage de données réelles.
 
 > **Historique de coordination** : L21, L22 et L24 ont été livrés le 2026-08-18, puis L23 et L25 ;

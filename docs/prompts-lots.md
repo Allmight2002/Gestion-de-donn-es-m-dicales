@@ -25,6 +25,10 @@
   Ordre d’exécution : **L51 et L54** en parallèle, puis **L52**, puis ou en même temps
   **L53**. L51 et L52 écrivent dans les mêmes fichiers : jamais ensemble. L54 doit
   précéder L52 et L53, qui reposent sur la notion de bloc racine.
+- **Révisé le 2026-09-07** : trois prompts ajoutés (**L58 à L60**), issus de
+  [`spec-blocs-reutilisables.md`](spec-blocs-reutilisables.md) — réutiliser un bloc clinique
+  d’un jeu de variables à l’autre, par copie et sans catalogue partagé. File strictement
+  séquentielle, à ouvrir après L52 et L54 ; **L59 ne tourne jamais avec L41**.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -78,6 +82,7 @@ La source de vérité du suivi reste le tableau et la section « Ordre suggéré
 | **L55** | Configuration diagnostique et couverture — après L51/L54/L52 |
 | **L56** | Socle et suivi — après L55 ; preuve complète avec L53 |
 | **L57** | Cadrage différé de la reprise/notifications — après pilote L56 |
+| **L58** à **L60** | Blocs réutilisables entre jeux de variables — séquentiels, après L52/L54 |
 | **L52** | Visibilité au niveau bloc — **après L51 et L54**, jamais avec L51 |
 | **L53** | Projection d’export par blocs — **après L54** ; ne pas lancer avec L50 |
 | **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
@@ -932,6 +937,208 @@ idempotence et informations devenues indisponibles. Définir ensuite les seuls
 signaux de notification ouvrant une action autorisée, sans contenu clinique.
 Ne créer ni migration, ni service de notification ; ne modifier aucun dossier,
 n'envoyer aucun message. Le lancement attend les observations du pilote.
+```
+
+---
+
+## L58 — Blocs réutilisables : import serveur d'un bloc
+
+```
+NE LANCE PAS CE LOT AVANT QUE L52 ET L54 SOIENT FUSIONNÉS. L54 apporte la notion
+de bloc racine et la recopie en deux passes ; L52 apporte les règles portées par
+un bloc, que l'import doit savoir reconnaître pour ne PAS les copier.
+
+Lis les instructions du dépôt, puis docs/spec-blocs-reutilisables.md en entier et
+le §1.1 de docs/spec-blocs-pathologies.md sur les variables partagées. Pose-moi
+tes questions AVANT de commencer.
+
+CADRAGE PRODUIT. Un bloc n'est PAS un objet nouveau : c'est une template_section
+sans parent, dans une version de gabarit déjà lisible. Ce lot n'ajoute aucune
+table de blocs, aucun catalogue partagé, aucun rôle, aucune permission. Il ajoute
+un seul verbe : insérer un bloc lisible dans une version en cours d'édition.
+L'insertion se fait par COPIE, jamais par référence.
+
+CONTEXTE. La plus petite unité réutilisable du produit est le gabarit entier. Un
+médecin qui règle une deuxième base recopie donc un gabarit complet puis élague,
+ou ressaisit vingt variables par bloc. copy_template_fields est déjà le point de
+copie unique des six voies de recopie de version : l'import est une variante
+restreinte de cette fonction, pas une mécanique neuve.
+
+OBJECTIF.
+
+1. Migration horodatée additive. Deux colonnes de provenance sur
+   template_section : source_template_version_id (FK vers template_version,
+   on delete set null) et source_section_key, nulles pour tout l'existant.
+   copy_template_fields les recopie telles quelles, pour qu'une version suivante
+   conserve la provenance de son bloc. Personne ne les lit en v1 : elles sont là
+   parce qu'elles seraient irrécupérables après coup.
+2. public.preview_template_section_import(p_source_version_id,
+   p_source_section_key, p_target_version_id, p_reuse_field_keys text[]) :
+   LECTURE SEULE, renvoyant le rapport jsonb du §4.1. Un test prouve qu'elle
+   n'écrit rien, en comparant les compteurs de lignes avant et après.
+3. public.import_template_section(mêmes arguments) : écrit dans UNE transaction et
+   REVALIDE tout. Elle ne reçoit pas le rapport de prévisualisation en argument et
+   ne lui fait jamais confiance.
+4. Ce qui est copié : la section racine en fin de version, puis renumérotation par
+   normalize_template_section_order ; ses sous-sections résolues EN DEUX PASSES
+   par section_key ; les variables du bloc et de ses sous-sections ; les règles
+   dont TOUTES les clés citées — if.field, then.field, then.section —
+   appartiennent au bloc. Réutilise la liste de colonnes de copy_template_fields
+   plutôt que d'en écrire une seconde : c'est exactement le défaut discret que sa
+   centralisation avait été faite pour empêcher.
+5. Ce qui n'est JAMAIS copié : la règle d'activation du bloc — son `if` nomme un
+   pilote du tronc commun de la SOURCE —, toute règle citant une clé extérieure au
+   bloc, et diagnosis_configuration de la cible. Le rapport décrit la règle
+   d'activation non copiée : c'est la matière de L60.
+6. Les onze refus typés du §4.4, un code stable par cas. IMPORT_TARGET_IN_USE est
+   structurant : guard_validation_rule_inuse interdit d'écrire une règle sur une
+   version portant déjà un patient ou une rencontre, donc un import y produirait
+   un demi-bloc silencieux. Refuse, et laisse l'utilisateur créer la version
+   suivante par le chemin qui existe déjà. Ne crée jamais cette version toi-même :
+   changer la version d'un jeu de variables n'est pas une décision d'import.
+7. Verrou de version (lock_template_section_version ou équivalent) AVANT toute
+   lecture décisionnelle : deux imports concurrents du même bloc ne doivent pas
+   réussir tous les deux sur des lectures périmées. assert_visibility_acyclic est
+   rejouée sur la cible avant le commit.
+8. ACL : source contrôlée par can_read_template, cible par owns_template. Revoke
+   puis grant explicites, fonctions privilégiées justifiées et inventoriées comme
+   partout ailleurs dans le dépôt.
+
+À VÉRIFIER, PAS À SUPPOSER : la définition COURANTE de copy_template_fields
+(20260906061539) et la liste exacte de ses colonnes ; le trigger de
+synchronisation du miroir template_field.section, que l'import ne doit pas
+court-circuiter ; et le fait que guard_template_field_update n'interdit que les
+MODIFICATIONS de variable, pas les ajouts.
+
+SÉCURITÉ DES DONNÉES : migration additive et DORMANTE — aucune interface ne
+l'appelle à ce stade ; aucune migration appliquée n'est modifiée ; aucune donnée
+clinique réécrite ; aucune base existante ne change d'apparence au déploiement.
+
+COUVERTURE EXIGÉE : les onze points du §9.1. En particulier un test par code de
+refus ; la réutilisation compatible, incompatible, et enfermée dans un autre bloc ;
+l'échec en cours d'import ne laissant aucune section, variable ni règle partielle ;
+la provenance conservée par les six voies de recopie.
+
+TERMINÉ SIGNIFIE : import et prévisualisation bornés et sûrs sous concurrence, onze
+refus typés atteignables par un test, aucune règle extérieure copiée, provenance
+posée et transportée, tests ciblés verts, npm run schema puis schema:check passés
+après inspection du snapshot. Ne committe, ne pousse et ne déploie rien sans
+demande explicite.
+```
+
+---
+
+## L59 — Blocs réutilisables : choisir un bloc dans l'éditeur
+
+```
+NE LANCE PAS CE LOT AVANT QUE L58 SOIT FUSIONNÉ : il appelle ses deux fonctions.
+NE LE LANCE JAMAIS EN MÊME TEMPS QUE L41 — tous deux ouvrent
+src/screens/staff/TemplateVersionEditor.tsx.
+
+Lis les instructions du dépôt, puis le §5 de docs/spec-blocs-reutilisables.md.
+Pose-moi tes questions AVANT de commencer.
+
+CONTEXTE. L58 a livré l'import côté base, dormant : aucune interface ne l'appelle.
+Ce lot le rend utilisable sans rien changer à sa sémantique. L'éditeur de version
+est partagé par l'administrateur et par le médecin sur le gabarit de sa base
+(BaseTemplateEditor) : la commande doit fonctionner dans les deux contextes, avec
+exactement les mêmes gardes serveur.
+
+OBJECTIF.
+
+1. Une fonction de lecture stable security invoker listant, par version LISIBLE,
+   ses blocs racines avec le nombre de variables portées, sous-sections comprises.
+   La RLS filtre naturellement ; aucune permission nouvelle. Ne recoupe pas toutes
+   les versions côté client : ce serait N+1 sur un catalogue qui grandit avec
+   l'usage.
+2. Commande « Importer un bloc » à côté de « Ajouter une section », rendue
+   seulement quand la version est éditable.
+3. Aperçu avant écriture : variables du bloc, nombre de règles internes, règle
+   d'activation NON copiée, et rapport de conflits de
+   preview_template_section_import. Aucune écriture avant confirmation.
+4. Résolution des conflits, clé par clé. Une seule proposition : réutiliser la
+   variable déjà présente — et SEULEMENT si le serveur l'a jugée compatible et
+   située dans le tronc commun. Sinon, énonce la clé, où vit la variable et la
+   raison du refus. Aucun renommage automatique, jamais : sexe_2 détruit la
+   comparabilité entre bases, qui est la raison d'être du produit.
+5. AVERTISSEMENT OBLIGATOIRE avant confirmation : si le bloc porte des variables
+   required et qu'aucune règle ne l'active, elles deviendront obligatoires POUR
+   TOUS LES PATIENTS tant que le bloc n'est pas conditionné. Dis-le avant ; ne le
+   laisse pas découvrir au premier formulaire.
+6. Traduire les onze codes de refus de L58 en messages compréhensibles, fr et en.
+   Clés ajoutées à la FIN de chaque section de messages.
+7. Après succès : compte rendu reprenant le rapport, bloc visible en fin de
+   version, et passage à l'activation proposé — c'est le point d'entrée de L60.
+
+À VÉRIFIER, PAS À SUPPOSER : qu'un double clic ne produit pas deux imports ; et
+que le cache de version de src/data/templates.ts est vidé après un import, comme
+après toute autre écriture de gabarit.
+
+SÉCURITÉ DES DONNÉES : aucune migration. L'interface ne contourne aucune garde et
+n'anticipe aucun refus : elle affiche ce que le serveur répond.
+
+COUVERTURE EXIGÉE : le §9.2 pour L59, plus la version non éditable (commande
+absente) et le catalogue vide (état vide explicite, pas un écran blanc).
+
+TERMINÉ SIGNIFIE : un bloc de vingt variables est inséré en une opération depuis
+un autre gabarit lisible, conflits rendus clé par clé, avertissement required
+affiché quand et seulement quand il s'applique, onze messages d'erreur traduits,
+typecheck, lint et tests ciblés verts. Ne committe, ne pousse et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## L60 — Blocs réutilisables : reconnexion de la règle d'activation
+
+```
+NE LANCE PAS CE LOT AVANT QUE L59 SOIT FUSIONNÉ : il part du rapport d'import.
+NE LE LANCE JAMAIS en même temps qu'un lot qui écrit dans le moteur de règles.
+
+Lis les instructions du dépôt, puis le §6 de docs/spec-blocs-reutilisables.md et
+le §3 de docs/spec-collecte-diagnostique.md sur le pilote diagnostique. Pose-moi
+tes questions AVANT de commencer.
+
+CONTEXTE. Un bloc importé arrive SANS sa règle d'activation : celle-ci nomme un
+pilote du tronc commun de la source, qui n'existe pas forcément dans la cible. Le
+rapport d'import la décrit. Ce lot propose de la recréer, et seulement quand c'est
+réellement sûr. C'est le seul endroit du chantier qui touche au réglage L55, et
+donc celui où le temps gagné est le plus visible.
+
+OBJECTIF.
+
+1. Contrôles de compatibilité, TOUS exigés avant de proposer quoi que ce soit : la
+   cible possède une variable de même field_key, même scope, même type et même
+   is_multiple ; elle est dans le tronc commun ; elle n'est pas elle-même masquée ;
+   pour un pilote terminology, la terminologyReleaseId est identique ; chaque code
+   cité existe dans la release ou dans les options de la variable.
+2. Si tout est réuni, créer la règle PAR LE CHEMIN DE RÈGLES EXISTANT, avec ses
+   contrôles de forme, d'acyclicité et l'ordre visibilité-puis-obligation. Aucun
+   chemin d'écriture parallèle, aucune RPC nouvelle qui contournerait une garde.
+3. Sinon, nommer la condition qui manque — pas un message générique — et renvoyer
+   vers le constructeur de règles pour choisir un autre pilote.
+4. Un refus laisse le bloc VISIBLE SANS CONDITION : rien n'est masqué, rien n'est
+   effacé, et l'avertissement required de L59 reste affiché tant qu'aucune règle ne
+   porte le bloc.
+
+À VÉRIFIER, PAS À SUPPOSER : qu'une release terminologique différente est bien
+refusée par les gardes de L55 (DIAGNOSIS_RELEASE_MISMATCH) et pas seulement par
+ton contrôle côté client. Le serveur reste le garant ; l'interface ne fait
+qu'éviter un aller-retour inutile.
+
+SÉCURITÉ DES DONNÉES : aucune migration attendue. Si tu penses en avoir besoin,
+dis-le et arrête-toi : cela signifierait que le chemin de règles existant ne suffit
+pas, ce qui est une décision à prendre, pas un détail d'implémentation.
+
+COUVERTURE EXIGÉE : le §9.2 pour L60 — proposition affichée seulement si toutes
+les compatibilités sont réunies, release différente refusée avec le motif exact,
+code absent de la release refusé, création par le chemin existant, refus laissant
+le bloc visible sans condition.
+
+TERMINÉ SIGNIFIE : un bloc importé est activable en un geste quand la cible s'y
+prête, le motif exact est donné sinon, aucune règle n'est écrite hors du chemin
+existant, typecheck, lint et tests ciblés verts. Ne committe, ne pousse et ne
+déploie rien sans demande explicite.
 ```
 
 ---

@@ -237,7 +237,7 @@ describe('L35 — validation de la formule a l enregistrement', () => {
 });
 
 describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue jamais', () => {
-  test('SEULS les deux declencheurs L35 ANALYSENT une formule ; les autres la lisent, point', async () => {
+  test('SEULES les gardes inventoriees DECOUPENT une formule ; les autres la lisent, point', async () => {
     // Garde-fou de CONCEPTION, et non de comportement. La propriete qui tient tout le lot est
     // qu'aucune fonction PL/pgSQL n'evalue une formule : la seule implementation de la
     // semantique vit dans `exportContract.ts`, lu a l'identique par le navigateur et par
@@ -256,6 +256,12 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
     expect(parsers).toEqual([
       'enforce_template_field_formula',        // valide la formule a l'enregistrement
       'enforce_template_field_formula_operand', // empeche un operande de disparaitre
+      // L58 : decoupe la forme canonique « A op B » pour NOMMER l'operande manquant avant
+      // d'ecrire quoi que ce soit (IMPORT_FORMULA_OPERAND_MISSING, D8). Sans ce decoupage, le
+      // refus viendrait du declencheur ci-dessus, en cours d'import et sans code stable, et la
+      // previsualisation ne pourrait pas l'annoncer. Il ne deduit aucun type et n'evalue
+      // jamais : la semantique du calcul reste dans `exportContract.ts`.
+      'template_section_import_plan',
     ]);
 
     // Les autres fonctions ne font que LIRE la colonne (recopie, instantane, exclusion de la
@@ -274,7 +280,12 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       'assert_diagnosis_configuration',
       'base_completeness_stats',
       'base_completion_queue_page',
-      'copy_template_fields',
+      // L58 : la liste des 21 colonnes recopiees, formule comprise, a quitte
+      // `copy_template_fields` pour cette fonction, que la recopie de version ET l'import
+      // d'un bloc partagent. `copy_template_fields` ne mentionne donc plus la colonne : elle
+      // delegue. Une seconde liste de colonnes reproduirait exactement le defaut discret que
+      // la centralisation de L28 avait ete faite pour empecher.
+      'copy_template_field_rows',
       // L55 : meme lecture que ci-dessus, cote calcul de couverture. L56 en a extrait le corps
       // pour que la file de suivi resolve le contexte UNE fois par version au lieu d'une fois
       // par dossier ; `diagnosis_coverage` n'est plus que l'appel qui resout ce contexte, et
@@ -293,6 +304,10 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // seule lecture de la colonne partagee par le refus a l'ecriture d'une regle et par le
       // diagnostic d'une version.
       'rule_calculated_field_label',
+      // L58 : refuse un import dont une variable calculee cite un operande absent du bloc et
+      // de la version cible (IMPORT_FORMULA_OPERAND_MISSING). Il LIT la formule et en relit
+      // les deux operandes de la grammaire fermee -- il ne l'evalue jamais.
+      'template_section_import_plan',
       'update_template_field',
     ]);
   });
