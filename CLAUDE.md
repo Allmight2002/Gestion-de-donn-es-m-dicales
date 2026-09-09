@@ -36,3 +36,7 @@ Source canonique: `.agents/skills/`; `.claude/skills/` est une copie de compatib
 - `meddata-db-safety`: règles détaillées selon le risque base/autorisation/intégrité.
 - `meddata-release-check`: readiness au niveau explicitement demandé.
 - `resoudre-simplement`: arbitrer une complexité ou plusieurs approches; inutile pour une retouche courante.
+
+## Conseil Astra
+
+Le skill `astra-advisor` permet à un coordinateur Terra ou Sol de consulter un unique conseiller Astra/max en lecture seule pour une décision difficile. Les exécutants restent Luna/max. Budget maximal: coordinateur + trois exécutants + un conseiller; respecter toute limite active inférieure. Le conseiller ne modifie rien, ne délègue pas et ne remplace pas la décision du coordinateur.
