@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-09-05**
+- Établi le 2026-07-27 · **révisé le 2026-09-11**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -58,8 +58,22 @@ Le critère de découpage est le **fichier touché**, pas le thème. Deux lots q
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
 n'ont aucun rapport.
 
-Un prompt prêt à l'emploi existe pour chaque lot dans
-[`prompts-lots.md`](prompts-lots.md).
+> **Chantier UX du 2026-09-10, révisé le 2026-09-11 — spécifié, non implémenté au titre de ce chantier.**
+> [La spécification d'expérience utilisateur](spec-experience-utilisateur.md) regroupe
+> **UX-0 à UX-16**, avec dépendances, charges, risques, responsables de surfaces et critères
+> de sortie. Les lots UX ne renumérotent pas les lots L/O et ne changent pas leur statut.
+> Ils couvrent les brouillons et la conservation de saisie, les blocs/sommaires, les champs
+> à choix, la navigation des bases/patients, les erreurs, l'édition des modèles et les opérations.
+> UX-16 ajoute des rubriques communes renommables/déplaçables et le placement libre du diagnostic,
+> en conservant son rôle clinique et son appartenance commune pour les règles et les exports.
+> **Collisions à coordonner :** L39 et O0–O7 pour les données locales, chantier de recherche
+> patient pour UX-12, L54/L55/L58–L60 pour l'éditeur et les copies, ainsi que UX-1/3/4/5/6/13/16 sur les
+> formulaires. Le §8 de la spec définit les responsabilités et la séquence de livraison.
+> La recherche d'options (UX-11) et la recherche de patients (UX-12) restent deux périmètres.
+
+Les prompts prêts à l'emploi des lots L sont regroupés dans
+[`prompts-lots.md`](prompts-lots.md). Les lots UX sont spécifiés dans le document dédié ;
+ce renvoi ne signifie pas que leurs prompts d'exécution ou leur implémentation existent déjà.
 
 **Révision du 2026-08-24, mise à jour le 2026-09-02** : le chantier d'export directement
 exploitable pour l'analyse était découpé en **L45 à L50** ; **L45 à L49 sont livrés** et seul
