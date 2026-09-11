@@ -92,11 +92,12 @@
 | [suivi-execution-feuille-route.md](suivi-execution-feuille-route.md) | Journal d'exécution de cette feuille de route |
 | [lots-paralleles.md](lots-paralleles.md) | Découpage des chantiers en lots parallélisables |
 | [prompts-lots.md](prompts-lots.md) · [prompt-execution-autonome-feuille-route.md](prompt-execution-autonome-feuille-route.md) | Prompts de travail prêts à l'emploi (outillage interne) |
+| [l61-liste-patients-recherche-tri-identite.md](l61-liste-patients-recherche-tri-identite.md) | **Spécifié le 2026-09-11** — L61 à L65 : preuve du socle colonnes/recherche code/tri technique déjà présent, tri par variable analytique, puis nom et recherche nominative sous contrôle RLS/audit |
 | [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md) | Problèmes ouverts sur les interactions entre comptes, options écartées comprises |
 | [chantiers-export-analyse.md](chantiers-export-analyse.md) | 🟢 **L45 à L49 livrés** (2026-08-28, choix du profil dans l'interface le 2026-09-01) — export directement exploitable dans Excel, R, SPSS ou Stata ; **L50** différé |
 | [idees-post-readiness.md](idees-post-readiness.md) | File d'attente produit tenue à jour |
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
-| [spec-experience-utilisateur.md](spec-experience-utilisateur.md) | **Spécifiée, révisée le 2026-09-11, non implémentée au titre de ce chantier** — UX-0 à UX-16 : brouillons, blocs/sommaire, champs à choix, navigation, erreurs et opérations ; éditeur dimensionné pour **216 variables et plus de 20 règles**, recherche et création groupée de règles ; rubriques communes renommables/déplaçables et placement du diagnostic ; audit et critères intégrés |
+| [spec-experience-utilisateur.md](spec-experience-utilisateur.md) | **Spécifiée, révisée le 2026-09-11** — UX-0 à UX-16 : brouillons, blocs/sommaire, champs à choix, navigation, erreurs et opérations ; l'UX-12 conserve un socle déjà présent mais son tri clinique/nominatif est découpé dans L61 à L65 ; éditeur dimensionné pour **216 variables et plus de 20 règles**, recherche et création groupée de règles ; rubriques communes renommables/déplaçables et placement du diagnostic ; audit et critères intégrés |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
 | [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | 🟢 **Implémentée** (L20 à L25, 2026-08-18) — listes de diagnostics : saisie, export, cohortes, hors-ligne. Son **§12 seul** reste une cible non implémentée, close le 2026-08-19 |
 | [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | 📋 **Revue le 2026-09-05, partiellement implémentée** — **L51** ([l51-contains-any.md](l51-contains-any.md)), **L54**, **L52** et **L53** ([l53-projection-export.md](l53-projection-export.md)) implémentés et non déployés — blocs cliniques conditionnels dans une base de même gouvernance, tronc commun pour les variables partagées, sections à deux niveaux et projection d’export sûre pour les formules |
@@ -124,7 +125,7 @@
 | [decision-pause-inspection-2026-08-12.md](decision-pause-inspection-2026-08-12.md) | 2026-08-12 | Décision de mise en pause du parcours antivirus (ClamAV non requis) |
 | [decision-export-simple-2026-08-17.md](decision-export-simple-2026-08-17.md) | 2026-08-17 | Décision de simplification de l'export (statut non gating, complétude, écran par modèle d'observation) |
 | [decision-blocs-pathologies-2026-09-03.md](decision-blocs-pathologies-2026-09-03.md) | 2026-09-03, amendée le 2026-09-05 | Parcours de décision issu d'un problème observé sur le terrain : base bornée par la gouvernance, blocs cliniques conditionnels, options écartées, dix décisions retenues et critères de réévaluation — non implémentée |
-| [decision-recherche-patient-2026-08-20.md](decision-recherche-patient-2026-08-20.md) | 2026-08-20 | Décision sur la recherche patient dans une base (visibilité `medecin`, portée code/nom selon `can_view_identity`, recherche serveur sur toute la base) — non implémentée |
+| [decision-recherche-patient-2026-08-20.md](decision-recherche-patient-2026-08-20.md) | 2026-08-20 | Décision datée sur la recherche patient dans une base ; consulter [L61 à L65](l61-liste-patients-recherche-tri-identite.md) pour l'état courant et le prolongement tri clinique/nom contrôlé |
 | [decision-notifications-v1-2026-08-20.md](decision-notifications-v1-2026-08-20.md) | 2026-08-20 | Décision sur le périmètre v1 des notifications in-app (clarification de curation seulement, médecin + curateur, in-app, table dédiée) — non implémentée |
 
 ## 8. Cadre juridique
@@ -154,5 +155,5 @@
 
 ---
 
-*Index vérifié le 5 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
+*Index vérifié le 11 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
 document dans `docs/`.*

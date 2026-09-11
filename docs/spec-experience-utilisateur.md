@@ -32,6 +32,8 @@ Cette spécification complète :
 - [le cahier métier](cahier-des-charges-metier.md) et
   [le cahier technique](cahier-des-charges-technique.md) pour les états et validations ;
 - [la décision de recherche patient](decision-recherche-patient-2026-08-20.md) pour UX-12 ;
+- [le plan L61 à L65 de la liste patient](l61-liste-patients-recherche-tri-identite.md) pour
+  l'état réel, la décision sur les noms et les prompts d'exécution ;
 - [la politique hors connexion](securite-mode-hors-ligne.md),
   [la feuille de route intake-only](feuille-route-offline-saisie.md) et
   [L39](lots-paralleles.md#l39--durcir-la-persistance-des-brouillons-cliniques) pour les données locales.
@@ -61,8 +63,8 @@ le 10 septembre 2026. Les constats sont à revérifier avant l'implémentation d
 | C04 | Des erreurs sont rendues après tous les champs, loin de l'action ; certaines restent présentes après correction jusqu'à la soumission suivante | [EncounterForm](../src/screens/member/EncounterForm.tsx), [EditPatient](../src/screens/member/EditPatient.tsx), [PatientDetail](../src/screens/member/PatientDetail.tsx) | UX-13 |
 | C05 | `ConfirmDialog` laisse le focus derrière la fenêtre ; la confirmation des valeurs masquées est placée après les champs sans gestion de focus | [ConfirmDialog](../src/components/ConfirmDialog.tsx), [EncounterFields](../src/screens/member/EncounterFields.tsx) | UX-4/13 |
 | C06 | Type/date/statut restent sur trois colonnes sans breakpoint ; les choix suivent un retour à la ligne selon leur largeur | [EncounterForm](../src/screens/member/EncounterForm.tsx), [FieldInput](../src/screens/member/FieldInput.tsx) | UX-10 |
-| C07 | La page des patients n'est pas réinitialisée lors d'un changement direct de base ; le fil d'Ariane peut garder le nom précédent pendant le chargement ou après un échec | [BaseHome](../src/screens/member/BaseHome.tsx), [BaseLayout](../src/screens/member/BaseLayout.tsx) | UX-12 |
-| C08 | Un échec initial de chargement peut aboutir à « introuvable » ; absence de recherche/tri utilisateur dans la liste | [BaseHome](../src/screens/member/BaseHome.tsx) | UX-12/13 |
+| C07 | Le checkout courant réinitialise déjà page, recherche, tri et données de liste lors d'un changement direct de base ; ce comportement doit être prouvé avec une sortie de runner saine avant d'être qualifié de validé | [BaseHome](../src/screens/member/BaseHome.tsx), [Patients.test](../src/screens/member/Patients.test.tsx) | L61 / UX-12 |
+| C08 | Le checkout courant possède une recherche par code et les tris serveur `created_at` / `patient_code` avant pagination ; le tri par variable clinique et l'identité nominative restent absents | [BaseHome](../src/screens/member/BaseHome.tsx), [patients.ts](../src/data/patients.ts) | L61 à L64 / UX-12 |
 | C09 | La palette charge les bases une seule fois, mémorise un échec comme liste vide et propose des destinations non adaptées à tous les rôles | [CommandPalette](../src/components/CommandPalette.tsx) | UX-12 |
 | C10 | Le renommage d'un modèle ferme l'édition même après échec ; les erreurs de l'éditeur peuvent être éloignées de son panneau de saisie | [MyTemplates](../src/screens/member/MyTemplates.tsx), [TemplateVersionEditor](../src/screens/staff/TemplateVersionEditor.tsx) | UX-1/14 |
 | C11 | Les conflits de synchronisation sont comparés en JSON ; les sections sont principalement distinguées par indentation | [SyncCenter](../src/screens/member/SyncCenter.tsx), [SectionsEditor](../src/screens/staff/SectionsEditor.tsx) | UX-14/15 |
@@ -391,18 +393,17 @@ Un onglet hors écran doit être découvrable ; le choix actif est amené en vue
 Prévoir un accès à la pagination en tête de liste ; sur mobile, garder les actions de ligne atteignables.
 
 Recherche patient séparée de la palette, **réservée au rôle `medecin`** selon la décision existante.
-Le premier sous-périmètre UX-12 recherche par code et trie les champs analytiques autorisés,
-côté serveur avant pagination, avec ordre stable et critère de départage. Les réponses tardives
-d'une ancienne recherche sont ignorées. Filtre/tri modifié = retour à la première page.
+Le checkout courant fournit déjà le premier socle : préférence de colonnes locale par utilisateur
+et base, recherche par code et tris techniques côté serveur avant pagination. L61 le vérifie sans
+le recopier ; L62/L63 ajoutent ensuite seulement le tri par variable analytique autorisée, avec
+ordre stable, valeurs absentes explicites et retour page 1 après filtre/tri.
 
-La recherche/présentation de noms demeure un sous-périmètre identité distinct : droits actuels
-`can_view_identity`, accès contrôlé/audité, tests de non-divulgation, aucune valeur ou terme
-identifiant dans URL, préférence persistée, offline ou export. Elle n'est pas implémentée par
-une simple lecture directe de `patient_identity`. Son report n'annule pas la décision produit
-de recherche nominative autorisée, mais la sépare de la première livraison analytique.
-**RG-9 du cahier métier reste applicable :** une recherche autorisée par nom peut filtrer
-côté serveur, mais ses lignes restent affichées par code et variables analytiques. Ajouter
-des noms visibles à la liste exigerait une décision métier distincte révisant cette règle.
+La recherche/présentation de noms demeure un sous-périmètre identité distinct, possédé par L64 :
+droits `can_view_identity`, accès contrôlé/audité, tests de non-divulgation, aucune valeur ou terme
+identifiant dans URL, préférence persistée, offline ou export. Elle n'est jamais implémentée par
+une lecture directe de `patient_identity`. La décision produit du 2026-09-11 autorise désormais le
+nom sélectionnable dans cette limite, et révise RG-9 dans le cahier métier ; le nom reste absent
+pour tout compte sans permission et de toutes les surfaces hors ligne/export.
 En mode intake-only, aucune recherche/liste de patients serveur n'est rétablie hors connexion.
 
 Les colonnes visibles sont une préférence par utilisateur et base ; éliminer les clés devenues
@@ -717,15 +718,19 @@ Les charges sont relatives et seront affinées après UX-0 ; elles ne sont pas d
 
 ### UX-12 — Navigation et listes de patients
 
-- **Contenu :** trois sous-livraisons : (a) contexte/page/erreurs/palette et préférences de colonnes,
-  (b) recherche par code et tri serveur, (c) recherche nominative séparée avec preuves identité.
-  Rendre les onglets et la pagination accessibles sur mobile (§6.1).
+- **Contenu :** le plan [L61 à L65](l61-liste-patients-recherche-tri-identite.md) découpe désormais
+  UX-12 : (L61) preuve du contexte/page/erreurs, préférences de colonnes, recherche code et tri
+  technique déjà présents ; (L62) contrat serveur de tri par variable ; (L63) commande accessible ;
+  (L64) recherche nominative et nom sélectionnable avec preuves identité ; (L65) validation
+  intégrée. Rendre onglets et pagination accessibles sur mobile (§6.1).
 - **Surface :** `BaseHome`, `BaseLayout`, `CommandPalette`, repositories et contrat de recherche.
-  S'aligner sur le chantier recherche existant ; un seul responsable pour RPC et appelants.
+  Un seul responsable possède simultanément une RPC et ses appelants ; les lots L61/L63/L64 ne
+  modifient pas `BaseHome` en parallèle.
 - **Sortie :** base A page 3 → base B donne le bon contexte/page ; patient hors page trouvé ;
-  résultats stables ; filtres/colonnes périmés purgés ; destinations adaptées au rôle ;
-  refus d'identité testé sans résultat, compteur ou tri révélateur pour (c).
-- **Risque :** filtre limité aux 20 lignes, état périmé, mélange de bases, fuite par recherche/tri/compteur.
+  résultats stables ; filtres/colonnes périmés purgés ; variable interdite refusée ; refus d'identité
+  testé sans nom, résultat, compteur ou tri révélateur.
+- **Risque :** filtre limité aux 20 lignes, état périmé, mélange de bases, tri JSON coercitif ou
+  fuite par recherche/tri/compteur.
 
 ### UX-13 — Erreurs, confirmations et attente
 
@@ -868,7 +873,7 @@ tests ACL/RLS correspondants. Toute validation sur environnement déployé est r
 | TTL, support et migration des brouillons | Serveur connecté + local dans périmètre autorisé ; L39, TTL intake et politique de purge applicables | Valeurs, migration des 72 h existantes, comportement d'expiration et quota consignés |
 | Couverture par écran et zone | Analytique et identité séparées ; création sans cible persistée prise en compte | Matrice explicite, limites affichées ; protection de l'identité traitée par un mécanisme autorisé distinct |
 | Contrat de concurrence | Révisions, idempotence, droits actuels, consommation atomique | Échanges repository/RPC et erreurs structurées arrêtés avant UX-2/3 |
-| Recherche nominative UX-12(c) | Décision du 20 août préservée ; preuve identité distincte | Livrer (a)/(b) sans prétendre (c) terminé ; rattacher les tests d'accès/audit à (c) |
+| Recherche nominative UX-12(c) | Décision du 20 août complétée le 2026-09-11 : nom sélectionnable seulement pour un médecin avec `can_view_identity` ; preuve identité distincte | L64 réalise le contrat audit/RLS, puis L65 rattache les tests d'accès, révocation et non-divulgation |
 | Arrêt d'import et fusion par champ | Aucune nouvelle sémantique inventée dans l'UI | Contrat serveur retenu ou présentation des seules actions existantes |
 | Objectifs de performance | Fixture dimensionnante et appareil de référence | Mesure initiale et seuils reproductibles consignés, sans score UX arbitraire |
 | Éditeur volumineux | Priorités précisées : retrouver règles/variables, réutiliser une condition sur plusieurs cibles, naviguer par sections ; outils de recherche/édition déjà présents | Référence 216/24 ; (a)/(b)/(c) prioritaires, contrat atomique de (c) arrêté ; optimisations et modifications structurelles groupées seulement si justifiées |
