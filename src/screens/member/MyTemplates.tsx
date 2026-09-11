@@ -157,7 +157,9 @@ export function MyTemplates() {
         <EmptyState icon={FileText} title={t('mytemplates.empty')} />
       )}
 
-       <ul className="card divide-y divide-slate-200 overflow-hidden dark:divide-slate-800">
+       {/* Pas d'`overflow-hidden` sur ce cadre : il rognait le menu d'actions des
+           dernieres lignes, dont le panneau flottant deborde du cadre par construction. */}
+       <ul className="card divide-y divide-slate-200 dark:divide-slate-800">
          {templates.map((tpl) => {
            const preferred = preferredTemplateVersion(tpl.versions);
            const current = currentTemplateVersion(tpl.versions);

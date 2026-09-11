@@ -10,6 +10,25 @@ function triggerFor(label: string) {
   return screen.getByRole('button', { name: label });
 }
 
+/** Position du declencheur dans la fenetre : jsdom ne calcule aucune geometrie. */
+function rectAt(top: number, bottom: number): DOMRect {
+  return { x: 0, y: top, top, bottom, left: 0, right: 0, width: 0, height: bottom - top, toJSON: () => ({}) } as DOMRect;
+}
+
+function renderOneMenu() {
+  render(
+    <Menu triggerLabel="Actions" triggerContent="Actions">
+      <MenuItem onSelect={() => {}}>Renommer</MenuItem>
+    </Menu>,
+  );
+  return triggerFor('Actions');
+}
+
+/** Le panneau flottant est le parent direct des entrees. */
+function openPanel() {
+  return screen.getByRole('button', { name: 'Renommer' }).parentElement as HTMLElement;
+}
+
 describe('Menu (D9)', () => {
   test('ouvre au clic sur le declencheur et bascule au re-clic', async () => {
     render(
@@ -88,5 +107,33 @@ describe('Menu (D9)', () => {
     expect(screen.getByRole('button', { name: 'Entree B' })).toBeInTheDocument();
     expect(triggerFor('Actions A')).toHaveAttribute('aria-expanded', 'false');
     expect(triggerFor('Actions B')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  // Le menu de la DERNIERE ligne d'une liste s'ouvrait vers le bas, donc hors de l'ecran :
+  // quand la place manque sous le declencheur, le panneau bascule au-dessus.
+  test('bascule au-dessus du declencheur quand la place manque en bas', async () => {
+    const panelHeight = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(160);
+    try {
+      const trigger = renderOneMenu();
+      trigger.getBoundingClientRect = () => rectAt(window.innerHeight - 60, window.innerHeight - 20);
+      await userEvent.click(trigger);
+      const panel = openPanel();
+      expect(panel.style.bottom).toBe('100%');
+      expect(panel.style.marginTop).toBe('0px');
+    } finally {
+      panelHeight.mockRestore();
+    }
+  });
+
+  test('reste sous le declencheur quand la place suffit', async () => {
+    const panelHeight = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(160);
+    try {
+      const trigger = renderOneMenu();
+      trigger.getBoundingClientRect = () => rectAt(40, 80);
+      await userEvent.click(trigger);
+      expect(openPanel().style.bottom).toBe('');
+    } finally {
+      panelHeight.mockRestore();
+    }
   });
 });
