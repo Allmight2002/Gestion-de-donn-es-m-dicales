@@ -576,7 +576,10 @@ export function BaseHome() {
                 <label className="form-label" htmlFor="patient-sort">{t('patient.sort')}
                   {/* En recherche nominative, l'ordre est celui du code, decide par le
                       serveur : laisser le tri actif afficherait un controle sans effet. */}
-                  <select id="patient-sort" className="input" value={sort.field} disabled={searchMode === 'name' && searching}
+                  {/* getByLabel de Playwright inclut le texte des options du label enveloppant.
+                      Un libelle explicite evite de confondre ce tri avec le champ Code patient. */}
+                  <select id="patient-sort" className="input" aria-label={t('patient.sort')}
+                    value={sort.field} disabled={searchMode === 'name' && searching}
                     onChange={(event) => changeSort({ ...sort, field: event.target.value as PatientSortField })}>
                     <option value="created_at">{t('patient.sort_created')}</option>
                     <option value="patient_code">{t('patient.sort_code')}</option>
