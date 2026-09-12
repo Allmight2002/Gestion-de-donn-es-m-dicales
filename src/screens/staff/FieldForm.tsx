@@ -57,6 +57,7 @@ export function FieldForm({
   sections,
   fields = [],
   onDirtyChange,
+  defaultSection,
   }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
@@ -85,6 +86,8 @@ export function FieldForm({
    * un ecouteur pose par le parent perturberait les controles contrôlés de ce formulaire.
    */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Creation starts in the selected clinical section, or remains semantically common. */
+  defaultSection?: FieldSection;
 }) {
   const { t } = useI18n();
   const editing = !!initial;
@@ -101,7 +104,7 @@ export function FieldForm({
   // Une base qui a supprime « clinique » ne doit pas se voir proposer une section qui
   // n'existe plus : a defaut de valeur initiale, on prend la PREMIERE de la version.
   const [section, setSection] = useState<FieldSection>(
-    initial ? initial.section : sections?.[0]?.sectionKey ?? 'clinique',
+    initial ? initial.section : defaultSection !== undefined ? defaultSection : sections?.[0]?.sectionKey ?? 'clinique',
   );
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);

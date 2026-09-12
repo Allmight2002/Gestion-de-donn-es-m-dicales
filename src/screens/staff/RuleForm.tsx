@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import {
@@ -19,6 +19,7 @@ import { fieldOptions as listOptionsOf } from '../../domain/fieldOptions';
 import { calculatedOperandConflict, isCalculatedField } from '../../domain/fieldFormula';
 import { Checkbox } from '../../components/Checkbox';
 import { FieldSelect } from './FieldSelect';
+import { errorMessage } from '../../lib/errorMessage';
 
 type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
 type Translate = (key: MessageKey) => string;
@@ -136,6 +137,27 @@ type RuleDraft = {
   sectionTarget: string;
 };
 
+type RuleFormValues = {
+  kind: GuidedRuleKind;
+  comparisonOperator: ComparisonOperator | '';
+  leftField: string;
+  rightField: string;
+  conditionOperator: ConditionOperator | '';
+  conditionField: string;
+  conditionValue: string;
+  conditionChoices: string[];
+  terminologyReleaseId: string;
+  requiredField: string;
+  visibilityTarget: 'field' | 'section';
+  sectionTarget: string;
+  message: string;
+  severity: RuleSeverity;
+};
+
+function ruleFormSnapshot(values: RuleFormValues): string {
+  return JSON.stringify(values);
+}
+
 function inputValue(value: unknown): string {
   if (value === true) return 'true';
   if (value === false) return 'false';
@@ -216,6 +238,7 @@ export function RuleForm({
   fields,
   sections,
   onSubmit,
+  onDirtyChange,
   busy,
   existingRules = [],
   initialRule,
@@ -228,7 +251,9 @@ export function RuleForm({
   fields: TemplateField[];
   /** Sections de la version ; seules les sections racines sont proposées comme cible. */
   sections?: readonly TemplateSection[] | null;
-  onSubmit: (rule: unknown, message: string, severity: RuleSeverity) => void;
+  onSubmit: (rule: unknown, message: string, severity: RuleSeverity) => void | Promise<unknown>;
+  /** Notifie le parent uniquement de l'etat local reel de la saisie. */
+  onDirtyChange?: (dirty: boolean) => void;
   busy?: boolean;
   /** Regles deja enregistrees sur cette version : sert a refuser un cycle d'affichage. */
   existingRules?: readonly { rule: unknown }[];
@@ -245,7 +270,6 @@ export function RuleForm({
 }) {
   const { t } = useI18n();
   const draft = useMemo(() => (initialRule === undefined ? null : ruleDraftOf(initialRule)), [initialRule]);
-  const editing = initialRule !== undefined;
 
   // L35 x L32 : le resultat d'un calcul n'est jamais enregistre. Une variable calculee ne peut
   // donc ni porter une condition, ni etre rendue obligatoire, ni etre comparee — elle n'est
@@ -265,27 +289,65 @@ export function RuleForm({
   // L59 : la graine ne sert QUE si aucune regle existante n'est editee — une regle en
   // cours de modification porte deja sa cible, et la lui reprendre serait une surprise.
   const seededSection = draft ? null : (initialSectionTarget || null);
-  const [kind, setKind] = useState<GuidedRuleKind>(draft?.kind ?? (seededSection ? 'visibility' : 'comparison'));
-  const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>(draft?.comparisonOperator ?? '');
-  const [leftField, setLeftField] = useState(draft?.leftField ?? '');
-  const [rightField, setRightField] = useState(draft?.rightField ?? '');
-  const [conditionOperator, setConditionOperator] = useState<ConditionOperator | ''>(draft?.conditionOperator ?? '');
-  const [conditionField, setConditionField] = useState(draft?.conditionField ?? '');
-  const [conditionValue, setConditionValue] = useState(draft?.conditionValue ?? '');
-  const [conditionChoices, setConditionChoices] = useState<string[]>(draft?.conditionChoices ?? []);
-  const [terminologyReleaseId, setTerminologyReleaseId] = useState(draft?.terminologyReleaseId ?? '');
-  const [requiredField, setRequiredField] = useState(draft?.requiredField ?? '');
-  const [visibilityTarget, setVisibilityTarget] = useState<'field' | 'section'>(
-    draft?.visibilityTarget ?? (seededSection ? 'section' : 'field'),
-  );
-  const [sectionTarget, setSectionTarget] = useState(draft?.sectionTarget ?? seededSection ?? '');
-  const [message, setMessage] = useState(initialMessage ?? '');
-  const [severity, setSeverity] = useState<RuleSeverity>(initialSeverity ?? 'block');
+  const initialValues = useMemo<RuleFormValues>(() => ({
+    kind: draft?.kind ?? (seededSection ? 'visibility' : 'comparison'),
+    comparisonOperator: draft?.comparisonOperator ?? '',
+    leftField: draft?.leftField ?? '',
+    rightField: draft?.rightField ?? '',
+    conditionOperator: draft?.conditionOperator ?? '',
+    conditionField: draft?.conditionField ?? '',
+    conditionValue: draft?.conditionValue ?? '',
+    conditionChoices: [...(draft?.conditionChoices ?? [])],
+    terminologyReleaseId: draft?.terminologyReleaseId ?? '',
+    requiredField: draft?.requiredField ?? '',
+    visibilityTarget: draft?.visibilityTarget ?? (seededSection ? 'section' : 'field'),
+    sectionTarget: draft?.sectionTarget ?? seededSection ?? '',
+    message: initialMessage ?? '',
+    severity: initialSeverity ?? 'block',
+  }), [draft, initialMessage, initialSeverity, seededSection]);
+  const [kind, setKind] = useState<GuidedRuleKind>(initialValues.kind);
+  const [comparisonOperator, setComparisonOperator] = useState<ComparisonOperator | ''>(initialValues.comparisonOperator);
+  const [leftField, setLeftField] = useState(initialValues.leftField);
+  const [rightField, setRightField] = useState(initialValues.rightField);
+  const [conditionOperator, setConditionOperator] = useState<ConditionOperator | ''>(initialValues.conditionOperator);
+  const [conditionField, setConditionField] = useState(initialValues.conditionField);
+  const [conditionValue, setConditionValue] = useState(initialValues.conditionValue);
+  const [conditionChoices, setConditionChoices] = useState<string[]>(initialValues.conditionChoices);
+  const [terminologyReleaseId, setTerminologyReleaseId] = useState(initialValues.terminologyReleaseId);
+  const [requiredField, setRequiredField] = useState(initialValues.requiredField);
+  const [visibilityTarget, setVisibilityTarget] = useState<'field' | 'section'>(initialValues.visibilityTarget);
+  const [sectionTarget, setSectionTarget] = useState(initialValues.sectionTarget);
+  const [message, setMessage] = useState(initialValues.message);
+  const [severity, setSeverity] = useState<RuleSeverity>(initialValues.severity);
+  const baselineSnapshot = useRef(ruleFormSnapshot(initialValues));
   const [error, setError] = useState<string | null>(
     inheritedConflict
       ? `${t(CALCULATED_PROBLEM_KEYS[inheritedConflict.problem])} — ${inheritedConflict.field.label}`
       : null,
   );
+
+  const currentSnapshot = useMemo(() => ruleFormSnapshot({
+    kind,
+    comparisonOperator,
+    leftField,
+    rightField,
+    conditionOperator,
+    conditionField,
+    conditionValue,
+    conditionChoices,
+    terminologyReleaseId,
+    requiredField,
+    visibilityTarget,
+    sectionTarget,
+    message,
+    severity,
+  }), [
+    kind, comparisonOperator, leftField, rightField, conditionOperator, conditionField,
+    conditionValue, conditionChoices, terminologyReleaseId, requiredField, visibilityTarget,
+    sectionTarget, message, severity,
+  ]);
+  const dirty = currentSnapshot !== baselineSnapshot.current;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   const fieldsByKey = useMemo(() => new Map(fields.map((field) => [field.fieldKey, field])), [fields]);
   const selectedLeftField = fieldsByKey.get(leftField);
@@ -333,20 +395,6 @@ export function RuleForm({
       t('rule.search_count').replace('{shown}', String(shown)).replace('{total}', String(total)),
   };
 
-  function resetRuleInputs() {
-    setComparisonOperator('');
-    setLeftField('');
-    setRightField('');
-    setConditionOperator('');
-    setConditionField('');
-    setConditionValue('');
-    setConditionChoices([]);
-    setRequiredField('');
-    setVisibilityTarget('field');
-    setSectionTarget('');
-    setTerminologyReleaseId('');
-  }
-
   function guidedJson() {
     if (kind === 'comparison') {
       return JSON.stringify({
@@ -372,7 +420,7 @@ export function RuleForm({
     });
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     // Le constructeur guide produit le format historique. Le serveur reste la source
     // de verite et revalide la regle lors de l'enregistrement.
@@ -402,10 +450,18 @@ export function RuleForm({
     setError(null);
     // Une regle d'affichage ne bloque ni n'avertit : sa severite n'a pas de sens et n'est pas
     // demandee. On enregistre la valeur par defaut de la colonne, que l'evaluation ignore.
-    onSubmit(res.value, message, kind === 'visibility' ? 'block' : severity);
-    if (!editing) {
-      resetRuleInputs();
-      setMessage('');
+    // Le constructeur ne vide jamais la saisie avant l'accuse de succes. Les callbacks
+    // historiques retournent `void`; ceux qui retournent une promesse peuvent toutefois
+    // transmettre l'accuse et permettre de nettoyer le baseline ici.
+    try {
+      const result = onSubmit(res.value, message, kind === 'visibility' ? 'block' : severity);
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        await result;
+        baselineSnapshot.current = currentSnapshot;
+        onDirtyChange?.(false);
+      }
+    } catch (submitError) {
+      setError(errorMessage(submitError, t('common.error')));
     }
   }
 

@@ -84,9 +84,16 @@ describe('TemplateVersionEditor', () => {
 
     expect(await screen.findByRole('heading', { name: 'Registre fictif' })).toBeInTheDocument();
     expect(screen.getByText('Version 3 · Brouillon')).toBeInTheDocument();
-    expect(screen.getByText('Clinique', { selector: 'summary span' })).toBeInTheDocument();
-    expect(screen.getByText('Biologie', { selector: 'summary span' })).toBeInTheDocument();
-    expect(screen.getAllByText(/1 variable\(s\)/).length).toBeGreaterThanOrEqual(2);
+    // Le sommaire remplace les groupes deplies : chaque section y est atteignable en un clic,
+    // avec son compte lisible dans le nom de la commande.
+    const sommaire = within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' }));
+    expect(sommaire.getByRole('button', { name: 'Clinique · 1 variable(s)' })).toBeInTheDocument();
+    expect(sommaire.getByRole('button', { name: 'Biologie · 1 variable(s)' })).toBeInTheDocument();
+    // La zone principale ne montre QUE la section active : ouvrir un grand modele ne commence
+    // pas par derouler toutes ses variables.
+    const principal = within(document.getElementById('editor-panel-structure') as HTMLElement);
+    expect(principal.getByText('Tension artérielle')).toBeInTheDocument();
+    expect(principal.queryByText('Hémoglobine')).not.toBeInTheDocument();
 
     const toolbar = screen.getByTestId('template-editor-toolbar');
     expect(toolbar).toHaveClass('md:sticky', 'md:top-0', 'dark:bg-slate-950/95');
@@ -94,14 +101,20 @@ describe('TemplateVersionEditor', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Rechercher une variable' }), 'hemoglobine');
 
-    expect(screen.getByText('Hémoglobine')).toBeInTheDocument();
-    expect(screen.queryByText('Tension artérielle')).not.toBeInTheDocument();
+    // La recherche ne se limite pas au bloc ouvert : elle bascule sur « Toutes les variables »
+    // et rend la variable trouvee, quelle que soit la section qui la porte.
+    expect(principal.getByText('Hémoglobine')).toBeInTheDocument();
+    expect(principal.queryByText('Tension artérielle')).not.toBeInTheDocument();
     // UX-14(a) : la portee du filtre se lit en toutes lettres, a cote de l'etat du panneau.
     expect(screen.getByText('1 variables affichées sur 2')).toBeInTheDocument();
     expect(screen.getByText('Aucune modification')).toBeInTheDocument();
+    // Un resultat porte son chemin : on sait dans quelle section il se trouve, meme quand la
+    // recherche a quitte le bloc ouvert.
+    const trouve = principal.getByText('Hémoglobine').closest('[role="row"]') as HTMLElement;
+    expect(within(trouve).getByText('Biologie')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres' }));
     expect(screen.getByText('2 variables affichées sur 2')).toBeInTheDocument();
-    expect(screen.getByText('Tension artérielle')).toBeInTheDocument();
+    expect(principal.getByText('Tension artérielle')).toBeInTheDocument();
   });
 
   test('ouvre une variable dans le panneau, conserve les valeurs et permet de passer a la suivante', async () => {
@@ -109,6 +122,10 @@ describe('TemplateVersionEditor', () => {
     const { repo, updateField } = makeRepository();
     renderEditor(repo);
 
+    // « Suivante » se deplace dans les RESULTATS AFFICHES. Depuis une section, la suivante est
+    // la suivante de cette section ; la sous-vue « Toutes les variables » parcourt le modele
+    // entier, ce que ce scenario verifie.
+    await user.click(await screen.findByRole('button', { name: /^Toutes les variables/ }));
     const firstRow = await screen.findByRole('row', { name: /Tension artérielle/ });
     await user.click(within(firstRow).getByRole('button', { name: /Modifier la variable/ }));
 
@@ -131,8 +148,9 @@ describe('TemplateVersionEditor', () => {
     const listImportableSections = vi.fn(async () => []);
     renderEditor(Object.assign(repo, { listImportableSections }));
 
-    // Les sections vivent desormais dans leur propre espace (UX-14(a)).
-    await user.click(await screen.findByRole('tab', { name: /^Sections/ }));
+    // La gestion de la structure (sections, rubriques communes, import) est repliee dans
+    // l'espace Structure : on l'ouvre a la demande, au lieu d'un espace separe.
+    await user.click(await screen.findByRole('button', { name: 'Gérer la structure' }));
     const command = await screen.findByRole('button', { name: 'Importer un bloc' });
     // La commande est bien dans le formulaire de creation de section, pas ailleurs.
     expect(command.closest('form')).toContainElement(screen.getByRole('button', { name: 'Ajouter la section' }));
@@ -154,7 +172,7 @@ describe('TemplateVersionEditor', () => {
     }));
 
     expect(await screen.findByText(/Version publiée/)).toBeInTheDocument();
-    await user.click(screen.getByRole('tab', { name: /^Sections/ }));
+    await user.click(screen.getByRole('button', { name: 'Gérer la structure' }));
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajouter la section' })).not.toBeInTheDocument();
   });
@@ -166,7 +184,7 @@ describe('TemplateVersionEditor', () => {
 
     // Le frontend ne doit jamais dependre d'une RPC absente : sans `listImportableSections`,
     // la commande disparait au lieu d'echouer au clic.
-    await user.click(await screen.findByRole('tab', { name: /^Sections/ }));
+    await user.click(await screen.findByRole('button', { name: 'Gérer la structure' }));
     expect(await screen.findByRole('button', { name: 'Ajouter la section' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
   });
@@ -232,8 +250,15 @@ function makeLargeRepository() {
 const searchVariables = () => screen.getByRole('searchbox', { name: 'Rechercher une variable' });
 const filterSection = (sectionKey: string) =>
   fireEvent.change(screen.getByRole('combobox', { name: 'Filtrer par section' }), { target: { value: sectionKey } });
+/**
+ * Les quatre espaces restent MONTES pour ne perdre aucune saisie ; les panneaux inactifs
+ * portent `hidden`. `getByText` ne respecte pas `hidden` : un libelle de variable apparait
+ * aussi dans les `<option>` du filtre de l'espace Regles. Les lectures de liste se font donc
+ * dans l'espace Structure.
+ */
+const structure = () => within(document.getElementById('editor-panel-structure') as HTMLElement);
 const openVariable = (label: string) => {
-  const row = screen.getByText(label).closest('[role="row"]') as HTMLElement;
+  const row = structure().getByText(label).closest('[role="row"]') as HTMLElement;
   fireEvent.click(within(row).getByRole('button', { name: /Modifier la variable/ }));
 };
 const panel = () => screen.getByRole('dialog', { name: 'Modifier la variable' });
@@ -244,10 +269,13 @@ describe('TemplateVersionEditor — 216 variables / 24 regles (UX-14)', () => {
     renderEditor(repo);
 
     await screen.findByRole('heading', { name: 'Registre fictif' });
-    expect(screen.getByText('216 variables affichées sur 216')).toBeInTheDocument();
-    // Vue d'ensemble : les blocs restent replies, seuls leurs compteurs sont rendus.
-    expect(screen.queryByText('Variable 1')).not.toBeInTheDocument();
+    // L'ecran s'ouvre sur le PREMIER bloc, pas sur les 216 lignes : on ne traverse pas les
+    // variables des sections precedentes pour atteindre celles qu'on vient voir.
+    expect(screen.getByText('18 variables affichées sur 216')).toBeInTheDocument();
+    expect(structure().getByText('Variable 1')).toBeInTheDocument();
+    expect(structure().queryByText(LAST_FIELD_LABEL)).not.toBeInTheDocument();
 
+    // La recherche porte sur TOUT le modele, y compris les blocs fermes.
     fireEvent.change(searchVariables(), { target: { value: 'Glasgow tardif' } });
     expect(screen.getByText('1 variables affichées sur 216')).toBeInTheDocument();
 
@@ -348,21 +376,25 @@ describe('TemplateVersionEditor — 216 variables / 24 regles (UX-14)', () => {
     expect(screen.getByText(/l’ordre du formulaire est inchangé/)).toBeInTheDocument();
     expect(reorderFields).not.toHaveBeenCalled();
 
-    const row = screen.getByText('Variable 1').closest('[role="row"]') as HTMLElement;
-    expect(within(row).getByRole('button', { name: /Descendre/ })).toBeDisabled();
+    const row = structure().getByText('Variable 1').closest('[role="row"]') as HTMLElement;
+    expect(within(row).getByRole('button', { name: 'Descendre · Variable 1' })).toBeDisabled();
   });
 
   test('l index des sections conduit directement a un bloc de fin de modele', async () => {
     const { repo } = makeLargeRepository();
     renderEditor(repo);
 
-    const index = await screen.findByText('Index des sections');
-    const liste = index.closest('details') as HTMLDetailsElement;
-    const bloc12 = within(liste).getByRole('button', { name: /Bloc 12/ });
-    expect(bloc12).toHaveTextContent('18 / 18');
+    // Critere 1 : atteindre une section de FIN de modele sans traverser les precedentes.
+    const sommaire = within(await screen.findByRole('navigation', { name: 'Sommaire du formulaire' }));
+    const bloc12 = sommaire.getByRole('button', { name: 'Bloc 12 · 18 variable(s)' });
     fireEvent.click(bloc12);
-    expect((document.getElementById('template-group-bloc_11') as HTMLDetailsElement).open).toBe(true);
-    expect(screen.getByText(LAST_FIELD_LABEL)).toBeInTheDocument();
+
+    expect(bloc12).toHaveAttribute('aria-current', 'page');
+    expect(structure().getByRole('heading', { name: 'Bloc 12' })).toBeInTheDocument();
+    expect(structure().getByText(LAST_FIELD_LABEL)).toBeInTheDocument();
+    // Les variables du bloc precedent ne sont plus dans la page : la zone principale ne montre
+    // que la section active.
+    expect(structure().queryByText('Variable 1')).not.toBeInTheDocument();
   });
 });
 

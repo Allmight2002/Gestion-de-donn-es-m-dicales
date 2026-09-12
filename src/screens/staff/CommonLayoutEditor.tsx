@@ -49,12 +49,15 @@ export function CommonLayoutEditor({
   sections,
   disabled = false,
   onSave,
+  onDirtyChange,
 }: {
   layout: TemplateCommonLayout;
   fields: readonly TemplateField[];
   sections: readonly TemplateSection[];
   disabled?: boolean;
   onSave: (operationId: string, payload: CommonLayoutPayload, expectedFingerprint: string) => Promise<void>;
+  /** Notifie le parent de la difference entre le brouillon local et son baseline serveur. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useI18n();
   const commonFields = useMemo(() => fields.filter((field) => field.section === null)
@@ -65,14 +68,44 @@ export function CommonLayoutEditor({
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const attempt = useRef<{ fingerprint: string; payload: string; operationId: string } | null>(null);
+  // Le baseline reste celui qui a servi a ouvrir l'ecran jusqu'a un accuse de succes. Il
+  // permet d'envoyer l'ancienne empreinte apres un changement concurrent, afin que la RPC
+  // refuse l'ecrasement au lieu d'accepter silencieusement le nouvel etat des props.
+  const baselineSnapshot = useRef<string | null>(null);
+  const baselineFingerprint = useRef(layout.fingerprint);
+  const commonFieldSignature = commonFields.map((field) => `${field.fieldKey}:${field.label}:${field.displayOrder}`).join('|');
+  const incomingSignature = `${layout.fingerprint}|${commonFieldSignature}`;
+  const seenIncoming = useRef(incomingSignature);
+  if (baselineSnapshot.current === null) baselineSnapshot.current = JSON.stringify(stablePayload(draft));
 
-  // Une remise a jour apres accuse remplace le brouillon par le recu serveur. Pas d'effet sur
-  // la frappe courante : le fingerprint ne change que si l'etat versionne a effectivement change.
+  const currentSnapshot = JSON.stringify(stablePayload(draft));
+  const dirty = currentSnapshot !== baselineSnapshot.current;
+
   useEffect(() => {
-    setDraft(draftFrom(layout, commonFields));
-    setFailure(null);
-    attempt.current = null;
-  }, [layout, commonFields]);
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  // Une remise a jour apres accuse remplace le brouillon par le recu serveur. Un changement
+  // externe pendant une frappe, lui, ne doit jamais effacer les inputs locaux : le brouillon
+  // reste base sur l'ancienne empreinte et la prochaine tentative sera refusee proprement.
+  useEffect(() => {
+    if (seenIncoming.current === incomingSignature) return;
+    seenIncoming.current = incomingSignature;
+    const nextDraft = draftFrom(layout, commonFields);
+    const nextSnapshot = JSON.stringify(stablePayload(nextDraft));
+    const hasLocalChanges = currentSnapshot !== baselineSnapshot.current;
+    if (!hasLocalChanges) {
+      setDraft(nextDraft);
+      baselineSnapshot.current = nextSnapshot;
+      baselineFingerprint.current = layout.fingerprint;
+      attempt.current = null;
+      setFailure(null);
+    } else if (layout.fingerprint !== baselineFingerprint.current) {
+      // Le parent peut relire la version apres une operation d'un autre panneau. Garder le
+      // texte local permet au parent de demander une decision explicite sans perte de saisie.
+      setFailure(t('commonlayout.conflict'));
+    }
+  }, [commonFields, currentSnapshot, incomingSignature, layout, t]);
 
   const rootSections = useMemo(() => sections.filter((section) => !section.parentSectionKey)
     .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey)), [sections]);
@@ -157,14 +190,21 @@ export function CommonLayoutEditor({
   async function save() {
     const payload = stablePayload(draft);
     const serialized = JSON.stringify(payload);
-    const currentAttempt = attempt.current?.fingerprint === layout.fingerprint && attempt.current.payload === serialized
+    const expectedFingerprint = baselineFingerprint.current;
+    const currentAttempt = attempt.current?.fingerprint === expectedFingerprint && attempt.current.payload === serialized
       ? attempt.current
-      : { fingerprint: layout.fingerprint, payload: serialized, operationId: crypto.randomUUID() };
+      : { fingerprint: expectedFingerprint, payload: serialized, operationId: crypto.randomUUID() };
     attempt.current = currentAttempt;
     setSaving(true);
     setFailure(null);
     try {
-      await onSave(currentAttempt.operationId, payload, layout.fingerprint);
+      await onSave(currentAttempt.operationId, payload, expectedFingerprint);
+      // Seul l'accuse de succes avance le baseline. En particulier, un conflit conserve le
+      // meme payload et la meme operation pour une reprise idempotente.
+      baselineSnapshot.current = serialized;
+      baselineFingerprint.current = expectedFingerprint;
+      attempt.current = null;
+      onDirtyChange?.(false);
     } catch (error) {
       // La cle reste en memoire : un clic de reprise apres une reponse perdue est le MEME
       // rejeu idempotent, pas une deuxieme operation. Le brouillon n'est pas recharge non

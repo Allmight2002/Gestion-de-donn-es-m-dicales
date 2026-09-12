@@ -5,11 +5,13 @@ import type { MessageKey } from '../../i18n/messages';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
+import { isTerminologyList, isTerminologyValue } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { CalculatedValue, EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
 import { FieldInput } from '../member/FieldInput';
 import { ChoiceWithProposal } from '../member/ChoiceWithProposal';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from '../member/DiagnosisCoverageNotice';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 
 // L29 — apercu du formulaire tel que le verra la personne qui saisit, sans creer de
@@ -123,6 +125,49 @@ export function FormPreview({
   const patientVisible = patientFields.filter(
     (f) => !patientCompanions.has(f.fieldKey) && !patientHidden.has(f.fieldKey),
   );
+  // The same derived, non-persistent coverage as clinical entry, independent of completeness.
+  const coverage = useDiagnosisCoverage(version.id, version.diagnosisContext, tab,
+    tab === 'patient' ? patientValues : encounterValues, fields, rules, sections ?? []);
+
+  // Scenarios de diagnostic.
+  //
+  // Le champ diagnostic reste le VRAI champ de terminologie, rendu par le vrai composant ;
+  // mais `INERT_TERMINOLOGY` ne repond aucun code, donc la recherche ne peut rien proposer
+  // et l'apercu ne pourrait JAMAIS montrer un bloc conditionne. Ces cases cochent des codes
+  // que la VERSION reconnait deja (`diagnosisContext.recognizedCodes`) et ecrivent dans les
+  // memes `values` que la saisie : c'est `hiddenFieldKeys` et `calculateDiagnosisCoverage`
+  // — le moteur reel — qui en tirent l'affichage et la couverture. Aucun moteur parallele,
+  // aucune ecriture : les valeurs vivent dans l'etat local de l'apercu.
+  const scenarioContext = version.diagnosisContext?.find((context) => context.scope === tab);
+  const scenarioField = scenarioContext
+    ? fields.find((f) => f.fieldKey === scenarioContext.diagnosisFieldKey && f.scope === tab)
+    : undefined;
+  const scenarioCodes = scenarioField?.type === 'terminology' ? scenarioContext?.recognizedCodes ?? [] : [];
+  const scenarioValues = tab === 'patient' ? patientValues : encounterValues;
+  const setScenarioValues = tab === 'patient' ? setPatientValues : setEncounterValues;
+  const rawScenario = scenarioField ? scenarioValues[scenarioField.fieldKey] : undefined;
+  const scenarioSelection = isTerminologyList(rawScenario)
+    ? rawScenario.map((entry) => entry.code)
+    : isTerminologyValue(rawScenario) ? [rawScenario.code] : [];
+  function toggleScenarioCode(code: string) {
+    if (!scenarioField) return;
+    const key = scenarioField.fieldKey;
+    const multiple = scenarioField.isMultiple === true;
+    const next = scenarioSelection.includes(code)
+      ? scenarioSelection.filter((item) => item !== code)
+      : multiple ? [...scenarioSelection, code] : [code];
+    setScenarioValues((current) => {
+      const copy = { ...current };
+      // Le tableau vide n'est pas une valeur (L21) : « aucun diagnostic » = cle absente.
+      if (next.length === 0) delete copy[key];
+      // Le libelle du referentiel n'est pas telecharge en apercu : le code fait office de
+      // libelle plutot que d'inventer un intitule clinique.
+      else copy[key] = multiple
+        ? next.map((item) => ({ code: item, label: item }))
+        : { code: next[0], label: next[0] };
+      return copy;
+    });
+  }
 
   /**
    * Rejoue les controles du formulaire de rencontre — `validateValues` et `evaluateRules`,
@@ -226,6 +271,28 @@ export function FormPreview({
       >
         {/* Depots inertes pour tout le sous-arbre de saisie : aucune ecriture possible. */}
         <RepositoryProvider terminology={INERT_TERMINOLOGY}>
+          {scenarioCodes.length > 0 && scenarioField && (
+            <fieldset className="rounded-xl border border-slate-200 p-3">
+              <legend className="px-1 text-sm font-medium">{t('preview.diagnosis_scenario')}</legend>
+              <p className="mb-2 text-xs text-slate-600">{t('preview.diagnosis_scenario_help')}</p>
+              <div className="flex flex-wrap gap-2">
+                {scenarioCodes.map((code) => (
+                  <label key={code} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={scenarioSelection.includes(code)}
+                      onChange={() => toggleScenarioCode(code)}
+                    />
+                    <span className="font-mono text-xs">{code}</span>
+                  </label>
+                ))}
+              </div>
+              {scenarioSelection.length === 0 && (
+                <p className="mt-2 text-xs text-slate-500">{t('preview.diagnosis_scenario_none')}</p>
+              )}
+            </fieldset>
+          )}
+          <DiagnosisCoverageNotice coverage={coverage} />
           <div className="@container/preview space-y-5">
             {tab === 'patient' ? (
               <>

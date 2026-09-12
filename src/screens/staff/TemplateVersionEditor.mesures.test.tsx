@@ -99,13 +99,19 @@ describe('TemplateVersionEditor — réactivité mesurée sur 216/24 (UX-14(d))'
     await screen.findByRole('heading', { name: 'Modèle de référence' });
     releve['rendu initial (216 variables, blocs repliés)'] = Math.round(performance.now() - debutRendu);
 
-    // Au-delà de 60 variables, les blocs s'ouvrent à la demande (UX-14(a)) : le premier rendu
-    // ne paie pas 216 lignes développées, et c'est ce que cette mesure doit montrer.
-    expect(screen.getByText('216 variables affichées sur 216')).toBeInTheDocument();
+    // L'écran s'ouvre sur UNE section, pas sur 216 lignes : le premier rendu ne paie que le
+    // sommaire et le premier bloc, et c'est ce que cette mesure doit montrer.
+    expect(screen.getByText('36 variables affichées sur 216')).toBeInTheDocument();
 
+    const sommaire = within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' }));
     await mesure('ouverture d’un bloc (36 variables)', releve, () => {
-      fireEvent.click(screen.getByText('Clinique', { selector: 'summary span' }));
+      fireEvent.click(sommaire.getByRole('button', { name: 'Biologie · 36 variable(s)' }));
     });
+    // La sous-vue « Toutes les variables » est le pire cas de rendu : 216 lignes d'un coup.
+    await mesure('sous-vue « Toutes les variables » (216 lignes)', releve, () => {
+      fireEvent.click(sommaire.getByRole('button', { name: /^Toutes les variables/ }));
+    });
+    expect(screen.getByText('216 variables affichées sur 216')).toBeInTheDocument();
 
     const recherche = screen.getByRole('searchbox', { name: 'Rechercher une variable' });
     recherche.focus(); // comme une frappe réelle : le champ a le focus avant de recevoir le texte
@@ -114,7 +120,10 @@ describe('TemplateVersionEditor — réactivité mesurée sur 216/24 (UX-14(d))'
     });
     // La recherche garde le focus : une frappe ne doit jamais rendre la saisie à l'écran.
     expect(recherche).toHaveFocus();
-    expect(screen.getByText('Variable fictive 210')).toBeInTheDocument();
+    // Les panneaux inactifs restent montés (aucune saisie perdue) : le libellé apparaît aussi
+    // dans les `<option>` du filtre de l'espace Règles. On lit donc la liste, pas la page.
+    expect(within(document.getElementById('editor-panel-structure') as HTMLElement)
+      .getByText('Variable fictive 210')).toBeInTheDocument();
 
     await mesure('filtrage par section', releve, () => {
       fireEvent.change(recherche, { target: { value: '' } });
@@ -123,7 +132,7 @@ describe('TemplateVersionEditor — réactivité mesurée sur 216/24 (UX-14(d))'
     expect(screen.getByText('36 variables affichées sur 216')).toBeInTheDocument();
 
     await mesure('ouverture du panneau de variable', releve, () => {
-      fireEvent.click(screen.getAllByRole('button', { name: 'Modifier la variable' })[0]);
+      fireEvent.click(screen.getAllByRole('button', { name: /^Modifier la variable · / })[0]);
     });
     const panneau = await screen.findByRole('dialog');
     expect(within(panneau).getByLabelText('Libellé')).toHaveValue('Variable fictive 1');
