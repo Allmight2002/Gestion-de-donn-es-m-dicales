@@ -17,6 +17,8 @@ import { DiagnosisConfigurationEditor } from './DiagnosisConfigurationEditor';
 import { SectionsEditor } from './SectionsEditor';
 import { SectionImportDialog } from './SectionImportDialog';
 import { CommonLayoutEditor } from './CommonLayoutEditor';
+import { FieldMoveDialog, type FieldMove } from './FieldMoveDialog';
+import { templateFieldToNewField } from '../../domain/templateFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
@@ -128,6 +130,9 @@ export function TemplateVersionEditor({
   const [leaving, setLeaving] = useState<(() => void) | null>(null);
   const [outOfFilter, setOutOfFilter] = useState<TemplateField | null>(null);
   const [deleting, setDeleting] = useState<TemplateField | null>(null);
+  // UX-14(d) : déplacement direct. Sur 216 lignes, glisser une variable traverse plusieurs
+  // écrans et les flèches demandent autant de clics que de rangs franchis.
+  const [moving, setMoving] = useState<TemplateField | null>(null);
   // UX-14(c) : une règle existante sert de modèle, soit pour une variante unitaire
   // (duplication dans le formulaire guidé), soit pour un lot de cibles (opération serveur).
   const [batchSource, setBatchSource] = useState<ValidationRule | null>(null);
@@ -356,6 +361,25 @@ export function TemplateVersionEditor({
     void run(() => repo.reorderFields(version.id, reordered.map((field) => field.id)));
   }
 
+  /**
+   * UX-14(d) — applique un déplacement direct.
+   *
+   * Deux écritures, dans cet ordre : la section d'abord, le rang ensuite. Si la seconde
+   * échoue, la variable est dans la bonne section à son ancien rang — un état visible et
+   * corrigeable. L'inverse laisserait un rang correct dans la mauvaise section, que rien à
+   * l'écran ne signalerait. La modification passe par la conversion exhaustive : la RPC
+   * remplace la ligne entière, et un attribut oublié disparaîtrait du gabarit.
+   */
+  async function applyMove(field: TemplateField, move: FieldMove) {
+    setMoving(null);
+    await run(async () => {
+      if ((field.section ?? null) !== move.section) {
+        await repo.updateField(field.id, templateFieldToNewField(field, { section: move.section }));
+      }
+      await repo.reorderFields(version.id, move.orderedIds);
+    });
+  }
+
   async function saveEditedField(field: NewField, advance = false) {
     if (!editing) return false;
     const editedId = editing.id;
@@ -560,6 +584,16 @@ export function TemplateVersionEditor({
         onCancel={() => setDeleting(null)}
         onConfirm={() => { const target = deleting; setDeleting(null); if (target) void run(() => repo.deleteField(target.id)); }}
       />
+      {moving && (
+        <FieldMoveDialog
+          field={moving}
+          fields={fields}
+          sections={sections}
+          busy={busy}
+          onCancel={() => setMoving(null)}
+          onMove={(move) => void applyMove(moving, move)}
+        />
+      )}
       {batchSource && (
         <RuleBatchPanel
           versionId={version.id}
@@ -801,6 +835,17 @@ export function TemplateVersionEditor({
                       <>
                         <button type="button" onClick={() => openFieldEditor(f)} className="btn-ghost min-h-11 px-3 text-xs">
                           {t('admin.edit_variable')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost min-h-11 px-3 text-xs"
+                          aria-label={`${t('admin.move_variable')} · ${f.label}`}
+                          // Même règle que les flèches : un tri de consultation n'écrit
+                          // jamais d'ordre, sinon le déplacement resterait invisible.
+                          disabled={busy || !!editing || displaySort !== 'form'}
+                          onClick={() => setMoving(f)}
+                        >
+                          {t('admin.move_variable')}
                         </button>
                         {f.inUse ? (
                           <button

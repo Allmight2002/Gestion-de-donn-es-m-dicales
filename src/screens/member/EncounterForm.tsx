@@ -197,6 +197,13 @@ export function EncounterForm() {
       setVersionId(version.version.id);
       setDiagnosisContext(version.version.diagnosisContext);
       // A4 : restaurer un brouillon local eventuel (saisie non enregistree recuperee).
+      //
+      // UX-8 a envisage de fermer cette lecture, puisque l'ECRITURE, elle, n'a lieu que dans le
+      // parcours intake : un poste ayant fait tourner une build de demonstration proposerait
+      // sinon, en production, la reprise d'un brouillon ecrit par l'autre build. La fermer
+      // supprimerait la protection anti-perte A4 la ou elle est encore attendue. Le risque
+      // residuel est donc consigne, pas arbitre ici : il reste borne par le cloisonnement par
+      // compte, la purge a la connexion d'un autre compte et les 24 heures de duree de vie.
       const draft = patientId ? loadDraft<EncounterDraft>('encounter', patientId) : null;
       setLocalCandidate(draft);
       {

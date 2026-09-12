@@ -52,9 +52,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // une boucle d'insertions depuis le navigateur laisserait des règles à moitié créées.
     // +5 UX-16 : trois gardes internes et les deux RPC de lecture/ecriture atomique des
     // rubriques communes. L'inventaire force leur revue d'autorisation et leur search_path.
-    expect(signatures).toHaveLength(131);
+    // +1 UX-12(c) : la recherche nominative traverse la frontiere d’identite une seule fois,
+    // dans une fonction qui verifie role et permission, journalise l’acces et ne rend que des
+    // identifiants. L’inventaire force la revue de cette autorisation.
+    expect(signatures).toHaveLength(132);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(143);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(144);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

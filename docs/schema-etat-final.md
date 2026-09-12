@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260912090000_ux_common_group.sql`
-- Tables : 50 · Policies RLS : 64 · Triggers : 79 · Fonctions : 326
+- Dernière migration incluse : `20260912160000_ux_patient_identity_search.sql`
+- Tables : 50 · Policies RLS : 64 · Triggers : 79 · Fonctions : 328
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1255,6 +1255,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | has_pending_upload_ticket | p_bucket text, p_path text | DEFINER | sql |
 | hmac | bytea, bytea, text | INVOKER | c |
 | hmac | text, text, text | INVOKER | c |
+| identity_search_normalize | p_value text | INVOKER | sql |
 | import_records | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_legacy | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_with_receipts | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
@@ -1365,6 +1366,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
 | save_work_draft | p_id uuid, p_base_id uuid, p_kind text, p_target_id uuid, p_template_version_id uuid, p_entity_revision text, p_expected_revision bigint, p_operation_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | scrub_client_error_text | p_value text, p_max_length integer | INVOKER | plpgsql |
+| search_patient_ids_by_identity | p_base_id uuid, p_term text, p_limit integer, p_offset integer | DEFINER | plpgsql |
 | search_terminology | p_query text, p_limit integer | INVOKER | sql |
 | set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |
 | set_base_observation_model | p_base_id uuid, p_observation_model text | DEFINER | plpgsql |

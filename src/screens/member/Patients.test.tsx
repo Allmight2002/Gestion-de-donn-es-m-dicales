@@ -634,3 +634,105 @@ describe('BaseHome (liste patients)', () => {
     expect(escapeLikePattern('P_1')).toBe('P\\_1');
   });
 });
+
+// UX-12(c) — recherche nominative. L'écran ne reçoit jamais de nom : l'opération auditée rend
+// des identifiants, et la liste reste présentée par code et variables analytiques (RG-9).
+describe('BaseHome — recherche nominative (UX-12(c))', () => {
+  const listRow = (n: number): PatientListItem => ({
+    id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 },
+    validationStatus: 'curated', identity: null,
+  });
+
+  function renderList(patients: PatientRepository, bases: BaseRepository = baseRepo) {
+    return render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+  }
+
+  const pageRepo = () => vi.fn(async (_b: string, limit: number, offset: number, options?: PatientListQuery) => (
+    options?.ids
+      ? { rows: options.ids.map((id) => listRow(Number(id.replace('p', '')))), total: options.ids.length }
+      : { rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)), total: 40 }
+  ));
+
+  test('P05 — le nom trouve le patient, et seul son code revient à l\'écran', async () => {
+    const listPatientsPage = pageRepo();
+    // Le serveur rend les identifiants dans SON ordre ; l'écran ne le réinvente pas.
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: ['p33', 'p7'], total: 2 }));
+    renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
+
+    await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalled());
+    expect(searchPatientIdsByIdentity.mock.calls.at(-1)).toEqual(['b1', 'Fictif', 20, 0]);
+    expect(await screen.findByText('P-0033')).toBeInTheDocument();
+    // L'ordre du serveur est conservé : P-0033 avant P-0007.
+    const codes = screen.getAllByText(/^P-00(33|07)$/).map((node) => node.textContent);
+    expect(codes).toEqual(['P-0033', 'P-0007']);
+    // La page analytique est relue par le chemin habituel, restreinte à ces identifiants.
+    expect(listPatientsPage.mock.calls.at(-1)?.[3]?.ids).toEqual(['p33', 'p7']);
+    // Aucun nom n'est affiché : la liste reste pseudonymisée.
+    expect(screen.queryByText(/Fictif/)).not.toBeInTheDocument();
+  });
+
+  test('moins de deux caractères ne déclenche aucune recherche nominative', async () => {
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: [], total: 0 }));
+    renderList({ listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'A');
+
+    expect(await screen.findByText(/au moins deux caractères/)).toBeInTheDocument();
+  });
+
+  test('P06 — sans droit d\'identité sur cette base, le mode nominatif n\'est pas proposé', async () => {
+    const sansIdentite: BaseListing = { ...baseListing, role: 'editor', permissions: { ...ALL_PERMS, canViewIdentity: false } };
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: [], total: 0 }));
+    renderList(
+      { listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository,
+      { async getBase() { return sansIdentite; } } as unknown as BaseRepository,
+    );
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Rechercher par')).not.toBeInTheDocument();
+    expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
+    // Et la recherche qui reste disponible ne passe jamais par l'opération d'identité.
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099');
+    await waitFor(() => expect(screen.queryByText('P-0021')).not.toBeInTheDocument());
+    expect(searchPatientIdsByIdentity).not.toHaveBeenCalled();
+  });
+
+  test('P07 — un droit retiré ramène la recherche au code, sans requête nominative de plus', async () => {
+    let permis = true;
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: ['p7'], total: 1 }));
+    const listPatientsPage = pageRepo();
+    const bases = {
+      async getBase() {
+        return permis ? baseListing : { ...baseListing, permissions: { ...ALL_PERMS, canViewIdentity: false } };
+      },
+    } as unknown as BaseRepository;
+    renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository, bases);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
+    await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1));
+
+    // Le droit est retiré côté serveur ; le prochain chargement l'apprend.
+    permis = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Effacer la recherche' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Rechercher par')).not.toBeInTheDocument());
+    expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
+    expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1);
+  });
+});

@@ -83,12 +83,14 @@ type ParsedDraft =
   | { state: 'future'; draft: { at: number; createdAt?: number } };
 
 function parseEnvelope(raw: string): ParsedDraft {
-  let parsed: DraftEnvelope<unknown> | null = null;
-  try {
-    parsed = JSON.parse(raw) as DraftEnvelope<unknown>;
-  } catch {
-    return { state: 'unreadable' };
-  }
+  const parsed: DraftEnvelope<unknown> | null = (() => {
+    try {
+      return JSON.parse(raw) as DraftEnvelope<unknown>;
+    } catch {
+      return null;
+    }
+  })();
+  if (!parsed) return { state: 'unreadable' };
   // `data` est verifie ici, et pas seulement `at` : une enveloppe tronquee traversait la
   // lecture et faisait echouer la reprise au moment ou l'ecran lisait sa version de gabarit.
   if (!parsed || typeof parsed !== 'object' || typeof parsed.at !== 'number'

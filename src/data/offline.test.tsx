@@ -5,7 +5,9 @@
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-  buildSnapshot, offlineCache, outbox, resolveKeepBoth, resolveKeepMine, setOfflineUser,
+  buildSnapshot, idbTx, INTAKE_CONTEXT_STORE, offlineCache, outbox, purgeExpiredIntakeContexts,
+  purgeForeignOfflineRecords,
+  resolveKeepBoth, resolveKeepMine, setOfflineUser,
   type FlushDeps, type OutboxEntry,
 } from './offline';
 
@@ -135,5 +137,52 @@ describe('resolveKeepMine — non-regression du partage de code', () => {
     expect(deps.calls[0].operationId).toBe('ob-1');
     expect(await outbox.get('ob-1')).toBeNull();
     expect((await cachedEncounter())?.data).toEqual({ diagnostic: [HED], glasgow_score: 12 });
+  });
+});
+
+// UX-8 — un contexte de saisie hors connexion ne s'effacait qu'a la LECTURE de sa base. Prepare
+// pour une base qu'on ne rouvre jamais, il gardait indefiniment son nom de base et ses
+// permissions resolues sur l'appareil, alors que sa duree de vie etait ecoulee.
+describe('UX-8 — balayage des contextes de saisie hors connexion', () => {
+  const context = (baseId: string, owner: string | null, expiresAt: number) => ({
+    key: `${owner ?? ''}::${baseId}`, dataType: 'intake_context' as const, ownerUserId: owner,
+    baseId, baseName: 'Base fictive', preparedAt: 0, expiresAt,
+  });
+
+  test('le balayage emporte l\'expire et l\'orphelin, et laisse le contexte encore valable', async () => {
+    const now = Date.now();
+    setOfflineUser(USER);
+    for (const record of [
+      context('b-perime', USER, now - 1),
+      context('b-valide', USER, now + 60_000),
+      // Sans proprietaire, un enregistrement ne peut plus etre rattache a personne.
+      context('b-orphelin', null, now + 60_000),
+    ]) await idbTx(INTAKE_CONTEXT_STORE, 'readwrite', (s) => s.put(record));
+
+    expect(await purgeExpiredIntakeContexts(now)).toBe(2);
+    const reste = await idbTx<Array<{ baseId: string }>>(INTAKE_CONTEXT_STORE, 'readonly', (s) => s.getAll());
+    expect(reste.map((r) => r.baseId)).toEqual(['b-valide']);
+  });
+});
+
+// UX-8 — poste partage. Le cloisonnement inter-comptes d'IndexedDB reposait entierement sur un
+// marqueur en localStorage : perdu, il laissait la file d'un autre compte — nom, date de
+// naissance, telephone d'une creation intake — sur l'appareil, invisible pour l'application mais
+// lisible dans l'inspecteur.
+describe('UX-8 — enregistrements locaux d\'un autre compte', () => {
+  test('l\'ouverture de session emporte ce qui appartient a un autre compte, et garde le reste', async () => {
+    setOfflineUser(USER);
+    await outbox.put(entry({ id: 'ob-mienne', ownerUserId: USER }));
+    await outbox.put(entry({ id: 'ob-autre', ownerUserId: 'quelqu-un-d-autre' }));
+    await idbTx(INTAKE_CONTEXT_STORE, 'readwrite', (s) => s.put({
+      key: 'quelqu-un-d-autre::b1', dataType: 'intake_context', ownerUserId: 'quelqu-un-d-autre',
+      baseId: 'b1', baseName: 'Base fictive', preparedAt: 0, expiresAt: Date.now() + 60_000,
+    }));
+
+    expect(await purgeForeignOfflineRecords(USER)).toBe(2);
+    expect(await outbox.get('ob-mienne')).not.toBeNull();
+    expect(await outbox.get('ob-autre')).toBeNull();
+    const contextes = await idbTx<Array<{ ownerUserId?: string | null }>>(INTAKE_CONTEXT_STORE, 'readonly', (s) => s.getAll());
+    expect(contextes.some((c) => c.ownerUserId === 'quelqu-un-d-autre')).toBe(false);
   });
 });

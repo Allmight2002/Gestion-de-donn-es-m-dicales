@@ -103,6 +103,9 @@ export function BaseHome() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
+  // UX-12(c) : chercher par code ou par nom. Le mode n'est qu'un choix d'écran ; c'est le
+  // serveur qui décide si une recherche nominative est permise, et il ne rend jamais de nom.
+  const [searchMode, setSearchMode] = useState<'code' | 'name'>('code');
   const [sort, setSort] = useState<SortChoice>(DEFAULT_SORT);
   // Copie hors-ligne (controles disponibles en ligne).
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
@@ -120,7 +123,7 @@ export function BaseHome() {
   const [context, setContext] = useState(id);
   if (context !== id) {
     setContext(id);
-    setPage(0); setSearch(''); setAppliedSearch(''); setSort(DEFAULT_SORT);
+    setPage(0); setSearch(''); setAppliedSearch(''); setSort(DEFAULT_SORT); setSearchMode('code');
     setRows([]); setTotal(0); setBaseName(''); setListing(null); setError(null); setLoadFailed(false);
   }
 
@@ -184,12 +187,28 @@ export function BaseHome() {
       // EN LIGNE : base + page de patients EN PARALLELE (independants), puis champs du gabarit.
       setOfflineView(false);
       setIntakeOfflineView(false);
+      // UX-12(c) : une recherche par NOM se résout en deux temps. L'opération auditée rend des
+      // identifiants — jamais un nom —, et la page analytique est ensuite relue par le chemin
+      // habituel, sous la RLS. Sans terme, ou hors mode nominatif, rien ne change.
+      const nameSearch = searchMode === 'name' && appliedSearch !== '' && !!patients.searchPatientIdsByIdentity;
       const [baseResult, pageResult] = await Promise.allSettled([
         bases.getBase(id),
-        patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE, {
-          codeQuery: appliedSearch || null,
-          sort: { field: sort.field, direction: sort.direction },
-        }),
+        nameSearch
+          ? patients.searchPatientIdsByIdentity!(id, appliedSearch, PAGE_SIZE, page * PAGE_SIZE)
+            .then(async (found) => (found.ids.length === 0
+              ? { rows: [], total: found.total }
+              : patients.listPatientsPage(id, found.ids.length, 0, { ids: found.ids })
+                .then((listed) => ({
+                  // L'ordre est celui décidé par le serveur : le relire ici ne doit pas le perdre.
+                  rows: found.ids
+                    .map((patientId) => listed.rows.find((row) => row.id === patientId))
+                    .filter((row): row is (typeof listed.rows)[number] => !!row),
+                  total: found.total,
+                }))))
+          : patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE, {
+            codeQuery: appliedSearch || null,
+            sort: { field: sort.field, direction: sort.direction },
+          }),
       ]);
       if (isCancelled()) return;
       if (baseResult.status === 'rejected') throw baseResult.reason;
@@ -238,7 +257,7 @@ export function BaseHome() {
       if (!isCancelled()) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, page, online, bases, templates, patients, appliedSearch, sort.field, sort.direction, columnsKey]);
+  }, [id, page, online, bases, templates, patients, appliedSearch, searchMode, sort.field, sort.direction, columnsKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -356,6 +375,17 @@ export function BaseHome() {
   const canManageOffline = !offlineView && !!listing && !isMissionAccess;
   const visibleFields = fields.filter((field) => visibleFieldKeys.includes(field.fieldKey));
   const searching = appliedSearch !== '';
+  // Rôle ET permission sur cette base, plus un serveur qui sait répondre. Les trois sont
+  // nécessaires : le rôle gouverne l'affichage du champ, la permission gouverne ce que la
+  // recherche peut faire remonter, et l'absence d'opération serveur ne se devine pas.
+  const identitySearchAvailable = !offlineView
+    && profile?.globalRole === 'medecin'
+    && !!listing?.permissions.canViewIdentity
+    && !!patients.searchPatientIdsByIdentity;
+  // Droit révoqué, base changée ou passage hors connexion : le mode revient au code PENDANT
+  // le rendu, avant qu'une requête ne parte encore en nominatif. Le serveur refuserait de
+  // toute façon, mais l'écran ne doit pas continuer à proposer ce qu'il n'a plus.
+  if (searchMode === 'name' && !identitySearchAvailable && !loading) setSearchMode('code');
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const applyColumns = (next: string[]) => { setVisibleFieldKeys(next); writeStoredColumns(columnsKey, next); };
   const changeSort = (next: SortChoice) => { setSort(next); setPage(0); };
@@ -509,19 +539,44 @@ export function BaseHome() {
                 <label className="form-label" htmlFor="patient-search">{t('patient.search')}</label>
                 <div className="flex items-center gap-2">
                   <Search size={16} aria-hidden className="shrink-0 text-slate-400" />
+                  {/* UX-12(c) : le mode nominatif n'est proposé qu'à un médecin disposant du
+                      droit d'identité sur CETTE base, et seulement si le serveur sait le
+                      traiter. Ce contrôle est un confort d'écran : l'autorisation, elle, est
+                      revérifiée par l'opération serveur, qui ne rend que des identifiants. */}
+                  {identitySearchAvailable && (
+                    <label className="sr-only" htmlFor="patient-search-mode">{t('patient.search_by')}</label>
+                  )}
+                  {identitySearchAvailable && (
+                    <select id="patient-search-mode" className="input w-auto shrink-0" value={searchMode}
+                      aria-label={t('patient.search_by')}
+                      onChange={(event) => { setSearchMode(event.target.value as 'code' | 'name'); setPage(0); }}>
+                      <option value="code">{t('patient.search_mode_code')}</option>
+                      <option value="name">{t('patient.search_mode_identity')}</option>
+                    </select>
+                  )}
                   <input id="patient-search" type="search" className="input" value={search} autoComplete="off"
-                    placeholder={t('patient.search_placeholder')} onChange={(event) => setSearch(event.target.value)} />
+                    placeholder={t(searchMode === 'name' ? 'patient.search_name_placeholder' : 'patient.search_placeholder')}
+                    onChange={(event) => setSearch(event.target.value)} />
                   {search !== '' && (
                     <button type="button" className="btn-ghost min-h-11 shrink-0 px-2" onClick={() => setSearch('')}>
                       {t('patient.search_clear')}
                     </button>
                   )}
                 </div>
-                <p className="helper-text">{t('patient.search_mode_code')} · {t('patient.search_identity_unavailable')}</p>
+                <p className="helper-text">
+                  {searchMode === 'name'
+                    ? t('patient.search_mode_name_note')
+                    : `${t('patient.search_mode_code')}${identitySearchAvailable ? '' : ` · ${t('patient.search_identity_unavailable')}`}`}
+                </p>
+                {searchMode === 'name' && search.trim() !== '' && search.trim().length < 2 && (
+                  <p role="status" className="helper-text text-amber-800">{t('patient.search_name_too_short')}</p>
+                )}
               </div>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="form-label" htmlFor="patient-sort">{t('patient.sort')}
-                  <select id="patient-sort" className="input" value={sort.field}
+                  {/* En recherche nominative, l'ordre est celui du code, decide par le
+                      serveur : laisser le tri actif afficherait un controle sans effet. */}
+                  <select id="patient-sort" className="input" value={sort.field} disabled={searchMode === 'name' && searching}
                     onChange={(event) => changeSort({ ...sort, field: event.target.value as PatientSortField })}>
                     <option value="created_at">{t('patient.sort_created')}</option>
                     <option value="patient_code">{t('patient.sort_code')}</option>

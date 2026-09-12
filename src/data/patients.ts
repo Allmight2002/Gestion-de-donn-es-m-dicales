@@ -158,6 +158,17 @@ export interface PatientRepository {
   listPatientsPage(
     baseId: string, limit: number, offset: number, options?: PatientListQuery,
   ): Promise<{ rows: PatientListItem[]; total: number }>;
+  /**
+   * UX-12(c) — identifiants des patients de cette base dont le NOM correspond au terme.
+   *
+   * Le serveur vérifie le rôle et la permission d'identité sur cette base, journalise l'accès
+   * sans le terme, et ne rend que des identifiants : aucun nom ne traverse cette frontière.
+   * Absente quand le serveur ignore encore l'opération ; l'écran garde alors la recherche par
+   * code et annonce l'indisponibilité, au lieu d'émettre une requête qui échouerait.
+   */
+  searchPatientIdsByIdentity?(
+    baseId: string, term: string, limit: number, offset: number,
+  ): Promise<{ ids: string[]; total: number }>;
   /** §8 — Instantane ANALYTIQUE complet (patients + rencontres + champs) en UN appel (hors-ligne). */
   fetchBaseSnapshot(baseId: string): Promise<RawSnapshotData | null>;
   /** §7.6 — Avertit (a l'apercu) des rencontres ressemblant a des rencontres deja enregistrees. */
@@ -217,6 +228,12 @@ export interface PatientListQuery {
   /** Recherche par code patient, appliquee par le serveur AVANT la pagination. */
   codeQuery?: string | null;
   sort?: { field: PatientSortField; direction: 'asc' | 'desc' };
+  /**
+   * UX-12(c) : restreint la page à ces identifiants, déjà résolus par la recherche nominative
+   * auditée. La ligne reste lue par le chemin analytique habituel, sous la RLS : l'identité
+   * sert à TROUVER le patient, jamais à le décrire.
+   */
+  ids?: readonly string[] | null;
 }
 
 /** Neutralise les jokers d'un motif LIKE saisi par l'utilisateur : « 10 % » cherche ce texte,
@@ -337,6 +354,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
           .eq('base_id', baseId)
           .is('deleted_at', null);
         if (needle) request = request.ilike('patient_code', `%${escapeLikePattern(needle)}%`);
+        if (options?.ids) request = request.in('id', [...options.ids]);
         return request
           .order(sort.field, { ascending: sort.direction === 'asc' })
           .order('id', { ascending: true })
@@ -352,6 +370,17 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (legacy.error) throw legacy.error;
       const rows = (legacy.data ?? []) as unknown as PatientRow[];
       return { rows: rows.map(toListItem), total: legacy.count ?? rows.length };
+    },
+
+    async searchPatientIdsByIdentity(baseId, term, limit, offset) {
+      // RG-9 : la réponse ne contient que des identifiants et un total. Les lignes affichées
+      // sont ensuite relues par le chemin analytique habituel, sous la RLS.
+      const { data, error } = await client.rpc('search_patient_ids_by_identity', {
+        p_base_id: baseId, p_term: term, p_limit: limit, p_offset: offset,
+      });
+      if (error) throw error;
+      const rows = (data ?? []) as { patient_id: string; total: number | string }[];
+      return { ids: rows.map((row) => row.patient_id), total: Number(rows[0]?.total ?? 0) };
     },
 
     async fetchBaseSnapshot(baseId) {

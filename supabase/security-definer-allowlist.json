@@ -69,6 +69,7 @@
         "base_identity_audit(p_base_id uuid)",
         "find_identity_matches(p_base_id uuid, p_full_name text, p_date_of_birth date)",
         "get_patient_identity(p_patient_id uuid)",
+        "search_patient_ids_by_identity(p_base_id uuid, p_term text, p_limit integer, p_offset integer)",
         "log_attachment_read(p_attachment_id uuid)",
         "log_export_read(p_export_id uuid)",
         "log_identity_read(p_patient_id uuid)",

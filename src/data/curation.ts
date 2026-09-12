@@ -374,7 +374,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
       const v = await inspectFile(input.file);
       if (!v.ok) throw new Error(v.error);
       const fileHash = await sha256Hex(input.file);
-      const operationKey = stableUploadOperationKey(
+      const operationKey = await stableUploadOperationKey(
         `raw-document:${input.baseId}:${input.submissionId}:${v.ext}`,
         fileHash,
         input.label ?? null,

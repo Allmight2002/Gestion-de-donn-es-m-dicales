@@ -426,3 +426,40 @@ describe('TemplateVersionEditor — créer des règles similaires (UX-14(c))', (
     expect(screen.getByLabelText('Variable de référence')).toHaveValue('hemoglobine');
   });
 });
+
+// UX-14(d) — déplacement direct. La rangée propose une commande explicite ; le glisser-déposer
+// et les flèches restent, mais ils ne sont plus la seule façon de franchir 216 rangs.
+describe('TemplateVersionEditor — déplacement direct (UX-14(d))', () => {
+  test('déplace une variable vers une autre section sans réécrire ses attributs', async () => {
+    const user = userEvent.setup();
+    const reorderFields = vi.fn(async () => {});
+    const { repo, updateField } = makeRepository();
+    const withReorder = { ...repo, reorderFields } as unknown as TemplateRepository;
+    renderEditor(withReorder);
+
+    await user.click(await screen.findByRole('button', { name: 'Déplacer · Tension artérielle' }));
+    const dialogue = screen.getByRole('dialog', { name: /Déplacer « Tension artérielle »/ });
+    await user.selectOptions(within(dialogue).getByLabelText('Section d’arrivée'), 'biologie');
+    await user.selectOptions(within(dialogue).getByLabelText('Variable de repère'), 'hemoglobine');
+    // La destination est annoncée avant la confirmation, pas après.
+    expect(within(dialogue).getByText(/sera placée après « Hémoglobine », dans Biologie/)).toBeInTheDocument();
+    await user.click(within(dialogue).getByRole('button', { name: 'Déplacer la variable' }));
+
+    // La section part par la voie de modification habituelle, avec TOUS les attributs relus.
+    await waitFor(() => expect(updateField).toHaveBeenCalledTimes(1));
+    expect(updateField.mock.calls[0][1]).toMatchObject({
+      fieldKey: 'tension', label: 'Tension artérielle', section: 'biologie', required: true, type: 'text',
+    });
+    // Puis le rang, en une seule écriture d'ordre pour toute la version.
+    expect(reorderFields).toHaveBeenCalledWith('version-1', ['field-2', 'field-1']);
+  });
+
+  test('un tri de consultation ne propose pas le déplacement : il n’écrit aucun ordre', async () => {
+    const user = userEvent.setup();
+    const { repo } = makeRepository();
+    renderEditor({ ...repo, reorderFields: vi.fn() } as unknown as TemplateRepository);
+
+    await user.selectOptions(await screen.findByLabelText('Trier l’affichage'), 'label');
+    expect(screen.getByRole('button', { name: 'Déplacer · Tension artérielle' })).toBeDisabled();
+  });
+});

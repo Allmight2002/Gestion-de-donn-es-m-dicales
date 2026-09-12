@@ -698,6 +698,50 @@ export async function purgeExpiredIntakeContexts(now = Date.now()): Promise<numb
   });
 }
 
+/**
+ * UX-8 — poste partage, cote IndexedDB.
+ *
+ * Le cloisonnement inter-comptes reposait ENTIEREMENT sur le marqueur de proprietaire en
+ * `localStorage` : si son ecriture avait echoue, ou si `localStorage` avait ete vide sans
+ * IndexedDB, aucun changement de proprietaire n'etait detecte et la file d'un autre compte —
+ * qui porte nom, date de naissance et telephone d'une creation intake — restait sur
+ * l'appareil. L'application ne la lisait pas ; l'inspecteur du navigateur, si.
+ *
+ * Cette purge ne juge que ce qu'elle peut etablir : un enregistrement dont le proprietaire est
+ * CONNU et different de celui qui ouvre la session. Les enregistrements sans proprietaire sont
+ * laisses aux balayages d'expiration, qui les traitent deja.
+ */
+export async function purgeForeignOfflineRecords(userId: string): Promise<number> {
+  // Un store a la fois : une transaction d'ecriture couvrant les quatre stores les verrouille
+  // tous pendant tout le balayage, et rien ici ne justifie de retenir la file pendant qu'on
+  // inspecte les instantanes.
+  const stores: Array<[string, 'key' | 'id']> = [
+    [STORE, 'key'], [OUTBOX_STORE, 'id'], [INTAKE_CONTEXT_STORE, 'key'], [LOCAL_WORK_DRAFT_STORE, 'id'],
+  ];
+  let removed = 0;
+  for (const [name, keyPath] of stores) {
+    try {
+      removed += await idbAtomic<number>([name], (transaction, done) => {
+        const objectStore = transaction.objectStore(name);
+        const request = objectStore.getAll();
+        request.onsuccess = () => {
+          let purged = 0;
+          for (const record of request.result as Array<Record<string, unknown>>) {
+            const owner = record.ownerUserId;
+            const identifier = record[keyPath];
+            if (typeof owner === 'string' && owner !== '' && owner !== userId && typeof identifier === 'string') {
+              objectStore.delete(identifier);
+              purged += 1;
+            }
+          }
+          done(purged);
+        };
+      });
+    } catch { /* Un store indisponible ne doit pas empecher le balayage des autres. */ }
+  }
+  return removed;
+}
+
 export interface OfflinePurgeReport { indexedDb: boolean; localStorage: boolean; cacheStorage: boolean; serviceWorkers: boolean; errors: string[]; }
 
 const OFFLINE_OWNER_KEY = 'meddata:offline-cache-owner';
@@ -768,6 +812,12 @@ export async function initializeOfflineForUser(
     localStorage.setItem(OFFLINE_OWNER_KEY, userId);
     setOfflineUser(userId);
     report.recoveredSyncing = await recoverAbandonedSyncing();
+    // UX-8 : defense en profondeur, APRES la decision de proprietaire et sans etre attendue.
+    // Avant elle, une connexion ouverte par ce balayage bloquait `deleteDatabase` — la purge
+    // inter-comptes, justement, celle qui compte — et l'initialisation echouait pour un menage
+    // facultatif. Ici, un changement de proprietaire a deja tout efface ; il ne reste qu'a
+    // ramasser ce qu'un marqueur perdu aurait laisse passer.
+    void purgeForeignOfflineRecords(userId).catch(() => undefined);
   } catch (e) {
     setOfflineUser(null);
     report.errors.push(`Initialisation hors-ligne: ${String(e)}`);
