@@ -218,6 +218,190 @@ modifié par d'autres chantiers en parallèle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 ```
+## L61 — Stabiliser et prouver le socle actuel de la liste patient
+
+\`\`\`text
+Tu prends le lot L61 uniquement, dans le dépôt MedData. Lis d'abord
+docs/l61-liste-patients-recherche-tri-identite.md puis sa fiche dans docs/lots-paralleles.md.
+Préserve toutes les modifications locales étrangères au lot ; ne réinitialise, ne déplace et ne
+reformate pas le travail des autres personnes.
+
+OBJECTIF.
+Établir si le socle déjà présent fonctionne réellement : préférence de colonnes par utilisateur et
+par base, purge des clés devenues invalides, recherche par code avant pagination, tris techniques
+created_at/patient_code, retour page 1 après recherche/tri et changement de base. Le code actuel
+ne doit pas être réécrit sous une seconde architecture.
+
+POINT DE DÉPART À VÉRIFIER, PAS À SUPPOSER.
+BaseHome.tsx semble déjà utiliser la clé locale meddata:columns:<user>:<base>, et patients.ts
+semble déjà effectuer filtre, ordre et range côté serveur. Patients.test.tsx contient des scénarios
+pour cette surface. Inspecte les contrats et les tests avant toute modification. Une exécution du
+2026-09-11 a rapporté 18 assertions réussies mais une terminaison Vitest -1073741819 : elle ne
+suffit pas à qualifier le lot de validé.
+
+PÉRIMÈTRE STRICT.
+- Tu peux corriger un défaut démontré dans ce socle et ajouter le test ciblé correspondant.
+- Tu n'ajoutes PAS de tri par variable clinique, de champ de nom, de recherche nominative, de
+  migration, de RPC d'identité ni de persistance serveur des préférences : ce sont L62 à L64.
+- Tu ne rouvres pas CommandPalette, l'offline, l'export ou les données d'identité.
+- N'utilise pas npm.ps1 sous Windows : emploie npm.cmd. Ne lance aucun test contre un cloud ou
+  des données réelles.
+
+PREUVES ATTENDUES.
+1. Tests web ciblés avec code de sortie sain ; explicite si le runner ou l'environnement échoue.
+2. Vérification navigateur local, si disponible, de recharge, changement de compte/base,
+   recherche d'un code hors première page et ordre ascendant/descendant.
+3. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié sur la cible.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante. Consigne
+uniquement les preuves réellement obtenues dans la documentation de suivi si le lot est terminé.
+\`\`\`
+
+## L62 — Contrat serveur de tri par variable analytique
+
+\`\`\`text
+Tu prends L62 uniquement. Lis docs/l61-liste-patients-recherche-tri-identite.md, le guide
+meddata-db-safety, les migrations et contrats patients actuels avant d'écrire. L61 doit avoir
+stabilisé le socle ; s'il échoue, rapporte le blocage sans contourner son contrat.
+
+OBJECTIF.
+Permettre de trier la liste d'une base par une variable analytique patient autorisée, avant
+pagination, sans créer une voie d'accès à l'identité. Conserve les tris created_at et patient_code.
+Un seul responsable possède migration/RPC éventuelle, repository et tests couplés.
+
+CONTRAT À ARRÊTER AVANT L'UI.
+- Le serveur résout la clé contre la base et sa version de gabarit active ; le navigateur ne fournit
+  jamais un fragment SQL ou une clé libre interpolée.
+- Dresse la table des types réellement supportés et leur ordre scalaire. Les valeurs absentes vont
+  après les valeurs présentes dans les deux sens ; les égalités ont un départage stable par id.
+  Refuse explicitement un type complexe sans sémantique définie plutôt que le convertir en texte.
+- Filtre, ordre, total et range sont appliqués dans cet ordre. Une clé supprimée, d'une autre base
+  ou interdite n'affiche ni donnée ni détail interne.
+- Mesure une fixture représentative. Ne crée pas un index JSONB générique par réflexe ; justifie
+  tout index par la requête et son coût d'écriture.
+
+SÉCURITÉ ET MIGRATION.
+Préserve RLS et la pseudonymisation. Préfère SECURITY INVOKER si le contrat le permet. Si une
+SECURITY DEFINER est indispensable, justifie-la ; impose auth.uid, search_path sûr, validation de
+tous les paramètres, droits EXECUTE minimaux et tests ACL. Crée une migration horodatée additive,
+ne modifie jamais une migration existante. Après migration, exécute npm.cmd run schema, inspecte
+le snapshot, puis npm.cmd run schema:check.
+
+TESTS MINIMAUX.
+Ajoute des preuves DB pour autorisé/refusé, inter-base, clé forgée, valeurs absentes, égalités,
+pagination consécutive et compatibilité des tris techniques. Ajoute le test repository/web requis
+sans implémenter l'interface L63. Rapporte séparément les tests passés, les limites de performance
+mesurées et l'absence de preuve cloud.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique pas de migration distante.
+\`\`\`
+
+## L63 — Sélecteur accessible de variable et deux sens de tri
+
+\`\`\`text
+Tu prends L63 uniquement, après L62. Lis le contrat L62 effectivement livré : ne recode pas une
+sémantique de tri dans le navigateur et ne suppose pas qu'une variable est triable parce qu'elle
+est visible dans le tableau.
+
+OBJECTIF.
+Dans BaseHome, proposer les variables analytiques réellement déclarées supportées par L62, puis
+deux actions explicites pour l'ordre croissant et décroissant. La personne comprend quelle
+variable est active et quel sens est appliqué, au clavier, au lecteur d'écran, en français/anglais
+et sur petit écran.
+
+RÈGLES.
+- Tout changement de variable, sens ou recherche ramène à la première page ; une réponse tardive
+  d'un contexte précédent ne remplace jamais les résultats actuels.
+- Le contrôle appelle le contrat repository de L62 ; aucun tri local de la page chargée, aucun
+  fallback silencieux vers un ordre différent.
+- Garde les tris techniques existants tant que le produit les propose. Les types refusés par L62
+  sont absents ou explicitement indisponibles avec une explication accessible.
+- Ne persiste pas le tri sans décision distincte. Ne touche ni au nom complet, ni à la recherche
+  nominative, ni aux migrations/RLS : L64 les possède.
+
+TESTS ET SORTIE.
+Ajoute des tests de sélection, sens, remise à la page 1, pagination, état actif et erreur serveur,
+avec au moins une largeur mobile. Vérifie que la préférence de colonnes reste indépendante du tri.
+Rapporte le résultat de chaque commande et ne qualifie pas le lot de validé si le processus de test
+termine anormalement.
+
+Préserve le worktree ; ne committe, ne pousse, ne fusionne et ne déploie rien.
+\`\`\`
+
+## L64 — Nom complet sélectionnable et recherche nominative auditée
+
+\`\`\`text
+Tu prends L64 uniquement, après L63. C'est un lot d'identité : lis intégralement le guide
+meddata-db-safety, ses références authorization/migrations/testing, les fonctions actuelles
+can_view_identity, get_patient_identity, find_identity_matches, l'allowlist SECURITY DEFINER et
+les tests ACL avant d'écrire. Le contrôle d'interface ne constitue jamais une autorisation.
+
+OBJECTIF PRODUIT BORNE.
+Un médecin disposant de can_view_identity sur la base peut, en ligne, sélectionner « Nom complet »
+dans la liste et rechercher par nom dans cette même base. Les personnes sans cette permission
+continuent éventuellement leur recherche par code, mais ne voient aucun nom ni indice d'identité.
+La palette globale, l'offline, les exports, les documents bruts, la date de naissance et toute
+nouvelle synchronisation de préférences restent hors périmètre.
+
+CONTRAT SERVEUR OBLIGATOIRE.
+- patient_identity ne doit jamais être sélectionnée directement par le client, ni en N appels
+  get_patient_identity pour une page de liste.
+- La nouvelle opération contrôlée vérifie authentification, rôle medecin, appartenance à la base et
+  can_view_identity AVANT chaque résultat. Elle limite strictement colonnes et base demandées.
+- Le terme nominatif et les valeurs révélées ne vont ni dans URL, telemetry, messages d'erreur,
+  cache, localStorage, export ni métadonnées d'audit. L'audit constate l'accès nécessaire sans
+  enregistrer le nom recherché.
+- Toute SECURITY DEFINER est additive, avec search_path sûr, paramètres validés, EXECUTE minimal,
+  révocation PUBLIC adaptée, allowlist et tests. Ne relâche aucune policy RLS pour « faire marcher »
+  l'écran.
+- À la révocation ou au rechargement sans droit, le client masque les valeurs mémorisées et purge
+  la clé de préférence de colonne devenue interdite.
+
+PREUVES OBLIGATOIRES.
+1. Tests DB/RLS/ACL : médecin autorisé, médecin sans permission, curateur, saisisseur,
+   administrateur, autre base, accès direct patient_identity, identifiant forgé et révocation.
+2. Tests web : colonne absente sans droit, recherche code inchangée, nom affiché/recherché seulement
+   avec droit, valeurs supprimées après perte de droit.
+3. Après migration : npm.cmd run schema, inspection du snapshot, npm.cmd run schema:check.
+4. Parcours navigateur local avec données fictives ; le résultat reste distinct de toute preuve
+   staging/production.
+
+Actualise la règle métier RG-9 et l'état de la documentation seulement avec des faits prouvés.
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique pas de migration distante.
+\`\`\`
+
+## L65 — Preuves intégrées, performance et clôture documentaire
+
+\`\`\`text
+Tu prends L65 après L61, L62, L63 et L64. Tu es un valideur : n'élargis aucune fonctionnalité et
+ne remplaces pas les preuves manquantes par une hypothèse. Lis le contrat complet
+docs/l61-liste-patients-recherche-tri-identite.md et les diff des quatre lots avant de tester.
+
+OBJECTIF.
+Produire une décision de validation exploitable de la liste patient : persistance de colonnes,
+recherche code, tri par variable, nom/recherche nominative et non-divulgation. Distingue toujours
+spécifié, implémenté, validé localement, validé navigateur et validé sur cible.
+
+MATRICE MINIMALE.
+- recharge, changement de compte/base et clé de colonne périmée ;
+- recherche d'un code au-delà de la première page ;
+- ordre ascendant/descendant, valeurs absentes, égalités et continuité entre pages ;
+- variable interdite, supprimée ou appartenant à une autre base ;
+- médecin avec/sans can_view_identity, curateur, saisisseur et administrateur ;
+- accès direct refusé à patient_identity, révocation après affichage, audit sans terme nominatif ;
+- URL, localStorage, snapshot offline et export exempts de nom/date de naissance/terme recherché ;
+- mesure reproductible du tri/recherche sur données fictives représentatives.
+
+Si L62 ou L64 a créé une migration, vérifie la présence du snapshot et le succès de schema:check ;
+ne le régénère pas dans une revue pure. Un test mocké ne remplace pas un test RLS/ACL avec des rôles
+réels. Une CI verte, un build ou du code présent ne prouve pas un parcours navigateur ni un cloud.
+
+CONCLUSION.
+Fournis un tableau de preuves avec commande, portée, résultat et limite. Classe chaque défaut comme
+confirmé ou risque non vérifié, puis mets à jour docs/suivi-execution-feuille-route.md seulement si
+le résultat est factuel. N'effectue aucune correction de produit, aucun commit, push, fusion,
+déploiement ou action cloud sans autorisation explicite.
+\`\`\`
 
 ---
 

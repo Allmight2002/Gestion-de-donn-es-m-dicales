@@ -5,12 +5,14 @@ import type { MessageKey } from '../../i18n/messages';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
+import { isTerminologyList, isTerminologyValue } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
-import { EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
+import { CalculatedValue, EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
 import { FieldInput } from '../member/FieldInput';
 import { ChoiceWithProposal } from '../member/ChoiceWithProposal';
-import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
+import { DiagnosisCoverageNotice, useDiagnosisCoverage } from '../member/DiagnosisCoverageNotice';
+import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 
 // L29 — apercu du formulaire tel que le verra la personne qui saisit, sans creer de
 // patient d'essai.
@@ -107,17 +109,65 @@ export function FormPreview({
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
 
   // Meme filtre que le formulaire reel : le type de rencontre pilote les variables affichees.
-  const applicable = encounterFields.filter((f) => fieldAppliesToType(f, encounterType));
+  const applicable = useMemo(() => encounterFields.filter((f) => fieldAppliesToType(f, encounterType)), [encounterFields, encounterType]);
 
   // Les champs compagnons « valeur proposee » sont rendus AVEC leur source, jamais isolement.
   const patientCompanions = proposalKeysOf(patientFields);
   // L32 — l'apercu montre EXACTEMENT ce que la saisie montrera, regles d'affichage comprises :
   // c'est la seule facon de verifier une regle qu'on vient d'ecrire sans creer de fiche d'essai.
   const patientHidden = useMemo(() => hiddenFieldKeys(rules, patientValues, patientFields, sections), [rules, patientValues, patientFields, sections]);
-  const encounterHidden = useMemo(() => hiddenFieldKeys(rules, encounterValues, applicable, sections), [rules, encounterValues, applicable, sections]);
+  const encounterHidden = useMemo(() => {
+    const active = Object.fromEntries(Object.entries(encounterValues).filter(([key]) => applicable.some((field) => field.fieldKey === key)));
+    const hidden = hiddenFieldKeys(rules, active, applicable, sections);
+    for (const field of encounterFields) if (!applicable.includes(field)) hidden.add(field.fieldKey);
+    return hidden;
+  }, [rules, encounterValues, applicable, encounterFields, sections]);
   const patientVisible = patientFields.filter(
     (f) => !patientCompanions.has(f.fieldKey) && !patientHidden.has(f.fieldKey),
   );
+  // The same derived, non-persistent coverage as clinical entry, independent of completeness.
+  const coverage = useDiagnosisCoverage(version.id, version.diagnosisContext, tab,
+    tab === 'patient' ? patientValues : encounterValues, fields, rules, sections ?? []);
+
+  // Scenarios de diagnostic.
+  //
+  // Le champ diagnostic reste le VRAI champ de terminologie, rendu par le vrai composant ;
+  // mais `INERT_TERMINOLOGY` ne repond aucun code, donc la recherche ne peut rien proposer
+  // et l'apercu ne pourrait JAMAIS montrer un bloc conditionne. Ces cases cochent des codes
+  // que la VERSION reconnait deja (`diagnosisContext.recognizedCodes`) et ecrivent dans les
+  // memes `values` que la saisie : c'est `hiddenFieldKeys` et `calculateDiagnosisCoverage`
+  // — le moteur reel — qui en tirent l'affichage et la couverture. Aucun moteur parallele,
+  // aucune ecriture : les valeurs vivent dans l'etat local de l'apercu.
+  const scenarioContext = version.diagnosisContext?.find((context) => context.scope === tab);
+  const scenarioField = scenarioContext
+    ? fields.find((f) => f.fieldKey === scenarioContext.diagnosisFieldKey && f.scope === tab)
+    : undefined;
+  const scenarioCodes = scenarioField?.type === 'terminology' ? scenarioContext?.recognizedCodes ?? [] : [];
+  const scenarioValues = tab === 'patient' ? patientValues : encounterValues;
+  const setScenarioValues = tab === 'patient' ? setPatientValues : setEncounterValues;
+  const rawScenario = scenarioField ? scenarioValues[scenarioField.fieldKey] : undefined;
+  const scenarioSelection = isTerminologyList(rawScenario)
+    ? rawScenario.map((entry) => entry.code)
+    : isTerminologyValue(rawScenario) ? [rawScenario.code] : [];
+  function toggleScenarioCode(code: string) {
+    if (!scenarioField) return;
+    const key = scenarioField.fieldKey;
+    const multiple = scenarioField.isMultiple === true;
+    const next = scenarioSelection.includes(code)
+      ? scenarioSelection.filter((item) => item !== code)
+      : multiple ? [...scenarioSelection, code] : [code];
+    setScenarioValues((current) => {
+      const copy = { ...current };
+      // Le tableau vide n'est pas une valeur (L21) : « aucun diagnostic » = cle absente.
+      if (next.length === 0) delete copy[key];
+      // Le libelle du referentiel n'est pas telecharge en apercu : le code fait office de
+      // libelle plutot que d'inventer un intitule clinique.
+      else copy[key] = multiple
+        ? next.map((item) => ({ code: item, label: item }))
+        : { code: next[0], label: next[0] };
+      return copy;
+    });
+  }
 
   /**
    * Rejoue les controles du formulaire de rencontre — `validateValues` et `evaluateRules`,
@@ -132,7 +182,7 @@ export function FormPreview({
       ),
       encounterHidden,
     ).values;
-    const requireComplete = status === 'curated';
+    const requireComplete = status !== 'draft';
     const fieldErrors = validateValues(applicable, applicableData, requireComplete, encounterHidden).map(
       (fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`,
     );
@@ -216,12 +266,34 @@ export function FormPreview({
         className={
           viewport === 'mobile'
             ? 'mx-auto max-w-full overflow-hidden rounded-[2rem] border-8 border-slate-800 bg-white p-4 shadow-xl dark:bg-slate-950'
-            : 'max-w-2xl'
+            : 'max-w-5xl'
         }
       >
         {/* Depots inertes pour tout le sous-arbre de saisie : aucune ecriture possible. */}
         <RepositoryProvider terminology={INERT_TERMINOLOGY}>
-          <div className="space-y-5">
+          {scenarioCodes.length > 0 && scenarioField && (
+            <fieldset className="rounded-xl border border-slate-200 p-3">
+              <legend className="px-1 text-sm font-medium">{t('preview.diagnosis_scenario')}</legend>
+              <p className="mb-2 text-xs text-slate-600">{t('preview.diagnosis_scenario_help')}</p>
+              <div className="flex flex-wrap gap-2">
+                {scenarioCodes.map((code) => (
+                  <label key={code} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={scenarioSelection.includes(code)}
+                      onChange={() => toggleScenarioCode(code)}
+                    />
+                    <span className="font-mono text-xs">{code}</span>
+                  </label>
+                ))}
+              </div>
+              {scenarioSelection.length === 0 && (
+                <p className="mt-2 text-xs text-slate-500">{t('preview.diagnosis_scenario_none')}</p>
+              )}
+            </fieldset>
+          )}
+          <DiagnosisCoverageNotice coverage={coverage} />
+          <div className="@container/preview space-y-5">
             {tab === 'patient' ? (
               <>
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
@@ -237,6 +309,11 @@ export function FormPreview({
                   <SectionedFields
                     fields={patientVisible}
                     sections={sections}
+                    commonLayout={version.commonLayout}
+                    allFields={patientFields}
+                    values={patientValues}
+                    rules={rules}
+                    hiddenKeys={patientHidden}
                     renderField={(field) => {
                       const proposal = isProposalSource(field) ? findProposalField(patientFields, field) : undefined;
                       const renderedUnit = previewUnit(field, patientFields, t);
@@ -248,7 +325,7 @@ export function FormPreview({
                             {renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
                           </span>
                           <div className="mt-1">
-                            {proposal ? (
+                            {isCalculatedField(field) ? <CalculatedValue field={field} values={withoutHiddenValues(patientValues, patientHidden).values} fields={patientFields} /> : proposal ? (
                               <ChoiceWithProposal
                                 field={field}
                                 proposal={proposal}
@@ -278,7 +355,7 @@ export function FormPreview({
               <>
                 {/* Entete reelle du formulaire de rencontre : type, date, statut. Le type
                     pilote les variables affichees, le statut la severite des controles. */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 @min-[32rem]/preview:grid-cols-3">
                   <label className="flex flex-col text-sm">
                     <span className="text-slate-700 dark:text-slate-200">{t('encounter.type')}</span>
                     <select
@@ -323,6 +400,9 @@ export function FormPreview({
                     hiddenKeys={encounterHidden}
                     fields={applicable}
                     sections={sections}
+                    commonLayout={version.commonLayout}
+                    rules={rules}
+                    requireComplete={status !== 'draft'}
                     values={encounterValues}
                     onChange={(k, v) => setEncounterValues((p) => ({ ...p, [k]: v }))}
                     onRemove={(key) => setEncounterValues((current) => {

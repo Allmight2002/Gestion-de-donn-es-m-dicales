@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { usePatientRepository } from '../../data/RepositoryProvider';
+import { displayFieldValue, type TemplateField } from '../../data/types';
 import {
   discardOutboxEntry, flushOutbox, offlineCache, resolveKeepBoth, resolveKeepMine, resolveKeepServer,
   retryOutboxEntry, useOnline, useOutbox,
@@ -14,6 +15,44 @@ import {
 } from '../../data/offlineIntake';
 import { mergeKeepBoth } from '../../domain/conflictMerge';
 import { recentClientErrors } from '../../lib/reportError';
+
+function conflictValue(value: unknown, field: TemplateField | undefined, unreadable: string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (field) return displayFieldValue(value, '—', field);
+  if (Array.isArray(value)) return value.map((item) => typeof item === 'string' ? item : JSON.stringify(item)).join(', ');
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value); } catch { return unreadable; }
+  }
+  return String(value);
+}
+
+function conflictRows(
+  entry: OutboxEntry,
+  fields: readonly TemplateField[] | undefined,
+  proposed: Record<string, unknown> | null,
+) {
+  const keys = [...new Set([
+    ...Object.keys(entry.data),
+    ...Object.keys(entry.serverData ?? {}),
+  ])];
+  const byKey = new Map(fields?.map((field) => [field.fieldKey, field]) ?? []);
+  return keys
+    .map((key) => {
+      const local = entry.data[key];
+      const server = entry.serverData?.[key];
+      const changed = JSON.stringify(local) !== JSON.stringify(server);
+      return {
+        key,
+        label: byKey.get(key)?.label ?? key,
+        field: byKey.get(key),
+        local,
+        server,
+        changed,
+        proposed: proposed && Object.prototype.hasOwnProperty.call(proposed, key) ? proposed[key] : undefined,
+      };
+    })
+    .filter((row) => row.changed);
+}
 
 // Centre de synchronisation (§13, Phases 2/3) : modifications hors-ligne en attente +
 // resolution des conflits. La synchro rejoue chaque correction via la RPC validee
@@ -301,44 +340,61 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
   // la fonction de domaine, pas de l'ecran : le bouton montre exactement ce que l'action ecrira.
   const merge = useMemo(() => mergeKeepBoth(entry.data, entry.serverData), [entry.data, entry.serverData]);
   const mergeable = merge.mergedKeys.length > 0;
+  const rows = conflictRows(entry, undefined, mergeable ? merge.data : null);
+  const unreadable = t('sync.unreadable_value');
 
   return (
     <div className="card border-red-200 p-4 text-sm">
       <EntryDetails entry={entry} />
       <p className="mb-2 text-xs text-red-700">{t('sync.conflict_explain')}</p>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <div className="mb-1 text-xs font-semibold text-slate-500">{t('sync.mine')}</div>
-          <pre className="overflow-x-auto rounded bg-teal-50 p-2 text-xs text-slate-700">{JSON.stringify(entry.data, null, 2)}</pre>
-        </div>
-        <div>
-          <div className="mb-1 text-xs font-semibold text-slate-500">{t('sync.server')}</div>
-          <pre className="overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-700">{entry.serverData ? JSON.stringify(entry.serverData, null, 2) : '—'}</pre>
-        </div>
+      {/* La version du gabarit n'accompagne pas le conflit : on l'annonce au lieu de laisser
+          croire que les libelles affiches viennent de la bonne version. */}
+      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')}</p>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="min-w-full text-left text-xs" aria-label={t('sync.conflict_table')}>
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th scope="col" className="px-3 py-2 font-semibold">{t('sync.col_field')}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t('sync.col_local')}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t('sync.col_server')}</th>
+              <th scope="col" className="px-3 py-2 font-semibold">{t('sync.col_proposed')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.length === 0 ? (
+              <tr><td colSpan={4} className="px-3 py-3 text-slate-500">{t('sync.no_diff')}</td></tr>
+            ) : rows.map((row) => (
+              <tr key={row.key}>
+                <th scope="row" className="max-w-48 break-words px-3 py-2 font-medium text-slate-700" title={row.key}>{row.label}</th>
+                <td className="max-w-64 break-words px-3 py-2 text-teal-800">{conflictValue(row.local, row.field, unreadable)}</td>
+                <td className="max-w-64 break-words px-3 py-2 text-slate-700">{conflictValue(row.server, row.field, unreadable)}</td>
+                <td className="max-w-64 break-words px-3 py-2 text-amber-900">
+                  {row.proposed === undefined ? '—' : conflictValue(row.proposed, row.field, unreadable)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       {mergeable && (
-        <div className="mt-3">
-          <div className="mb-1 text-xs font-semibold text-slate-500">
-            {t('sync.merged')} · {t('sync.keep_both_recovered')} : {merge.recovered}
-          </div>
-          <pre className="overflow-x-auto rounded bg-amber-50 p-2 text-xs text-slate-700">{JSON.stringify(merge.data, null, 2)}</pre>
-          <p className="mt-1 text-xs text-slate-500">{t('sync.keep_both_explain')}</p>
-        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          {t('sync.merged')} · {t('sync.keep_both_recovered')} : {merge.recovered}. {t('sync.keep_both_explain')}
+        </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button disabled={busy} onClick={() => void run(() => resolveKeepMine(entry.id, deps))} className="btn-secondary">
+        <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepMine(entry.id, deps))} className="btn-secondary" title={t('sync.keep_mine_hint')}>
           {t('sync.keep_mine')}
         </button>
         {mergeable && (
-          <button disabled={busy} onClick={() => void run(() => resolveKeepBoth(entry.id, deps))} className="btn-secondary">
+          <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepBoth(entry.id, deps))} className="btn-secondary" title={t('sync.keep_both_hint')}>
             {t('sync.keep_both')}
           </button>
         )}
-        <button disabled={busy} onClick={() => void run(() => resolveKeepServer(entry.id))} className="btn-secondary">
+        <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepServer(entry.id))} className="btn-secondary" title={t('sync.keep_server_hint')}>
           {t('sync.keep_server')}
         </button>
-        <button disabled={busy} onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>
-        <button disabled={busy} onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700">{t('sync.delete')}</button>
+        <button type="button" disabled={busy} onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>
+        <button type="button" disabled={busy} onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700" title={t('sync.delete_hint')}>{t('sync.delete')}</button>
       </div>
     </div>
   );

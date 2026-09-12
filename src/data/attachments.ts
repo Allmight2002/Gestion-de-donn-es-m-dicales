@@ -122,7 +122,7 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
       // Images : reencodees (EXIF supprime). Documents (PDF/Office) : envoyes tels quels.
       const blob: Blob = v.isImage ? await reencodeImage(input.file, v.type) : input.file;
       const fileHash = await sha256Hex(blob);
-      const operationKey = stableUploadOperationKey(
+      const operationKey = await stableUploadOperationKey(
         `attachment:${input.baseId}:${input.patientId}:${input.encounterId ?? ''}:${v.ext}`,
         fileHash,
         input.label.trim(),

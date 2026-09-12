@@ -309,12 +309,12 @@ describe('ImportData (ecran d import)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Importer' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/écriture interrompue/i);
 
-    const cancel = screen.getByRole('button', { name: 'Annuler ce lot' });
+    const cancel = screen.getByRole('button', { name: 'Arrêter l’import' });
     expect(cancel).toBeEnabled();
     await userEvent.click(cancel);
     await waitFor(() => expect(cancelImportBatch).toHaveBeenCalledTimes(1));
     expect(getImportBatchState).toHaveBeenLastCalledWith('batch-cancel');
-    expect(screen.queryByRole('button', { name: 'Annuler ce lot' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Arrêter l’import' })).not.toBeInTheDocument();
   });
 
   test('un lot historique ambigu expose son identifiant et l action d annulation sans rejouer de chunk', async () => {
@@ -341,7 +341,7 @@ describe('ImportData (ecran d import)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Importer' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/ancien lot|annulez/i);
-    expect(screen.getByRole('button', { name: /Annuler ce lot/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Arrêter l’import/ })).toBeEnabled();
     expect(importRecords).toHaveBeenCalledTimes(previewCallCount); // aucun chunk de commit
     expect(completeImportBatch).not.toHaveBeenCalled();
   });

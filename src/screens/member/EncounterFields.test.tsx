@@ -139,7 +139,7 @@ describe('HiddenValuesConfirmation — retrait de diagnostic (L52)', () => {
       </I18nProvider>,
     );
 
-    const dialog = screen.getByRole('dialog', { name: 'Retrait du diagnostic : confirmation nécessaire' });
+    const dialog = screen.getByRole('dialog', { name: 'Valeurs devenues inapplicables : confirmation nécessaire' });
     expect(dialog).toHaveTextContent('20 valeur(s)');
     expect(dialog).toHaveTextContent('Variable 1');
     expect(dialog).toHaveTextContent('Variable 20');

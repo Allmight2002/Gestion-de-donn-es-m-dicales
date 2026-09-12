@@ -23,7 +23,9 @@ export function CommandPalette() {
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
   const [baseList, setBaseList] = useState<BaseListing[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Ctrl/Cmd+K bascule la palette ; Echap la ferme ; un bouton d'en-tete peut l'ouvrir via un evenement.
@@ -38,21 +40,30 @@ export function CommandPalette() {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener(OPEN_PALETTE_EVENT, onOpen); };
   }, []);
 
-  // A l'ouverture : (re)initialise, charge les bases une seule fois, met le focus sur le champ.
+  // A chaque ouverture : liste RELUE (une base creee, renommee ou retiree entre deux ouvertures
+  // doit apparaitre telle quelle) et focus sur le champ. Un echec n'est plus memorise comme une
+  // liste vide : il s'affiche et se reessaie.
   useEffect(() => {
     if (!open) return;
-    setQuery(''); setSel(0);
-    if (!loaded) bases.listMyBases().then(setBaseList).catch(() => setBaseList([])).finally(() => setLoaded(true));
+    setQuery(''); setSel(0); setFailed(false); setLoading(true);
+    let alive = true;
+    bases.listMyBases()
+      .then((list) => { if (alive) { setBaseList(list); setFailed(false); } })
+      .catch(() => { if (alive) { setBaseList([]); setFailed(true); } })
+      .finally(() => { if (alive) setLoading(false); });
     const h = setTimeout(() => inputRef.current?.focus(), 0);
-    return () => clearTimeout(h);
-  }, [open, loaded, bases]);
+    return () => { alive = false; clearTimeout(h); };
+  }, [open, bases, reloadToken]);
 
+  // Les destinations suivent les gardes de route : proposer un ecran que la route refusera
+  // n'aide personne. Un compte de mission (`saisisseur`) n'a ni modeles ni pool de curation.
   const actions: Cmd[] = useMemo(() => {
+    const missionAccount = profile?.globalRole === 'saisisseur';
     const list: Cmd[] = [
       { id: 'home', label: t('member.dashboard.title'), to: '/' },
-      { id: 'templates', label: t('mytemplates.title'), to: '/templates' },
       { id: 'sync', label: t('status.title'), to: '/sync' },
     ];
+    if (!missionAccount) list.splice(1, 0, { id: 'templates', label: t('mytemplates.title'), to: '/templates' });
     if (profile?.globalRole === 'curateur') list.push({ id: 'pool', label: t('curation.pool_title' as MessageKey), to: '/curation' });
     return list;
   }, [t, profile]);
@@ -82,8 +93,18 @@ export function CommandPalette() {
         <input ref={inputRef} value={query} onChange={(e) => { setQuery(e.target.value); setSel(0); }} onKeyDown={onInputKey}
           placeholder={t('search.placeholder')} aria-label={t('search.placeholder')}
           className="w-full border-b border-slate-100 px-4 py-3 text-sm outline-none" />
+        {failed && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-100 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+            <span>{t('search.unavailable')}</span>
+            <button type="button" className="font-medium underline" onClick={() => setReloadToken((value) => value + 1)}>
+              {t('search.retry_action')}
+            </button>
+          </div>
+        )}
         <ul className="max-h-80 overflow-y-auto py-1">
-          {results.length === 0 ? (
+          {loading && results.length === 0 ? (
+            <li className="px-4 py-6 text-center text-sm text-slate-400" role="status">{t('search.loading')}</li>
+          ) : results.length === 0 ? (
             <li className="px-4 py-6 text-center text-sm text-slate-400">{t('search.empty')}</li>
           ) : results.map((r, i) => (
             <li key={r.id}>

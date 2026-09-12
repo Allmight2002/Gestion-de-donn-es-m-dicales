@@ -1,5 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
@@ -8,7 +9,7 @@ import { useAuditRepository, useCurationRepository, useTemplateRepository } from
 import type { TaskBundle, DraftEncounter } from '../../data/curation';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
-import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
+import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { EncounterFields, HiddenValuesConfirmation, SectionedFields, fieldAppliesToType } from './EncounterFields';
 import { FieldInput } from './FieldInput';
@@ -57,6 +58,7 @@ export function CurationTask() {
   const [patientFields, setPatientFields] = useState<TemplateField[]>([]);
   const [encounterFields, setEncounterFields] = useState<TemplateField[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [patientData, setPatientData] = useState<Record<string, unknown>>({});
   const [encounters, setEncounters] = useState<DraftEncounter[]>([]);
@@ -73,8 +75,9 @@ export function CurationTask() {
   const [pendingPersistence, setPendingPersistence] = useState<'save' | 'finalize' | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
-  const { keys: patientDiagnosticWithdrawalKeys, track: trackPatientVisibilityWithdrawal } = useVisibilityWithdrawal(rules, patientFields, sections);
-  const { keys: encounterDiagnosticWithdrawalKeys, track: trackEncounterVisibilityWithdrawal } = useVisibilityWithdrawal(rules, encounterFields, sections);
+  const { track: trackPatientVisibilityWithdrawal } = useVisibilityWithdrawal(rules, patientFields, sections);
+  const { track: trackEncounterVisibilityWithdrawal } = useVisibilityWithdrawal(rules, encounterFields, sections);
+  const navigation = useDirtyForm({ patientData, encounters, question, answer, docLabel, file: docFile ? [docFile.name, docFile.size, docFile.lastModified] : null }, !loading && bundle !== null, taskId ?? '');
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
   const patientDataRef = useRef(patientData);
@@ -87,7 +90,9 @@ export function CurationTask() {
     const patientStripped = withoutHiddenValues(patientData, patientHidden);
     const cleanedEncounters = encounters.map((enc) => {
       const applicable = encounterFields.filter((field) => fieldAppliesToType(field, enc.encounter_type));
-      const hidden = hiddenFieldKeys(rules, enc.data, applicable, sections);
+      const active = Object.fromEntries(Object.entries(enc.data).filter(([key]) => applicable.some((field) => field.fieldKey === key)));
+      const hidden = hiddenFieldKeys(rules, active, applicable, sections);
+      for (const field of encounterFields) if (!applicable.includes(field)) hidden.add(field.fieldKey);
       const stripped = withoutHiddenValues(enc.data, hidden);
       return { hidden, removed: stripped.removed, encounter: { ...enc, data: stripped.values } };
     });
@@ -103,10 +108,8 @@ export function CurationTask() {
   }, [rules, patientData, encounters, patientFields, encounterFields, sections]);
 
   const diagnosticRemoved = useMemo(() => {
-    const keys = new Set([...patientDiagnosticWithdrawalKeys, ...encounterDiagnosticWithdrawalKeys]);
-    return [...new Set([...curated.patientRemoved, ...curated.encounterRemoved])]
-      .filter((key) => keys.has(key));
-  }, [curated.patientRemoved, curated.encounterRemoved, patientDiagnosticWithdrawalKeys, encounterDiagnosticWithdrawalKeys]);
+    return [...new Set([...curated.patientRemoved, ...curated.encounterRemoved])];
+  }, [curated.patientRemoved, curated.encounterRemoved]);
 
   useEffect(() => {
     if (confirmationOpen && diagnosticRemoved.length === 0) {
@@ -115,13 +118,13 @@ export function CurationTask() {
     }
   }, [confirmationOpen, diagnosticRemoved.length]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (replaceInput = true) => {
     if (!taskId) return;
     setLoading(true);
     try {
       const b = await curation.getTaskBundle(taskId);
       setBundle(b);
-      if (b?.draft) {
+      if (b?.draft && replaceInput) {
         setPatientData(b.draft.patientData ?? {});
         setEncounters(b.draft.encounters ?? []);
       }
@@ -134,6 +137,7 @@ export function CurationTask() {
         setEncounterFields(sorted.filter((f) => f.scope === 'encounter'));
         setRules(version.rules);
         setSections(version.sections ?? []);
+        setCommonLayout(version.version.commonLayout);
       }
       setError(null);
     } catch (e) {
@@ -171,12 +175,13 @@ export function CurationTask() {
   const hasOpenClarification = clarifications.some((c) => c.status === 'open');
   const canAnswerClarification = isOwnerMedecin && hasOpenClarification;
 
-  async function run(fn: () => Promise<unknown>, ok?: string) {
+  async function run(fn: () => Promise<unknown>, ok?: string, replaceInput = false) {
     setBusy(true);
     try {
       await fn();
       setNotice(ok ?? null);
-      await load();
+      if (replaceInput) navigation.resetBaseline();
+      await load(replaceInput);
       setError(null);
     } catch (e) {
       setError(msg(e));
@@ -226,7 +231,7 @@ export function CurationTask() {
     await run(async () => {
       await curation.saveDraft(draft.id, curated.patientData, curated.encounters, draft.revision);
       if (finalize) await curation.finalizeTask(task.id);
-    }, t(finalize ? 'curation.finalized' : 'curation.saved'));
+    }, t(finalize ? 'curation.finalized' : 'curation.saved'), true);
   }
 
   function requestPersistence(finalize: boolean) {
@@ -239,7 +244,8 @@ export function CurationTask() {
   }
 
   return (
-    <section className="max-w-2xl space-y-5 sm:space-y-6">
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
+      {navigation.guard}
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
         <h1 className="page-title">{t('curation.task_title')}</h1>
@@ -369,6 +375,7 @@ export function CurationTask() {
               setBusy(true);
               try {
                 await curation.submitRequest(task.id);
+                navigation.markClean();
                 navigate(`/bases/${task.baseId}/curation`);
               } catch (e) {
                 setError(msg(e));
@@ -445,7 +452,7 @@ export function CurationTask() {
         </div>
       ) : (
         <div className="space-y-5">
-          <fieldset disabled={!canEdit} className="space-y-5 disabled:opacity-70">
+          <fieldset disabled={!canEdit || busy} className="min-w-0 space-y-5 disabled:opacity-70">
             {/* Portee 'patient' : donnees permanentes. Portee 'encounter' : rencontre(s) seulement. */}
             {task.scope !== 'encounter' && (
               <div className="card p-4">
@@ -453,6 +460,12 @@ export function CurationTask() {
                 <SectionedFields
                   fields={patientFields.filter((f) => !curated.patientHidden.has(f.fieldKey))}
                   sections={sections}
+                  commonLayout={commonLayout}
+                  allFields={patientFields}
+                  values={patientData}
+                  rules={rules}
+                  hiddenKeys={curated.patientHidden}
+                  requireComplete
                   renderField={(f) => (
                     <label className="flex flex-col text-sm">
                       <span className="text-slate-700">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
@@ -496,7 +509,10 @@ export function CurationTask() {
                     fields={encounterFields.filter((f) => fieldAppliesToType(f, enc.encounter_type))}
                     hiddenKeys={curated.encounterHidden[i]}
                     sections={sections}
+                    commonLayout={commonLayout}
                     values={enc.data}
+                    rules={rules}
+                    requireComplete
                     onChange={(k, v) => updateEncounterData(i, (data) => ({ ...data, [k]: v }))}
                     onRemove={(key) => updateEncounterData(i, (data) => {
                       const { [key]: _removed, ...remaining } = data;

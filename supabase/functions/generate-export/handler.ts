@@ -19,6 +19,7 @@ import {
   extractMultivalueCodes,
   findAmbiguousBlockFields,
   findProjectionProblem,
+  hasCommonGroupFields,
   hasSubsectionFields,
   isMultivalueField,
   MAX_INDICATOR_CODES,
@@ -384,6 +385,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       scope: 'patient' | 'encounter';
       /** L54 : nullable. `null` = variable du TRONC COMMUN, toujours exportee. */
       section: string | null;
+      /** UX-16 : rubrique commune de PRESENTATION ; jamais renseignee avec `section`. */
+      common_group_id?: string | null;
       type: string;
       is_multiple?: boolean | null;
       unit: string | null;
@@ -401,6 +404,14 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       label: string;
       /** L54 : nul = BLOC racine ; non nul = sous-section, dont le parent est le bloc. */
       parent_section_id: string | null;
+    }
+
+    /** UX-16 : rubrique commune, lue PAR VERSION comme les sections -- meme code, deux libelles. */
+    interface TemplateCommonGroupRow {
+      id: string;
+      template_version_id: string;
+      group_key: string;
+      label: string;
     }
 
     const cm = await readAllPages<CohortMemberRow>({
@@ -631,7 +642,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_field')
           .select(
-            'id, template_version_id, field_key, label, description, scope, section, type, is_multiple, unit, allowed_values, allowed_options, missing_reasons, formula, display_order',
+            'id, template_version_id, field_key, label, description, scope, section, common_group_id, type, is_multiple, unit, allowed_values, allowed_options, missing_reasons, formula, display_order',
             { count: 'exact' },
           )
           .in('template_version_id', chunk)
@@ -670,6 +681,27 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       rawSections.map((s) => [`${s.template_version_id} ${s.section_key}`, s]),
     );
     const keyById = new Map(rawSections.map((s) => [s.id, s.section_key]));
+    // UX-16 : les rubriques communes suivent le meme chemin que les sections -- lues par
+    // version, jamais deduites d'un libelle. La limite des sections est reutilisee telle
+    // quelle : une version porte quelques rubriques la ou elle porte deja des dizaines de
+    // sections, donc le plafond existant est deja large pour elles.
+    const rawCommonGroups = await readInChunks<TemplateCommonGroupRow>({
+      values: templateVersions,
+      resource: 'dictionary_common_groups',
+      limit: EXPORT_LIMITS.dictionarySections,
+      keyOf: (row) => row.id,
+      fetchPage: async (chunk, from, to) => {
+        const result = await admin.from('template_common_group')
+          .select('id, template_version_id, group_key, label', { count: 'exact' })
+          .in('template_version_id', chunk)
+          .order('template_version_id', { ascending: true })
+          .order('display_order', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
+        return { data: result.data as TemplateCommonGroupRow[] | null, error: result.error, count: result.count };
+      },
+    });
+    const commonGroupById = new Map(rawCommonGroups.map((g) => [g.id, g]));
     // Roles observes, toutes versions confondues. Une cle racine ici et feuille la est
     // ambigue : elle apparait dans les DEUX ensembles, et `findProjectionProblem` la refuse.
     const blockRoles = {
@@ -704,6 +736,11 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         // descendante est acquise par construction ; nul au tronc commun.
         blockKey: levels.blockKey,
         blockLabel: levels.blockLabel,
+        // UX-16 : rubrique de PRESENTATION, a cote du bloc et jamais a sa place. Une variable
+        // de bloc n'en a pas ; une rubrique introuvable laisse la variable commune telle
+        // quelle, exportee comme avant.
+        commonGroup: commonGroupById.get(f.common_group_id ?? '')?.group_key ?? null,
+        commonGroupLabel: commonGroupById.get(f.common_group_id ?? '')?.label ?? null,
         type: f.type,
         isMultiple: Boolean(f.is_multiple),
         unit: f.unit,
@@ -807,6 +844,9 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       omittedFieldKeys,
       profile: options.profile,
       blockColumns,
+      // UX-16 : deux colonnes de plus SEULEMENT si une version exportee declare des rubriques.
+      // Sans rubrique, le classeur garde exactement la structure d'avant le lot.
+      commonGroupColumns: hasCommonGroupFields(allFields),
     });
     // L46 : la feuille Modalites accompagne l'Export Analyse (XLSX). Le CSV ne tient qu'une
     // feuille : la colonne principale porte deja le code stable et le libelle reste une fois

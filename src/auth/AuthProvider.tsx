@@ -17,7 +17,7 @@ import {
   setOfflineUser,
   type OfflineInitializationReport,
 } from '../data/offline';
-import { clearDraftsForCurrentUser, purgeExpiredDrafts } from '../data/drafts';
+import { clearDraftsForCurrentUser, purgeExpiredDrafts, purgeForeignDrafts } from '../data/drafts';
 import type { AuthStatus, Profile, SessionUser } from './types';
 import {
   authorizePwaRegistrationAfterCleanup,
@@ -160,6 +160,10 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
         return;
       }
       currentSessionUser.current = nextUser;
+      // UX-8 : les brouillons d'un AUTRE compte partent des l'ouverture de session, avant meme
+      // que la purge hors-ligne ne se prononce. Elle ne s'execute, elle, que si le marqueur de
+      // proprietaire a pu etre lu et ecrit ; cette garantie-ci ne depend de rien.
+      purgeForeignDrafts(nextUser.id);
       const offlineInit = await initializeOffline(nextUser.id);
       if (offlineInit.errors.length) setPwaRegistrationAllowed(false);
       const pwaCleanupReady = offlineInit.errors.length === 0
@@ -229,6 +233,17 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
       unsubscribe();
     };
   }, [backend, applyUser]);
+
+  // UX-8 : un poste de consultation reste ouvert des jours. Sans ce balayage, un brouillon
+  // expire attendait le prochain demarrage de l'application pour quitter l'appareil, alors que
+  // sa duree de vie etait ecoulee depuis longtemps. Le retour sur l'onglet est le moment ou
+  // quelqu'un revient devant la machine : c'est la que la purge doit avoir eu lieu.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const sweep = () => { if (document.visibilityState === 'visible') purgeExpiredDrafts(); };
+    document.addEventListener('visibilitychange', sweep);
+    return () => document.removeEventListener('visibilitychange', sweep);
+  }, []);
 
   // Au retour du reseau, remplace immediatement le marqueur local par le profil serveur. La RLS
   // reste la source de verite pour les ecritures pendant cette courte reconciliation.

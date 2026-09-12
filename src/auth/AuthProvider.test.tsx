@@ -348,3 +348,42 @@ describe('gating par role', () => {
     expect(getOfflineUser()).toBeNull();
   });
 });
+
+// UX-8 — poste partage. La purge inter-comptes ci-dessus depend du marqueur de proprietaire en
+// localStorage. Perdu — quota, navigation privee, localStorage vide sans IndexedDB — aucun
+// changement de compte n'etait detecte : la file et les brouillons du compte precedent
+// restaient sur l'appareil, invisibles pour l'application mais lisibles dans l'inspecteur.
+describe('UX-8 — ouverture de session sans marqueur de proprietaire', () => {
+  test('les traces d un autre compte quittent l appareil des la connexion', async () => {
+    await purgeAllOfflineData();
+    setOfflineUser('shared-A');
+    localStorage.setItem('meddata:draft:encounter:shared-A:p1', JSON.stringify({
+      at: Date.now(), createdAt: Date.now(),
+      data: { templateVersionId: 'v1', encounterType: 'consultation', encounterDate: '2026-09-12', status: 'draft', values: { score: 1 } },
+    }));
+    await outbox.put({
+      id: 'shared-outbox-A', dataType: 'analytic_outbox', baseId: 'shared-base-A', patientId: 'pA', encounterId: 'eA',
+      data: { score: 1 }, reason: 'A', validationStatus: 'draft', baseUpdatedAt: null,
+      createdAt: Date.now(), expiresAt: Date.now() + 60_000, state: 'pending', ownerUserId: 'shared-A',
+    });
+    // Le marqueur manque : rien ne signalera le changement de compte.
+    localStorage.removeItem('meddata:offline-cache-owner');
+    setOfflineUser(null);
+
+    render(
+      <I18nProvider>
+        <AuthProvider backend={fakeBackend({ user: { id: 'shared-B', email: 'b@demo.test' }, profile: memberProfile })}>
+          <AuthProbe />
+        </AuthProvider>
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:shared-B'));
+
+    expect(localStorage.getItem('meddata:draft:encounter:shared-A:p1')).toBeNull();
+    // Le balayage IndexedDB est une defense en profondeur, volontairement non attendue par
+    // l'ouverture de session : on attend donc son effet, pas son ordonnancement.
+    await waitFor(async () => expect(await outbox.get('shared-outbox-A')).toBeNull());
+    await purgeAllOfflineData();
+    setOfflineUser(null);
+  });
+});

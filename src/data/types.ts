@@ -110,6 +110,42 @@ export interface TemplateVersion {
   /** L55 : absence = collecte historique. La version du dossier reste la source. */
   diagnosisConfiguration?: DiagnosisConfiguration[];
   diagnosisContext?: DiagnosisContext[];
+  /**
+   * UX-16 : organisation de PRESENTATION des variables communes. Absente quand la
+   * migration n'est pas encore disponible pour la lecture : les ecrans conservent alors
+   * le rendu historique « Tronc commun » plutot que de masquer des variables.
+   */
+  commonLayout?: TemplateCommonLayout;
+}
+
+/** Une rubrique commune, sans condition ni appartenance clinique. */
+export interface TemplateCommonGroup {
+  key: string;
+  label: string;
+  /** Nombre de blocs racines places avant cette rubrique. */
+  anchor: number;
+  isDefault: boolean;
+  /** Cles des variables communes, dans leur ordre de presentation. */
+  fields: string[];
+}
+
+/** Etat versionne lu et accuse par les RPC UX-16. */
+export interface TemplateCommonLayout {
+  fingerprint: string;
+  locked: boolean;
+  inUse: boolean;
+  defaultKey: string | null;
+  /** Blocs racines servant de reperes aux ancres, sans en faire des rubriques. */
+  sections: { key: string; label: string }[];
+  groups: TemplateCommonGroup[];
+  /** Filet de lecture : ces variables restent rendues, jamais omises. */
+  unassigned: string[];
+}
+
+/** Charge COMPLETE de l'operation atomique `set_common_layout`. */
+export interface CommonLayoutPayload {
+  defaultKey?: string | null;
+  groups: Array<Pick<TemplateCommonGroup, 'key' | 'label' | 'anchor' | 'fields'>>;
 }
 
 export interface DiagnosisConfiguration {
@@ -294,4 +330,36 @@ export interface SectionImportReport {
   /** Règle d'activation du bloc dans la SOURCE, jamais copiée (D7). Matière de L60. */
   activationRule: { field?: string; operator?: string; value?: unknown; terminologyReleaseId?: string | null } | null;
   conflicts: SectionImportConflict[];
+}
+
+/**
+ * UX-14(c) — lot de règles construit à partir d'UNE condition et de plusieurs cibles.
+ * Le serveur fabrique lui-même les règles unitaires : aucune règle multicible n'existe en base,
+ * et la charge ne transporte donc pas de JSON de règle déjà assemblé par l'écran.
+ */
+export interface RuleBatchPayload {
+  condition: Record<string, unknown>;
+  effect: 'required' | 'visible';
+  targets: string[];
+  message?: string | null;
+  severity?: RuleSeverity;
+}
+
+/** Plan rendu par l'aperçu : ce qui serait créé, ce qui existe déjà, ce qui est refusé. */
+export interface RuleBatchPlan {
+  /** Empreinte de la version à présenter à la confirmation ; périmée = conflit, pas d'écriture. */
+  fingerprint: string;
+  severity: RuleSeverity;
+  create: { target: string }[];
+  duplicates: { target: string; ruleId: string }[];
+  invalid: { target: string; reason: string }[];
+  locked: boolean;
+  inUse: boolean;
+}
+
+/** Reçu d'un lot appliqué. Rejouer la même opération rend exactement ce même reçu. */
+export interface RuleBatchReceipt {
+  created: { id: string; target: string }[];
+  duplicates: { target: string; ruleId: string }[];
+  fingerprint: string;
 }

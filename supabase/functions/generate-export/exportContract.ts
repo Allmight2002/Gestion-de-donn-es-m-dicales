@@ -48,6 +48,15 @@ export interface ExportField {
   blockKey?: string | null;
   /** Libelle du bloc racine. `null` quand `blockKey` est nul. */
   blockLabel?: string | null;
+  /**
+   * UX-16 : CODE de la rubrique commune, une metadonnee de PRESENTATION. Elle n'est jamais un
+   * bloc clinique : une variable qui en porte une garde `section` et `blockKey` nuls, reste
+   * exportee dans toutes les projections et ne se liste jamais dans `blockKeys`. `null` sur une
+   * version qui n'en declare aucune, et sur toute variable de bloc.
+   */
+  commonGroup?: string | null;
+  /** Libelle de la rubrique commune. `null` quand `commonGroup` est nul. */
+  commonGroupLabel?: string | null;
   type: string;
   /** Variable multivaluee (L22) : accepte une liste ordonnee de couples terminologiques. */
   isMultiple?: boolean | null;
@@ -848,6 +857,11 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // de section (version anterieure au lot, ou section detachee). On garde le premier
       // libelle connu plutot que de laisser la colonne sans nom lisible.
       previous.sectionLabel = previous.sectionLabel ?? field.sectionLabel;
+      // UX-16 : meme raison pour la rubrique commune, et meme precaution que pour le bloc --
+      // n'emprunter le libelle que lorsque les deux versions designent LA MEME rubrique.
+      if (previous.commonGroup != null && previous.commonGroup === field.commonGroup) {
+        previous.commonGroupLabel = previous.commonGroupLabel ?? field.commonGroupLabel;
+      }
       // L53 : meme raison pour le libelle du BLOC, mais seulement quand les deux versions
       // designent le MEME bloc. Emprunter le libelle d'un autre bloc renommerait la colonne ;
       // ce cas-la est de toute facon refuse par `findAmbiguousBlockFields` quand il compte.
@@ -1356,6 +1370,12 @@ export interface DictionaryOptions {
    * identique a celle d'avant le lot.
    */
   blockColumns?: boolean;
+  /**
+   * UX-16 : ajoute `common_group` et `common_group_label`. Vrai seulement quand une version
+   * exportee declare des rubriques communes ; sinon les colonnes restent absentes et la
+   * structure de sortie est strictement identique a celle d'avant le lot.
+   */
+  commonGroupColumns?: boolean;
 }
 
 /**
@@ -1414,11 +1434,28 @@ const withBlockColumns = (columns: readonly string[]): string[] => {
   return [...columns.slice(0, at + 1), 'block', 'block_label', ...columns.slice(at + 1)];
 };
 
+/**
+ * UX-16 : la rubrique commune se lit APRES le bloc, dans ses propres colonnes. Les ecrire dans
+ * `section` la ferait passer pour un bloc clinique aupres de tout consommateur du fichier --
+ * exactement la confusion que la specification interdit.
+ */
+const withCommonGroupColumns = (columns: readonly string[]): string[] => {
+  const at = columns.indexOf('block_label');
+  const after = at === -1 ? columns.indexOf('section_label') : at;
+  return [...columns.slice(0, after + 1), 'common_group', 'common_group_label', ...columns.slice(after + 1)];
+};
+
+/** Vrai des qu'une variable commune porte une rubrique : inutile d'ajouter deux colonnes vides. */
+export const hasCommonGroupFields = (fields: readonly ExportField[]): boolean =>
+  fields.some((f) => f.commonGroup != null);
+
 export function buildDictionary(fields: ExportField[], options?: DictionaryOptions): ExportTable {
   const isAnalysis = options?.profile === 'analysis';
   const base = isAnalysis ? ANALYSIS_DICTIONARY_COLUMNS : DETAILED_DICTIONARY_COLUMNS;
   const blockColumns = options?.blockColumns === true;
-  const columns = blockColumns ? withBlockColumns(base) : [...base];
+  const commonGroupColumns = options?.commonGroupColumns === true;
+  const withBlocks = blockColumns ? withBlockColumns(base) : [...base];
+  const columns = commonGroupColumns ? withCommonGroupColumns(withBlocks) : withBlocks;
   return {
     columns,
     rows: mergeExportFields(fields).flatMap((f) => {
@@ -1430,6 +1467,12 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
         section: f.section ?? '',
         section_label: f.sectionLabel ?? '',
         ...(blockColumns ? { block: f.blockKey ?? '', block_label: f.blockLabel ?? '' } : {}),
+        // UX-16 : la case reste vide pour une variable de bloc. Une rubrique commune ne
+        // remplit jamais `section` ni `block` : elle dit ou la variable est MONTREE, pas a
+        // quel regroupement clinique elle appartient.
+        ...(commonGroupColumns
+          ? { common_group: f.commonGroup ?? '', common_group_label: f.commonGroupLabel ?? '' }
+          : {}),
         unit: f.unit ?? '',
         allowed_values: isOptionList(f)
           ? optionsList.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')

@@ -3,7 +3,7 @@
 // bases hors-ligne, anomalies) en plus de la file d'attente de synchronisation.
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
@@ -102,13 +102,14 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
     renderSync();
 
     expect(await screen.findByRole('button', { name: 'Garder les deux' })).toBeInTheDocument();
-    // L'apercu montre exactement ce que l'action ecrira : les deux codes, et MON glasgow.
-    const titre = screen.getByText(/Résultat de la fusion/);
-    expect(titre.textContent).toMatch(/Valeurs récupérées : 1/);
-    const apercu = titre.parentElement?.textContent ?? '';
-    expect(apercu).toMatch(/S06\.4/);
-    expect(apercu).toMatch(/S72\.0/);
-    expect(apercu).toMatch(/"glasgow_score": 12/);
+    // UX-15 : la difference se lit champ par champ, plus dans deux blocs JSON. L'apercu montre
+    // exactement ce que l'action ecrira : les deux codes, et MON glasgow.
+    const glasgow = screen.getByRole('rowheader', { name: 'glasgow_score' }).closest('tr')!;
+    expect(within(glasgow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['12', '14', '12']);
+    const diagnostic = screen.getByRole('rowheader', { name: 'diagnostic' }).closest('tr')!;
+    expect(diagnostic.textContent).toMatch(/S06\.4/);
+    expect(diagnostic.textContent).toMatch(/S72\.0/);
+    expect(screen.getByText(/Valeurs récupérées : 1/)).toBeInTheDocument();
     await purgeAllOfflineData();
     setOfflineUser(null);
   });

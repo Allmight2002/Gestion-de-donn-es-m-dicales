@@ -161,7 +161,7 @@ exporte des données **sans identité**.
   pas de portée rencontre.
 - **EF-9.** Tableau de bord listant ses bases et celles partagées avec lui.
 - **EF-10.** Vue d'une base : liste **pseudonymisée** des patients (code + variables analytiques),
-  pagination, recherche, accès aux fiches.
+  pagination, recherche et tri côté serveur, accès aux fiches.
 
 ### 4.4 Patients
 - **EF-11.** Création d'un patient : **code patient** (pseudonyme) obligatoire, **identité** (zone
@@ -172,8 +172,12 @@ exporte des données **sans identité**.
   données permanentes, rencontres regroupées par section.
 - **EF-14.** Édition des données permanentes (journalisée, re-validée) ; **finalisation** du patient
   (`draft → curated`) quand les données requises sont complètes.
-- **RG-9.** La **liste** des patients est **pseudonymisée** : elle n'affiche que le code ; le nom
-  complet n'est révélé que sur la **fiche** (consultation tracée).
+- **RG-9.** La **liste** des patients est **pseudonymisée par défaut** : elle affiche le code et les
+  variables analytiques. Exception étroite : un **médecin** qui possède `can_view_identity` sur la
+  base peut sélectionner le **nom complet** dans la liste en ligne et rechercher ce nom dans cette
+  même base, exclusivement par une opération serveur contrôlée et tracée. Sans ce droit, aucun nom,
+  résultat, compteur ni ordre ne révèle l'identité ; le nom ne va jamais dans l'URL, le cache hors
+  ligne, les exports ou les préférences locales. La fiche conserve sa consultation d'identité tracée.
 
 ### 4.5 Rencontres
 - **Portée.** Cette section s'applique aux bases de suivi répété et de registre d'événements. Elle

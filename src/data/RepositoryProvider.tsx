@@ -13,6 +13,7 @@ import { groupRepository, type GroupRepository } from './groups';
 import { terminologyRepository, type TerminologyRepository } from './terminology';
 import { missionRepository, type MissionRepository } from './mission';
 import { clientErrorRepository, type ClientErrorRepository } from './clientErrors';
+import { workDraftRepository, type WorkDraftRepository } from './workDrafts';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -29,6 +30,7 @@ interface Repositories {
   terminology: TerminologyRepository;
   missions: MissionRepository;
   clientErrors: ClientErrorRepository;
+  workDrafts: WorkDraftRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -46,6 +48,7 @@ const RepositoryContext = createContext<Repositories>({
   terminology: terminologyRepository,
   missions: missionRepository,
   clientErrors: clientErrorRepository,
+  workDrafts: workDraftRepository,
 });
 
 export function RepositoryProvider({
@@ -64,6 +67,7 @@ export function RepositoryProvider({
   terminology = terminologyRepository,
   missions = missionRepository,
   clientErrors = clientErrorRepository,
+  workDrafts = workDraftRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -80,9 +84,10 @@ export function RepositoryProvider({
   terminology?: TerminologyRepository;
   missions?: MissionRepository;
   clientErrors?: ClientErrorRepository;
+  workDrafts?: WorkDraftRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors, workDrafts }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -142,4 +147,8 @@ export function useMissionRepository(): MissionRepository {
 
 export function useClientErrorRepository(): ClientErrorRepository {
   return useContext(RepositoryContext).clientErrors;
+}
+
+export function useWorkDraftRepository(): WorkDraftRepository {
+  return useContext(RepositoryContext).workDrafts;
 }

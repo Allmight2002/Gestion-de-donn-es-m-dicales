@@ -21,14 +21,14 @@ export function proposalKeyOf(fieldKey: string): string {
 }
 
 /** Le champ compagnon d'un champ source present dans la meme liste, s'il existe. */
-export function findProposalField(fields: TemplateField[], source: TemplateField): TemplateField | undefined {
+export function findProposalField(fields: readonly TemplateField[], source: TemplateField): TemplateField | undefined {
   if (!isProposalSource(source)) return undefined;
   const key = proposalKeyOf(source.fieldKey);
   return fields.find((f) => f.fieldKey === key && f.type === 'text' && f.scope === source.scope);
 }
 
 /** Cles des champs compagnons a NE PAS rendre comme des champs autonomes. */
-export function proposalKeysOf(fields: TemplateField[]): Set<string> {
+export function proposalKeysOf(fields: readonly TemplateField[]): Set<string> {
   const keys = new Set<string>();
   for (const f of fields) {
     if (isProposalSource(f)) {

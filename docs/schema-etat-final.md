@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260909170000_importable_block_catalog.sql`
-- Tables : 45 · Policies RLS : 63 · Triggers : 78 · Fonctions : 305
+- Dernière migration incluse : `20260912160000_ux_patient_identity_search.sql`
+- Tables : 50 · Policies RLS : 64 · Triggers : 79 · Fonctions : 328
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -265,6 +265,19 @@ Policies :
 
 Triggers :
 - `trg_cohort_patient_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_patient_membership()`
+
+### common_layout_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| owner_id | uuid | non |  |
+| operation_id | uuid | non |  |
+| template_version_id | uuid | non |  |
+| request_hash | text | non |  |
+| receipt | jsonb | non |  |
+| created_at | timestamp with time zone | non | `clock_timestamp()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
 ### curation_clarification · RLS activée
 
@@ -790,6 +803,19 @@ Policies :
    FROM research_group g
   WHERE ((g.id = research_group_base.group_id) AND (g.owner_user_id = auth.uid()))))
 
+### rule_batch_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| owner_id | uuid | non |  |
+| operation_id | uuid | non |  |
+| template_version_id | uuid | non |  |
+| request_hash | text | non |  |
+| receipt | jsonb | non |  |
+| created_at | timestamp with time zone | non | `clock_timestamp()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ### template · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -805,6 +831,22 @@ Policies :
 - `template_insert` (INSERT) — WITH CHECK (is_system_admin() OR (is_medecin() AND (owner_user_id = auth.uid()) AND (is_global = false)))
 - `template_read` (SELECT) — USING (is_global OR (owner_user_id = auth.uid()) OR is_system_admin())
 - `template_update` (UPDATE) — USING owns_template(id) · WITH CHECK (is_system_admin() OR ((owner_user_id = auth.uid()) AND (is_global = false)))
+
+### template_common_group · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| template_version_id | uuid | non |  |
+| group_key | text | non |  |
+| label | text | non |  |
+| display_order | integer | non | `0` |
+| anchor_order | integer | non | `0` |
+| is_default | boolean | non | `false` |
+| created_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `tcg_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
 
 ### template_field · RLS activée
 
@@ -832,6 +874,7 @@ Policies :
 | section_id | uuid | oui |  |
 | is_multiple | boolean | non | `false` |
 | formula | text | oui |  |
+| common_group_id | uuid | oui |  |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -852,6 +895,7 @@ Triggers :
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
+- `trg_zz_template_field_common_group` — BEFORE INSERT/UPDATE → `enforce_template_field_common_group()`
 
 ### template_operation · RLS activée
 
@@ -1011,6 +1055,39 @@ Triggers :
 - `trg_vr_locked` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_locked()`
 - `trg_vr_structure` — BEFORE INSERT/UPDATE → `guard_validation_rule_structure()`
 
+### work_draft · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non |  |
+| owner_id | uuid | non |  |
+| base_id | uuid | non |  |
+| kind | text | non |  |
+| target_id | uuid | oui |  |
+| template_version_id | uuid | non |  |
+| entity_revision | text | oui |  |
+| revision | bigint | non |  |
+| payload | jsonb | non | `'{}'::jsonb` |
+| result | jsonb | oui |  |
+| state | text | non | `'active'::text` |
+| created_at | timestamp with time zone | non | `clock_timestamp()` |
+| updated_at | timestamp with time zone | non | `clock_timestamp()` |
+| expires_at | timestamp with time zone | non | `(clock_timestamp() + '24:00:00'::interval)` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
+### work_draft_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| owner_id | uuid | non |  |
+| operation_id | uuid | non |  |
+| draft_id | uuid | non |  |
+| request_hash | text | non |  |
+| receipt | jsonb | non |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ## Fonctions (public)
 
 | Fonction | Arguments | Sécurité | Langage |
@@ -1024,6 +1101,8 @@ Triggers :
 | armor | bytea, text[], text[] | INVOKER | c |
 | assert_access_change_allowed | p_base_id uuid, p_target_user_id uuid, p_new_can_view_identity boolean, p_new_can_view_raw_documents boolean, p_new_can_edit_structured_data boolean, p_new_can_export_data boolean, p_new_can_manage_access boolean, p_old_can_view_identity boolean, p_old_can_view_raw_documents boolean, p_old_can_edit_structured_data boolean, p_old_can_export_data boolean, p_old_can_manage_access boolean | DEFINER | plpgsql |
 | assert_block_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
+| assert_common_layout_access | p_version_id uuid | DEFINER | plpgsql |
+| assert_common_layout_read_access | p_version_id uuid | DEFINER | plpgsql |
 | assert_contains_any_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_curated_complete | — | INVOKER | plpgsql |
 | assert_data_valid | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
@@ -1033,11 +1112,13 @@ Triggers :
 | assert_no_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_no_unknown_fields | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
+| assert_rule_batch_access | p_version_id uuid | DEFINER | plpgsql |
 | assert_rule_calculated_operands | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_upload_path_scope | p_base_id uuid, p_bucket text, p_path text | DEFINER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
 | assert_visibility_acyclic | p_version_id uuid, p_rule jsonb, p_rule_id uuid | INVOKER | plpgsql |
+| assert_work_draft_context | p_base uuid, p_kind text, p_target uuid, p_version uuid, p_entity_revision text | DEFINER | plpgsql |
 | base_activity_log | p_base_id uuid, p_before timestamp with time zone, p_limit integer, p_action_filter text, p_before_id uuid | DEFINER | plpgsql |
 | base_completeness_stats | p_base_id uuid, p_mode text | INVOKER | sql |
 | base_completion_queue | p_base_id uuid, p_limit integer | INVOKER | sql |
@@ -1065,6 +1146,9 @@ Triggers :
 | cancel_import_batch | p_batch_id uuid | DEFINER | plpgsql |
 | claim_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | cohort_preview | p_base_id uuid, p_filter jsonb, p_validated_only boolean | INVOKER | sql |
+| commit_work_draft | p_id uuid, p_expected_revision bigint, p_operation_id uuid, p_identity jsonb | DEFINER | plpgsql |
+| common_layout_error | p_code text, p_details jsonb | INVOKER | plpgsql |
+| common_layout_state | p_version_id uuid | DEFINER | plpgsql |
 | complete_file_inspection | p_entity text, p_id uuid, p_run_id uuid, p_user_id uuid, p_status text, p_inspected_at timestamp with time zone, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_engine text, p_signature text, p_extra jsonb, p_quarantine_bucket text, p_quarantine_path text | DEFINER | plpgsql |
 | complete_import_batch | p_batch_id uuid | DEFINER | plpgsql |
 | complete_mission_credential_operation | p_operation_id uuid, p_actor_id uuid | DEFINER | plpgsql |
@@ -1081,6 +1165,7 @@ Triggers :
 | create_next_personal_template_version | p_template_id uuid | DEFINER | plpgsql |
 | create_patient | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
 | create_patient_curation_submission | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_idempotency_key text | DEFINER | plpgsql |
+| create_rule_batch | p_version_id uuid, p_operation_id uuid, p_payload jsonb, p_expected_fingerprint text | DEFINER | plpgsql |
 | create_template_bundle | p_payload jsonb, p_operation_key uuid | DEFINER | plpgsql |
 | create_upload_operation | p_base_id uuid, p_bucket text, p_path text, p_idempotency_key uuid, p_file_hash text, p_file_size bigint, p_mime_type text, p_ttl_seconds integer | DEFINER | plpgsql |
 | create_upload_ticket | p_base_id uuid, p_bucket text, p_path text, p_ttl_seconds integer | DEFINER | plpgsql |
@@ -1093,6 +1178,7 @@ Triggers :
 | delete_curation_request | p_task_id uuid, p_reason text, p_delete_patient boolean | DEFINER | plpgsql |
 | delete_template | p_template_id uuid | DEFINER | plpgsql |
 | delete_template_field | p_field_id uuid | DEFINER | plpgsql |
+| delete_work_draft | p_id uuid, p_expected_revision bigint, p_operation_id uuid | DEFINER | plpgsql |
 | detect_import_duplicates | p_base_id uuid, p_rows jsonb | DEFINER | plpgsql |
 | diagnosis_coverage | p_version_id uuid, p_scope text, p_data jsonb | INVOKER | sql |
 | diagnosis_coverage_in_context | p_version_id uuid, p_scope text, p_data jsonb, p_context jsonb | INVOKER | plpgsql |
@@ -1106,6 +1192,7 @@ Triggers :
 | enforce_observation_model_on_base | — | DEFINER | plpgsql |
 | enforce_observation_model_on_template_field | — | DEFINER | plpgsql |
 | enforce_template_field_allowed_options | — | DEFINER | plpgsql |
+| enforce_template_field_common_group | — | INVOKER | plpgsql |
 | enforce_template_field_default_value | — | INVOKER | plpgsql |
 | enforce_template_field_formula | — | INVOKER | plpgsql |
 | enforce_template_field_formula_operand | — | INVOKER | plpgsql |
@@ -1168,6 +1255,7 @@ Triggers :
 | has_pending_upload_ticket | p_bucket text, p_path text | DEFINER | sql |
 | hmac | bytea, bytea, text | INVOKER | c |
 | hmac | text, text, text | INVOKER | c |
+| identity_search_normalize | p_value text | INVOKER | sql |
 | import_records | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_legacy | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_with_receipts | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
@@ -1190,6 +1278,7 @@ Triggers :
 | list_deleted_bases | — | DEFINER | plpgsql |
 | list_importable_template_sections | — | INVOKER | sql |
 | list_recent_client_errors | p_limit integer, p_since timestamp with time zone, p_context text | DEFINER | plpgsql |
+| list_work_drafts | p_base_id uuid, p_kind text, p_target_id uuid | DEFINER | plpgsql |
 | lock_contains_any_configuration | — | INVOKER | plpgsql |
 | lock_template_section_version | p_version_id uuid | INVOKER | plpgsql |
 | log_attachment_read | p_attachment_id uuid | DEFINER | plpgsql |
@@ -1231,11 +1320,13 @@ Triggers :
 | pgp_sym_encrypt_bytea | bytea, text, text | INVOKER | c |
 | prepare_base_purge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
 | preview_option_key_repair | p_base_id uuid | DEFINER | plpgsql |
+| preview_rule_batch | p_version_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | preview_template_section_import | p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[] | DEFINER | plpgsql |
 | promote_template_to_global | p_template_id uuid | DEFINER | plpgsql |
 | provision_mission_access | p_base_id uuid, p_user_id uuid, p_expires_at timestamp with time zone, p_can_view_identity boolean, p_identity_justification text | DEFINER | plpgsql |
 | publish_template_version | p_version_id uuid | DEFINER | plpgsql |
 | purge_client_error_log | — | DEFINER | plpgsql |
+| purge_work_drafts | — | DEFINER | plpgsql |
 | quarantine_reconciliation_candidates | p_limit integer | DEFINER | sql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
 | reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
@@ -1262,6 +1353,8 @@ Triggers :
 | revoke_mission_access | p_access_id uuid | DEFINER | plpgsql |
 | rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |
 | rule_apply_op | op text, a jsonb, b jsonb | INVOKER | plpgsql |
+| rule_batch_error | p_code text, p_details jsonb | INVOKER | plpgsql |
+| rule_batch_plan | p_version_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | rule_calculated_field_label | p_version_id uuid, p_field_key text | INVOKER | sql |
 | rule_calculated_operand_message | p_problem text, p_label text | INVOKER | sql |
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
@@ -1271,11 +1364,14 @@ Triggers :
 | rule_value_present | v jsonb | INVOKER | sql |
 | run_template_version_invariants | — | DEFINER | plpgsql |
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
+| save_work_draft | p_id uuid, p_base_id uuid, p_kind text, p_target_id uuid, p_template_version_id uuid, p_entity_revision text, p_expected_revision bigint, p_operation_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | scrub_client_error_text | p_value text, p_max_length integer | INVOKER | plpgsql |
+| search_patient_ids_by_identity | p_base_id uuid, p_term text, p_limit integer, p_offset integer | DEFINER | plpgsql |
 | search_terminology | p_query text, p_limit integer | INVOKER | sql |
 | set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |
 | set_base_observation_model | p_base_id uuid, p_observation_model text | DEFINER | plpgsql |
 | set_base_template_version | p_base_id uuid, p_version_id uuid | DEFINER | plpgsql |
+| set_common_layout | p_version_id uuid, p_operation_id uuid, p_payload jsonb, p_expected_fingerprint text | DEFINER | plpgsql |
 | set_diagnosis_configuration | p_version_id uuid, p_configuration jsonb | DEFINER | plpgsql |
 | set_updated_at | — | INVOKER | plpgsql |
 | soft_delete_attachment | p_attachment_id uuid, p_reason text | DEFINER | plpgsql |
@@ -1293,7 +1389,9 @@ Triggers :
 | template_section_import_plan | p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[], p_apply boolean | INVOKER | plpgsql |
 | template_version_fields_in_use | p_version_id uuid | DEFINER | sql |
 | template_version_in_use | p_version_id uuid | DEFINER | sql |
+| template_version_layout_fingerprint | p_version_id uuid | DEFINER | plpgsql |
 | template_version_locked | p_version_id uuid | DEFINER | sql |
+| template_version_rule_fingerprint | p_version_id uuid | DEFINER | plpgsql |
 | terminology_normalize | p_text text | INVOKER | sql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |
 | trg_audit_export_fn | — | DEFINER | plpgsql |
@@ -1320,3 +1418,5 @@ Triggers :
 | value_documented | v jsonb | INVOKER | sql |
 | value_missing_code | v jsonb | INVOKER | sql |
 | visibility_hidden_fields | p_version uuid, p_data jsonb | INVOKER | plpgsql |
+| work_draft_allowed | p_owner uuid, p_base uuid, p_kind text, p_target uuid | DEFINER | plpgsql |
+| work_draft_error | p_code text | INVOKER | plpgsql |

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Tests de rendu de la saisie de rencontre (cahier §8.5, §10) avec repos INJECTES.
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -8,6 +8,7 @@ import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { EncounterForm } from './EncounterForm';
 import { saveDraft, loadDraft } from '../../data/drafts';
+import { setOfflineUser } from '../../data/offline';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, NewEncounterInput } from '../../data/patients';
@@ -83,6 +84,7 @@ async function pickDayOfCurrentMonth(fieldLabel: string, day: number) {
 }
 
 describe('EncounterForm', () => {
+  beforeEach(() => setOfflineUser('u'));
   afterEach(() => localStorage.clear()); // A4 : pas de fuite de brouillon entre tests
 
   test('affiche les champs de rencontre, l apercu d age et le selecteur de valeur manquante', async () => {
@@ -128,7 +130,7 @@ describe('EncounterForm', () => {
     fireEvent.change(glasgows.at(-1)!, { target: { value: '99' } });
     const saveButtons = screen.getAllByRole('button', { name: 'Enregistrer la rencontre' });
     await userEvent.click(saveButtons.at(-1)!);
-    expect(await screen.findByText(/valeur maximale/i)).toBeInTheDocument();
+    expect(glasgows.at(-1)!).toHaveAccessibleDescription(/valeur maximale/i);
     expect(invalidCreate).not.toHaveBeenCalled();
   });
 
@@ -139,7 +141,7 @@ describe('EncounterForm', () => {
     fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
     fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'curated' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Glasgow')).toHaveAccessibleDescription(/champ obligatoire/i);
     expect(createEncounter).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
@@ -156,7 +158,7 @@ describe('EncounterForm', () => {
     // La soumission ('complete') exige desormais la completude, comme 'curated'.
     fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'complete' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Glasgow')).toHaveAccessibleDescription(/champ obligatoire/i);
     expect(createEncounter).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
@@ -179,11 +181,12 @@ describe('EncounterForm', () => {
 
   test('A4 : restaure un brouillon local et l efface a l enregistrement', async () => {
     // Brouillon pre-existant (analytique) pour ce patient (owner vide : pas d'AuthProvider ici).
-    saveDraft('encounter', 'p1', { encounterType: 'suivi', encounterDate: '2024-05-05', status: 'draft', values: { glasgow_score: 12 } });
+    saveDraft('encounter', 'p1', { templateVersionId: 'v1', encounterType: 'suivi', encounterDate: '2024-05-05', status: 'draft', values: { glasgow_score: 12 } });
     const createEncounter = vi.fn(async (_id: string, _input: NewEncounterInput) => ({ id: 'e1' }));
     renderForm(makePatientRepo(createEncounter));
 
-    // Bandeau de restauration + valeurs du brouillon reinjectees.
+    // Reprise explicite : la présence de la copie ne remplace pas automatiquement la saisie.
+    await userEvent.click(await screen.findByRole('button', { name: 'Reprendre le brouillon local' }));
     expect(await screen.findByText(/brouillon récupéré/i)).toBeInTheDocument();
     expect((screen.getByLabelText('Date de la rencontre') as HTMLInputElement).value).toBe('2024-05-05');
     expect((screen.getByLabelText('Glasgow') as HTMLInputElement).value).toBe('12');
@@ -205,7 +208,7 @@ describe('EncounterForm', () => {
     await pickDayOfCurrentMonth('Admission', 10);
     await pickDayOfCurrentMonth('Sortie', 5);
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(await screen.findByText('sortie >= admission')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sortie' })).toHaveAccessibleDescription('sortie >= admission');
     expect(createEncounter).not.toHaveBeenCalled();
   });
 });
@@ -279,8 +282,10 @@ describe('EncounterForm — valeur proposée (L28)', () => {
   // Un brouillon garde la saisie telle qu'elle a ete laissee : une valeur effacee hier ne
   // doit pas reapparaitre aujourd'hui parce que le gabarit la propose.
   test('un brouillon restauré n est pas recouvert par la proposition', async () => {
-    saveDraft('encounter', 'p1', { encounterType: 'consultation', encounterDate: '2024-06-01', status: 'draft', values: { motif: 'Controle' } });
+    setOfflineUser('u');
+    saveDraft('encounter', 'p1', { templateVersionId: 'v1', encounterType: 'consultation', encounterDate: '2024-06-01', status: 'draft', values: { motif: 'Controle' } });
     renderProposedForm(makePatientRepo(vi.fn(async () => ({ id: 'e1' }))));
+    await userEvent.click(await screen.findByRole('button', { name: 'Reprendre le brouillon local' }));
     expect(await screen.findByLabelText('Motif')).toHaveValue('Controle');
     expect(screen.getByLabelText('Pays')).toHaveValue('');
     expect(screen.queryByText('proposé')).toBeNull();
