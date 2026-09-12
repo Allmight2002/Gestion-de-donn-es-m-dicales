@@ -26,6 +26,7 @@ import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { localWorkDraftRepository } from '../../data/localWorkDrafts';
+import { WORK_DRAFT_DEBOUNCE_MS, WORK_DRAFT_MAX_WAIT_MS } from '../../data/workDrafts';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
 interface EncounterDraft {
@@ -87,6 +88,7 @@ export function EncounterForm() {
   const [discardLocalOpen, setDiscardLocalOpen] = useState(false);
   const loadedFor = useRef<string | null>(null);
   const intakeAttempt = useRef<{ fingerprint: string; operationKey: string } | null>(null);
+  const localDirtySince = useRef<number | null>(null); // UX-8 : plafond de 5 s de la saisie continue
   const draftReady = useRef(false); // A4 : autorise l'autosave seulement apres chargement + restauration
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
@@ -216,15 +218,23 @@ export function EncounterForm() {
   }, [baseId, patientId, bases, templates, online, offlineIntakeMode]);
 
   // A4 : sauvegarde continue (debounce) du brouillon ANALYTIQUE tant qu'il y a du contenu.
+  //
+  // UX-8 : meme temporisation que le brouillon serveur — 750 ms d'inactivite, 5 secondes au
+  // plus pendant une saisie continue. Deux supports ne peuvent pas promettre deux contrats de
+  // temporisation differents a la meme personne, sur le meme formulaire.
   useEffect(() => {
     if (!draftReady.current || !patientId || !versionId || !offlineIntakeMode || work.enabled || localCandidate || !navigation.dirty) return;
     const hasContent = !!encounterDate || Object.keys(values).length > 0;
+    if (localDirtySince.current === null) localDirtySince.current = Date.now();
+    const delay = Math.min(WORK_DRAFT_DEBOUNCE_MS,
+      Math.max(0, WORK_DRAFT_MAX_WAIT_MS - (Date.now() - localDirtySince.current)));
     const handle = setTimeout(() => {
       if (hasContent) {
         const saved = saveDraft<EncounterDraft>('encounter', patientId, { templateVersionId: versionId, encounterType, encounterDate, status, values });
         setLocalSaveError(!saved); setLocalSavedAt(saved ? Date.now() : null);
       }
-    }, 600);
+      localDirtySince.current = null;
+    }, delay);
     return () => clearTimeout(handle);
   }, [patientId, encounterType, encounterDate, status, values, versionId, offlineIntakeMode, localCandidate, navigation.dirty, work.enabled]);
 

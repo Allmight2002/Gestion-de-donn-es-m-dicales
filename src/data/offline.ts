@@ -670,6 +670,34 @@ export async function purgeExpiredLocalWorkDrafts(now = Date.now()): Promise<num
   });
 }
 
+/**
+ * UX-8 — contexte intake expire.
+ *
+ * Il ne s'effaçait qu'a la LECTURE de la base concernee : un contexte prepare pour une base
+ * qu'on ne rouvre jamais gardait indefiniment son nom de base et ses permissions resolues sur
+ * l'appareil, alors que sa duree de vie etait ecoulee. Le balayage de demarrage traitait deja
+ * les instantanes, la file et les brouillons de travail ; il lui manquait ce store.
+ */
+export async function purgeExpiredIntakeContexts(now = Date.now()): Promise<number> {
+  return idbAtomic<number>([INTAKE_CONTEXT_STORE], (transaction, done) => {
+    const store = transaction.objectStore(INTAKE_CONTEXT_STORE);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      let purged = 0;
+      for (const context of request.result as Array<{ key?: string; ownerUserId?: string | null; expiresAt?: unknown }>) {
+        if (!context.key) continue;
+        // Un enregistrement sans proprietaire ou sans echeance lisible ne peut plus etre
+        // rattache a personne : il part, comme une entree de file inconnue.
+        if (!context.ownerUserId || !Number.isFinite(context.expiresAt) || (context.expiresAt as number) <= now) {
+          store.delete(context.key);
+          purged += 1;
+        }
+      }
+      done(purged);
+    };
+  });
+}
+
 export interface OfflinePurgeReport { indexedDb: boolean; localStorage: boolean; cacheStorage: boolean; serviceWorkers: boolean; errors: string[]; }
 
 const OFFLINE_OWNER_KEY = 'meddata:offline-cache-owner';
@@ -718,6 +746,7 @@ export async function initializeOfflineForUser(
   try { await purgeExpiredSnapshots(); } catch (e) { report.errors.push(`Expiration snapshots: ${String(e)}`); }
   try { await purgeExpiredOutbox(); } catch (e) { report.errors.push(`Expiration outbox: ${String(e)}`); }
   try { await purgeExpiredLocalWorkDrafts(); } catch { report.errors.push('La purge des brouillons locaux n’a pas abouti.'); }
+  try { await purgeExpiredIntakeContexts(); } catch { report.errors.push('La purge des contextes de saisie hors connexion n’a pas abouti.'); }
   try { report.previousOwner = typeof localStorage === 'undefined' ? null : localStorage.getItem(OFFLINE_OWNER_KEY); }
   catch (e) { report.errors.push(`Lecture proprietaire: ${String(e)}`); }
 
