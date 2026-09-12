@@ -46,8 +46,12 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     // 3) creation d'un patient fictif — via l'UI reelle : « Nouveau patient » ouvre
     //    directement le formulaire (la page de choix intercalaire a ete retiree).
     await page.getByRole('button', { name: /Nouveau patient|New patient/i }).click();
-    await page.getByLabel(/Code patient|Patient code/i).fill(code);
-    await page.getByLabel(/Nom complet|Full name/i).fill(fullName);
+    //    Le formulaire est charge paresseusement : sans attendre son titre, getByLabel peut
+    //    capter le tri de la liste encore montee via le texte de son option "Code patient".
+    //    Les locators sont donc ancres sur le role, qu'un <select> ne peut pas satisfaire.
+    await expect(page.getByRole('heading', { name: /Nouveau patient|New patient/i })).toBeVisible();
+    await page.getByRole('textbox', { name: /Code patient|Patient code/i }).fill(code);
+    await page.getByRole('textbox', { name: /Nom complet|Full name/i }).fill(fullName);
     await page.getByRole('button', { name: /Date de naissance|Date of birth/i }).click();
     const datePicker = page.getByRole('dialog', { name: /Sélecteur de date|Date picker/i });
     await datePicker.getByRole('textbox', { name: /Jour|Day/i }).fill('01');
