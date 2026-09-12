@@ -21,7 +21,7 @@ import type {
   EncounterCreateEntry, EncounterCreatePayload, IntakeEntry,
   OutboxRecord, PatientCreateEntry, PatientCreatePayload,
 } from './offline';
-import type { DiagnosisContext, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from './types';
+import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from './types';
 
 // Le contrat des operations vit dans offline.ts (union discriminée du store) ;
 // on le re-exporte ici pour que les ecrans n'aient qu'un seul point d'entree.
@@ -130,6 +130,8 @@ export interface OfflineIntakeContext {
   rules: ValidationRule[];
   /** Sections stables de la version ; absent dans les contextes préparés avant L52. */
   sections?: TemplateSection[];
+  /** UX-16 : metadonnee de presentation uniquement, sans valeur clinique ni identite. */
+  commonLayout?: TemplateCommonLayout;
   diagnosisContext?: DiagnosisContext[];
   permissions: OfflineIntakePermissions;
   preparedAt: number;
@@ -186,6 +188,7 @@ export async function downloadIntakeContext(
     fields: version.fields,
     rules: version.rules,
     sections: version.sections ?? [],
+    commonLayout: version.version?.commonLayout,
     diagnosisContext: version.version?.diagnosisContext ?? [],
     permissions: {
       canCreateStructuredData: listing.role === 'owner'
@@ -397,7 +400,7 @@ export async function retryIntake(operationId: string): Promise<void> {
   if (!entry) return;
   // Une operation BLOQUEE par son parent ne se delivre pas seule : seul le retour du
   // parent a un etat recuperable peut la liberer (au prochain passage de synchronisation).
-  if (entry.state === 'blocked' || entry.state === 'syncing') return;
+  if (entry.state === 'blocked' || entry.state === 'syncing' || entry.state === 'expired' || entry.expiresAt <= Date.now()) return;
   await putIntake({ ...entry, state: 'pending', syncingStartedAt: undefined });
 }
 

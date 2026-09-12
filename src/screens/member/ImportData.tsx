@@ -81,7 +81,10 @@ export function ImportData() {
   const runInFlight = useRef(false);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const [batchOutcome, setBatchOutcome] = useState<'completed' | 'stopped' | 'failed' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const cancelRequestedRef = useRef(false);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -215,6 +218,10 @@ export function ImportData() {
     if (!baseId || runInFlight.current) return;
     runInFlight.current = true;
     setBusy(true); setError(null);
+    setBatchOutcome(null);
+    setCancelRequested(false);
+    cancelRequestedRef.current = false;
+    let partialReport: ImportReport | null = null;
     try {
       const includeGlobalDuplicateErrors = (source: ImportReport): ImportReport => {
         if (!dryRun || inFileDuplicates.length === 0) return source;
@@ -274,6 +281,7 @@ export function ImportData() {
           newly_imported: 0, already_processed: succeeded.size, rejected: 0,
           server_row_count: serverRowCount, server_error_count: serverErrorCount, errors: [],
         };
+        partialReport = agg;
         for (let i = 0; i < rows.length; i += CHUNK) {
           const chunk = rows.slice(i, i + CHUNK).filter((row) => !succeeded.has(row.source_row_number ?? -1));
           if (chunk.length === 0) continue;
@@ -297,6 +305,29 @@ export function ImportData() {
           } else {
             agg.error_count += rep.error_count;
           }
+          partialReport = { ...agg, errors: [...agg.errors] };
+          setReport(partialReport);
+          // Un arrêt demandé pendant l'appel courant prend effet ici, après l'unité atomique
+          // confirmée par le serveur. Les unités déjà reçues restent dans le bilan et ne sont
+          // jamais présentées comme annulées.
+          if (batchId && cancelRequestedRef.current) {
+            await patients.cancelImportBatch(batchId);
+            const state = await patients.getImportBatchState(batchId);
+            const stopped = {
+              ...agg,
+              server_row_count: state.row_count,
+              server_error_count: state.error_count,
+              error_count: state.error_count,
+              errors: [...agg.errors],
+            } satisfies ImportReport;
+            setReport(stopped);
+            setProgress({ done: state.row_count, total: state.expected_rows ?? rows.length });
+            setActiveBatchId(null);
+            setBatchOutcome('stopped');
+            setCancelRequested(false);
+            cancelRequestedRef.current = false;
+            return;
+          }
         }
         // §6.2 : cloture du lot -> active l'idempotence du fichier. En cas d'erreur, le lot
         // reste 'processing' et peut etre REPRIS (re-lancer l'import reprend le meme lot).
@@ -311,25 +342,52 @@ export function ImportData() {
         }
         setReport(includeGlobalDuplicateErrors(agg));
       }
-      if (!dryRun) setCommitted(true);
+      if (!dryRun) {
+        setCommitted(true);
+        setBatchOutcome('completed');
+      }
     } catch (e) {
+      if (!dryRun && partialReport) {
+        setReport(partialReport);
+        setBatchOutcome('failed');
+      }
       setError(msg(e));
     } finally {
       setBusy(false);
       runInFlight.current = false;
+      setCancelRequested(false);
+      cancelRequestedRef.current = false;
     }
   }
 
   async function cancelActiveBatch() {
-    if (!activeBatchId || busy) return;
+    if (!activeBatchId) return;
+    if (busy) {
+      cancelRequestedRef.current = true;
+      setCancelRequested(true);
+      return;
+    }
     setBusy(true); setError(null);
     try {
       await patients.cancelImportBatch(activeBatchId);
       const state = await patients.getImportBatchState(activeBatchId);
       setProgress({ done: state.row_count, total: state.expected_rows ?? rows.length });
       setActiveBatchId(null);
-      setReport(null);
       setCommitted(false);
+      setBatchOutcome('stopped');
+      setCancelRequested(false);
+      cancelRequestedRef.current = false;
+      setReport((previous) => previous ? {
+        ...previous,
+        error_count: state.error_count,
+        server_row_count: state.row_count,
+        server_error_count: state.error_count,
+      } : {
+        dry_run: false, status, conflict, patients_new: 0, patients_updated: 0, encounters: 0,
+        error_count: state.error_count, already_processed: 0, rejected: state.error_count,
+        newly_imported: Math.max(0, state.row_count - state.error_count),
+        server_row_count: state.row_count, server_error_count: state.error_count, errors: [],
+      });
       toast(t('import.cancelled'), 'success');
     } catch (e) {
       setError(msg(e));
@@ -541,9 +599,14 @@ export function ImportData() {
                 <label className="form-label">{t('import.conflict')}<select className="input" value={conflict} onChange={(event) => setConflict(event.target.value as typeof conflict)}>{CONFLICTS.map((item) => <option key={item} value={item}>{t(`import.conflict_${item}`)}</option>)}</select></label>
               </div>
               {progress && <p className="helper-text">{t('import.progress').replace('{done}', String(progress.done)).replace('{total}', String(progress.total))}</p>}
+              {/* UX-15 : l'arret est disponible PENDANT l'ecriture, mais il ne prend effet qu'entre
+                  deux lots confirmes par le serveur — jamais au milieu d'une unite atomique. */}
+              {activeBatchId && !committed && <p className="helper-text">{t('import.stop_hint')}</p>}
               <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">
                 {activeBatchId && !committed && (
-                  <button type="button" onClick={() => void cancelActiveBatch()} disabled={busy} className="btn-secondary mr-auto text-red-700">{t('import.cancel_batch')}</button>
+                  <button type="button" onClick={() => void cancelActiveBatch()} disabled={cancelRequested} className="btn-secondary mr-auto text-red-700">
+                    {cancelRequested ? t('import.stop_pending') : t('import.cancel_batch')}
+                  </button>
                 )}
                 <button onClick={() => void run(true)} disabled={busy || !canRun} className="btn-secondary">{t('import.preview')}</button>
                 <button onClick={() => void run(false)} disabled={busy || !canRun || !report || committed} className="btn-primary">{t('import.commit')}</button>
@@ -556,6 +619,13 @@ export function ImportData() {
       {report && (
         <SectionCard title={committed ? t('import.done') : t('import.preview_result')} icon={CheckCircle2}>
           <div className="space-y-4 text-sm">
+            {/* T19 : un arret demande par l'utilisateur et une interruption technique ne se lisent
+                pas de la meme facon ; ni l'un ni l'autre n'annule les unites deja ecrites. */}
+            {batchOutcome && (
+              <p role="status" className={`rounded-xl border px-3 py-2 text-sm ${batchOutcome === 'completed' ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                <strong>{t('import.outcome')} : </strong>{t(`import.outcome_${batchOutcome}`)}
+              </p>
+            )}
             <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="surface-muted p-3"><dt className="text-xs text-slate-500">{t('import.patients_new')}</dt><dd className="mt-1 text-xl font-semibold text-slate-900">{report.patients_new}</dd></div>
               <div className="surface-muted p-3"><dt className="text-xs text-slate-500">{t('import.patients_updated')}</dt><dd className="mt-1 text-xl font-semibold text-slate-900">{report.patients_updated}</dd></div>

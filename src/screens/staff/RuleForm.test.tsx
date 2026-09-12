@@ -168,8 +168,10 @@ describe('RuleForm', () => {
     );
 
     const leftField = screen.getByLabelText('Variable à contrôler');
-    expect(within(leftField).getByRole('option', { name: 'Date — Patient — patient_date' })).toBeInTheDocument();
-    expect(within(leftField).getByRole('option', { name: 'Date — Visite — visit_date' })).toBeInTheDocument();
+    // UX-14(b) : section, type et portée accompagnent le libellé ; la clé technique reste
+    // réservée aux libellés réellement en doublon.
+    expect(within(leftField).getByRole('option', { name: /^Date — .* · Patient — patient_date$/ })).toBeInTheDocument();
+    expect(within(leftField).getByRole('option', { name: /^Date — .* · Visite — visit_date$/ })).toBeInTheDocument();
   });
 
   test('relit une règle existante et permet de la corriger sans la recréer', async () => {
@@ -201,6 +203,65 @@ describe('RuleForm', () => {
       'La sortie doit suivre l’admission',
       'warn',
     );
+  });
+
+  // UX-14(b) : choisir une variable parmi 216 sans parcourir une liste native entiere.
+  test('les selecteurs de variables deviennent recherchables sur un gros modele', async () => {
+    const user = userEvent.setup();
+    const many: TemplateField[] = Array.from({ length: 30 }, (_, index) => ({
+      ...fields[0],
+      id: `gros-${index}`,
+      fieldKey: `variable_${index}`,
+      label: index === 27 ? 'Score de Glasgow' : `Variable ${index}`,
+      type: 'integer' as const,
+      displayOrder: index,
+    }));
+    render(
+      <I18nProvider>
+        <RuleForm fields={many} onSubmit={() => {}} />
+      </I18nProvider>,
+    );
+
+    const cible = screen.getByLabelText('Variable à contrôler');
+    expect(within(cible).getAllByRole('option')).toHaveLength(31); // 30 variables + « Choisir »
+
+    const recherche = screen.getByLabelText('Rechercher une variable — Variable à contrôler');
+    await user.type(recherche, 'glasgow');
+    expect(within(cible).getAllByRole('option')).toHaveLength(2);
+    expect(within(cible).getByRole('option', { name: /Score de Glasgow/ })).toBeInTheDocument();
+
+    // La variable choisie reste proposee meme si la recherche ne la retient plus :
+    // filtrer ne doit jamais effacer une reponse deja donnee.
+    await user.selectOptions(cible, 'variable_27');
+    await user.clear(recherche);
+    await user.type(recherche, 'Variable 3');
+    expect(within(cible).getByRole('option', { name: /Score de Glasgow/ })).toBeInTheDocument();
+    expect(cible).toHaveValue('variable_27');
+  });
+  test('une recherche sans resultat le dit, et la valeur choisie reste proposee', async () => {
+    const user = userEvent.setup();
+    const many: TemplateField[] = Array.from({ length: 12 }, (_, index) => ({
+      ...fields[0], id: `m-${index}`, fieldKey: `var_${index}`, label: `Variable ${index}`, displayOrder: index,
+    }));
+    render(
+      <I18nProvider>
+        <RuleForm fields={many} onSubmit={() => {}} />
+      </I18nProvider>,
+    );
+
+    const cible = screen.getByLabelText('Variable à contrôler');
+    const recherche = screen.getByLabelText('Rechercher une variable — Variable à contrôler');
+    // Sans choix en cours, une recherche vide est annoncee comme telle.
+    await user.type(recherche, 'zzzz');
+    expect(screen.getAllByText('Aucune variable ne correspond à cette recherche').length).toBeGreaterThan(0);
+
+    // Avec un choix en cours, la variable choisie reste proposee : filtrer n'efface pas une reponse.
+    await user.clear(recherche);
+    await user.selectOptions(cible, 'var_3');
+    await user.type(recherche, 'zzzz');
+    expect(cible).toHaveValue('var_3');
+    expect(within(cible).getByRole('option', { name: /Variable 3/ })).toBeInTheDocument();
+    expect(screen.getAllByText('1 variable(s) sur 12').length).toBeGreaterThan(0);
   });
 });
 

@@ -20,6 +20,14 @@
 > ajoute L55/L56 et le cadrage différé L57 ; il définit la couverture distincte de la complétude.
 > Les lots décrits ici sont des fondations et ne suffisent pas seuls au parcours terrain.
 
+> **Complément UX spécifié le 2026-09-10, révisé le 2026-09-11 :** [saisie protégée, navigation et formulaires sobres](spec-experience-utilisateur.md)
+> regroupe les lots UX-0 à UX-16 : brouillons, conservation des valeurs temporairement masquées,
+> blocs repliables, sommaire, avancement et champs à choix. UX-16 révise la présentation du
+> tronc commun : rubriques renommables et déplaçables, diagnostic compris ; le rendu en tête
+> devient le repli des versions sans cette configuration. L'appartenance commune, les règles
+> d'applicabilité et la projection d'export sont conservées. Aucune implémentation ou
+> validation supplémentaire des blocs n'est attestée par ce renvoi.
+
 ## 1. Besoin
 
 Permettre à une même base de porter plusieurs **blocs cliniques conditionnels**, affichés selon
@@ -711,8 +719,9 @@ absente, et une migration seule ne doit modifier aucun formulaire existant.
 - Client ancien : cible montrée, enregistrement d'une valeur masquée refusé avec demande de
   rafraîchissement explicite.
 - Rendu à deux niveaux : variables directes du bloc avant les sous-sections, ordre respecté.
-- Tronc commun créable explicitement et rendu avant les blocs ; variable partagée conditionnelle
-  rendue une seule fois.
+- Tronc commun créable explicitement ; rendu historique avant les blocs. L'extension UX-16
+  [spécifie des rubriques communes renommables et ordonnables](spec-experience-utilisateur.md#53-diagnostic-pilote-et-rubriques-communes-libres--ux-16),
+  sans modifier cette appartenance ; variable partagée conditionnelle rendue une seule fois.
 - Bloc entièrement masqué non rendu, titre compris ; sous-section sans variable visible non
   rendue.
 - Décompte des valeurs effacées couvrant **l'intégralité du bloc**, sous-sections comprises.

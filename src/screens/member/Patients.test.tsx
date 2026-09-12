@@ -10,7 +10,8 @@ import { NewPatient } from './NewPatient';
 import { BaseHome } from './BaseHome';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
-import type { PatientRepository, PatientListItem, NewPatientInput } from '../../data/patients';
+import { escapeLikePattern } from '../../data/patients';
+import type { PatientRepository, PatientListItem, PatientListQuery, NewPatientInput } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
 import { offlineCache, type OfflineSnapshot } from '../../data/offline';
 import { setBirthDate } from '../../../test/helpers/date-picker';
@@ -186,8 +187,8 @@ describe('NewPatient', () => {
     expect(within(other).getByText('Variable historique')).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Biologie' })).not.toBeInTheDocument();
     expect(
-      Array.from(document.querySelectorAll('legend'), (legend) => legend.textContent)
-        .filter((legend) => ['Clinique', 'Biologie', 'Paraclinique', 'Autre'].includes(legend ?? '')),
+      screen.getAllByRole('group', { name: /^(Clinique|Biologie|Paraclinique|Autre)$/ })
+        .map((group) => document.getElementById(group.getAttribute('aria-labelledby')!)?.textContent),
     ).toEqual(['Clinique', 'Paraclinique', 'Autre']);
   });
 
@@ -472,9 +473,10 @@ describe('BaseHome (liste patients)', () => {
     const pageRow = (n: number): PatientListItem => ({
       id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: {}, validationStatus: 'curated', identity: null,
     });
-    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number) => ({
+    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number, options?: PatientListQuery) => ({
       rows: Array.from({ length: Math.min(limit, 25 - offset) }, (_, i) => pageRow(offset + i + 1)),
       total: 25,
+      options,
     }));
     const patientRepo = { listPatientsPage, async createPatient() { return { id: '', code: '' }; } } as unknown as PatientRepository;
 
@@ -491,10 +493,246 @@ describe('BaseHome (liste patients)', () => {
       </I18nProvider>,
     );
 
+    // UX-12(a) : la pagination est accessible en tete ET en pied de liste ; les deux reperes
+    // portent un nom distinct, donc chaque commande reste designable sans ambiguite.
     expect(await screen.findByText('1–20 sur 25')).toBeInTheDocument();
+    expect(screen.getByText('Page 1 sur 2 — 25 patient(s)')).toBeInTheDocument();
     expect(screen.getByText('P-0001')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Suivant' }));
+    const bas = screen.getByRole('navigation', { name: 'Pagination, bas de liste' });
+    await userEvent.click(within(bas).getByRole('button', { name: 'Suivant' }));
     expect(await screen.findByText('21–25 sur 25')).toBeInTheDocument();
     expect(listPatientsPage.mock.calls.some(([, , offset]) => offset === 20)).toBe(true);
+    // Le tri et la recherche voyagent avec la page : le serveur filtre AVANT de paginer.
+    expect(listPatientsPage.mock.calls.every(([, , , options]) => options?.sort?.field === 'created_at')).toBe(true);
+  });
+
+  // UX-12(a)/(b) — contexte de base, recherche et tri resolus par le serveur.
+  const listRow = (n: number): PatientListItem => ({
+    id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 },
+    validationStatus: 'curated', identity: null,
+  });
+
+  function renderList(patients: PatientRepository, bases: BaseRepository = baseRepo) {
+    return render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+  }
+
+  test('la recherche par code est resolue par le serveur, au-dela de la page affichee', async () => {
+    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number, options?: PatientListQuery) => (
+      options?.codeQuery
+        ? { rows: [listRow(99)], total: 1 }
+        : { rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)), total: 40 }
+    ));
+    renderList({ listPatientsPage } as unknown as PatientRepository);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    const bas = screen.getByRole('navigation', { name: 'Pagination, bas de liste' });
+    await userEvent.click(within(bas).getByRole('button', { name: 'Suivant' }));
+    expect(await screen.findByText('P-0021')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099');
+    expect(await screen.findByText('P-0099')).toBeInTheDocument();
+    const derniere = listPatientsPage.mock.calls.at(-1)!;
+    expect(derniere[2]).toBe(0);                          // toute recherche revient a la premiere page
+    expect(derniere[3]?.codeQuery).toBe('P-0099');        // le filtre part au serveur, pas au tableau
+    expect(screen.queryByText('P-0021')).not.toBeInTheDocument();
+    // RG-9 : la liste reste presentee par code ; la recherche par identite n'est pas ouverte ici.
+    expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
+  });
+
+  test('changer de tri revient a la premiere page et demande un ordre au serveur', async () => {
+    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number, _options?: PatientListQuery) => ({
+      rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)),
+      total: 40,
+    }));
+    renderList({ listPatientsPage } as unknown as PatientRepository);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('navigation', { name: 'Pagination, bas de liste' })).getByRole('button', { name: 'Suivant' }));
+    expect(await screen.findByText('P-0021')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Trier les patients'), 'patient_code');
+    await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[3]?.sort?.field).toBe('patient_code'));
+    expect(listPatientsPage.mock.calls.at(-1)?.[2]).toBe(0);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ordre croissant' }));
+    await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[3]?.sort?.direction).toBe('desc'));
+  });
+
+  test('changer de base repart de la premiere page sans herite de la recherche', async () => {
+    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number, _options?: PatientListQuery) => ({
+      rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)),
+      total: 40,
+    }));
+    function SwitchableBaseHome() {
+      const navigate = useNavigate();
+      return <><button onClick={() => navigate('/bases/b2')}>Ouvrir base B</button><BaseHome /></>;
+    }
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={{ listPatientsPage } as unknown as PatientRepository}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<SwitchableBaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('navigation', { name: 'Pagination, bas de liste' })).getByRole('button', { name: 'Suivant' }));
+    expect(await screen.findByText('P-0021')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-00');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir base B' }));
+    await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[0]).toBe('b2'));
+    const derniere = listPatientsPage.mock.calls.at(-1)!;
+    expect(derniere[2]).toBe(0);
+    expect(derniere[3]?.codeQuery).toBeNull();
+    expect((screen.getByLabelText('Rechercher un patient') as HTMLInputElement).value).toBe('');
+  });
+
+  test('un echec de chargement de la base propose une reprise, jamais « Page introuvable »', async () => {
+    let attempts = 0;
+    const bases = {
+      async getBase() {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Base temporairement indisponible');
+        return baseListing;
+      },
+    } as unknown as BaseRepository;
+    const patients = { async listPatientsPage() { return { rows: [listRow(1)], total: 1 }; } } as unknown as PatientRepository;
+    renderList(patients, bases);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Base temporairement indisponible');
+    expect(screen.queryByText('Page introuvable')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Recharger les patients' }));
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+  });
+
+  test('les colonnes affichees sont une preference par utilisateur et par base, purgee des cles disparues', async () => {
+    localStorage.setItem('meddata:columns:u:b1', JSON.stringify(['sexe', 'variable_supprimee']));
+    const patients = { async listPatientsPage() { return { rows: [listRow(1)], total: 1 }; } } as unknown as PatientRepository;
+    renderList(patients);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Sexe' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Annee de naissance' })).not.toBeInTheDocument();
+    // La cle devenue inexistante dans la version courante est retiree du stockage.
+    expect(JSON.parse(localStorage.getItem('meddata:columns:u:b1') ?? '[]')).toEqual(['sexe']);
+    localStorage.removeItem('meddata:columns:u:b1');
+  });
+
+  test('un motif de recherche ne devient jamais un joker involontaire', () => {
+    expect(escapeLikePattern('100 %')).toBe('100 \\%');
+    expect(escapeLikePattern('P_1')).toBe('P\\_1');
+  });
+});
+
+// UX-12(c) — recherche nominative. L'écran ne reçoit jamais de nom : l'opération auditée rend
+// des identifiants, et la liste reste présentée par code et variables analytiques (RG-9).
+describe('BaseHome — recherche nominative (UX-12(c))', () => {
+  const listRow = (n: number): PatientListItem => ({
+    id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 },
+    validationStatus: 'curated', identity: null,
+  });
+
+  function renderList(patients: PatientRepository, bases: BaseRepository = baseRepo) {
+    return render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+  }
+
+  const pageRepo = () => vi.fn(async (_b: string, limit: number, offset: number, options?: PatientListQuery) => (
+    options?.ids
+      ? { rows: options.ids.map((id) => listRow(Number(id.replace('p', '')))), total: options.ids.length }
+      : { rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)), total: 40 }
+  ));
+
+  test('P05 — le nom trouve le patient, et seul son code revient à l\'écran', async () => {
+    const listPatientsPage = pageRepo();
+    // Le serveur rend les identifiants dans SON ordre ; l'écran ne le réinvente pas.
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: ['p33', 'p7'], total: 2 }));
+    renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
+
+    await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalled());
+    expect(searchPatientIdsByIdentity.mock.calls.at(-1)).toEqual(['b1', 'Fictif', 20, 0]);
+    expect(await screen.findByText('P-0033')).toBeInTheDocument();
+    // L'ordre du serveur est conservé : P-0033 avant P-0007.
+    const codes = screen.getAllByText(/^P-00(33|07)$/).map((node) => node.textContent);
+    expect(codes).toEqual(['P-0033', 'P-0007']);
+    // La page analytique est relue par le chemin habituel, restreinte à ces identifiants.
+    expect(listPatientsPage.mock.calls.at(-1)?.[3]?.ids).toEqual(['p33', 'p7']);
+    // Aucun nom n'est affiché : la liste reste pseudonymisée.
+    expect(screen.queryByText(/Fictif/)).not.toBeInTheDocument();
+  });
+
+  test('moins de deux caractères ne déclenche aucune recherche nominative', async () => {
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: [], total: 0 }));
+    renderList({ listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'A');
+
+    expect(await screen.findByText(/au moins deux caractères/)).toBeInTheDocument();
+  });
+
+  test('P06 — sans droit d\'identité sur cette base, le mode nominatif n\'est pas proposé', async () => {
+    const sansIdentite: BaseListing = { ...baseListing, role: 'editor', permissions: { ...ALL_PERMS, canViewIdentity: false } };
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: [], total: 0 }));
+    renderList(
+      { listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository,
+      { async getBase() { return sansIdentite; } } as unknown as BaseRepository,
+    );
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Rechercher par')).not.toBeInTheDocument();
+    expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
+    // Et la recherche qui reste disponible ne passe jamais par l'opération d'identité.
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099');
+    await waitFor(() => expect(screen.queryByText('P-0021')).not.toBeInTheDocument());
+    expect(searchPatientIdsByIdentity).not.toHaveBeenCalled();
+  });
+
+  test('P07 — un droit retiré ramène la recherche au code, sans requête nominative de plus', async () => {
+    let permis = true;
+    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: ['p7'], total: 1 }));
+    const listPatientsPage = pageRepo();
+    const bases = {
+      async getBase() {
+        return permis ? baseListing : { ...baseListing, permissions: { ...ALL_PERMS, canViewIdentity: false } };
+      },
+    } as unknown as BaseRepository;
+    renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository, bases);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
+    await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1));
+
+    // Le droit est retiré côté serveur ; le prochain chargement l'apprend.
+    permis = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Effacer la recherche' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Rechercher par')).not.toBeInTheDocument());
+    expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
+    expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'admin gabarits (cahier §8.2) avec un repository INJECTE.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -108,6 +108,14 @@ function renderEditor(repo: TemplateRepository) {
   );
 }
 
+/**
+ * Les quatre espaces restent MONTES pour ne perdre aucune saisie en changeant d'onglet. Les
+ * panneaux inactifs portent `hidden`, que les requetes par role respectent — mais pas
+ * `getByText`. Un libelle de variable apparait donc aussi dans les `<option>` du filtre de
+ * l'espace Regles. Les assertions de liste se lisent donc DANS l'espace Structure.
+ */
+const structure = () => within(document.getElementById('editor-panel-structure') as HTMLElement);
+
 async function openTemplateActions() {
   await userEvent.click(screen.getByRole('button', { name: /Actions.*Neurochirurgie/ }));
 }
@@ -126,8 +134,8 @@ describe('TemplatesAdmin', () => {
     await screen.findByText('Neurochirurgie');
     await user.type(screen.getByLabelText('Nom'), 'Cardiologie');
     await user.click(screen.getByRole('button', { name: 'Nouveau modèle' }));
-    // L'editeur affiche la section "Variables".
-    expect(await screen.findByText('Variables')).toBeInTheDocument();
+    // L'editeur s'ouvre sur son espace principal, la structure du formulaire.
+    expect(await screen.findByRole('tab', { name: /Structure du formulaire/ })).toBeInTheDocument();
   });
 
   test('renommer un gabarit appelle renameTemplate', async () => {
@@ -177,12 +185,12 @@ describe('TemplateVersionEditor (brouillon)', () => {
   test('ajouter un champ l affiche dans la table', async () => {
     const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
-    await screen.findByText('Variables');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
     await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.type(screen.getByLabelText('Clé technique'), 'glasgow_score');
     await user.type(screen.getByLabelText('Libellé'), 'Score de Glasgow');
     await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
-    expect(await screen.findByText('Score de Glasgow')).toBeInTheDocument();
+    expect(await structure().findByText('Score de Glasgow')).toBeInTheDocument();
   });
 
   test('ajoute le champ source et sa proposition par un seul appel repository', async () => {
@@ -190,7 +198,7 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const addField = vi.spyOn(repo, 'addField');
     renderEditor(repo);
-    await screen.findByText('Variables');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
     await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.selectOptions(screen.getByLabelText('Type'), 'select');
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
@@ -204,7 +212,7 @@ describe('TemplateVersionEditor (brouillon)', () => {
       expect.objectContaining({ fieldKey: 'diagnostic' }),
       expect.objectContaining({ fieldKey: 'diagnostic_autre', type: 'text' }),
     );
-    expect(await screen.findByText('Diagnostic — valeur proposée')).toBeInTheDocument();
+    expect(await structure().findByText('Diagnostic — valeur proposée')).toBeInTheDocument();
   });
 
   test('ajoute aussi le compagnon d un diagnostic de terminologie permanent', async () => {
@@ -212,7 +220,7 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const addField = vi.spyOn(repo, 'addField');
     renderEditor(repo);
-    await screen.findByText('Variables');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
     await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.selectOptions(screen.getByLabelText('Portée'), 'patient');
     await user.selectOptions(screen.getByLabelText('Type'), 'terminology');
@@ -234,12 +242,12 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const addField = vi.spyOn(repo, 'addField');
     renderEditor(repo);
-    await screen.findByText('Variables');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
     await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic_autre');
     await user.type(screen.getByLabelText('Libellé'), 'Champ existant');
     await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
-    expect(await screen.findByText('Champ existant')).toBeInTheDocument();
+    expect(await structure().findByText('Champ existant')).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Type'), 'select');
     await user.type(screen.getByLabelText('Clé technique'), 'diagnostic');
@@ -255,19 +263,19 @@ describe('TemplateVersionEditor (brouillon)', () => {
   test('modifier un champ pre-remplit le formulaire et enregistre le nouveau libelle', async () => {
     const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
-    await screen.findByText('Variables');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
     await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
     await user.type(screen.getByLabelText('Clé technique'), 'glasgow');
     await user.type(screen.getByLabelText('Libellé'), 'Glasgow');
     await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
-    await screen.findByText('Glasgow');
+    await structure().findByText('Glasgow');
 
     await user.click(screen.getByRole('button', { name: /Modifier la variable/ }));
     const label = screen.getByDisplayValue('Glasgow');
     await user.clear(label);
     await user.type(label, 'Glasgow modifié');
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
-    expect(await screen.findByText('Glasgow modifié')).toBeInTheDocument();
+    expect(await structure().findByText('Glasgow modifié')).toBeInTheDocument();
   });
 
   // L27/L28 — corriger un libelle ne doit rien effacer d'autre. Sans `description` et
@@ -284,7 +292,8 @@ describe('TemplateVersionEditor (brouillon)', () => {
     }]);
     const updateField = vi.spyOn(repo, 'updateField');
     renderEditor(repo);
-    await screen.findByText('Pays de résidence');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
+    await structure().findByText('Pays de résidence');
 
     await user.click(screen.getByRole('button', { name: /Modifier la variable/ }));
     // Le formulaire doit PORTER les deux valeurs : c'est ce qui les renverra intactes.
@@ -309,18 +318,21 @@ describe('TemplateVersionEditor (brouillon)', () => {
     const repo = statefulMock('draft');
     const reorderFields = vi.spyOn(repo, 'reorderFields');
     renderEditor(repo);
-    await screen.findByText('Variables');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
     await user.click(screen.getByRole('button', { name: 'Ajouter une variable' }));
 
     await user.type(screen.getByLabelText('Clé technique'), 'premier');
     await user.type(screen.getByLabelText('Libellé'), 'Premier');
     await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
-    await screen.findByText('Premier');
+    await structure().findByText('Premier');
     await user.type(screen.getByLabelText('Clé technique'), 'second');
     await user.type(screen.getByLabelText('Libellé'), 'Second');
     await user.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
-    await screen.findByText('Second');
+    await structure().findByText('Second');
 
+    // Le deplacement est suspendu tant que le panneau d'ajout couvre la liste : on le
+    // referme, comme l'utilisateur le ferait, avant de reordonner.
+    await user.click(screen.getByRole('button', { name: 'Fermer le panneau' }));
     await user.click(screen.getByRole('button', { name: 'Monter · Second' }));
     await waitFor(() => expect(reorderFields).toHaveBeenLastCalledWith('v1', ['f2', 'f1']));
   });
@@ -338,7 +350,8 @@ describe('TemplateVersionEditor (brouillon)', () => {
     }]);
     const updateField = vi.spyOn(repo, 'updateField');
     renderEditor(repo);
-    await screen.findByText('Diagnostic principal');
+    await screen.findByRole('tab', { name: /Structure du formulaire/ });
+    await structure().findByText('Diagnostic principal');
 
     await user.click(screen.getByRole('button', { name: /Modifier la variable/ }));
     // Le formulaire doit PORTER la cardinalite : c'est ce qui la renverra intacte.
@@ -358,8 +371,13 @@ describe('TemplateVersionEditor (brouillon)', () => {
   });
 
   test('propose uniquement le constructeur de regles guide', async () => {
+    const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
-    await screen.findByText('Règles');
+    // Les regles vivent dans leur propre espace depuis UX-14(a). Le constructeur s'ouvre
+    // desormais A LA DEMANDE : la liste n'est plus surmontee en permanence du formulaire.
+    await user.click(await screen.findByRole('tab', { name: /^Règles/ }));
+    expect(screen.queryByLabelText('Type de règle')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
     expect(screen.getByLabelText('Type de règle')).toBeInTheDocument();
     expect(screen.queryByText(/Mode expert/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/JSON/i)).not.toBeInTheDocument();
@@ -384,9 +402,17 @@ describe('TemplateVersionEditor (brouillon)', () => {
       },
     });
 
-    expect(await screen.findByRole('columnheader', { name: 'Glisser pour réordonner' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Supprimer' })).toBeDisabled();
+    // La colonne de poignee de glisser a disparu avec la refonte : le deplacement reste
+    // offert par la ligne (glisser) ET par des commandes NOMMEES, seules utilisables au
+    // clavier. C'est cette accessibilite-la que le test garde.
+    expect(await screen.findByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Monter · Code patient' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descendre · Code patient' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Déplacer · Code patient' })).toBeInTheDocument();
+    // Une variable deja utilisee ne se supprime pas, et l'ecran le dit au lieu de le subir.
+    const remove = screen.getByRole('button', { name: 'Supprimer · Code patient' });
+    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute('title', expect.stringMatching(/./));
   });
 });
 
@@ -400,17 +426,22 @@ describe('TemplateVersionEditor (publiee)', () => {
 
 // L29 — l'apercu s'ouvre depuis l'editeur, sur brouillon comme sur version publiee : voir
 // le formulaire que les gens saisissent aujourd'hui vaut autant que voir un brouillon.
+// Depuis la refonte, l'apercu est l'un des QUATRE espaces : on y entre par son onglet et on
+// en revient par le retour explicite, sans que l'editeur soit demonte entre-temps.
 describe('TemplateVersionEditor — aperçu du formulaire', () => {
   test.each(['draft', 'published'] as const)('s ouvre puis se referme (version %s)', async (status) => {
     const user = userEvent.setup();
     renderEditor(statefulMock(status));
-    await screen.findByText('Variables');
+    const structure = await screen.findByRole('tab', { name: /Structure du formulaire/ });
+    expect(structure).toHaveAttribute('aria-selected', 'true');
 
-    await user.click(screen.getByRole('button', { name: 'Aperçu du formulaire' }));
+    await user.click(screen.getByRole('tab', { name: 'Aperçu' }));
     expect(await screen.findByRole('tab', { name: /Rencontre/ })).toBeInTheDocument();
-    expect(screen.queryByText('Variables')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Aperçu' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Structure du formulaire/ })).toHaveAttribute('aria-selected', 'false');
 
     await user.click(screen.getByRole('button', { name: /Retour à l’éditeur/ }));
-    expect(await screen.findByText('Variables')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Structure du formulaire/ }))
+      .toHaveAttribute('aria-selected', 'true'));
   });
 });

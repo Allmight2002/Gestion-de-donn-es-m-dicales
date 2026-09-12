@@ -1,6 +1,6 @@
 # Découpage des chantiers en lots parallélisables
 
-- Établi le 2026-07-27 · **révisé le 2026-09-05**
+- Établi le 2026-07-27 · **révisé le 2026-09-11**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus
 - Source des contenus :
@@ -58,8 +58,23 @@ Le critère de découpage est le **fichier touché**, pas le thème. Deux lots q
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
 n'ont aucun rapport.
 
-Un prompt prêt à l'emploi existe pour chaque lot dans
-[`prompts-lots.md`](prompts-lots.md).
+> **Chantier UX du 2026-09-10, révisé le 2026-09-11 — spécifié, non implémenté au titre de ce chantier.**
+> [La spécification d'expérience utilisateur](spec-experience-utilisateur.md) regroupe
+> **UX-0 à UX-16**, avec dépendances, charges, risques, responsables de surfaces et critères
+> de sortie. Les lots UX ne renumérotent pas les lots L/O et ne changent pas leur statut.
+> Ils couvrent les brouillons et la conservation de saisie, les blocs/sommaires, les champs
+> à choix, la navigation des bases/patients, les erreurs, l'édition des modèles et les opérations.
+> UX-16 ajoute des rubriques communes renommables/déplaçables et le placement libre du diagnostic,
+> en conservant son rôle clinique et son appartenance commune pour les règles et les exports.
+> **Collisions à coordonner :** L39 et O0–O7 pour les données locales, chantier de recherche
+> patient pour UX-12, L54/L55/L58–L60 pour l'éditeur et les copies, ainsi que UX-1/3/4/5/6/13/16 sur les
+> formulaires. Le §8 de la spec définit les responsabilités et la séquence de livraison.
+> La recherche d'options (UX-11) et la recherche de patients (UX-12) restent deux périmètres.
+
+Les prompts prêts à l'emploi des lots L sont regroupés dans
+[`prompts-lots.md`](prompts-lots.md). Les lots UX restent spécifiés dans le document dédié ;
+seul le sous-chantier UX-12 est désormais traduit en prompts L61 à L65. Ce renvoi ne signifie pas
+que les prompts d'exécution ou l'implémentation des autres lots UX existent déjà.
 
 **Révision du 2026-08-24, mise à jour le 2026-09-02** : le chantier d'export directement
 exploitable pour l'analyse était découpé en **L45 à L50** ; **L45 à L49 sont livrés** et seul
@@ -87,6 +102,14 @@ analytique explicite la justifie.
 > [`spec-blocs-reutilisables.md`](spec-blocs-reutilisables.md) — réutiliser un bloc clinique
 > d’un jeu de variables à l’autre, par copie et sans catalogue partagé. Ils forment une file
 > séquentielle et supposent **L52 et L54 fusionnés**.
+
+> **Révision du 2026-09-11 — liste des patients d'une base** : cinq lots, **L61 à L65**,
+> transforment la demande de colonnes persistantes, tri par variable, recherche dans la base et
+> noms contrôlés en une file séquentielle. Le code courant possède déjà la préférence locale,
+> la recherche par code et le tri technique ; L61 doit d'abord les prouver sans les dupliquer.
+> Le tri clinique (L62/L63) et l'identité nominative (L64) restent à réaliser. Le contrat détaillé
+> et les preuves attendues sont dans
+> [`l61-liste-patients-recherche-tri-identite.md`](l61-liste-patients-recherche-tri-identite.md).
 
 ## Vue d'ensemble
 
@@ -152,6 +175,11 @@ analytique explicite la justifie.
 | **L58** | Blocs réutilisables : import serveur d’un bloc dans une version | migration (provenance sur `template_section`, prévisualisation et RPC d’import), tests SQL | **après L52 et L54** ; jamais avec un lot qui redéfinit `copy_template_fields` |
 | **L59** | Blocs réutilisables : choisir un bloc dans l’éditeur | `templates.ts`, `SectionsEditor.tsx`, `TemplateVersionEditor.tsx`, i18n | **après L58** ; **jamais avec L41** (`TemplateVersionEditor.tsx`) |
 | **L60** | Blocs réutilisables : reconnexion de la règle d’activation | `templateRules.ts`, `RuleForm.tsx`, i18n | **après L59** ; jamais avec un lot du moteur de règles |
+| **L61** | Liste patient : stabiliser et prouver le socle colonnes/recherche par code/tri technique déjà présent | `BaseHome.tsx`, `patients.ts`, `Patients.test.tsx`, documentation | **avant L62** ; seul propriétaire de `BaseHome` pendant la preuve |
+| **L62** | Liste patient : contrat serveur de tri par variable analytique | migration/RPC si nécessaire, `patients.ts`, tests DB et snapshot | **après L61** ; jamais avec L42, L56 ou un autre lot modifiant les RPC/repository patients |
+| **L63** | Liste patient : sélecteur de variable et deux sens de tri accessibles | `BaseHome.tsx`, `Patients.test.tsx`, i18n | **après L62** ; jamais avec L61/L64 (même écran) |
+| **L64** | Liste patient : nom complet sélectionnable et recherche nominative auditée | migration/RPC, `patients.ts`, `BaseHome.tsx`, allowlist/ACL, tests DB/web | **après L63** ; jamais en parallèle avec un lot identité ou `BaseHome` |
+| **L65** | Liste patient : preuves intégrées, performance et clôture documentaire | tests web/DB/ACL/browser, documentation | **après L61 à L64** ; validation seule, sans élargir le produit |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
@@ -1089,7 +1117,7 @@ l'interface le 2026-09-01.
 
 Restent ouverts : **L34**, les lots d'audit **L38 à L44**, **L50** (différé, il attend un
 référentiel diagnostique gouverné), les blocs cliniques conditionnels **L51 à L54**, la collecte **L55/L56**, le cadrage différé
-**L57**, les blocs réutilisables **L58 à L60**, ainsi que **O6** et
+**L57**, les blocs réutilisables **L58 à L60**, la file liste patient **L61 à L65**, ainsi que **O6** et
 **O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté du profil Analyse
 et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du document.
 
@@ -1131,7 +1159,11 @@ et **L36** ne doit plus être relancé séparément ; voir les révisions en tê
 10. **L58 → L59 → L60**, blocs réutilisables entre jeux de variables : import serveur, choix du
    bloc dans l’éditeur, reconnexion de l’activation. Strictement séquentiels, après L52 et L54 ;
    **L59 ne tourne jamais avec L41**.
-11. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
+11. **L61 → L62 → L63 → L64 → L65**, liste patient : preuve du socle actuel, contrat serveur de
+   tri clinique, interface, identité contrôlée puis validation. **L62** ne tourne jamais avec
+   L42/L56 ; L61/L63/L64 se réservent `BaseHome.tsx`. Voir
+   [`l61-liste-patients-recherche-tri-identite.md`](l61-liste-patients-recherche-tri-identite.md).
+12. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
    d'activation et preuve de release. Aucun de ces deux lots n'autorise l'usage de données réelles.
 
 > **Historique de coordination** : L21, L22 et L24 ont été livrés le 2026-08-18, puis L23 et L25 ;

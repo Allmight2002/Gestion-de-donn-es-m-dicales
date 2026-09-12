@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { VALUE_SET_LIBRARY } from '../../domain/valueSetLibrary';
@@ -56,6 +56,8 @@ export function FieldForm({
   observationModel = 'longitudinal',
   sections,
   fields = [],
+  onDirtyChange,
+  defaultSection,
   }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
@@ -78,6 +80,14 @@ export function FieldForm({
    * quoi que ce soit a calculer.
    */
   fields?: readonly TemplateField[];
+  /**
+   * UX-14(a) : l'ecran appelant protege les modifications non enregistrees. Le formulaire lui
+   * dit s'il DIFFERE de son etat initial — un simple evenement de frappe ne le dirait pas, et
+   * un ecouteur pose par le parent perturberait les controles contrôlés de ce formulaire.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Creation starts in the selected clinical section, or remains semantically common. */
+  defaultSection?: FieldSection;
 }) {
   const { t } = useI18n();
   const editing = !!initial;
@@ -94,7 +104,7 @@ export function FieldForm({
   // Une base qui a supprime « clinique » ne doit pas se voir proposer une section qui
   // n'existe plus : a defaut de valeur initiale, on prend la PREMIERE de la version.
   const [section, setSection] = useState<FieldSection>(
-    initial ? initial.section : sections?.[0]?.sectionKey ?? 'clinique',
+    initial ? initial.section : defaultSection !== undefined ? defaultSection : sections?.[0]?.sectionKey ?? 'clinique',
   );
   const [type, setType] = useState<FieldType>(initial?.type ?? 'text');
   const [required, setRequired] = useState(initial?.required ?? false);
@@ -145,6 +155,20 @@ export function FieldForm({
     initialFormula && initialFormula.right.kind === 'literal' ? String(initialFormula.right.value) : '',
   );
   const [formulaUnit, setFormulaUnit] = useState<FormulaTimeUnit>(() => normalizeFormulaTimeUnit(initial?.unit));
+
+  // Empreinte des reponses du formulaire : deux etats identiques ne sont pas « modifies ».
+  const fingerprint = JSON.stringify([
+    fieldKey, label, description, scope, section, type, required, isMultiple, encounterTypes,
+    options, withProposal, minValue, maxValue, unit, allowMissingCodes, missingReasons,
+    defaultValue, calculated, leftOperand, leftLiteral, formulaOperator, rightOperand,
+    rightLiteral, formulaUnit,
+  ]);
+  const initialFingerprint = useRef(fingerprint);
+  const notifyDirty = useRef(onDirtyChange);
+  notifyDirty.current = onDirtyChange;
+  useEffect(() => {
+    notifyDirty.current?.(fingerprint !== initialFingerprint.current);
+  }, [fingerprint]);
 
   const isChoice = type === 'select' || type === 'multiselect';
   // La soupape suit desormais le TYPE, plus la portee. La restriction « rencontre seulement »

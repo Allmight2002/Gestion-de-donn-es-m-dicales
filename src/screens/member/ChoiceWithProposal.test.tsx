@@ -80,7 +80,8 @@ describe('EncounterFields — soupape (F5)', () => {
 
   test('choisir ensuite une valeur controlee efface la proposition precedente', async () => {
     const { onChange, onRemove } = renderFields({ diagnostic_autre: 'Morsure de serpent' });
-    await userEvent.selectOptions(screen.getByLabelText('Diagnostic'), 'Paludisme');
+    // UX-10 : deux options courtes se presentent desormais en radios, pas en liste native.
+    await userEvent.click(screen.getByRole('radio', { name: 'Paludisme' }));
 
     expect(onChange).toHaveBeenCalledWith('diagnostic', 'Paludisme');
     expect(onRemove).toHaveBeenCalledWith('diagnostic_autre');

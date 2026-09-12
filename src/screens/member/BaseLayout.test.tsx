@@ -3,9 +3,9 @@
 // sous-onglets du groupe actif, contenu enfant rendu via Outlet.
 import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { BaseLayout } from './BaseLayout';
@@ -121,5 +121,65 @@ describe('BaseLayout — compte de mission', () => {
     renderLayout(listingWith('viewer'));
     await screen.findByRole('link', { name: /Patients/ });
     expect(screen.queryByText(/Mission sur cette base/)).not.toBeInTheDocument();
+  });
+});
+
+// UX-12(a) : le fil d'Ariane ne doit jamais affirmer un contexte qu'il n'a pas verifie.
+describe('BaseLayout — contexte du fil d Ariane', () => {
+  test('changer de base n affiche jamais le nom precedent pendant le chargement', async () => {
+    const noms: Record<string, string> = { b1: 'Gliomes 2026', b2: 'Registre Cardio' };
+    let liberer: (() => void) | null = null;
+    const bases = {
+      async getBase(id: string) {
+        if (id === 'b2') await new Promise<void>((resolve) => { liberer = resolve; });
+        return { ...listingWith('owner'), base: { ...listingWith('owner').base, id, name: noms[id] } };
+      },
+    } as unknown as BaseRepository;
+
+    function Bascule() {
+      const navigate = useNavigate();
+      return <><button onClick={() => navigate('/bases/b2')}>Ouvrir base B</button><BaseLayout /></>;
+    }
+
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<Bascule />}>
+                <Route index element={<div>HOME</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Gliomes 2026')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir base B' }));
+    expect(screen.queryByText('Gliomes 2026')).not.toBeInTheDocument();
+    expect(screen.getByText('Chargement…')).toBeInTheDocument();
+    act(() => { liberer?.(); });
+    expect(await screen.findByText('Registre Cardio')).toBeInTheDocument();
+  });
+
+  test('une base illisible n emprunte pas le nom d une autre et ne se declare pas ouverte', async () => {
+    const bases = { async getBase() { throw new Error('refus'); } } as unknown as BaseRepository;
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseLayout />}>
+                <Route index element={<div>HOME</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText('Une erreur est survenue')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Navigation dans la base' })).toBeInTheDocument();
   });
 });

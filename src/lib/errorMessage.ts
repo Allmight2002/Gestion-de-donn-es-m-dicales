@@ -66,6 +66,7 @@ export function isRefreshRequiredError(e: unknown): boolean {
   const message = e instanceof Error ? e.message : e && typeof e === 'object'
     ? String((e as Record<string, unknown>).message ?? '') : String(e ?? '');
   return /^(block_hidden_value|contains_any_hidden_value|conflict_version)$/.test(code)
+    || code === 'DRAFT_CONTEXT_CHANGED' || code === 'DRAFT_CONFLICT'
     || action === 'refresh_required' || hint === 'refresh_required'
     || /CONFLIT_VERSION/i.test(message);
 }

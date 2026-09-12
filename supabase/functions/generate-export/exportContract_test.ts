@@ -27,6 +27,7 @@ import {
   extractMultivalueCodes,
   formulaFieldIndex,
   type FormulaFieldRef,
+  hasCommonGroupFields,
   mergeExportFields,
   nbColumnId,
   optionCodeColumnId,
@@ -1264,4 +1265,35 @@ Deno.test('L49 : buildMetadata documente profil, population, versions, lignes et
   assertEquals(by.get('row_count'), 3);
   assertEquals(by.get('excluded_patients_incomplete'), 1);
   assertEquals(by.get('excluded_encounters_incomplete'), 2);
+});
+
+// UX-16 — une rubrique commune est une metadonnee de PRESENTATION. Le dictionnaire doit la
+// nommer dans ses propres colonnes : l'ecrire dans `section` la ferait passer pour un bloc
+// clinique aupres de tout consommateur du fichier, et une variable commune n'appartient a
+// aucun bloc. Sans rubrique declaree, la structure de sortie ne bouge pas d'une colonne.
+Deno.test('le dictionnaire porte la rubrique commune a part du bloc', () => {
+  const commun = champ({
+    fieldKey: 'motif',
+    type: 'text',
+    section: null,
+    sectionLabel: null,
+    blockKey: null,
+    blockLabel: null,
+    commonGroup: 'contexte',
+    commonGroupLabel: 'Contexte de la consultation',
+  });
+  const bloc = champ({ fieldKey: 'tdm', type: 'boolean', section: 'imagerie', sectionLabel: 'Imagerie' });
+
+  const sans = buildDictionary([commun, bloc]);
+  assertEquals(sans.columns.includes('common_group'), false);
+
+  const avec = buildDictionary([commun, bloc], { commonGroupColumns: hasCommonGroupFields([commun, bloc]) });
+  assertEquals(avec.columns.includes('common_group_label'), true);
+  const ligne = avec.rows.find((r) => r.column_id === columnId(commun));
+  assertEquals(ligne?.common_group, 'contexte');
+  assertEquals(ligne?.common_group_label, 'Contexte de la consultation');
+  // La variable commune reste sans section ni bloc : la rubrique ne la range nulle part.
+  assertEquals(ligne?.section, '');
+  // Et une variable de bloc ne recoit jamais de rubrique.
+  assertEquals(avec.rows.find((r) => r.column_id === columnId(bloc))?.common_group, '');
 });

@@ -158,7 +158,8 @@ describe('EditEncounter hors-ligne §7.4/§7.5 (version historique)', () => {
     fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'controle regle' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
 
-    expect(await screen.findByText('Sortie >= admission')).toBeInTheDocument();
+    // UX-13 : le message apparait deux fois — dans le resume d'erreurs et sous le champ.
+    expect(await screen.findAllByText('Sortie >= admission')).not.toHaveLength(0);
     expect(await outbox.count('b-rules')).toBe(0);
     await offlineCache.remove('b-rules');
   });

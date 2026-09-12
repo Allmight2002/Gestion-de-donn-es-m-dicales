@@ -1,0 +1,119 @@
+<style>
+#meddata-editor-concept{--md-bg:light-dark(#ffffff,#192128);--md-soft:light-dark(#f6f8fb,#212b35);--md-text:light-dark(#263448,#e6ecf4);--md-muted:light-dark(#5b687a,#acbacb);--md-line:light-dark(#dfe5ee,#3b4757);--md-accent:light-dark(#245cc7,#9bbaff);--md-tint:light-dark(#eaf1ff,#293d5d);font:400 14px/1.5 system-ui,sans-serif;color:var(--md-text);background:var(--md-bg);border:1px solid var(--md-line);border-radius:10px;overflow-wrap:anywhere;--md-row:12px}
+#meddata-editor-concept *{box-sizing:border-box}
+#meddata-editor-concept button,#meddata-editor-concept input,#meddata-editor-concept select{font:inherit;color:inherit}
+#meddata-editor-concept button{cursor:pointer;background:var(--md-bg);border:1px solid var(--md-line);border-radius:6px;padding:7px 12px;text-align:left}
+#meddata-editor-concept button:hover{background:var(--md-soft)}
+#meddata-editor-concept button[aria-pressed=true],#meddata-editor-concept button[aria-current=page]{background:var(--md-tint);color:var(--md-accent)}
+#meddata-editor-concept .md-chrome{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 20px;background:var(--md-soft);border-radius:10px 10px 0 0;border-bottom:1px solid var(--md-line)}
+#meddata-editor-concept .md-brand{font-weight:500}
+#meddata-editor-concept .md-muted{color:var(--md-muted);font-size:12px}
+#meddata-editor-concept .md-title{padding:18px 20px 14px}
+#meddata-editor-concept h2{font-size:20px;font-weight:500;line-height:1.3;margin:0 0 5px}
+#meddata-editor-concept h3{font-size:17px;font-weight:500;margin:0 0 4px}
+#meddata-editor-concept h4{font-size:14px;font-weight:500;margin:0 0 8px}
+#meddata-editor-concept p{margin:6px 0 12px}
+#meddata-editor-concept .md-tabs{display:flex;gap:8px;flex-wrap:wrap;padding:0 20px 14px;border-bottom:1px solid var(--md-line)}
+#meddata-editor-concept .md-tabs button{border-color:transparent}
+#meddata-editor-concept .md-body{display:grid;grid-template-columns:235px minmax(0,1fr)}
+#meddata-editor-concept .md-tree{background:var(--md-soft);padding:16px 12px;border-right:1px solid var(--md-line)}
+#meddata-editor-concept .md-tree button{width:100%;display:flex;justify-content:space-between;gap:8px;border:0;background:transparent;margin:2px 0;padding:8px 10px}
+#meddata-editor-concept .md-tree .md-child{padding-left:27px;font-size:13px}
+#meddata-editor-concept .md-tree .md-group{font-weight:500;margin-top:10px}
+#meddata-editor-concept .md-tree button[aria-current=page]{background:var(--md-tint)}
+#meddata-editor-concept input[type=search],#meddata-editor-concept input[type=text],#meddata-editor-concept select{width:100%;min-width:0;border:1px solid var(--md-line);border-radius:6px;padding:8px 10px;background:var(--md-bg)}
+#meddata-editor-concept .md-content{min-width:0;padding:22px}
+#meddata-editor-concept .md-section-head{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+#meddata-editor-concept .md-path{font-size:12px;color:var(--md-muted);margin-bottom:7px}
+#meddata-editor-concept .md-context{padding:10px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+#meddata-editor-concept .md-link{border:0;background:transparent;color:var(--md-accent);padding:4px 0}
+#meddata-editor-concept .md-fields{border-top:1px solid var(--md-line)}
+#meddata-editor-concept .md-field{display:grid;grid-template-columns:minmax(0,1fr) 88px 65px;gap:12px;align-items:center;width:100%;border:0;border-radius:0;border-bottom:1px solid var(--md-line);padding:var(--md-row) 0}
+#meddata-editor-concept .md-field small{display:block;color:var(--md-muted);font-size:12px}
+#meddata-editor-concept .md-field .md-rule-count{text-align:right;font-size:12px;color:var(--md-muted)}
+#meddata-editor-concept .md-table-head{font-size:12px;color:var(--md-muted);display:grid;grid-template-columns:minmax(0,1fr) 88px 65px;gap:12px;padding:10px 0}
+#meddata-editor-concept .md-footer{padding:10px 20px;border-top:1px solid var(--md-line);font-size:12px;color:var(--md-muted)}
+#meddata-editor-concept .md-form{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 0}
+#meddata-editor-concept label{display:block}
+#meddata-editor-concept label span{display:block;margin-bottom:5px}
+#meddata-editor-concept .md-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+#meddata-editor-concept .md-primary{background:var(--md-accent);color:var(--md-bg);border-color:var(--md-accent)}
+#meddata-editor-concept .md-primary:hover{background:var(--md-accent)}
+#meddata-editor-concept .md-rule{padding:var(--md-row) 0;border-bottom:1px solid var(--md-line)}
+#meddata-editor-concept .md-rule strong{font-weight:500}
+#meddata-editor-concept .md-rule p{margin:3px 0;font-size:13px;color:var(--md-muted)}
+#meddata-editor-concept .md-wide{padding:22px;min-width:0}
+#meddata-editor-concept .md-rule-bar{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:12px;margin-bottom:18px}
+#meddata-editor-concept .md-checks{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+#meddata-editor-concept .md-checks label{display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--md-soft);border-radius:6px}
+#meddata-editor-concept .md-checks input{accent-color:var(--md-accent);width:17px;height:17px}
+#meddata-editor-concept .md-preview-block{padding:13px 0;border-top:1px solid var(--md-line)}
+#meddata-editor-concept .md-preview-block small{display:block;color:var(--md-muted);margin-top:3px}
+#meddata-editor-concept .md-result{width:100%;display:block;border:0;border-bottom:1px solid var(--md-line);border-radius:0;padding:12px 0}
+#meddata-editor-concept .md-result small{display:block;color:var(--md-muted)}
+#meddata-editor-concept .md-live:empty{display:none}
+#meddata-editor-concept .md-live{padding-top:12px;color:var(--md-accent)}
+@media(max-width:620px){#meddata-editor-concept .md-body{grid-template-columns:minmax(0,1fr)}#meddata-editor-concept .md-tree{border-right:0;border-bottom:1px solid var(--md-line)}#meddata-editor-concept .md-content,#meddata-editor-concept .md-wide{padding:16px}#meddata-editor-concept .md-form,#meddata-editor-concept .md-rule-bar{grid-template-columns:1fr}#meddata-editor-concept .md-field,#meddata-editor-concept .md-table-head{grid-template-columns:minmax(0,1fr) 68px 58px;gap:8px}#meddata-editor-concept .md-tabs{gap:3px;padding-left:12px;padding-right:12px}}
+@media(pointer:coarse){#meddata-editor-concept button{min-height:44px}#meddata-editor-concept input,#meddata-editor-concept select{font-size:16px}}
+</style>
+<div id="meddata-editor-concept" aria-label="Proposition pour l’éditeur des jeux de variables">
+  <div class="md-chrome"><span class="md-brand">MedData <span class="md-muted">/ Jeux de variables</span></span><span class="md-muted">Proposition · extrait fictif</span></div>
+  <div class="md-title"><h2>Registre multipathologies</h2><div class="md-muted">Cas de référence : 216 variables · plus de 20 sections · plus de 25 règles</div></div>
+  <nav class="md-tabs" aria-label="Espaces de conception">
+    <button type="button" data-mode="structure" aria-pressed="true">Structure du formulaire</button>
+    <button type="button" data-mode="rules" aria-pressed="false">Règles</button>
+    <button type="button" data-mode="diagnosis" aria-pressed="false">Collecte diagnostique</button>
+    <button type="button" data-mode="preview" aria-pressed="false">Aperçu</button>
+  </nav>
+  <div id="md-stage"></div>
+  <div class="md-footer">Extrait de démonstration : les sections et variables ci-dessous sont fictives.</div>
+</div>
+<script>
+(() => {
+const root=document.getElementById('meddata-editor-concept');
+const stage=root.querySelector('#md-stage');
+const groupNames={common:'Tronc commun',avc:'Bloc AVC',diab:'Bloc Diabète'};
+const sections=[
+ {id:'admission',group:'common',name:'Admission',fields:[['Âge','Nombre'],['Date d’admission','Date'],['Mode d’entrée','Choix'],['Provenance','Choix']]},
+ {id:'antecedents',group:'common',name:'Antécédents',fields:[['Hypertension connue','Choix'],['Tabagisme','Choix'],['Antécédent cardiovasculaire','Choix']]},
+ {id:'diagnostics',group:'common',name:'Diagnostics',fields:[['Diagnostics du passage','Choix multiple'],['Diagnostic proposé','Texte']]},
+ {id:'avc-presentation',group:'avc',name:'Présentation',fields:[['Date de début des symptômes','Date'],['Mode d’installation','Choix'],['Motif de consultation','Texte']]},
+ {id:'avc-examen',group:'avc',name:'Examen clinique',fields:[['État de conscience','Choix'],['Déficit moteur','Choix'],['Côté du déficit','Choix'],['Trouble du langage','Choix'],['Trouble sensitif','Choix'],['Trouble visuel','Choix'],['Score clinique','Nombre'],['Observations','Texte']]},
+ {id:'avc-imagerie',group:'avc',name:'Imagerie',fields:[['Imagerie réalisée','Choix'],['Date de l’imagerie','Date'],['Type d’examen','Choix'],['Résultat descriptif','Texte']]},
+ {id:'diab-bilan',group:'diab',name:'Bilan initial',fields:[['Date du diagnostic','Date'],['Type de diabète','Choix'],['Glycémie','Nombre'],['HbA1c','Nombre']]},
+ {id:'diab-suivi',group:'diab',name:'Suivi',fields:[['Date du suivi','Date'],['Traitement déclaré','Texte'],['Observations du suivi','Texte']]}
+];
+const rules=[
+ {id:'avc-block',group:'avc',section:null,title:'Afficher le bloc AVC',condition:'Diagnostics du passage contient AVC.',effect:'Le bloc et toutes ses sous-sections deviennent applicables.',kind:'Activation du bloc'},
+ {id:'diab-block',group:'diab',section:null,title:'Afficher le bloc Diabète',condition:'Diagnostics du passage contient Diabète.',effect:'Le bloc et toutes ses sous-sections deviennent applicables.',kind:'Activation du bloc'},
+ {id:'motor',group:'avc',section:'avc-examen',field:2,title:'Préciser le côté du déficit',condition:'Déficit moteur = Oui.',effect:'Afficher « Côté du déficit ».',kind:'Condition de variable'},
+ {id:'image',group:'avc',section:'avc-imagerie',field:1,title:'Préciser la date de l’imagerie',condition:'Imagerie réalisée = Oui.',effect:'Afficher « Date de l’imagerie ».',kind:'Condition de variable'}
+];
+const state={mode:'structure',section:'avc-examen',field:null,open:'avc',search:'',ruleSearch:'',ruleScope:'all',codes:{avc:true,diab:false,other:false},compact:false,keys:false};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const section=()=>sections.find(s=>s.id===state.section);
+function goSection(id){state.section=id;state.field=null;state.open=section().group;state.search='';state.mode='structure';render();}
+function goRules(group){state.mode='rules';state.ruleScope=group;state.ruleSearch='';render();}
+function fieldKey(sec,i){return sec.id.replace(/-/g,'_')+'_'+(i+1);}
+function tree(){return '<aside class="md-tree" aria-label="Sommaire du formulaire"><label><span class="md-muted">Retrouver dans cet extrait</span><input id="md-search" type="search" placeholder="Section ou variable…" value="'+esc(state.search)+'"></label>'+Object.entries(groupNames).map(([g,name])=>'<button class="md-group" type="button" data-group="'+g+'" aria-expanded="'+(state.open===g)+'"><span>'+esc(name)+'</span><span aria-hidden="true">'+(state.open===g?'−':'+')+'</span></button>'+(state.open===g?sections.filter(s=>s.group===g).map(s=>'<button type="button" class="md-child" data-section="'+s.id+'"'+(state.section===s.id?' aria-current="page"':'')+'>'+esc(s.name)+'</button>').join(''):'')).join('')+'</aside>';}
+function structureContent(){
+ const sec=section();
+ if(state.search){const q=norm(state.search);const hits=[];sections.forEach(s=>{if(norm(s.name+' '+groupNames[s.group]).includes(q))hits.push({s,label:s.name,i:null});s.fields.forEach((f,i)=>{if(norm(f[0]).includes(q))hits.push({s,label:f[0],i});});});return '<h3>Résultats dans l’extrait</h3><p class="md-muted">'+hits.length+' résultat(s)</p>'+hits.map(h=>'<button type="button" class="md-result" data-hit-section="'+h.s.id+'" data-hit-field="'+(h.i===null?'':h.i)+'">'+esc(h.label)+'<small>'+esc(groupNames[h.s.group]+' / '+h.s.name)+'</small></button>').join('');}
+ if(state.field!==null){const f=sec.fields[state.field];const related=rules.filter(r=>r.section===sec.id&&r.field===state.field);return '<button type="button" class="md-link" id="md-back">← Retour à '+esc(sec.name)+'</button><div class="md-path">'+esc(groupNames[sec.group]+' / '+sec.name)+'</div><h3>'+esc(f[0])+'</h3><form id="md-field-form"><div class="md-form"><label><span>Libellé</span><input id="md-label" type="text" required value="'+esc(f[0])+'"></label><label><span>Type</span><input type="text" value="'+esc(f[1])+'" readonly></label></div><h4>Règles liées à cette variable</h4>'+(related.length?related.map(r=>'<div class="md-rule"><strong>'+esc(r.title)+'</strong><p>'+esc(r.condition+' '+r.effect)+'</p></div>').join(''):'<p class="md-muted">Aucune règle propre à cette variable dans cet extrait.</p>')+(sec.group==='common'?'':'<p class="md-muted">La condition d’affichage du bloc '+esc(sec.group==='avc'?'AVC':'Diabète')+' s’applique également.</p>')+'<div class="md-actions"><button type="submit" class="md-primary">Appliquer dans la maquette</button><button type="button" id="md-field-cancel">Annuler</button></div></form>';}
+ return '<div class="md-path">'+esc(groupNames[sec.group])+' / '+esc(sec.name)+'</div><div class="md-section-head"><div><h3>'+esc(sec.name)+'</h3><span class="md-muted">'+sec.fields.length+' variables dans cette section</span></div></div>'+(sec.group==='common'?'<div class="md-context"><span class="md-muted">Variables communes au registre</span></div>':'<div class="md-context"><span>Affiché pour : '+(sec.group==='avc'?'AVC':'Diabète')+'</span><button type="button" class="md-link" data-related="'+sec.group+'">Voir les règles du bloc</button></div>')+'<div class="md-fields"><div class="md-table-head"><span>Variable</span><span>Type</span><span>Règles</span></div>'+sec.fields.map((f,i)=>{const n=rules.filter(r=>r.section===sec.id&&r.field===i).length;return '<button type="button" class="md-field" data-field="'+i+'"><span>'+esc(f[0])+(state.keys?'<small>'+fieldKey(sec,i)+'</small>':'')+'</span><span class="md-muted">'+esc(f[1])+'</span><span class="md-rule-count">'+(n?n+' règle':'—')+'</span></button>';}).join('')+'</div><div class="md-live" role="status" id="md-saved"></div>';
+}
+function ruleItems(){const q=norm(state.ruleSearch);const found=rules.filter(r=>(state.ruleScope==='all'||r.group===state.ruleScope)&&norm(r.title+' '+r.condition+' '+r.effect).includes(q));return '<div class="md-muted">'+found.length+' règle(s) dans cet extrait</div>'+found.map(r=>'<div class="md-rule"><div class="md-muted">'+esc(groupNames[r.group]+' · '+r.kind)+'</div><strong>'+esc(r.title)+'</strong><p>'+esc(r.condition)+'</p><p>'+esc(r.effect)+'</p><button class="md-link" type="button" data-rule-section="'+(r.section||(r.group==='avc'?'avc-examen':'diab-bilan'))+'">Ouvrir la section concernée →</button></div>').join('');}
+function rulesContent(){return '<div class="md-wide"><div class="md-section-head"><div><h3>Règles du registre</h3><span class="md-muted">Activations de blocs et conditions de variables</span></div></div><div class="md-rule-bar"><label><span>Rechercher une règle</span><input type="search" id="md-rule-search" placeholder="Variable, condition ou effet…" value="'+esc(state.ruleSearch)+'"></label><label><span>Portée</span><select id="md-rule-scope">'+[['all','Tout le registre'],['avc','Bloc AVC'],['diab','Bloc Diabète']].map(([v,l])=>'<option value="'+v+'"'+(state.ruleScope===v?' selected':'')+'>'+l+'</option>').join('')+'</select></label></div><div id="md-rule-items">'+ruleItems()+'</div></div>';}
+function diagnosisContent(){return '<div class="md-wide"><div class="md-section-head"><div><h3>Collecte diagnostique</h3><span class="md-muted">Paramétrage du registre · activé dans cet exemple</span></div></div><div class="md-rule"><h4>Champ qui pilote la collecte</h4><button type="button" class="md-link" data-section="diagnostics">Tronc commun / Diagnostics / Diagnostics du passage →</button></div><div class="md-rule"><h4>Associations aux blocs</h4><p>AVC → Bloc AVC</p><p>Diabète → Bloc Diabète</p><button type="button" class="md-link" id="md-all-rules">Consulter les règles d’activation →</button></div><div class="md-rule"><h4>Diagnostic sans bloc spécialisé</h4><p>Socle commun et diagnostic recueillis selon les obligations applicables.</p><p>La couverture spécialisée reste signalée comme absente.</p></div><div class="md-actions"><button type="button" data-mode="preview">Essayer un cas dans l’aperçu →</button></div></div>';}
+function previewResult(){const names=['Socle commun'];if(state.codes.avc)names.push('Bloc AVC');if(state.codes.diab)names.push('Bloc Diabète');return '<h4>Formulaire présenté pour ce cas</h4>'+names.map(n=>'<div class="md-preview-block">'+esc(n)+'<small>'+(n==='Socle commun'?'Admission, antécédents et diagnostics':n==='Bloc AVC'?'Présentation, examen clinique et imagerie':'Bilan initial et suivi')+'</small></div>').join('')+(state.codes.other?'<div class="md-preview-block">Autre diagnostic : aucun bloc associé<small>Le socle reste disponible ; ce diagnostic est signalé sans couverture spécialisée.</small></div>':'');}
+function previewContent(){return '<div class="md-wide"><h3>Aperçu selon les diagnostics</h3><div class="md-muted">Simulation de l’affichage · données fictives</div><div class="md-checks">'+[['avc','AVC'],['diab','Diabète'],['other','Autre diagnostic sans bloc']].map(([k,l])=>'<label><input type="checkbox" data-code="'+k+'"'+(state.codes[k]?' checked':'')+'>'+l+'</label>').join('')+'</div><div id="md-preview-result" aria-live="polite">'+previewResult()+'</div></div>';}
+function render(){root.style.setProperty('--md-row',state.compact?'7px':'12px');root.querySelectorAll('.md-tabs [data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===state.mode)));stage.innerHTML=state.mode==='structure'?'<div class="md-body">'+tree()+'<main class="md-content" id="md-content">'+structureContent()+'</main></div>':state.mode==='rules'?rulesContent():state.mode==='diagnosis'?diagnosisContent():previewContent();}
+root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.mode){state.mode=b.dataset.mode;state.search='';state.field=null;if(state.mode==='rules')state.ruleScope='all';render();}else if(b.dataset.group){state.open=state.open===b.dataset.group?'':b.dataset.group;render();}else if(b.dataset.section){goSection(b.dataset.section);}else if(b.dataset.field!==undefined){state.field=Number(b.dataset.field);render();}else if(b.dataset.related){goRules(b.dataset.related);}else if(b.dataset.ruleSection){goSection(b.dataset.ruleSection);}else if(b.dataset.hitSection){const f=b.dataset.hitField;goSection(b.dataset.hitSection);if(f!==''){state.field=Number(f);render();}}else if(b.id==='md-back'||b.id==='md-field-cancel'){state.field=null;render();}else if(b.id==='md-all-rules'){goRules('all');}});
+root.addEventListener('input',e=>{if(e.target.id==='md-search'){state.search=e.target.value;root.querySelector('#md-content').innerHTML=structureContent();}else if(e.target.id==='md-rule-search'){state.ruleSearch=e.target.value;root.querySelector('#md-rule-items').innerHTML=ruleItems();}});
+root.addEventListener('change',e=>{if(e.target.id==='md-rule-scope'){state.ruleScope=e.target.value;root.querySelector('#md-rule-items').innerHTML=ruleItems();}else if(e.target.dataset.code){state.codes[e.target.dataset.code]=e.target.checked;root.querySelector('#md-preview-result').innerHTML=previewResult();}});
+root.addEventListener('submit',e=>{if(e.target.id!=='md-field-form')return;e.preventDefault();const label=root.querySelector('#md-label').value.trim();if(!label)return;section().fields[state.field][0]=label;state.field=null;render();root.querySelector('#md-saved').textContent='Libellé modifié dans cette maquette uniquement.';});
+render();
+if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:render});tweak.addToggle(state,'compact',{label:'Lignes plus compactes'});tweak.addToggle(state,'keys',{label:'Afficher les clés techniques'});}
+})();
+</script>

@@ -64,6 +64,13 @@ describe('MyTemplates', () => {
     expect(screen.getByRole('button', { name: /Ouvrir le jeu de variables/ })).toBeInTheDocument();
   });
 
+  // Le cadre de la liste rognait (overflow-hidden) le menu d'actions des dernieres lignes.
+  test('le cadre de la liste ne rogne pas le menu d actions', async () => {
+    renderMine(baseRepo());
+    await screen.findByText('Mon Neuro');
+    expect(screen.getByRole('list')).not.toHaveClass('overflow-hidden');
+  });
+
   test('ouvre la dernière version brouillon depuis l action principale de la liste', async () => {
     const getVersion = vi.fn(async (versionId: string) => ({
       version: { id: versionId, templateId: 'mine', versionNumber: versionId === 'v2' ? 2 : 1, status: versionId === 'v2' ? 'draft' as const : 'published' as const },

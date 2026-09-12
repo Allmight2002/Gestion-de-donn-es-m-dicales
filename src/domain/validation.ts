@@ -366,7 +366,7 @@ export function withoutHiddenValues(
 }
 
 /** true si la règle est SATISFAITE (pas de violation) pour ces valeurs. */
-function ruleHolds(rule: unknown, values: Record<string, unknown>, hidden: ReadonlySet<string>): boolean {
+export function ruleHolds(rule: unknown, values: Record<string, unknown>, hidden: ReadonlySet<string>): boolean {
   if (typeof rule !== 'object' || rule === null) return true;
   const r = rule as Record<string, unknown>;
 

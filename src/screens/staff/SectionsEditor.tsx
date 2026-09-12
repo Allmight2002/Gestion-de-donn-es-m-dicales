@@ -7,9 +7,10 @@
 // Le CODE INTERNE ne se modifie jamais (lecon de L30) : il est propose a la creation, puis
 // affiche en lecture seule. Seul le libelle se corrige.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import type { TemplateField, TemplateSection } from '../../data/types';
 import { makeValueKey } from '../../domain/fieldOptions';
 import { sectionLabel } from '../../domain/templateSections';
@@ -40,25 +41,105 @@ export function SectionsEditor({
   onReorder,
   onMove,
   onReorderSiblings,
+  onImportBlock,
+  onDirtyChange,
 }: {
   sections: TemplateSection[];
   /** Sert a dire, avant tout clic, combien de variables une section porte. */
   fields: TemplateField[];
   busy?: boolean;
-  onAdd: (sectionKey: string, label: string, parentKey?: string | null) => void;
-  onRename: (sectionId: string, label: string) => void;
+  onAdd: (sectionKey: string, label: string, parentKey?: string | null) => void | Promise<unknown>;
+  onRename: (sectionId: string, label: string) => void | Promise<unknown>;
   onDelete: (sectionId: string) => void;
   onMove?: (id: string, parentKey: string | null) => void;
   onReorderSiblings?: (parentKey: string | null, ids: string[]) => void;
   onReorder: (orderedIds: string[]) => void;
+  /** L59 : ouvre le choix d'un bloc reutilisable. Absente quand le serveur ne sait pas
+   *  encore lister les blocs importables : la commande ne se rend alors pas du tout. */
+  onImportBlock?: () => void;
+  /** Notifie le parent de la saisie locale non accusee (ajout ou renommage). */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useI18n();
   const [parentKey, setParentKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
+  const [pendingEditAction, setPendingEditAction] = useState<
+    { kind: 'switch'; sectionId: string } | { kind: 'cancel' } | null
+  >(null);
+  const originalLabel = useRef('');
+  const pendingRename = useRef<{ sectionId: string; label: string } | null>(null);
+  const pendingAdd = useRef<{ sectionKey: string; label: string } | null>(null);
 
   const countIn = (sectionKey: string) => fields.filter((f) => f.section === sectionKey).length;
+
+  const editingDirty = editingId !== null && draftLabel !== originalLabel.current;
+  const dirty = (newLabel !== '' || parentKey !== '') || editingDirty;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+
+  function finishEditing() {
+    setEditingId(null);
+    setDraftLabel('');
+    originalLabel.current = '';
+  }
+
+  function beginEditing(section: TemplateSection) {
+    pendingRename.current = null;
+    setEditingId(section.id);
+    setDraftLabel(section.label);
+    originalLabel.current = section.label;
+  }
+
+  function requestEditing(section: TemplateSection) {
+    if (editingId && editingId !== section.id && editingDirty) {
+      setPendingEditAction({ kind: 'switch', sectionId: section.id });
+      return;
+    }
+    beginEditing(section);
+  }
+
+  function requestCancelEditing() {
+    if (editingDirty) setPendingEditAction({ kind: 'cancel' });
+    else finishEditing();
+  }
+
+  function sectionRenameConfirmed(sectionId: string, label: string) {
+    if (pendingRename.current?.sectionId !== sectionId || pendingRename.current.label !== label) return;
+    pendingRename.current = null;
+    finishEditing();
+  }
+
+  function sectionAddConfirmed(sectionKey: string) {
+    if (pendingAdd.current?.sectionKey !== sectionKey) return;
+    pendingAdd.current = null;
+    setNewLabel('');
+    setParentKey('');
+  }
+
+  // Les callbacks historiques etaient `void run(...)`. Avec un callback qui retourne la
+  // promesse de `run`, l'accuse de succes nettoie le brouillon meme si les props arrivent un
+  // peu plus tard. Le second chemin ci-dessous couvre le callback historique en observant la
+  // version rechargee ; dans les deux cas un refus laisse le texte intact.
+  useEffect(() => {
+    const rename = pendingRename.current;
+    if (rename && sections.some((section) => section.id === rename.sectionId && section.label === rename.label)) {
+      pendingRename.current = null;
+      setEditingId(null);
+      setDraftLabel('');
+      originalLabel.current = '';
+    }
+    const add = pendingAdd.current;
+    if (add && sections.some((section) => section.sectionKey === add.sectionKey && section.label === add.label)) {
+      pendingAdd.current = null;
+      setNewLabel('');
+      setParentKey('');
+    }
+  }, [sections]);
+
+  function isPromiseLike(value: unknown): value is Promise<unknown> {
+    return !!value && typeof (value as { then?: unknown }).then === 'function';
+  }
 
   function move(sectionId: string, delta: -1 | 1) {
     const parent = sections.find((s) => s.id === sectionId)?.parentSectionKey ?? null;
@@ -117,13 +198,23 @@ export function SectionsEditor({
                     className="btn-primary min-h-11 px-3 text-xs"
                     disabled={busy || draftLabel.trim() === ''}
                     onClick={() => {
-                      onRename(section.id, draftLabel.trim());
-                      setEditingId(null);
+                      const label = draftLabel.trim();
+                      pendingRename.current = { sectionId: section.id, label };
+                      try {
+                        const result = onRename(section.id, label);
+                        if (isPromiseLike(result)) {
+                          void result.then((outcome) => {
+                            if (outcome !== false) sectionRenameConfirmed(section.id, label);
+                          }).catch(() => { /* le parent affiche le refus, la saisie reste locale */ });
+                        }
+                      } catch {
+                        pendingRename.current = null;
+                      }
                     }}
                   >
                     {t('admin.save')}
                   </button>
-                  <button type="button" className="btn-ghost min-h-11 px-3 text-xs" onClick={() => setEditingId(null)}>
+                  <button type="button" className="btn-ghost min-h-11 px-3 text-xs" onClick={requestCancelEditing}>
                     {t('common.cancel')}
                   </button>
                 </>
@@ -143,8 +234,7 @@ export function SectionsEditor({
                     className="btn-ghost min-h-11 px-3 text-xs"
                     disabled={busy}
                     onClick={() => {
-                      setEditingId(section.id);
-                      setDraftLabel(section.label);
+                      requestEditing(section);
                     }}
                   >
                     {t('admin.rename')}
@@ -188,8 +278,18 @@ export function SectionsEditor({
           e.preventDefault();
           const label = newLabel.trim();
           if (label === '') return;
-          onAdd(makeSectionKey(label, sections.map((s) => s.sectionKey)), label, parentKey || null);
-          setNewLabel('');
+          const sectionKey = makeSectionKey(label, sections.map((s) => s.sectionKey));
+          pendingAdd.current = { sectionKey, label };
+          try {
+            const result = onAdd(sectionKey, label, parentKey || null);
+            if (isPromiseLike(result)) {
+              void result.then((outcome) => {
+                if (outcome !== false) sectionAddConfirmed(sectionKey);
+              }).catch(() => { /* le parent affiche le refus, la saisie reste locale */ });
+            }
+          } catch {
+            pendingAdd.current = null;
+          }
         }}
       >
         <label className="form-label min-w-0 flex-1">
@@ -210,7 +310,34 @@ export function SectionsEditor({
         <button type="submit" className="btn-secondary" disabled={busy || newLabel.trim() === ''}>
           {t('admin.section_add')}
         </button>
+        {/* L59 : ressaisir un bloc de vingt variables coute vingt formulaires de creation.
+            La commande est ici, a cote de la creation manuelle, parce que c'est le meme
+            geste vu par l'utilisateur : ajouter un regroupement a cette version. Elle
+            n'existe que sur une version editable, l'ecran entier n'etant rendu que la. */}
+        {onImportBlock && (
+          <button type="button" className="btn-ghost" disabled={busy} onClick={onImportBlock}>
+            {t('blockimport.command')}
+          </button>
+        )}
       </form>
+      <ConfirmDialog
+        open={pendingEditAction !== null}
+        title={t('admin.leave_variable_title')}
+        body={t('admin.leave_variable_body')}
+        confirmLabel={t('admin.leave_variable_confirm')}
+        onCancel={() => setPendingEditAction(null)}
+        onConfirm={() => {
+          const action = pendingEditAction;
+          setPendingEditAction(null);
+          if (!action) return;
+          if (action.kind === 'cancel') {
+            finishEditing();
+            return;
+          }
+          const section = sections.find((candidate) => candidate.id === action.sectionId);
+          if (section) beginEditing(section);
+        }}
+      />
     </div>
   );
 }

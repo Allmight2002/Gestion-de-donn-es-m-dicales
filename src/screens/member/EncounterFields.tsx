@@ -1,13 +1,15 @@
-import { Fragment, useId, useState, type ReactNode } from 'react';
+import { useId, useState } from 'react';
 import { CircleHelp } from 'lucide-react';
-import { isMultipleTerminology, type TemplateField, type TemplateSection } from '../../data/types';
+import { isMultipleTerminology, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
-import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
 import { calculatedValue, FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
+import { SectionedFields } from './SectionedFields';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+export { SectionedFields } from './SectionedFields';
 
 export function FieldLabel({ field, fields, prefilled = false }: {
   field: TemplateField;
@@ -141,56 +143,14 @@ export function HiddenValuesConfirmation({
   const { t } = useI18n();
   if (removedKeys.length === 0) return null;
   const labels = removedKeys.map((key) => fields.find((f) => f.fieldKey === key)?.label ?? key);
-  return (
-    <div role="dialog" aria-label={t('form.diagnostic_withdrawal_title')} className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-      <p className="font-semibold">{t('form.diagnostic_withdrawal_title')}</p>
-      <p className="mt-1">{t('form.diagnostic_withdrawal_body').replace('{n}', String(removedKeys.length))}</p>
-      <p className="mt-1 text-xs">{labels.join(', ')}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" className="btn-primary" onClick={onConfirm}>
-          {t('form.diagnostic_withdrawal_confirm')}
-        </button>
-        <button type="button" className="btn-secondary" onClick={onCancel}>
-          {t('form.diagnostic_withdrawal_cancel')}
-        </button>
-      </div>
-    </div>
-  );
+  return <ConfirmDialog open title={t('form.diagnostic_withdrawal_title')}
+    body={<><p>{t('form.diagnostic_withdrawal_body').replace('{n}', String(removedKeys.length))}</p><p className="mt-2">{labels.join(', ')}</p></>}
+    confirmLabel={t('form.diagnostic_withdrawal_confirm')} cancelLabel={t('form.diagnostic_withdrawal_cancel')}
+    onConfirm={onConfirm} onCancel={onCancel} />;
 }
 
 // Regroupement visuel commun aux variables patient et rencontre. La section de
 // secours evite qu'une ancienne variable incomplete disparaisse du formulaire.
-export function SectionedFields({
-  fields,
-  renderField,
-  sections,
-}: {
-  fields: TemplateField[];
-  renderField: (field: TemplateField) => ReactNode;
-  /**
-   * Sections de la version (L31). Facultatives : sans elles, l'ordre et les libelles
-   * retombent sur ceux que portent les variables, puis sur l'ordre historique. Un ecran
-   * qui ne les a pas affiche donc exactement ce qu'il affichait avant le lot.
-   */
-  sections?: readonly TemplateSection[] | null;
-}) {
-  const { t } = useI18n();
-  return (
-    <>
-      {groupFieldsBySection(fields, sections).map((group) => (
-        <fieldset key={group.key} className={`card space-y-3 p-4 ${group.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
-          <legend className="px-1 text-sm font-semibold text-slate-700">
-            {sectionLabel(t, { sectionKey: group.key, label: group.label })}
-          </legend>
-          {group.fields.map((field) => (
-            <Fragment key={field.id}>{renderField(field)}</Fragment>
-          ))}
-        </fieldset>
-      ))}
-    </>
-  );
-}
-
 // Rendu des champs de rencontre par section, reutilise par la creation et l'edition.
 // Les sections sont celles de la version du gabarit (L31), pas une liste figee.
 export function EncounterFields({
@@ -201,6 +161,9 @@ export function EncounterFields({
   prefilledKeys,
   hiddenKeys,
   sections,
+  commonLayout,
+  rules,
+  requireComplete,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -212,6 +175,10 @@ export function EncounterFields({
   hiddenKeys?: ReadonlySet<string>;
   /** Sections de la version (L31). Facultatives : voir `SectionedFields`. */
   sections?: readonly TemplateSection[] | null;
+  /** UX-16 : placement de presentation des variables communes. */
+  commonLayout?: TemplateCommonLayout | null;
+  rules?: readonly ValidationRule[];
+  requireComplete?: boolean;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -222,6 +189,12 @@ export function EncounterFields({
     <SectionedFields
       fields={visibleFields}
       sections={sections}
+      commonLayout={commonLayout}
+      allFields={fields}
+      values={values}
+      rules={rules}
+      hiddenKeys={hiddenKeys}
+      requireComplete={requireComplete}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
@@ -231,7 +204,7 @@ export function EncounterFields({
               {/* L35 : une variable calculee n'est JAMAIS saisissable — pas de champ, pas de
                   raison de valeur manquante, rien a enregistrer. */}
               {isCalculatedField(field) ? (
-                <CalculatedValue field={field} values={values} fields={fields} />
+                <CalculatedValue field={field} values={Object.fromEntries(Object.entries(values).filter(([key]) => !hiddenKeys?.has(key)))} fields={fields} />
               ) : proposal ? (
                 <ChoiceWithProposal
                   field={field}

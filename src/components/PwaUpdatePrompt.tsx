@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { requestPageLeave } from '../lib/useUnsavedChanges';
 import { useI18n } from '../i18n/useI18n';
 import { useAuth } from '../auth/useAuth';
 import {
@@ -78,6 +79,7 @@ export function PwaUpdatePrompt() {
   if (!needRefresh || deferred) return null;
 
   const applyUpdate = async () => {
+    if (!await requestPageLeave()) return;
     setApplying(true);
     setUpdateFailed(false);
     try {

@@ -15,7 +15,7 @@ import {
   type PatientCreateEntry,
 } from '../../data/offlineIntake';
 import { withSections } from '../../data/templates';
-import { displayFieldValue, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
@@ -72,6 +72,8 @@ type DisplayVersion = {
   ruleFields: TemplateField[];
   rules: ValidationRule[];
   sections: TemplateSection[];
+  /** UX-16 : ordre de presentation propre a cette version historique. */
+  commonLayout?: TemplateCommonLayout;
   /** L55/L56 : contrat diagnostique de CETTE version. Absent = collecte historique. */
   diagnosisContext?: DiagnosisContext[];
 };
@@ -81,6 +83,7 @@ function displayVersionOf(
   rules: readonly ValidationRule[],
   sections: readonly TemplateSection[],
   diagnosisContext?: DiagnosisContext[],
+  commonLayout?: TemplateCommonLayout,
 ): DisplayVersion {
   const sorted = [...fields].sort((a, b) => a.displayOrder - b.displayOrder);
   return {
@@ -90,6 +93,7 @@ function displayVersionOf(
     rules: [...rules],
     sections: [...sections],
     diagnosisContext,
+    commonLayout,
   };
 }
 
@@ -293,7 +297,9 @@ export function PatientDetail() {
         ])];
         const entries = await Promise.all(versionIds.map(async (versionId) => {
           const version = await templates.getVersion(versionId);
-          return [versionId, displayVersionOf(version.fields, version.rules, version.sections ?? [], version.version.diagnosisContext)] as const;
+          return [versionId, displayVersionOf(
+            version.fields, version.rules, version.sections ?? [], version.version.diagnosisContext, version.version.commonLayout,
+          )] as const;
         }));
         const views = Object.fromEntries(entries) as Record<string, DisplayVersion>;
         setVersions(views);
@@ -472,7 +478,7 @@ export function PatientDetail() {
             patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
           )}
         />
-        {groupFieldsBySection(visiblePatientFields, patientVersion?.sections).map((group) => (
+        {groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout).map((group) => (
           <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">
               {sectionLabel(t, { sectionKey: group.key, label: group.label })}
@@ -551,7 +557,7 @@ export function PatientDetail() {
                       encounterRuleFields, encounterVersion?.rules ?? [], sectionsForEncounter,
                     )}
                   />
-                  {groupFieldsBySection(fieldsForEncounter, sectionsForEncounter).map((group) => (
+                  {groupFieldsBySection(fieldsForEncounter, sectionsForEncounter, encounterVersion?.commonLayout).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
                       <legend className="px-1 text-xs font-semibold text-slate-600">
                         {sectionLabel(t, { sectionKey: group.key, label: group.label })}

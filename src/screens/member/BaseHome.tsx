@@ -2,11 +2,12 @@ import { errorMessage } from '../../lib/errorMessage';
 import { recordRecentBase } from '../../lib/recentBases';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Columns3, Download, Plus, Upload, Users } from 'lucide-react';
+import { ArrowDownUp, Columns3, Download, Plus, Search, Upload, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
-import type { PatientListItem } from '../../data/patients';
+import type { PatientListItem, PatientSortField } from '../../data/patients';
 import { displayFieldValue } from '../../data/types';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -26,6 +27,34 @@ import {
 } from '../../data/offlineIntake';
 
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+
+// UX-12(b) : tri de CONSULTATION. Le champ de tri voyage tel quel jusqu'au serveur ; la liste
+// n'expose que des colonnes analytiques, conformement a RG-9.
+type SortChoice = { field: PatientSortField; direction: 'asc' | 'desc' };
+const DEFAULT_SORT: SortChoice = { field: 'created_at', direction: 'asc' };
+
+// Preference de presentation : par UTILISATEUR et par base, jamais partagee entre comptes
+// d'un meme poste. Elle ne contient que des cles de colonnes, aucune valeur clinique.
+const columnsStorageKey = (userId: string | undefined, baseId: string | undefined) =>
+  userId && baseId ? `meddata:columns:${userId}:${baseId}` : null;
+
+function readStoredColumns(key: string | null): string[] | null {
+  if (!key) return null;
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
+    return Array.isArray(stored) ? stored.filter((value): value is string => typeof value === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredColumns(key: string | null, keys: string[]): void {
+  if (!key) return;
+  // Un stockage refuse (mode prive, quota) ne doit pas casser la liste : la preference
+  // reste alors valable pour la session seulement.
+  try { localStorage.setItem(key, JSON.stringify(keys)); } catch { /* preference non persistee */ }
+}
 
 // Colonne affichee dans le tableau patients (sous-ensemble commun en ligne / hors-ligne).
 // L30 : `type` et les options voyagent avec elle pour que la liste affiche le LIBELLE de
@@ -54,6 +83,7 @@ export function BaseHome() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const online = useOnline();
+  const { profile } = useAuth();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
@@ -68,6 +98,15 @@ export function BaseHome() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // UX-12 : un echec de chargement n'est pas une base inexistante. Les deux etats sont
+  // distingues ici pour ne jamais transformer une panne en « page introuvable ».
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  // UX-12(c) : chercher par code ou par nom. Le mode n'est qu'un choix d'écran ; c'est le
+  // serveur qui décide si une recherche nominative est permise, et il ne rend jamais de nom.
+  const [searchMode, setSearchMode] = useState<'code' | 'name'>('code');
+  const [sort, setSort] = useState<SortChoice>(DEFAULT_SORT);
   // Copie hors-ligne (controles disponibles en ligne).
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
   const [saving, setSaving] = useState(false);
@@ -77,6 +116,27 @@ export function BaseHome() {
   const pendingIntakes = useIntakeQueue(id);
   const [intakeMeta, setIntakeMeta] = useState<OfflineIntakeMeta | null>(null);
   const [intakeOfflineView, setIntakeOfflineView] = useState(false);
+
+  // Changement direct de base : l'ecran repart de la premiere page, sans recherche ni tri
+  // herites. L'ajustement se fait PENDANT le rendu pour qu'aucune requete ne parte avec le
+  // contexte precedent (un effet declencherait d'abord un chargement sur l'ancienne page).
+  const [context, setContext] = useState(id);
+  if (context !== id) {
+    setContext(id);
+    setPage(0); setSearch(''); setAppliedSearch(''); setSort(DEFAULT_SORT); setSearchMode('code');
+    setRows([]); setTotal(0); setBaseName(''); setListing(null); setError(null); setLoadFailed(false);
+  }
+
+  // La recherche part apres une courte pause de frappe et ramene toujours a la premiere page :
+  // un filtre modifie sur la page 3 n'a aucune raison de repartir de la page 3.
+  useEffect(() => {
+    const next = search.trim();
+    if (next === appliedSearch) return;
+    const handle = setTimeout(() => { setAppliedSearch(next); setPage(0); }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [search, appliedSearch]);
+
+  const columnsKey = columnsStorageKey(profile?.id, id);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -90,6 +150,7 @@ export function BaseHome() {
     setTotal(0);
     setCachedMeta(null);
     setError(null);
+    setLoadFailed(false);
     try {
       if (!online) {
         // MODE INTAKE-ONLY : la lecture de la base est explicitement INDISPONIBLE hors-ligne
@@ -126,9 +187,28 @@ export function BaseHome() {
       // EN LIGNE : base + page de patients EN PARALLELE (independants), puis champs du gabarit.
       setOfflineView(false);
       setIntakeOfflineView(false);
+      // UX-12(c) : une recherche par NOM se résout en deux temps. L'opération auditée rend des
+      // identifiants — jamais un nom —, et la page analytique est ensuite relue par le chemin
+      // habituel, sous la RLS. Sans terme, ou hors mode nominatif, rien ne change.
+      const nameSearch = searchMode === 'name' && appliedSearch !== '' && !!patients.searchPatientIdsByIdentity;
       const [baseResult, pageResult] = await Promise.allSettled([
         bases.getBase(id),
-        patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE),
+        nameSearch
+          ? patients.searchPatientIdsByIdentity!(id, appliedSearch, PAGE_SIZE, page * PAGE_SIZE)
+            .then(async (found) => (found.ids.length === 0
+              ? { rows: [], total: found.total }
+              : patients.listPatientsPage(id, found.ids.length, 0, { ids: found.ids })
+                .then((listed) => ({
+                  // L'ordre est celui décidé par le serveur : le relire ici ne doit pas le perdre.
+                  rows: found.ids
+                    .map((patientId) => listed.rows.find((row) => row.id === patientId))
+                    .filter((row): row is (typeof listed.rows)[number] => !!row),
+                  total: found.total,
+                }))))
+          : patients.listPatientsPage(id, PAGE_SIZE, page * PAGE_SIZE, {
+            codeQuery: appliedSearch || null,
+            sort: { field: sort.field, direction: sort.direction },
+          }),
       ]);
       if (isCancelled()) return;
       if (baseResult.status === 'rejected') throw baseResult.reason;
@@ -140,6 +220,13 @@ export function BaseHome() {
       }
       if (pageResult.status === 'rejected') throw pageResult.reason;
       const pageRes = pageResult.value;
+      // Une page devenue vide (suppression, filtre) est recalee sur la derniere page existante :
+      // rester sur une page qui n'existe plus donnerait une liste vide sans explication.
+      const lastPage = Math.max(0, Math.ceil(pageRes.total / PAGE_SIZE) - 1);
+      if (pageRes.rows.length === 0 && page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       setRows(pageRes.rows);
       setTotal(pageRes.total);
       if (b?.base.currentTemplateVersionId) {
@@ -147,9 +234,17 @@ export function BaseHome() {
         if (isCancelled()) return;
         const available = fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn);
         setFields(available);
+        // La preference enregistree est relue ici, puis PURGEE des cles devenues inexistantes
+        // dans la version courante (variable supprimee, droit retire) avant d'etre reecrite.
+        const stored = readStoredColumns(columnsKey);
         setVisibleFieldKeys((current) => {
-          const retained = current.filter((key) => available.some((field) => field.fieldKey === key));
-          return retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey);
+          const source = stored ?? current;
+          const retained = source.filter((key) => available.some((field) => field.fieldKey === key));
+          const next = retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey);
+          if (stored && (stored.length !== next.length || stored.some((key, index) => key !== next[index]))) {
+            writeStoredColumns(columnsKey, next);
+          }
+          return next;
         });
       }
       void offlineCache.get(id)
@@ -157,18 +252,21 @@ export function BaseHome() {
         .catch(() => {});
       setError(null);
     } catch (e) {
-      if (!isCancelled()) setError(errorMessage(e, t('common.error')));
+      if (!isCancelled()) { setError(errorMessage(e, t('common.error'))); setLoadFailed(true); }
     } finally {
       if (!isCancelled()) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, page, online, bases, templates, patients]);
+  }, [id, page, online, bases, templates, patients, appliedSearch, searchMode, sort.field, sort.direction, columnsKey]);
 
   useEffect(() => {
     let cancelled = false;
     void load(() => cancelled);
     return () => { cancelled = true; };
   }, [load]);
+
+  // Reprise explicite apres une panne de chargement : meme requete, sans quitter l'ecran.
+  const reload = useCallback(() => load(() => false), [load]);
 
   // Telecharge l'instantane analytique de la base pour consultation hors-ligne.
   const doDownloadSnapshot = useCallback(async () => {
@@ -257,7 +355,16 @@ export function BaseHome() {
       />
     );
   }
-  if (!offlineView && !listing) return <p className="text-slate-500">{t('notfound.title')}</p>;
+  // Un echec de chargement laisse la base inconnue : on montre la panne et une reprise, pas
+  // « introuvable », qui affirmerait a tort que cette base n'existe pas.
+  if (!offlineView && !listing) {
+    return loadFailed ? (
+      <div className="space-y-3">
+        <p role="alert" className="text-sm text-red-600">{error ?? t('patient.list_unavailable')}</p>
+        <button type="button" className="btn-secondary" onClick={() => void reload()}>{t('patient.list_retry')}</button>
+      </div>
+    ) : <p className="text-slate-500">{t('notfound.title')}</p>;
+  }
   const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
   const canCreate = !offlineView && !!listing && (
     listing.role === 'owner' || listing.canCreateStructuredData === true || listing.permissions.canEditStructuredData
@@ -267,6 +374,48 @@ export function BaseHome() {
   const isMissionAccess = !!listing && listing.expiresAt != null;
   const canManageOffline = !offlineView && !!listing && !isMissionAccess;
   const visibleFields = fields.filter((field) => visibleFieldKeys.includes(field.fieldKey));
+  const searching = appliedSearch !== '';
+  // Rôle ET permission sur cette base, plus un serveur qui sait répondre. Les trois sont
+  // nécessaires : le rôle gouverne l'affichage du champ, la permission gouverne ce que la
+  // recherche peut faire remonter, et l'absence d'opération serveur ne se devine pas.
+  const identitySearchAvailable = !offlineView
+    && profile?.globalRole === 'medecin'
+    && !!listing?.permissions.canViewIdentity
+    && !!patients.searchPatientIdsByIdentity;
+  // Droit révoqué, base changée ou passage hors connexion : le mode revient au code PENDANT
+  // le rendu, avant qu'une requête ne parte encore en nominatif. Le serveur refuserait de
+  // toute façon, mais l'écran ne doit pas continuer à proposer ce qu'il n'a plus.
+  if (searchMode === 'name' && !identitySearchAvailable && !loading) setSearchMode('code');
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const applyColumns = (next: string[]) => { setVisibleFieldKeys(next); writeStoredColumns(columnsKey, next); };
+  const changeSort = (next: SortChoice) => { setSort(next); setPage(0); };
+  // Deux acces a la pagination, deux informations differentes : en tete, la position dans
+  // l'ensemble des resultats ; en pied, la plage affichee. Un meme texte rendu deux fois
+  // n'aiderait ni la lecture ni les technologies d'assistance.
+  const pager = (position: 'top' | 'bottom') => (
+    <nav aria-label={t(position === 'top' ? 'patient.pagination_top' : 'patient.pagination_bottom')}
+      className={`flex flex-wrap items-center justify-between gap-2 text-sm ${position === 'bottom' ? 'mt-3' : ''}`}>
+      <span className="text-slate-500">
+        {position === 'top'
+          ? t('patient.page_summary').replace('{page}', String(page + 1)).replace('{pages}', String(pageCount)).replace('{total}', String(total))
+          : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} ${t('pager.of')} ${total}`}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {position === 'top' && (
+          <button type="button" disabled={page === 0} onClick={() => setPage(0)}
+            className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50">{t('patient.page_first')}</button>
+        )}
+        <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}
+          className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50">{t('pager.prev')}</button>
+        <button type="button" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)}
+          className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50">{t('pager.next')}</button>
+        {position === 'top' && (
+          <button type="button" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage(pageCount - 1)}
+            className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50">{t('patient.page_last')}</button>
+        )}
+      </div>
+    </nav>
+  );
 
   return (
     <section className="space-y-5">
@@ -344,7 +493,7 @@ export function BaseHome() {
       )}
 
       {!(offlineView && !cachedMeta) && (
-        <div className="space-y-3">
+        <div className="@container/list space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="section-title">{t('patient.list_title')}</h2>
@@ -373,22 +522,80 @@ export function BaseHome() {
                         label={field.label}
                         containerClassName="rounded-lg px-2 hover:bg-slate-50"
                         checked={visibleFieldKeys.includes(field.fieldKey)}
-                        onChange={(event) => setVisibleFieldKeys((current) => (
-                          event.target.checked
-                            ? [...current, field.fieldKey]
-                            : current.filter((key) => key !== field.fieldKey)
-                        ))}
+                        onChange={(event) => applyColumns(event.target.checked
+                          ? [...visibleFieldKeys, field.fieldKey]
+                          : visibleFieldKeys.filter((key) => key !== field.fieldKey))}
                     />
                   ))}
                 </div>
               </Menu>
             )}
           </div>
+          {/* UX-12(b) : recherche et tri sont resolus par le SERVEUR avant la pagination ;
+              la liste reste presentee par code et variables analytiques (RG-9). */}
+          {!offlineView && (
+            <div className="flex flex-col gap-3 @min-[40rem]/list:flex-row @min-[40rem]/list:items-end">
+              <div className="min-w-0 flex-1">
+                <label className="form-label" htmlFor="patient-search">{t('patient.search')}</label>
+                <div className="flex items-center gap-2">
+                  <Search size={16} aria-hidden className="shrink-0 text-slate-400" />
+                  {/* UX-12(c) : le mode nominatif n'est proposé qu'à un médecin disposant du
+                      droit d'identité sur CETTE base, et seulement si le serveur sait le
+                      traiter. Ce contrôle est un confort d'écran : l'autorisation, elle, est
+                      revérifiée par l'opération serveur, qui ne rend que des identifiants. */}
+                  {identitySearchAvailable && (
+                    <label className="sr-only" htmlFor="patient-search-mode">{t('patient.search_by')}</label>
+                  )}
+                  {identitySearchAvailable && (
+                    <select id="patient-search-mode" className="input w-auto shrink-0" value={searchMode}
+                      aria-label={t('patient.search_by')}
+                      onChange={(event) => { setSearchMode(event.target.value as 'code' | 'name'); setPage(0); }}>
+                      <option value="code">{t('patient.search_mode_code')}</option>
+                      <option value="name">{t('patient.search_mode_identity')}</option>
+                    </select>
+                  )}
+                  <input id="patient-search" type="search" className="input" value={search} autoComplete="off"
+                    placeholder={t(searchMode === 'name' ? 'patient.search_name_placeholder' : 'patient.search_placeholder')}
+                    onChange={(event) => setSearch(event.target.value)} />
+                  {search !== '' && (
+                    <button type="button" className="btn-ghost min-h-11 shrink-0 px-2" onClick={() => setSearch('')}>
+                      {t('patient.search_clear')}
+                    </button>
+                  )}
+                </div>
+                <p className="helper-text">
+                  {searchMode === 'name'
+                    ? t('patient.search_mode_name_note')
+                    : `${t('patient.search_mode_code')}${identitySearchAvailable ? '' : ` · ${t('patient.search_identity_unavailable')}`}`}
+                </p>
+                {searchMode === 'name' && search.trim() !== '' && search.trim().length < 2 && (
+                  <p role="status" className="helper-text text-amber-800">{t('patient.search_name_too_short')}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="form-label" htmlFor="patient-sort">{t('patient.sort')}
+                  {/* En recherche nominative, l'ordre est celui du code, decide par le
+                      serveur : laisser le tri actif afficherait un controle sans effet. */}
+                  <select id="patient-sort" className="input" value={sort.field} disabled={searchMode === 'name' && searching}
+                    onChange={(event) => changeSort({ ...sort, field: event.target.value as PatientSortField })}>
+                    <option value="created_at">{t('patient.sort_created')}</option>
+                    <option value="patient_code">{t('patient.sort_code')}</option>
+                  </select>
+                </label>
+                <button type="button" className="btn-secondary"
+                  onClick={() => changeSort({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' })}>
+                  <ArrowDownUp size={16} aria-hidden />
+                  {sort.direction === 'asc' ? t('patient.sort_asc') : t('patient.sort_desc')}
+                </button>
+              </div>
+            </div>
+          )}
+          {!offlineView && total > PAGE_SIZE && pager('top')}
           {rows.length === 0 ? (
             <EmptyState
               icon={Users}
-              title={t(canCreate ? 'patient.no_patients' : 'patient.no_patients_readonly')}
-              action={canCreate ? (
+              title={searching ? t('patient.no_search_results') : t(canCreate ? 'patient.no_patients' : 'patient.no_patients_readonly')}
+              action={canCreate && !searching ? (
                 <button onClick={() => navigate(`/bases/${id}/patients/new/manual`)} className="btn-primary">
                   <Plus size={16} aria-hidden /> {t('patient.new')}
                 </button>
@@ -434,29 +641,7 @@ export function BaseHome() {
             </div>
           )}
 
-          {!offlineView && total > PAGE_SIZE && (
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <span className="text-slate-500">
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  {t('pager.prev')}
-                </button>
-                <button
-                  disabled={(page + 1) * PAGE_SIZE >= total}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  {t('pager.next')}
-                </button>
-              </div>
-            </div>
-          )}
+          {!offlineView && total > PAGE_SIZE && pager('bottom')}
         </div>
       )}
     </section>

@@ -6,8 +6,8 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
-import { isMultipleTerminology, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
+import { isMultipleTerminology, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import type { IdentityMatch, PatientRepository } from '../../data/patients';
 import { newOfflineId, useOnline } from '../../data/offline';
 import {
@@ -27,6 +27,10 @@ import { SkeletonList } from '../../components/Skeleton';
 import { DatePickerInput } from '../../components/DatePickerInput';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { useDirtyForm } from '../../lib/useUnsavedChanges';
+import { useWorkDraft } from './useWorkDraft';
+import { WorkDraftPanel } from './WorkDraftPanel';
+import { localWorkDraftRepository } from '../../data/localWorkDrafts';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -38,11 +42,14 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const navigate = useNavigate();
   const { t } = useI18n();
   const online = useOnline();
+  const [useLocalSupport] = useState(() => !online && isOfflineIntakeEnabled() && mode === 'manual');
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
   const curation = useCurationRepository();
   const submitAttempt = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const intakeAttempt = useRef<{ fingerprint: string; operationKey: string } | null>(null);
+  const loadedFor = useRef<string | null>(null);
   const defaultsApplied = useRef(false); // L28 : les propositions ne s'appliquent qu'au premier chargement
   const { toast } = useToast();
   const { profile } = useAuth();
@@ -53,6 +60,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
   const [versionId, setVersionId] = useState<string | null>(null);
   const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
@@ -78,7 +86,17 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
-  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
+  const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
+  const navigation = useDirtyForm({ code, fullName, externalId, dob, phone, address, permanent }, !loading && versionId !== null, `${baseId}:${mode}`);
+  const work = useWorkDraft({
+    repository: useLocalSupport ? localWorkDraftRepository : undefined,
+    support: useLocalSupport ? 'local' : 'server',
+    context: mode === 'manual' && baseId && versionId ? {
+      baseId, kind: 'patient_create', targetId: null, templateVersionId: versionId, entityRevision: null,
+    } : null,
+    ownerId: profile?.id ?? '', payload: { values: permanent, code }, dirty: navigation.dirty, online,
+    onRestore: (payload) => { setPermanent(payload.values); setCode(payload.code ?? ''); setPrefilled(new Set()); },
+  });
 
   // Detection de doublon (confort) : des que nom + date de naissance sont saisis, on cherche
   // un patient existant a la meme identite. Non bloquant ; on propose d'ouvrir sa fiche ou
@@ -87,10 +105,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     const name = fullName.trim();
     setAckDuplicate(false); // toute nouvelle identite doit etre re-confirmee
     if (!canViewIdentity || !baseId || !name || !dob) { setMatches([]); return; }
+    let active = true;
     const handle = setTimeout(() => {
-      patients.findIdentityMatches(baseId, name, dob).then(setMatches).catch(() => setMatches([]));
+      patients.findIdentityMatches(baseId, name, dob).then((result) => { if (active) setMatches(result); }).catch(() => { if (active) setMatches([]); });
     }, 400);
-    return () => clearTimeout(handle);
+    return () => { active = false; clearTimeout(handle); };
   }, [baseId, canViewIdentity, fullName, dob, patients]);
 
   // Applique un contexte de saisie prepare EN LIGNE : meme gabarit, memes regles,
@@ -101,6 +120,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       .sort((a, b) => a.displayOrder - b.displayOrder);
     setRules(ctx.rules);
     setSections(ctx.sections ?? []);
+    setCommonLayout(ctx.commonLayout);
     // Le contexte prepare EN LIGNE transporte deja le contrat et sa version : le hors-ligne
     // n'ouvre rien de plus, l'information s'affiche simplement a l'identique.
     setVersionId(ctx.templateVersionId);
@@ -129,6 +149,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           return;
         }
         applyIntakeContext(ctx);
+        loadedFor.current = baseId;
         setError(null);
         return;
       }
@@ -150,6 +171,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       const fields = version.fields;
       setRules(version.rules);
       setSections(version.sections ?? []);
+      setCommonLayout(version.version.commonLayout);
       setVersionId(version.version.id);
       setDiagnosisContext(version.version.diagnosisContext);
       setIsCrossSectional((base.base.observationModel ?? 'longitudinal') === 'cross_sectional');
@@ -167,6 +189,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       }
       setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
       setError(null);
+      loadedFor.current = baseId;
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -176,8 +199,8 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   }, [baseId, bases, templates, patients, online]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (loadedFor.current !== baseId) void load();
+  }, [load, baseId]);
 
   // L32 — une variable masquee ne se saisit pas et sa valeur ne part pas au serveur.
   const { hidden, removed, data: permanentData } = useMemo(() => {
@@ -186,7 +209,6 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, permanent, fields, sections]);
 
-  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
   const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'patient', permanentData, fields, rules, sections);
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
@@ -205,10 +227,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   }
 
   // Mode hors-ligne intake-only actif pour CET ecran (formulaire + soumission locaux).
-  const offlineIntakeActive = !online && isOfflineIntakeEnabled() && mode === 'manual';
+  const offlineIntakeActive = useLocalSupport && isOfflineIntakeEnabled() && mode === 'manual';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (busy) return;
+    if (work.locked) { await persistPatient(); return; }
     // En hors-ligne intake-only, un code vide est ACCEPTED : il est genere depuis la cle
     // d'operation (stable, improbable a collision) a la mise en file. En ligne, le code
     // reste obligatoire (prefilled P-XXXX ou saisi).
@@ -220,15 +244,17 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     }
     // Compte de mission : aucun brouillon partiel (regle B) -- le serveur refuse aussi
     // un patient sans ses champs requis du gabarit.
-    if (isMissionAccount(profile)) {
-      const requiredMissing = validateValues(fields, permanentData, true, hidden)
-        .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
+    if (mode === 'manual') {
+      const requiredMissing = [
+        ...validateValues(fields, permanentData, isMissionAccount(profile), hidden).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
+        ...(isMissionAccount(profile) ? evaluateRules(rules, permanentData, hidden).blocking : []),
+      ];
       if (requiredMissing.length > 0) {
         setError(requiredMissing.join(' · '));
         return;
       }
     }
-    if (mode === 'manual' && diagnosticRemoved.length > 0 && !confirmationOpen) {
+    if (mode === 'manual' && removed.length > 0 && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -251,7 +277,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       // peut ne pas avoir abouti si la saisie est rapide (copier-coller + Entree) -> sans cette
       // re-verification, la garde se contourne involontairement par la vitesse. Best-effort :
       // si la recherche echoue (reseau), on n'empeche pas la creation.
-      if (canViewIdentity && !isSameOperationRetry && !ackDuplicate && fullName.trim() && dob) {
+      if (canViewIdentity && !work.locked && !isSameOperationRetry && !ackDuplicate && fullName.trim() && dob) {
         let live = matches;
         try { live = await patients.findIdentityMatches(baseId, fullName.trim(), dob); setMatches(live); } catch { /* best-effort */ }
         if (live.length > 0) {
@@ -274,13 +300,22 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           idempotencyKey: submitAttempt.current!.idempotencyKey,
         });
         toast(t('toast.patient_saved'));
+        navigation.markClean();
         navigate(`/curation/${created.taskId}`);
         return;
       }
       // SAISIE HORS-LIGNE : enregistrement LOCAL (aucun appel reseau requis), dans la file
       // cloisonnee. La cle d'operation est posee ici et reste stable si l'utilisateur re-soumet.
       if (offlineIntakeActive) {
-        const operationKey = newOfflineId();
+        if (work.enabled) {
+          const created = await work.commit({ fullName: canViewIdentity ? fullName.trim() || null : null,
+            dateOfBirth: canViewIdentity ? dob || null : null, phone: canViewIdentity ? phone || null : null,
+            address: canViewIdentity ? address || null : null, externalIdentifier: canViewIdentity ? externalId.trim() || null : null });
+          navigation.markClean(); toast(`${t('intake.saved_pending')} (${created.code})`, 'success'); navigate(`/bases/${baseId}`); return;
+        }
+        const fingerprint = JSON.stringify({ code, fullName, dob, phone, address, externalId, permanentData });
+        if (intakeAttempt.current?.fingerprint !== fingerprint) intakeAttempt.current = { fingerprint, operationKey: newOfflineId() };
+        const operationKey = intakeAttempt.current.operationKey;
         const entry = await enqueuePatientCreate({
           baseId,
           operationKey,
@@ -295,19 +330,20 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           },
         });
         toast(`${t('intake.saved_pending')} (${entry.payload.code})`, 'success');
+        navigation.markClean();
         navigate(`/bases/${baseId}`); // la file locale est visible sur l'accueil de la base
         return;
       }
-      const created = await patients.createPatient(baseId, {
-        code: code.trim(),
+      const identity = {
         fullName: canViewIdentity ? (fullName.trim() || null) : null,
         dateOfBirth: canViewIdentity ? (dob || null) : null,
         phone: canViewIdentity ? (phone || null) : null,
         address: canViewIdentity ? (address || null) : null,
         externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
-        permanentData,
-      });
+      };
+      const created = work.enabled ? await work.commit(identity) : await patients.createPatient(baseId, { ...identity, code: code.trim(), permanentData });
       toast(t('toast.patient_saved')); // UI-2
+      navigation.markClean();
       navigate(`/bases/${baseId}/patients/${created.id}`);
     } catch (e) {
       // QA : le doublon de CODE patient (contrainte unique) doit parler a l'utilisateur,
@@ -335,7 +371,8 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   );
 
   return (
-    <section className="max-w-2xl space-y-5 sm:space-y-6">
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
+      {navigation.guard}
       <div>
         <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
@@ -358,8 +395,10 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
       {mode === 'submit' && <p className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">{t('patient.submit_hint')}</p>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
+        <fieldset disabled={busy || work.locked} className="min-w-0 space-y-6">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">{t('patient.code')}</span>
           {/* En hors-ligne intake-only, un code vide est genere a la mise en file :
@@ -371,7 +410,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         {canViewIdentity && <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
           <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
           <p className="text-xs text-slate-500">{t('patient.identity_note')}</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="text-slate-700">{t('patient.full_name')}{mode === 'submit' && <span className="text-red-500"> *</span>}</span>
               <input className="input mt-1" value={fullName} onChange={(e) => setFullName(e.target.value)} required={mode === 'submit'} />
@@ -381,7 +420,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
               <input className="input mt-1" value={externalId} onChange={(e) => setExternalId(e.target.value)} />
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="block text-sm">
               <span className="text-slate-700">{t('patient.dob')}{mode === 'submit' && <span className="text-red-500"> *</span>}</span>
               <div className="mt-1">
@@ -431,6 +470,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
             <SectionedFields
               fields={visibleFields}
               sections={sections}
+              commonLayout={commonLayout}
+              values={permanent}
+              allFields={fields}
+              hiddenKeys={hidden}
+              rules={rules}
+              requireComplete={isMissionAccount(profile)}
               renderField={(field) => {
                 const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
                 return (
@@ -442,7 +487,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                     {/* L35 : meme regle qu'au formulaire de rencontre — une variable
                         calculee s'affiche, elle ne se saisit pas. */}
                     {isCalculatedField(field) ? (
-                      <CalculatedValue field={field} values={permanent} fields={fields} />
+                      <CalculatedValue field={field} values={permanentData} fields={fields} />
                     ) : proposal ? (
                       <ChoiceWithProposal
                         field={field}
@@ -489,14 +534,15 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
         {mode === 'manual' && confirmationOpen && (
           <HiddenValuesConfirmation
-            removedKeys={diagnosticRemoved}
+            removedKeys={removed}
             fields={fields}
             onConfirm={() => void persistPatient()}
             onCancel={() => setConfirmationOpen(false)}
           />
         )}
 
-        <div className="flex items-center gap-2">
+        </fieldset>
+        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
           <button type="submit" disabled={busy} className="btn-primary">
             {mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
           </button>

@@ -14,6 +14,13 @@
 
 ## 1. Résultat attendu et limites
 
+> **Complément de présentation spécifié le 2026-09-11 :**
+> [UX-16 — rubriques communes et placement diagnostique](spec-experience-utilisateur.md#53-diagnostic-pilote-et-rubriques-communes-libres--ux-16)
+> permet de nommer et déplacer la rubrique du diagnostic, ainsi que de répartir les variables
+> communes en plusieurs rubriques. Le rôle de pilote et l'appartenance au tronc commun restent
+> sémantiques : ils n'imposent plus, dans cette cible, un titre ni une position en tête.
+> Extension spécifiée, non implémentée ; les statuts historiques L55/L56 ci-dessus sont inchangés.
+
 Dans sa base autorisée, l'agent enregistre le socle et les diagnostics d'un cas même si aucun
 bloc spécialisé ne correspond. La base représente un contexte cohérent de collecte, pas
 nécessairement une pathologie. Une mission reste limitée à une base ; aucune extension des
@@ -84,6 +91,8 @@ du dépôt pendant l'implémentation :
 Pour `select`/`multiselect`, les options versionnées remplacent la release et cette référence
 est nulle. Le pilote appartient au tronc commun du même scope, ne porte aucune formule et ne
 peut être masqué par une règle. Le couple `(scope, field_key)` l'identifie, jamais son libellé.
+L'appartenance au tronc commun est compatible avec les rubriques de présentation UX-16 :
+déplacer visuellement le pilote ne change ni sa clé, ni ses associations, ni sa couverture.
 
 **Une seule source pour les associations diagnostic → blocs : les règles L52.** L'éditeur
 présente une association compréhensible au responsable mais écrit une règle `contains_any`

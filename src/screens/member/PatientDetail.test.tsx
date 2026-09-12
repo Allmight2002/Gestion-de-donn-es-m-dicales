@@ -526,7 +526,7 @@ describe('EditEncounter (correction)', () => {
     fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'curated' } });
     fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'promotion' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Glasgow')).toHaveAccessibleDescription(/champ obligatoire/i);
     expect(updateEncounter).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '12' } });
@@ -552,7 +552,7 @@ describe('EditEncounter (correction)', () => {
     fireEvent.change(screen.getByLabelText(/statut du dossier/i), { target: { value: 'complete' } });
     fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'soumission' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(await screen.findByText(/champ obligatoire/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Glasgow')).toHaveAccessibleDescription(/champ obligatoire/i);
     expect(updateEncounter).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '12' } });
@@ -596,7 +596,7 @@ describe('EditPatient (verrou optimiste)', () => {
     });
     renderAt('/bases/b1/patients/p1/edit', makePatients({ getPatient, updatePatientData }));
 
-    fireEvent.change(await screen.findByLabelText('Sexe'), { target: { value: 'F' } });
+    await userEvent.click(await screen.findByRole('radio', { name: 'F' }));
     fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'correction concurrente' } });
     await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
 
@@ -607,6 +607,7 @@ describe('EditPatient (verrou optimiste)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/modifie par une autre personne/i);
     const reload = screen.getByRole('button', { name: /recharger les données/i });
     await userEvent.click(reload);
+    await userEvent.click(screen.getByRole('button', { name: 'Quitter la saisie' }));
     await waitFor(() => expect(getPatient).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('button', { name: /recharger les donnees/i })).not.toBeInTheDocument());
   });

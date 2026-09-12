@@ -7,17 +7,20 @@ import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange } from '../../data/patients';
-import { displayFieldValue, type DiagnosisContext, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import {
   validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues, isMissing, missingCodeOf,
 } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { useDirtyForm } from '../../lib/useUnsavedChanges';
+import { useWorkDraft } from './useWorkDraft';
+import { WorkDraftPanel } from './WorkDraftPanel';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
@@ -33,12 +36,16 @@ export function EditEncounter() {
   const patients = usePatientRepository();
   const { toast } = useToast();
   const { profile } = useAuth();
+  const loadedFor = useRef<string | null>(null);
+  const [initialStatus, setInitialStatus] = useState('draft');
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
+  const [encounterType, setEncounterType] = useState('consultation');
   const [reason, setReason] = useState('');
   const [history, setHistory] = useState<FieldChange[]>([]);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
@@ -58,16 +65,26 @@ export function EditEncounter() {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
     return displayFieldValue(v, '—');
   };
-  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
+  const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
+  const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${encounterId}`);
+  const work = useWorkDraft({
+    context: baseId && encounterId && diagnosisVersionId && baseUpdatedAt ? {
+      baseId, targetId: encounterId, kind: 'encounter_update', templateVersionId: diagnosisVersionId, entityRevision: String(Date.parse(baseUpdatedAt)),
+    } : null,
+    ownerId: profile?.id ?? '', payload: { values, status, reason }, dirty: navigation.dirty, online,
+    onRestore: (payload) => { setValues(payload.values); setStatus(initialStatus === 'curated' ? 'curated' : payload.status ?? 'draft'); setReason(payload.reason ?? ''); },
+  });
 
   // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
+  const applicableFields = useMemo(() => fields.filter((field) => fieldAppliesToType(field, encounterType)), [fields, encounterType]);
   const { hidden, removed, data: submittedData } = useMemo(() => {
-    const hiddenKeys = hiddenFieldKeys(rules, values, fields, sections);
+    const applicableValues = Object.fromEntries(Object.entries(values).filter(([key]) => applicableFields.some((field) => field.fieldKey === key)));
+    const hiddenKeys = hiddenFieldKeys(rules, applicableValues, applicableFields, sections);
+    for (const field of fields) if (!applicableFields.includes(field)) hiddenKeys.add(field.fieldKey);
     const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [rules, values, fields, sections]);
+  }, [rules, values, fields, sections, applicableFields]);
 
-  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
   const coverage = useDiagnosisCoverage(diagnosisVersionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
@@ -99,6 +116,8 @@ export function EditEncounter() {
           void _drop;
           setValues(rest);
           setStatus(enc.validationStatus);
+          setInitialStatus(enc.validationStatus);
+          setEncounterType(enc.encounterType);
           setBaseUpdatedAt(enc.updatedAt ?? null); // jeton optimiste pour la synchro
         }
         setHistory([]);
@@ -115,6 +134,7 @@ export function EditEncounter() {
         const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
         setSections((enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || []);
+        setCommonLayout(undefined);
         // L'instantane transporte le contrat par version : il n'ouvre aucun hors-ligne nouveau.
         setDiagnosisVersionId(enc?.templateVersionId ?? null);
         setDiagnosisContext(enc?.templateVersionId ? snap?.diagnosisContextByVersion?.[enc.templateVersionId] : undefined);
@@ -132,6 +152,8 @@ export function EditEncounter() {
         void _drop;
         setValues(rest);
         setStatus(enc.validationStatus);
+        setInitialStatus(enc.validationStatus);
+        setEncounterType(enc.encounterType);
         setBaseUpdatedAt(enc.updatedAt ?? null);
       }
       setHistory(hist);
@@ -144,10 +166,12 @@ export function EditEncounter() {
         setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
         setRules(version.rules);
         setSections(version.sections ?? []);
+        setCommonLayout(version.version.commonLayout);
         setDiagnosisVersionId(version.version.id);
         setDiagnosisContext(version.version.diagnosisContext);
       }
       setError(null);
+      loadedFor.current = `${baseId}:${encounterId}`;
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -157,12 +181,14 @@ export function EditEncounter() {
   }, [baseId, encounterId, online, bases, templates, patients]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (loadedFor.current !== `${baseId}:${encounterId}`) void load();
+  }, [load, baseId, encounterId]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!baseId || !patientId || !encounterId) return;
+    if (busy) return;
+    if (work.locked) { await persistEncounter(); return; }
 
     // Completude exigee des la sortie du brouillon ('complete') pour tous les comptes, et a
     // CHAQUE enregistrement pour un compte de mission (aucun brouillon partiel). Regles
@@ -182,7 +208,7 @@ export function EditEncounter() {
     setBlocking(block);
     if (block.length > 0) return;
 
-    if (diagnosticRemoved.length > 0 && !confirmationOpen) {
+    if (removed.length > 0 && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -204,8 +230,10 @@ export function EditEncounter() {
         });
       } else {
         // EN LIGNE : RPC validee, avec verrou optimiste (refuse si la rencontre a change).
-        await patients.updateEncounter(encounterId, submittedData, status, reason.trim(), baseUpdatedAt);
+        if (work.enabled) await work.commit();
+        else await patients.updateEncounter(encounterId, submittedData, status, reason.trim(), baseUpdatedAt);
       }
+      navigation.markClean();
       toast(t(online ? 'toast.encounter_saved' : 'toast.encounter_queued')); // UI-2
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
@@ -223,7 +251,8 @@ export function EditEncounter() {
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-2xl space-y-5 sm:space-y-6">
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
+      {navigation.guard}
       <div>
         <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
@@ -238,13 +267,15 @@ export function EditEncounter() {
       )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} patientId={patientId} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
+        <fieldset disabled={busy || work.locked} className="min-w-0 space-y-5">
         <label className="flex flex-col text-sm">
           <span className="text-slate-700">{t('encounter.status')}</span>
           <select className="input mt-1 w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => (
-              <option key={s} value={s}>
+              <option key={s} value={s} disabled={initialStatus === 'curated' && s !== 'curated'}>
                 {t(`encstatus.${s}`)}
               </option>
             ))}
@@ -252,10 +283,13 @@ export function EditEncounter() {
         </label>
 
         <EncounterFields
-          fields={fields}
+          fields={applicableFields}
           values={values}
           hiddenKeys={hidden}
           sections={sections}
+          commonLayout={commonLayout}
+          rules={rules}
+          requireComplete={isMissionAccount(profile) || status !== 'draft'}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}
         />
@@ -268,7 +302,7 @@ export function EditEncounter() {
 
         {confirmationOpen && (
           <HiddenValuesConfirmation
-            removedKeys={diagnosticRemoved}
+            removedKeys={removed}
             fields={fields}
             onConfirm={() => void persistEncounter()}
             onCancel={() => setConfirmationOpen(false)}
@@ -292,14 +326,15 @@ export function EditEncounter() {
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        </fieldset>
+        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
           <button type="submit" disabled={busy} className="btn-primary">
             {t('encounter.save')}
           </button>
           <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
-          {reloadRequired && <button type="button" onClick={() => { setReloadRequired(false); void load(); }} className="btn-secondary">{t('form.reload_data')}</button>}
+          {reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
           <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
