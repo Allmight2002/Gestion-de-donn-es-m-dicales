@@ -57,7 +57,12 @@ test.describe('parcours export critique (medecin)', () => {
     await expect(downloadButton).toBeVisible();
 
     // 6) telechargement intercepte + 7) verification minimale nom / type / taille
-    const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()]);
+    // Le telechargement passe par une URL signee a la demande : lui accorder le meme delai
+    // que les allers-retours staging ci-dessus, le defaut de 10 s etant trop court.
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 30_000 }),
+      downloadButton.click(),
+    ]);
     const filename = download.suggestedFilename();
     expect(filename).toMatch(/\.csv$/i);
     const filePath = await download.path();
