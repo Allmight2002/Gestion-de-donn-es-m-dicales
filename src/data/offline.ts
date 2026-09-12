@@ -617,9 +617,11 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
   return rep;
 }
 
-/** Anciennes entrees ou entrees expirees: jamais rejouees automatiquement.
- * S'applique aux DEUX familles d'entrees (analytique et saisie hors-ligne) : une entree
- * inconnue, sans proprietaire, perimee — ou reussie DONT la trace a expire — est supprimee. */
+/** Anciennes entrees ou entrees expirees : jamais rejouees automatiquement.
+ * Les entrees analytiques expirees et les entrees inconnues sont supprimees. Pour une saisie
+ * intake, la charge est videe mais le marqueur `expired` reste jusqu'au changement de compte :
+ * il permet de conserver l'etat de la tentative sans conserver une donnee clinique. Les traces
+ * de reussite restent jusqu'a l'expiration afin de servir les dependances locales, puis partent. */
 export async function purgeExpiredOutbox(now = Date.now()): Promise<number> {
   const all = await idbTx<OutboxRecord[]>(OUTBOX_STORE, 'readonly', (s) => s.getAll());
   let removed = 0;

@@ -383,7 +383,7 @@ describe('cascade, abandon et purge (O2)', () => {
     expect(await intakeQueue.list()).toHaveLength(0);
   });
 
-  test('purge : expirees supprimees, traces de reussite conservees jusqu a leur expiration', async () => {
+  test('purge : la charge expiree est videe, son marqueur reste, la reussite dure jusqu a expiration', async () => {
     setOfflineUser('user-a');
     await seedContext();
     const succeeded = await enqueuePatientCreate({ baseId: 'b1', operationKey: 'op-succeeded', payload: PATIENT_PAYLOAD });
@@ -396,13 +396,20 @@ describe('cascade, abandon et purge (O2)', () => {
 
     expect(await purgeExpiredOutbox()).toBe(1);
     const left = await intakeQueue.list();
-    expect(left.map((e) => e.id)).toEqual([succeeded.id]);
+    expect(left.map((e) => e.id)).toEqual([succeeded.id, expired.id]);
     expect(left[0].state).toBe('succeeded');
+    expect(left[1].state).toBe('expired');
+    expect(left[1].payload).toEqual({
+      code: '', fullName: null, dateOfBirth: null, phone: null, address: null,
+      externalIdentifier: null, permanentData: {},
+    });
+    expect(left[1].fingerprint).toBe('');
 
-    // Une fois la trace elle-meme expiree, le menage la retire.
-    await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put({ ...succeeded, expiresAt: Date.now() - 1 }));
+    // Une fois la trace de reussite elle-meme expiree, le mapping local est retire ;
+    // le marqueur intake vide reste jusqu'au changement de compte.
+    await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put({ ...succeeded, state: 'succeeded', expiresAt: Date.now() - 1 }));
     expect(await purgeExpiredOutbox()).toBe(1);
-    expect(await intakeQueue.list()).toHaveLength(0);
+    expect((await intakeQueue.list()).map((e) => e.id)).toEqual([expired.id]);
   });
 
   test('contexte expire : la creation hors-ligne est refusee (invariant §3.12)', async () => {
