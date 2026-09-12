@@ -164,6 +164,8 @@ describe('NewPatient : detection de doublon', () => {
     expect(await screen.findByText(/existe déjà dans cette base/i)).toBeInTheDocument();
     expect(screen.getByText('P-0009')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Ouvrir sa fiche' }));
+    // UX-1 : l'identite deja saisie n'entre dans aucun brouillon ; quitter la page se confirme.
+    await userEvent.click(await screen.findByRole('button', { name: 'Quitter la saisie' }));
     expect(await screen.findByText('FICHE')).toBeInTheDocument();
   });
 

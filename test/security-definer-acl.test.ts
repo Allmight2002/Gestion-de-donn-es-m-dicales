@@ -46,9 +46,15 @@ describe('inventaire SECURITY DEFINER', () => {
     // sans en etre proprietaire ; sous invoker une source interdite ne leverait pas, elle
     // rendrait zero ligne. La previsualisation partage le MEME prologue d'autorisation, sans
     // quoi les deux chemins divergeraient.
-    expect(signatures).toHaveLength(120);
+    // +4 UX-2 : brouillons privés et consommation atomique, droits actuels vérifiés.
+    // +2 UX-14(c) : preview_rule_batch et create_rule_batch. Appliquer une même condition à
+    // plusieurs cibles doit valider l'ensemble puis écrire en une transaction rejouable ;
+    // une boucle d'insertions depuis le navigateur laisserait des règles à moitié créées.
+    // +5 UX-16 : trois gardes internes et les deux RPC de lecture/ecriture atomique des
+    // rubriques communes. L'inventaire force leur revue d'autorisation et leur search_path.
+    expect(signatures).toHaveLength(131);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(132);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(143);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

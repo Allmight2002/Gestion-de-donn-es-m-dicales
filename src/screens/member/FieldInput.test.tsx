@@ -8,6 +8,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { I18nProvider } from '../../i18n/I18nProvider';
 import { FieldInput } from './FieldInput';
 import type { TemplateField } from '../../data/types';
 
@@ -31,7 +32,7 @@ const EVOLUTION = field({
 });
 
 const renderInput = (f: TemplateField, value: unknown, onChange = vi.fn()) => {
-  render(<FieldInput field={f} value={value} onChange={onChange} />);
+  render(<I18nProvider><FieldInput field={f} value={value} onChange={onChange} /></I18nProvider>);
   return onChange;
 };
 
@@ -71,14 +72,12 @@ describe('FieldInput — liste a code stable (L30)', () => {
     expect(optionsOf(select)).toContainEqual({ value: 'hematome', text: 'hematome' });
   });
 
-  test('une variable anterieure au lot (que des cles) se comporte comme avant', () => {
+  test('une variable anterieure au lot conserve ses codes dans les radios', () => {
     renderInput(field({ fieldKey: 'sexe', type: 'select', label: 'Sexe', allowedValues: ['M', 'F'] }), 'M');
-    const select = screen.getByLabelText('Sexe') as HTMLSelectElement;
-    expect(optionsOf(select)).toEqual([
-      { value: '', text: '—' },
-      { value: 'M', text: 'M' },
-      { value: 'F', text: 'F' },
-    ]);
+    expect(screen.getByRole('radio', { name: 'M' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'F' })).not.toBeChecked();
+    // La valeur transportee reste le CODE de l'option, jamais son libelle.
+    expect(screen.getByRole('radio', { name: 'M' })).toHaveAttribute('value', 'M');
   });
 });
 

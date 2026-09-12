@@ -6,6 +6,9 @@ import type { MissingCode } from '../domain/export';
 import { optionKeys, toRawOptions } from '../domain/fieldOptions';
 import type {
   ImportableBlock,
+  RuleBatchPayload,
+  RuleBatchPlan,
+  RuleBatchReceipt,
   NewField,
   RuleSeverity,
   Template,
@@ -16,10 +19,14 @@ import type {
   ValidationRule,
   DiagnosisConfiguration,
   DiagnosisContext,
+  CommonLayoutPayload,
+  TemplateCommonLayout,
 } from './types';
 
 export interface TemplateRepository {
   setDiagnosisConfiguration?(versionId: string, configuration: DiagnosisConfiguration[]): Promise<void>;
+  /** UX-16 : ecrit une organisation COMPLETE dans une operation rejouable cote serveur. */
+  setCommonLayout?(versionId: string, operationId: string, payload: CommonLayoutPayload, expectedFingerprint: string): Promise<TemplateCommonLayout>;
   listTemplates(): Promise<(Template & { versions: TemplateVersion[] })[]>;
   createTemplate(name: string, specialty: string | null): Promise<{ template: Template; version: TemplateVersion }>;
   /** Medecin : cree un gabarit PERSONNEL vierge (brouillon v1) qu'il pourra remplir puis utiliser
@@ -51,6 +58,12 @@ export interface TemplateRepository {
   /** L59 : ecrit le bloc. Le serveur rejoue le meme plan sous verrou et ne fait jamais
    *  confiance au rapport d'apercu. */
   importSection?(sourceVersionId: string, sectionKey: string, targetVersionId: string, reuseFieldKeys?: string[]): Promise<SectionImportReport>;
+  /** UX-14(c) : plan d'un lot de regles, SANS aucune ecriture. L'empreinte rendue est celle
+   *  que la confirmation devra presenter ; une version modifiee entre-temps est refusee. */
+  previewRuleBatch?(versionId: string, payload: RuleBatchPayload): Promise<RuleBatchPlan>;
+  /** UX-14(c) : cree les regles du lot en UNE transaction. Le serveur revalide tout le plan ;
+   *  un rejeu avec la meme cle d'operation rend le meme recu sans rien creer de plus. */
+  createRuleBatch?(versionId: string, operationId: string, payload: RuleBatchPayload, expectedFingerprint: string): Promise<RuleBatchReceipt>;
   /** Ajoute un champ et, le cas echeant, son compagnon dans la meme requete atomique. */
   addField(versionId: string, field: NewField, companion?: NewField): Promise<TemplateField>;
   /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
@@ -113,6 +126,44 @@ type FieldRow = {
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
 type SectionRow = { parent_section_id?: string | null; id: string; section_key: string; label: string; display_order: number };
 
+/** Forme JSON de `common_layout_state`; elle est validee de facon defensive avant l'UI. */
+type CommonLayoutRow = {
+  fingerprint?: unknown; locked?: unknown; inUse?: unknown; defaultKey?: unknown;
+  sections?: unknown; groups?: unknown; unassigned?: unknown;
+};
+
+const textArray = (value: unknown): string[] => Array.isArray(value)
+  ? value.filter((item): item is string => typeof item === 'string') : [];
+const mapCommonLayout = (value: unknown): TemplateCommonLayout | undefined => {
+  // Une RPC saine renvoie toujours un objet JSON. Ne pas transformer une reponse vide ou
+  // malformee en une configuration effacable depuis l'interface.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const row = value as CommonLayoutRow;
+  const sections = Array.isArray(row.sections) ? row.sections.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const candidate = item as { key?: unknown; label?: unknown };
+    return typeof candidate.key === 'string' && typeof candidate.label === 'string'
+      ? [{ key: candidate.key, label: candidate.label }] : [];
+  }) : [];
+  const groups = Array.isArray(row.groups) ? row.groups.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const candidate = item as { key?: unknown; label?: unknown; anchor?: unknown; isDefault?: unknown; fields?: unknown };
+    return typeof candidate.key === 'string' && typeof candidate.label === 'string'
+      && typeof candidate.anchor === 'number' && Number.isInteger(candidate.anchor)
+      ? [{ key: candidate.key, label: candidate.label, anchor: candidate.anchor,
+        isDefault: candidate.isDefault === true, fields: textArray(candidate.fields) }] : [];
+  }) : [];
+  return {
+    fingerprint: typeof row.fingerprint === 'string' ? row.fingerprint : '',
+    locked: row.locked === true,
+    inUse: row.inUse === true,
+    defaultKey: typeof row.defaultKey === 'string' ? row.defaultKey : null,
+    sections,
+    groups,
+    unassigned: textArray(row.unassigned),
+  };
+};
+
 const mapVersion = (r: VersionRow): TemplateVersion => ({
   id: r.id,
   templateId: r.template_id,
@@ -143,6 +194,15 @@ function isMissingDiagnosisConfiguration(error: unknown): boolean {
   return candidate.code === '42703'
     && typeof candidate.message === 'string'
     && /\bdiagnosis_configuration\b/i.test(candidate.message);
+}
+
+/** Serveur anterieur a UX-16 : seul ce cas precise conserve le rendu historique. */
+function isMissingCommonLayout(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return (candidate.code === 'PGRST202' || candidate.code === '42883')
+    && typeof candidate.message === 'string'
+    && /common_layout_state/i.test(candidate.message);
 }
 
 /**
@@ -197,6 +257,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       listTemplates: fail, createTemplate: fail, createPersonalTemplate: fail, createTemplateBundle: fail, getVersion: fail, addField: fail, updateField: fail,
       getSections: fail, addSection: fail, renameSection: fail, deleteSection: fail, reorderSections: fail,
       listImportableSections: fail, previewSectionImport: fail, importSection: fail,
+      previewRuleBatch: fail, createRuleBatch: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, updateRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
       deleteTemplate: fail,
@@ -271,15 +332,17 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     async getVersion(versionId) {
       const cached = versionCache.get(versionId);
       if (cached) return cached;
-      // Les 5 lectures sont INDEPENDANTES -> en parallele (1 aller-retour au lieu de 5).
+      // Les lectures sont INDEPENDANTES -> en parallele. L'etat UX-16 est optionnel
+      // pendant une promotion : seule l'absence connue de sa RPC declenche le repli.
       const readVersion = (columns: string) => client
         .from('template_version').select(columns).eq('id', versionId).single();
-      const [vRes, fRes, rRes, uRes, sRes] = await Promise.all([
+      const [vRes, fRes, rRes, uRes, sRes, layoutRes] = await Promise.all([
         readVersion(VERSION_COLUMNS),
         client.from('template_field').select('*').eq('template_version_id', versionId).order('display_order', { ascending: true }),
         client.from('validation_rule').select('id, rule, message, severity').eq('template_version_id', versionId),
         client.rpc('template_version_fields_in_use', { p_version_id: versionId }),
         client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),
+        client.rpc('common_layout_state', { p_version_id: versionId }),
       ]);
       let versionRow = vRes.data as unknown as VersionRow | null;
       if (vRes.error) {
@@ -292,12 +355,16 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (rRes.error) throw rRes.error;
       if (uRes.error) throw uRes.error;
       if (sRes.error) throw sRes.error;
+      if (layoutRes.error && !isMissingCommonLayout(layoutRes.error)) throw layoutRes.error;
       const used = new Set(
         ((uRes.data ?? []) as (string | { id?: string })[]).map((x) => (typeof x === 'string' ? x : x.id ?? '')),
       );
       const sections = ((sRes.data as SectionRow[]) ?? []).map((row, _index, rows) => mapSection(row, rows));
       const result = {
-        version: mapVersion(versionRow as VersionRow),
+        version: {
+          ...mapVersion(versionRow as VersionRow),
+          commonLayout: layoutRes.error ? undefined : mapCommonLayout(layoutRes.data),
+        },
         fields: withSections(
           ((fRes.data as FieldRow[]) ?? []).map((r) => ({ ...mapField(r), inUse: used.has(r.id) })),
           sections,
@@ -349,6 +416,20 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         .order('display_order', { ascending: true });
       if (error) throw error;
       return ((data as SectionRow[]) ?? []).map((row, _index, rows) => mapSection(row, rows));
+    },
+
+    async setCommonLayout(versionId, operationId, payload, expectedFingerprint) {
+      const { data, error } = await client.rpc('set_common_layout', {
+        p_version_id: versionId,
+        p_operation_id: operationId,
+        p_payload: payload,
+        p_expected_fingerprint: expectedFingerprint,
+      });
+      if (error) throw error;
+      clearVersionCache();
+      const receipt = mapCommonLayout(data);
+      if (!receipt) throw new Error('COMMON_LAYOUT_RECEIPT_INVALID');
+      return receipt;
     },
 
     async addSection(versionId, sectionKey, label, parentKey = null) {
@@ -404,6 +485,24 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       });
       if (error) throw error;
       return data as SectionImportReport;
+    },
+
+    async previewRuleBatch(versionId, payload) {
+      const { data, error } = await client.rpc('preview_rule_batch', { p_version_id: versionId, p_payload: payload });
+      if (error) throw error;
+      return data as RuleBatchPlan;
+    },
+
+    async createRuleBatch(versionId, operationId, payload, expectedFingerprint) {
+      const { data, error } = await client.rpc('create_rule_batch', {
+        p_version_id: versionId, p_operation_id: operationId,
+        p_payload: payload, p_expected_fingerprint: expectedFingerprint,
+      });
+      if (error) throw error;
+      // Le lot ajoute des regles a la version : le cache de session tombe comme apres toute
+      // autre ecriture de gabarit, sinon l'editeur reafficherait l'etat d'avant le lot.
+      clearVersionCache();
+      return data as RuleBatchReceipt;
     },
 
     async importSection(sourceVersionId, sectionKey, targetVersionId, reuseFieldKeys = []) {

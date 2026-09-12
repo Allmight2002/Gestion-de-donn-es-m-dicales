@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
@@ -96,7 +96,12 @@ describe('TemplateVersionEditor', () => {
 
     expect(screen.getByText('Hémoglobine')).toBeInTheDocument();
     expect(screen.queryByText('Tension artérielle')).not.toBeInTheDocument();
-    expect(screen.getByText(/Enregistré/)).toHaveTextContent('1 / 2');
+    // UX-14(a) : la portee du filtre se lit en toutes lettres, a cote de l'etat du panneau.
+    expect(screen.getByText('1 variables affichées sur 2')).toBeInTheDocument();
+    expect(screen.getByText('Aucune modification')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres' }));
+    expect(screen.getByText('2 variables affichées sur 2')).toBeInTheDocument();
+    expect(screen.getByText('Tension artérielle')).toBeInTheDocument();
   });
 
   test('ouvre une variable dans le panneau, conserve les valeurs et permet de passer a la suivante', async () => {
@@ -126,6 +131,8 @@ describe('TemplateVersionEditor', () => {
     const listImportableSections = vi.fn(async () => []);
     renderEditor(Object.assign(repo, { listImportableSections }));
 
+    // Les sections vivent desormais dans leur propre espace (UX-14(a)).
+    await user.click(await screen.findByRole('tab', { name: /^Sections/ }));
     const command = await screen.findByRole('button', { name: 'Importer un bloc' });
     // La commande est bien dans le formulaire de creation de section, pas ailleurs.
     expect(command.closest('form')).toContainElement(screen.getByRole('button', { name: 'Ajouter la section' }));
@@ -138,6 +145,7 @@ describe('TemplateVersionEditor', () => {
   });
 
   test('version publiee : aucune commande d import, l editeur de sections n existe pas', async () => {
+    const user = userEvent.setup();
     const { repo } = makeRepository();
     const published = { ...version, status: 'published' as const };
     renderEditor(Object.assign(repo, {
@@ -146,17 +154,275 @@ describe('TemplateVersionEditor', () => {
     }));
 
     expect(await screen.findByText(/Version publiée/)).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /^Sections/ }));
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajouter la section' })).not.toBeInTheDocument();
   });
 
   test('serveur sans catalogue : la commande ne se rend pas du tout', async () => {
+    const user = userEvent.setup();
     const { repo } = makeRepository();
     renderEditor(repo);
 
     // Le frontend ne doit jamais dependre d'une RPC absente : sans `listImportableSections`,
     // la commande disparait au lieu d'echouer au clic.
+    await user.click(await screen.findByRole('tab', { name: /^Sections/ }));
     expect(await screen.findByRole('button', { name: 'Ajouter la section' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
+  });
+});
+
+// UX-14 — cas dimensionnant : 216 variables et 24 regles fictives, generees ici (jamais
+// copiees d'un jeu reel). Les scenarios T18, T23 et T24 de la specification y sont joues.
+// Les interactions passent par `fireEvent` : sur un modele de cette taille, simuler chaque
+// frappe couterait plusieurs secondes sans rien prouver de plus.
+const BLOCK_COUNT = 12;
+const FIELDS_PER_BLOCK = 18;
+const RULE_COUNT = 24;
+const LAST_FIELD_LABEL = 'Score de Glasgow tardif';
+
+function largeSections(): TemplateSection[] {
+  return Array.from({ length: BLOCK_COUNT }, (_, index) => ({
+    id: `bloc-${index}`, sectionKey: `bloc_${index}`, label: `Bloc ${index + 1}`, displayOrder: index,
+  }));
+}
+
+function largeFields(): TemplateField[] {
+  return Array.from({ length: BLOCK_COUNT * FIELDS_PER_BLOCK }, (_, index) => makeField({
+    id: `grosse-${index}`,
+    fieldKey: `var_${index}`,
+    label: index === BLOCK_COUNT * FIELDS_PER_BLOCK - 1 ? LAST_FIELD_LABEL : `Variable ${index + 1}`,
+    section: `bloc_${Math.floor(index / FIELDS_PER_BLOCK)}`,
+    type: index % 5 === 0 ? 'select' : 'text',
+    allowedValues: index % 5 === 0 ? ['oui', 'non'] : null,
+    displayOrder: index,
+  }));
+}
+
+function largeRules() {
+  return Array.from({ length: RULE_COUNT }, (_, index) => ({
+    id: `regle-${index}`,
+    rule: {
+      if: { field: `var_${index * 5}`, operator: 'equals', value: 'oui' },
+      then: { field: `var_${index * 5 + 1}`, operator: 'required' },
+    },
+    message: null,
+    severity: 'block' as const,
+  }));
+}
+
+function makeLargeRepository() {
+  let fields = largeFields();
+  const sectionsList = largeSections();
+  const updateField = vi.fn(async (id: string, next: Parameters<TemplateRepository['updateField']>[1]) => {
+    const current = fields.find((field) => field.id === id);
+    if (!current) throw new Error('Variable introuvable');
+    fields = fields.map((field) => (field.id === id ? { ...field, ...next, id } : field));
+    return fields.find((field) => field.id === id)!;
+  });
+  const reorderFields = vi.fn(async () => {});
+  const repo = {
+    getVersion: vi.fn(async () => ({ version, fields: [...fields], rules: largeRules(), sections: sectionsList })),
+    updateField,
+    reorderFields,
+  } as unknown as TemplateRepository;
+  return { repo, updateField, reorderFields };
+}
+
+const searchVariables = () => screen.getByRole('searchbox', { name: 'Rechercher une variable' });
+const filterSection = (sectionKey: string) =>
+  fireEvent.change(screen.getByRole('combobox', { name: 'Filtrer par section' }), { target: { value: sectionKey } });
+const openVariable = (label: string) => {
+  const row = screen.getByText(label).closest('[role="row"]') as HTMLElement;
+  fireEvent.click(within(row).getByRole('button', { name: /Modifier la variable/ }));
+};
+const panel = () => screen.getByRole('dialog', { name: 'Modifier la variable' });
+
+describe('TemplateVersionEditor — 216 variables / 24 regles (UX-14)', () => {
+  test('T23 : retrouver une variable de fin de modele, la modifier, garder filtre et position', async () => {
+    const { repo, updateField } = makeLargeRepository();
+    renderEditor(repo);
+
+    await screen.findByRole('heading', { name: 'Registre fictif' });
+    expect(screen.getByText('216 variables affichées sur 216')).toBeInTheDocument();
+    // Vue d'ensemble : les blocs restent replies, seuls leurs compteurs sont rendus.
+    expect(screen.queryByText('Variable 1')).not.toBeInTheDocument();
+
+    fireEvent.change(searchVariables(), { target: { value: 'Glasgow tardif' } });
+    expect(screen.getByText('1 variables affichées sur 216')).toBeInTheDocument();
+
+    openVariable(LAST_FIELD_LABEL);
+    expect(within(panel()).getByText(/Variable 1 sur 1 des résultats affichés/)).toBeInTheDocument();
+    expect(within(panel()).getByText(/Section : Bloc 12/)).toBeInTheDocument();
+    expect(within(panel()).getByText('Dernière variable des résultats affichés')).toBeInTheDocument();
+
+    fireEvent.change(within(panel()).getByLabelText('Libellé'), { target: { value: 'Score tardif corrige' } });
+    expect(within(panel()).getByText('Modifications non enregistrées')).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledWith('grosse-215', expect.objectContaining({ label: 'Score tardif corrige' })));
+    // La recherche est conservee apres l'enregistrement...
+    expect(searchVariables()).toHaveValue('Glasgow tardif');
+    // ... et la sortie du filtre est annoncee, avec un acces direct a la variable.
+    expect(await screen.findByText(/ne correspond plus aux filtres affichés/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Voir la variable' }));
+    expect(searchVariables()).toHaveValue('');
+    expect(screen.getByText('216 variables affichées sur 216')).toBeInTheDocument();
+  });
+
+  test('T23 : passer a la variable suivante ne perd pas une edition non enregistree', async () => {
+    const { repo, updateField } = makeLargeRepository();
+    renderEditor(repo);
+
+    await screen.findByRole('heading', { name: 'Registre fictif' });
+    filterSection('bloc_0');
+    openVariable('Variable 1');
+    fireEvent.change(within(panel()).getByLabelText('Libellé'), { target: { value: 'Variable 1 modifiee' } });
+
+    fireEvent.click(within(panel()).getByRole('button', { name: /Variable suivante/ }));
+    const garde = await screen.findByRole('dialog', { name: 'Quitter cette variable ?' });
+    fireEvent.click(within(garde).getByRole('button', { name: 'Annuler' }));
+    expect(within(panel()).getByLabelText('Libellé')).toHaveValue('Variable 1 modifiee');
+    expect(updateField).not.toHaveBeenCalled();
+
+    fireEvent.click(within(panel()).getByRole('button', { name: /Variable suivante/ }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Quitter cette variable ?' }))
+      .getByRole('button', { name: 'Continuer sans enregistrer' }));
+    await waitFor(() => expect(within(panel()).getByLabelText('Libellé')).toHaveValue('Variable 2'));
+    expect(updateField).not.toHaveBeenCalled();
+  });
+
+  test('T18 : une modification refusee garde le panneau ouvert, ses valeurs et son motif', async () => {
+    const { repo } = makeLargeRepository();
+    const refus = vi.fn(async () => { throw new Error('Version publiée : modification refusée'); });
+    renderEditor(Object.assign(repo, { updateField: refus }));
+
+    await screen.findByRole('heading', { name: 'Registre fictif' });
+    filterSection('bloc_0');
+    openVariable('Variable 1');
+    fireEvent.change(within(panel()).getByLabelText('Libellé'), { target: { value: 'Libelle refuse' } });
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(refus).toHaveBeenCalled());
+    expect(within(panel()).getByLabelText('Libellé')).toHaveValue('Libelle refuse');
+    await waitFor(() => expect(within(panel()).getByText('Échec de l’enregistrement')).toBeInTheDocument());
+  });
+
+  test('T24 : retrouver une regle au-dela des vingt premieres et atteindre ses variables', async () => {
+    const { repo } = makeLargeRepository();
+    renderEditor(repo);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Règles/ }));
+    expect(screen.getByText('24 règle(s) affichée(s) sur 24')).toBeInTheDocument();
+
+    // La 24e regle porte sur « Variable 116 » : elle se retrouve sans parcourir les autres.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Rechercher une règle' }), { target: { value: 'Variable 116' } });
+    expect(screen.getByText('1 règle(s) affichée(s) sur 24')).toBeInTheDocument();
+
+    // Depuis la regle, on atteint directement la variable qu'elle cite.
+    fireEvent.click(screen.getByRole('button', { name: 'Variable 116' }));
+    expect(within(panel()).getByLabelText('Libellé')).toHaveValue('Variable 116');
+  });
+
+  test('T24 : filtrer les regles par variable concernee, type et bloc', async () => {
+    const { repo } = makeLargeRepository();
+    renderEditor(repo);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Règles/ }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Variable concernée' }), { target: { value: 'var_6' } });
+    expect(screen.getByText('1 règle(s) affichée(s) sur 24')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Variable concernée' }), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrer par type de règle' }), { target: { value: 'visibility' } });
+    expect(screen.getByText('0 règle(s) affichée(s) sur 24')).toBeInTheDocument();
+    expect(screen.getByText('Aucune règle ne correspond à ces critères.')).toBeInTheDocument();
+  });
+
+  test('trier l affichage ne reordonne jamais les donnees et suspend le deplacement', async () => {
+    const { repo, reorderFields } = makeLargeRepository();
+    renderEditor(repo);
+
+    await screen.findByRole('heading', { name: 'Registre fictif' });
+    filterSection('bloc_0');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Trier l’affichage' }), { target: { value: 'label' } });
+    expect(screen.getByText(/l’ordre du formulaire est inchangé/)).toBeInTheDocument();
+    expect(reorderFields).not.toHaveBeenCalled();
+
+    const row = screen.getByText('Variable 1').closest('[role="row"]') as HTMLElement;
+    expect(within(row).getByRole('button', { name: /Descendre/ })).toBeDisabled();
+  });
+
+  test('l index des sections conduit directement a un bloc de fin de modele', async () => {
+    const { repo } = makeLargeRepository();
+    renderEditor(repo);
+
+    const index = await screen.findByText('Index des sections');
+    const liste = index.closest('details') as HTMLDetailsElement;
+    const bloc12 = within(liste).getByRole('button', { name: /Bloc 12/ });
+    expect(bloc12).toHaveTextContent('18 / 18');
+    fireEvent.click(bloc12);
+    expect((document.getElementById('template-group-bloc_11') as HTMLDetailsElement).open).toBe(true);
+    expect(screen.getByText(LAST_FIELD_LABEL)).toBeInTheDocument();
+  });
+});
+
+// UX-14(c) — la liste des règles distingue ce qui s'applique à plusieurs cibles de ce qui
+// se duplique : une comparaison n'a pas de sens multicible, et la spec interdit d'en déduire un.
+describe('TemplateVersionEditor — créer des règles similaires (UX-14(c))', () => {
+  const rulesFixture = [
+    {
+      id: 'r-cond',
+      rule: { if: { field: 'tension', operator: 'equals', value: 'oui' }, then: { field: 'hemoglobine', operator: 'required' } },
+      message: null,
+      severity: 'block' as const,
+    },
+    {
+      id: 'r-comp',
+      rule: { operator: 'greater_or_equal', left_field: 'tension', right_field: 'hemoglobine' },
+      message: null,
+      severity: 'block' as const,
+    },
+  ];
+
+  function repositoryWithRules(extra: Partial<TemplateRepository> = {}) {
+    const fields = [
+      makeField({ id: 'field-1', fieldKey: 'tension', label: 'Tension artérielle' }),
+      makeField({ id: 'field-2', fieldKey: 'hemoglobine', label: 'Hémoglobine', section: 'biologie' }),
+    ];
+    return {
+      getVersion: vi.fn(async () => ({ version, fields, rules: rulesFixture, sections })),
+      ...extra,
+    } as unknown as TemplateRepository;
+  }
+
+  test('propose le lot sur une règle conditionnelle et la duplication sur une comparaison', async () => {
+    const user = userEvent.setup();
+    const previewRuleBatch = vi.fn(async () => ({
+      fingerprint: 'e1', severity: 'block' as const, create: [], duplicates: [], invalid: [], locked: false, inUse: false,
+    }));
+    renderEditor(repositoryWithRules({ previewRuleBatch, createRuleBatch: vi.fn() }));
+
+    await user.click(await screen.findByRole('tab', { name: /^Règles/ }));
+    expect(screen.getAllByRole('button', { name: 'Appliquer à plusieurs variables' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Dupliquer la règle' })).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Appliquer à plusieurs variables' }));
+    const panneau = await screen.findByRole('dialog', { name: 'Appliquer cette condition à plusieurs variables' });
+    // La condition reprise reste celle de la règle source ; l'écran ne la ressaisit pas.
+    expect(within(panneau).getByText(/Tension artérielle/)).toBeInTheDocument();
+  });
+
+  test('sans contrat serveur, le lot n’est pas proposé : la duplication reste possible', async () => {
+    const user = userEvent.setup();
+    renderEditor(repositoryWithRules());
+
+    await user.click(await screen.findByRole('tab', { name: /^Règles/ }));
+    expect(screen.queryByRole('button', { name: 'Appliquer à plusieurs variables' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Dupliquer la règle' })).toHaveLength(2);
+
+    // Dupliquer préremplit le formulaire guidé en CRÉATION : la règle source n'est pas modifiée.
+    await user.click(screen.getAllByRole('button', { name: 'Dupliquer la règle' })[1]);
+    await waitFor(() => expect(screen.getByLabelText('Variable à contrôler')).toHaveValue('tension'));
+    expect(screen.getByLabelText('Variable de référence')).toHaveValue('hemoglobine');
   });
 });

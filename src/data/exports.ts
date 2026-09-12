@@ -22,6 +22,10 @@ export interface ExportLogItem {
   fileName?: string | null;
   generationMode?: 'client' | 'server' | null;
   profile?: ExportProfile | null;
+  /** UX-15 : elements du bilan deja consignes par le serveur, jamais reconstitues ici. */
+  rowShape?: 'patient' | 'encounter' | null;
+  projection?: { mode: 'all' | 'selected'; blockKeys: string[] } | null;
+  excluded?: { patients: number; encounters: number } | null;
 }
 
 export interface RecordExportInput {
@@ -109,14 +113,42 @@ type LogRow = {
   export_options?: {
     download_filename?: unknown;
     profile?: 'analysis' | 'complete' | null;
+    mode?: unknown;
+    sectionProjection?: { mode?: unknown; blockKeys?: unknown } | null;
+    excluded_records?: { patients?: unknown; encounters?: unknown } | null;
   } | null;
 };
+
+/** L'historique ne montre que ce que le serveur a REELLEMENT enregistre : un export ancien,
+ * ecrit avant ces options, reste lisible sans valeur inventee. */
+function readProjection(options: LogRow['export_options']): ExportLogItem['projection'] {
+  const projection = options?.sectionProjection;
+  if (!projection) return null;
+  if (projection.mode === 'selected') {
+    const keys = Array.isArray(projection.blockKeys)
+      ? projection.blockKeys.filter((key): key is string => typeof key === 'string')
+      : [];
+    return { mode: 'selected', blockKeys: keys };
+  }
+  return projection.mode === 'all' ? { mode: 'all', blockKeys: [] } : null;
+}
+
+function readExcluded(options: LogRow['export_options']): ExportLogItem['excluded'] {
+  const excluded = options?.excluded_records;
+  if (!excluded) return null;
+  const patients = typeof excluded.patients === 'number' ? excluded.patients : 0;
+  const encounters = typeof excluded.encounters === 'number' ? excluded.encounters : 0;
+  return patients === 0 && encounters === 0 ? null : { patients, encounters };
+}
 const mapLog = (r: LogRow): ExportLogItem => ({
   id: r.id, format: r.format, exportedAt: r.exported_at, patientCount: r.patient_count,
   encounterCount: r.encounter_count, fileHash: r.file_hash, storedFilePath: r.stored_file_path,
   fileName: typeof r.export_options?.download_filename === 'string' ? r.export_options.download_filename : null,
   generationMode: r.generation_mode ?? null,
   profile: r.export_options?.profile ?? null,
+  rowShape: r.export_options?.mode === 'patient' || r.export_options?.mode === 'encounter' ? r.export_options.mode : null,
+  projection: readProjection(r.export_options),
+  excluded: readExcluded(r.export_options),
 });
 
 export const exportRepository: ExportRepository = makeExportRepository(supabase);

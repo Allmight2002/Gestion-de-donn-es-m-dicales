@@ -8,7 +8,7 @@
 // Ce module tient les DEUX regles qui empechent le lot de changer quoi que ce soit a
 // l'existant : l'ordre de repli et le libelle de repli.
 
-import type { TemplateField, TemplateSection } from '../data/types';
+import type { TemplateCommonLayout, TemplateField, TemplateSection } from '../data/types';
 
 /**
  * Les trois codes historiques, DANS LEUR ORDRE D'ORIGINE.
@@ -93,7 +93,7 @@ export interface SectionGroup<T> {
  * qui permet a une liste de sections partagee entre variables patient et variables
  * rencontre de n'afficher sur chaque ecran que ce qui le concerne.
  */
-export function groupFieldsBySection<T extends Pick<TemplateField, 'section' | 'sectionLabel' | 'sectionOrder'> & Partial<Pick<TemplateField, 'parentSectionKey' | 'parentSectionLabel' | 'displayOrder'>>>(
+function groupFieldsBySectionLegacy<T extends Pick<TemplateField, 'section' | 'sectionLabel' | 'sectionOrder'> & Partial<Pick<TemplateField, 'parentSectionKey' | 'parentSectionLabel' | 'displayOrder'>>>(
   fields: T[],
   sections?: readonly TemplateSection[] | null,
 ): SectionGroup<T>[] {
@@ -178,4 +178,156 @@ export function groupFieldsBySection<T extends Pick<TemplateField, 'section' | '
     .map((entry) => ({ ...entry.group, fields: hierarchical
       ? [...entry.group.fields].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
       : entry.group.fields }));
+}
+
+type PresentationField = Pick<TemplateField, 'section' | 'sectionLabel' | 'sectionOrder' | 'fieldKey'>
+  & Partial<Pick<TemplateField, 'parentSectionKey' | 'parentSectionLabel' | 'displayOrder'>>;
+
+/**
+ * UX-16 : fusionne les blocs racines existants et les rubriques communes sans transformer
+ * ces dernieres en sections. Les ancres comptent les blocs DECLARES, pas les seuls blocs
+ * visibles dans la portee courante : une rubrique reste donc au bon endroit meme si un
+ * ecran patient ne rend aucun champ d'un bloc reserve aux rencontres.
+ */
+function groupFieldsByCommonLayout<T extends PresentationField>(
+  fields: T[],
+  sections: readonly TemplateSection[] | null | undefined,
+  layout: TemplateCommonLayout,
+): SectionGroup<T>[] {
+  const hierarchy = new Map((sections ?? []).map((section) => [section.sectionKey, section]));
+  for (const field of fields) {
+    if (field.section && field.parentSectionKey && !hierarchy.has(field.section)) hierarchy.set(field.section, {
+      id: field.section, sectionKey: field.section, label: field.sectionLabel ?? field.section,
+      displayOrder: field.sectionOrder ?? 0, parentSectionKey: field.parentSectionKey,
+    });
+    if (field.parentSectionKey && !hierarchy.has(field.parentSectionKey)) hierarchy.set(field.parentSectionKey, {
+      id: field.parentSectionKey, sectionKey: field.parentSectionKey,
+      label: field.parentSectionLabel ?? field.parentSectionKey, displayOrder: field.sectionOrder ?? 0,
+    });
+  }
+
+  const declared = new Map((sections ?? []).map((section) => [section.sectionKey, {
+    label: section.label, order: section.displayOrder,
+  }]));
+  const groupByField = new Map<string, { key: string; label: string; anchor: number; order: number; fieldOrder: number }>();
+  layout.groups.forEach((group, index) => group.fields.forEach((fieldKey, fieldOrder) => {
+    // En cas de lecture incoherente, la premiere rubrique reste deterministe et le champ
+    // reste visible ; l'ecriture server-side refuse, elle, tout doublon.
+    if (!groupByField.has(fieldKey)) groupByField.set(fieldKey, {
+      key: group.key, label: group.label, anchor: group.anchor, order: index, fieldOrder,
+    });
+  }));
+
+  const fallback = layout.groups.find((group) => group.key === layout.defaultKey) ?? layout.groups[0];
+  const defaultGroup = fallback
+    ? {
+      key: fallback.key, label: fallback.label, anchor: fallback.anchor,
+      order: layout.groups.indexOf(fallback), fieldOrder: Number.MAX_SAFE_INTEGER,
+    }
+    : undefined;
+
+  type Entry = {
+    group: SectionGroup<T>;
+    seen: number;
+    common?: { anchor: number; order: number };
+  };
+  const entries = new Map<string, Entry>();
+  fields.forEach((field, seen) => {
+    // Une variable commune creee APRES le dernier enregistrement n'a pas encore de
+    // rattachement : elle rejoint la rubrique par defaut, en fin de liste. Sans cela, le
+    // formulaire ferait reapparaitre un « Tronc commun » a cote des rubriques nommees, pour
+    // une variable que personne n'a placee ailleurs.
+    const linked = field.section === null
+      ? groupByField.get(field.fieldKey) ?? defaultGroup
+      : undefined;
+    const key = linked ? `__common_group__:${linked.key}` : field.section === null ? '__common__' : sectionKeyOf(field);
+    const existing = entries.get(key);
+    if (existing) {
+      existing.group.fields.push(field);
+      return;
+    }
+    const declaredSection = declared.get(key);
+    entries.set(key, {
+      seen,
+      common: linked ? { anchor: linked.anchor, order: linked.order } : undefined,
+      group: {
+        key,
+        label: linked?.label ?? declaredSection?.label
+          ?? (typeof field.sectionLabel === 'string' && field.sectionLabel.trim() !== '' ? field.sectionLabel : null),
+        parentSectionKey: linked ? null : hierarchy.get(key)?.parentSectionKey ?? null,
+        isLegacy: isLegacySectionKey(key),
+        isFallback: key === FALLBACK_SECTION_KEY,
+        fields: [field],
+      },
+    });
+  });
+
+  const hierarchical = [...hierarchy.values()].some((section) => section.parentSectionKey);
+  if (hierarchical) {
+    for (const { group } of [...entries.values()]) {
+      const parent = hierarchy.get(group.parentSectionKey ?? '');
+      if (parent && !entries.has(parent.sectionKey)) entries.set(parent.sectionKey, {
+        seen: -1,
+        group: { key: parent.sectionKey, label: parent.label, isLegacy: isLegacySectionKey(parent.sectionKey), isFallback: false, fields: [] },
+      });
+    }
+  }
+
+  const visible = [...entries.values()].filter(({ group }) => group.fields.length > 0
+    || (!group.parentSectionKey && [...entries.values()].some(({ group: child }) =>
+      child.parentSectionKey === group.key && child.fields.length > 0)));
+  const rootOf = (key: string): string => {
+    let current = hierarchy.get(key);
+    const seen = new Set<string>();
+    while (current?.parentSectionKey && !seen.has(current.sectionKey)) {
+      seen.add(current.sectionKey);
+      current = hierarchy.get(current.parentSectionKey);
+    }
+    return current?.sectionKey ?? key;
+  };
+  const rootRanks = new Map(
+    [...hierarchy.values()]
+      .filter((section) => !section.parentSectionKey)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey))
+      .map((section, index) => [section.sectionKey, index]),
+  );
+  const commonFieldRank = (field: T) => groupByField.get(field.fieldKey)?.fieldOrder ?? Number.MAX_SAFE_INTEGER;
+  const rank = (entry: Entry): number => {
+    if (entry.common) return entry.common.anchor * 100 + 50 + entry.common.order / 100;
+    if (entry.group.key === '__common__') return 50;
+    if (entry.group.isFallback) return Number.MAX_SAFE_INTEGER - 1;
+    const rootRank = rootRanks.get(rootOf(entry.group.key));
+    if (rootRank === undefined) return Number.MAX_SAFE_INTEGER - 2;
+    const rootBase = (rootRank + 1) * 100;
+    if (rootOf(entry.group.key) === entry.group.key) return rootBase;
+    return rootBase + 10 + (declared.get(entry.group.key)?.order ?? entry.seen) / 100;
+  };
+
+  return visible
+    .sort((a, b) => rank(a) - rank(b) || a.seen - b.seen || a.group.key.localeCompare(b.group.key))
+    .map((entry) => ({
+      ...entry.group,
+      fields: [...entry.group.fields].sort((a, b) => {
+        if (entry.common) return commonFieldRank(a) - commonFieldRank(b)
+          || (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.fieldKey.localeCompare(b.fieldKey);
+        return hierarchical
+          ? (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.fieldKey.localeCompare(b.fieldKey)
+          : 0;
+      }),
+    }));
+}
+
+/**
+ * Regroupe les champs dans le rendu actuel de la version. Sans metadonnee UX-16, le
+ * comportement historique est conserve bit pour bit ; une rubrique incomplete tombe dans le
+ * groupe commun explicite au lieu de perdre les variables qu'elle ne sait pas placer.
+ */
+export function groupFieldsBySection<T extends PresentationField>(
+  fields: T[],
+  sections?: readonly TemplateSection[] | null,
+  commonLayout?: TemplateCommonLayout | null,
+): SectionGroup<T>[] {
+  return commonLayout && commonLayout.groups.length > 0
+    ? groupFieldsByCommonLayout(fields, sections, commonLayout)
+    : groupFieldsBySectionLegacy(fields, sections);
 }

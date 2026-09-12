@@ -1,4 +1,4 @@
-import { BrowserRouter } from 'react-router';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 import { I18nProvider } from './i18n/I18nProvider';
 import { AuthProvider } from './auth/AuthProvider';
 import { RepositoryProvider } from './data/RepositoryProvider';
@@ -6,6 +6,8 @@ import { AppRoutes } from './routes/AppRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
 import { AuthenticatedPwaUpdatePrompt } from './components/PwaUpdatePrompt';
+
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }]);
 
 export function App() {
   // ErrorBoundary sous I18nProvider (repli localise) mais AU-DESSUS de l'auth, des donnees et du
@@ -18,9 +20,7 @@ export function App() {
           <AuthenticatedPwaUpdatePrompt />
           <RepositoryProvider>
             <ToastProvider>
-              <BrowserRouter>
-                <AppRoutes />
-              </BrowserRouter>
+              <RouterProvider router={router} />
             </ToastProvider>
           </RepositoryProvider>
         </AuthProvider>

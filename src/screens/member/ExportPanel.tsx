@@ -66,6 +66,10 @@ export function ExportPanel() {
   const [downloadId, setDownloadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // UX-15 : une generation reussie dont le telechargement echoue n'est pas un export rate.
+  // Les deux echecs sont donc distincts, et celui d'une ligne reste sur sa ligne.
+  const [generationFailed, setGenerationFailed] = useState(false);
+  const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const imposedShape = rowShapeOf(observationModel);
@@ -111,6 +115,9 @@ export function ExportPanel() {
     }
     setBusy(true);
     setDone(false);
+    setGenerationFailed(false);
+    setDownloadError(null);
+    setError(null);
     try {
       // Parcours principal (sans cohorte) : la population est figee A CET INSTANT, puis
       // exportee. Le figeage ne disparait pas -- il cesse d'etre une demarche. Le fichier
@@ -135,23 +142,44 @@ export function ExportPanel() {
             : { mode: 'all' },
         },
       });
+      // Le fichier est deja conserve cote serveur : un echec de signature ou de navigation
+      // n'annule pas l'export, il empeche seulement ce telechargement immediat.
       if (item.storedFilePath) {
-        const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
-        if (url) downloadUrl(url, item.fileName ?? item.storedFilePath.split('/').pop() ?? `cohorte.${format}`);
+        try {
+          const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
+          if (!url) throw new Error(t('export.download_unavailable'));
+          downloadUrl(url, item.fileName ?? item.storedFilePath.split('/').pop() ?? `cohorte.${format}`);
+        } catch (downloadFailure) {
+          setDownloadError({ id: item.id, message: msg(downloadFailure) });
+        }
       }
       setDone(true);
       await load();
       setError(null);
     } catch (e) {
       setError(msg(e));
+      setGenerationFailed(true);
     } finally {
       setBusy(false);
     }
   }
 
+  // Un export ancien peut citer un bloc absent de la version courante : sa cle est alors
+  // affichee telle quelle, sans pretendre connaitre un libelle qui n'existe plus.
+  function projectionSummary(item: ExportLogItem): string {
+    if (!item.projection) return t('export.history_projection_unknown');
+    if (item.projection.mode === 'all') return t('export.history_projection_all');
+    const labels = item.projection.blockKeys.map((key) => {
+      const block = blocks.find((candidate) => candidate.sectionKey === key);
+      return block ? sectionLabel(t, block) : key;
+    });
+    return t('export.history_projection_selected').replace('{blocks}', labels.join(', ') || '—');
+  }
+
   async function downloadStoredExport(item: ExportLogItem) {
-    if (!item.storedFilePath) return;
+    if (!item.storedFilePath || downloadId) return;
     setDownloadId(item.id);
+    setDownloadError(null);
     try {
       const url = await exportsRepo.getExportDownloadUrl(item.id, item.storedFilePath);
       if (!url) throw new Error(t('export.download_unavailable'));
@@ -161,7 +189,8 @@ export function ExportPanel() {
       void audit.logExportRead(item.id);
       setError(null);
     } catch (e) {
-      setError(msg(e));
+      // L'echec reste sur la ligne concernee : l'historique et les autres fichiers restent lisibles.
+      setDownloadError({ id: item.id, message: msg(e) });
     } finally {
       setDownloadId(null);
     }
@@ -182,10 +211,11 @@ export function ExportPanel() {
         </p>
       </div>
 
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {done && (
         <div className="space-y-3">
-          <p className="rounded-xl border border-teal-100 bg-teal-50 p-2.5 text-sm text-teal-800">{t('export.done')}</p>
+          <p className="rounded-xl border border-teal-100 bg-teal-50 p-2.5 text-sm text-teal-800">
+            {t('export.done')} {t('export.done_kept')}
+          </p>
           {/* Proposition FACULTATIVE et explicite vers DocAssist (aucun transfert automatique
               de donnees : le medecin depose volontairement son fichier — synthese produit §12). */}
           <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm">
@@ -288,9 +318,19 @@ export function ExportPanel() {
         </div>
       )}
 
-      <button onClick={() => void run()} disabled={busy || projectionIncomplete} className="btn-primary">
-        {t('export.run')}
-      </button>
+      {/* L'etat d'execution, le refus et la reprise vivent A COTE de l'action : une attente
+          longue ne doit pas obliger a remonter en haut de page pour savoir ou elle en est.
+          Aucun pourcentage n'est affiche : le serveur n'en fournit aucun. */}
+      <div className="space-y-2">
+        <button onClick={() => void run()} disabled={busy || projectionIncomplete} aria-busy={busy || undefined} className={`btn-primary${busy ? ' btn-pending' : ''}`}>
+          {busy ? t('export.generating') : t('export.run')}
+        </button>
+        {busy && <p role="status" className="text-sm text-slate-600">{t('export.generating_hint')}</p>}
+        {error && <p role="alert" className="text-sm text-red-600">{generationFailed ? `${t('export.failed')} ${error}` : error}</p>}
+        {generationFailed && !busy && (
+          <button type="button" onClick={() => void run()} className="btn-secondary">{t('export.retry')}</button>
+        )}
+      </div>
 
       {/* La selection de population et le figeage restent disponibles -- une porte, plus une
           etape obligatoire. Ceux qui en ont besoin savent qu'ils en ont besoin. */}
@@ -314,26 +354,53 @@ export function ExportPanel() {
         ) : (
           <ul className="space-y-2 text-xs">
             {history.map((h) => (
-              <li key={h.id} className="card flex items-center justify-between gap-3 px-3 py-2">
-                <span>
-                  {formatDateTime(h.exportedAt, lang)} · {h.format.toUpperCase()} · {h.patientCount}p / {h.encounterCount}r ·{' '}
+              <li key={h.id} className="card space-y-1 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-700">
+                    {formatDateTime(h.exportedAt, lang)} · {h.format.toUpperCase()}
+                  </span>
+                  {h.storedFilePath && (
+                    <button
+                      type="button"
+                      onClick={() => void downloadStoredExport(h)}
+                      disabled={downloadId === h.id}
+                      className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline disabled:opacity-50"
+                    >
+                      {downloadId === h.id ? t('export.download_preparing') : t('export.download')}
+                    </button>
+                  )}
+                </div>
+                <p className="text-slate-600">
+                  {t('export.history_population')
+                    .replace('{patients}', String(h.patientCount ?? 0))
+                    .replace('{encounters}', String(h.encounterCount ?? 0))}
+                  {h.rowShape && ` · ${t(h.rowShape === 'patient' ? 'export.history_shape_patient' : 'export.history_shape_encounter')}`}
+                  {' · '}
                   {h.profile === 'analysis'
                     ? t('export.profile_analysis')
                     : h.profile === 'complete'
                       ? t('export.profile_complete')
-                      : t('export.profile_legacy')} ·{' '}
-                  <span className="font-mono text-slate-400">{h.fileHash?.slice(0, 12)}…</span>
-                </span>
-                {h.storedFilePath && (
-                  <button
-                    type="button"
-                    onClick={() => void downloadStoredExport(h)}
-                    disabled={downloadId === h.id}
-                    className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline disabled:opacity-50"
-                  >
-                    {t('export.download')}
-                  </button>
+                      : t('export.profile_legacy')}
+                </p>
+                <p className="text-slate-500">{projectionSummary(h)}</p>
+                {h.excluded && (
+                  <p className="text-amber-700">
+                    {t('export.history_excluded')
+                      .replace('{patients}', String(h.excluded.patients))
+                      .replace('{encounters}', String(h.excluded.encounters))}
+                  </p>
                 )}
+                {downloadError?.id === h.id && (
+                  <p role="alert" className="text-red-600">
+                    {t('export.download_failed').replace('{reason}', downloadError.message)}
+                  </p>
+                )}
+                {/* Details techniques : accessibles, mais jamais au premier plan. */}
+                <details className="text-slate-400">
+                  <summary className="cursor-pointer">{t('export.history_details')}</summary>
+                  <p className="mt-1">{t('export.history_hash')} : <span className="font-mono">{h.fileHash ?? '—'}</span></p>
+                  <p>{t('export.history_id')} : <span className="font-mono">{h.id}</span></p>
+                </details>
               </li>
             ))}
           </ul>

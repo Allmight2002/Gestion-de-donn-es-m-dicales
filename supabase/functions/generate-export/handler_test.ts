@@ -95,6 +95,8 @@ interface Opts {
   patientRows?: unknown[];
   encounterMemberRows?: Array<{ encounter_id: string }>;
   encounterRows?: unknown[];
+  /** UX-16 : rubriques communes servies par la doublure ; vide = aucune rubrique declaree. */
+  commonGroupRows?: Array<Record<string, unknown>>;
   incompleteRecords?: Array<{ record_kind: string; record_id: string }>;
   incompleteError?: unknown;
   fromResponder?: (call: FromCall) => DbResult | undefined;
@@ -164,6 +166,8 @@ function deps(opts: Opts = {}): GenerateExportDeps {
           return queriedRows(call, FIELDS, 'id');
         case 'template_section':
           return queriedRows(call, SECTIONS, 'id');
+        case 'template_common_group':
+          return queriedRows(call, opts.commonGroupRows ?? [], 'id');
         case 'export_log':
           return opts.insertError ? errorResult(opts.insertError) : okResult({
             id: 'exp1',
@@ -610,6 +614,8 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
           return okResult(FIELDS);
         case 'template_section':
           return okResult(SECTIONS);
+        case 'template_common_group':
+          return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'csv' });
       }
@@ -705,6 +711,8 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
           return okResult([...FIELDS, multiField, optionMultiField]);
         case 'template_section':
           return okResult(SECTIONS);
+        case 'template_common_group':
+          return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'xlsx' });
       }
@@ -859,6 +867,8 @@ Deno.test('generate-export: XLSX -> dates natives (serie + format), date invalid
           return okResult([...FIELDS, naissanceField, debutVisiteField]);
         case 'template_section':
           return okResult(SECTIONS);
+        case 'template_common_group':
+          return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'xlsx' });
       }
@@ -969,6 +979,8 @@ Deno.test('generate-export: Analyse produit la feuille Modalites, pas Complet (L
             return okResult([...FIELDS, selectField]);
           case 'template_section':
             return okResult(SECTIONS);
+          case 'template_common_group':
+            return okResult([]);
           case 'export_log':
             return okResult({ id: 'exp1', format: 'xlsx' });
         }
@@ -1082,6 +1094,8 @@ Deno.test('generate-export: XLSX Analyse -> Donnees, Dictionnaire simplifie, Mod
           return okResult([...FIELDS, selectEvo, multiSignes]);
         case 'template_section':
           return okResult(SECTIONS);
+        case 'template_common_group':
+          return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'xlsx' });
       }
@@ -1231,6 +1245,8 @@ Deno.test('generate-export: Analyse refuse un multiselect au-dela de 100 codes, 
               return okResult([...FIELDS, hugeField]);
             case 'template_section':
               return okResult(SECTIONS);
+            case 'template_common_group':
+              return okResult([]);
             case 'export_log':
               return okResult({ id: 'exp1', format: 'xlsx' });
           }
@@ -1482,7 +1498,7 @@ Deno.test('L56/L53 : un diagnostic non couvert eligible reste exporte avec le so
 
 /** Cohorte a deux niveaux, avec des surcharges de gabarit quand le cas l'exige. */
 function blocDeps(
-  opts: Opts & { fields?: unknown[]; sections?: unknown[] } = {},
+  opts: Opts & { fields?: unknown[]; sections?: unknown[]; commonGroups?: unknown[] } = {},
 ): GenerateExportDeps {
   const fields = opts.fields ?? BLOCK_FIELDS;
   const sections = opts.sections ?? BLOCK_SECTIONS;
@@ -1495,6 +1511,9 @@ function blocDeps(
       }
       if (call.table === 'template_section') {
         return queriedRows(call, sections as Array<Record<string, unknown>>, 'id');
+      }
+      if (call.table === 'template_common_group') {
+        return queriedRows(call, (opts.commonGroups ?? []) as Array<Record<string, unknown>>, 'id');
       }
       return opts.fromResponder?.(call);
     },
@@ -1920,4 +1939,36 @@ Deno.test('L53 : les gardes de sortie voient le jeu FILTRE, meta comprise', asyn
     'encounter__age',
     'encounter__poids',
   ]);
+});
+
+// UX-16 — la rubrique commune traverse le handler jusqu'au dictionnaire, dans SES colonnes.
+// Ce test protege la lecture par version : sans elle, le classeur nommerait une rubrique par
+// son code interne, ou pire, la rangerait dans la colonne des blocs cliniques.
+Deno.test('UX-16 : le dictionnaire XLSX nomme la rubrique commune sans la confondre avec un bloc', async () => {
+  let uploaded: Blob | null = null;
+  const d = blocDeps({
+    fields: [
+      { ...blockField('bf1', 'age', null, 1), common_group_id: 'g1' },
+      blockField('bf2', 'tb_statut', 'tuberculose', 2),
+    ],
+    commonGroups: [{ id: 'g1', template_version_id: TV, group_key: 'contexte', label: 'Contexte de la consultation' }],
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body('xlsx') }), d),
+  );
+  assertEquals(status, 200);
+  const blob = uploaded as Blob | null;
+  assert(blob !== null);
+  const wb = XLSX.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' });
+  const dictionnaire = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const parCle = new Map(dictionnaire.map((r) => [r.column_id, r]));
+  assertEquals(parCle.get('encounter__age')?.common_group, 'contexte');
+  assertEquals(parCle.get('encounter__age')?.common_group_label, 'Contexte de la consultation');
+  // La variable commune n'a ni feuille ni bloc : la rubrique ne lui en donne pas.
+  assertEquals(parCle.get('encounter__age')?.section ?? '', '');
+  // Et la variable de bloc ne recoit aucune rubrique.
+  assertEquals(parCle.get('encounter__tb_statut')?.common_group ?? '', '');
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
@@ -11,6 +11,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { errorMessage } from '../../lib/errorMessage';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { DatePickerInput } from '../../components/DatePickerInput';
+import { useDirtyForm } from '../../lib/useUnsavedChanges';
 
 export function EditPatientIdentity() {
   const { id: baseId, patientId } = useParams();
@@ -35,6 +36,8 @@ export function EditPatientIdentity() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadedFor = useRef<string | null>(null);
+  const navigation = useDirtyForm({ identity, reason }, !loading && patient !== null, `${baseId}:${patientId}`);
 
   const back = useCallback(() => navigate(`/bases/${baseId}/patients/${patientId}`), [baseId, patientId, navigate]);
   const load = useCallback(async () => {
@@ -49,6 +52,7 @@ export function EditPatientIdentity() {
       setBase(loadedBase);
       if (loadedPatient?.identity) setIdentity(loadedPatient.identity);
       setError(canCorrectPatientIdentity(loadedBase, loadedPatient) ? null : t('patient.identity_edit_forbidden'));
+      loadedFor.current = `${baseId}:${patientId}`;
     } catch (cause) {
       setError(errorMessage(cause, t('common.error')));
     } finally {
@@ -56,7 +60,7 @@ export function EditPatientIdentity() {
     }
   }, [baseId, patientId, bases, patients, t]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (loadedFor.current !== `${baseId}:${patientId}`) void load(); }, [load, baseId, patientId]);
 
   useEffect(() => {
     setAckDuplicate(false);
@@ -67,12 +71,13 @@ export function EditPatientIdentity() {
       setMatches([]);
       return;
     }
+    let active = true;
     const handle = setTimeout(() => {
       maybePatients.findIdentityMatches!(baseId, fullName, dateOfBirth)
-        .then((rows) => setMatches(rows.filter((match) => match.patientId !== patientId)))
-        .catch(() => setMatches([]));
+        .then((rows) => { if (active) setMatches(rows.filter((match) => match.patientId !== patientId)); })
+        .catch(() => { if (active) setMatches([]); });
     }, 400);
-    return () => clearTimeout(handle);
+    return () => { active = false; clearTimeout(handle); };
   }, [baseId, patientId, identity.fullName, identity.dateOfBirth, patients]);
 
   const setField = (field: keyof PatientIdentityInfo, value: string) => {
@@ -81,6 +86,7 @@ export function EditPatientIdentity() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     if (!baseId || !patientId || !patient || !canCorrectPatientIdentity(base, patient)) return;
     if (!reason.trim()) {
       setError(t('encounter.reason_required'));
@@ -119,6 +125,7 @@ export function EditPatientIdentity() {
         externalIdentifier: identity.externalIdentifier?.trim() || null,
       }, reason.trim(), patient.version);
       toast(t('toast.patient_saved'));
+      navigation.markClean();
       back();
     } catch (cause) {
       const detail = cause as { message?: string };
@@ -135,6 +142,7 @@ export function EditPatientIdentity() {
 
   return (
     <section className="max-w-2xl space-y-5 sm:space-y-6">
+      {navigation.guard}
       <div>
         <button type="button" onClick={back} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
@@ -146,7 +154,7 @@ export function EditPatientIdentity() {
 
       {allowed && (
         <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
-          <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+          <fieldset disabled={busy} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
             <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
             <p className="text-xs text-slate-500">{t('patient.identity_note')}</p>
             <div className="grid gap-3 sm:grid-cols-2">

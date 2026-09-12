@@ -358,8 +358,10 @@ describe('TemplateVersionEditor (brouillon)', () => {
   });
 
   test('propose uniquement le constructeur de regles guide', async () => {
+    const user = userEvent.setup();
     renderEditor(statefulMock('draft'));
-    await screen.findByText('Règles');
+    // Les regles vivent dans leur propre espace depuis UX-14(a).
+    await user.click(await screen.findByRole('tab', { name: /^Règles/ }));
     expect(screen.getByLabelText('Type de règle')).toBeInTheDocument();
     expect(screen.queryByText(/Mode expert/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/JSON/i)).not.toBeInTheDocument();

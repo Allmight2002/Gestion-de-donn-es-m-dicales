@@ -19,12 +19,26 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
   const [block, setBlock] = useState('');
   const [codes, setCodes] = useState('');
   const editable = version.status === 'draft' && !fields.some((f) => f.inUse);
-  const candidates = fields.filter((f) => f.scope === scope && !f.section && !f.formula
-    && ['select','multiselect','terminology'].includes(f.type)
-    && !rules.some((r) => {
+  // UX-16 : UNE seule definition de l'eligibilite. La liste proposee et l'explication d'un
+  // refus lisent la meme fonction, sinon l'ecran expliquerait autre chose que ce qu'il offre.
+  // Le PLACEMENT n'y entre pas : une variable reste eligible quelle que soit sa rubrique.
+  // Le motif le plus explicatif d'abord : une variable calculee est TOUJOURS numerique
+  // (le serveur impose le type de sortie), donc l'annoncer « type incompatible » dirait vrai
+  // sans rien apprendre. Ce qui bloque, c'est qu'elle n'est pas saisie.
+  const refusal = (f: TemplateField) =>
+    f.formula ? 'diagnosis.ineligible_reason_formula' as const
+    : !['select','multiselect','terminology'].includes(f.type) ? 'diagnosis.ineligible_reason_type' as const
+    : rules.some((r) => {
       const parsed = visibilityRuleOf(r.rule);
-      return parsed && 'field' in parsed.then && parsed.then.field === f.fieldKey;
-    }));
+      return parsed !== null && 'field' in parsed.then && parsed.then.field === f.fieldKey;
+    }) ? 'diagnosis.ineligible_reason_hidden' as const
+    : null;
+  const commonOfScope = fields.filter((f) => f.scope === scope && !f.section);
+  const candidates = commonOfScope.filter((f) => refusal(f) === null);
+  const refused = commonOfScope.filter((f) => refusal(f) !== null);
+  // Une variable compatible rangee dans un bloc n'apparait pas dans la liste : le dire evite
+  // de la chercher, et dit quoi faire pour la rendre eligible.
+  const compatibleInBlocks = fields.filter((f) => f.scope === scope && f.section && refusal(f) === null).length;
   const selected = candidates.find((f) => f.fieldKey === config.diagnosisFieldKey);
   const companion = selected ? findProposalField(fields, selected) : undefined;
   const split = (text: string) => text.split('\n').map((v) => v.trim()).filter(Boolean);
@@ -62,6 +76,18 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
           {candidates.map((f) => <option key={f.id} value={f.fieldKey}>{f.label} ({f.fieldKey})</option>)}
         </select>
       </label>
+      <p className="text-sm text-slate-600">{t('diagnosis.driver_help')}</p>
+      {refused.length > 0 && <details className="text-sm text-slate-600">
+        <summary className="min-h-11 cursor-pointer">{t('diagnosis.ineligible').replace('{n}', String(refused.length))}</summary>
+        <ul className="mt-1 space-y-1">
+          {refused.map((f) => <li key={f.id}>
+            {f.label} <span className="font-mono text-xs">{f.fieldKey}</span> — {t(refusal(f)!)}
+          </li>)}
+        </ul>
+      </details>}
+      {compatibleInBlocks > 0 && <p className="text-sm text-slate-600">
+        {t('diagnosis.ineligible_blocks').replace('{n}', String(compatibleInBlocks))}
+      </p>}
       {selected?.type === 'terminology' && <label className="block">{t('diagnosis.release')}
         <input className="input" value={config.terminologyReleaseId ?? ''} onChange={(e) => setDraft({...config,terminologyReleaseId:e.target.value})} />
       </label>}

@@ -24,7 +24,7 @@ export function ValueInput({
   const options = code && !allowed.includes(code) ? [...allowed, code] : allowed;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="min-w-0 space-y-2">
       {code === null ? (
         <FieldInput field={field} value={isMissing(value) ? undefined : value} onChange={onChange} />
       ) : (
@@ -33,7 +33,7 @@ export function ValueInput({
       {options.length > 0 && (
         <select
           aria-label={`${field.label} — valeur manquante`}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30"
+          className="min-h-11 max-w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           value={code ?? 'value'}
           onChange={(e) => onChange(e.target.value === 'value' ? null : makeMissing(e.target.value as MissingCode))}
         >

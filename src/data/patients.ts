@@ -154,8 +154,10 @@ export interface CompletionQueuePage {
 
 export interface PatientRepository {
   listPatients(baseId: string): Promise<PatientListItem[]>;
-  /** Page de patients (pagination serveur) + effectif total de la base. */
-  listPatientsPage(baseId: string, limit: number, offset: number): Promise<{ rows: PatientListItem[]; total: number }>;
+  /** Page de patients (pagination serveur) + effectif total de la base, filtre et tri compris. */
+  listPatientsPage(
+    baseId: string, limit: number, offset: number, options?: PatientListQuery,
+  ): Promise<{ rows: PatientListItem[]; total: number }>;
   /** §8 — Instantane ANALYTIQUE complet (patients + rencontres + champs) en UN appel (hors-ligne). */
   fetchBaseSnapshot(baseId: string): Promise<RawSnapshotData | null>;
   /** §7.6 — Avertit (a l'apercu) des rencontres ressemblant a des rencontres deja enregistrees. */
@@ -208,6 +210,22 @@ export interface PatientRepository {
 type PatientRow = {
   id: string; patient_code: string; template_version_id: string; data: Record<string, unknown>; validation_status: string; row_version?: number | null; updated_at?: string | null; created_by?: string | null;
 };
+/** UX-12(b) : tri de liste. Seules des colonnes ANALYTIQUES sont triables ; le depart
+ * d'egalite est toujours explicite, sinon deux pages successives peuvent repeter une ligne. */
+export type PatientSortField = 'created_at' | 'patient_code';
+export interface PatientListQuery {
+  /** Recherche par code patient, appliquee par le serveur AVANT la pagination. */
+  codeQuery?: string | null;
+  sort?: { field: PatientSortField; direction: 'asc' | 'desc' };
+}
+
+/** Neutralise les jokers d'un motif LIKE saisi par l'utilisateur : « 10 % » cherche ce texte,
+ * il n'ouvre pas la recherche a toute la base. L'echappement par antislash est celui de
+ * PostgreSQL, applique par le serveur au motif transmis. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
 const PATIENT_READ_COLUMNS = 'id, patient_code, template_version_id, data, validation_status, row_version, updated_at';
 const LEGACY_PATIENT_READ_COLUMNS = 'id, patient_code, template_version_id, data, validation_status, updated_at';
 const PATIENT_DETAIL_READ_COLUMNS = `${PATIENT_READ_COLUMNS}, created_by`;
@@ -305,15 +323,25 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return ((legacy.data ?? []) as unknown as PatientRow[]).map(toListItem);
     },
 
-    async listPatientsPage(baseId, limit, offset) {
+    async listPatientsPage(baseId, limit, offset, options) {
       // §5.8 — page PSEUDONYMISEE (zone analytique + effectif total) ; aucune identite chargee.
-      const query = (columns: string) => client
-        .from('patient')
-        .select(columns, { count: 'exact' })
-        .eq('base_id', baseId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: true })
-        .range(offset, offset + limit - 1);
+      // UX-12(b) : le filtre par code et le tri sont appliques par le SERVEUR, avant la
+      // pagination — un filtre limite aux 20 lignes deja chargees ne trouverait pas un patient
+      // situe plus loin. RG-9 : seul le code, donnee analytique, est interroge ici.
+      const needle = options?.codeQuery?.trim();
+      const sort = options?.sort ?? { field: 'created_at' as PatientSortField, direction: 'asc' as const };
+      const query = (columns: string) => {
+        let request = client
+          .from('patient')
+          .select(columns, { count: 'exact' })
+          .eq('base_id', baseId)
+          .is('deleted_at', null);
+        if (needle) request = request.ilike('patient_code', `%${escapeLikePattern(needle)}%`);
+        return request
+          .order(sort.field, { ascending: sort.direction === 'asc' })
+          .order('id', { ascending: true })
+          .range(offset, offset + limit - 1);
+      };
       const current = await query(PATIENT_READ_COLUMNS);
       if (!current.error) {
         const rows = (current.data ?? []) as unknown as PatientRow[];

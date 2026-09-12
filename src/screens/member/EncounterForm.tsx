@@ -6,10 +6,10 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { DiagnosisContext, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
+import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
-import { saveDraft, loadDraft, clearDraft } from '../../data/drafts';
+import { saveDraft, loadDraft, clearDraft, type DraftEnvelope } from '../../data/drafts';
 import { newOfflineId, useOnline } from '../../data/offline';
 import {
   enqueueEncounterCreate, intakeContextCache, intakeQueue, isLocalPatientId,
@@ -21,9 +21,15 @@ import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../.
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { useDirtyForm } from '../../lib/useUnsavedChanges';
+import { useWorkDraft } from './useWorkDraft';
+import { WorkDraftPanel } from './WorkDraftPanel';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { localWorkDraftRepository } from '../../data/localWorkDrafts';
 
 // A4 : un brouillon de rencontre ne retient que de l'ANALYTIQUE (aucune identite).
 interface EncounterDraft {
+  templateVersionId?: string;
   encounterType: string;
   encounterDate: string;
   status: string;
@@ -56,6 +62,7 @@ export function EncounterForm() {
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
   const [versionId, setVersionId] = useState<string | null>(null);
   const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
@@ -74,11 +81,28 @@ export function EncounterForm() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false); // A4
+  const [localCandidate, setLocalCandidate] = useState<DraftEnvelope<EncounterDraft> | null>(null);
+  const [localSavedAt, setLocalSavedAt] = useState<number | null>(null);
+  const [localSaveError, setLocalSaveError] = useState(false);
+  const [discardLocalOpen, setDiscardLocalOpen] = useState(false);
+  const loadedFor = useRef<string | null>(null);
+  const intakeAttempt = useRef<{ fingerprint: string; operationKey: string } | null>(null);
   const draftReady = useRef(false); // A4 : autorise l'autosave seulement apres chargement + restauration
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
-  const { keys: diagnosticWithdrawalKeys, track: trackVisibilityWithdrawal, reset: resetVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
+  const { track: trackVisibilityWithdrawal, reset: resetVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
+  const navigation = useDirtyForm({ values, encounterType, encounterDate, status }, !loading && versionId !== null, `${baseId}:${patientId}`);
+  const work = useWorkDraft({
+    repository: offlineIntakeMode ? localWorkDraftRepository : undefined,
+    support: offlineIntakeMode ? 'local' : 'server',
+    context: baseId && patientId && versionId ? {
+      baseId, kind: 'encounter_create', targetId: patientId, templateVersionId: versionId, entityRevision: null,
+    } : null,
+    ownerId: profile?.id ?? '', payload: { values, encounterType, encounterDate, status, ageUnit: 'years' }, dirty: navigation.dirty, online,
+    onRestore: (payload) => { setValues(payload.values); setEncounterType(payload.encounterType ?? 'consultation');
+      setEncounterDate(payload.encounterDate ?? ''); setStatus(payload.status ?? 'draft'); setPrefilled(new Set()); },
+  });
 
   // L32 — la visibilite s'evalue sur EXACTEMENT ce qui partira au serveur : les champs
   // applicables au type choisi. Evaluer sur autre chose ferait diverger l'ecran du serveur
@@ -92,11 +116,11 @@ export function EncounterForm() {
       Object.entries(values).filter(([k]) => applicableFields.some((f) => f.fieldKey === k)),
     );
     const hiddenKeys = hiddenFieldKeys(rules, applicableData, applicableFields, sections);
-    const stripped = withoutHiddenValues(applicableData, hiddenKeys);
+    for (const field of fields) if (!applicableFields.includes(field)) hiddenKeys.add(field.fieldKey);
+    const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [values, applicableFields, rules, sections]);
+  }, [values, fields, applicableFields, rules, sections]);
 
-  const diagnosticRemoved = removed.filter((key) => diagnosticWithdrawalKeys.has(key));
   const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
 
   // Un MEME gestionnaire peut emettre DEUX mises a jour : choisir une valeur controlee pose
@@ -139,10 +163,16 @@ export function EncounterForm() {
         setFields(encounterFields);
         setRules(ctx.rules);
         setSections(ctx.sections ?? []);
+        setCommonLayout(ctx.commonLayout);
         // Le contexte prepare EN LIGNE transporte deja le contrat et sa version : rien de
         // nouveau n'est ouvert au hors-ligne, l'information s'affiche simplement a l'identique.
         setVersionId(ctx.templateVersionId);
         setDiagnosisContext(ctx.diagnosisContext);
+        const draft = loadDraft<EncounterDraft>('encounter', patientId);
+        setLocalCandidate(draft);
+        const proposed = initialValuesFromDefaults(encounterFields);
+        setValues(proposed.values); setPrefilled(proposed.prefilled);
+        loadedFor.current = `${baseId}:${patientId}`;
         setError(null);
         return;
       }
@@ -161,17 +191,13 @@ export function EncounterForm() {
       setFields(encounterFields);
       setRules(version.rules);
       setSections(version.sections ?? []);
+      setCommonLayout(version.version.commonLayout);
       setVersionId(version.version.id);
       setDiagnosisContext(version.version.diagnosisContext);
       // A4 : restaurer un brouillon local eventuel (saisie non enregistree recuperee).
       const draft = patientId ? loadDraft<EncounterDraft>('encounter', patientId) : null;
-      if (draft) {
-        setEncounterType(draft.data.encounterType);
-        setEncounterDate(draft.data.encounterDate);
-        setStatus(draft.data.status);
-        setValues(draft.data.values);
-        setDraftRestored(true);
-      } else {
+      setLocalCandidate(draft);
+      {
         // Preremplissage a la CREATION seulement, et jamais par-dessus un brouillon : une
         // valeur que la personne avait effacee ne doit pas reapparaitre a la reprise.
         const proposed = initialValuesFromDefaults(encounterFields);
@@ -179,6 +205,7 @@ export function EncounterForm() {
         setPrefilled(proposed.prefilled);
       }
       setError(null);
+      loadedFor.current = `${baseId}:${patientId}`;
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -186,17 +213,31 @@ export function EncounterForm() {
       draftReady.current = true; // autosave actif seulement apres ce premier chargement
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patientId, bases, templates, online]);
+  }, [baseId, patientId, bases, templates, online, offlineIntakeMode]);
 
   // A4 : sauvegarde continue (debounce) du brouillon ANALYTIQUE tant qu'il y a du contenu.
   useEffect(() => {
-    if (!draftReady.current || !patientId) return;
+    if (!draftReady.current || !patientId || !versionId || !offlineIntakeMode || work.enabled || localCandidate || !navigation.dirty) return;
     const hasContent = !!encounterDate || Object.keys(values).length > 0;
     const handle = setTimeout(() => {
-      if (hasContent) saveDraft<EncounterDraft>('encounter', patientId, { encounterType, encounterDate, status, values });
+      if (hasContent) {
+        const saved = saveDraft<EncounterDraft>('encounter', patientId, { templateVersionId: versionId, encounterType, encounterDate, status, values });
+        setLocalSaveError(!saved); setLocalSavedAt(saved ? Date.now() : null);
+      }
     }, 600);
     return () => clearTimeout(handle);
-  }, [patientId, encounterType, encounterDate, status, values]);
+  }, [patientId, encounterType, encounterDate, status, values, versionId, offlineIntakeMode, localCandidate, navigation.dirty, work.enabled]);
+
+  function resumeLocalDraft() {
+    if (!localCandidate) return;
+    if (localCandidate.data.templateVersionId !== versionId) {
+      setError('La version de ce brouillon local est différente ou inconnue. La copie est conservée ; elle ne peut pas remplacer automatiquement ce formulaire.');
+      return;
+    }
+    const data = localCandidate.data;
+    setValues(data.values); setEncounterDate(data.encounterDate); setEncounterType(data.encounterType); setStatus(data.status);
+    setLocalCandidate(null); setDraftRestored(true); setPrefilled(new Set());
+  }
 
   function discardDraft() {
     if (patientId) clearDraft('encounter', patientId);
@@ -209,11 +250,12 @@ export function EncounterForm() {
     setValues(proposed.values);
     setPrefilled(proposed.prefilled);
     setDraftRestored(false);
+    setLocalCandidate(null); setLocalSavedAt(null); setLocalSaveError(false); setDiscardLocalOpen(false);
   }
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (loadedFor.current !== `${baseId}:${patientId}`) void load();
+  }, [load, baseId, patientId]);
 
   // Apercu de l'age : calcule par le systeme des que la date est posee (DOB jamais exposee).
   // HORS-LIGNE (dossier local) : l'age est calcule LOCALEMENT depuis la date de naissance
@@ -248,6 +290,8 @@ export function EncounterForm() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!baseId || !patientId) return;
+    if (busy) return;
+    if (work.locked) { await persistEncounter(); return; }
 
     // Seuls les champs APPLICABLES au type choisi sont valides / envoyes (ex: pas d'admission
     // pour une consultation). Les valeurs des champs masques ne sont pas soumises : c'est ICI
@@ -272,7 +316,7 @@ export function EncounterForm() {
     setWarnings(ruleEval.warnings);
     if (block.length > 0) return;
 
-    if (diagnosticRemoved.length > 0 && !confirmationOpen) {
+    if (removed.length > 0 && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -288,9 +332,15 @@ export function EncounterForm() {
       // RENCONTRE D'UN DOSSIER LOCAL : mise en file DEPENDANTE du patient en attente
       // (aucun appel reseau ; le serveur rejouera patient puis rencontre, dans l'ordre).
       if (offlineIntakeMode && localParent) {
+        if (work.enabled) {
+          await work.commit(); clearDraft('encounter', patientId); navigation.markClean();
+          toast(t('intake.encounter_saved_pending')); navigate(`/bases/${baseId}`); return;
+        }
+        const fingerprint = JSON.stringify({ encounterType, encounterDate, status, submittedData });
+        if (intakeAttempt.current?.fingerprint !== fingerprint) intakeAttempt.current = { fingerprint, operationKey: newOfflineId() };
         await enqueueEncounterCreate({
           baseId,
-          operationKey: newOfflineId(),
+          operationKey: intakeAttempt.current.operationKey,
           parentOperationKey: localParent.id,
           payload: {
             encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: submittedData,
@@ -298,14 +348,17 @@ export function EncounterForm() {
         });
         clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
         toast(t('intake.encounter_saved_pending'));
+        navigation.markClean();
         navigate(`/bases/${baseId}`);
         return;
       }
-      await patients.createEncounter(patientId, {
+      if (work.enabled) await work.commit();
+      else await patients.createEncounter(patientId, {
         encounterType, encounterDate, validationStatus: status, ageUnit: 'years', data: submittedData,
       });
       clearDraft('encounter', patientId); // A4 : la saisie est enregistree -> plus de brouillon
       toast(t('toast.encounter_saved')); // UI-2 : la reussite se voit
+      navigation.markClean();
       navigate(`/bases/${baseId}/patients/${patientId}`);
     } catch (e) {
       setError(msg(e));
@@ -332,7 +385,8 @@ export function EncounterForm() {
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
-    <section className="max-w-2xl space-y-5 sm:space-y-6">
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
+      {navigation.guard}
       <div>
         <button onClick={() => navigate(offlineIntakeMode ? `/bases/${baseId}` : `/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
           ← {t('admin.back')}
@@ -340,7 +394,7 @@ export function EncounterForm() {
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="page-title">{t('encounter.new')}</h1>
           {maySubmitToCuration && !offlineIntakeMode && (
-            <button type="button" onClick={() => void submitToStaff()} disabled={busy} className="btn-secondary">
+            <button type="button" onClick={() => navigation.protect(submitToStaff)} disabled={busy || work.locked} className="btn-secondary">
               <Send size={16} aria-hidden /> {t('create.submit')}
             </button>
           )}
@@ -348,18 +402,29 @@ export function EncounterForm() {
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} patientId={patientId} />
+      {localCandidate && <div className="space-y-2 rounded-xl border border-sky-200 p-3 text-sm">
+        <p>Un brouillon sur cet appareil du {new Date(localCandidate.at).toLocaleString()} est disponible.</p>
+        <button type="button" className="btn-secondary" onClick={() => navigation.protect(resumeLocalDraft)}>Reprendre le brouillon local</button>{' '}
+        <button type="button" className="btn-secondary" onClick={() => setDiscardLocalOpen(true)}>Supprimer le brouillon local</button>
+      </div>}
+      {offlineIntakeMode && !work.enabled && <p role="status" className="text-sm text-slate-600">{localSaveError ? 'Sauvegarde locale impossible — dernières modifications non protégées.'
+        : localSavedAt ? `Brouillon conservé sur cet appareil à ${new Date(localSavedAt).toLocaleTimeString()}` : 'Modifications non sauvegardées sur cet appareil.'}</p>}
+      <ConfirmDialog open={discardLocalOpen} title="Supprimer le brouillon local ?" body="Le brouillon sera supprimé et le formulaire remis à son état initial."
+        confirmLabel="Supprimer le brouillon" onConfirm={discardDraft} onCancel={() => setDiscardLocalOpen(false)} />
 
       {draftRestored && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-900">
           <span>{t('draft.restored')}</span>
-          <button type="button" onClick={discardDraft} className="whitespace-nowrap font-medium text-sky-700 hover:underline">
+          <button type="button" onClick={() => setDiscardLocalOpen(true)} className="whitespace-nowrap font-medium text-sky-700 hover:underline">
             {t('draft.discard')}
           </button>
         </div>
       )}
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
-        <div className="grid grid-cols-3 gap-3">
+        <fieldset disabled={busy || work.locked} className="min-w-0 space-y-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="flex flex-col text-sm">
             <span className="text-slate-700">{t('encounter.type')}</span>
             <select className="input mt-1" value={encounterType} onChange={(e) => setEncounterType(e.target.value)}>
@@ -397,6 +462,8 @@ export function EncounterForm() {
           values={values}
           prefilledKeys={prefilled}
           hiddenKeys={hidden}
+          rules={rules}
+          requireComplete={isMissionAccount(profile) || status !== 'draft'}
           onChange={(k, v) => {
             // Effacer une proposition jamais confirmee retire la cle, au lieu d'enregistrer
             // une valeur vide la ou une fiche non preremplie n'aurait rien du tout.
@@ -409,6 +476,7 @@ export function EncounterForm() {
             updateEncounterValue(key, undefined, true);
           }}
           sections={sections}
+          commonLayout={commonLayout}
         />
 
         {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
@@ -419,7 +487,7 @@ export function EncounterForm() {
 
         {confirmationOpen && (
           <HiddenValuesConfirmation
-            removedKeys={diagnosticRemoved}
+            removedKeys={removed}
             fields={fields}
             onConfirm={() => void persistEncounter()}
             onCancel={() => setConfirmationOpen(false)}
@@ -447,7 +515,8 @@ export function EncounterForm() {
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        </fieldset>
+        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
           <button type="submit" disabled={busy} className="btn-primary">
             {t('encounter.save')}
           </button>

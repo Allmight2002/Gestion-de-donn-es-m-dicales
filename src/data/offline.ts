@@ -218,24 +218,26 @@ const DB_VERSION = 4; // v4 : store `intake_context` (saisie hors-ligne O2). Sna
 const STORE = 'snapshots';
 export const OUTBOX_STORE = 'outbox';
 export const INTAKE_CONTEXT_STORE = 'intake_context';
+export const LOCAL_WORK_DRAFT_STORE = 'work_drafts';
 // Migration securite: declenche la reevaluation/purge des enveloppes legacy.
-const SECURITY_DB_VERSION = DB_VERSION + 1;
+const SECURITY_DB_VERSION = DB_VERSION + 2;
 
 function openDb(): Promise<IDBDatabase> {
   // IndexedDB peut etre absent (SSR, vieux navigateur, environnement de test sans polyfill).
   if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB indisponible'));
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, SECURITY_DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
       // §5.9 : la cle du snapshot passe de `baseId` a `ownerUserId::baseId`. Changer un keyPath
       // impose de RECREER le store -> les anciens instantanes sont perdus (re-telechargeables).
       // L'outbox (keyPath 'id', travail non synchronise) est preservee ; `intake_context`
       // n'est que CREE s'il manque : aucun store existant n'est touche par la v4.
-      if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
-      db.createObjectStore(STORE, { keyPath: 'key' });
+      if (event.oldVersion < 5 && db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
       if (!db.objectStoreNames.contains(OUTBOX_STORE)) db.createObjectStore(OUTBOX_STORE, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(INTAKE_CONTEXT_STORE)) db.createObjectStore(INTAKE_CONTEXT_STORE, { keyPath: 'key' });
+      if (!db.objectStoreNames.contains(LOCAL_WORK_DRAFT_STORE)) db.createObjectStore(LOCAL_WORK_DRAFT_STORE, { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -260,6 +262,20 @@ export function idbTx<T>(
         t.onabort = () => { db.close(); reject(t.error); };
       }),
   );
+}
+
+/** Callback-only transaction: all requests stay inside the same IndexedDB transaction.
+ * Resolution waits for its commit; an abort never acknowledges an operation. */
+export async function idbAtomic<T>(stores: string[], run: (transaction: IDBTransaction, done: (result: T) => void, fail: (error: unknown) => void) => void): Promise<T> {
+  const db = await openDb();
+  return new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(stores, 'readwrite');
+    let result: T; let failure: unknown;
+    const fail = (error: unknown) => { failure = error; transaction.abort(); };
+    transaction.oncomplete = () => { db.close(); resolve(result); };
+    transaction.onerror = transaction.onabort = () => { db.close(); reject(failure ?? transaction.error); };
+    try { run(transaction, (value) => { result = value; }, fail); } catch (error) { fail(error); }
+  });
 }
 
 /** Identifiant local stable (operation, patient local, rencontre locale). */
@@ -605,11 +621,15 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
  * S'applique aux DEUX familles d'entrees (analytique et saisie hors-ligne) : une entree
  * inconnue, sans proprietaire, perimee — ou reussie DONT la trace a expire — est supprimee. */
 export async function purgeExpiredOutbox(now = Date.now()): Promise<number> {
-  const all = await idbTx<OutboxEntry[]>(OUTBOX_STORE, 'readonly', (s) => s.getAll());
+  const all = await idbTx<OutboxRecord[]>(OUTBOX_STORE, 'readonly', (s) => s.getAll());
   let removed = 0;
   for (const entry of all) {
-    if (entry.dataType !== 'analytic_outbox' && entry.dataType !== 'intake_outbox') {
-      await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.delete(entry.id)); removed++;
+    // Une famille d'enregistrement inconnue (ancienne version, ecriture etrangere) n'est pas
+    // typable ici : on la lit defensivement pour la supprimer sans pretendre la reconnaitre.
+    const unknownRecord = entry as { dataType?: string; id?: string };
+    if (unknownRecord.dataType !== 'analytic_outbox' && unknownRecord.dataType !== 'intake_outbox') {
+      const staleId = unknownRecord.id;
+      if (staleId) { await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.delete(staleId)); removed++; }
       continue;
     }
     // Trace de reussite conservee jusqu'a expiration : le mapping local -> serveur sert
@@ -619,10 +639,35 @@ export async function purgeExpiredOutbox(now = Date.now()): Promise<number> {
       continue;
     }
     if (!entry.ownerUserId || !Number.isFinite(entry.createdAt) || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) {
-      await outbox.remove(entry.id); removed++;
+      if (isIntakeEntry(entry) && entry.ownerUserId && Number.isFinite(entry.createdAt)) {
+        const payload = entry.kind === 'patient_create'
+          ? { code: '', fullName: null, dateOfBirth: null, phone: null, address: null, externalIdentifier: null, permanentData: {} }
+          : { encounterType: '', encounterDate: '', validationStatus: 'draft', ageUnit: 'years', data: {} };
+        if (entry.state !== 'expired') {
+          await idbTx(OUTBOX_STORE, 'readwrite', (store) => store.put({ ...entry, payload, state: 'expired', fingerprint: '',
+            lastError: 'Cette saisie a expiré. Les réponses ont été purgées ; une nouvelle saisie est nécessaire.', syncingStartedAt: undefined }));
+          removed++;
+        }
+      } else { await outbox.remove(entry.id); removed++; }
     }
   }
   return removed;
+}
+
+export async function purgeExpiredLocalWorkDrafts(now = Date.now()): Promise<number> {
+  return idbAtomic<number>([LOCAL_WORK_DRAFT_STORE], (transaction, done) => {
+    const store = transaction.objectStore(LOCAL_WORK_DRAFT_STORE); const request = store.getAll();
+    request.onsuccess = () => {
+      let purged = 0;
+      for (const draft of request.result as Array<{ id: string; ownerUserId?: string; expiresAt: string; state: string; payload: unknown }>) {
+        if (!draft.ownerUserId || !Number.isFinite(Date.parse(draft.expiresAt))) { store.delete(draft.id); purged++; }
+        else if (draft.state === 'active' && Date.parse(draft.expiresAt) <= now) {
+          store.put({ ...draft, payload: { values: {} }, state: 'expired' }); purged++;
+        }
+      }
+      done(purged);
+    };
+  });
 }
 
 export interface OfflinePurgeReport { indexedDb: boolean; localStorage: boolean; cacheStorage: boolean; serviceWorkers: boolean; errors: string[]; }
@@ -672,6 +717,7 @@ export async function initializeOfflineForUser(
   try { const db = await openDb(); db.close(); } catch (e) { report.errors.push(`IndexedDB: ${String(e)}`); }
   try { await purgeExpiredSnapshots(); } catch (e) { report.errors.push(`Expiration snapshots: ${String(e)}`); }
   try { await purgeExpiredOutbox(); } catch (e) { report.errors.push(`Expiration outbox: ${String(e)}`); }
+  try { await purgeExpiredLocalWorkDrafts(); } catch { report.errors.push('La purge des brouillons locaux n’a pas abouti.'); }
   try { report.previousOwner = typeof localStorage === 'undefined' ? null : localStorage.getItem(OFFLINE_OWNER_KEY); }
   catch (e) { report.errors.push(`Lecture proprietaire: ${String(e)}`); }
 

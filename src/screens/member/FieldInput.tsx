@@ -1,10 +1,49 @@
 import type { TemplateField } from '../../data/types';
-import { isOrphanValue, selectableOptions } from '../../domain/fieldOptions';
+import { selectableOptions } from '../../domain/fieldOptions';
 import { TerminologyInput } from './TerminologyInput';
-import { Checkbox } from '../../components/Checkbox';
 import { DatePickerInput } from '../../components/DatePickerInput';
+import { ChoiceInput, type ChoicePresentation } from '../../components/ChoiceInput';
+import { Checkbox } from '../../components/Checkbox';
 
 const cls = 'input';
+
+// Les seuils restent lisibles et déterministes : la largeur réelle est ensuite gérée par la
+// grille responsive. Les listes de huit éléments ou de libellés très longs sont recherchables,
+// tandis que les listes intermédiaires restent des contrôles natifs faciles à parcourir.
+const SHORT_CHOICE_LIMIT = 5;
+const SHORT_LABEL_LIMIT = 32;
+const LONG_CHOICE_LIMIT = 8;
+const LONG_LABEL_LIMIT = 48;
+
+function optionPresentation(
+  type: 'select' | 'multiselect',
+  options: readonly { label: string }[],
+): ChoicePresentation {
+  const hasLongLabel = options.some((option) => option.label.length > LONG_LABEL_LIMIT);
+  const long = options.length >= LONG_CHOICE_LIMIT || hasLongLabel;
+  if (type === 'multiselect') return long ? 'search-multiple' : 'grid';
+  if (long) return 'search';
+  if (options.length >= 2 && options.length <= SHORT_CHOICE_LIMIT && options.every((option) => option.label.length <= SHORT_LABEL_LIMIT)) {
+    return 'radios';
+  }
+  return 'select';
+}
+
+function optionsHeldByValue(field: TemplateField, value: unknown) {
+  const options = selectableOptions(field, value);
+  const held = Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item !== '')
+    : typeof value === 'string' && value !== '' ? [value] : [];
+  const known = new Set(options.map((option) => option.valueKey));
+  // Une valeur historique inconnue n'est jamais supprimée au changement de présentation.
+  for (const valueKey of held) {
+    if (!known.has(valueKey)) {
+      options.push({ valueKey, label: valueKey, isActive: false });
+      known.add(valueKey);
+    }
+  }
+  return options;
+}
 
 // Rendu basique d'un champ de gabarit selon son type. Les controles complets
 // (bornes, requis, valeurs manquantes codifiees) arrivent a l'etape 7.
@@ -64,48 +103,32 @@ export function FieldInput({
     // la saisie, mais celle que la fiche porte deja reste offerte : la retirer du menu
     // effacerait sa valeur au premier enregistrement.
     case 'select': {
-      const opts = selectableOptions(field, value);
-      const orphan = isOrphanValue(field, value);
+      const opts = optionsHeldByValue(field, value);
+      const presentation = optionPresentation('select', selectableOptions(field, undefined));
       return (
-        <select className={cls} aria-label={field.label} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-          <option value="">—</option>
-          {/* Valeur hors liste (sequelle d'un renommage anterieur a L30) : conservee et
-              montree telle quelle, jamais effacee ni remplacee en silence. */}
-          {orphan && <option value={value as string}>{String(value)}</option>}
-          {opts.map((o) => (
-            <option key={o.valueKey} value={o.valueKey}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <ChoiceInput
+          label={field.label}
+          options={opts}
+          value={typeof value === 'string' ? value : null}
+          onChange={onChange}
+          presentation={presentation}
+          name={field.fieldKey}
+        />
       );
     }
     case 'multiselect': {
       const arr = Array.isArray(value) ? (value as unknown[]).filter((v): v is string => typeof v === 'string') : [];
-      const opts = selectableOptions(field, arr);
-      const known = new Set(opts.map((o) => o.valueKey));
-      const orphans = arr.filter((v) => !known.has(v));
+      const opts = optionsHeldByValue(field, arr);
+      const presentation = optionPresentation('multiselect', selectableOptions(field, undefined));
       return (
-        <div className="flex flex-wrap gap-2">
-          {opts.map((o) => (
-            <Checkbox
-              key={o.valueKey}
-              checked={arr.includes(o.valueKey)}
-              onChange={(e) => onChange(e.target.checked ? [...arr, o.valueKey] : arr.filter((x) => x !== o.valueKey))}
-              label={o.label}
-              containerClassName="text-xs"
-            />
-          ))}
-          {orphans.map((v) => (
-            <Checkbox
-              key={v}
-              checked
-              onChange={(e) => onChange(e.target.checked ? [...arr, v] : arr.filter((x) => x !== v))}
-              label={v}
-              containerClassName="text-xs"
-            />
-          ))}
-        </div>
+        <ChoiceInput
+          label={field.label}
+          options={opts}
+          value={arr}
+          onChange={onChange}
+          presentation={presentation}
+          name={field.fieldKey}
+        />
       );
     }
     default:

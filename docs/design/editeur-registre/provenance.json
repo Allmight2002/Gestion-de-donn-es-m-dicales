@@ -1,0 +1,15 @@
+{
+  "prepared_at": "2026-09-11T19:39:48.4690231+01:00",
+  "purpose": "Transmission de la proposition UX; aucune refonte applicative livree par ce dossier",
+  "original_conversation_artifact": "editeur-registre.html",
+  "original_sha256": "f976865ee0bd96945e289f7c68eaa7fe69952137d69ea6568c0ea7042fec72d3",
+  "source_copy": "maquette.source.html",
+  "source_copy_sha256": "f976865ee0bd96945e289f7c68eaa7fe69952137d69ea6568c0ea7042fec72d3",
+  "preview": "maquette.html",
+  "preview_sha256": "146dce2cc0e4f98331abd549fe6937b9a5fb7f926e3196c3743021bf77951fef",
+  "reference_branch": "codex/ux-correctifs",
+  "reference_head": "170207fb6652bb66360c1e19c58434f70e6ee6f3",
+  "working_tree": "Nombreuses modifications locales preexistantes; le HEAD seul ne reproduit pas le code inspecte",
+  "application_validation": "Non executee pour ce dossier documentaire",
+  "export_adaptation": "Langue du document et de son cadre definie en francais; source originale inchangee"
+}

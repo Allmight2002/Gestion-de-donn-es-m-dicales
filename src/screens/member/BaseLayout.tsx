@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router';
 import { ChartPie, ClipboardCheck, Clock, Settings, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
@@ -32,19 +32,36 @@ export function BaseLayout() {
   const bases = useBaseRepository();
   const [listing, setListing] = useState<BaseListing | null>(null);
   const [name, setName] = useState('');
+  const [failed, setFailed] = useState(false);
+  const tabBar = useRef<HTMLElement>(null);
+
+  // UX-12 : le fil d'Ariane ne doit jamais garder le nom de la base precedente. L'etat est
+  // remis a zero PENDANT le rendu, avant toute lecture, et non dans un effet.
+  const [context, setContext] = useState(id);
+  if (context !== id) { setContext(id); setListing(null); setName(''); setFailed(false); }
 
   useEffect(() => {
     let alive = true;
     if (!id) return;
+    setFailed(false);
     if (!online) {
       // HORS-LIGNE : nom depuis l'instantane local ; pas de listing -> onglet Patients seul.
       setListing(null);
-      offlineCache.get(id).then((s) => { if (alive && s) setName(s.baseName); }).catch(() => {});
+      offlineCache.get(id).then((s) => { if (alive && s) setName(s.baseName); }).catch(() => { if (alive) setFailed(true); });
     } else {
-      bases.getBase(id).then((b) => { if (alive && b) { setListing(b); setName(b.base.name); } }).catch(() => {});
+      bases.getBase(id)
+        .then((b) => { if (!alive) return; if (b) { setListing(b); setName(b.base.name); } else setFailed(true); })
+        .catch(() => { if (alive) setFailed(true); });
     }
     return () => { alive = false; };
   }, [id, online, bases]);
+
+  // Sur telephone, la barre d'onglets defile : l'onglet actif doit etre amene en vue sans
+  // faire defiler la page ni prendre le focus a une saisie en cours.
+  useEffect(() => {
+    const active = tabBar.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [pathname, name]);
 
   const isOwner = listing?.role === 'owner';
   const canEdit = isOwner || listing?.permissions.canEditStructuredData === true;
@@ -127,7 +144,8 @@ export function BaseLayout() {
       <p className="text-sm text-slate-400">
           <Link to="/" className="underline decoration-slate-300 underline-offset-4 hover:text-teal-700">{t('member.dashboard.title')}</Link>
         <span aria-hidden> › </span>
-        <span className="text-slate-600">{name || '…'}</span>
+        {/* Ni le nom precedent, ni une affirmation d'existence : chargement, nom connu, ou echec. */}
+        <span className="text-slate-600">{name || (failed ? t('common.error') : t('common.loading'))}</span>
       </p>
 
       {/* Bandeau permanent du compte de mission : l'echeance ne doit jamais surprendre. */}
@@ -149,7 +167,7 @@ export function BaseLayout() {
       )}
 
       <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <nav aria-label={name} className="flex min-w-max gap-1 border-b border-slate-200">
+        <nav ref={tabBar} aria-label={name || t('base.navigation')} className="flex min-w-max gap-1 border-b border-slate-200">
           {tabs.map((tab) => (
             // L'onglet parent mene a sa premiere entree disponible et reste allume pour toutes
             // les autres : NavLink ne sait pas faire ca, l'etat actif est donc calcule ici.

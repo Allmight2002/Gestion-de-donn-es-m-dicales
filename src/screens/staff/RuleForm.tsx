@@ -12,6 +12,7 @@ import {
   type TemplateRule,
 } from '../../domain/templateRules';
 import { sectionLabel } from '../../domain/templateSections';
+import { fieldTypeLabel } from '../../domain/templateLabels';
 import type { RuleSeverity, TemplateField, TemplateSection } from '../../data/types';
 // Alias : `fieldOptions` designe deja, dans cet ecran, la liste des VARIABLES proposees.
 import { fieldOptions as listOptionsOf } from '../../domain/fieldOptions';
@@ -20,6 +21,62 @@ import { Checkbox } from '../../components/Checkbox';
 
 type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
 type Translate = (key: MessageKey) => string;
+
+/** Au-dela de ce nombre, parcourir une liste native devient l'irritant principal (UX-14(b)). */
+const SEARCHABLE_FIELD_COUNT = 8;
+
+/**
+ * Selecteur de variable RECHERCHABLE. La recherche ne fait que reduire la liste proposee :
+ * la valeur echangee reste la cle de la variable, les exclusions de type/portee/formule
+ * restent decidees par l'appelant, et la variable deja choisie reste toujours proposee —
+ * filtrer ne doit jamais effacer une reponse deja donnee.
+ */
+function FieldSelect({
+  label, value, options, optionLabel, onChange, searchLabel, chooseLabel, emptyLabel, countLabel,
+}: {
+  label: string;
+  value: string;
+  options: TemplateField[];
+  optionLabel: (field: TemplateField) => string;
+  onChange: (value: string) => void;
+  searchLabel: string;
+  chooseLabel: string;
+  emptyLabel: string;
+  countLabel: (shown: number, total: number) => string;
+}) {
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLocaleLowerCase();
+  const shown = needle
+    ? options.filter((field) => field.fieldKey === value
+      || `${field.label} ${field.fieldKey} ${optionLabel(field)}`.toLocaleLowerCase().includes(needle))
+    : options;
+  const searchable = options.length >= SEARCHABLE_FIELD_COUNT;
+  return (
+    <div className="flex flex-col text-xs text-slate-600">
+      <span>{label}</span>
+      {searchable && (
+        <input
+          type="search"
+          className="input mt-1"
+          value={query}
+          autoComplete="off"
+          aria-label={`${searchLabel} — ${label}`}
+          placeholder={searchLabel}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      )}
+      <select className="input mt-1" aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{chooseLabel}</option>
+        {shown.map((field) => <option key={field.id} value={field.fieldKey}>{optionLabel(field)}</option>)}
+      </select>
+      {searchable && needle !== '' && (
+        <span className="mt-1 text-[11px] text-slate-500" role="status">
+          {shown.length === 0 ? emptyLabel : countLabel(shown.length, options.length)}
+        </span>
+      )}
+    </div>
+  );
+}
 
 const OPERATOR_KEYS: Record<ComparisonOperator, MessageKey> = {
   equals: 'rule.operator.equals',
@@ -310,11 +367,26 @@ export function RuleForm({
       : option.value === 'false' ? t('rule.value_false')
         : option.label ?? option.value;
 
+  // UX-14(b) : deux libelles proches se distinguent par leur section, leur type et leur portee.
+  // La cle technique reste reservee aux libelles reellement en doublon.
   function optionLabel(field: TemplateField) {
     const scope = field.scope === 'patient' ? t('rule.scope_patient') : t('rule.scope_encounter');
+    const section = sectionLabel(t, {
+      sectionKey: field.section,
+      label: sections?.find((candidate) => candidate.sectionKey === field.section)?.label ?? field.sectionLabel,
+    });
     const technicalKey = (labelCounts.get(field.label) ?? 0) > 1 ? ` — ${field.fieldKey}` : '';
-    return `${field.label} — ${scope}${technicalKey}`;
+    return `${field.label} — ${section} · ${fieldTypeLabel(t, field.type)} · ${scope}${technicalKey}`;
   }
+
+  /** Etiquettes communes aux quatre selecteurs de variables. */
+  const pickerLabels = {
+    searchLabel: t('rule.search_variable'),
+    chooseLabel: t('rule.choose'),
+    emptyLabel: t('rule.search_no_match'),
+    countLabel: (shown: number, total: number) =>
+      t('rule.search_count').replace('{shown}', String(shown)).replace('{total}', String(total)),
+  };
 
   function resetRuleInputs() {
     setComparisonOperator('');
@@ -392,15 +464,7 @@ export function RuleForm({
     }
   }
 
-  /** Par defaut, les variables SAISIES seulement : une variable calculee ne se propose que la
-   *  ou elle peut fonctionner, et l'appelant le dit explicitement. */
-  function fieldOptions(list: TemplateField[] = enteredFields) {
-    return list.map((field) => (
-      <option key={field.id} value={field.fieldKey}>
-        {optionLabel(field)}
-      </option>
-    ));
-  }
+
 
   function conditionValueInput() {
     if (conditionOperator === 'in' || conditionOperator === 'contains_any') {
@@ -499,13 +563,8 @@ export function RuleForm({
 
           {kind === 'comparison' ? (
             <div className="grid gap-3 md:grid-cols-3">
-              <label className="flex flex-col text-xs text-slate-600">
-                {t('rule.left_field')}
-                <select className="input mt-1" value={leftField} onChange={(e) => setLeftField(e.target.value)}>
-                  <option value="">{t('rule.choose')}</option>
-                  {fieldOptions()}
-                </select>
-              </label>
+              <FieldSelect {...pickerLabels} label={t('rule.left_field')} value={leftField}
+                options={enteredFields} optionLabel={optionLabel} onChange={setLeftField} />
               <label className="flex flex-col text-xs text-slate-600">
                 {t('rule.operator')}
                 <select className="input mt-1" value={comparisonOperator} onChange={(e) => setComparisonOperator(e.target.value as ComparisonOperator | '')}>
@@ -515,28 +574,20 @@ export function RuleForm({
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col text-xs text-slate-600">
-                {t('rule.right_field')}
-                <select className="input mt-1" value={rightField} onChange={(e) => setRightField(e.target.value)}>
-                  <option value="">{t('rule.choose')}</option>
-                  {fieldOptions()}
-                </select>
-              </label>
+              <FieldSelect {...pickerLabels} label={t('rule.right_field')} value={rightField}
+                options={enteredFields} optionLabel={optionLabel} onChange={setRightField} />
             </div>
           ) : (
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-2">
-                <label className="flex flex-col text-xs text-slate-600">
-                  {t('rule.condition_field')}
-                  <select
-                    className="input mt-1"
-                    value={conditionField}
-                    onChange={(e) => { setConditionField(e.target.value); setConditionValue(''); setConditionChoices([]); setTerminologyReleaseId(''); }}
-                  >
-                    <option value="">{t('rule.choose')}</option>
-                    {fieldOptions()}
-                  </select>
-                </label>
+                <FieldSelect
+                  {...pickerLabels}
+                  label={t('rule.condition_field')}
+                  value={conditionField}
+                  options={enteredFields}
+                  optionLabel={optionLabel}
+                  onChange={(next) => { setConditionField(next); setConditionValue(''); setConditionChoices([]); setTerminologyReleaseId(''); }}
+                />
                 <label className="flex flex-col text-xs text-slate-600">
                   {t('rule.operator')}
                   <select
@@ -579,6 +630,9 @@ export function RuleForm({
                   </select>
                 </label>
               )}
+              {/* Cible de visibilite : un bloc entier, ou une variable. La variable calculee n'a
+                  de sens qu'ici — on masque un resultat affiche, il n'y a aucune valeur a saisir
+                  ni aucune fiche a refuser. */}
               {isVisibility && visibilityTarget === 'section' ? (
                 <label className="flex flex-col text-xs text-slate-600">
                   {t('rule.visible_section')}
@@ -590,15 +644,14 @@ export function RuleForm({
                   </select>
                 </label>
               ) : (
-                <label className="flex flex-col text-xs text-slate-600">
-                  {isVisibility ? t('rule.visible_field') : t('rule.required_field')}
-                  <select className="input mt-1" value={requiredField} onChange={(e) => setRequiredField(e.target.value)}>
-                    <option value="">{t('rule.choose')}</option>
-                    {/* Seule position ou une variable calculee a un sens : on masque un resultat
-                        affiche, il n'y a aucune valeur a saisir ni aucune fiche a refuser. */}
-                    {fieldOptions(isVisibility ? fields : enteredFields)}
-                  </select>
-                </label>
+                <FieldSelect
+                  {...pickerLabels}
+                  label={isVisibility ? t('rule.visible_field') : t('rule.required_field')}
+                  value={requiredField}
+                  options={isVisibility ? fields : enteredFields}
+                  optionLabel={optionLabel}
+                  onChange={setRequiredField}
+                />
               )}
             </div>
           )}

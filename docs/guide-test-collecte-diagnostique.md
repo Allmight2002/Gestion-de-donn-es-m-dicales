@@ -154,7 +154,7 @@ pilote, et c'est ce qui rend une colonne toujours présente à l'export (série 
 | M-5 | Créer le **pilote** `diagnostic` — détail au §3.1, ligne 1 | La variable existe, et le champ compagnon `diagnostic_autre` est créé **automatiquement** à côté d'elle |
 | M-6 | Créer le **socle** `temperature` — §3.1, ligne 3 | Variable obligatoire du tronc commun : elle sera exigée dans tous les cas |
 | M-7 | Créer les **quatre variables de blocs** — §3.1, lignes 4 à 7 | `Bloc vide` reste sans aucune variable : c'est voulu (test D-6) |
-| M-8 | Bloc **« Collecte diagnostique optionnelle »** : *Fiche concernée* = **Rencontre**, *Diagnostic pilote* = `diagnostic`, *Codes pour lesquels le socle suffit* = `anemie_ferriprive`, puis **Enregistrer la configuration** | Enregistré. La ligne « Champ de proposition existant : … (`diagnostic_autre`) » s'affiche. Aucun champ *Identifiant de la release* n'apparaît : il est réservé aux pilotes de type diagnostic |
+| M-8 | Bloc **« Collecte diagnostique optionnelle »** : *Fiche concernée* = **Rencontre**, *Variable diagnostique* = `diagnostic`, *Codes pour lesquels le socle suffit* = `anemie_ferriprive`, puis **Enregistrer la configuration** | Enregistré. La ligne « Champ de proposition existant : … (`diagnostic_autre`) » s'affiche. Aucun champ *Identifiant de la release* n'apparaît : il est réservé aux pilotes de type diagnostic |
 | M-9 | Section **« Associations diagnostic → blocs »** : *Bloc racine* = `Tuberculose`, codes = `tuberculose_pulmonaire` → **Enregistrer cette association**. Recommencer avec `Malnutrition` ← `malnutrition_aigue` | Deux règles de visibilité de bloc existent, opérateur **« contient au moins un de ces codes »**, cible **bloc** |
 | M-10 | Barre latérale → **Comptes de mission** → **Ouvrir un compte de mission** sur `QA-DIAG` | Identifiant et mot de passe temporaires remis une seule fois : les noter |
 
@@ -296,7 +296,7 @@ fonctionnel.
 
 | # | Action | Attendu |
 |---|---|---|
-| D-1 | Éditeur → *Diagnostic pilote* : dérouler la liste | Seules apparaissent les variables **liste/diagnostic**, de la portée choisie, **du tronc commun**, sans formule et non gouvernées par une règle d'affichage |
+| D-1 | Éditeur → *Variable diagnostique* : dérouler la liste | Seules apparaissent les variables **liste/diagnostic**, de la portée choisie, **communes** (quelle que soit leur rubrique UX-16), sans formule et non gouvernées par une règle d'affichage. Les variables communes refusées sont listées sous la liste, avec leur motif |
 | D-2 | Déplacer le pilote `diagnostic` dans un bloc | **La modification elle-même est refusée** — `DIAGNOSIS_DRIVER_INVALID` : toute mutation de champ, de section ou de règle revalide la configuration sous le verrou de version. Le pilote reste au tronc commun |
 | D-3 | Supprimer la soupape `diagnostic_autre`, ou la rendre **obligatoire**, ou la déplacer dans un bloc | **Refusé** — `DIAGNOSIS_PROPOSAL_INVALID` : le champ compagnon doit exister, rester facultatif, hors section et sans règle |
 | D-3b | Sur une version **sans** soupape, choisir un pilote dans l'éditeur | Le bouton **Enregistrer la configuration** est **désactivé**, avec « Ajoutez la soupape "valeur hors liste" au pilote… » |

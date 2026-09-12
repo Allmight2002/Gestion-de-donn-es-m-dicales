@@ -7,10 +7,10 @@ import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
-import { EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
+import { CalculatedValue, EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
 import { FieldInput } from '../member/FieldInput';
 import { ChoiceWithProposal } from '../member/ChoiceWithProposal';
-import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
+import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 
 // L29 — apercu du formulaire tel que le verra la personne qui saisit, sans creer de
 // patient d'essai.
@@ -107,14 +107,19 @@ export function FormPreview({
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
 
   // Meme filtre que le formulaire reel : le type de rencontre pilote les variables affichees.
-  const applicable = encounterFields.filter((f) => fieldAppliesToType(f, encounterType));
+  const applicable = useMemo(() => encounterFields.filter((f) => fieldAppliesToType(f, encounterType)), [encounterFields, encounterType]);
 
   // Les champs compagnons « valeur proposee » sont rendus AVEC leur source, jamais isolement.
   const patientCompanions = proposalKeysOf(patientFields);
   // L32 — l'apercu montre EXACTEMENT ce que la saisie montrera, regles d'affichage comprises :
   // c'est la seule facon de verifier une regle qu'on vient d'ecrire sans creer de fiche d'essai.
   const patientHidden = useMemo(() => hiddenFieldKeys(rules, patientValues, patientFields, sections), [rules, patientValues, patientFields, sections]);
-  const encounterHidden = useMemo(() => hiddenFieldKeys(rules, encounterValues, applicable, sections), [rules, encounterValues, applicable, sections]);
+  const encounterHidden = useMemo(() => {
+    const active = Object.fromEntries(Object.entries(encounterValues).filter(([key]) => applicable.some((field) => field.fieldKey === key)));
+    const hidden = hiddenFieldKeys(rules, active, applicable, sections);
+    for (const field of encounterFields) if (!applicable.includes(field)) hidden.add(field.fieldKey);
+    return hidden;
+  }, [rules, encounterValues, applicable, encounterFields, sections]);
   const patientVisible = patientFields.filter(
     (f) => !patientCompanions.has(f.fieldKey) && !patientHidden.has(f.fieldKey),
   );
@@ -132,7 +137,7 @@ export function FormPreview({
       ),
       encounterHidden,
     ).values;
-    const requireComplete = status === 'curated';
+    const requireComplete = status !== 'draft';
     const fieldErrors = validateValues(applicable, applicableData, requireComplete, encounterHidden).map(
       (fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`,
     );
@@ -216,12 +221,12 @@ export function FormPreview({
         className={
           viewport === 'mobile'
             ? 'mx-auto max-w-full overflow-hidden rounded-[2rem] border-8 border-slate-800 bg-white p-4 shadow-xl dark:bg-slate-950'
-            : 'max-w-2xl'
+            : 'max-w-5xl'
         }
       >
         {/* Depots inertes pour tout le sous-arbre de saisie : aucune ecriture possible. */}
         <RepositoryProvider terminology={INERT_TERMINOLOGY}>
-          <div className="space-y-5">
+          <div className="@container/preview space-y-5">
             {tab === 'patient' ? (
               <>
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
@@ -237,6 +242,11 @@ export function FormPreview({
                   <SectionedFields
                     fields={patientVisible}
                     sections={sections}
+                    commonLayout={version.commonLayout}
+                    allFields={patientFields}
+                    values={patientValues}
+                    rules={rules}
+                    hiddenKeys={patientHidden}
                     renderField={(field) => {
                       const proposal = isProposalSource(field) ? findProposalField(patientFields, field) : undefined;
                       const renderedUnit = previewUnit(field, patientFields, t);
@@ -248,7 +258,7 @@ export function FormPreview({
                             {renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
                           </span>
                           <div className="mt-1">
-                            {proposal ? (
+                            {isCalculatedField(field) ? <CalculatedValue field={field} values={withoutHiddenValues(patientValues, patientHidden).values} fields={patientFields} /> : proposal ? (
                               <ChoiceWithProposal
                                 field={field}
                                 proposal={proposal}
@@ -278,7 +288,7 @@ export function FormPreview({
               <>
                 {/* Entete reelle du formulaire de rencontre : type, date, statut. Le type
                     pilote les variables affichees, le statut la severite des controles. */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 @min-[32rem]/preview:grid-cols-3">
                   <label className="flex flex-col text-sm">
                     <span className="text-slate-700 dark:text-slate-200">{t('encounter.type')}</span>
                     <select
@@ -323,6 +333,9 @@ export function FormPreview({
                     hiddenKeys={encounterHidden}
                     fields={applicable}
                     sections={sections}
+                    commonLayout={version.commonLayout}
+                    rules={rules}
+                    requireComplete={status !== 'draft'}
                     values={encounterValues}
                     onChange={(k, v) => setEncounterValues((p) => ({ ...p, [k]: v }))}
                     onRemove={(key) => setEncounterValues((current) => {

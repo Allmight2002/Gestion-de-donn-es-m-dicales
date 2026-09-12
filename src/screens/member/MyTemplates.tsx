@@ -79,8 +79,17 @@ export function MyTemplates() {
   }
   async function saveEdit() {
     if (!editId || !editName.trim()) return;
-    await run(() => repo.renameTemplate(editId, editName.trim(), editSpec.trim() || null));
-    setEditId(null);
+    setBusy(true);
+    setError(null);
+    try {
+      await repo.renameTemplate(editId, editName.trim(), editSpec.trim() || null);
+      setEditId(null);
+      await reload();
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
   }
   // D1 — le serveur REFUSE de supprimer un gabarit utilise par une base. Ce refus doit se voir
   // AU POINT DE CLIC : meme toast que le succes (le message d'erreur en haut de page passait
@@ -169,6 +178,7 @@ export function MyTemplates() {
              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {editId === tpl.id ? (
                 <div className="grid min-w-0 flex-1 gap-3">
+                  {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
                   <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t('admin.name')} />
                   <input className="input" value={editSpec} onChange={(e) => setEditSpec(e.target.value)} aria-label={t('admin.specialty')} placeholder={t('admin.specialty')} />
                   <div className="flex flex-wrap gap-2">

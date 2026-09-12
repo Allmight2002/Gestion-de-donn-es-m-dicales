@@ -15,6 +15,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
 import { errorMessage } from '../lib/errorMessage';
+import { requestPageLeave } from '../lib/useUnsavedChanges';
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/[\s.@]+/).filter(Boolean);
@@ -112,7 +113,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const displayName = profile?.fullName || user?.email || '';
   const syncBadge = unsyncedEntries.length;
 
-  const requestSignOut = () => {
+  const requestSignOut = async () => {
+    if (!await requestPageLeave()) return;
     if (unsyncedEntries.length === 0) void signOut();
     else setConfirmSignOut(true);
   };
@@ -177,7 +179,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-700">Ctrl K</kbd>
       </button>
 
-      <nav className="flex flex-col gap-0.5" aria-label={t('search.title')}>
+      <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">
         {nav.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={() => setDrawerOpen(false)}>
             <item.Icon size={16} aria-hidden />
@@ -228,6 +230,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen text-slate-900">
+      <a
+        href="#main-content"
+        className="sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:not-sr-only focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-teal-800 focus:shadow-lg"
+      >
+        Aller au contenu principal
+      </a>
       {/* Barre laterale fixe (>= lg). */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col overflow-y-auto border-r border-slate-200/70 bg-white/80 p-3 backdrop-blur-md lg:flex">
         {sidebarContent}
@@ -279,7 +287,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         )}
-        <main className="mx-auto min-w-0 max-w-6xl px-4 py-5 sm:px-6 sm:py-8">{children}</main>
+        <main id="main-content" tabIndex={-1} className="mx-auto min-w-0 max-w-6xl px-4 py-5 outline-none sm:px-6 sm:py-8">{children}</main>
       </div>
       <CommandPalette />
       {confirmSignOut && (

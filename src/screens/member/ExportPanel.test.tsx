@@ -224,8 +224,7 @@ describe('ExportPanel', () => {
     const historyEntry = historyHash.closest('li');
     expect(historyEntry).not.toBeNull();
     expect(within(historyEntry as HTMLLIElement).getByText(/Complet — structure actuelle/)).toBeTruthy();
-    const buttons = screen.getAllByRole('button');
-    await userEvent.click(buttons[buttons.length - 1]);
+    await userEvent.click(within(historyEntry as HTMLLIElement).getByRole('button', { name: 'Télécharger' }));
     await waitFor(() => expect(getExportDownloadUrl).toHaveBeenCalledWith('x', 'b/c/export.csv'));
     expect(anchorClick).toHaveBeenCalledOnce();
     const downloadLink = anchorClick.mock.instances[0] as HTMLAnchorElement;
@@ -322,6 +321,117 @@ describe('ExportPanel', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
       await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
       expect(recordExport.mock.calls[0][0].options).toMatchObject({ sectionProjection: { mode: 'all' } });
+    });
+  });
+
+  // UX-15 — etat d'execution, echec pres de l'action, bilan lisible de l'historique.
+  describe('etat d execution et bilan (UX-15)', () => {
+    const SECTIONS: TemplateSection[] = [
+      { id: 's1', sectionKey: 'tuberculose', label: 'Tuberculose', displayOrder: 0, parentSectionKey: null },
+      { id: 's3', sectionKey: 'malnutrition', label: 'Malnutrition', displayOrder: 2, parentSectionKey: null },
+    ];
+    const withSections = {
+      ...templateRepo,
+      async getSections() { return SECTIONS; },
+    } as unknown as TemplateRepository;
+
+    function renderExport(exportsRepo: ExportRepository, templates: TemplateRepository = withSections) {
+      return render(
+        <I18nProvider>
+          <RepositoryProvider bases={baseRepo} templates={templates} exports={exportsRepo}>
+            <MemoryRouter initialEntries={['/bases/b1/cohorts/c1/export']}>
+              <Routes>
+                <Route path="/bases/:id/cohorts/:cohortId/export" element={<ExportPanel />} />
+              </Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+    }
+
+    test('la generation annonce son etat, sans progression chiffree, puis son resultat', async () => {
+      let finish: ((item: ExportLogItem) => void) | null = null;
+      const exportsRepo = {
+        recordExport: () => new Promise<ExportLogItem>((resolve) => { finish = resolve; }),
+        async listExports() { return []; },
+      } as unknown as ExportRepository;
+      renderExport(exportsRepo);
+
+      await screen.findByText('Exporter une cohorte');
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      const enCours = await screen.findByRole('button', { name: 'Génération en cours…' });
+      expect(enCours).toBeDisabled();
+      expect(enCours).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByRole('status')).toHaveTextContent(/Aucune progression chiffrée/);
+      expect(screen.queryByText('%')).not.toBeInTheDocument();
+
+      finish!({ id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'abc', storedFilePath: null });
+      expect(await screen.findByText(/Export terminé/)).toHaveTextContent(/Exports conservés/);
+    });
+
+    test('un echec de generation reste pres de l action et se relance', async () => {
+      let attempts = 0;
+      const exportsRepo = {
+        async recordExport(): Promise<ExportLogItem> {
+          attempts += 1;
+          if (attempts === 1) throw new Error('Edge indisponible');
+          return { id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'abc', storedFilePath: null };
+        },
+        async listExports() { return []; },
+      } as unknown as ExportRepository;
+      renderExport(exportsRepo);
+
+      await screen.findByText('Exporter une cohorte');
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      const refus = await screen.findByRole('alert');
+      expect(refus).toHaveTextContent(/La génération n’a pas abouti/);
+      expect(refus).toHaveTextContent('Edge indisponible');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Relancer la génération' }));
+      expect(await screen.findByText(/Export terminé/)).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    test('un telechargement en echec ne dit pas que l export a echoue et garde l historique', async () => {
+      const exportsRepo = {
+        async recordExport(): Promise<ExportLogItem> { throw new Error('non utilise'); },
+        async listExports(): Promise<ExportLogItem[]> {
+          return [{
+            id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 3, encounterCount: 7, fileHash: 'deadbeef',
+            storedFilePath: 'b/c/export.csv', profile: 'analysis', rowShape: 'encounter',
+            projection: { mode: 'selected', blockKeys: ['tuberculose', 'bloc_disparu'] },
+            excluded: { patients: 2, encounters: 1 },
+          }];
+        },
+        async getExportDownloadUrl() { throw new Error('URL non signee'); },
+      } as unknown as ExportRepository;
+      renderExport(exportsRepo);
+
+      const ligne = (await screen.findByText(/3 patient\(s\)/)).closest('li') as HTMLLIElement;
+      expect(within(ligne).getByText(/Une ligne par rencontre/)).toBeInTheDocument();
+      // Un bloc disparu de la version courante garde sa cle, sans libelle invente.
+      expect(within(ligne).getByText(/Blocs choisis : Tuberculose, bloc_disparu/)).toBeInTheDocument();
+      expect(within(ligne).getByText(/2 patient\(s\) et 1 rencontre\(s\) écartés/)).toBeInTheDocument();
+
+      await userEvent.click(within(ligne).getByRole('button', { name: 'Télécharger' }));
+      expect(await within(ligne).findByRole('alert')).toHaveTextContent(/téléchargement a échoué/);
+      // L'historique reste lisible : l'export conserve n'est pas efface par cet echec.
+      expect(within(ligne).getByText(/3 patient\(s\)/)).toBeInTheDocument();
+    });
+
+    test('un export ancien sans projection consignee le dit au lieu d en inventer une', async () => {
+      const exportsRepo = {
+        async recordExport(): Promise<ExportLogItem> { throw new Error('non utilise'); },
+        async listExports(): Promise<ExportLogItem[]> {
+          return [{
+            id: 'y', format: 'xlsx', exportedAt: '2023-01-01', patientCount: 1, encounterCount: 1,
+            fileHash: null, storedFilePath: null,
+          }];
+        },
+      } as unknown as ExportRepository;
+      renderExport(exportsRepo);
+
+      expect(await screen.findByText(/Projection non consignée/)).toBeInTheDocument();
     });
   });
 });

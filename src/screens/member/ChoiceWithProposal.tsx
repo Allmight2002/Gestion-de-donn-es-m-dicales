@@ -66,7 +66,7 @@ export function ChoiceWithProposal({
         containerClassName="px-1 text-xs"
       />
       {open && (
-        <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950">
+        <div data-proposal-key={proposal.fieldKey} className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950">
           <label className="flex flex-col text-xs text-amber-900 dark:text-amber-100">
             {t(isTerminology ? 'field.terminology_proposal_prompt' : 'field.proposal_prompt')}
             <input
