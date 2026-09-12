@@ -391,8 +391,13 @@ describe('cascade, abandon et purge (O2)', () => {
       baseId: 'b1', operationKey: 'op-expired', payload: { ...PATIENT_PAYLOAD, code: 'H-EXPIRE01' },
     });
 
-    await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put({ ...succeeded, state: 'succeeded' }));
-    await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put({ ...expired, expiresAt: Date.now() - 1 }));
+    // `intakeQueue.list()` ordonne « par creation croissante ». Deux mises en file successives
+    // peuvent tomber dans la MEME milliseconde : le tri est alors a egalite et l'ordre retombe
+    // sur celui de `getAll()`, c'est-a-dire la cle du magasin — « op-expired » avant
+    // « op-succeeded ». Les dates sont donc posees explicitement : ce test verifie le contrat
+    // d'ordre de creation, pas la resolution de l'horloge de la machine.
+    await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put({ ...succeeded, state: 'succeeded', createdAt: 1 }));
+    await idbTx(OUTBOX_STORE, 'readwrite', (s) => s.put({ ...expired, createdAt: 2, expiresAt: Date.now() - 1 }));
 
     expect(await purgeExpiredOutbox()).toBe(1);
     const left = await intakeQueue.list();
