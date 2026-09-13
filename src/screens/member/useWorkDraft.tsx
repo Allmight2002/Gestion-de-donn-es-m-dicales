@@ -4,6 +4,9 @@ import { WorkDraftSession, type WorkDraftSessionState } from '../../data/workDra
 import { WORK_DRAFT_DEBOUNCE_MS, WORK_DRAFT_MAX_WAIT_MS, WorkDraftError, type WorkDraft,
   type WorkDraftContext, type WorkDraftIdentity, type WorkDraftPayload, type WorkDraftRepository } from '../../data/workDrafts';
 
+const sameForm = (draft: WorkDraft, expected: WorkDraftContext) => draft.context.baseId === expected.baseId
+  && draft.context.kind === expected.kind && draft.context.targetId === expected.targetId;
+
 export function useWorkDraft({ context, ownerId, payload, dirty, online, onRestore, repository: override, support = 'server' }: {
   context: WorkDraftContext | null;
   ownerId: string;
@@ -19,8 +22,8 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
   const availableNow = online || support === 'local';
   const key = JSON.stringify([ownerId, context]);
   const fingerprint = JSON.stringify(payload);
-  const latest = useRef({ payload, dirty, onRestore, context, online: availableNow });
-  useLayoutEffect(() => { latest.current = { payload, dirty, onRestore, context, online: availableNow }; });
+  const latest = useRef({ key, payload, dirty, onRestore, context, online: availableNow });
+  useLayoutEffect(() => { latest.current = { key, payload, dirty, onRestore, context, online: availableNow }; });
   const session = useRef<WorkDraftSession | null>(null);
   const generation = useRef(0);
   const dirtySince = useRef<number | null>(null);
@@ -32,6 +35,10 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
   const [loadError, setLoadError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [discarding, setDiscarding] = useState(false);
+  const discardFlight = useRef<number | null>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const enabled = repository.available && context !== null;
+  const loadingCurrent = loading || (enabled && availableNow && loadedKey !== key);
 
   const attach = (next: WorkDraftSession) => {
     if (session.current) session.current.onChange = () => undefined;
@@ -51,18 +58,19 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
     if (session.current) session.current.onChange = () => undefined;
     session.current = null;
     setState(null); setCandidates([]); setCompleted([]); setLoadError(null); dirtySince.current = null;
+    setLoadedKey(null); setDiscarding(false); discardFlight.current = null;
     const currentContext = latest.current.context;
     if (!currentContext || !repository.available || !latest.current.online) { setLoading(false); return; }
     setLoading(true);
     void repository.list(currentContext).then((drafts) => {
       if (token !== generation.current) return;
-      const active = drafts.filter((draft) => draft.state !== 'consumed');
+      const active = drafts.filter((draft) => draft.state === 'active' && sameForm(draft, currentContext));
       setCandidates(active);
-      setCompleted(drafts.filter((draft) => draft.state === 'consumed').slice(0, 3));
+      setCompleted(drafts.filter((draft) => draft.state === 'consumed' && sameForm(draft, currentContext)).slice(0, 3));
       if (active.length === 0) attachRef.current(new WorkDraftSession(repository, currentContext));
     }).catch((error: unknown) => {
       if (token === generation.current) setLoadError(error instanceof WorkDraftError ? error.message : new WorkDraftError('DRAFT_UNAVAILABLE').message);
-    }).finally(() => { if (token === generation.current) setLoading(false); });
+    }).finally(() => { if (token === generation.current) { setLoading(false); setLoadedKey(key); } });
     return () => { generation.current += 1; if (session.current) session.current.onChange = () => undefined; };
   }, [key, repository, revision]);
 
@@ -87,7 +95,8 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
 
   function resume(draft: WorkDraft) {
     const currentContext = latest.current.context;
-    if (!currentContext || draft.context.templateVersionId !== currentContext.templateVersionId
+    if (discardFlight.current !== null || loadingCurrent) return;
+    if (!currentContext || !sameForm(draft, currentContext) || draft.context.templateVersionId !== currentContext.templateVersionId
       || draft.context.entityRevision !== currentContext.entityRevision) {
       setLoadError(new WorkDraftError('DRAFT_CONTEXT_CHANGED').message);
       return;
@@ -97,32 +106,90 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
     latest.current.onRestore(draft.payload);
   }
   function startNew() {
-    if (!latest.current.context) return;
+    if (!latest.current.context || discardFlight.current !== null || loadingCurrent) return;
     attach(new WorkDraftSession(repository, latest.current.context)); setCandidates([]); setLoadError(null);
   }
   async function discard(draft: WorkDraft) {
-    if (discarding) return;
+    const currentContext = latest.current.context;
+    if (discardFlight.current !== null || loadingCurrent || !currentContext || !availableNow) return false;
+    const token = generation.current;
+    if (!sameForm(draft, currentContext) || draft.state !== 'active'
+      || !candidates.some((candidate) => candidate.id === draft.id && candidate.revision === draft.revision)) return false;
+    discardFlight.current = token;
     setDiscarding(true);
+    setLoadError(null);
     try {
       const attemptKey = `${draft.id}:${draft.revision}`;
       const operationId = deleteOperations.current.get(attemptKey) ?? crypto.randomUUID();
       deleteOperations.current.set(attemptKey, operationId);
       await repository.discard(draft.id, draft.revision, operationId);
-      setCandidates((before) => before.filter((candidate) => candidate.id !== draft.id));
-      if (candidates.length === 1) startNew();
-    } catch (error) { setLoadError(error instanceof Error ? error.message : new WorkDraftError('DRAFT_UNAVAILABLE').message); }
-    finally { setDiscarding(false); }
+      if (token !== generation.current || latest.current.key !== key) return false;
+      const remaining = candidates.filter((candidate) => candidate.id !== draft.id);
+      setCandidates(remaining);
+      if (remaining.length === 0) {
+        attach(new WorkDraftSession(repository, currentContext));
+        setLoadError(null);
+        dirtySince.current = null;
+      }
+      return true;
+    } catch (error) {
+      if (token === generation.current) setLoadError(error instanceof WorkDraftError ? error.message : new WorkDraftError('DRAFT_UNAVAILABLE', support).message);
+      return false;
+    } finally {
+      if (discardFlight.current === token) { discardFlight.current = null; setDiscarding(false); }
+    }
+  }
+  // « Commencer une nouvelle saisie » supprime TOUTES les saisies proposees pour ce formulaire.
+  // En laisser une derriere ferait reapparaitre a la visite suivante des donnees explicitement
+  // abandonnees. Chaque suppression garde sa cle d'operation : une reprise apres echec rejoue
+  // les memes suppressions, jamais des suppressions supplementaires.
+  async function discardAllAndStartNew(onCleared: () => void) {
+    const currentContext = latest.current.context;
+    if (discardFlight.current !== null || loadingCurrent || !currentContext || !availableNow) return false;
+    const targets = candidates.filter((candidate) => candidate.state === 'active' && sameForm(candidate, currentContext));
+    if (targets.length === 0) return false;
+    const token = generation.current;
+    discardFlight.current = token;
+    setDiscarding(true);
+    setLoadError(null);
+    try {
+      for (const [index, target] of targets.entries()) {
+        const attemptKey = `${target.id}:${target.revision}`;
+        const operationId = deleteOperations.current.get(attemptKey) ?? crypto.randomUUID();
+        deleteOperations.current.set(attemptKey, operationId);
+        try {
+          await repository.discard(target.id, target.revision, operationId);
+        } catch (error) {
+          // Un echec en cours de route ne laisse pas croire que tout est efface : les saisies
+          // restantes restent proposees, et la reprise ne retente que celles-la.
+          if (token === generation.current) {
+            setCandidates(targets.slice(index));
+            setLoadError(error instanceof WorkDraftError ? error.message : new WorkDraftError('DRAFT_UNAVAILABLE', support).message);
+          }
+          return false;
+        }
+      }
+      if (token !== generation.current || latest.current.key !== key) return false;
+      setCandidates([]);
+      onCleared();
+      attach(new WorkDraftSession(repository, currentContext));
+      setLoadError(null);
+      dirtySince.current = null;
+      return true;
+    } finally {
+      if (discardFlight.current === token) { discardFlight.current = null; setDiscarding(false); }
+    }
   }
   async function commit(identity?: WorkDraftIdentity) {
-    if (!session.current || loading || candidates.length) throw new WorkDraftError('DRAFT_UNAVAILABLE');
+    if (!session.current || loadingCurrent || candidates.length || discardFlight.current !== null) throw new WorkDraftError('DRAFT_UNAVAILABLE');
     return session.current.commit(latest.current.payload, identity);
   }
   return {
-    enabled: repository.available && context !== null, support,
-    state, loading, error: loadError ?? state?.error ?? null, candidates, completed, discarding,
+    enabled, support, dirty,
+    state, loading: loadingCurrent, error: loadError ?? state?.error ?? null, candidates, completed, discarding,
     locked: state?.locked ?? false,
     protected: availableNow && state?.status === 'saved' && state.acknowledgedFingerprint === fingerprint,
-    resume, startNew, discard, commit,
+    resume, startNew, discard, discardAllAndStartNew, commit,
     refresh: () => setRevision((value) => value + 1),
     retry: () => {
       if (session.current && !session.current.state.locked) void session.current.flush(latest.current.payload).catch(() => undefined);

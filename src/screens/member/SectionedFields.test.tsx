@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { TemplateField, ValidationRule } from '../../data/types';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { hiddenFieldKeys, makeMissing } from '../../domain/validation';
 import { calculateFormProgress } from '../../domain/formProgress';
 import { groupFieldsBySection } from '../../domain/templateSections';
 import { EncounterFields } from './EncounterFields';
+import { SectionedFields } from './SectionedFields';
 
 const field = (key: string, section: string | null, required = false): TemplateField => ({ id: key, fieldKey: key, label: key,
   scope: 'encounter', section, type: 'integer', unit: null, allowedValues: null, required, minValue: 0, maxValue: 10,
@@ -73,6 +74,9 @@ describe('long form sections and progress', () => {
   test('collapse and one-block navigation preserve answers and the missing required field', async () => {
     render(<I18nProvider><Example /></I18nProvider>);
     fireEvent.change(screen.getByLabelText('a'), { target: { value: '4' } });
+    expect(screen.getByLabelText('Un bloc à la fois')).toBeChecked();
+    expect(screen.getByLabelText('b')).not.toBeVisible();
+    await userEvent.click(screen.getByLabelText('Un bloc à la fois'));
     await userEvent.click(screen.getByRole('button', { name: 'Tout replier' }));
     expect(screen.getByText('1 champs requis renseignés sur 2')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Prochain champ obligatoire manquant' }));
@@ -84,6 +88,7 @@ describe('long form sections and progress', () => {
   test('an error summary opens a collapsed block and exposes its associated error, which disappears after correction', async () => {
     render(<I18nProvider><Example /></I18nProvider>);
     fireEvent.change(screen.getByLabelText('a'), { target: { value: '4' } });
+    await userEvent.click(screen.getByLabelText('Un bloc à la fois'));
     await userEvent.click(screen.getByRole('button', { name: 'Tout replier' }));
     await userEvent.click(screen.getByRole('button', { name: 'Vérifier' }));
     const summary = screen.getByRole('region', { name: 'Erreurs à corriger' });
@@ -94,6 +99,29 @@ describe('long form sections and progress', () => {
     fireEvent.change(screen.getByLabelText('b'), { target: { value: '3' } });
     expect(screen.queryByRole('region', { name: 'Erreurs à corriger' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('b')).not.toHaveAttribute('aria-invalid');
+  });
+  test('identity is the first presentation block and stays mounted across navigation and native validation', async () => {
+    const submit = vi.fn((event: React.FormEvent) => event.preventDefault());
+    render(<I18nProvider><form onSubmit={submit}><SectionedFields fields={[fields[0]]}
+      leadingBlock={{ label: 'Identité', content: <label>Code<input required /></label> }}
+      renderField={() => <label>Valeur clinique<input /></label>} />
+      <button type="submit">Enregistrer</button></form></I18nProvider>);
+    const code = screen.getByLabelText('Code');
+    const value = screen.getByLabelText('Valeur clinique');
+    expect(code).toBeVisible(); expect(value).not.toBeVisible();
+    await userEvent.type(code, 'P-FICTIF');
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    expect(code).not.toBeVisible(); expect(value).toBeVisible();
+    await userEvent.type(value, 'Saisie conservée');
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc précédent' }));
+    expect(code).toHaveValue('P-FICTIF');
+    await userEvent.clear(code);
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(code).toHaveFocus());
+    expect(code).toBeVisible(); expect(value).toHaveValue('Saisie conservée');
+    expect(screen.getByRole('alert')).toHaveTextContent('Code');
+    expect(submit).not.toHaveBeenCalled();
   });
   test('counts follow visibility, permitted missing codes, conditional obligations and invalid values', () => {
     const conditionalFields = [field('a', null), { ...field('b', 'clinique', true), allowMissingCodes: true }];

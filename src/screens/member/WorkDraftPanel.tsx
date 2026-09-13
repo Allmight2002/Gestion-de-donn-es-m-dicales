@@ -5,15 +5,19 @@ import { useI18n } from '../../i18n/useI18n';
 import type { WorkDraft } from '../../data/workDrafts';
 import type { useWorkDraft } from './useWorkDraft';
 
-export function WorkDraftPanel({ draft, online, baseId, patientId }: {
+export function WorkDraftPanel({ draft, online, baseId, patientId, showCandidates = true }: {
   draft: ReturnType<typeof useWorkDraft>;
   online: boolean;
   baseId: string;
   patientId?: string;
+  showCandidates?: boolean;
 }) {
   const { t } = useI18n();
   const [choice, setChoice] = useState<{ kind: 'resume' | 'discard'; draft: WorkDraft } | null>(null);
   if (!draft.enabled) return null;
+  if (!showCandidates && draft.candidates.length > 0) return null;
+  if (!draft.loading && !draft.dirty && !draft.error && draft.state?.status === 'idle'
+    && draft.candidates.length === 0 && draft.completed.length === 0) return null;
   const local = draft.support === 'local';
   const time = (date: string) => new Date(date).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
   // L'etat affiche suit le SUPPORT reellement accuse : une copie locale n'est jamais annoncee

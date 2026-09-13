@@ -580,6 +580,8 @@ describe('EditPatient (verrou optimiste)', () => {
 
     renderAt('/bases/b1/patients/p1/edit', makePatients(), undefined, sectionsTemplateRepo);
 
+    // La saisie s'ouvre un bloc a la fois : on demande tous les blocs pour lire le regroupement.
+    await userEvent.click(await screen.findByLabelText('Un bloc à la fois'));
     const clinique = await screen.findByRole('group', { name: 'Clinique' });
     const biologie = screen.getByRole('group', { name: 'Biologie' });
     const other = screen.getByRole('group', { name: 'Autre' });

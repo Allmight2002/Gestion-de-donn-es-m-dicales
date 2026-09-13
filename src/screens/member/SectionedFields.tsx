@@ -29,17 +29,18 @@ function FieldFrame({ id, fieldKey, message, children }: { id: string; fieldKey:
 /** The visible groups never own answers. Collapsing or single-block presentation keeps
  * controls mounted; applicability is provided by the existing engine in the caller. */
 export function SectionedFields({ fields, renderField, sections, values, allFields, rules = NO_RULES,
-  hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout }: {
+  hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout, leadingBlock }: {
   fields: TemplateField[];
   renderField: (field: TemplateField) => ReactNode;
   sections?: readonly TemplateSection[] | null;
-  /** UX-16 : presentation des variables communes, distincte des sections cliniques. */
   commonLayout?: TemplateCommonLayout | null;
   values?: Record<string, unknown>;
   allFields?: readonly TemplateField[];
   rules?: readonly ValidationRule[];
   hiddenKeys?: ReadonlySet<string>;
   requireComplete?: boolean;
+  /** Presentation only: identity never enters template fields, rules or analytical progress. */
+  leadingBlock?: { label: string; content: ReactNode };
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -49,13 +50,17 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   const [mobileContents, setMobileContents] = useState(false);
-  const [single, setSingle] = useState(false);
+  const [single, setSingle] = useState(true);
   const [submitted, setSubmitted] = useState(false);
+  const [nativeIssue, setNativeIssue] = useState<string | null>(null);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [newGroup, setNewGroup] = useState<string | null>(null);
   const previousGroups = useRef<string[] | null>(null);
   const currentField = useRef<string | null>(null);
-  const active = roots.some((root) => root.key === current) ? current : roots[0]?.key ?? null;
+  const leadingKey = `${id}-leading`;
+  const steps = leadingBlock ? [{ key: leadingKey }, ...roots] : roots;
+  const active = steps.some((root) => root.key === current) ? current : steps[0]?.key ?? null;
+  const revealingInvalid = useRef(false);
   const rootFor = (key: string) => {
     const source = (allFields ?? fields).find((field) => isProposalSource(field) && findProposalField(allFields ?? fields, field)?.fieldKey === key);
     const group = groups.find((candidate) => candidate.fields.some((field) => field.fieldKey === (source?.fieldKey ?? key)));
@@ -64,6 +69,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const fieldId = (key: string) => `${id}-field-${key}`;
   const groupId = (key: string) => `${id}-group-${key}`;
   const label = (key: string) => {
+    if (key === leadingKey && leadingBlock) return leadingBlock.label;
     const group = groups.find((candidate) => candidate.key === key);
     return sectionLabel(t, { sectionKey: key, label: group?.label });
   };
@@ -106,8 +112,8 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     return () => form.removeEventListener('submit', onSubmit);
   }, []);
 
-  if (roots.length === 0) return null;
-  const rootIndex = roots.findIndex((root) => root.key === active);
+  if (steps.length === 0) return null;
+  const rootIndex = steps.findIndex((root) => root.key === active);
   const nextMissing = () => {
     const candidates = progress.missingKeys.filter((key) => rootFor(key));
     const index = currentField.current ? candidates.indexOf(currentField.current) : -1;
@@ -115,6 +121,22 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     if (key) goToField(key);
   };
   return <div ref={host} className="@container/sections space-y-4"
+    onInvalidCapture={(event) => {
+      event.preventDefault();
+      if (revealingInvalid.current) return;
+      revealingInvalid.current = true;
+      setSubmitted(true);
+      const control = event.target as HTMLElement;
+      if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+        const controlLabel = (control.labels?.[0]?.querySelector('span') ?? control.labels?.[0])?.textContent?.trim();
+        setNativeIssue(`${controlLabel ? `${controlLabel} : ` : ''}${control.validationMessage}`);
+      }
+      const key = control.closest<HTMLElement>('[data-field-key]')?.dataset.fieldKey;
+      const root = key ? rootFor(key) : leadingBlock ? leadingKey : null;
+      if (root) reveal(root, key);
+      requestAnimationFrame(() => { control.focus(); revealingInvalid.current = false; });
+    }}
+    onInputCapture={() => setNativeIssue(null)}
     onFocusCapture={(event) => {
       const field = (event.target as HTMLElement).closest<HTMLElement>('[data-field-key]');
       if (field?.dataset.fieldKey) { currentField.current = field.dataset.fieldKey; setCurrent(rootFor(field.dataset.fieldKey)); }
@@ -124,7 +146,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       if (key) setTouched((before) => new Set(before).add(key));
     }}>
     <div className="space-y-2">
-      {values !== undefined && <p className="text-sm text-slate-600 dark:text-slate-300">
+      {values !== undefined && (progress.requiredKeys.size > 0 || visibleIssues.length > 0) && <p className="text-sm text-slate-600 dark:text-slate-300">
         {progress.requiredKeys.size === 0 ? t('form.section_required_none')
           : t('form.section_required_count').replace('{done}', String(progress.filledRequired)).replace('{total}', String(progress.requiredKeys.size))}
         {visibleIssues.length > 0 && ` — ${t('form.section_errors').replace('{n}', String(visibleIssues.length))}`}
@@ -134,12 +156,12 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
           aria-controls={`${id}-contents`} onClick={() => setMobileContents((open) => !open)}>{t('form.sections')}</button>
         {!single && <>
           <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set())}>{t('form.expand_all')}</button>
-          <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set(roots.map((root) => root.key)))}>{t('form.collapse_all')}</button>
+          <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set(steps.map((root) => root.key)))}>{t('form.collapse_all')}</button>
         </>}
         {progress.missingKeys.length > 0 && <button type="button" className="btn-secondary" onClick={nextMissing}>
           {t('form.next_missing')}
         </button>}
-        {roots.length > 1 && <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+        {steps.length > 1 && <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
           <input type="checkbox" checked={single} onChange={(event) => setSingle(event.target.checked)} className="h-4 w-4 accent-teal-700" />
           {t('form.single_block')}
         </label>}
@@ -149,6 +171,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       <span>{t('form.block_available')} {label(newGroup)}</span>
       <button type="button" className="btn-ghost min-h-11" onClick={() => { reveal(newGroup); setNewGroup(null); }}>{t('form.go_to_block')}</button>
     </div>}
+    {nativeIssue && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{nativeIssue}</p>}
     {submitted && <ValidationSummary errors={visibleIssues.filter((issue) => rootFor(issue.fieldKey)).map((issue) => ({
       id: issue.fieldKey, targetId: fieldId(issue.fieldKey), label: (allFields ?? fields).find((field) => field.fieldKey === issue.fieldKey)?.label ?? issue.fieldKey,
       message: issue.message,
@@ -157,13 +180,13 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       <nav id={`${id}-contents`} aria-label={t('form.contents')}
         className={`${mobileContents ? 'block' : 'hidden'} self-start @min-[52rem]/sections:block`}>
         <ol className="space-y-1 border-l-2 border-slate-200 pl-2 dark:border-slate-700">
-          {roots.map((root) => <li key={root.key}><button type="button" aria-current={active === root.key ? 'location' : undefined}
+          {steps.map((root) => <li key={root.key}><button type="button" aria-current={active === root.key ? 'location' : undefined}
             className={`min-h-11 w-full rounded-lg px-2 py-1.5 text-left text-sm ${active === root.key ? 'bg-teal-50 font-semibold text-teal-900 dark:bg-teal-950 dark:text-teal-100' : 'text-slate-600 dark:text-slate-300'}`}
             onClick={() => reveal(root.key)}>{label(root.key)}</button></li>)}
         </ol>
       </nav>
       <div className="min-w-0 space-y-4">
-        {roots.map((root) => {
+        {steps.map((root) => {
           const members = groups.filter((group) => group.key === root.key || group.parentSectionKey === root.key);
           const keys = new Set(members.flatMap((group) => group.fields.map((field) => field.fieldKey)));
           const missing = progress.missingKeys.filter((key) => keys.has(key)).length;
@@ -176,10 +199,11 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
                 className="flex min-h-11 max-w-full flex-wrap items-center gap-x-3 gap-y-1 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
                 onClick={() => { setCurrent(root.key); setCollapsed((before) => { const next = new Set(before); if (next.has(root.key)) next.delete(root.key); else next.add(root.key); return next; }); }}>
                 <span aria-hidden="true">{expanded ? '▾' : '▸'}</span><span id={`${groupId(root.key)}-title`}>{label(root.key)}</span>
-                {values !== undefined && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{t('form.required_remaining').replace('{n}', String(missing))}{errors > 0 ? ` · ${t('form.section_errors').replace('{n}', String(errors))}` : ''}</span>}
+                {values !== undefined && root.key !== leadingKey && (missing > 0 || errors > 0) && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{t('form.required_remaining').replace('{n}', String(missing))}{errors > 0 ? ` · ${t('form.section_errors').replace('{n}', String(errors))}` : ''}</span>}
               </button>
             </legend>
             <div id={`${groupId(root.key)}-body`} hidden={!expanded} className="@container space-y-5">
+              {root.key === leadingKey && leadingBlock?.content}
               {members.map((group) => <div key={group.key} className="space-y-4">
                 {group.key !== root.key && <h3 className="border-b border-slate-100 pb-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:text-slate-200">{label(group.key)}</h3>}
                 {group.fields.map((field) => <FieldFrame key={field.id} id={fieldId(field.fieldKey)} fieldKey={field.fieldKey} message={issueByKey.get(field.fieldKey)}>{renderField(field)}</FieldFrame>)}
@@ -188,9 +212,9 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
           </fieldset>;
         })}
         {single && <div className="flex flex-wrap items-center justify-between gap-2">
-          <button type="button" className="btn-secondary" disabled={rootIndex <= 0} onClick={() => reveal(roots[rootIndex - 1].key)}>{t('form.previous_block')}</button>
-          <span className="text-xs text-slate-500">{rootIndex + 1} / {roots.length}</span>
-          <button type="button" className="btn-secondary" disabled={rootIndex >= roots.length - 1} onClick={() => reveal(roots[rootIndex + 1].key)}>{t('form.next_block')}</button>
+          <button type="button" className="btn-secondary" disabled={rootIndex <= 0} onClick={() => reveal(steps[rootIndex - 1].key)}>{t('form.previous_block')}</button>
+          <span className="text-xs text-slate-500">{rootIndex + 1} / {steps.length}</span>
+          <button type="button" className="btn-secondary" disabled={rootIndex >= steps.length - 1} onClick={() => reveal(steps[rootIndex + 1].key)}>{t('form.next_block')}</button>
         </div>}
       </div>
     </div>

@@ -3,6 +3,7 @@
 // recentes de l'utilisateur, et les reglages (theme/langue) ancres en bas.
 import 'fake-indexeddb/auto';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import type { ReactNode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -35,7 +36,12 @@ function backendFor(profile: Profile, onSignOut?: () => void): AuthBackend {
   } as unknown as AuthBackend;
 }
 
-function renderShell(profile: Profile, onSignOut?: () => void) {
+function renderShell(
+  profile: Profile,
+  onSignOut?: () => void,
+  initialEntry = '/',
+  children: ReactNode = <p>CONTENU</p>,
+) {
   localStorage.setItem('meddata:offline-cache-owner', profile.id);
   return render(
     <I18nProvider>
@@ -47,8 +53,8 @@ function renderShell(profile: Profile, onSignOut?: () => void) {
         }}
       >
         <RepositoryProvider>
-          <MemoryRouter>
-            <AppShell><p>CONTENU</p></AppShell>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <AppShell>{children}</AppShell>
           </MemoryRouter>
         </RepositoryProvider>
       </AuthProvider>
@@ -59,6 +65,7 @@ function renderShell(profile: Profile, onSignOut?: () => void) {
 describe('AppShell (UI-1, barre laterale)', () => {
   afterEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     setOfflineUser(null);
   });
 
@@ -82,6 +89,86 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.getByRole('button', { name: 'Se déconnecter' })).toBeInTheDocument();
     expect(screen.getByText('CONTENU')).toBeInTheDocument();
     expect(screen.getByText('Ctrl K')).toHaveClass('text-slate-700');
+  });
+
+  test('la navigation defile dans une zone distincte du profil et des reglages', async () => {
+    renderShell({ id: 'u-layout', fullName: 'Dr Layout', globalRole: 'medecin', language: 'fr' });
+
+    await screen.findByText('Dr Layout');
+    const sidebar = screen.getByRole('complementary');
+    const navigation = sidebar.querySelector('nav[aria-label="Navigation principale"]');
+    expect(navigation).not.toBeNull();
+    const scrollRegion = navigation?.parentElement;
+    expect(scrollRegion).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+    const footer = scrollRegion?.nextElementSibling;
+    expect(footer).toHaveClass('shrink-0');
+    expect(footer).toContainElement(sidebar.querySelector('[aria-label="language"]'));
+    expect(footer).toContainElement(sidebar.querySelector('[aria-label="Se déconnecter"]'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir le menu' }));
+    const drawer = screen.getByRole('dialog', { name: 'Ouvrir le menu' });
+    const drawerNavigation = drawer.querySelector('nav[aria-label="Navigation principale"]');
+    expect(drawerNavigation).not.toBeNull();
+    const drawerScrollRegion = drawerNavigation?.parentElement;
+    expect(drawerScrollRegion).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+    const drawerFooter = drawerScrollRegion?.nextElementSibling;
+    expect(drawerFooter).toHaveClass('shrink-0');
+    expect(drawerFooter).toContainElement(drawer.querySelector('[aria-label="language"]'));
+    expect(drawerFooter).toContainElement(drawer.querySelector('[aria-label="Se déconnecter"]'));
+  });
+
+  test('l editeur peut masquer la barre laterale, regagne la largeur et conserve la saisie', async () => {
+    const user = userEvent.setup();
+    renderShell(
+      { id: 'u-editor', fullName: 'Dr Editor', globalRole: 'medecin', language: 'fr' },
+      undefined,
+      '/bases/base-editor/template',
+      <label>Valeur en cours <input defaultValue="saisie preservee" /></label>,
+    );
+
+    await screen.findByText('Dr Editor');
+    const sidebar = screen.getByRole('complementary');
+    const contentColumn = screen.getByRole('main').parentElement;
+    const input = screen.getByRole('textbox', { name: 'Valeur en cours' });
+    const editorHeader = document.querySelector('header');
+    expect(sidebar).toHaveClass('lg:flex');
+    expect(contentColumn).toHaveClass('lg:pl-60');
+    expect(editorHeader).toHaveClass('relative');
+    expect(editorHeader).not.toHaveClass('sticky');
+
+    await user.click(screen.getByRole('button', { name: 'Masquer la barre latérale' }));
+
+    expect(sidebar).toHaveClass('lg:hidden');
+    // La gouttiere laissee libre est celle du bouton de reouverture, pas la largeur de la barre.
+    expect(contentColumn).toHaveClass('lg:pl-20');
+    expect(input).toHaveValue('saisie preservee');
+    expect(sessionStorage.getItem('meddata:desktop-sidebar')).toBe('closed');
+    expect(screen.getByRole('button', { name: 'Afficher la barre latérale' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Afficher la barre latérale' }));
+    expect(sidebar).toHaveClass('lg:flex');
+    expect(contentColumn).toHaveClass('lg:pl-60');
+    expect(input).toHaveValue('saisie preservee');
+    expect(screen.getByRole('button', { name: 'Masquer la barre latérale' })).toBeInTheDocument();
+
+    // Le changement de route garde l état du shell et le footer de l aside reste ancré.
+    await user.click(screen.getByRole('link', { name: /Groupes de recherche/ }));
+    expect(sidebar).toHaveClass('lg:flex');
+    expect(input).toHaveValue('saisie preservee');
+    const navigation = sidebar.querySelector('nav[aria-label="Navigation principale"]');
+    const scrollRegion = navigation?.parentElement;
+    expect(scrollRegion?.nextElementSibling).toHaveClass('shrink-0');
+    expect(scrollRegion?.nextElementSibling).toContainElement(sidebar.querySelector('[aria-label="language"]'));
+    expect(scrollRegion?.nextElementSibling).toContainElement(sidebar.querySelector('[aria-label="Se déconnecter"]'));
+  });
+
+  test('la preference de barre laterale est restauree a la navigation suivante', async () => {
+    sessionStorage.setItem('meddata:desktop-sidebar', 'closed');
+    renderShell({ id: 'u-persist', fullName: 'Dr Persist', globalRole: 'medecin', language: 'fr' });
+
+    await screen.findByText('Dr Persist');
+    expect(screen.getByRole('complementary')).toHaveClass('lg:hidden');
+    expect(screen.getByRole('button', { name: 'Afficher la barre latérale' })).toBeInTheDocument();
   });
 
   test('curateur : navigation reduite (pool + synchro), pas de gabarits/groupes', async () => {

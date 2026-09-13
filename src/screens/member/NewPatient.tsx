@@ -30,6 +30,7 @@ import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCovera
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
+import { PatientDraftDialog } from './PatientDraftDialog';
 import { localWorkDraftRepository } from '../../data/localWorkDrafts';
 
 // Ecran patient (cahier v3.0). Deux modes :
@@ -51,6 +52,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const intakeAttempt = useRef<{ fingerprint: string; operationKey: string } | null>(null);
   const loadedFor = useRef<string | null>(null);
   const defaultsApplied = useRef(false); // L28 : les propositions ne s'appliquent qu'au premier chargement
+  const initialCode = useRef('');
   const { toast } = useToast();
   const { profile } = useAuth();
   // Confier au pool de curation releve de la curation, fermee aux comptes de mission
@@ -188,6 +190,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         setPrefilled(proposed.prefilled);
       }
       setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
+      initialCode.current = `P-${String(existing + 1).padStart(4, '0')}`;
       setError(null);
       loadedFor.current = baseId;
     } catch (e) {
@@ -231,7 +234,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || work.loading || work.candidates.length || work.discarding) return;
     if (work.locked) { await persistPatient(); return; }
     // En hors-ligne intake-only, un code vide est ACCEPTED : il est genere depuis la cle
     // d'operation (stable, improbable a collision) a la mise en file. En ligne, le code
@@ -361,6 +364,15 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     }
   }
 
+  function resetEntry() {
+    const proposed = initialValuesFromDefaults(fields);
+    setPermanent(proposed.values); permanentRef.current = proposed.values; setPrefilled(proposed.prefilled);
+    setCode(initialCode.current); setFullName(''); setExternalId(''); setDob(''); setPhone(''); setAddress('');
+    setMatches([]); setAckDuplicate(false); setError(null); setConfirmationOpen(false);
+    submitAttempt.current = null; intakeAttempt.current = null;
+    navigation.resetBaseline();
+  }
+
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
   // Une proposition est toujours rendue avec sa source. Cela vaut aussi pour les donnees
@@ -370,35 +382,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
     (field) => !companionKeys.has(field.fieldKey) && !hidden.has(field.fieldKey),
   );
 
-  return (
-    <section className="max-w-5xl space-y-5 sm:space-y-6">
-      {navigation.guard}
-      <div>
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
-          ← {t('admin.back')}
-        </button>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="page-title">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
-          {/* La saisie s'ouvre directement : confier au staff n'est plus une page intercalaire,
-              mais une sortie de secours a un clic depuis le formulaire. */}
-          {mode === 'manual' && maySubmitToCuration && (
-            <button
-              type="button"
-              onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
-              className="btn-secondary"
-            >
-              <Send size={16} aria-hidden /> {t('create.submit')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {mode === 'submit' && <p className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">{t('patient.submit_hint')}</p>}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} />
-
-      <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
-        <fieldset disabled={busy || work.locked} className="min-w-0 space-y-6">
+  const identification = <div className="space-y-4">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">{t('patient.code')}</span>
           {/* En hors-ligne intake-only, un code vide est genere a la mise en file :
@@ -407,7 +391,9 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
         </label>
 
-        {canViewIdentity && <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+        {/* Le cloisonnement se voit : les champs nominatifs gardent leur cadre et leur
+            avertissement, meme depuis que l'identite ouvre le formulaire comme premier bloc. */}
+        {canViewIdentity && <fieldset className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
           <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
           <p className="text-xs text-slate-500">{t('patient.identity_note')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -463,11 +449,48 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
           </div>
         )}
 
+  </div>;
+
+  return (
+    <section className="max-w-5xl space-y-5 sm:space-y-6">
+      {navigation.guard}
+      <div>
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+          ← {t('admin.back')}
+        </button>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="page-title">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
+          {/* La saisie s'ouvre directement : confier au staff n'est plus une page intercalaire,
+              mais une sortie de secours a un clic depuis le formulaire. */}
+          {mode === 'manual' && maySubmitToCuration && (
+            <button
+              type="button"
+              onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
+              className="btn-secondary"
+            >
+              <Send size={16} aria-hidden /> {t('create.submit')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {mode === 'submit' && <p className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">{t('patient.submit_hint')}</p>}
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <PatientDraftDialog draft={work} onCancel={() => navigate(`/bases/${baseId}`)} onNew={resetEntry} />
+      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} />
+
+      <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
+        <fieldset disabled={busy || work.loading || work.locked || work.candidates.length > 0 || work.discarding} className="min-w-0 space-y-6">
+        {mode === 'submit' && <fieldset className="rounded-xl border border-slate-200 p-4"><legend className="px-1 text-sm font-semibold">{t('patient.identification')}</legend>{identification}</fieldset>}
+        {/* L'identite ouvre le formulaire comme premier bloc : elle reste hors du gabarit,
+            donc hors des regles et de la progression, mais se saisit dans le meme parcours
+            que les blocs cliniques — y compris quand le gabarit n'a aucune variable. */}
+        {mode === 'manual' && fields.length === 0 && (
+          <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
+        )}
         {mode === 'manual' && (
-          fields.length === 0 ? (
-            <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
-          ) : (
             <SectionedFields
+              leadingBlock={{ label: t('patient.identification'), content: identification }}
               fields={visibleFields}
               sections={sections}
               commonLayout={commonLayout}
@@ -523,7 +546,6 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
                 );
               }}
             />
-          )
         )}
 
         {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne
@@ -543,7 +565,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
         </fieldset>
         <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          <button type="submit" disabled={busy} className="btn-primary">
+          <button type="submit" disabled={busy || work.loading || work.candidates.length > 0 || work.discarding} className="btn-primary">
             {mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
           </button>
           <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary">
