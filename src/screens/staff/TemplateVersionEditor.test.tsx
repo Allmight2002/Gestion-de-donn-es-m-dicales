@@ -188,6 +188,96 @@ describe('TemplateVersionEditor', () => {
     expect(await screen.findByRole('button', { name: 'Ajouter la section' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
   });
+
+  // L60 — le parcours entier, de l'import a la regle ecrite. Ce que le panneau seul ne peut
+  // pas prouver : que la creation passe bien par `addRule`, le CHEMIN EXISTANT, et non par
+  // une ecriture parallele.
+  describe('L60 — reconnexion de l’activation apres import', () => {
+    const RELEASE = '11111111-1111-4111-8111-111111111111';
+    const driver = makeField({
+      id: 'field-diag', fieldKey: 'diagnostics', label: 'Diagnostics',
+      section: null, type: 'terminology', isMultiple: true,
+    });
+    /** Variable arrivee avec le bloc : sans elle le bloc serait vide au sens de L55. */
+    const carried = makeField({
+      id: 'field-bk', fieldKey: 'bk_crachats', label: 'BK crachats', section: 'tuberculose',
+    });
+
+    /** Version cible apres import : le bloc est la, sans aucune regle qui le porte. */
+    function importedRepo(over: { diagnosisContext?: TemplateVersion['diagnosisContext'] } = {}) {
+      const addRule = vi.fn(async () => ({ id: 'rule-1', rule: {}, message: null, severity: 'block' as const }));
+      const target: TemplateVersion = {
+        ...version,
+        diagnosisConfiguration: [{ scope: 'encounter', diagnosisFieldKey: 'diagnostics', terminologyReleaseId: RELEASE, commonOnlyCodes: [] }],
+        diagnosisContext: over.diagnosisContext === undefined
+          ? [{ scope: 'encounter', diagnosisFieldKey: 'diagnostics', terminologyReleaseId: RELEASE,
+            commonOnlyCodes: [], proposalFieldKey: 'diagnostics_autre', recognizedCodes: ['A15.0'] }]
+          : over.diagnosisContext,
+      };
+      const repo = {
+        getVersion: vi.fn(async () => ({
+          version: target,
+          fields: [driver, carried],
+          rules: [],
+          sections: [...sections, { id: 'section-tb', sectionKey: 'tuberculose', label: 'Tuberculose', displayOrder: 3 }],
+        })),
+        addRule,
+        listImportableSections: vi.fn(async () => [block]),
+        previewSectionImport: vi.fn(async () => rapport),
+        importSection: vi.fn(async () => rapport),
+        getFields: vi.fn(async () => [driver, carried]),
+      } as unknown as TemplateRepository;
+      return { repo, addRule };
+    }
+
+    const rapport = {
+      sectionKey: 'tuberculose', subsections: [], importedFields: ['bk_crachats'], reusedFields: [],
+      copiedRules: 0,
+      activationRule: { field: 'diagnostics', operator: 'contains_any', value: ['A15.0'], terminologyReleaseId: RELEASE },
+      conflicts: [],
+    };
+
+    /** Importe le bloc puis demande a le conditionner : on arrive dans l'espace Regles. */
+    async function importerPuisConditionner(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(await screen.findByRole('button', { name: 'Gérer la structure' }));
+      await user.click(await screen.findByRole('button', { name: 'Importer un bloc' }));
+      await user.selectOptions(await screen.findByLabelText(/Bloc à importer/), 'version-2::tuberculose');
+      await screen.findByText(/Ce qui sera écrit/);
+      await user.click(screen.getByRole('button', { name: 'Importer ce bloc' }));
+      await user.click(await screen.findByRole('button', { name: 'Conditionner ce bloc' }));
+    }
+
+    test('cible compatible : la regle est ecrite par addRule, sous sa forme canonique', async () => {
+      const user = userEvent.setup();
+      const { repo, addRule } = importedRepo();
+      renderEditor(repo);
+      await importerPuisConditionner(user);
+
+      await user.click(await screen.findByRole('button', { name: /Créer cette règle/ }));
+      await waitFor(() => expect(addRule).toHaveBeenCalledTimes(1));
+      expect(addRule).toHaveBeenCalledWith(
+        'version-1',
+        { if: { field: 'diagnostics', operator: 'contains_any', value: ['A15.0'], terminologyReleaseId: RELEASE },
+          then: { section: 'tuberculose', operator: 'visible' } },
+        '',
+        'block',
+      );
+    });
+
+    test('cible incompatible : rien n’est ecrit, et l’avertissement de L59 reste affiche', async () => {
+      const user = userEvent.setup();
+      // Aucune configuration diagnostique : l'edition du referentiel n'est verifiable nulle part.
+      const { repo, addRule } = importedRepo({ diagnosisContext: [] });
+      renderEditor(repo);
+      await importerPuisConditionner(user);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/ne déclare pas cette variable comme pilote diagnostique/);
+      expect(screen.queryByRole('button', { name: /Créer cette règle/ })).not.toBeInTheDocument();
+      // Le bloc reste visible sans condition, et l'ecran continue de le dire.
+      expect(screen.getByText(/Le bloc est visible sans condition/)).toBeInTheDocument();
+      expect(addRule).not.toHaveBeenCalled();
+    });
+  });
 });
 
 // UX-14 — cas dimensionnant : 216 variables et 24 regles fictives, generees ici (jamais

@@ -78,6 +78,42 @@ describe('L55 configuration et couverture', () => {
     await expect(db.admin.query("update template_field set allowed_values='[\"A\",\"C\",\"D\"]' where template_version_id=$1 and field_key='diagnostics'",[f.version])).rejects.toThrow();
     await expect(db.admin.query("insert into validation_rule(template_version_id,rule,severity) values($1,$2,'block')",[f.version,f.rule])).rejects.toThrow('DIAGNOSIS_BLOCK_NONCANONICAL');
   });
+  // L60 : l'ecran refuse une edition differente avant d'ecrire, mais c'est le SERVEUR qui en
+  // repond. Ce test verifie les gardes elles-memes — sans interface, sans RPC nouvelle — pour
+  // que la reconnexion d'un bloc importe ne repose jamais sur le seul controle du navigateur.
+  test('L60 : reconnexion d’un bloc importe — gardes serveur de l’edition et des codes', async () => {
+    const f = await fixture('terminology');
+    const other = (await db.admin.query("insert into terminology_release(slug,title,source,version) values('l60','L60','fictif','1') returning id")).rows[0].id;
+    await db.admin.query("insert into terminology_concept(release_id,code,label,kind) values($1,'A','Alpha','category')", [other]);
+    // Le bloc « second » porte `measure2` : il n'est pas vide, donc seule l'edition est en cause.
+    const activation = (releaseId: string, value: string[]) => ({
+      if: { field: 'diagnostics', operator: 'contains_any', value, terminologyReleaseId: releaseId },
+      then: { section: 'second', operator: 'visible' },
+    });
+    const create = (rule: unknown) => db.admin.query(
+      "insert into validation_rule(template_version_id,rule,severity) values($1,$2,'block')", [f.version, rule]);
+
+    // Edition differente de celle du pilote de la cible : le refus vient des gardes de L55.
+    await expect(create(activation(other, ['A']))).rejects.toThrow('DIAGNOSIS_RELEASE_MISMATCH');
+    // Code absent de l'edition configuree : refus de la garde de forme, avant L55.
+    await expect(create(activation(release, ['ZZZ']))).rejects.toThrow('code absent de la release');
+    // Code deja declare « socle suffisant » : un code ne peut pas se passer de bloc et en activer un.
+    await expect(create(activation(release, ['B']))).rejects.toThrow('DIAGNOSIS_COMMON_BLOCK_OVERLAP');
+    // Aucun de ces refus n'a laisse de regle derriere lui.
+    expect((await db.admin.query(
+      "select count(*)::int as n from validation_rule where template_version_id=$1 and rule->'then'->>'section'='second'",
+      [f.version])).rows[0].n).toBe(0);
+
+    // Meme edition et code reconnu : la regle passe par le chemin d'ecriture existant.
+    await create(activation(release, ['A']));
+    expect((await db.admin.query(
+      "select count(*)::int as n from validation_rule where template_version_id=$1 and rule->'then'->>'section'='second'",
+      [f.version])).rows[0].n).toBe(1);
+    // Et le bloc est bien devenu couvert pour ce code, par la meme voie que L55.
+    const coverage = (await db.admin.query('select diagnosis_coverage($1,$2,$3) as c',
+      [f.version, 'patient', JSON.stringify({ diagnostics: [{ code: 'A', label: 'Alpha' }] })])).rows[0].c;
+    expect(coverage.diagnostics[0].blockKeys).toEqual(['block', 'second']);
+  });
   test('permissions gabarit, ancien client, publication et gel', async () => {
     const f = await fixture();
     await expect(db.asUser(bob, async (c) => {await client(c); return c.query('select set_diagnosis_configuration($1,$2)',[f.version,JSON.stringify(f.config)]);})).rejects.toThrow();

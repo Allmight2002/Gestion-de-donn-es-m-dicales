@@ -393,7 +393,10 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       const [fRes, sRes] = await Promise.all([
         client
           .from('template_field')
-          .select('id, field_key, label, description, default_value, scope, section, type, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, formula, display_order, encounter_types')
+          // `is_multiple` fait partie de `FieldRow` et `mapField` le lit : l'omettre ici ne
+          // rendait pas la lecture plus legere, il la rendait FAUSSE — toute variable
+          // multivaluee revenait unitaire, et L60 refusait alors son pilote a tort.
+          .select('id, field_key, label, description, default_value, scope, section, type, is_multiple, unit, allowed_values, allowed_options, required, min_value, max_value, allow_missing_codes, missing_reasons, formula, display_order, encounter_types')
           .eq('template_version_id', versionId)
           .order('display_order', { ascending: true }),
         client.from('template_section').select(SECTION_COLUMNS).eq('template_version_id', versionId).order('display_order', { ascending: true }),

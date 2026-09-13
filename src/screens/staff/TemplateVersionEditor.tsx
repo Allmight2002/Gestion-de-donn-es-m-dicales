@@ -16,6 +16,8 @@ import { RuleBatchPanel, isBatchSource } from './RuleBatchPanel';
 import { DiagnosisConfigurationEditor } from './DiagnosisConfigurationEditor';
 import { SectionsEditor } from './SectionsEditor';
 import { SectionImportDialog } from './SectionImportDialog';
+import { BlockActivationPanel } from './BlockActivationPanel';
+import type { ImportedBlockActivation } from '../../domain/blockActivation';
 import { CommonLayoutEditor } from './CommonLayoutEditor';
 import { FieldMoveDialog, type FieldMove } from './FieldMoveDialog';
 import { templateFieldToNewField } from '../../domain/templateFields';
@@ -118,11 +120,12 @@ export function TemplateVersionEditor({
   const [previewVisited, setPreviewVisited] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  // L59 : import d'un bloc reutilisable. `activationSection` porte le bloc qui vient
-  // d'arriver jusqu'au constructeur de regles — c'est le point d'entree de L60, et rien
-  // de plus : aucune regle n'est creee ici, aucun pilote n'est devine.
+  // L59/L60 : import d'un bloc reutilisable. `activation` porte le bloc qui vient d'arriver
+  // ET la condition d'affichage que D7 a refuse de copier, jusqu'a l'espace Regles. L60 dit
+  // la si cette condition peut etre recreee ici ; sinon le constructeur reste la seule voie.
   const [importOpen, setImportOpen] = useState(false);
-  const [activationSection, setActivationSection] = useState<string | null>(null);
+  const [activation, setActivation] = useState<ImportedBlockActivation | null>(null);
+  const activationSection = activation?.sectionKey ?? null;
   const rulesRef = useRef<HTMLDivElement | null>(null);
   const ruleFormRef = useRef<HTMLDivElement | null>(null);
   // UX-14(a) : trois espaces de travail. Ils ne font que CHANGER CE QUI EST AFFICHE — la
@@ -793,9 +796,9 @@ export function TemplateVersionEditor({
           // Le cache de session est deja vide par `importSection` ; ce rechargement
           // rapporte le bloc, ses variables et ses regles dans l'ecran.
           onImported={reload}
-          onActivate={(sectionKey) => {
+          onActivate={(next) => {
             setImportOpen(false);
-            setActivationSection(sectionKey);
+            setActivation(next);
             setRuleFormOpen(true);
             // L'activation se decide dans l'espace Regles : on y conduit directement.
             setSpace('rules');
@@ -1099,14 +1102,30 @@ export function TemplateVersionEditor({
         {rules.length > 0 && filteredRules.length === 0 && <p className="text-sm text-slate-500">{t('admin.rules_none')}</p>}
         {editable && ruleFormOpen && (
           <div className="mt-3" ref={ruleFormRef}>
-            {/* L59 : apres un import, le bloc est visible SANS condition (D7 n'a pas
-                copie sa regle d'activation). Le constructeur s'ouvre donc sur ce bloc,
-                et l'utilisateur choisit le pilote : c'est L60 qui verifiera un jour la
-                compatibilite d'un pilote repris de la source. */}
-            {activationSection && !editingRule && (
-              <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                {t('blockimport.success_activation')}
-              </p>
+            {/* L59 : apres un import, le bloc est visible SANS condition (D7 n'a pas copie
+                sa regle d'activation). L'avertissement reste affiche TANT QU'AUCUNE regle ne
+                porte le bloc — y compris quand L60 refuse de recreer celle de la source. */}
+            {activation && !editingRule && (
+              <>
+                <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  {t('blockimport.success_activation')}
+                </p>
+                {/* L60 : recreer la condition d'origine quand la cible s'y prete, nommer la
+                    condition qui manque sinon. Le constructeur reste ouvert en dessous. */}
+                <BlockActivationPanel
+                  activation={activation}
+                  fields={fields}
+                  sections={sections}
+                  rules={rules}
+                  diagnosis={version.diagnosisContext}
+                  busy={busy}
+                  onCreate={(rule) => {
+                    void run(() => repo.addRule(version.id, rule, '', 'block')).then((ok) => {
+                      if (ok) { setActivation(null); closeRuleForm(); }
+                    });
+                  }}
+                />
+              </>
             )}
             <RuleForm
               key={`${ruleDraftRevision}-${editingRule?.id ?? (duplicateSource ? `duplicate-${duplicateSource.id}` : `new-rule-${activationSection ?? ''}`)}`}
@@ -1134,7 +1153,7 @@ export function TemplateVersionEditor({
                   void run(() => repo.addRule(version.id, rule, message, severity)).then((ok) => {
                     // Le bloc importe est desormais conditionne : le renvoi vers
                     // l'activation a fait son office et n'a plus lieu d'etre affiche.
-                    if (ok) { setActivationSection(null); closeRuleForm(); }
+                    if (ok) { setActivation(null); closeRuleForm(); }
                   });
                 }
               }}

@@ -232,6 +232,39 @@ describe('TemplateRepository.importSection — cache de version', () => {
   });
 });
 
+describe('TemplateRepository.getFields — lecture allegee, jamais tronquee', () => {
+  // L59 a introduit cette lecture pour eviter de charger la version entiere. Elle omettait
+  // `is_multiple`, que `mapField` lit : toute variable multivaluee revenait unitaire. L60 s'en
+  // sert pour comparer le pilote de la source a celui de la cible, et refusait donc a tort.
+  test('rend `isMultiple` : une lecture allegee ne doit pas changer la valeur lue', async () => {
+    const columns: string[] = [];
+    const client = {
+      from: vi.fn((table: string) => ({
+        select: vi.fn((cols: string) => {
+          columns.push(`${table}:${cols}`);
+          return fakeQuery({
+            data: table === 'template_field'
+              ? [{
+                id: 'f1', field_key: 'diagnostics', label: 'Diagnostics', description: null,
+                default_value: null, scope: 'encounter', section: null, type: 'terminology',
+                is_multiple: true, unit: null, allowed_values: null, allowed_options: null,
+                required: false, min_value: null, max_value: null, allow_missing_codes: false,
+                missing_reasons: null, formula: null, display_order: 0, encounter_types: null,
+              }]
+              : [],
+            error: null,
+          });
+        }),
+      })),
+    } as unknown as SupabaseClient;
+
+    const fields = await makeTemplateRepository(client).getFields!('v1');
+
+    expect(columns.some((entry) => entry.startsWith('template_field:') && entry.includes('is_multiple'))).toBe(true);
+    expect(fields[0].isMultiple).toBe(true);
+  });
+});
+
 describe('TemplateRepository.setCommonLayout — UX-16', () => {
   test('transmet l operation complete et renvoie seulement le recu serveur', async () => {
     const rpc = vi.fn(async (name: string) => ({

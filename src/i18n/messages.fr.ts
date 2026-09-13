@@ -1,4 +1,9 @@
 export const messages = {
+    'patient.identification': 'Identification du patient',
+    'draft.entry_title': 'Reprendre une saisie précédente ?',
+    'draft.entry_body': 'Reprenez votre saisie ou supprimez les brouillons proposés pour commencer une nouvelle fiche.',
+    'draft.entry_select': 'Saisie à reprendre',
+    'draft.entry_new': 'Supprimer et recommencer',
     'editor.structure': 'Structure du formulaire',
     'editor.diagnosis': 'Collecte diagnostique',
     'editor.preview': 'Aperçu',
@@ -1552,6 +1557,48 @@ export const messages = {
       'Un élément utilisé par un calcul existe déjà ici, mais avec une portée ou un type incompatible, ou il est lui-même calculé. Le résultat n’aurait pas le même sens que dans le jeu de variables source.',
     'blockimport.error.visibility_cycle':
       'Les règles du bloc formeraient une dépendance circulaire avec celles de cette version : chaque règle attendrait l’autre, et le formulaire ne saurait plus quoi afficher.',
+    // L60 — reconnexion de la regle d'activation d'un bloc importe (§6). Chaque refus
+    // nomme LA condition qui manque : un motif generique renverrait l'utilisateur
+    // chercher lui-meme ce que l’ecran savait deja.
+    'blockactivation.title': 'Règle d’affichage du bloc importé',
+    'blockactivation.ready':
+      'Le jeu de variables d’origine n’affichait ce bloc que sous condition. La même condition peut être recréée ici : la variable pilote « {field} » est compatible, et tous les codes cités existent dans cette version.',
+    'blockactivation.create': 'Créer cette règle d’affichage',
+    'blockactivation.creating': 'Création en cours…',
+    'blockactivation.blocked_intro':
+      'La condition d’origine portait sur la variable « {field} ». Elle ne peut pas être recréée telle quelle ici :',
+    'blockactivation.fallback':
+      'Le bloc reste visible sans condition : rien n’est masqué, rien n’est effacé. Choisissez un autre pilote dans le constructeur de règles ci-dessous.',
+    'blockactivation.blocked.driver_missing':
+      'Cette version ne contient aucune variable portant ce code.',
+    'blockactivation.blocked.driver_scope':
+      'La variable de même code n’appartient pas à la même fiche — patient ou visite — que dans le jeu de variables d’origine.',
+    'blockactivation.blocked.driver_type':
+      'La variable de même code n’a pas le même type que dans le jeu de variables d’origine.',
+    'blockactivation.blocked.driver_multiple':
+      'La variable de même code n’accepte pas le même nombre de valeurs : l’une est multivaluée, l’autre non.',
+    'blockactivation.blocked.driver_in_block':
+      'La variable pilote appartient au bloc « {detail} » : le bloc importé se viderait dès que ce bloc-là est masqué. Remontez-la d’abord au tronc commun.',
+    'blockactivation.blocked.driver_calculated':
+      'La variable pilote est calculée ici : son résultat n’est jamais enregistré, et le bloc resterait masqué pour toujours.',
+    'blockactivation.blocked.driver_hidden':
+      'La variable pilote est elle-même masquée par une règle d’affichage : une condition posée dessus ne serait jamais vérifiable.',
+    'blockactivation.blocked.release_unknown':
+      'Cette version ne déclare pas cette variable comme pilote diagnostique. L’édition du référentiel n’y est donc écrite nulle part, et ni elle ni les codes cités ne peuvent être vérifiés.',
+    'blockactivation.blocked.release_mismatch':
+      'Cette version utilise une autre édition du référentiel que le jeu de variables d’origine. Les mêmes codes n’y désignent pas forcément les mêmes diagnostics.',
+    'blockactivation.blocked.code_unknown':
+      'Codes cités par la condition mais absents de cette version : {detail}. La règle ne se déclencherait jamais et le bloc resterait masqué.',
+    'blockactivation.blocked.common_only':
+      'Codes déjà déclarés « socle suffisant » dans cette version : {detail}. Un même code ne peut pas à la fois se passer de bloc et en activer un.',
+    'blockactivation.blocked.diagnosis_noncanonical':
+      'Cette variable est le pilote diagnostique de cette version : une association y prend obligatoirement la forme « contient l’un de ces codes », ce que la condition d’origine n’est pas.',
+    'blockactivation.blocked.block_scope':
+      'Le bloc importé porte des variables de l’autre fiche que son pilote : il serait à moitié évalué.',
+    'blockactivation.blocked.block_empty':
+      'Le bloc importé n’a aucune variable saisissable : il ne peut pas servir à déclarer un diagnostic couvert.',
+    'blockactivation.blocked.invalid':
+      'La condition d’origine n’a pas une forme acceptée par le moteur de règles : {detail}.',
   } as const;
 
 export type MessageKey = keyof typeof messages;
