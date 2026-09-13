@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import type { DiagnosisContext, TemplateSection } from './types';
 import { mergeKeepBoth } from '../domain/conflictMerge';
+import { userDataCaches } from '../pwa/appShellCaches';
 
 export interface OfflineEncounter {
   id: string;
@@ -744,13 +745,22 @@ export async function purgeForeignOfflineRecords(userId: string): Promise<number
   return removed;
 }
 
-export interface OfflinePurgeReport { indexedDb: boolean; localStorage: boolean; cacheStorage: boolean; serviceWorkers: boolean; errors: string[]; }
+export interface OfflinePurgeReport { indexedDb: boolean; localStorage: boolean; cacheStorage: boolean; errors: string[]; }
 
 const OFFLINE_OWNER_KEY = 'meddata:offline-cache-owner';
 
-/** Effacement verificable des donnees applicatives locales, sans toucher a la session d'authentification. */
+/**
+ * Effacement verificable des DONNEES locales, sans toucher ni a la session d'authentification
+ * ni a la coquille applicative.
+ *
+ * La coquille (service worker, index.html, JS, CSS, traductions) ne porte aucun contenu
+ * utilisateur : la desinstaller a la deconnexion ne protegeait personne et privait l'appareil
+ * de tout demarrage hors connexion — une session non restaurable suffisait a laisser le
+ * navigateur sur `ERR_FAILED`. Tout cache qui n'est pas reconnu comme coquille est efface,
+ * de sorte qu'un futur cache de reponses serveur partirait bien avec les donnees.
+ */
 export async function purgeAllOfflineData(): Promise<OfflinePurgeReport> {
-  const report: OfflinePurgeReport = { indexedDb: false, localStorage: false, cacheStorage: false, serviceWorkers: false, errors: [] };
+  const report: OfflinePurgeReport = { indexedDb: false, localStorage: false, cacheStorage: false, errors: [] };
   try {
     if (typeof indexedDB !== 'undefined') await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(DB_NAME);
@@ -766,11 +776,12 @@ export async function purgeAllOfflineData(): Promise<OfflinePurgeReport> {
     }
     report.localStorage = true;
   } catch (e) { report.errors.push(`localStorage: ${String(e)}`); }
-  try { if ('caches' in globalThis) for (const key of await caches.keys()) await caches.delete(key); report.cacheStorage = true; } catch (e) { report.errors.push(`Cache Storage: ${String(e)}`); }
-  try { if (typeof navigator !== 'undefined' && navigator.serviceWorker) for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister(); report.serviceWorkers = true; } catch (e) { report.errors.push(`Service worker: ${String(e)}`); }
+  try {
+    if ('caches' in globalThis) for (const key of userDataCaches(await caches.keys())) await caches.delete(key);
+    report.cacheStorage = true;
+  } catch (e) { report.errors.push(`Cache Storage: ${String(e)}`); }
   return report;
 }
-
 export interface OfflineInitializationReport {
   previousOwner: string | null;
   ownerChanged: boolean;

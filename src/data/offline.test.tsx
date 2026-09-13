@@ -6,7 +6,7 @@ import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildSnapshot, idbTx, INTAKE_CONTEXT_STORE, offlineCache, outbox, purgeExpiredIntakeContexts,
-  purgeForeignOfflineRecords,
+  purgeAllOfflineData, purgeForeignOfflineRecords,
   resolveKeepBoth, resolveKeepMine, setOfflineUser,
   type FlushDeps, type OutboxEntry,
 } from './offline';
@@ -184,5 +184,34 @@ describe('UX-8 — enregistrements locaux d\'un autre compte', () => {
     expect(await outbox.get('ob-autre')).toBeNull();
     const contextes = await idbTx<Array<{ ownerUserId?: string | null }>>(INTAKE_CONTEXT_STORE, 'readonly', (s) => s.getAll());
     expect(contextes.some((c) => c.ownerUserId === 'quelqu-un-d-autre')).toBe(false);
+  });
+});
+
+// La deconnexion doit emporter les DONNEES, jamais la coquille applicative. Elle emportait les
+// deux : le service worker etait desinstalle et tout le Cache Storage vide, de sorte qu'un
+// lancement hors connexion sans session restaurable n'avait plus rien a servir et finissait en
+// ERR_FAILED du navigateur.
+describe('purge de deconnexion — donnees locales contre coquille applicative', () => {
+  test('efface les caches de donnees, conserve le precache et laisse le worker installe', async () => {
+    const deleted: string[] = [];
+    const unregister = vi.fn(async () => true);
+    vi.stubGlobal('caches', {
+      keys: vi.fn(async () => ['workbox-precache-v2-https://meddata.test/', 'meddata-api-responses']),
+      delete: vi.fn(async (key: string) => { deleted.push(key); return true; }),
+    });
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { getRegistrations: vi.fn(async () => [{ unregister }]) },
+      configurable: true,
+    });
+
+    const report = await purgeAllOfflineData();
+
+    expect(report.cacheStorage).toBe(true);
+    expect(report.errors).toEqual([]);
+    expect(deleted).toEqual(['meddata-api-responses']);
+    // Le worker reste installe : c'est lui qui fait exister l'application au prochain
+    // demarrage hors connexion, et il ne porte aucune donnee utilisateur.
+    expect(unregister).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
