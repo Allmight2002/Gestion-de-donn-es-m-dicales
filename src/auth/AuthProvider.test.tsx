@@ -19,7 +19,6 @@ import {
   enqueuePatientCreate, intakeContextCache, intakeQueue,
   type OfflineIntakeContext,
 } from '../data/offlineIntake';
-import { isPwaRegistrationAllowed, setPwaRegistrationAllowed } from '../pwa/registrationPolicy';
 
 beforeAll(() => {
   vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
@@ -33,7 +32,6 @@ const setNavigatorOnline = (online: boolean) => {
 };
 
 afterEach(() => {
-  setPwaRegistrationAllowed(false);
   setNavigatorOnline(true);
   for (let i = localStorage.length - 1; i >= 0; i -= 1) {
     const key = localStorage.key(i) ?? '';
@@ -136,14 +134,22 @@ describe('gating par role', () => {
     expect(await screen.findByRole('heading', { name: 'Tableau de bord' }, { timeout: 5000 })).toBeInTheDocument();
   });
 
-  test('autorise le worker apres initialisation puis le desarme avant logout', async () => {
+  // La coquille applicative n'appartient pas a la session : la deconnexion efface les
+  // donnees locales, mais ne desinstalle pas l'application. Sans cette garantie, un
+  // lancement hors connexion sans session restaurable n'avait plus rien a servir.
+  test('la deconnexion purge les donnees sans desinstaller l application', async () => {
+    const unregister = vi.fn(async () => true);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { getRegistrations: vi.fn(async () => [{ unregister }]) },
+      configurable: true,
+    });
     renderAuthProbe(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
     await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:m'));
-    expect(isPwaRegistrationAllowed()).toBe(true);
 
     await userEvent.click(screen.getByRole('button', { name: 'Force sign out' }));
     await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none'));
-    expect(isPwaRegistrationAllowed()).toBe(false);
+    expect(localStorage.getItem('meddata:offline-cache-owner')).toBeNull();
+    expect(unregister).not.toHaveBeenCalled();
   });
 
   test('le fallback hors-ligne ne conserve qu un marqueur medecin minimal et borne', async () => {
@@ -331,14 +337,13 @@ describe('gating par role', () => {
     );
     await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:purge-B'));
     expect(screen.getByRole('alert')).toHaveTextContent(/Purge locale incomplete.*IndexedDB bloquee/i);
-    expect(isPwaRegistrationAllowed()).toBe(false);
   });
 
   test('une purge partielle conserve l ancien proprietaire pour imposer une nouvelle tentative', async () => {
     localStorage.setItem('meddata:offline-cache-owner', 'owner-A');
     const report = await initializeOfflineForUser('owner-B', {
       purgeAll: async () => ({
-        indexedDb: false, localStorage: true, cacheStorage: true, serviceWorkers: true,
+        indexedDb: false, localStorage: true, cacheStorage: true,
         errors: ['IndexedDB bloquee'],
       }),
     });

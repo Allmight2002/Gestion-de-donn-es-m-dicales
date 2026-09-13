@@ -1,25 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { requestPageLeave } from '../lib/useUnsavedChanges';
 import { useI18n } from '../i18n/useI18n';
-import { useAuth } from '../auth/useAuth';
-import {
-  discardPwaRegistrationIfDisallowed,
-  isPwaRegistrationAllowed,
-} from '../pwa/registrationPolicy';
+import { applyAppShellUpdate, getAppShellState, subscribeAppShell } from '../pwa/appShell';
 
 export const PWA_REMIND_LATER_MS = 15 * 60 * 1000;
 const PWA_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
-
-/**
- * La purge de securite supprime toutes les registrations au logout et au changement de compte.
- * Le composant est donc monte seulement apres cette purge, et remonte pour chaque utilisateur.
- */
-export function AuthenticatedPwaUpdatePrompt() {
-  const { status, user } = useAuth();
-  if (status !== 'signed_in' || !user || !isPwaRegistrationAllowed()) return null;
-  return <PwaUpdatePrompt key={user.id} />;
-}
 
 /** Active la nouvelle version uniquement apres une decision explicite. */
 export function PwaUpdatePrompt() {
@@ -27,25 +12,10 @@ export function PwaUpdatePrompt() {
   const [applying, setApplying] = useState(false);
   const [deferred, setDeferred] = useState(false);
   const [updateFailed, setUpdateFailed] = useState(false);
-  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
-  const mounted = useRef(true);
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegisteredSW(_swUrl, nextRegistration) {
-      if (!mounted.current || !isPwaRegistrationAllowed()) {
-        void discardPwaRegistrationIfDisallowed(nextRegistration);
-        return;
-      }
-      setRegistration(nextRegistration ?? null);
-    },
-  });
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
+  // L'enregistrement se fait au demarrage, hors de React : le composant n'est plus qu'un
+  // lecteur de son etat. Il ne decide donc plus si la coquille existe, seulement quand
+  // proposer d'en activer une nouvelle version.
+  const { needRefresh, registration } = useSyncExternalStore(subscribeAppShell, getAppShellState, getAppShellState);
 
   // Une SPA peut rester ouverte sans nouvelle navigation pendant des heures. Verifie au retour
   // au premier plan, a la reconnexion et periodiquement pour detecter le worker en attente.
@@ -83,7 +53,7 @@ export function PwaUpdatePrompt() {
     setApplying(true);
     setUpdateFailed(false);
     try {
-      await updateServiceWorker(true);
+      await applyAppShellUpdate();
     } catch {
       setUpdateFailed(true);
     } finally {

@@ -66,15 +66,12 @@ export default defineConfig(({ mode }) => {
         // qui exige de toute facon le serveur (validation par `import_records`) : rien a gagner a
         // le tenir pret hors-ligne. Les deux fichiers restent servis normalement par le reseau au
         // moment ou l'utilisateur depose un fichier.
+        // Les traductions FR/EN font partie de la coquille minimale : sans elles, l'application
+        // demarre hors connexion sur un ecran de chargement qui n'aboutit pas. Un cache runtime
+        // CacheFirst ne les garantissait qu'apres une premiere visite de chaque langue ; le
+        // precache, lui, les depose des l'installation du worker.
         workbox: {
-          globIgnores: ['**/xlsx-*.js', '**/messages.fr-*.js', '**/messages.en-*.js'],
-          runtimeCaching: [
-            {
-              urlPattern: /\/assets\/messages\.(?:fr|en)-[^/]+\.js$/,
-              handler: 'CacheFirst',
-              options: { cacheName: 'meddata-i18n' },
-            },
-          ],
+          globIgnores: ['**/xlsx-*.js'],
         },
         manifest: {
           name: 'Registre clinique',

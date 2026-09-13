@@ -4,10 +4,17 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { App } from './App';
 import { initTheme } from './lib/theme';
+import { registerSW } from 'virtual:pwa-register';
+import { registerAppShell } from './pwa/appShell';
 import { reportClientError } from './lib/reportError';
 import './index.css';
 
 initTheme(); // theme clair/sombre applique AVANT le rendu (pas d'eclair de mauvais theme)
+
+// La coquille applicative appartient au demarrage, pas a la session : elle s'enregistre avant
+// meme qu'on sache s'il y a un utilisateur. C'est ce qui permet a l'application d'exister hors
+// connexion quand aucune session n'est restaurable, au lieu d'un ERR_FAILED du navigateur.
+registerAppShell(registerSW);
 
 window.addEventListener('error', (event) => reportClientError(event.error, undefined, 'window-error'));
 window.addEventListener('unhandledrejection', () => reportClientError(new Error('Unhandled rejection'), undefined, 'unhandled-rejection'));

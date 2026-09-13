@@ -11,6 +11,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { OptionKeyRepairPanel } from './OptionKeyRepairPanel';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
+import { OfflineReadinessNotice, useAppShellReadiness } from '../../components/OfflineReadiness';
 import {
   downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type SnapshotSource,
@@ -42,6 +43,8 @@ export function BaseSettings() {
   const [deletionName, setDeletionName] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [changingObservationModel, setChangingObservationModel] = useState(false);
+  // La coquille ne se verifie que la ou une disponibilite hors-ligne est annoncee.
+  const { readiness: shellReadiness, checking: shellChecking, check: shellCheck } = useAppShellReadiness(isOfflineEnabled() && cachedMeta !== null);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -95,12 +98,13 @@ export function BaseSettings() {
       };
       setCachedMeta(await downloadBaseSnapshot(id, src));
       setError(null);
+      await shellCheck();
     } catch (e) {
       setError(errorMessage(e, t('common.error')));
     } finally {
       setSaving(false);
     }
-  }, [id, bases, patients, templates, t]);
+  }, [id, bases, patients, templates, t, shellCheck]);
 
   // §5.8 : au-dela du seuil, l'instantane est un gros bloc -> confirmation avant telechargement.
   const makeAvailableOffline = useCallback(async () => {
@@ -248,6 +252,7 @@ export function BaseSettings() {
         ) : (
           <p className="text-sm text-slate-500">{t('offline.no_bases')}</p>
         )}
+        <OfflineReadinessNotice readiness={shellReadiness} checking={shellChecking} onRecheck={() => void shellCheck()} />
       </SectionCard>
 
       {/* Les comptes de mission sont geres depuis la barre laterale, pour toutes les bases a la
