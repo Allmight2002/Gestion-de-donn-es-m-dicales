@@ -10,6 +10,20 @@ const NO_VALUES: Record<string, unknown> = {};
 const NO_RULES: readonly ValidationRule[] = [];
 const NO_HIDDEN: ReadonlySet<string> = new Set();
 
+/** Le focus differe attend que le bloc vise soit affiche. Les demandes du composant partagent
+ * un seul creneau : la plus recente remplace la precedente. Si l utilisateur a lui-meme pris
+ * la main entre-temps, la lui reprendre lui ferait perdre sa frappe — on lui laisse son champ. */
+function deferFocus(frame: { current: number | null }, move: () => void) {
+  if (frame.current !== null) cancelAnimationFrame(frame.current);
+  const focusedBefore = document.activeElement;
+  frame.current = requestAnimationFrame(() => {
+    frame.current = null;
+    const focusedNow = document.activeElement;
+    if (focusedNow && focusedNow !== focusedBefore && focusedNow !== document.body) return;
+    move();
+  });
+}
+
 function FieldFrame({ id, fieldKey, message, children }: { id: string; fieldKey: string; message?: string; children: ReactNode }) {
   const frame = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -61,7 +75,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const steps = leadingBlock ? [{ key: leadingKey }, ...roots] : roots;
   const active = steps.some((root) => root.key === current) ? current : steps[0]?.key ?? null;
   const revealingInvalid = useRef(false);
-  const revealFrame = useRef<number | null>(null);
+  const focusFrame = useRef<number | null>(null);
   const rootFor = (key: string) => {
     const source = (allFields ?? fields).find((field) => isProposalSource(field) && findProposalField(allFields ?? fields, field)?.fieldKey === key);
     const group = groups.find((candidate) => candidate.fields.some((field) => field.fieldKey === (source?.fieldKey ?? key)));
@@ -82,15 +96,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const reveal = (rootKey: string, targetKey?: string) => {
     setCollapsed((before) => { const next = new Set(before); next.delete(rootKey); return next; });
     setCurrent(rootKey); setMobileContents(false);
-    // Le focus attend que le bloc soit affiche. Une revelation plus recente remplace la
-    // precedente, et si l utilisateur a lui-meme pris la main entre-temps, la lui reprendre
-    // lui ferait perdre la frappe en cours : on lui laisse le champ qu il vient de choisir.
-    if (revealFrame.current !== null) cancelAnimationFrame(revealFrame.current);
-    const focusedBefore = document.activeElement;
-    revealFrame.current = requestAnimationFrame(() => {
-      revealFrame.current = null;
-      const focusedNow = document.activeElement;
-      if (focusedNow && focusedNow !== focusedBefore && focusedNow !== document.body) return;
+    deferFocus(focusFrame, () => {
       const target = document.getElementById(targetKey ? fieldId(targetKey) : groupId(rootKey))
         ?? [...(host.current?.querySelectorAll<HTMLElement>('[data-proposal-key]') ?? [])].find((node) => node.dataset.proposalKey === targetKey);
       const control = targetKey ? target?.querySelector<HTMLElement>('input:not(:disabled),select:not(:disabled),textarea:not(:disabled),button[aria-haspopup="dialog"],[role="combobox"],output') : target;
@@ -115,7 +121,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     if (!form) return;
     const onSubmit = () => {
       setSubmitted(true);
-      requestAnimationFrame(() => host.current?.querySelector<HTMLElement>('[data-validation-summary]')?.focus());
+      deferFocus(focusFrame, () => host.current?.querySelector<HTMLElement>('[data-validation-summary]')?.focus());
     };
     form.addEventListener('submit', onSubmit);
     return () => form.removeEventListener('submit', onSubmit);
