@@ -320,6 +320,14 @@ export interface SectionImportConflict {
   operandKey?: string | null;
 }
 
+/** Clause `if` de la règle d'activation non copiée (D7), telle que le rapport la rend. */
+export interface SectionImportActivationRule {
+  field?: string;
+  operator?: string;
+  value?: unknown;
+  terminologyReleaseId?: string | null;
+}
+
 /** Rapport rendu à l'identique par la prévisualisation et par l'import (§4.1). */
 export interface SectionImportReport {
   sectionKey: string;
@@ -328,7 +336,7 @@ export interface SectionImportReport {
   reusedFields: string[];
   copiedRules: number;
   /** Règle d'activation du bloc dans la SOURCE, jamais copiée (D7). Matière de L60. */
-  activationRule: { field?: string; operator?: string; value?: unknown; terminologyReleaseId?: string | null } | null;
+  activationRule: SectionImportActivationRule | null;
   conflicts: SectionImportConflict[];
 }
 

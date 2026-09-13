@@ -1,6 +1,11 @@
 import type { MessageDictionary } from './messages.fr';
 
 export const messages = {
+    'patient.identification': 'Patient identification',
+    'draft.entry_title': 'Resume a previous entry?',
+    'draft.entry_body': 'Resume your entry or delete the listed drafts to start a new record.',
+    'draft.entry_select': 'Entry to resume',
+    'draft.entry_new': 'Delete and start again',
     'editor.structure': 'Form structure',
     'editor.diagnosis': 'Diagnostic collection',
     'editor.preview': 'Preview',
@@ -1545,4 +1550,44 @@ export const messages = {
       'An element used by a calculation already exists here, but with an incompatible scope or type, or it is itself calculated. The result would not mean the same thing as in the source variable set.',
     'blockimport.error.visibility_cycle':
       'The block rules would form a circular dependency with those of this version: each rule would wait for the other, and the form would no longer know what to display.',
+    // L60 — reconnecting the activation rule of an imported block (§6).
+    'blockactivation.title': 'Display rule for the imported block',
+    'blockactivation.ready':
+      'The source variable set only displayed this block under a condition. The same condition can be recreated here: the driver variable “{field}” is compatible, and every code it cites exists in this version.',
+    'blockactivation.create': 'Create this display rule',
+    'blockactivation.creating': 'Creating…',
+    'blockactivation.blocked_intro':
+      'The original condition was based on the variable “{field}”. It cannot be recreated as is here:',
+    'blockactivation.fallback':
+      'The block stays visible without a condition: nothing is hidden, nothing is erased. Pick another driver in the rule builder below.',
+    'blockactivation.blocked.driver_missing':
+      'This version contains no variable with that key.',
+    'blockactivation.blocked.driver_scope':
+      'The variable with the same key does not belong to the same record — patient or visit — as in the source variable set.',
+    'blockactivation.blocked.driver_type':
+      'The variable with the same key does not have the same type as in the source variable set.',
+    'blockactivation.blocked.driver_multiple':
+      'The variable with the same key does not accept the same number of values: one is multi-valued, the other is not.',
+    'blockactivation.blocked.driver_in_block':
+      'The driver variable belongs to the block “{detail}”: the imported block would empty out as soon as that block is hidden. Move it up to the common trunk first.',
+    'blockactivation.blocked.driver_calculated':
+      'The driver variable is calculated here: its result is never stored, and the block would stay hidden forever.',
+    'blockactivation.blocked.driver_hidden':
+      'The driver variable is itself hidden by a display rule: a condition placed on it could never be checked.',
+    'blockactivation.blocked.release_unknown':
+      'This version does not declare that variable as its diagnosis driver. The terminology edition is therefore written nowhere here, and neither it nor the cited codes can be checked.',
+    'blockactivation.blocked.release_mismatch':
+      'This version uses a different terminology edition from the source variable set. The same codes do not necessarily name the same diagnoses there.',
+    'blockactivation.blocked.code_unknown':
+      'Codes cited by the condition but absent from this version: {detail}. The rule would never fire and the block would stay hidden.',
+    'blockactivation.blocked.common_only':
+      'Codes already declared “common trunk is enough” in this version: {detail}. One code cannot both skip a block and activate one.',
+    'blockactivation.blocked.diagnosis_noncanonical':
+      'This variable is the diagnosis driver of this version: an association there must take the form “contains one of these codes”, which the original condition is not.',
+    'blockactivation.blocked.block_scope':
+      'The imported block carries variables from a different record than its driver: it would be evaluated only halfway.',
+    'blockactivation.blocked.block_empty':
+      'The imported block has no fillable variable: it cannot be used to declare a diagnosis as covered.',
+    'blockactivation.blocked.invalid':
+      'The original condition does not have a shape the rule engine accepts: {detail}.',
   } as const satisfies MessageDictionary;
