@@ -43,21 +43,26 @@ export function editorGroups(
     .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey));
   const result: EditorGroup[] = [];
   const append = (key: string) => { const group = groups.get(key); if (group) { result.push(group); groups.delete(key); } };
+  const appendDescendants = (parentKey: string, visited = new Set<string>()) => {
+    if (visited.has(parentKey)) return;
+    visited.add(parentKey);
+    sections.filter((section) => section.parentSectionKey === parentKey)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey))
+      .forEach((section) => { append(section.sectionKey); appendDescendants(section.sectionKey, visited); });
+  };
   append('__common__');
   for (let anchor = 0; anchor <= roots.length; anchor++) {
     for (const common of layout?.groups ?? []) if (Math.min(common.anchor, roots.length) === anchor) append(`__common_group__:${common.key}`);
     const root = roots[anchor];
     if (!root) continue;
     append(root.sectionKey);
-    sections.filter((section) => section.parentSectionKey === root.sectionKey)
-      .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey))
-      .forEach((section) => append(section.sectionKey));
+    appendDescendants(root.sectionKey);
   }
   return [...result, ...groups.values()];
 }
 
 export function EditorStructure({ groups, activeKey, onSelect, displayedFields, allFields, editable, busy,
-  canReorder, onOpen, onMove, onStep, onDelete, onDrop, onRules, ruleCount, context, management,
+  canReorder, onOpen, onMove, onStep, onDelete, onDrop, onRules, ruleCount, context,
 }: {
   groups: EditorGroup[]; activeKey: string; onSelect: (key: string) => void;
   displayedFields: TemplateField[]; allFields: TemplateField[]; editable: boolean; busy: boolean;
@@ -65,7 +70,7 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   onStep: (id: string, direction: -1 | 1) => void; onDelete: (field: TemplateField) => void;
   onDrop: (fromId: string, toId: string) => void;
   onRules: (field?: TemplateField) => void; ruleCount: (field: TemplateField) => number;
-  context: ReactNode; management: ReactNode;
+  context: ReactNode;
 }) {
   const { t } = useI18n();
   // A largeur etroite, le sommaire passe AU-DESSUS de la liste : le laisser deroule imposerait
@@ -83,10 +88,41 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   // « Toutes les variables » payait des dizaines de milliers de comparaisons par rendu, et le
   // moindre changement de filtre en payait deux fois plus.
   const pathByKey = useMemo(() => {
-    const labels = new Map(groups.map((group) => [group.key, group.label]));
-    return new Map(groups.map((group) => [group.key,
-      [group.parentKey ? labels.get(group.parentKey) : null, group.label].filter(Boolean).join(' / ')]));
+    const byKey = new Map(groups.map((group) => [group.key, group]));
+    const pathFor = (key: string, visited = new Set<string>()): string => {
+      const group = byKey.get(key);
+      if (!group) return '';
+      if (!group.parentKey || visited.has(group.parentKey)) return group.label;
+      visited.add(group.key);
+      const parent = pathFor(group.parentKey, visited);
+      return parent ? `${parent} / ${group.label}` : group.label;
+    };
+    return new Map(groups.map((group) => [group.key, pathFor(group.key)]));
   }, [groups]);
+  const childrenByParent = useMemo(() => {
+    const index = new Map<string, EditorGroup[]>();
+    for (const group of groups) if (group.parentKey) {
+      const children = index.get(group.parentKey) ?? [];
+      children.push(group);
+      index.set(group.parentKey, children);
+    }
+    return index;
+  }, [groups]);
+  const fieldCountByKey = useMemo(() => {
+    const counts = new Map<string, number>();
+    const count = (key: string, visited = new Set<string>()): number => {
+      if (visited.has(key)) return 0;
+      visited.add(key);
+      const group = groups.find((candidate) => candidate.key === key);
+      if (!group) return 0;
+      const total = group.fields.length + (childrenByParent.get(key) ?? [])
+        .reduce((sum, child) => sum + count(child.key, new Set(visited)), 0);
+      counts.set(key, total);
+      return total;
+    };
+    for (const group of groups) count(group.key);
+    return counts;
+  }, [childrenByParent, groups]);
   const groupByFieldId = useMemo(() => {
     const index = new Map<string, EditorGroup>();
     for (const group of groups) for (const field of group.fields) index.set(field.id, group);
@@ -96,7 +132,7 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
     () => new Map(allFields.map((field, index) => [field.id, index])), [allFields]);
   const pathOf = (group: EditorGroup) => pathByKey.get(group.key) ?? group.label;
   const groupOf = (field: TemplateField) => groupByFieldId.get(field.id);
-  const children = groups.filter((group) => group.parentKey === activeKey);
+  const children = childrenByParent.get(activeKey) ?? [];
   // Les rubriques communes se selectionnent comme un bloc mais n'en sont pas : l'index les
   // tient a part pour qu'une metadonnee de presentation ne se lise jamais comme un bloc.
   const commonGroups = groups.filter((group) => !group.parentKey && group.common);
@@ -109,6 +145,28 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   const [window_, setWindow] = useState({ key: listKey, count: PAGE_SIZE });
   const shown = window_.key === listKey ? window_.count : PAGE_SIZE;
   const visibleFields = displayedFields.length > shown ? displayedFields.slice(0, shown) : displayedFields;
+  const renderClinicalNode = (group: EditorGroup, depth = 0, visited = new Set<string>()): ReactNode => {
+    if (visited.has(group.key)) return null;
+    const nextVisited = new Set(visited).add(group.key);
+    const descendants = childrenByParent.get(group.key) ?? [];
+    const expanded = !collapsed.has(group.key);
+    const count = fieldCountByKey.get(group.key) ?? group.fields.length;
+    return <div key={group.key}>
+      <div className="flex min-w-0 items-center" style={{ paddingLeft: depth ? `${depth * 1.25}rem` : undefined }}>
+        {descendants.length > 0 && <button type="button" className="icon-button shrink-0" aria-label={`${t('editor.toggle_block')} · ${group.label}`}
+          aria-expanded={expanded} onClick={() => setCollapsed((current) => { const next = new Set(current); if (next.has(group.key)) next.delete(group.key); else next.add(group.key); return next; })}>
+          {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
+        </button>}
+        <button type="button" aria-current={activeKey === group.key ? 'page' : undefined}
+          aria-label={`${group.label} · ${t('admin.variable_count').replace('{n}', String(count))}`}
+          className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === group.key ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
+          onClick={() => onSelect(group.key)}>
+          <span className="break-words">{group.label}</span><span className="shrink-0 text-xs text-slate-500">{count}</span>
+        </button>
+      </div>
+      {expanded && descendants.map((child) => renderClinicalNode(child, depth + 1, nextVisited))}
+    </div>;
+  };
   return <div className="grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
     <details open={outlineOpen} onToggle={(event) => setOutlineOpen((event.currentTarget as HTMLDetailsElement).open)}
       className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:bg-slate-900">
@@ -123,30 +181,7 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
             {t('admin.sections')}
           </p>
         )}
-        {clinicalRoots.map((root) => {
-          const descendants = groups.filter((group) => group.parentKey === root.key);
-          const expanded = !collapsed.has(root.key);
-          return <div key={root.key}>
-            <div className="flex items-center">
-              {descendants.length > 0 && <button type="button" className="icon-button shrink-0" aria-label={`${t('editor.toggle_block')} · ${root.label}`}
-                aria-expanded={expanded} onClick={() => setCollapsed((current) => { const next = new Set(current); if (next.has(root.key)) next.delete(root.key); else next.add(root.key); return next; })}>
-                {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
-              </button>}
-              {/* Le compteur est colle au libelle dans le texte : sans nom accessible explicite,
-                  la commande s'annonce « Bloc 0126 ». */}
-              <button type="button" aria-current={activeKey === root.key ? 'page' : undefined}
-                aria-label={`${root.label} · ${t('admin.variable_count').replace('{n}', String(root.fields.length + descendants.reduce((n, child) => n + child.fields.length, 0)))}`}
-                className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === root.key ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
-                onClick={() => onSelect(root.key)}>
-                <span className="break-words">{root.label}</span><span className="text-xs text-slate-500">{root.fields.length + descendants.reduce((n, child) => n + child.fields.length, 0)}</span>
-              </button>
-            </div>
-            {expanded && descendants.map((child) => <button key={child.key} type="button" aria-current={activeKey === child.key ? 'page' : undefined}
-              aria-label={`${child.label} · ${t('admin.variable_count').replace('{n}', String(child.fields.length))}`}
-              className={`flex min-h-11 w-full items-center justify-between gap-2 rounded py-2 pl-9 pr-2 text-left text-sm ${activeKey === child.key ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
-              onClick={() => onSelect(child.key)}><span className="break-words">{child.label}</span><span className="text-xs text-slate-500">{child.fields.length}</span></button>)}
-          </div>;
-        })}
+        {clinicalRoots.map((root) => renderClinicalNode(root))}
         {commonGroups.length > 0 && (
           <div className="mt-3 border-t border-slate-200 pt-2">
             <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
@@ -180,10 +215,9 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
           </button>
         </div>}
         {children.length > 0 && <div className="mt-4 flex flex-wrap gap-2" aria-label={t('editor.subsections')}>
-          {children.map((child) => <button key={child.key} type="button" className="btn-secondary" onClick={() => onSelect(child.key)}>{child.label} <span className="text-xs">({child.fields.length})</span></button>)}
+          {children.map((child) => <button key={child.key} type="button" className="btn-secondary" onClick={() => onSelect(child.key)}>{child.label} <span className="text-xs">({fieldCountByKey.get(child.key) ?? child.fields.length})</span></button>)}
         </div>}
       </div>
-      {management}
       <div role="table" aria-label={t('admin.variables')} className="divide-y divide-slate-200 border-y border-slate-200">
         <div role="row" className="grid grid-cols-[minmax(0,1fr)_4rem_2.5rem_auto] items-center gap-2 py-2 text-xs text-slate-500 sm:grid-cols-[minmax(0,1fr)_6rem_5rem_auto]">
           <span role="columnheader">{t('admin.label')}</span><span role="columnheader">{t('admin.type')}</span><span role="columnheader">{t('admin.rules')}</span>

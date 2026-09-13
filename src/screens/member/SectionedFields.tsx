@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
-import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
+import { groupFieldsBySection, sectionLabel, type SectionGroup } from '../../domain/templateSections';
 import { calculateFormProgress } from '../../domain/formProgress';
 import { useI18n } from '../../i18n/useI18n';
 import { ValidationSummary } from '../../components/ValidationSummary';
@@ -9,6 +9,20 @@ import { findProposalField, isProposalSource } from '../../domain/proposalField'
 const NO_VALUES: Record<string, unknown> = {};
 const NO_RULES: readonly ValidationRule[] = [];
 const NO_HIDDEN: ReadonlySet<string> = new Set();
+
+/** Le focus differe attend que le bloc vise soit affiche. Les demandes du composant partagent
+ * un seul creneau : la plus recente remplace la precedente. Si l utilisateur a lui-meme pris
+ * la main entre-temps, la lui reprendre lui ferait perdre sa frappe — on lui laisse son champ. */
+function deferFocus(frame: { current: number | null }, move: () => void) {
+  if (frame.current !== null) cancelAnimationFrame(frame.current);
+  const focusedBefore = document.activeElement;
+  frame.current = requestAnimationFrame(() => {
+    frame.current = null;
+    const focusedNow = document.activeElement;
+    if (focusedNow && focusedNow !== focusedBefore && focusedNow !== document.body) return;
+    move();
+  });
+}
 
 function FieldFrame({ id, fieldKey, message, children }: { id: string; fieldKey: string; message?: string; children: ReactNode }) {
   const frame = useRef<HTMLDivElement>(null);
@@ -46,7 +60,32 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const id = useId();
   const host = useRef<HTMLDivElement>(null);
   const groups = useMemo(() => groupFieldsBySection(fields, sections, commonLayout), [fields, sections, commonLayout]);
-  const roots = groups.filter((group) => !group.parentSectionKey || !groups.some((candidate) => candidate.key === group.parentSectionKey));
+  // Le bloc clinique porte encore la règle d'applicabilité, mais chaque sous-section devient
+  // une étape de saisie. Un parent vide reste un contexte dans le sommaire et au-dessus de
+  // ses enfants, sans créer une étape vide. Les groupes communs UX-16 sont des racines et
+  // restent des étapes distinctes, sans changer leur section sémantique.
+  const formGroups = useMemo(() => {
+    const roots = groups.filter((group) => !group.parentSectionKey || !groups.some((candidate) => candidate.key === group.parentSectionKey));
+    const childrenByParent = new Map<string, SectionGroup<TemplateField>[]>();
+    for (const group of groups) if (group.parentSectionKey) {
+      const children = childrenByParent.get(group.parentSectionKey) ?? [];
+      children.push(group);
+      childrenByParent.set(group.parentSectionKey, children);
+    }
+    const result: SectionGroup<TemplateField>[] = [];
+    const visited = new Set<string>();
+    const visit = (group: SectionGroup<TemplateField>) => {
+      if (visited.has(group.key)) return;
+      visited.add(group.key);
+      if (group.fields.length > 0) result.push(group);
+      for (const child of childrenByParent.get(group.key) ?? []) visit(child);
+    };
+    for (const root of roots) visit(root);
+    // Une hierarchie mal formee peut laisser un groupe visible sans racine declarée. Le garder
+    // accessible évite de perdre silencieusement ses variables.
+    for (const group of groups) visit(group);
+    return result;
+  }, [groups]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   const [mobileContents, setMobileContents] = useState(false);
@@ -58,14 +97,14 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const previousGroups = useRef<string[] | null>(null);
   const currentField = useRef<string | null>(null);
   const leadingKey = `${id}-leading`;
-  const steps = leadingBlock ? [{ key: leadingKey }, ...roots] : roots;
+  const steps = leadingBlock ? [{ key: leadingKey }, ...formGroups] : formGroups;
   const active = steps.some((root) => root.key === current) ? current : steps[0]?.key ?? null;
   const revealingInvalid = useRef(false);
-  const revealFrame = useRef<number | null>(null);
-  const rootFor = (key: string) => {
+  const focusFrame = useRef<number | null>(null);
+  const stepFor = (key: string) => {
     const source = (allFields ?? fields).find((field) => isProposalSource(field) && findProposalField(allFields ?? fields, field)?.fieldKey === key);
-    const group = groups.find((candidate) => candidate.fields.some((field) => field.fieldKey === (source?.fieldKey ?? key)));
-    return group?.parentSectionKey ?? group?.key ?? null;
+    const fieldKey = source?.fieldKey ?? key;
+    return formGroups.find((group) => group.fields.some((field) => field.fieldKey === fieldKey))?.key ?? null;
   };
   const fieldId = (key: string) => `${id}-field-${key}`;
   const groupId = (key: string) => `${id}-group-${key}`;
@@ -82,15 +121,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const reveal = (rootKey: string, targetKey?: string) => {
     setCollapsed((before) => { const next = new Set(before); next.delete(rootKey); return next; });
     setCurrent(rootKey); setMobileContents(false);
-    // Le focus attend que le bloc soit affiche. Une revelation plus recente remplace la
-    // precedente, et si l utilisateur a lui-meme pris la main entre-temps, la lui reprendre
-    // lui ferait perdre la frappe en cours : on lui laisse le champ qu il vient de choisir.
-    if (revealFrame.current !== null) cancelAnimationFrame(revealFrame.current);
-    const focusedBefore = document.activeElement;
-    revealFrame.current = requestAnimationFrame(() => {
-      revealFrame.current = null;
-      const focusedNow = document.activeElement;
-      if (focusedNow && focusedNow !== focusedBefore && focusedNow !== document.body) return;
+    deferFocus(focusFrame, () => {
       const target = document.getElementById(targetKey ? fieldId(targetKey) : groupId(rootKey))
         ?? [...(host.current?.querySelectorAll<HTMLElement>('[data-proposal-key]') ?? [])].find((node) => node.dataset.proposalKey === targetKey);
       const control = targetKey ? target?.querySelector<HTMLElement>('input:not(:disabled),select:not(:disabled),textarea:not(:disabled),button[aria-haspopup="dialog"],[role="combobox"],output') : target;
@@ -99,9 +130,9 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       target?.scrollIntoView?.({ block: 'center', behavior: 'auto' });
     });
   };
-  const goToField = (key: string) => { const root = rootFor(key); if (root) reveal(root, key); };
+  const goToField = (key: string) => { const step = stepFor(key); if (step) reveal(step, key); };
 
-  const groupKeys = roots.map((root) => root.key).join('|');
+  const groupKeys = formGroups.map((group) => group.key).join('|');
   useEffect(() => {
     const next = groupKeys ? groupKeys.split('|') : [];
     if (previousGroups.current) {
@@ -115,7 +146,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     if (!form) return;
     const onSubmit = () => {
       setSubmitted(true);
-      requestAnimationFrame(() => host.current?.querySelector<HTMLElement>('[data-validation-summary]')?.focus());
+      deferFocus(focusFrame, () => host.current?.querySelector<HTMLElement>('[data-validation-summary]')?.focus());
     };
     form.addEventListener('submit', onSubmit);
     return () => form.removeEventListener('submit', onSubmit);
@@ -124,7 +155,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   if (steps.length === 0) return null;
   const rootIndex = steps.findIndex((root) => root.key === active);
   const nextMissing = () => {
-    const candidates = progress.missingKeys.filter((key) => rootFor(key));
+    const candidates = progress.missingKeys.filter((key) => stepFor(key));
     const index = currentField.current ? candidates.indexOf(currentField.current) : -1;
     const key = candidates[(index + 1) % candidates.length];
     if (key) goToField(key);
@@ -141,14 +172,14 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
         setNativeIssue(`${controlLabel ? `${controlLabel} : ` : ''}${control.validationMessage}`);
       }
       const key = control.closest<HTMLElement>('[data-field-key]')?.dataset.fieldKey;
-      const root = key ? rootFor(key) : leadingBlock ? leadingKey : null;
+      const root = key ? stepFor(key) : leadingBlock ? leadingKey : null;
       if (root) reveal(root, key);
       requestAnimationFrame(() => { control.focus(); revealingInvalid.current = false; });
     }}
     onInputCapture={() => setNativeIssue(null)}
     onFocusCapture={(event) => {
       const field = (event.target as HTMLElement).closest<HTMLElement>('[data-field-key]');
-      if (field?.dataset.fieldKey) { currentField.current = field.dataset.fieldKey; setCurrent(rootFor(field.dataset.fieldKey)); }
+      if (field?.dataset.fieldKey) { currentField.current = field.dataset.fieldKey; setCurrent(stepFor(field.dataset.fieldKey)); }
     }}
     onBlurCapture={(event) => {
       const key = (event.target as HTMLElement).closest<HTMLElement>('[data-field-key]')?.dataset.fieldKey;
@@ -176,12 +207,12 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
         </label>}
       </div>
     </div>
-    {newGroup && roots.some((root) => root.key === newGroup) && <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-teal-800 dark:text-teal-200">
+    {newGroup && formGroups.some((group) => group.key === newGroup) && <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-teal-800 dark:text-teal-200">
       <span>{t('form.block_available')} {label(newGroup)}</span>
       <button type="button" className="btn-ghost min-h-11" onClick={() => { reveal(newGroup); setNewGroup(null); }}>{t('form.go_to_block')}</button>
     </div>}
     {nativeIssue && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{nativeIssue}</p>}
-    {submitted && <ValidationSummary errors={visibleIssues.filter((issue) => rootFor(issue.fieldKey)).map((issue) => ({
+    {submitted && <ValidationSummary errors={visibleIssues.filter((issue) => stepFor(issue.fieldKey)).map((issue) => ({
       id: issue.fieldKey, targetId: fieldId(issue.fieldKey), label: (allFields ?? fields).find((field) => field.fieldKey === issue.fieldKey)?.label ?? issue.fieldKey,
       message: issue.message,
     }))} onNavigate={(issue) => goToField(issue.id)} />}
@@ -196,8 +227,8 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       </nav>
       <div className="min-w-0 space-y-4">
         {steps.map((root) => {
-          const members = groups.filter((group) => group.key === root.key || group.parentSectionKey === root.key);
-          const keys = new Set(members.flatMap((group) => group.fields.map((field) => field.fieldKey)));
+          const group = root.key === leadingKey ? null : formGroups.find((candidate) => candidate.key === root.key);
+          const keys = new Set(group?.fields.map((field) => field.fieldKey) ?? []);
           const missing = progress.missingKeys.filter((key) => keys.has(key)).length;
           const errors = visibleIssues.filter((issue) => keys.has(issue.fieldKey)).length;
           const expanded = single ? active === root.key : !collapsed.has(root.key);
@@ -213,10 +244,12 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
             </legend>
             <div id={`${groupId(root.key)}-body`} hidden={!expanded} className="@container space-y-5">
               {root.key === leadingKey && leadingBlock?.content}
-              {members.map((group) => <div key={group.key} className="space-y-4">
-                {group.key !== root.key && <h3 className="border-b border-slate-100 pb-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:text-slate-200">{label(group.key)}</h3>}
-                {group.fields.map((field) => <FieldFrame key={field.id} id={fieldId(field.fieldKey)} fieldKey={field.fieldKey} message={issueByKey.get(field.fieldKey)}>{renderField(field)}</FieldFrame>)}
-              </div>)}
+              {group?.parentSectionKey && (
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {label(group.parentSectionKey)}
+                </p>
+              )}
+              {group?.fields.map((field) => <FieldFrame key={field.id} id={fieldId(field.fieldKey)} fieldKey={field.fieldKey} message={issueByKey.get(field.fieldKey)}>{renderField(field)}</FieldFrame>)}
             </div>
           </fieldset>;
         })}

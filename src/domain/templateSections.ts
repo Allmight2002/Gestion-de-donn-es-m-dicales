@@ -89,9 +89,10 @@ export interface SectionGroup<T> {
  *   3. a defaut encore, l'ordre de premiere apparition des variables ;
  *   4. le filet, toujours en dernier.
  *
- * Les sections VIDES ne sont pas rendues : c'est le comportement d'origine, et c'est lui
- * qui permet a une liste de sections partagee entre variables patient et variables
- * rencontre de n'afficher sur chaque ecran que ce qui le concerne.
+ * Les sections VIDES ne sont pas rendues quand elles ne portent aucun descendant visible :
+ * c'est le comportement d'origine, et c'est lui qui permet a une liste de sections partagee
+ * entre variables patient et variables rencontre de n'afficher sur chaque ecran que ce qui le
+ * concerne. Un parent intermediaire est conserve uniquement pour porter un descendant visible.
  */
 function groupFieldsBySectionLegacy<T extends Pick<TemplateField, 'section' | 'sectionLabel' | 'sectionOrder'> & Partial<Pick<TemplateField, 'parentSectionKey' | 'parentSectionLabel' | 'displayOrder'>>>(
   fields: T[],
@@ -144,22 +145,41 @@ function groupFieldsBySectionLegacy<T extends Pick<TemplateField, 'section' | 's
   const hierarchical = [...hierarchy.values()].some((s) => s.parentSectionKey);
   if (hierarchical) {
     for (const { group } of [...groups.values()]) {
-      const parent = hierarchy.get(group.parentSectionKey ?? '');
-      if (parent && !groups.has(parent.sectionKey)) groups.set(parent.sectionKey, {
-        order: parent.displayOrder, seen: -1,
-        group: { key: parent.sectionKey, label: parent.label, isLegacy: isLegacySectionKey(parent.sectionKey), isFallback: false, fields: [] },
-      });
+      let parentKey = group.parentSectionKey ?? null;
+      const visited = new Set<string>();
+      while (parentKey && !visited.has(parentKey)) {
+        visited.add(parentKey);
+        const parent = hierarchy.get(parentKey);
+        if (!parent) break;
+        if (!groups.has(parent.sectionKey)) groups.set(parent.sectionKey, {
+          order: parent.displayOrder, seen: -1,
+          group: {
+            key: parent.sectionKey, label: parent.label,
+            parentSectionKey: parent.parentSectionKey ?? null,
+            isLegacy: isLegacySectionKey(parent.sectionKey), isFallback: false, fields: [],
+          },
+        });
+        parentKey = parent.parentSectionKey ?? null;
+      }
     }
   }
-  // Une hiérarchie peut avoir créé le groupe racine uniquement pour porter un enfant. Il ne
-  // reste affichable que si cet enfant porte encore au moins une variable visible ; un bloc
-  // entièrement masqué ne doit laisser ni titre ni cadre, et une sous-section vide ne doit
-  // pas laisser un fieldset fantôme.
-  const visibleGroups = [...groups.values()].filter(({ group }) =>
-    group.fields.length > 0
-      || (!group.parentSectionKey && [...groups.values()].some(({ group: child }) =>
-        child.parentSectionKey === group.key && child.fields.length > 0)),
-  );
+  // Une hiérarchie peut créer des groupes intermédiaires uniquement pour porter un descendant.
+  // Ils restent affichables tant qu'un descendant porte une variable visible, afin de conserver
+  // le chemin et le titre de chaque sous-section ; un groupe entièrement masqué disparaît.
+  const childrenByParent = new Map<string, string[]>();
+  for (const { group } of groups.values()) if (group.parentSectionKey) {
+    const children = childrenByParent.get(group.parentSectionKey) ?? [];
+    children.push(group.key);
+    childrenByParent.set(group.parentSectionKey, children);
+  }
+  const hasFieldsOrDescendants = (key: string, visited = new Set<string>()): boolean => {
+    if (visited.has(key)) return false;
+    visited.add(key);
+    const entry = groups.get(key);
+    if (entry?.group.fields.length) return true;
+    return (childrenByParent.get(key) ?? []).some((child) => hasFieldsOrDescendants(child, visited));
+  };
+  const visibleGroups = [...groups.values()].filter(({ group }) => hasFieldsOrDescendants(group.key));
 
   return visibleGroups
     .sort((a, b) => {
@@ -265,17 +285,39 @@ function groupFieldsByCommonLayout<T extends PresentationField>(
   const hierarchical = [...hierarchy.values()].some((section) => section.parentSectionKey);
   if (hierarchical) {
     for (const { group } of [...entries.values()]) {
-      const parent = hierarchy.get(group.parentSectionKey ?? '');
-      if (parent && !entries.has(parent.sectionKey)) entries.set(parent.sectionKey, {
-        seen: -1,
-        group: { key: parent.sectionKey, label: parent.label, isLegacy: isLegacySectionKey(parent.sectionKey), isFallback: false, fields: [] },
-      });
+      let parentKey = group.parentSectionKey ?? null;
+      const visited = new Set<string>();
+      while (parentKey && !visited.has(parentKey)) {
+        visited.add(parentKey);
+        const parent = hierarchy.get(parentKey);
+        if (!parent) break;
+        if (!entries.has(parent.sectionKey)) entries.set(parent.sectionKey, {
+          seen: -1,
+          group: {
+            key: parent.sectionKey, label: parent.label,
+            parentSectionKey: parent.parentSectionKey ?? null,
+            isLegacy: isLegacySectionKey(parent.sectionKey), isFallback: false, fields: [],
+          },
+        });
+        parentKey = parent.parentSectionKey ?? null;
+      }
     }
   }
 
-  const visible = [...entries.values()].filter(({ group }) => group.fields.length > 0
-    || (!group.parentSectionKey && [...entries.values()].some(({ group: child }) =>
-      child.parentSectionKey === group.key && child.fields.length > 0)));
+  const childrenByParent = new Map<string, string[]>();
+  for (const { group } of entries.values()) if (group.parentSectionKey) {
+    const children = childrenByParent.get(group.parentSectionKey) ?? [];
+    children.push(group.key);
+    childrenByParent.set(group.parentSectionKey, children);
+  }
+  const hasFieldsOrDescendants = (key: string, visited = new Set<string>()): boolean => {
+    if (visited.has(key)) return false;
+    visited.add(key);
+    const entry = entries.get(key);
+    if (entry?.group.fields.length) return true;
+    return (childrenByParent.get(key) ?? []).some((child) => hasFieldsOrDescendants(child, visited));
+  };
+  const visible = [...entries.values()].filter(({ group }) => hasFieldsOrDescendants(group.key));
   const rootOf = (key: string): string => {
     let current = hierarchy.get(key);
     const seen = new Set<string>();

@@ -62,6 +62,12 @@ function makeRepository() {
   const repo = {
     getVersion: vi.fn(async () => ({ version, fields: [...fields], rules: [], sections })),
     updateField,
+    addSection: vi.fn(async (_versionId: string, sectionKey: string, label: string) => ({
+      id: sectionKey, sectionKey, label, displayOrder: sections.length,
+    })),
+    renameSection: vi.fn(async () => undefined),
+    deleteSection: vi.fn(async () => undefined),
+    reorderSections: vi.fn(async () => undefined),
   } as unknown as TemplateRepository;
   return { repo, updateField };
 }
@@ -96,8 +102,8 @@ describe('TemplateVersionEditor', () => {
     expect(principal.queryByText('Hémoglobine')).not.toBeInTheDocument();
 
     const toolbar = screen.getByTestId('template-editor-toolbar');
-    expect(toolbar).toHaveClass('md:sticky', 'md:top-0', 'dark:bg-slate-950/95');
-    expect(toolbar).not.toHaveClass('sticky', 'top-0');
+    expect(toolbar).not.toHaveClass('sticky', 'top-0', 'md:sticky', 'md:top-0');
+    expect(toolbar).toHaveClass('dark:bg-slate-950/95');
 
     await user.type(screen.getByRole('searchbox', { name: 'Rechercher une variable' }), 'hemoglobine');
 
@@ -132,6 +138,8 @@ describe('TemplateVersionEditor', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Modifier la variable' });
     const label = within(dialog).getByLabelText('Libellé');
     expect(label).toHaveValue('Tension artérielle');
+    expect(dialog.querySelector('.sticky')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Registre fictif')).not.toBeInTheDocument();
     await user.clear(label);
     await user.type(label, 'Tension corrigée');
     await user.click(within(dialog).getByRole('button', { name: 'Enregistrer et passer à la suivante' }));
@@ -148,9 +156,8 @@ describe('TemplateVersionEditor', () => {
     const listImportableSections = vi.fn(async () => []);
     renderEditor(Object.assign(repo, { listImportableSections }));
 
-    // La gestion de la structure (sections, rubriques communes, import) est repliee dans
-    // l'espace Structure : on l'ouvre a la demande, au lieu d'un espace separe.
-    await user.click(await screen.findByRole('button', { name: 'Gérer la structure' }));
+    // La gestion des sections, rubriques communes et imports possède son espace dédié.
+    await user.click(await screen.findByRole('tab', { name: 'Sections' }));
     const command = await screen.findByRole('button', { name: 'Importer un bloc' });
     // La commande est bien dans le formulaire de creation de section, pas ailleurs.
     expect(command.closest('form')).toContainElement(screen.getByRole('button', { name: 'Ajouter la section' }));
@@ -172,7 +179,7 @@ describe('TemplateVersionEditor', () => {
     }));
 
     expect(await screen.findByText(/Version publiée/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Gérer la structure' }));
+    await user.click(screen.getByRole('tab', { name: 'Sections' }));
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajouter la section' })).not.toBeInTheDocument();
   });
@@ -184,7 +191,7 @@ describe('TemplateVersionEditor', () => {
 
     // Le frontend ne doit jamais dependre d'une RPC absente : sans `listImportableSections`,
     // la commande disparait au lieu d'echouer au clic.
-    await user.click(await screen.findByRole('button', { name: 'Gérer la structure' }));
+    await user.click(await screen.findByRole('tab', { name: 'Sections' }));
     expect(await screen.findByRole('button', { name: 'Ajouter la section' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Importer un bloc' })).not.toBeInTheDocument();
   });
@@ -239,7 +246,7 @@ describe('TemplateVersionEditor', () => {
 
     /** Importe le bloc puis demande a le conditionner : on arrive dans l'espace Regles. */
     async function importerPuisConditionner(user: ReturnType<typeof userEvent.setup>) {
-      await user.click(await screen.findByRole('button', { name: 'Gérer la structure' }));
+      await user.click(await screen.findByRole('tab', { name: 'Sections' }));
       await user.click(await screen.findByRole('button', { name: 'Importer un bloc' }));
       await user.selectOptions(await screen.findByLabelText(/Bloc à importer/), 'version-2::tuberculose');
       await screen.findByText(/Ce qui sera écrit/);
@@ -341,7 +348,7 @@ const searchVariables = () => screen.getByRole('searchbox', { name: 'Rechercher 
 const filterSection = (sectionKey: string) =>
   fireEvent.change(screen.getByRole('combobox', { name: 'Filtrer par section' }), { target: { value: sectionKey } });
 /**
- * Les quatre espaces restent MONTES pour ne perdre aucune saisie ; les panneaux inactifs
+ * Les cinq espaces restent MONTES pour ne perdre aucune saisie ; les panneaux inactifs
  * portent `hidden`. `getByText` ne respecte pas `hidden` : un libelle de variable apparait
  * aussi dans les `<option>` du filtre de l'espace Regles. Les lectures de liste se font donc
  * dans l'espace Structure.
