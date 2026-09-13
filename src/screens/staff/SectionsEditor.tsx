@@ -156,122 +156,6 @@ export function SectionsEditor({
     <div>
       <h3 className="mb-1 text-sm font-semibold text-slate-700">{t('admin.sections')}</h3>
 
-      <ul className="space-y-2 text-sm">
-        {sections.map((section) => {
-          const siblings = sections.filter((s) => (s.parentSectionKey ?? null) === (section.parentSectionKey ?? null));
-          const index = siblings.findIndex((s) => s.id === section.id);
-          const hasChildren = sections.some((s) => s.parentSectionKey === section.sectionKey);
-          const used = countIn(section.sectionKey);
-          return (
-            <li key={section.id} className={`card flex flex-wrap items-center gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
-              <span className="flex flex-col">
-                <button
-                  type="button"
-                  onClick={() => move(section.id, -1)}
-                  disabled={busy || index === 0}
-                  aria-label={t('admin.move_up')}
-                  className="min-h-6 px-1 text-slate-400 disabled:opacity-30 hover:text-slate-700"
-                >
-                  <ArrowUp size={14} aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => move(section.id, 1)}
-                  disabled={busy || index === siblings.length - 1}
-                  aria-label={t('admin.move_down')}
-                  className="min-h-6 px-1 text-slate-400 disabled:opacity-30 hover:text-slate-700"
-                >
-                  <ArrowDown size={14} aria-hidden />
-                </button>
-              </span>
-
-              {editingId === section.id ? (
-                <>
-                  <input
-                    className="input min-w-0 flex-1"
-                    value={draftLabel}
-                    onChange={(e) => setDraftLabel(e.target.value)}
-                    aria-label={t('admin.section_label')}
-                  />
-                  <button
-                    type="button"
-                    className="btn-primary min-h-11 px-3 text-xs"
-                    disabled={busy || draftLabel.trim() === ''}
-                    onClick={() => {
-                      const label = draftLabel.trim();
-                      pendingRename.current = { sectionId: section.id, label };
-                      try {
-                        const result = onRename(section.id, label);
-                        if (isPromiseLike(result)) {
-                          void result.then((outcome) => {
-                            if (outcome !== false) sectionRenameConfirmed(section.id, label);
-                          }).catch(() => { /* le parent affiche le refus, la saisie reste locale */ });
-                        }
-                      } catch {
-                        pendingRename.current = null;
-                      }
-                    }}
-                  >
-                    {t('admin.save')}
-                  </button>
-                  <button type="button" className="btn-ghost min-h-11 px-3 text-xs" onClick={requestCancelEditing}>
-                    {t('common.cancel')}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="min-w-[10rem] flex-1 break-words font-medium text-slate-900 sm:min-w-0">
-                    {sectionLabel(t, section)}
-                  </span>
-                  {/* Le code interne est montre, jamais modifiable : c'est lui que portent
-                      les fiches deja saisies et les instantanes hors-ligne. */}
-                  <span className="min-w-0 max-w-full break-all font-mono text-xs text-slate-400 sm:max-w-none sm:break-normal">{section.sectionKey}</span>
-                  <span className="text-xs text-slate-500">
-                    {t('admin.section_field_count').replace('{n}', String(used))}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn-ghost min-h-11 px-3 text-xs"
-                    disabled={busy}
-                    onClick={() => {
-                      requestEditing(section);
-                    }}
-                  >
-                    {t('admin.rename')}
-                  </button>
-                  {onMove && <select aria-label={t('section.parent')} className="input w-auto" value={section.parentSectionKey ?? ''}
-                    disabled={busy || hasChildren} onChange={(e) => onMove(section.id, e.target.value || null)}>
-                    <option value="">{t('section.root')}</option>
-                    {sections.filter((s) => !s.parentSectionKey && s.id !== section.id).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
-                  </select>}
-                  {used > 0 || hasChildren ? (
-                    // Supprimer une section peuplee ferait basculer ses variables sur
-                    // « Autre » : le formulaire changerait d'apparence sans decision.
-                    <button
-                      type="button"
-                      disabled
-                      className="min-h-11 cursor-not-allowed px-2 text-xs font-medium text-slate-500"
-                      title={t('admin.section_not_empty')}
-                    >
-                      {t('admin.delete')}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => onDelete(section.id)}
-                      className="min-h-11 px-2 text-xs font-medium text-red-600 hover:underline"
-                    >
-                      {t('admin.delete')}
-                    </button>
-                  )}
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-
       <form
         className="mt-3 flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
@@ -310,16 +194,136 @@ export function SectionsEditor({
         <button type="submit" className="btn-secondary" disabled={busy || newLabel.trim() === ''}>
           {t('admin.section_add')}
         </button>
-        {/* L59 : ressaisir un bloc de vingt variables coute vingt formulaires de creation.
-            La commande est ici, a cote de la creation manuelle, parce que c'est le meme
-            geste vu par l'utilisateur : ajouter un regroupement a cette version. Elle
-            n'existe que sur une version editable, l'ecran entier n'etant rendu que la. */}
+        {/* Importer et creer sont le meme geste vu de l'utilisateur : ajouter un
+            regroupement a cette version. Les deux commandes restent donc cote a cote. */}
         {onImportBlock && (
           <button type="button" className="btn-ghost" disabled={busy} onClick={onImportBlock}>
             {t('blockimport.command')}
           </button>
         )}
       </form>
+
+      <ul className="mt-3 space-y-2 text-sm">
+        {sections.map((section) => {
+          const siblings = sections.filter((s) => (s.parentSectionKey ?? null) === (section.parentSectionKey ?? null));
+          const index = siblings.findIndex((s) => s.id === section.id);
+          const hasChildren = sections.some((s) => s.parentSectionKey === section.sectionKey);
+          const used = countIn(section.sectionKey);
+          return (
+            <li key={section.id} className={`card flex flex-wrap items-start gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
+              <span className="flex shrink-0 flex-col">
+                <button
+                  type="button"
+                  onClick={() => move(section.id, -1)}
+                  disabled={busy || index === 0}
+                  aria-label={t('admin.move_up')}
+                  className="min-h-6 px-1 text-slate-400 disabled:opacity-30 hover:text-slate-700"
+                >
+                  <ArrowUp size={14} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(section.id, 1)}
+                  disabled={busy || index === siblings.length - 1}
+                  aria-label={t('admin.move_down')}
+                  className="min-h-6 px-1 text-slate-400 disabled:opacity-30 hover:text-slate-700"
+                >
+                  <ArrowDown size={14} aria-hidden />
+                </button>
+              </span>
+
+              {editingId === section.id ? (
+                <>
+                  <input
+                    className="input min-w-[min(12rem,100%)] flex-1"
+                    value={draftLabel}
+                    onChange={(e) => setDraftLabel(e.target.value)}
+                    aria-label={t('admin.section_label')}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary min-h-11 px-3 text-xs"
+                    disabled={busy || draftLabel.trim() === ''}
+                    onClick={() => {
+                      const label = draftLabel.trim();
+                      pendingRename.current = { sectionId: section.id, label };
+                      try {
+                        const result = onRename(section.id, label);
+                        if (isPromiseLike(result)) {
+                          void result.then((outcome) => {
+                            if (outcome !== false) sectionRenameConfirmed(section.id, label);
+                          }).catch(() => { /* le parent affiche le refus, la saisie reste locale */ });
+                        }
+                      } catch {
+                        pendingRename.current = null;
+                      }
+                    }}
+                  >
+                    {t('admin.save')}
+                  </button>
+                  <button type="button" className="btn-ghost min-h-11 px-3 text-xs" onClick={requestCancelEditing}>
+                    {t('common.cancel')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Le libelle ne partage plus sa ligne avec les commandes. Reduit a `min-w-0`,
+                      il tombait a quelques pixels des que la liste deroulante des parents etait
+                      large, et s'affichait alors une lettre par ligne. */}
+                  <div className="flex min-w-[min(12rem,100%)] flex-1 flex-col gap-0.5">
+                    <span className="break-words font-medium text-slate-900">{sectionLabel(t, section)}</span>
+                    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
+                      {/* Le code interne est montre, jamais modifiable : c'est lui que portent
+                          les fiches deja saisies et les instantanes hors-ligne. */}
+                      <span className="break-all font-mono text-slate-400">{section.sectionKey}</span>
+                      <span className="text-slate-500">{t('admin.section_field_count').replace('{n}', String(used))}</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-11 px-3 text-xs"
+                      disabled={busy}
+                      onClick={() => {
+                        requestEditing(section);
+                      }}
+                    >
+                      {t('admin.rename')}
+                    </button>
+                    {onMove && <select aria-label={t('section.parent')} className="input w-auto max-w-[12rem]" value={section.parentSectionKey ?? ''}
+                      disabled={busy || hasChildren} onChange={(e) => onMove(section.id, e.target.value || null)}>
+                      <option value="">{t('section.root')}</option>
+                      {sections.filter((s) => !s.parentSectionKey && s.id !== section.id).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
+                    </select>}
+                    {used > 0 || hasChildren ? (
+                      // Supprimer une section peuplee ferait basculer ses variables sur
+                      // « Autre » : le formulaire changerait d'apparence sans decision.
+                      <button
+                        type="button"
+                        disabled
+                        className="min-h-11 cursor-not-allowed px-2 text-xs font-medium text-slate-500"
+                        title={t('admin.section_not_empty')}
+                      >
+                        {t('admin.delete')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onDelete(section.id)}
+                        className="min-h-11 px-2 text-xs font-medium text-red-600 hover:underline"
+                      >
+                        {t('admin.delete')}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
       <ConfirmDialog
         open={pendingEditAction !== null}
         title={t('admin.leave_variable_title')}

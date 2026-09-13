@@ -11,7 +11,7 @@
 // =============================================================================
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -104,6 +104,9 @@ describe('NewPatient hors-ligne (intake-only)', () => {
     // Identite visible : le droit a ete RESOLU EN LIGNE lors de la preparation.
     expect(screen.getByLabelText('Nom complet')).toBeInTheDocument();
 
+    // La saisie n'est ouverte qu'une fois la recherche de brouillon terminee : sans cela,
+    // les premieres frappes seraient perdues si un brouillon etait finalement propose.
+    await waitFor(() => expect(screen.getByLabelText('Nom complet')).toBeEnabled());
     await user.type(screen.getByLabelText('Nom complet'), 'Marie Local');
     await user.type(screen.getByLabelText('Date de naissance'), '1992-02-02');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));

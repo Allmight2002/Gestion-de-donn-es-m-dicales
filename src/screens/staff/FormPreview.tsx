@@ -125,7 +125,6 @@ export function FormPreview({
   const patientVisible = patientFields.filter(
     (f) => !patientCompanions.has(f.fieldKey) && !patientHidden.has(f.fieldKey),
   );
-  // The same derived, non-persistent coverage as clinical entry, independent of completeness.
   const coverage = useDiagnosisCoverage(version.id, version.diagnosisContext, tab,
     tab === 'patient' ? patientValues : encounterValues, fields, rules, sections ?? []);
 

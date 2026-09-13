@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, NavLink } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 import {
-  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
+  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { canCreateBase } from '../auth/logic';
@@ -22,6 +22,22 @@ function initialsOf(name: string): string {
   return (parts[0]?.[0] ?? '?').concat(parts[1]?.[0] ?? '').toUpperCase();
 }
 
+const DESKTOP_SIDEBAR_STORAGE_KEY = 'meddata:desktop-sidebar';
+
+function initialDesktopSidebarOpen(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return window.sessionStorage.getItem(DESKTOP_SIDEBAR_STORAGE_KEY) !== 'closed';
+  } catch {
+    // Le shell reste utilisable si le navigateur bloque le stockage de session.
+    return true;
+  }
+}
+
+function isVariableEditorRoute(pathname: string): boolean {
+  return /^\/bases\/[^/]+\/template(?:\/|$)/.test(pathname);
+}
+
 interface NavItem {
   to: string;
   labelKey: MessageKey;
@@ -37,6 +53,7 @@ interface NavItem {
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, error: authError } = useAuth();
   const { t } = useI18n();
+  const { pathname } = useLocation();
   const online = useOnline();
   const bases = useBaseRepository();
   const patients = usePatientRepository();
@@ -47,8 +64,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   const rejectedCount = outboxEntries.filter((e) => e.state === 'rejected').length;
   const syncing = useRef(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(initialDesktopSidebarOpen);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const reopenSidebarRef = useRef<HTMLButtonElement>(null);
+
+  const editorRoute = isVariableEditorRoute(pathname);
+  const hideSidebarLabel = t('nav.hide_sidebar');
+  const showSidebarLabel = t('nav.show_sidebar');
+
+  const setSidebarOpen = (open: boolean) => {
+    setDesktopSidebarOpen(open);
+    try {
+      window.sessionStorage.setItem(DESKTOP_SIDEBAR_STORAGE_KEY, open ? 'open' : 'closed');
+    } catch {
+      // La préférence est facultative; l'état local du shell reste actif.
+    }
+  };
 
   // Corbeille des bases : le compte est affiche en badge dans la barre laterale, comme la
   // synchronisation. Recharge au montage et au retour de focus de la fenetre (une RPC legere
@@ -165,65 +197,79 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const sidebarContent = (
     <>
-      <Link to="/" className="flex items-center gap-2.5 px-2 pb-4" onClick={() => setDrawerOpen(false)}>
-        <Logo className="h-8 w-8" />
-        <span className="text-sm font-semibold tracking-tight text-slate-900">{t('app.title')}</span>
-      </Link>
-
-      <button
-        type="button"
-        onClick={() => { setDrawerOpen(false); window.dispatchEvent(new Event(OPEN_PALETTE_EVENT)); }}
-        className="mb-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
-      >
-        <span className="flex items-center gap-1.5"><Search size={13} aria-hidden /> {t('search.button')}</span>
-        <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-700">Ctrl K</kbd>
-      </button>
-
-      <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">
-        {nav.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={() => setDrawerOpen(false)}>
-            <item.Icon size={16} aria-hidden />
-            <span className="min-w-0 flex-1 truncate">{t(item.labelKey)}</span>
-            {item.badge != null && item.badge > 0 && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${item.badgeDanger ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-                {item.badge}
-              </span>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-
-      {recents.length > 0 && (
-        <div className="mt-4">
-          <p className="px-2.5 pb-1 text-[11px] font-medium text-slate-500">{t('nav.recent_bases')}</p>
-          <div className="flex flex-col gap-0.5">
-            {recents.map((b) => (
-              <NavLink key={b.id} to={`/bases/${b.id}`} className={navLinkClass} onClick={() => setDrawerOpen(false)}>
-                <Database size={15} aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{b.name}</span>
-              </NavLink>
-            ))}
-          </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex items-start gap-2 pb-4">
+          <Link to="/" className="min-w-0 flex flex-1 items-center gap-2.5 px-2" onClick={() => setDrawerOpen(false)}>
+            <Logo className="h-8 w-8 shrink-0" />
+            <span className="truncate text-sm font-semibold tracking-tight text-slate-900">{t('app.title')}</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            aria-label={hideSidebarLabel}
+            title={hideSidebarLabel}
+            aria-controls="desktop-sidebar"
+            className="icon-button hidden h-11 w-11 shrink-0 lg:grid"
+          >
+            <PanelLeftClose size={16} aria-hidden />
+          </button>
         </div>
-      )}
 
-      <div className="flex-1" />
-
-      <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
-        <ThemeToggle />
-        <LanguageSwitcher />
-      </div>
-      <div className="surface-muted mt-2 flex items-center gap-2 p-2">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-teal-100 text-xs font-semibold text-teal-800 dark:bg-teal-900/60 dark:text-teal-200">
-          {initialsOf(displayName)}
-        </span>
-        <div className="min-w-0 flex-1 leading-tight">
-          <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{displayName}</div>
-          <div className="mt-0.5 truncate text-xs font-medium text-slate-600 dark:text-slate-300">{roleLabel}</div>
-        </div>
-        <button onClick={requestSignOut} title={t('shell.signout')} aria-label={t('shell.signout')} className="icon-button h-11 w-11 shrink-0">
-          <LogOut size={16} aria-hidden />
+        <button
+          type="button"
+          onClick={() => { setDrawerOpen(false); window.dispatchEvent(new Event(OPEN_PALETTE_EVENT)); }}
+          className="mb-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+        >
+          <span className="flex items-center gap-1.5"><Search size={13} aria-hidden /> {t('search.button')}</span>
+          <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-700">Ctrl K</kbd>
         </button>
+
+        <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">
+          {nav.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={() => setDrawerOpen(false)}>
+              <item.Icon size={16} aria-hidden />
+              <span className="min-w-0 flex-1 truncate">{t(item.labelKey)}</span>
+              {item.badge != null && item.badge > 0 && (
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${item.badgeDanger ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {item.badge}
+                </span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        {recents.length > 0 && (
+          <div className="mt-4">
+            <p className="px-2.5 pb-1 text-[11px] font-medium text-slate-500">{t('nav.recent_bases')}</p>
+            <div className="flex flex-col gap-0.5">
+              {recents.map((b) => (
+                <NavLink key={b.id} to={`/bases/${b.id}`} className={navLinkClass} onClick={() => setDrawerOpen(false)}>
+                  <Database size={15} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0">
+        <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+          <ThemeToggle />
+          <LanguageSwitcher />
+        </div>
+        <div className="surface-muted mt-2 flex items-center gap-2 p-2">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-teal-100 text-xs font-semibold text-teal-800 dark:bg-teal-900/60 dark:text-teal-200">
+            {initialsOf(displayName)}
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{displayName}</div>
+            <div className="mt-0.5 truncate text-xs font-medium text-slate-600 dark:text-slate-300">{roleLabel}</div>
+          </div>
+          <button onClick={requestSignOut} title={t('shell.signout')} aria-label={t('shell.signout')} className="icon-button h-11 w-11 shrink-0">
+            <LogOut size={16} aria-hidden />
+          </button>
+        </div>
       </div>
     </>
   );
@@ -237,12 +283,30 @@ export function AppShell({ children }: { children: ReactNode }) {
         Aller au contenu principal
       </a>
       {/* Barre laterale fixe (>= lg). */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col overflow-y-auto border-r border-slate-200/70 bg-white/80 p-3 backdrop-blur-md lg:flex">
+      <aside
+        id="desktop-sidebar"
+        className={`fixed inset-y-0 left-0 z-30 hidden min-h-0 w-60 flex-col border-r border-slate-200/70 bg-white/80 p-3 backdrop-blur-md ${desktopSidebarOpen ? 'lg:flex' : 'lg:hidden'}`}
+      >
         {sidebarContent}
       </aside>
+      {!desktopSidebarOpen && (
+        <button
+          ref={reopenSidebarRef}
+          type="button"
+          onClick={() => setSidebarOpen(true)}
+          aria-label={showSidebarLabel}
+          title={showSidebarLabel}
+          aria-controls="desktop-sidebar"
+          /* Au-dessus des entetes collantes des pages, sinon la seule commande capable de
+             ramener la navigation disparait des le premier defilement. */
+          className="icon-button fixed left-3 top-3 z-40 hidden h-11 w-11 bg-white/90 backdrop-blur lg:grid"
+        >
+          <PanelLeftOpen size={16} aria-hidden />
+        </button>
+      )}
 
       {/* Barre haute mobile (< lg) + tiroir. */}
-      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md lg:hidden">
+      <header className={`${editorRoute ? 'relative' : 'sticky top-0'} z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md lg:hidden`}>
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
           <Link to="/" className="flex items-center gap-2">
             <Logo className="h-8 w-8" />
@@ -263,7 +327,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {drawerOpen && (
         <div className="fixed inset-0 z-40 h-[100dvh] lg:hidden" role="dialog" aria-modal="true" aria-label={t('nav.open_menu')}>
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute inset-y-0 left-0 flex w-64 flex-col overflow-y-auto bg-white p-3 shadow-xl">
+          <div className="absolute inset-y-0 left-0 flex min-h-0 w-64 flex-col bg-white p-3 shadow-xl">
             <button onClick={() => setDrawerOpen(false)} aria-label={t('nav.close_menu')} className="self-end rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
               <X size={16} aria-hidden />
             </button>
@@ -272,7 +336,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <div className="lg:pl-60">
+      {/* Barre masquee : la gouttiere gauche reste reservee au bouton de reouverture, qui
+          sinon se poserait sur le premier bouton de la page. */}
+      <div className={desktopSidebarOpen ? 'lg:pl-60' : 'lg:pl-20'}>
         {authError && (
           <div role="alert" className="border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-700">{authError}</div>
         )}

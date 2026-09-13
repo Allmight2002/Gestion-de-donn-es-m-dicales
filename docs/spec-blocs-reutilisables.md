@@ -1,7 +1,7 @@
 # Spécification — blocs réutilisables entre jeux de variables
 
-- Statut : **L58 et L59 implémentés localement, non déployés** (L58 le 2026-09-08, L59 le
-  2026-09-09) ; **L60 spécifié, non implémenté**.
+- Statut : **L58, L59 et L60 implémentés localement, non déployés** (L58 le 2026-09-08,
+  L59 le 2026-09-09, L60 le 2026-09-13). Le chantier des blocs réutilisables est complet.
 - Origine : question du porteur du 2026-09-07 — réduire le temps de réglage d'un jeu de
   variables, une fois les lots L51 à L56 en place
 - Prolonge [spec-blocs-pathologies.md](spec-blocs-pathologies.md) (un bloc **est** une section
@@ -454,5 +454,61 @@ Contrôles exécutés sur PostgreSQL embarqué jetable, avec données fictives :
 - `npm run typecheck`, `npm run lint`, `npm run schema`, inspection du snapshot
   (une fonction `INVOKER` de plus, rien d'autre), `npm run schema:check` et
   `git diff --check` : réussis.
+
+Validation locale uniquement : aucune migration distante appliquée, aucun déploiement.
+
+## 13. État de l'implémentation L60 — 2026-09-13
+
+**Aucune migration.** La règle est créée par `repo.addRule`, c'est-à-dire l'insertion dans
+`validation_rule` qu'utilise déjà le constructeur de règles : `assert_rule_structure`,
+`assert_rule_calculated_operands`, `assert_visibility_acyclic` et
+`validate_template_version_invariants` — donc `assert_diagnosis_configuration` — s'appliquent
+sans qu'une ligne de SQL soit ajoutée. Aucune RPC nouvelle, aucun chemin d'écriture parallèle.
+
+Surfaces : `src/domain/blockActivation.ts` (module pur), `src/screens/staff/BlockActivationPanel.tsx`,
+le passage de `onActivate` dans `SectionImportDialog.tsx`, le branchement dans
+`TemplateVersionEditor.tsx`, et 21 clés de message en français et en anglais.
+
+Trois points ne relèvent pas du détail.
+
+- **Sans configuration diagnostique sur la cible, un pilote `terminology` est refusé.**
+  `template_field` ne porte pas de colonne de release : la seule édition écrite côté cible est
+  celle de la `diagnosis_configuration` de L55 qui désigne ce pilote. Sans elle il n'y a ni
+  édition à comparer, ni liste de codes reconnus à vérifier — et le §6 exige les deux avant de
+  proposer quoi que ce soit. Le refus le dit, plutôt que de parier.
+- **Aucun contrôle d'acyclicité côté client, et ce n'est pas un oubli.** La règle proposée
+  n'ajoute que des arêtes « variable du bloc dépend du pilote ». Un cycle exigerait donc que le
+  pilote dépende lui-même d'une variable du bloc, c'est-à-dire qu'il soit la cible d'une règle
+  d'affichage : `driver_hidden` l'a déjà refusé, avec un motif bien plus parlant. Le contrôle
+  avait d'abord été écrit, puis retiré comme branche morte — aucun cas de test ne pouvait
+  l'atteindre. `assert_visibility_acyclic` reste la garantie à l'écriture.
+- **Trois refus du serveur que le §6 ne liste pas sont pré-contrôlés** parce que l'écran les
+  voit sans aller-retour : bloc et pilote de fiches différentes, bloc vide pour le pilote
+  diagnostique (`DIAGNOSIS_BLOCK_EMPTY`), code déjà déclaré « socle suffisant »
+  (`DIAGNOSIS_COMMON_BLOCK_OVERLAP`). Le serveur reste le garant ; l'interface évite un
+  échec prévisible.
+
+**Défaut corrigé en chemin.** `getFields`, la lecture allégée introduite par L59, omettait
+`is_multiple` alors que `FieldRow` le déclare et que `mapField` le lit. Toute variable
+multivaluée revenait donc unitaire, et L60 — qui compare le pilote de la source à celui de la
+cible — aurait refusé tout pilote diagnostique multivalué, c'est-à-dire le cas courant. La
+colonne est ajoutée à la requête et un test du dépôt verrouille la correction.
+
+Contrôles exécutés, données fictives uniquement :
+
+- Base — `test/diagnosis-configuration.test.ts` : **21 tests réussis**, dont le nouveau cas L60
+  qui vérifie sur PostgreSQL embarqué que les gardes elles-mêmes refusent une édition
+  différente (`DIAGNOSIS_RELEASE_MISMATCH`), un code absent de l'édition configurée et un code
+  « socle suffisant », qu'aucune règle ne subsiste après ces refus, et qu'une règle conforme
+  passe puis rend le bloc couvert. C'est le point « à vérifier, pas à supposer » du lot.
+- Web — `BlockActivationPanel.test.tsx` : **23 tests**, couvrant le §9.2 point par point plus
+  un cas par refus déclaré, sans trou dans la table de messages ;
+  `TemplateVersionEditor.test.tsx` : **18 tests**, dont le parcours entier import → activation
+  prouvant l'appel à `addRule` avec la forme canonique, et le refus laissant l'avertissement de
+  L59 en place ; `SectionImportDialog.test.tsx` : **11 tests** ; `templates.test.tsx` :
+  **8 tests**, dont la non-régression de `getFields`. Régressions des surfaces voisines
+  rejouées : `RuleForm.test.tsx` **19**, `TemplateVersionEditor.registre.test.tsx` **10**,
+  `TemplateVersionEditor.mesures.test.tsx` **1**, `TemplatesAdmin.test.tsx` **18**.
+- `npm run typecheck` et `npm run lint` : réussis.
 
 Validation locale uniquement : aucune migration distante appliquée, aucun déploiement.

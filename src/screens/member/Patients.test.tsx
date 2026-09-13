@@ -179,6 +179,8 @@ describe('NewPatient', () => {
       </I18nProvider>,
     );
 
+    // La saisie s'ouvre un bloc a la fois : on demande tous les blocs pour lire le regroupement.
+    await userEvent.click(await screen.findByLabelText('Un bloc à la fois'));
     const clinique = await screen.findByRole('group', { name: 'Clinique' });
     const paraclinique = screen.getByRole('group', { name: 'Paraclinique' });
     const other = screen.getByRole('group', { name: 'Autre' });
@@ -229,6 +231,7 @@ describe('NewPatient', () => {
     );
 
     await screen.findByLabelText('Diagnostic');
+    await user.click(await screen.findByLabelText('Un bloc à la fois'));
     expect(screen.queryByLabelText('Diagnostic — valeur proposée')).not.toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'Diagnostic absent du référentiel' }));
     await user.type(screen.getByRole('textbox', { name: 'Décrivez le diagnostic introuvable :' }), 'Diagnostic fictif rare');

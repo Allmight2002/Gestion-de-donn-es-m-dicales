@@ -16,6 +16,8 @@ import { RuleBatchPanel, isBatchSource } from './RuleBatchPanel';
 import { DiagnosisConfigurationEditor } from './DiagnosisConfigurationEditor';
 import { SectionsEditor } from './SectionsEditor';
 import { SectionImportDialog } from './SectionImportDialog';
+import { BlockActivationPanel } from './BlockActivationPanel';
+import type { ImportedBlockActivation } from '../../domain/blockActivation';
 import { CommonLayoutEditor } from './CommonLayoutEditor';
 import { FieldMoveDialog, type FieldMove } from './FieldMoveDialog';
 import { templateFieldToNewField } from '../../domain/templateFields';
@@ -118,16 +120,16 @@ export function TemplateVersionEditor({
   const [previewVisited, setPreviewVisited] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  // L59 : import d'un bloc reutilisable. `activationSection` porte le bloc qui vient
-  // d'arriver jusqu'au constructeur de regles — c'est le point d'entree de L60, et rien
-  // de plus : aucune regle n'est creee ici, aucun pilote n'est devine.
+  // L59/L60 : import d'un bloc reutilisable. `activation` porte le bloc qui vient d'arriver
+  // ET la condition d'affichage que D7 a refuse de copier, jusqu'a l'espace Regles. L60 dit
+  // la si cette condition peut etre recreee ici ; sinon le constructeur reste la seule voie.
   const [importOpen, setImportOpen] = useState(false);
-  const [activationSection, setActivationSection] = useState<string | null>(null);
+  const [activation, setActivation] = useState<ImportedBlockActivation | null>(null);
+  const activationSection = activation?.sectionKey ?? null;
   const rulesRef = useRef<HTMLDivElement | null>(null);
   const ruleFormRef = useRef<HTMLDivElement | null>(null);
-  // UX-14(a) : trois espaces de travail. Ils ne font que CHANGER CE QUI EST AFFICHE — la
-  // recherche, les filtres et la saisie en cours vivent dans cet ecran et leur sont communs,
-  // et changer d'espace n'ecrit rien.
+  // Les espaces ne font que CHANGER CE QUI EST AFFICHE : la recherche, les filtres et la
+  // saisie en cours leur sont communs, et changer d'espace n'ecrit rien.
   const [space, setSpace] = useState<EditorSpace>('structure');
   const [displaySort, setDisplaySort] = useState<DisplaySort>('form');
   const [ruleSearch, setRuleSearch] = useState('');
@@ -222,6 +224,7 @@ export function TemplateVersionEditor({
     () => (data ? editorGroups(data.fields, data.sections, data.version.commonLayout, t) : []),
     [data, t],
   );
+  const commonFieldCount = (data?.fields ?? []).filter((field) => field.section === null).length;
   // Le compte de regles d'une variable est lu une fois PAR LIGNE. Recalcule a chaque ligne, il
   // reparcourait toutes les regles : 216 lignes x 26 regles a chaque frappe de recherche. Il se
   // calcule ici une seule fois, en un parcours des regles et un des variables.
@@ -519,8 +522,6 @@ export function TemplateVersionEditor({
               <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('admin.editor_context')}</span>
               <h2 className="text-xl font-semibold tracking-tight text-slate-900">{templateName ?? t('admin.editor_context')}</h2>
               <span className="badge">{t('admin.version')} {version.versionNumber} · {t(`status.${version.status}`)}</span>
-              <span className="text-xs text-slate-500">{t('admin.variable_count').replace('{n}', String(fields.length))}</span>
-              <span className="text-xs text-slate-500">{sections.length} {t('admin.space_sections')} · {rules.length} {t('admin.rules')}</span>
             </div>
           </div>
           <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:justify-end">
@@ -558,7 +559,6 @@ export function TemplateVersionEditor({
             )}
           </div>
         </div>
-        {/* Four workspaces share loaded domain objects and keep each draft mounted. */}
         <div className="mt-3 flex flex-wrap gap-1" role="tablist" aria-label={t('admin.spaces')}>
           {EDITOR_SPACES.map((item, index) => (
             <button
@@ -594,8 +594,18 @@ export function TemplateVersionEditor({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Recherche, filtres et compteurs sortent de la barre collante : ils ne servent qu'une
+          fois, alors que leur hauteur se retranchait de l'ecran a chaque defilement. Seuls le
+          titre et les espaces restent en tete. */}
+      <div className="space-y-2">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+          <span>{t('admin.variable_count').replace('{n}', String(fields.length))}</span>
+          <span>{sections.length} {t('admin.space_sections')} · {rules.length} {t('admin.rules')}</span>
+        </p>
         {space === 'structure' && (
-        <div className="mt-3 grid gap-2 md:grid-cols-[minmax(14rem,2fr)_repeat(3,minmax(9rem,1fr))_auto]">
+        <div className="grid gap-2 md:grid-cols-[minmax(14rem,2fr)_repeat(3,minmax(9rem,1fr))_auto]">
           <label className="relative block">
             <span className="sr-only">{t('admin.search_variables')}</span>
             <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -630,7 +640,7 @@ export function TemplateVersionEditor({
           </label>
         </div>
         )}
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" aria-live="polite">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" aria-live="polite">
           <span>{t(SAVE_STATE_KEYS[panelSaveState])}</span>
           {space === 'structure' && (
             <span>{t('admin.filtered_count').replace('{shown}', String(filteredFields.length)).replace('{total}', String(fields.length))}</span>
@@ -706,8 +716,6 @@ export function TemplateVersionEditor({
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {!editable && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{t('admin.published_readonly')}</p>}
 
-      {/* L31 : les sections avant les variables — on choisit ses regroupements, puis on
-          range ses variables dedans. Gelees avec la version, donc invisibles hors brouillon. */}
       {/* L55 : `undefined` signale un serveur qui ignore la colonne. On ne propose alors pas
           une configuration qu'il ne saurait pas enregistrer ; le gabarit reste consultable. */}
       <div hidden={space !== 'structure'} id="editor-panel-structure" role="tabpanel" aria-labelledby="editor-space-structure">
@@ -753,23 +761,6 @@ export function TemplateVersionEditor({
           ruleCount={(field) => ruleCountByFieldId.get(field.id) ?? 0}
           context={inheritedRules.map((rule) => <p key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></p>)}
           management={<><button type="button" className="btn-secondary mb-4" aria-expanded={managementOpen} onClick={() => setManagementOpen(!managementOpen)}>{t('editor.manage_structure')}</button>      <div hidden={!managementOpen} className="space-y-5" aria-label={t('editor.manage_structure')}>
-      {/* UX-16 : les rubriques communes restent dans l'espace Structure/Sections : elles
-          s'intercalent avec les blocs mais n'en deviennent jamais des sous-sections. */}
-      {version.commonLayout === undefined && <p role="status" className="text-sm text-amber-800">{t('editor.layout_unavailable')}</p>}
-      {version.commonLayout !== undefined && (
-        <CommonLayoutEditor
-          layout={version.commonLayout}
-          onDirtyChange={setLayoutDirty}
-          fields={fields}
-          sections={sections}
-          disabled={!editable || busy}
-          onSave={async (operationId, payload, expectedFingerprint) => {
-            if (!repo.setCommonLayout) throw new Error('COMMON_LAYOUT_UNSUPPORTED');
-            await repo.setCommonLayout(version.id, operationId, payload, expectedFingerprint);
-            await reload();
-          }}
-        />
-      )}
       {editable && (
         <SectionsEditor
           sections={sections}
@@ -793,12 +784,30 @@ export function TemplateVersionEditor({
           // Le cache de session est deja vide par `importSection` ; ce rechargement
           // rapporte le bloc, ses variables et ses regles dans l'ecran.
           onImported={reload}
-          onActivate={(sectionKey) => {
+          onActivate={(next) => {
             setImportOpen(false);
-            setActivationSection(sectionKey);
+            setActivation(next);
             setRuleFormOpen(true);
             // L'activation se decide dans l'espace Regles : on y conduit directement.
             setSpace('rules');
+          }}
+        />
+      )}
+      {/* Les blocs d'abord : ils sont la structure du formulaire. Les rubriques communes ne
+          regroupent que les variables restees hors bloc, et se replient tant qu'on ne s'en
+          occupe pas. Sans variable commune, il n'y a rien a organiser ni a signaler. */}
+      {commonFieldCount > 0 && version.commonLayout === undefined && <p role="status" className="text-sm text-amber-800">{t('editor.layout_unavailable')}</p>}
+      {commonFieldCount > 0 && version.commonLayout !== undefined && (
+        <CommonLayoutEditor
+          layout={version.commonLayout}
+          onDirtyChange={setLayoutDirty}
+          fields={fields}
+          sections={sections}
+          disabled={!editable || busy}
+          onSave={async (operationId, payload, expectedFingerprint) => {
+            if (!repo.setCommonLayout) throw new Error('COMMON_LAYOUT_UNSUPPORTED');
+            await repo.setCommonLayout(version.id, operationId, payload, expectedFingerprint);
+            await reload();
           }}
         />
       )}
@@ -1099,14 +1108,30 @@ export function TemplateVersionEditor({
         {rules.length > 0 && filteredRules.length === 0 && <p className="text-sm text-slate-500">{t('admin.rules_none')}</p>}
         {editable && ruleFormOpen && (
           <div className="mt-3" ref={ruleFormRef}>
-            {/* L59 : apres un import, le bloc est visible SANS condition (D7 n'a pas
-                copie sa regle d'activation). Le constructeur s'ouvre donc sur ce bloc,
-                et l'utilisateur choisit le pilote : c'est L60 qui verifiera un jour la
-                compatibilite d'un pilote repris de la source. */}
-            {activationSection && !editingRule && (
-              <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                {t('blockimport.success_activation')}
-              </p>
+            {/* L59 : apres un import, le bloc est visible SANS condition (D7 n'a pas copie
+                sa regle d'activation). L'avertissement reste affiche TANT QU'AUCUNE regle ne
+                porte le bloc — y compris quand L60 refuse de recreer celle de la source. */}
+            {activation && !editingRule && (
+              <>
+                <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  {t('blockimport.success_activation')}
+                </p>
+                {/* L60 : recreer la condition d'origine quand la cible s'y prete, nommer la
+                    condition qui manque sinon. Le constructeur reste ouvert en dessous. */}
+                <BlockActivationPanel
+                  activation={activation}
+                  fields={fields}
+                  sections={sections}
+                  rules={rules}
+                  diagnosis={version.diagnosisContext}
+                  busy={busy}
+                  onCreate={(rule) => {
+                    void run(() => repo.addRule(version.id, rule, '', 'block')).then((ok) => {
+                      if (ok) { setActivation(null); closeRuleForm(); }
+                    });
+                  }}
+                />
+              </>
             )}
             <RuleForm
               key={`${ruleDraftRevision}-${editingRule?.id ?? (duplicateSource ? `duplicate-${duplicateSource.id}` : `new-rule-${activationSection ?? ''}`)}`}
@@ -1134,7 +1159,7 @@ export function TemplateVersionEditor({
                   void run(() => repo.addRule(version.id, rule, message, severity)).then((ok) => {
                     // Le bloc importe est desormais conditionne : le renvoi vers
                     // l'activation a fait son office et n'a plus lieu d'etre affiche.
-                    if (ok) { setActivationSection(null); closeRuleForm(); }
+                    if (ok) { setActivation(null); closeRuleForm(); }
                   });
                 }
               }}

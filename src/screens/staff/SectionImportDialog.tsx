@@ -32,6 +32,7 @@ import {
   groupConflicts,
   importRefusalCode,
 } from '../../domain/templateSectionImport';
+import type { ImportedBlockActivation } from '../../domain/blockActivation';
 
 /** Valeur d'option du selecteur : la paire (version, bloc) suffit a designer une source. */
 const optionValue = (block: ImportableBlock) => `${block.versionId}::${block.sectionKey}`;
@@ -48,8 +49,10 @@ export function SectionImportDialog({
   onClose: () => void;
   /** Recharge l'editeur : le bloc doit apparaitre en fin de version. */
   onImported: () => void | Promise<void>;
-  /** Point d'entree de L60 : conditionner le bloc qui vient d'arriver. */
-  onActivate: (sectionKey: string) => void;
+  /** Point d'entree de L60 : conditionner le bloc qui vient d'arriver. La condition d'origine
+   *  et son pilote SOURCE partent avec, car le rapport seul ne dit ni le type ni la portee du
+   *  pilote, dont L60 a besoin pour juger la compatibilite. */
+  onActivate: (activation: ImportedBlockActivation) => void;
 }) {
   const { t } = useI18n();
   const [catalog, setCatalog] = useState<ImportableBlock[] | null>(null);
@@ -188,7 +191,14 @@ export function SectionImportDialog({
                   regle d'activation. Le passage a L60 est donc propose systematiquement. */}
               <p className="text-slate-700">{t('blockimport.success_activation')}</p>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn-primary" onClick={() => onActivate(done.sectionKey)}>
+                <button type="button" className="btn-primary" onClick={() => onActivate({
+                  sectionKey: done.sectionKey,
+                  activation: done.activationRule,
+                  // Le pilote se lit sur la SOURCE, deja chargee pour l'apercu. Absent de la
+                  // liste, il reste `null` : L60 conclura au pilote introuvable plutot que
+                  // de comparer contre rien.
+                  sourceDriver: sourceFields.find((f) => f.fieldKey === done.activationRule?.field) ?? null,
+                })}>
                   {t('blockimport.activate_cta')}
                 </button>
                 <button type="button" className="btn-ghost" onClick={onClose}>{t('blockimport.close')}</button>

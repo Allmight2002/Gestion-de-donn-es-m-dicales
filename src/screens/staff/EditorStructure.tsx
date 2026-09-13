@@ -97,6 +97,10 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   const pathOf = (group: EditorGroup) => pathByKey.get(group.key) ?? group.label;
   const groupOf = (field: TemplateField) => groupByFieldId.get(field.id);
   const children = groups.filter((group) => group.parentKey === activeKey);
+  // Les rubriques communes se selectionnent comme un bloc mais n'en sont pas : l'index les
+  // tient a part pour qu'une metadonnee de presentation ne se lise jamais comme un bloc.
+  const commonGroups = groups.filter((group) => !group.parentKey && group.common);
+  const clinicalRoots = groups.filter((group) => !group.parentKey && !group.common);
   // Rendu BORNE. La mesure jsdom sur 216 variables (UX-14(d)) montre qu'une liste entiere
   // coute plusieurs secondes par rendu, et qu'un changement de filtre la paie deux fois. La
   // recherche et les filtres, eux, portent toujours sur TOUT le modele : seule la quantite de
@@ -114,7 +118,12 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
           aria-current={activeKey === '' ? 'page' : undefined} onClick={() => onSelect('')}>
           {t('editor.all_variables')} <span className="text-xs">({allFields.length})</span>
         </button>
-        {groups.filter((group) => !group.parentKey).map((root) => {
+        {clinicalRoots.length > 0 && commonGroups.length > 0 && (
+          <p className="mt-3 border-t border-slate-200 px-2 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            {t('admin.sections')}
+          </p>
+        )}
+        {clinicalRoots.map((root) => {
           const descendants = groups.filter((group) => group.parentKey === root.key);
           const expanded = !collapsed.has(root.key);
           return <div key={root.key}>
@@ -138,6 +147,21 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
               onClick={() => onSelect(child.key)}><span className="break-words">{child.label}</span><span className="text-xs text-slate-500">{child.fields.length}</span></button>)}
           </div>;
         })}
+        {commonGroups.length > 0 && (
+          <div className="mt-3 border-t border-slate-200 pt-2">
+            <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+              {t('commonlayout.title')}
+            </p>
+            {commonGroups.map((root) => (
+              <button key={root.key} type="button" aria-current={activeKey === root.key ? 'page' : undefined}
+                aria-label={`${t('commonlayout.title')} · ${root.label} · ${t('admin.variable_count').replace('{n}', String(root.fields.length))}`}
+                className={`flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === root.key ? 'bg-sky-100 font-semibold text-sky-900 dark:bg-sky-900/40 dark:text-sky-100' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                onClick={() => onSelect(root.key)}>
+                <span className="min-w-0 break-words">{root.label}</span><span className="shrink-0 text-xs text-slate-500">{root.fields.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
     </details>
     <div className="min-w-0">
@@ -145,14 +169,15 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
         {active && <p className="mb-1 text-xs text-slate-500">{pathOf(active)}</p>}
         <h3 id="editor-structure-heading" tabIndex={-1} className="text-lg font-semibold">{active?.label ?? t(activeKey ? 'editor.selection_unavailable' : 'editor.all_variables')}</h3>
         <p className="mt-1 text-sm text-slate-500">{t('admin.variable_count').replace('{n}', String(displayedFields.length))}</p>
-        {/* Maquette : la condition du bloc et l'acces a ses regles tiennent sur une meme ligne,
-            la condition a gauche et le renvoi a droite. Une rubrique commune n'a pas de
-            condition : elle le dit au lieu de laisser la ligne vide. */}
+        {/* Une rubrique commune n'a pas de condition : elle le dit au lieu de laisser la
+            ligne vide. */}
         {active && <div className="mt-3 flex flex-wrap items-start justify-between gap-3 border-t border-slate-100 pt-3">
           <div className="min-w-0 space-y-1">
             {active.common ? <p className="text-sm text-slate-500">{t('editor.common_hint')}</p> : context}
           </div>
-          <button type="button" className="shrink-0 text-sm font-medium text-teal-700 underline underline-offset-2" onClick={() => onRules()}>{t('editor.section_rules')}</button>
+          <button type="button" className="shrink-0 text-sm font-medium text-teal-700 underline underline-offset-2" onClick={() => onRules()}>
+            {active.common ? t('admin.rules_open_space') : t('editor.section_rules')}
+          </button>
         </div>}
         {children.length > 0 && <div className="mt-4 flex flex-wrap gap-2" aria-label={t('editor.subsections')}>
           {children.map((child) => <button key={child.key} type="button" className="btn-secondary" onClick={() => onSelect(child.key)}>{child.label} <span className="text-xs">({child.fields.length})</span></button>)}
@@ -173,8 +198,6 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
               onDragOver={editable && canReorder && !busy ? (event) => event.preventDefault() : undefined}
               onDrop={() => { if (dragId && editable && canReorder && !busy) onDrop(dragId, field.id); setDragId(null); }}
               className="py-2">
-              {/* A largeur etroite, les colonnes fixes se resserrent et les actions passent sur
-                  deux rangs plutot que de pousser la ligne hors de l'ecran. */}
               <div className="grid grid-cols-[minmax(0,1fr)_4rem_2.5rem_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_5rem_auto]">
                 <div role="cell" className="min-w-0">
                   <button type="button" className="min-h-11 w-full break-words text-left text-sm font-medium text-slate-900 hover:text-teal-700 dark:text-slate-100"

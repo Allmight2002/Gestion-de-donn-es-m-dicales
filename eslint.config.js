@@ -13,6 +13,10 @@ export default tseslint.config(
       'dist/**',
       'dev-dist/**',
       'coverage/**',
+      // Sorties d'execution de tests, deja ignorees par git : elles n'ont ni la
+      // configuration ni les conventions du depot.
+      'test-results/**',
+      'playwright-report/**',
       // Outillage d'agent, deja ignore par git. Les copies de travail qu'il y depose
       // portent leur propre tsconfig.json : sans cette exclusion, typescript-eslint ne
       // sait plus quelle racine choisir et refuse d'analyser TOUT le depot.
