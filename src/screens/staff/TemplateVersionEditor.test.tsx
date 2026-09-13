@@ -184,6 +184,55 @@ describe('TemplateVersionEditor', () => {
     expect(screen.queryByRole('button', { name: 'Ajouter la section' })).not.toBeInTheDocument();
   });
 
+  test('version brouillon deja utilisee : propose de creer la version suivante', async () => {
+    const user = userEvent.setup();
+    const { repo } = makeRepository();
+    const initial = await repo.getVersion!(version.id);
+    const createNextVersion = vi.fn(async () => ({
+      id: 'version-4', templateId: 'template-1', versionNumber: 4, status: 'draft' as const,
+    }));
+    vi.spyOn(repo, 'getVersion').mockImplementation(async () => {
+      return { ...initial, fields: initial.fields.map((field) => ({ ...field, inUse: true })) };
+    });
+    Object.assign(repo, { createNextVersion });
+    const onNewVersion = vi.fn();
+    render(
+      <I18nProvider>
+        <RepositoryProvider templates={repo}>
+          <TemplateVersionEditor
+            versionId={version.id}
+            onBack={() => {}}
+            showVersionActions={false}
+            onNewVersion={onNewVersion}
+          />
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    const nextVersion = await screen.findByRole('button', { name: 'Créer la version suivante' });
+    expect(nextVersion).toBeInTheDocument();
+    await user.click(nextVersion);
+    await waitFor(() => expect(createNextVersion).toHaveBeenCalledWith('template-1'));
+    expect(onNewVersion).toHaveBeenCalledWith('version-4');
+  });
+
+  test('editeur personnel rend la creation de copie visible meme pour un brouillon vierge', async () => {
+    const { repo } = makeRepository();
+    Object.assign(repo, { createNextVersion: vi.fn(async () => ({
+      id: 'version-4', templateId: 'template-1', versionNumber: 4, status: 'draft' as const,
+    })) });
+    render(
+      <I18nProvider>
+        <RepositoryProvider templates={repo}>
+          <TemplateVersionEditor versionId={version.id} onBack={() => {}} showVersionActions={false} onNewVersion={() => {}} />
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    const nextVersion = await screen.findByRole('button', { name: 'Créer la version suivante' });
+    expect(nextVersion).toHaveAttribute('title', expect.stringContaining('brouillon'));
+  });
+
   test('serveur sans catalogue : la commande ne se rend pas du tout', async () => {
     const user = userEvent.setup();
     const { repo } = makeRepository();

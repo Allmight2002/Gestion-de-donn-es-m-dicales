@@ -580,7 +580,7 @@ export function TemplateVersionEditor({
                 </button>
               </>
             ) : (
-              !editable && onNewVersion && (
+              onNewVersion && (
                 <button
                   onClick={async () => {
                     setBusy(true);
@@ -588,8 +588,9 @@ export function TemplateVersionEditor({
                     catch (e) { setError(msg(e)); }
                     finally { setBusy(false); }
                   }}
-                  disabled={busy}
+                  disabled={busy || dirty}
                   className="btn-secondary"
+                  title={t('admin.new_version_hint')}
                 >
                   {t('admin.new_version')}
                 </button>
