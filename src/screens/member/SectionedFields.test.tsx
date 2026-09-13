@@ -100,6 +100,27 @@ describe('long form sections and progress', () => {
     expect(screen.queryByRole('region', { name: 'Erreurs à corriger' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('b')).not.toHaveAttribute('aria-invalid');
   });
+  test('a field chosen in the error summary wins over the deferred focus of the summary itself', async () => {
+    // Le recapitulatif et le bloc revele partagent un seul creneau de focus differe. On laisse
+    // les deux demandes en attente, puis on les declenche : la plus recente — le champ choisi
+    // dans le recapitulatif — doit l emporter, sinon le focus reste sur le recapitulatif.
+    let handle = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal('requestAnimationFrame', (run: FrameRequestCallback) => { frames.set(++handle, run); return handle; });
+    vi.stubGlobal('cancelAnimationFrame', (pending: number) => { frames.delete(pending); });
+    const flush = () => { const due = [...frames.entries()].sort((x, y) => x[0] - y[0]); frames.clear(); due.forEach(([, run]) => run(0)); };
+    try {
+      render(<I18nProvider><Example /></I18nProvider>);
+      fireEvent.change(screen.getByLabelText('a'), { target: { value: '4' } });
+      await userEvent.click(screen.getByLabelText('Un bloc à la fois'));
+      await userEvent.click(screen.getByRole('button', { name: 'Tout replier' }));
+      flush();
+      await userEvent.click(screen.getByRole('button', { name: 'Vérifier' }));
+      await userEvent.click(within(screen.getByRole('region', { name: 'Erreurs à corriger' })).getByRole('link', { name: 'b' }));
+      flush();
+      expect(screen.getByLabelText('b')).toHaveFocus();
+    } finally { vi.unstubAllGlobals(); }
+  });
   test('identity is the first presentation block and stays mounted across navigation and native validation', async () => {
     const submit = vi.fn((event: React.FormEvent) => event.preventDefault());
     render(<I18nProvider><form onSubmit={submit}><SectionedFields fields={[fields[0]]}
