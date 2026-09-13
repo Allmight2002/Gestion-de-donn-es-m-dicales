@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Menu } from '../../components/Menu';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
+import { OfflineReadinessNotice, useAppShellReadiness } from '../../components/OfflineReadiness';
 import { EmptyState } from '../../components/EmptyState';
 import { Checkbox } from '../../components/Checkbox';
 import {
@@ -115,6 +116,8 @@ export function BaseHome() {
   const intakeEnabled = isOfflineIntakeEnabled();
   const pendingIntakes = useIntakeQueue(id);
   const [intakeMeta, setIntakeMeta] = useState<OfflineIntakeMeta | null>(null);
+  // La coquille ne se verifie que la ou une disponibilite hors-ligne est annoncee.
+  const { readiness: shellReadiness, checking: shellChecking, check: shellCheck } = useAppShellReadiness(isOfflineEnabled() && cachedMeta !== null);
   const [intakeOfflineView, setIntakeOfflineView] = useState(false);
 
   // Changement direct de base : l'ecran repart de la premiere page, sans recherche ni tri
@@ -291,12 +294,13 @@ export function BaseHome() {
       };
       setCachedMeta(await downloadBaseSnapshot(id, src));
       setError(null);
+      await shellCheck();
     } catch (e) {
       setError(errorMessage(e, t('common.error')));
     } finally {
       setSaving(false);
     }
-  }, [id, bases, patients, templates, t]);
+  }, [id, bases, patients, templates, t, shellCheck]);
 
   // §5.8 : sur une grande base, l'instantane est un gros bloc -> modale de confirmation (UI-2)
   // avant de le charger ; en dessous du seuil, telechargement direct.
@@ -471,6 +475,7 @@ export function BaseHome() {
             </button>
           )}
           <button onClick={() => void removeOffline()} className="text-slate-400 hover:text-red-600 hover:underline">{t('offline.remove')}</button>
+          <OfflineReadinessNotice readiness={shellReadiness} checking={shellChecking} onRecheck={() => void shellCheck()} />
         </div>
       ) : offlineView ? (
         cachedMeta && (

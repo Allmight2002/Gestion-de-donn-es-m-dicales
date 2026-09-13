@@ -5,7 +5,7 @@ import { RepositoryProvider } from './data/RepositoryProvider';
 import { AppRoutes } from './routes/AppRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
-import { AuthenticatedPwaUpdatePrompt } from './components/PwaUpdatePrompt';
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 
 const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }]);
 
@@ -17,7 +17,7 @@ export function App() {
     <I18nProvider>
       <ErrorBoundary>
         <AuthProvider>
-          <AuthenticatedPwaUpdatePrompt />
+          <PwaUpdatePrompt />
           <RepositoryProvider>
             <ToastProvider>
               <RouterProvider router={router} />

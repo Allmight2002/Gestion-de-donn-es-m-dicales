@@ -296,8 +296,11 @@ test('@lot13 hors-ligne: cache minimise, refresh, outbox, reconnexion, expiratio
   await page.goto(`/bases/${state.baseId}/parametres`);
   await page.getByRole('button', { name: /Rendre disponible hors-ligne|Make available offline/i }).click();
   await expect(page.getByRole('button', { name: /^Retirer$|^Remove$/i })).toBeVisible({ timeout: 30_000 });
+  // Le bouton « Rendre disponible hors-ligne » porte desormais tout le contrat : si la
+  // coquille ne savait pas redemarrer sans reseau, l'ecran l'aurait dit. Le test n'attend
+  // donc plus 'navigator.serviceWorker.ready' a la place du produit.
+  await expect(page.getByText(/Pr.paration hors-ligne incompl.te|Offline preparation incomplete/i)).toHaveCount(0);
   await page.goto(`/bases/${state.baseId}`);
-  await page.evaluate(async () => { if ('serviceWorker' in navigator) await navigator.serviceWorker.ready; });
   await page.reload();
 
   const snapshots = await storeRows(page, 'snapshots');
@@ -307,6 +310,12 @@ test('@lot13 hors-ligne: cache minimise, refresh, outbox, reconnexion, expiratio
   expect(serialized).toContain(patient.code);
 
   await context.setOffline(true);
+  // DEMARRAGE A FROID : un onglet neuf, reseau coupe, rien de l'onglet precedent. C'est le
+  // scenario qui echouait en ERR_FAILED, et qu'un simple reload() ne reproduit pas.
+  const coldStart = await context.newPage();
+  await coldStart.goto(`/bases/${state.baseId}`);
+  await expect(coldStart.getByRole('button', { name: patient.code })).toBeVisible({ timeout: 30_000 });
+  await coldStart.close();
   await page.reload();
   await expect(page.getByText(/Vous .tes hors-ligne|You are offline/i)).toBeVisible();
   await expect(page.getByRole('button', { name: patient.code })).toBeVisible();
@@ -367,6 +376,15 @@ test('@lot13 hors-ligne: cache minimise, refresh, outbox, reconnexion, expiratio
       return databases.some((entry) => entry.name === 'meddata-offline');
     });
   }).toBe(false);
+
+  // La deconnexion efface les donnees locales mais laisse l'application installee : hors
+  // connexion, elle doit encore s'ouvrir et demander une session, au lieu de laisser le
+  // navigateur sur ERR_FAILED.
+  await context.setOffline(true);
+  const afterLogout = await context.newPage();
+  await afterLogout.goto('/');
+  await expect(afterLogout.getByRole('button', { name: /Se connecter|Sign in/i })).toBeVisible({ timeout: 30_000 });
+  await afterLogout.close();
 
   await context.setOffline(false);
   await login(page, secondDoctorEmail, secondDoctorPassword);
