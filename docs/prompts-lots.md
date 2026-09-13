@@ -29,6 +29,12 @@
   [`spec-blocs-reutilisables.md`](spec-blocs-reutilisables.md) — réutiliser un bloc clinique
   d’un jeu de variables à l’autre, par copie et sans catalogue partagé. File strictement
   séquentielle, à ouvrir après L52 et L54 ; **L59 ne tourne jamais avec L41**.
+- **Révisé le 2026-09-12** : six prompts ajoutés (**L66 à L71**), issus de
+  [`spec-groupes-repetables.md`](spec-groupes-repetables.md) — plusieurs occurrences portant
+  chacune leurs propres attributs, projetées sur `encounter` et discriminées par le bloc.
+  **L66 est bloquant** ; ensuite la file **L67 → L68 → L69**, et **L70**/**L71** en parallèle.
+  Le jalon utilisable est **L68**. **L67 ne tourne jamais avec les correctifs UX de l’éditeur**,
+  **L69 jamais avec L41 ni L42**, **L70 jamais avec L50 ni L53**.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -401,6 +407,279 @@ Fournis un tableau de preuves avec commande, portée, résultat et limite. Class
 confirmé ou risque non vérifié, puis mets à jour docs/suivi-execution-feuille-route.md seulement si
 le résultat est factuel. N'effectue aucune correction de produit, aucun commit, push, fusion,
 déploiement ou action cloud sans autorisation explicite.
+\`\`\`
+
+---
+
+## L66 — Groupes répétables : socle serveur
+
+\`\`\`text
+Tu prends le lot L66 uniquement, dans le dépôt MedData. Lis d'abord
+docs/spec-groupes-repetables.md — en particulier ses §4, §5 et §6 — puis sa fiche dans
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot ; ne
+réinitialise, ne déplace et ne reformate pas le travail des autres personnes.
+
+OBJECTIF.
+Rendre le serveur capable de dire, pour une ligne de rencontre, à quel groupe de variables elle
+appartient — et d'en tirer les bonnes conséquences sur le caractère requis et sur la complétude.
+Une migration horodatée, additive, qui ne réécrit aucune donnée clinique :
+- template_section.is_repeatable + contrainte « bloc racine uniquement » ;
+- encounter.group_section_key, nullable ;
+- encounter_date rendue nullable, sous la contrainte encounter_date is not null or
+  group_section_key is not null ;
+- index encounter (patient_id, group_section_key) ;
+- copy_template_fields : is_repeatable ajouté à la liste de colonnes de sections.
+
+LA RÈGLE À IMPLÉMENTER EST AU §5 DE LA SPÉCIFICATION, ET ELLE A DEUX BRANCHES.
+Quand group_section_key est renseigné, seules les variables du bloc s'appliquent. Quand il est
+nul, les variables de TOUS les blocs répétables sont exclues, puis le filtre encounter_types
+s'applique comme aujourd'hui. La seconde branche est celle qu'on oublie : sans elle, une variable
+de groupe dont encounter_types est nul serait réclamée sur une vraie consultation.
+
+QUATRE FONCTIONS, PAS DEUX.
+missing_required_fields et base_completeness_stats portent la règle. Mais deux appelants
+indirects la relaient, et les manquer ne casse rien visiblement — ça rend un verdict faux :
+assert_required_complete (appelée par create_encounter et update_encounter au passage en
+complete) et export_incomplete_records (sans quoi toute occurrence de groupe serait comptée
+incomplète). Les quatre sont dans 20260819103000_export_completeness_filter.sql et
+20260820120000_template_field_formula.sql.
+
+PÉRIMÈTRE STRICT.
+- create_encounter gagne p_group_section_key text default null, en dernière position.
+  update_encounter ne change pas de signature : le groupe d'une ligne ne se modifie jamais.
+- Les gardes du §6.4 sont posées CÔTÉ BASE, une par une, avec les messages indiqués. Aucun
+  message ne nomme une valeur clinique.
+- Tu n'ouvres aucun écran, aucun composant, aucun fichier d'export et aucun fichier hors-ligne :
+  ce sont L67 à L71.
+- Tu ne touches à aucune migration déjà appliquée.
+- N'utilise pas npm.ps1 sous Windows : emploie npm.cmd. Ne lance aucun test contre un cloud ou
+  des données réelles.
+
+PREUVES ATTENDUES.
+1. Tests SQL des points 1 à 12 du §14.1, le test 4 bis (appelants indirects) compris.
+2. La non-régression est la preuve principale : sur une version SANS aucun bloc répétable,
+   missing_required_fields et base_completeness_stats rendent exactement les mêmes résultats
+   qu'avant la migration. À démontrer, pas à affirmer.
+3. npm run schema, inspection du snapshot, puis npm run schema:check.
+4. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié sur la cible.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante. Consigne
+uniquement les preuves réellement obtenues dans la documentation de suivi si le lot est terminé.
+\`\`\`
+
+---
+
+## L67 — Groupes répétables : déclarer un bloc répétable dans l'éditeur
+
+\`\`\`text
+Tu prends le lot L67 uniquement, dans le dépôt MedData. L66 doit être fusionné avant de
+commencer. Lis d'abord docs/spec-groupes-repetables.md §7, puis sa fiche dans
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot ; ne
+réinitialise, ne déplace et ne reformate pas le travail des autres personnes.
+
+COLLISION À VÉRIFIER AVANT DE COMMENCER.
+Ce lot touche SectionsEditor.tsx, FormPreview.tsx, FieldForm.tsx et EditorStructure.tsx — les
+mêmes fichiers que les correctifs UX en cours. Si cette branche n'est pas fusionnée, ne commence
+pas : signale-le et arrête-toi.
+
+OBJECTIF.
+Un bloc racine reçoit une case « Groupe répétable ». Le libellé secondaire énonce la règle de
+décision du §3.3 en une phrase : à cocher quand l'analyse comptera les occurrences elles-mêmes,
+et non les patients.
+
+CE QUI DOIT ÊTRE VISIBLE AU MOMENT DE COCHER, AVANT CONFIRMATION.
+1. Les variables du bloc passeront en portée rencontre — l'éditeur les liste, et refuse si l'une
+   d'elles porte déjà des données.
+2. La base doit être longitudinal ou event_registry. Si elle est transversale, la case est
+   désactivée et l'écran explique que ce choix est verrouillé depuis la première fiche. Ne
+   présente jamais ce verrou comme un défaut à contourner.
+3. Le réglage « types de rencontre concernés » disparaît pour ces variables : ce n'est plus lui
+   qui filtre.
+
+PÉRIMÈTRE STRICT.
+- Le sommaire (EditorStructure) distingue un bloc répétable d'un bloc ordinaire : les deux ne se
+  saisissent pas de la même façon.
+- FormPreview rend le bloc sous sa forme de saisie — en-tête de tableau et une ligne d'exemple
+  vide, bouton d'ajout inactif. L'aperçu ne crée rien.
+- Tu n'ouvres pas la fiche patient ni la saisie : c'est L68.
+- N'utilise pas npm.ps1 sous Windows : emploie npm.cmd.
+
+PREUVES ATTENDUES.
+1. Tests web ciblés, dont le test 20 du §14.2 : cocher sur un bloc contenant une variable déjà
+   utilisée est refusé avec explication.
+2. Vérification navigateur locale de l'aperçu et du sommaire, si disponible.
+3. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante.
+\`\`\`
+
+---
+
+## L68 — Groupes répétables : le groupe en tableau dans une fiche existante
+
+\`\`\`text
+Tu prends le lot L68 uniquement, dans le dépôt MedData. L67 doit être fusionné avant de
+commencer. Lis d'abord docs/spec-groupes-repetables.md §8, puis sa fiche dans
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot.
+
+OBJECTIF.
+Rendre un bloc répétable À SA PLACE DANS LE FORMULAIRE — pas sur un écran séparé — sous forme
+d'un tableau d'occurrences : une colonne par variable du bloc, une ligne par occurrence, un
+bouton d'ajout, et le compte affiché dans l'en-tête y compris à zéro. SectionedFields détecte
+is_repeatable et délègue à un nouveau composant RepeatableGroup.
+
+C'EST LE JALON UTILISABLE DU CHANTIER : à la fin de ce lot, un pilote saisit des groupes
+répétables sur une fiche existante.
+
+TROIS RÈGLES DE FORME.
+1. Au-delà de six colonnes, ou sous 768 px, bascule en carte par occurrence. Le tableau ne
+   provoque jamais de défilement horizontal du document ; s'il défile, c'est dans son propre
+   conteneur.
+2. Groupe vide : une ligne d'invite et le bouton d'ajout. Jamais un tableau d'en-têtes nu.
+3. Les valeurs sont rendues par displayFieldValue, comme partout ailleurs hors saisie.
+
+UNE OCCURRENCE EST UNE ÉCRITURE ATOMIQUE.
+Ajout par create_encounter avec le groupe ; modification par update_encounter en transmettant
+p_expected_updated_at ; suppression par le dialogue de motif existant et soft_delete_encounter.
+Il n'y a PAS d'enregistrement global du tableau, donc aucune écriture partielle possible sur
+plusieurs lignes. Chaque ligne porte son propre verrou : un conflit sur une ligne n'en bloque
+aucune autre, et les saisies locales sont préservées.
+
+PÉRIMÈTRE STRICT.
+- Le formulaire d'occurrence réutilise le moteur de champs existant, avec ses règles internes,
+  ses valeurs par défaut et ses codes de donnée manquante. Tu n'en écris pas un second.
+- Tu ne touches pas à NewPatient : la création de patient avec occurrences tamponnées est L69.
+  Tant que L69 n'est pas livré, le groupe n'est disponible qu'après enregistrement de la fiche,
+  et l'écran le dit.
+- Tant que L71 n'est pas livré, un bloc répétable est inutilisable hors ligne : l'écran le dit
+  au lieu de laisser saisir des lignes irrécupérables.
+- États du §8.4, tous : chargement, vide, conflit, borne atteinte, lecture seule.
+- Accessibilité du §8.6 : vrai table avec en-têtes associés, nom accessible incluant le rang
+  (« modifier la lésion 2 »), compte annoncé à l'ajout et au retrait. Clés i18n fr ET en.
+
+PREUVES ATTENDUES.
+1. Tests web des points 13, 14, 17, 18 et 19 du §14.2.
+2. Vérification navigateur locale : ajout, modification, suppression, groupe vide, bascule en
+   cartes sous 768 px.
+3. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante.
+\`\`\`
+
+---
+
+## L69 — Groupes répétables : création de patient et rejeu ordonné
+
+\`\`\`text
+Tu prends le lot L69 uniquement, dans le dépôt MedData. L68 doit être fusionné avant de
+commencer. Lis d'abord docs/spec-groupes-repetables.md §8.3, puis sa fiche dans
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot.
+
+COLLISION À VÉRIFIER AVANT DE COMMENCER.
+Ce lot touche NewPatient.tsx. L41 et L42 touchent le même useCallback. Ne jamais les lancer
+ensemble : si l'un des deux est ouvert, signale-le et arrête-toi.
+
+OBJECTIF.
+Une rencontre exige un patient existant. Aujourd'hui, cela couperait la saisie en deux temps —
+inacceptable pour une collecte rétrospective menée en une séance. Les occurrences saisies dans
+NewPatient sont donc conservées en mémoire, marquées « non enregistrée », puis écrites après
+create_patient par un create_encounter par ligne, DANS L'ORDRE DE SAISIE.
+
+LE MOTIF EXISTE DÉJÀ : c'est celui du mode hors-ligne (replay_patient_create puis
+replay_encounter_create, rejeu ordonné). Reprends-le, ne l'invente pas une seconde fois.
+
+LE COMPORTEMENT EN CAS D'ÉCHEC EST LE CŒUR DU LOT.
+Si une ligne échoue, la fiche et les lignes déjà écrites existent bel et bien. L'écran affiche
+alors PRÉCISÉMENT quelles lignes ne sont pas enregistrées, avec leur message, et propose une
+reprise ligne par ligne. Aucune ligne n'est perdue, aucune n'est écrite deux fois, et l'état
+affiché est l'état réel — jamais un « enregistré » optimiste. Quitter l'écran avec des lignes
+non enregistrées demande confirmation.
+
+PÉRIMÈTRE STRICT.
+- Tu n'ajoutes PAS de RPC transactionnelle enregistrant la fiche et ses occurrences en un seul
+  verdict : c'est hors périmètre (§12), et le rejeu ordonné suffit.
+- Tu ne modifies ni le rendu du groupe ni les RPC serveur.
+- N'utilise pas npm.ps1 sous Windows : emploie npm.cmd.
+
+PREUVES ATTENDUES.
+1. Tests web des points 15 et 16 du §14.2 — dont le scénario d'échec sur la deuxième ligne :
+   la fiche et la première existent, les deux autres sont marquées non enregistrées, et la
+   reprise les écrit sans doublon.
+2. Vérification navigateur locale du parcours complet de création avec trois occurrences.
+3. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante.
+\`\`\`
+
+---
+
+## L70 — Groupes répétables : export
+
+\`\`\`text
+Tu prends le lot L70 uniquement, dans le dépôt MedData. L66 doit être fusionné ; L67 à L69 ne
+sont pas des prérequis. Lis d'abord docs/spec-groupes-repetables.md §9, puis sa fiche dans
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot.
+
+COLLISION À VÉRIFIER AVANT DE COMMENCER.
+Ce lot écrit dans exportContract.ts, partagé avec L50 (différé) et L53. Ne jamais les lancer
+ensemble.
+
+OBJECTIF.
+1. group_section_key rejoint ENCOUNTER_META. C'est ce qui rend les lignes séparables en analyse,
+   et c'est le discriminant JUSTE — là où encounter_type aurait dit « autre » pour tout le monde.
+2. Forme une ligne par occurrence : inchangée, elle donne déjà le format long attendu.
+3. Forme une ligne par patient : l'agrégation first/last n'a AUCUN sens sur un groupe — elle
+   choisirait une lésion au hasard. Les occurrences de groupe en sont donc exclues, et remplacées
+   par une colonne de comptage par bloc répétable, nb__<bloc>, y compris à zéro. Le dictionnaire
+   d'export l'énonce explicitement.
+4. La projection de colonnes par bloc existante se combine sans modification.
+
+PÉRIMÈTRE STRICT.
+- Une occurrence non datée sort avec encounter_date, age_value et age_unit VIDES. Jamais
+  1970-01-01, jamais une date inventée.
+- Aucune fuite d'identité : assertNoIdentity reste la garde, et tu la vérifies sur les nouvelles
+  colonnes.
+- Tu ne modifies ni la saisie ni l'éditeur.
+
+PREUVES ATTENDUES.
+1. Tests des points 21 à 24 du §14.3.
+2. Contrat partagé : le comportement doit être identique côté navigateur et côté Edge Function.
+3. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante.
+\`\`\`
+
+---
+
+## L71 — Groupes répétables : hors-ligne
+
+\`\`\`text
+Tu prends le lot L71 uniquement, dans le dépôt MedData. L66 doit être fusionné. Lis d'abord
+docs/spec-groupes-repetables.md §10 et docs/securite-mode-hors-ligne.md, puis sa fiche dans
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot.
+
+OBJECTIF.
+1. L'instantané transporte is_repeatable par section et group_section_key par rencontre.
+2. replay_encounter_create gagne le paramètre de groupe, avec l'empreinte recalculée CÔTÉ
+   SERVEUR comme aujourd'hui — jamais fournie par le client.
+3. L'ordre de rejeu existant, patient puis rencontres, couvre déjà le cas : ne le refais pas.
+4. La fusion de conflits traite chaque occurrence comme une rencontre ; le motif est inchangé.
+
+PÉRIMÈTRE STRICT.
+- Le mode hors-ligne reste protégé par ses variables d'environnement. Ce lot ne l'active pas et
+  ne modifie aucune garde d'activation : c'est O7.
+- Tant que ce lot n'est pas livré, L68 désactive le groupe hors ligne et l'explique. À la fin de
+  ce lot, retire cette restriction — et seulement elle.
+- Rien de ce qui est stocké localement ne doit élargir ce que docs/securite-mode-hors-ligne.md
+  autorise.
+
+PREUVES ATTENDUES.
+1. Tests de rejeu : trois occurrences créées hors ligne sont rejouées dans l'ordre, sans
+   doublon, et un rejeu répété reste idempotent.
+2. Conflit sur une occurrence : les saisies locales sont préservées, aucune écriture partielle.
+3. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration distante.
 \`\`\`
 
 ---

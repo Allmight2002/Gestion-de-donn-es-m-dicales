@@ -20,8 +20,12 @@ function drafts() {
   return { available: true, list: vi.fn(async () => [] as WorkDraft[]),
     save: vi.fn(async (...args: Parameters<WorkDraftRepository['save']>) => ({ id: args[1], revision: args[2] + 1,
       updatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString() })),
-    commit: vi.fn<WorkDraftRepository['commit']>(async () => ({ id: 'p1' })), discard: vi.fn(async () => undefined) } satisfies WorkDraftRepository;
+    commit: vi.fn<WorkDraftRepository['commit']>(async () => ({ id: 'p1' })), discard: vi.fn<WorkDraftRepository['discard']>(async () => undefined) } satisfies WorkDraftRepository;
 }
+const previousDraft = (id = 'd1'): WorkDraft => ({ id, revision: 1, state: 'active',
+  updatedAt: '2026-09-13T10:00:00Z', expiresAt: '2026-09-20T10:00:00Z',
+  context: { baseId: 'b1', kind: 'patient_create', targetId: null, templateVersionId: 'v1', entityRevision: null },
+  payload: { values: { score: 19 }, code: 'P-OLD' } });
 function setup(work: WorkDraftRepository, edit = false) {
   const patients = { listPatientsPage: vi.fn(async () => ({ total: 0, items: [] })), findIdentityMatches: vi.fn(async () => []),
     createPatient: vi.fn(async () => ({ id: 'wrong-path' })), updateEncounter: vi.fn(), listFieldChanges: vi.fn(async () => []),
@@ -29,6 +33,7 @@ function setup(work: WorkDraftRepository, edit = false) {
   render(<I18nProvider><RepositoryProvider workDrafts={work} bases={bases} templates={templates} patients={patients as unknown as PatientRepository}>
     <MemoryRouter initialEntries={[edit ? '/bases/b1/patients/p1/encounters/e1/edit' : '/bases/b1/patients/new']}>
       <Routes><Route path="/bases/:id/patients/new" element={<NewPatient />} />
+        <Route path="/bases/:id" element={<p>Accueil de la base</p>} />
         <Route path="/bases/:id/patients/:patientId/encounters/:encounterId/edit" element={<EditEncounter />} />
         <Route path="/bases/:id/patients/:patientId" element={<p>Fiche confirmée</p>} />
       </Routes>
@@ -40,9 +45,13 @@ describe('clinical form server draft integration', () => {
   test('autosaves analytical values, preserves identity after failure, and recovers a lost commit with the same key', async () => {
     const repo = drafts(); const patients = setup(repo);
     await screen.findByLabelText('Score'); await waitFor(() => expect(repo.list).toHaveBeenCalledOnce());
-    fireEvent.change(screen.getByLabelText('Score'), { target: { value: '8' } });
+    expect(screen.getByLabelText('Un bloc à la fois')).toBeChecked();
+    expect(screen.getByLabelText('Nom complet')).toBeVisible();
+    expect(screen.getByLabelText('Score')).not.toBeVisible();
     fireEvent.change(screen.getByLabelText('Nom complet'), { target: { value: 'Personne Fictive' } });
-    await waitFor(() => expect(repo.save).toHaveBeenCalled(), { timeout: 3000 });
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    fireEvent.change(screen.getByLabelText('Score'), { target: { value: '8' } });
+    await waitFor(() => expect(repo.save.mock.calls.at(-1)?.[4]).toEqual({ values: { score: 8 }, code: 'P-0001' }), { timeout: 3000 });
     const saved = repo.save.mock.calls.at(-1)!;
     expect(saved[4]).toEqual({ values: { score: 8 }, code: 'P-0001' });
     expect(JSON.stringify(saved)).not.toContain('Personne Fictive');
@@ -84,11 +93,80 @@ describe('clinical form server draft integration', () => {
       context: { baseId: 'b1', kind: 'patient_create', targetId: null, templateVersionId: 'old-version', entityRevision: null }, payload: { values: { score: 19 }, code: 'P-OLD' } }]);
     setup(repo);
     await screen.findByLabelText('Score');
-    fireEvent.change(screen.getByLabelText('Score'), { target: { value: '6' } });
+    expect(await screen.findByRole('dialog', { name: 'Reprendre une saisie précédente ?' })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole('button', { name: 'Reprendre' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Reprendre le brouillon' }));
     expect(await screen.findByText(/Le modèle|La fiche ou le modèle a changé/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Score')).toHaveValue(6);
+    expect(screen.getByLabelText('Score')).toHaveValue(null);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(repo.save).not.toHaveBeenCalled(); expect(repo.commit).not.toHaveBeenCalled();
+  });
+  test('offers the previous entry immediately and resumes only its analytical payload', async () => {
+    const repo = drafts(); repo.list.mockResolvedValueOnce([previousDraft()]); setup(repo);
+    const dialog = await screen.findByRole('dialog', { name: 'Reprendre une saisie précédente ?' });
+    expect(screen.getByLabelText('Nom complet')).toBeDisabled();
+    expect(repo.save).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reprendre' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Score')).toHaveValue(19);
+    expect(screen.getByLabelText(/Code patient/)).toHaveValue('P-OLD');
+    expect(screen.getByLabelText('Nom complet')).toHaveValue('');
+    expect(repo.discard).not.toHaveBeenCalled();
+  });
+  test('starts a blank entry only after deletion is acknowledged and retries an uncertain deletion with the same key', async () => {
+    const repo = drafts(); repo.list.mockResolvedValueOnce([previousDraft()]);
+    repo.discard.mockRejectedValueOnce(new WorkDraftError('DRAFT_UNAVAILABLE'));
+    setup(repo);
+    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer et recommencer' }));
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nom complet')).toBeDisabled();
+    expect(repo.save).not.toHaveBeenCalled();
+    const attempt = repo.discard.mock.calls[0];
+    let acknowledge!: () => void;
+    repo.discard.mockImplementationOnce(() => new Promise<void>((resolve) => { acknowledge = resolve; }));
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer et recommencer' }));
+    expect(repo.discard.mock.calls[1]).toEqual(attempt);
+    expect(screen.getByRole('button', { name: 'Reprendre' })).toBeDisabled();
+    expect(repo.save).not.toHaveBeenCalled();
+    await act(async () => acknowledge());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Nom complet')).toHaveValue('');
+    expect(screen.getByLabelText('Nom complet')).toBeEnabled();
+    expect(screen.getByLabelText('Score')).toHaveValue(null);
+    expect(screen.getByLabelText(/Code patient/)).toHaveValue('P-0001');
+    expect(repo.commit).not.toHaveBeenCalled();
+    expect(screen.queryByText('Modifications non sauvegardées')).not.toBeInTheDocument();
+  });
+  test('cancel keeps the previous draft and leaves the new-patient page', async () => {
+    const repo = drafts(); repo.list.mockResolvedValueOnce([previousDraft()]); setup(repo);
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Revenir à la base' }));
+    expect(await screen.findByText('Accueil de la base')).toBeInTheDocument();
+    expect(repo.discard).not.toHaveBeenCalled(); expect(repo.save).not.toHaveBeenCalled();
+  });
+  // « Commencer une nouvelle saisie » ne laisse aucune saisie derriere elle : en garder une
+  // la ferait reapparaitre a la visite suivante, alors que l'utilisateur vient de l'abandonner.
+  test('with several previous entries, starting a new one deletes them all', async () => {
+    const repo = drafts(); repo.list.mockResolvedValueOnce([previousDraft(), previousDraft('d2')]); setup(repo);
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Saisie à reprendre'), 'd2');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer et recommencer' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(repo.discard).toHaveBeenCalledTimes(2);
+    expect(repo.discard).toHaveBeenCalledWith('d1', 1, expect.any(String));
+    expect(repo.discard).toHaveBeenCalledWith('d2', 1, expect.any(String));
+    expect(screen.getByLabelText('Score')).toHaveValue(null);
+  });
+  test('does not offer or delete drafts from another form, base or a completed creation', async () => {
+    const repo = drafts();
+    const other = previousDraft();
+    repo.list.mockResolvedValueOnce([
+      { ...other, id: 'other-base', context: { ...other.context, baseId: 'b2' } },
+      { ...other, id: 'other-form', context: { ...other.context, kind: 'encounter_create', targetId: 'p2' } },
+      { ...other, id: 'consumed', state: 'consumed' },
+    ]);
+    setup(repo); await screen.findByLabelText('Nom complet');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(repo.discard).not.toHaveBeenCalled();
   });
 });

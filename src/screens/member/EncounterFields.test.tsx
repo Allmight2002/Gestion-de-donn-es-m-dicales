@@ -244,7 +244,8 @@ describe('EncounterFields — sections personnalisables (L31)', () => {
         />
       </I18nProvider>,
     );
-    const groups = screen.getAllByRole('group').map((g) => g.textContent ?? '');
+    // L'affichage un bloc a la fois masque les autres : l'ordre se lit sur la structure rendue.
+    const groups = screen.getAllByRole('group', { hidden: true }).map((g) => g.textContent ?? '');
     expect(groups[0]).toContain('Symptome');
     expect(groups[1]).toContain('Imagerie');
   });
@@ -267,7 +268,8 @@ describe('EncounterFields — sections personnalisables (L31)', () => {
         />
       </I18nProvider>,
     );
-    const groups = screen.getAllByRole('group').map((g) => g.textContent ?? '');
+    // L'affichage un bloc a la fois masque les autres : l'ordre se lit sur la structure rendue.
+    const groups = screen.getAllByRole('group', { hidden: true }).map((g) => g.textContent ?? '');
     expect(groups[0]).toContain('Imagerie');
     expect(groups[1]).toContain('Symptome');
   });
@@ -286,7 +288,8 @@ describe('EncounterFields — sections personnalisables (L31)', () => {
         />
       </I18nProvider>,
     );
-    const groups = screen.getAllByRole('group').map((g) => g.textContent ?? '');
+    // L'affichage un bloc a la fois masque les autres : l'ordre se lit sur la structure rendue.
+    const groups = screen.getAllByRole('group', { hidden: true }).map((g) => g.textContent ?? '');
     expect(groups[0]).toContain('Symptome');
     expect(groups[1]).toContain('Orpheline');
   });

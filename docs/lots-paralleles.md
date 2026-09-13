@@ -180,6 +180,12 @@ analytique explicite la justifie.
 | **L63** | Liste patient : sélecteur de variable et deux sens de tri accessibles | `BaseHome.tsx`, `Patients.test.tsx`, i18n | **après L62** ; jamais avec L61/L64 (même écran) |
 | **L64** | Liste patient : nom complet sélectionnable et recherche nominative auditée | migration/RPC, `patients.ts`, `BaseHome.tsx`, allowlist/ACL, tests DB/web | **après L63** ; jamais en parallèle avec un lot identité ou `BaseHome` |
 | **L65** | Liste patient : preuves intégrées, performance et clôture documentaire | tests web/DB/ACL/browser, documentation | **après L61 à L64** ; validation seule, sans élargir le produit |
+| **L66** | Groupes répétables : socle serveur (`is_repeatable`, `group_section_key`, règle d’applicabilité, RPC, gardes) | migration, `missing_required_fields`, `base_completeness_stats`, `assert_required_complete`, `export_incomplete_records`, `create_encounter`, `copy_template_fields`, tests SQL | **bloquant pour L67 à L71** ; jamais avec un lot rouvrant `copy_template_fields` (L54, L58) |
+| **L67** | Groupes répétables : déclarer un bloc répétable dans l’éditeur | `SectionsEditor.tsx`, `FormPreview.tsx`, `FieldForm.tsx`, `EditorStructure.tsx`, i18n | **après L66** ; **jamais avec les correctifs UX en cours** (mêmes fichiers), ni avec L59 ou L41 |
+| **L68** | Groupes répétables : le groupe en tableau dans une fiche existante | `RepeatableGroup.tsx` (nouveau), `SectionedFields.tsx`, `PatientDetail.tsx`, `EditPatient.tsx`, i18n | **après L67** ; jamais avec un autre lot ouvrant la fiche patient. **Jalon utilisable du chantier** |
+| **L69** | Groupes répétables : création de patient, occurrences tamponnées et rejeu ordonné | `NewPatient.tsx`, `patients.ts`, tests web | **après L68** ; **jamais avec L41 ni L42** (même `useCallback` de `NewPatient.tsx`) |
+| **L70** | Groupes répétables : export, métadonnée de groupe et colonnes de comptage | `exportContract.ts`, Edge `generate-export`, `ExportPanel.tsx` | **après L66** ; jamais avec L50 (différé) ni L53 |
+| **L71** | Groupes répétables : instantané et rejeu hors-ligne | `offlineIntake.ts`, RPC d’instantané et `replay_encounter_create` | **après L66** ; jamais avec O6 ni O7 |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
@@ -1049,7 +1055,7 @@ constitue donc pas une autorisation de données réelles.
 La preuve navigateur O6 (`e2e/offline-intake.spec.ts`) et l'activation/release O7 restent ouverts.
 Tant qu'ils ne sont pas validés, les builds persistants gardent le mode hors-ligne désactivé.
 
-## Deux chantiers volontairement laissés hors des lots
+## Chantiers volontairement laissés hors des lots
 
 **Langage d'expression et catalogue de scores validés.** Le sous-ensemble utile — une
 arithmétique que l'utilisateur écrit lui-même — est sorti d'ici et fait l'objet de **L35**. Ce qui
@@ -1060,11 +1066,13 @@ fermé de scores livrés avec leur formule — IMC, Glasgow, clairance : c'est a
 le calcul, et le registre répond de sa version, de sa validité et des droits d'usage de l'échelle.
 Les deux restent en file d'idées (`idees-fonctionnalites-futures.md` A3).
 
-**Groupes répétables.** Plusieurs occurrences portant chacune leurs propres attributs — des
-interventions avec date, type, indication. Le critère de bascule est posé au §2 de
-[`spec-variables-multivaluees.md`](spec-variables-multivaluees.md) : deux attributs propres ou plus
-par occurrence. C'est un chantier de la taille de L20 à L26 réunis ; il lui faut sa spécification
-avant ses lots.
+**Groupes répétables — sorti d'ici le 2026-09-12.** Plusieurs occurrences portant chacune leurs
+propres attributs — des interventions avec date, type, indication. Le critère de bascule reste
+celui du §2 de [`spec-variables-multivaluees.md`](spec-variables-multivaluees.md) : deux attributs
+propres ou plus par occurrence. Le chantier n'a plus la taille de L20 à L26 réunis : la
+spécification [`spec-groupes-repetables.md`](spec-groupes-repetables.md) le ramène à **L66 à L71**
+en projetant l'occurrence sur `encounter` au lieu de créer un stockage, et en déplaçant le
+discriminant du type de rencontre vers le bloc.
 
 ## Ce qui n'a pas besoin de lot
 
@@ -1102,6 +1110,33 @@ objet, rôle ni partage nouveau n’est introduit, et l’insertion se fait **pa
 La file est strictement séquentielle — **L58 → L59 → L60** — et ne commence qu’une fois **L52 et
 L54 fusionnés**. Deux collisions à connaître : L58 ouvre `copy_template_fields`, territoire de
 L54 ; L59 touche `TemplateVersionEditor.tsx`, l’un des fichiers de **L41**.
+
+## Groupes répétables — L66 à L71
+
+**Spécifiés le 2026-09-12, aucun implémenté.** [Contrat détaillé](spec-groupes-repetables.md).
+Ces six lots répondent à un besoin relevé sur le terrain — plusieurs interventions, plusieurs
+lésions vertébrales à grader, plusieurs hématomes à caractériser — que la variable multivaluée
+ne couvre pas : **deux attributs propres ou plus par occurrence**.
+
+Ils n'introduisent **aucun stockage nouveau**. Une occurrence est une `encounter`, et le
+discriminant passe du type de rencontre — borné à quatre valeurs — au **bloc**, dont le nombre
+n'est pas borné : une colonne `group_section_key` sur `encounter`, un drapeau `is_repeatable`
+sur `template_section`, et une règle d'applicabilité à deux branches (§5 de la spécification)
+qui remplace le filtre `encounter_types` pour ces variables seulement.
+
+**Ordre : L66 bloquant, puis la file L67 → L68 → L69 ; L70 et L71 se parallélisent dès L66.**
+Le **jalon utilisable est L68** : à partir de là un pilote saisit des groupes répétables, les
+trois lots suivants étant des améliorations et non des conditions.
+
+**Deux préalables qui ne sont pas du code.** Un bloc répétable exige une base `longitudinal` ou
+`event_registry`, et ce choix se verrouille au premier patient saisi — il se décide avant la
+première fiche, pas pendant L66. Et le §3.3 de la spécification est normatif : quand l'unité
+d'analyse est le patient et non l'occurrence, les variables numérotées bornées restent le bon
+choix, et aucun groupe ne doit être ouvert.
+
+**Collision immédiate à connaître : L67 touche les quatre fichiers de l'éditeur que les
+correctifs UX modifient en ce moment.** Ne pas ouvrir L67 tant que cette branche n'est pas
+fusionnée.
 
 ## Ordre suggéré — état documentaire au 2026-09-05
 

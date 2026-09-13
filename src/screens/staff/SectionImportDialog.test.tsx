@@ -288,7 +288,13 @@ describe('SectionImportDialog', () => {
     expect(onImported).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('button', { name: 'Conditionner ce bloc' }));
-    expect(onActivate).toHaveBeenCalledWith('tuberculose');
+    // L60 : la condition d'origine et son pilote SOURCE partent avec le bloc. Sans le pilote,
+    // la cible n'aurait rien contre quoi comparer le type, la portée et le caractère multiple.
+    expect(onActivate).toHaveBeenCalledWith({
+      sectionKey: 'tuberculose',
+      activation: { field: 'diagnostic', operator: 'contains_any', value: ['A15.0'] },
+      sourceDriver: SOURCE_FIELDS.find((f) => f.fieldKey === 'diagnostic'),
+    });
   });
 
   test('les douze refus de L58 ont chacun leur message', async () => {

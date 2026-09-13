@@ -226,11 +226,13 @@ export function CommonLayoutEditor({
   if (commonFields.length === 0) return null;
 
   return (
-    <section aria-labelledby="common-layout-title" className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-      <div>
-        <h3 id="common-layout-title" className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('commonlayout.title')}</h3>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t('commonlayout.hint')}</p>
-      </div>
+    <details className="rounded-xl border border-slate-200 dark:border-slate-700">
+      <summary id="common-layout-title" className="min-h-11 cursor-pointer px-4 py-3 text-base font-semibold text-slate-800 dark:text-slate-100">
+        {t('commonlayout.title')}
+        <span className="ml-2 text-sm font-normal text-slate-500">{t('commonlayout.count').replace('{n}', String(commonFields.length))}</span>
+      </summary>
+      <div className="space-y-3 border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+      <p className="text-sm text-slate-600 dark:text-slate-300">{t('commonlayout.hint')}</p>
       {readOnly ? (
         <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{t('commonlayout.readonly')}</p>
       ) : draft.groups.length === 0 ? (
@@ -331,6 +333,7 @@ export function CommonLayoutEditor({
           </div>
         </>
       )}
-    </section>
+      </div>
+    </details>
   );
 }
