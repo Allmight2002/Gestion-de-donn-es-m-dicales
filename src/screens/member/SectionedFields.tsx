@@ -61,6 +61,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const steps = leadingBlock ? [{ key: leadingKey }, ...roots] : roots;
   const active = steps.some((root) => root.key === current) ? current : steps[0]?.key ?? null;
   const revealingInvalid = useRef(false);
+  const revealFrame = useRef<number | null>(null);
   const rootFor = (key: string) => {
     const source = (allFields ?? fields).find((field) => isProposalSource(field) && findProposalField(allFields ?? fields, field)?.fieldKey === key);
     const group = groups.find((candidate) => candidate.fields.some((field) => field.fieldKey === (source?.fieldKey ?? key)));
@@ -81,7 +82,15 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const reveal = (rootKey: string, targetKey?: string) => {
     setCollapsed((before) => { const next = new Set(before); next.delete(rootKey); return next; });
     setCurrent(rootKey); setMobileContents(false);
-    requestAnimationFrame(() => {
+    // Le focus attend que le bloc soit affiche. Une revelation plus recente remplace la
+    // precedente, et si l utilisateur a lui-meme pris la main entre-temps, la lui reprendre
+    // lui ferait perdre la frappe en cours : on lui laisse le champ qu il vient de choisir.
+    if (revealFrame.current !== null) cancelAnimationFrame(revealFrame.current);
+    const focusedBefore = document.activeElement;
+    revealFrame.current = requestAnimationFrame(() => {
+      revealFrame.current = null;
+      const focusedNow = document.activeElement;
+      if (focusedNow && focusedNow !== focusedBefore && focusedNow !== document.body) return;
       const target = document.getElementById(targetKey ? fieldId(targetKey) : groupId(rootKey))
         ?? [...(host.current?.querySelectorAll<HTMLElement>('[data-proposal-key]') ?? [])].find((node) => node.dataset.proposalKey === targetKey);
       const control = targetKey ? target?.querySelector<HTMLElement>('input:not(:disabled),select:not(:disabled),textarea:not(:disabled),button[aria-haspopup="dialog"],[role="combobox"],output') : target;

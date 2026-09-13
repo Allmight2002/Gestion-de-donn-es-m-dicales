@@ -123,6 +123,24 @@ describe('long form sections and progress', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Code');
     expect(submit).not.toHaveBeenCalled();
   });
+  test('the deferred focus of a block never takes back a field the user has just chosen', async () => {
+    // Le focus du bloc revele est differe d une frame. On la fait tomber APRES que
+    // l utilisateur a choisi son champ : la reprendre lui ferait perdre sa frappe.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (run: FrameRequestCallback) => frames.push(run));
+    vi.stubGlobal('cancelAnimationFrame', (handle: number) => { frames[handle - 1] = () => {}; });
+    try {
+      render(<I18nProvider><SectionedFields fields={[fields[0]]}
+        leadingBlock={{ label: 'Identité', content: <label>Code<input /></label> }}
+        renderField={() => <label>Valeur clinique<input /></label>} /></I18nProvider>);
+      const value = screen.getByLabelText('Valeur clinique');
+      await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+      await userEvent.click(value);
+      frames.splice(0).forEach((run) => run(0));
+      await userEvent.keyboard('Saisie conservée');
+      expect(value).toHaveFocus(); expect(value).toHaveValue('Saisie conservée');
+    } finally { vi.unstubAllGlobals(); }
+  });
   test('counts follow visibility, permitted missing codes, conditional obligations and invalid values', () => {
     const conditionalFields = [field('a', null), { ...field('b', 'clinique', true), allowMissingCodes: true }];
     const first = calculateFormProgress(conditionalFields, { a: 2, b: makeMissing('inconnu') }, [required], new Set(), true);
