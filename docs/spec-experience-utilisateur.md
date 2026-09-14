@@ -38,6 +38,11 @@ Cette spécification complète :
   [la feuille de route intake-only](feuille-route-offline-saisie.md) et
   [L39](lots-paralleles.md#l39--durcir-la-persistance-des-brouillons-cliniques) pour les données locales.
 
+La décision métier sur l’évolution d’un formulaire dans la même base et la complétion des fiches
+existantes est maintenant détaillée dans [spec-evolution-formulaire.md](spec-evolution-formulaire.md).
+Elle constitue une cible à implémenter : tant que ses lots ne sont pas livrés, les restrictions
+actuelles des versions publiées ou utilisées restent la vérité du produit.
+
 Les règles de gouvernance, d'identité, de version et d'export de ces documents restent
 applicables. Les historiques de livraison ne sont pas réécrits par ce chantier.
 UX-16 révise la seule contrainte de présentation « tronc commun en tête » de L54 :

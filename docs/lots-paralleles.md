@@ -1,5 +1,14 @@
 # Découpage des chantiers en lots parallélisables
 
+> **Ajout du 2026-09-14 — évolution du formulaire, spécifiée et à réaliser.**
+> Le [plan E0 à E7](lots-evolution-formulaire.md) détaille la
+> [décision métier](spec-evolution-formulaire.md) : modification dans la même base et complétion
+> des dossiers existants, avec versionnage technique en arrière-plan.
+> Ordre conseillé : **E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7**.
+> E4/E6 peuvent être séparés après stabilisation de E3 si les surfaces sont distinctes.
+> Les migrations/RPC/appelants couplés ont un seul responsable d’écriture.
+> Les identifiants E sont propres à ce chantier ; L57 reste différé pour les reprises complexes.
+
 - Établi le 2026-07-27 · **révisé le 2026-09-11**
 - Objet : permettre de lancer plusieurs chantiers **dans des sessions distinctes**
   sans que les branches se marchent dessus

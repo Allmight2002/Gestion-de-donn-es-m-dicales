@@ -14,6 +14,13 @@
 
 ## 1. Résultat attendu et limites
 
+> **Évolution métier spécifiée le 2026-09-14 :** la
+> [spécification d’évolution du formulaire](spec-evolution-formulaire.md) et ses
+> [lots E0 à E7](lots-evolution-formulaire.md) prévoient l’ajout d’associations diagnostiques
+> compatibles et la complétion des dossiers existants dans la même base. Ils ne sont pas encore
+> implémentés et ne suppriment pas les gardes actuelles. La reprise complexe, les conversions
+> et les notifications de L57 restent un chantier distinct.
+
 > **Complément de présentation spécifié le 2026-09-11 :**
 > [UX-16 — rubriques communes et placement diagnostique](spec-experience-utilisateur.md#53-diagnostic-pilote-et-rubriques-communes-libres--ux-16)
 > permet de nommer et déplacer la rubrique du diagnostic, ainsi que de répartir les variables

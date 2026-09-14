@@ -1,5 +1,10 @@
 # Prompts prêts à l'emploi, un par lot
 
+> **Ajout du 2026-09-14 :** les lots **E0 à E7**, tous à réaliser, sont décrits dans
+> [le plan d’évolution du formulaire](lots-evolution-formulaire.md).
+> Son [prompt de reprise](lots-evolution-formulaire.md#prompt-de-reprise-dun-lot) s’applique à
+> chaque lot avec ses prérequis et critères de sortie. Il ne lance pas les autres chantiers.
+
 - Établi le 2026-07-28, en complément de [`lots-paralleles.md`](lots-paralleles.md)
 - **Révisé le 2026-08-10** : état des lots remis à jour, et cinq prompts ajoutés (L15 à L19)
 - **Révisé le 2026-08-11** : sept prompts ajoutés (L20 à L26), issus de

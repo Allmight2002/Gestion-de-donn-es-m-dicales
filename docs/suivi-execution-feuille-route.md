@@ -15,6 +15,13 @@ au SHA et à l'environnement indiqués.
 
 ## Vue d'ensemble
 
+**Chantier ajouté le 2026-09-14 : évolution du formulaire E0 à E7.**
+La [spécification métier](spec-evolution-formulaire.md) et le
+[découpage avec suivi par lot](lots-evolution-formulaire.md#ordre-et-suivi) sont rédigés.
+Les huit lots restent **à réaliser** ; aucune preuve d’implémentation, de navigateur ou de
+déploiement n’est attribuée à ce chantier. Leur suivi détaillé reste dans ce plan pour éviter
+de dupliquer des statuts divergents.
+
 | Ordre | Lot | Statut | Branche / SHA | PR et CI | Staging | Limites restantes |
 |---|---|---|---|---|---|---|
 | D0 | Intégration du cadre documentaire | Terminé | `main` `70798f65017cbcea6b6f348cc9a24f90d0299dd7` ; `develop` `5468141a33ad6c7c1596e83e753881cb03ff874f` | PR #46 et #47 ; CI verte | Non requis | Production exclue |
