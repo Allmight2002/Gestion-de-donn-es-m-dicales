@@ -5,6 +5,12 @@
 > Son [prompt de reprise](lots-evolution-formulaire.md#prompt-de-reprise-dun-lot) s’applique à
 > chaque lot avec ses prérequis et critères de sortie. Il ne lance pas les autres chantiers.
 
+> **Ajout du 2026-09-15 :** les lots **PAP-0 à PAP-5**, tous à réaliser sauf PAP-5 qui est
+> conditionnel, sont décrits dans [le plan du formulaire papier compact](lots-formulaire-papier.md).
+> Le [formulaire vierge imprimable](spec-formulaire-papier.md) reste sans patient, sans réponse
+> clinique et sans écriture distante. Ordre critique : **PAP-0 -> PAP-1 -> PAP-2 -> PAP-4** ;
+> PAP-3 s'intercale si les réglages sont persistants et PAP-5 attend L66 à L71.
+
 - Établi le 2026-07-28, en complément de [`lots-paralleles.md`](lots-paralleles.md)
 - **Révisé le 2026-08-10** : état des lots remis à jour, et cinq prompts ajoutés (L15 à L19)
 - **Révisé le 2026-08-11** : sept prompts ajoutés (L20 à L26), issus de
@@ -40,6 +46,9 @@
   **L66 est bloquant** ; ensuite la file **L67 → L68 → L69**, et **L70**/**L71** en parallèle.
   Le jalon utilisable est **L68**. **L67 ne tourne jamais avec les correctifs UX de l’éditeur**,
   **L69 jamais avec L41 ni L42**, **L70 jamais avec L50 ni L53**.
+- **Révisé le 2026-09-15** : six prompts ajoutés (**PAP-0 à PAP-5**) pour le formulaire vierge
+  imprimable, issus de [`spec-formulaire-papier.md`](spec-formulaire-papier.md). PAP-0 à PAP-4
+  forment le chemin principal ; PAP-5 reste conditionnel au contrat des groupes répétables.
 - Objet : pouvoir lancer chaque chantier dans une session distincte sans le
   réexpliquer
 
@@ -228,6 +237,184 @@ src/i18n/messages.ts, ajoute tes clés à la FIN de chaque section : ce fichier 
 modifié par d'autres chantiers en parallèle.
 
 Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
+```
+
+---
+
+## PAP-0 - Mesurer le problème papier
+
+```text
+Tu reprends le lot PAP-0 du projet MedData (registre-clinique).
+
+Lis d'abord AGENTS.md, docs/spec-formulaire-papier.md, docs/lots-formulaire-papier.md
+et la ligne PAP-0 de docs/lots-paralleles.md. Inspecte le statut Git et les diffs
+locaux ; préserve toute modification hors de ce lot.
+
+Ce lot est documentaire et préparatoire : ne modifie pas le produit, la base, les
+versions de formulaire ni les données cliniques. Choisis trois formulaires fictifs
+représentatifs (court, moyen et volumineux), en incluant si elle est disponible la
+fixture de grande taille avec au moins 216 variables, 21 sections et plus de 20 règles.
+
+Pour chaque cas, relève la baseline reproductible : nombre de pages, hauteur utilisée,
+pages presque vides, titres orphelins, coupures ambiguës, zones d'écriture insuffisantes,
+listes trop longues et consignes qui consomment l'espace. Distingue le coût du contenu
+de celui de la mise en page. Fixe un seuil de réduction et un seuil de lisibilité à
+partir des mesures, jamais à partir d'un gain théorique.
+
+Consigne la fiche de baseline et les fixtures fictives dans la documentation prévue,
+avec la méthode, la date, la cible et les limites. Vérifie que PAP-1 à PAP-4 pourront
+réutiliser exactement ces cas. Ne committe, ne pousse, ne fusionne et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## PAP-1 - Modèle de document et placement
+
+```text
+Tu reprends le lot PAP-1 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-formulaire-papier.md, docs/lots-formulaire-papier.md et la
+ligne PAP-1 de docs/lots-paralleles.md. Vérifie que PAP-0 est mesuré et inspecte le
+code, les diffs locaux, les types et les tests actuels avant d'écrire.
+
+Implémente uniquement un modèle pur et déterministe de lignes, éléments et pages pour
+le formulaire vierge. Réutilise après vérification les contrats de
+src/data/types.ts, src/domain/validation.ts, src/domain/fieldOptions.ts et le moteur
+de structure existant. Applique l'ordre des portées, blocs, sections, sous-sections,
+variables directes et zone de secours ; applique la grille de 12 unités, les profils
+compact/confortable, les présentations selon le type de variable, les descriptions,
+les options, les conditions non résolues et les règles de pagination de la
+spécification.
+
+Ne charge ni patient, ni identité, ni rencontre, ni réponse, ni terminologie distante.
+Ne crée pas de migration, de RPC ou de persistance dans PAP-1. Ne change aucune clé,
+règle, applicabilité, unité, option ou validation clinique.
+
+Ajoute des tests sans navigateur sur les trois fixtures PAP-0, les sections imbriquées,
+les variables détachées, les libellés longs, les listes nombreuses, les conditions non
+résolues et les champs textuels longs. Vérifie l'ordre, l'unicité des clés et la
+déterminisme, pas seulement le nombre de pages. Rapporte les contrôles exécutés et
+leurs limites ; ne committe, ne pousse, ne fusionne et ne déploie rien sans demande
+explicite.
+```
+
+---
+
+## PAP-2 - Prévisualisation et impression navigateur
+
+```text
+Tu reprends le lot PAP-2 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-formulaire-papier.md, docs/lots-formulaire-papier.md et la
+ligne PAP-2 de docs/lots-paralleles.md. Vérifie que PAP-1 est réellement disponible
+et inspecte l'état courant de FormPreview, des routes staff, des styles et des tests.
+Ne remplace pas les modifications locales d'un autre chantier.
+
+Expose le modèle PAP-1 sous forme de prévisualisation A4 paginée et d'action
+« Imprimer le formulaire ». Affiche le profil, l'orientation et le nombre de pages.
+Ajoute les règles CSS d'impression adaptées (`@media print`, `@page`, coupures) et les
+paramètres recommandés pour produire un PDF via le navigateur. Vérifie compact,
+confortable, portrait, paysage et formulaire long.
+
+Le parcours est vierge et sans écriture : aucune lecture de patient ou de rencontre,
+aucun brouillon, aucune opération distante, aucune requête de terminologie et aucun
+journal clinique à l'ouverture, au recalcul ou à l'impression. Une valeur locale de
+test de condition ne doit jamais être persistée.
+
+Ajoute les tests web utiles puis réalise une vérification dans un navigateur réel sur
+une cible locale/jetable, en conservant un PDF de contrôle fictif. Compare le nombre de
+pages et l'ordre annoncés avec le PDF réellement produit. Distingue preuve de composant,
+preuve navigateur et preuve PDF. Ne committe, ne pousse, ne fusionne et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## PAP-3 - Réglages persistants de présentation
+
+```text
+Tu reprends le lot PAP-3 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-formulaire-papier.md, docs/lots-formulaire-papier.md et la
+ligne PAP-3 de docs/lots-paralleles.md. Vérifie d'abord la décision produit : si les
+réglages restent automatiques ou temporaires, ne crée pas de migration et documente
+proprement pourquoi PAP-3 reste sans exécution.
+
+Si une persistance est réellement requise, lis les instructions meddata-db-safety et
+les consignes Supabase du dépôt avant toute modification. Reprends le contrat
+TemplatePrintLayout, vérifie les versions, brouillons, copies, droits et interfaces
+existants, puis désigne un seul propriétaire pour migration, RPC/repository et appelants.
+
+La migration doit être additive et compatible. Le serveur doit vérifier base, version,
+révision attendue et rôle ; la sauvegarde doit être atomique, idempotente si nécessaire
+et rejeter explicitement une révision périmée. Une nouvelle version ne doit pas hériter
+silencieusement d'un réglage incompatible. Le contrat ne contient ni identité, ni patient,
+ni réponse, ni valeur clinique.
+
+Ajoute les tests RLS/ACL, concurrence, rejeu, conflit et non-divulgation. Sur une cible
+locale/jetable, exécute ensuite npm run schema, inspecte le snapshot et exécute
+npm run schema:check. Ne lance aucune migration distante. Rapporte séparément code,
+tests, snapshot et limites. Ne committe, ne pousse, ne fusionne et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## PAP-4 - Éditeur et validation terrain
+
+```text
+Tu reprends le lot PAP-4 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-formulaire-papier.md, docs/lots-formulaire-papier.md et la
+ligne PAP-4 de docs/lots-paralleles.md. Vérifie PAP-2 et, si les réglages sont sauvés,
+PAP-3. Avant toute écriture, contrôle que E4, UX-16, L59, L60 ou L67 ne modifient pas
+en même temps TemplateVersionEditor.tsx, SectionsEditor.tsx, FieldForm.tsx ou
+FormPreview.tsx ; si une collision existe, ne l'écrase pas et consigne le point de
+coordination.
+
+Ajoute uniquement les contrôles de présentation prévus : profil compact/confortable,
+orientation, titre, saut de page, largeur, lignes de texte, description et adaptation
+au type, aux niveaux autorisés (profil, bloc, section, sous-section, variable). Affiche
+l'impact sur le nombre de pages avant sauvegarde. Le modèle PAP-1 et le rendu PAP-2
+restent les références ; aucun bouton ne doit modifier une clé, une règle, une
+applicabilité ou le sens clinique d'une variable.
+
+Utilise trois fixtures PAP-0, imprime-les en PDF puis sur papier avec les profils retenus.
+Fais remplir des exemplaires par des étudiants pilotes avec des données fictives et
+relève temps, erreurs de lecture, cases ambiguës, espaces insuffisants, ruptures de
+section et pages inutiles. Compare à la baseline et conserve les limites de l'essai.
+
+Exécute les tests web, la vérification navigateur/PDF et la validation papier réellement
+faite. Ne conclus pas à la réussite à partir d'une maquette ou d'un compteur fixe. Ne
+committe, ne pousse, ne fusionne et ne déploie rien sans demande explicite.
+```
+
+---
+
+## PAP-5 - Groupes répétables
+
+```text
+Tu reprends le lot PAP-5 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-formulaire-papier.md, docs/lots-formulaire-papier.md et la
+ligne PAP-5 de docs/lots-paralleles.md. Vérifie que le contrat L66 à L71 des groupes
+répétables est stabilisé et que ses preuves existent. S'il ne l'est pas, ne crée pas
+un modèle d'occurrences concurrent : laisse PAP-5 conditionnel et consigne précisément
+la dépendance restante.
+
+Une fois le contrat disponible, étends le rendu vierge en représentant le groupe comme
+un bloc identifiable. Définis explicitement le gabarit d'occurrence et, si nécessaire,
+le nombre demandé par l'utilisateur ; ne déduis jamais des occurrences d'une fiche
+patient ou d'une rencontre. Gère zéro, une et plusieurs occurrences, titres répétés,
+continuité de page, occurrence coupée selon les règles et espaces de réponse.
+
+Vérifie que la répétition ne crée aucune clé de variable, ne modifie pas le modèle
+clinique et ne charge aucune donnée patient. Prouve que les occurrences sont
+distinguables sur papier et que le futur rattachement d'une ressaisie ne serait pas
+ambigu. Utilise uniquement les contrats répétables existants et rapporte séparément
+les tests de layout, le PDF et toute vérification papier. Ne committe, ne pousse, ne
+fusionne et ne déploie rien sans demande explicite.
 ```
 ## L61 — Stabiliser et prouver le socle actuel de la liste patient
 

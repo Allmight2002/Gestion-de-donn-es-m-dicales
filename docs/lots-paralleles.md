@@ -85,6 +85,11 @@ Les prompts prêts à l'emploi des lots L sont regroupés dans
 seul le sous-chantier UX-12 est désormais traduit en prompts L61 à L65. Ce renvoi ne signifie pas
 que les prompts d'exécution ou l'implémentation des autres lots UX existent déjà.
 
+Les prompts des lots **PAP-0 à PAP-5** sont également regroupés dans
+[`prompts-lots.md`](prompts-lots.md), avec leur [plan détaillé](lots-formulaire-papier.md). Ils
+restent soumis aux prérequis et collisions indiqués ci-dessus ; leur présence documentaire ne
+constitue pas une preuve d'implémentation.
+
 **Révision du 2026-08-24, mise à jour le 2026-09-02** : le chantier d'export directement
 exploitable pour l'analyse était découpé en **L45 à L50** ; **L45 à L49 sont livrés** et seul
 **L50** reste différé. Le détail, les règles de données et les critères d'acceptation sont
@@ -119,6 +124,14 @@ analytique explicite la justifie.
 > Le tri clinique (L62/L63) et l'identité nominative (L64) restent à réaliser. Le contrat détaillé
 > et les preuves attendues sont dans
 > [`l61-liste-patients-recherche-tri-identite.md`](l61-liste-patients-recherche-tri-identite.md).
+
+> **Ajout du 2026-09-15 — formulaire papier compact, spécifié et à réaliser.**
+> Le [plan PAP-0 à PAP-5](lots-formulaire-papier.md) détaille le
+> [formulaire vierge imprimable](spec-formulaire-papier.md) : mesure du gaspillage, placement A4
+> par hiérarchie et type de variable, prévisualisation/PDF, réglages persistants et validation
+> étudiante. Ordre critique : **PAP-0 -> PAP-1 -> PAP-2 -> PAP-4** ; PAP-3 s'insère avant PAP-4
+> si les réglages sont persistants ; PAP-5 attend le contrat des groupes répétables L66 à L71.
+> PAP-4 doit être coordonné avec E4, UX-16, L59, L60 et L67 sur les surfaces de l'éditeur.
 
 ## Vue d'ensemble
 
@@ -195,6 +208,12 @@ analytique explicite la justifie.
 | **L69** | Groupes répétables : création de patient, occurrences tamponnées et rejeu ordonné | `NewPatient.tsx`, `patients.ts`, tests web | **après L68** ; **jamais avec L41 ni L42** (même `useCallback` de `NewPatient.tsx`) |
 | **L70** | Groupes répétables : export, métadonnée de groupe et colonnes de comptage | `exportContract.ts`, Edge `generate-export`, `ExportPanel.tsx` | **après L66** ; jamais avec L50 (différé) ni L53 |
 | **L71** | Groupes répétables : instantané et rejeu hors-ligne | `offlineIntake.ts`, RPC d’instantané et `replay_encounter_create` | **après L66** ; jamais avec O6 ni O7 |
+| **PAP-0** | Formulaire papier : mesurer pages, espaces inutilisés et lisibilité | documentation, fixtures fictives et relevés de baseline | — |
+| **PAP-1** | Formulaire papier : modèle A4 et placement déterministe par hiérarchie/type | module de layout pur, tests, `src/data/types.ts` après inspection | **après PAP-0** ; vérifier les contrats partagés |
+| **PAP-2** | Formulaire papier : prévisualisation paginée et impression navigateur/PDF | `FormPreview.tsx`, écran d'impression, CSS print, tests navigateur | **après PAP-1** ; jamais avec E4, UX-16, L59, L60 ou L67 sur les mêmes surfaces |
+| **PAP-3** | Formulaire papier : réglages persistants versionnés, si retenus | migration additive éventuelle, RPC/repository, RLS/ACL, tests de concurrence | **après PAP-1** ; propriétaire unique migration/RPC/appelants |
+| **PAP-4** | Formulaire papier : réglages dans l'éditeur et validation étudiante | `TemplateVersionEditor.tsx`, `SectionsEditor.tsx`, `FieldForm.tsx`, `FormPreview.tsx`, i18n | **après PAP-2** et PAP-3 si sauvegarde ; jamais avec E4, UX-16, L59, L60 ou L67 |
+| **PAP-5** | Formulaire papier : occurrences des groupes répétables | rendu papier des groupes, pagination et tests liés à L66-L71 | **conditionnel, après L66-L71** ; ne pas créer un second contrat d'occurrences |
 | ~~D10~~ | ~~Purge définitive des bases de la corbeille~~ | **Livré le 2026-08-20** (`20260820210000_base_purge.sql`, Edge `purge-deleted-base`) | — |
 | ~~O0–O5~~ | ~~Saisie hors-ligne *intake-only* : création patient/rencontre et rejeu idempotent~~ | **Code livré le 2026-08-23** (migration `20260822000000_offline_intake_idempotency.sql`, `src/data/offlineIntake.ts`) | — |
 | **O6** | Preuve navigateur de la saisie hors-ligne | `e2e/offline-intake.spec.ts`, preview isolé, service worker réel | **après O0–O5 ; données fictives uniquement** |
