@@ -43,11 +43,11 @@ function renderEditor(repo: TemplateRepository = createEditorRegistryRepository(
 }
 
 /**
- * Les quatre espaces restent MONTÉS pour ne perdre aucune saisie en changeant d'onglet ; les
+ * Les cinq espaces restent MONTÉS pour ne perdre aucune saisie en changeant d'onglet ; les
  * panneaux inactifs portent `hidden`, que `getByText` ne respecte pas. Les lectures de liste
  * se font donc dans le panneau visé, jamais sur toute la page.
  */
-const panneau = (espace: 'structure' | 'rules' | 'diagnosis' | 'preview') =>
+const panneau = (espace: 'structure' | 'sections' | 'rules' | 'diagnosis' | 'preview') =>
   within(document.getElementById(`editor-panel-${espace}`) as HTMLElement);
 const sommaire = () => within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' }));
 const rechercheVariable = () => screen.getByRole('searchbox', { name: 'Rechercher une variable' });
@@ -81,11 +81,25 @@ describe('Éditeur de registre — dimensionnement de la fixture', () => {
 });
 
 describe('Éditeur de registre — structure du formulaire', () => {
+  test('la gestion des sections devient un espace de menu dédié', async () => {
+    await renderEditor();
+
+    expect(panneau('structure').queryByRole('button', { name: 'Gérer la structure' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Sections' }));
+
+    const gestion = panneau('sections');
+    expect(gestion.getByRole('heading', { name: 'Gérer la structure' })).toBeInTheDocument();
+    expect(gestion.getByRole('button', { name: 'Ajouter la section' })).toBeInTheDocument();
+    expect(gestion.getByText('Rubriques communes')).toBeInTheDocument();
+  });
+
   // Critère 1 du README.
   test('ouvre directement une sous-section de fin de modèle sans traverser les précédentes', async () => {
     await renderEditor();
 
     // L'écran s'ouvre sur une section, pas sur les 216 lignes.
+    expect(panneau('structure').getByRole('heading', { name: 'Bloc 01' })).toBeInTheDocument();
+    expect(panneau('structure').queryByRole('heading', { name: 'Contexte commun' })).not.toBeInTheDocument();
     expect(panneau('structure').queryByText('Bloc 08 · Sous-section B · Variable 01')).not.toBeInTheDocument();
 
     const cible = sommaire().getByRole('button', { name: 'Bloc 08 · Sous-section B · 9 variable(s)' });

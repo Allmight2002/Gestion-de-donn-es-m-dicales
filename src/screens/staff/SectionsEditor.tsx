@@ -210,7 +210,7 @@ export function SectionsEditor({
           const hasChildren = sections.some((s) => s.parentSectionKey === section.sectionKey);
           const used = countIn(section.sectionKey);
           return (
-            <li key={section.id} className={`card flex flex-wrap items-start gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
+            <li key={section.id} className={`card flex min-w-0 flex-wrap items-start gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
               <span className="flex shrink-0 flex-col">
                 <button
                   type="button"
@@ -270,7 +270,7 @@ export function SectionsEditor({
                   {/* Le libelle ne partage plus sa ligne avec les commandes. Reduit a `min-w-0`,
                       il tombait a quelques pixels des que la liste deroulante des parents etait
                       large, et s'affichait alors une lettre par ligne. */}
-                  <div className="flex min-w-[min(12rem,100%)] flex-1 flex-col gap-0.5">
+                  <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
                     <span className="break-words font-medium text-slate-900">{sectionLabel(t, section)}</span>
                     <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
                       {/* Le code interne est montre, jamais modifiable : c'est lui que portent
@@ -279,7 +279,7 @@ export function SectionsEditor({
                       <span className="text-slate-500">{t('admin.section_field_count').replace('{n}', String(used))}</span>
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                     <button
                       type="button"
                       className="btn-ghost min-h-11 px-3 text-xs"
@@ -290,7 +290,7 @@ export function SectionsEditor({
                     >
                       {t('admin.rename')}
                     </button>
-                    {onMove && <select aria-label={t('section.parent')} className="input w-auto max-w-[12rem]" value={section.parentSectionKey ?? ''}
+                    {onMove && <select aria-label={t('section.parent')} className="input w-auto max-w-full sm:max-w-[12rem]" value={section.parentSectionKey ?? ''}
                       disabled={busy || hasChildren} onChange={(e) => onMove(section.id, e.target.value || null)}>
                       <option value="">{t('section.root')}</option>
                       {sections.filter((s) => !s.parentSectionKey && s.id !== section.id).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}

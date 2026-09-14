@@ -35,7 +35,10 @@ function initialDesktopSidebarOpen(): boolean {
 }
 
 function isVariableEditorRoute(pathname: string): boolean {
-  return /^\/bases\/[^/]+\/template(?:\/|$)/.test(pathname);
+  // L'éditeur staff est rendu dans `/templates` sans changer l'URL. Les bases gardent
+  // également leur entrée `/bases/:id/template`. Dans ces deux parcours l'en-tête mobile
+  // reste dans le flux afin de ne pas consommer la hauteur utile pendant la saisie.
+  return /^\/templates(?:\/|$)/.test(pathname) || /^\/bases\/[^/]+\/template(?:\/|$)/.test(pathname);
 }
 
 interface NavItem {

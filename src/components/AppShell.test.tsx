@@ -171,6 +171,15 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.getByRole('button', { name: 'Afficher la barre latérale' })).toBeInTheDocument();
   });
 
+  test('le parcours editeur sous /templates garde aussi l entete mobile dans le flux', async () => {
+    renderShell({ id: 'u-templates', fullName: 'Dr Templates', globalRole: 'medecin', language: 'fr' }, undefined, '/templates');
+
+    await screen.findByText('Dr Templates');
+    const header = document.querySelector('header');
+    expect(header).toHaveClass('relative');
+    expect(header).not.toHaveClass('sticky', 'top-0');
+  });
+
   test('curateur : navigation reduite (pool + synchro), pas de gabarits/groupes', async () => {
     renderShell({ id: 'u-cur', fullName: 'Curateur T', globalRole: 'curateur', language: 'fr' });
     expect(await screen.findByRole('link', { name: /Liste des requêtes/ })).toBeInTheDocument();

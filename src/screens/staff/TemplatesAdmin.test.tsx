@@ -109,7 +109,7 @@ function renderEditor(repo: TemplateRepository) {
 }
 
 /**
- * Les quatre espaces restent MONTES pour ne perdre aucune saisie en changeant d'onglet. Les
+ * Les cinq espaces restent MONTES pour ne perdre aucune saisie en changeant d'onglet. Les
  * panneaux inactifs portent `hidden`, que les requetes par role respectent — mais pas
  * `getByText`. Un libelle de variable apparait donc aussi dans les `<option>` du filtre de
  * l'espace Regles. Les assertions de liste se lisent donc DANS l'espace Structure.

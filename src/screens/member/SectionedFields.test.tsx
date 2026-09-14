@@ -144,6 +144,58 @@ describe('long form sections and progress', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Code');
     expect(submit).not.toHaveBeenCalled();
   });
+  test('parcourt chaque sous-section comme une etape distincte sous son bloc parent', async () => {
+    const hierarchy = [
+      { id: 'b', sectionKey: 'bloc_b', label: 'B', displayOrder: 0, parentSectionKey: null },
+      { id: 'b1', sectionKey: 'bloc_b1', label: 'B1', displayOrder: 0, parentSectionKey: 'bloc_b' },
+      { id: 'b2', sectionKey: 'bloc_b2', label: 'B2', displayOrder: 1, parentSectionKey: 'bloc_b' },
+      { id: 'b3', sectionKey: 'bloc_b3', label: 'B3', displayOrder: 2, parentSectionKey: 'bloc_b' },
+      { id: 'c', sectionKey: 'bloc_c', label: 'C', displayOrder: 3, parentSectionKey: null },
+    ];
+    const nested = [
+      { ...field('b1_value', 'bloc_b1'), label: 'Variable B1', displayOrder: 0 },
+      { ...field('b2_value', 'bloc_b2'), label: 'Variable B2', displayOrder: 1 },
+      { ...field('b3_value', 'bloc_b3'), label: 'Variable B3', displayOrder: 2 },
+      { ...field('c_value', 'bloc_c'), label: 'Variable C', displayOrder: 3 },
+    ];
+    render(<I18nProvider><SectionedFields fields={nested} sections={hierarchy}
+      allFields={nested} renderField={(item) => <label>{item.label}<input aria-label={item.label} /></label>} /></I18nProvider>);
+
+    expect(screen.queryByRole('group', { name: 'B' })).not.toBeInTheDocument();
+    const first = screen.getByRole('group', { name: 'B1' });
+    expect(first).toBeVisible();
+    expect(within(first).getByText('B')).toBeInTheDocument();
+    expect(screen.getByLabelText('Variable B1')).toBeVisible();
+    expect(screen.getByLabelText('Variable B2')).not.toBeVisible();
+    expect(screen.getByLabelText('Variable B3')).not.toBeVisible();
+    expect(screen.getByLabelText('Variable C')).not.toBeVisible();
+
+    await userEvent.click(screen.getByLabelText('Un bloc à la fois'));
+    expect(screen.getByRole('group', { name: 'B1' })).toBeVisible();
+    expect(screen.getByRole('group', { name: 'B2' })).toBeVisible();
+    expect(screen.getByRole('group', { name: 'B3' })).toBeVisible();
+    expect(screen.queryByRole('group', { name: 'B' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Un bloc à la fois'));
+
+    await userEvent.type(screen.getByLabelText('Variable B1'), 'saisie conservee');
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    expect(screen.getByRole('group', { name: 'B2' })).toBeVisible();
+    expect(screen.getByLabelText('Variable B1')).not.toBeVisible();
+    expect(screen.getByLabelText('Variable B2')).toBeVisible();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    expect(screen.getByRole('group', { name: 'B3' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    expect(screen.getByRole('group', { name: 'C' })).toBeVisible();
+    expect(screen.getByLabelText('Variable C')).toBeVisible();
+
+    // Les sous-sections restent montées, donc une saisie commencée dans B1
+    // est retrouvée en revenant à cette étape.
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc précédent' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc précédent' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc précédent' }));
+    expect(screen.getByLabelText('Variable B1')).toHaveValue('saisie conservee');
+  });
   test('the deferred focus of a block never takes back a field the user has just chosen', async () => {
     // Le focus du bloc revele est differe d une frame. On la fait tomber APRES que
     // l utilisateur a choisi son champ : la reprendre lui ferait perdre sa frappe.
