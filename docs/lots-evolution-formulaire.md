@@ -3,6 +3,7 @@
 - Révision : **2026-09-15**.
 - Statut : **spécifié, implémentation et validations à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
+- Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
 
 ## Résultat à livrer
