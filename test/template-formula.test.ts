@@ -298,6 +298,9 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // regle, une position ou un calcul ne peut pas fonctionner. Il LIT `new.formula` pour
       // savoir s'il a quelque chose a verifier -- il n'analyse jamais son contenu.
       'enforce_template_field_formula_rules',
+      // E1 : recopie la formule dans la definition source de la preparation,
+      // sans la decouper ni l'evaluer.
+      'form_preparation_source_definition',
       'guard_template_field_update',
       'missing_required_fields',
       // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
