@@ -11,6 +11,11 @@
 > En cas d'écart entre un document et le code, **le code et les migrations font foi**. L'état du
 > schéma est **généré** dans [schema-etat-final.md](schema-etat-final.md) par `npm run schema` :
 > il prévaut sur toute description manuelle.
+>
+> **Point de départ au 16 septembre 2026 :**
+> [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md) sépare explicitement l'état du checkout,
+> les validations locales consignées et ce qui reste à prouver sur navigateur ou cible. Il remplace
+> comme référence vivante l'ancien relevé du 1er août, conservé en archive.
 
 **Vous arrivez sur le projet ?** → [guide-relecture-externe.md](guide-relecture-externe.md)
 (parcours développeur et parcours sécurité, ~15 min chacun), puis
@@ -36,7 +41,7 @@
 | Document | Contenu |
 |---|---|
 | [edge-functions.md](edge-functions.md) | Les 8 fonctions serveur : lecture signée auditée, inspection antivirus, export (profils `analysis`/`complete`), comptes de mission et purge D10 |
-| [security-definer.md](security-definer.md) | Inventaire normatif des 112 fonctions privilégiées + contrôle d'ACL |
+| [security-definer.md](security-definer.md) | Inventaire normatif des 132 signatures `authenticated` privilégiées (12 `service_role` séparées) + contrôle d'ACL |
 | [upload-inspection-operations.md](upload-inspection-operations.md) | Exploitation de la chaîne d'inspection des fichiers déposés |
 | [xlsx-security.md](xlsx-security.md) | Risques propres au traitement des tableurs |
 | [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md) | Ce que le mode hors-ligne autorise et interdit de stocker localement |
@@ -62,7 +67,7 @@
 | [deploiement-on-premise.md](deploiement-on-premise.md) | Installer **tout le projet chez une institution** : serveur local + Supabase self-hosted + WiFi (sans prérequis réseau) |
 | [pipeline-release-coordonnee.md](pipeline-release-coordonnee.md) | Le workflow de release coordonnée (manuel, `workflow_dispatch`) |
 | [gouvernance-release.md](gouvernance-release.md) | Preuve de gouvernance exigée avant une release clinique |
-| [operations-readiness.md](operations-readiness.md) | Preuve de responsabilités et d'exploitation (échoue fermé sans elle) |
+| [operations-readiness.md](operations-readiness.md) | Preuve de responsabilités et d'exploitation (échec fermé hors dérogation pilote documentée) |
 | [controles-github.md](controles-github.md) | Protections GitHub réellement actives, vérifiées en lecture seule |
 | [supervision.md](supervision.md) | Supervision et alertes d'exploitation |
 | [continuite.md](continuite.md) | Sauvegarde, restauration, reprise |
@@ -75,13 +80,14 @@
 
 | Document | Nature | Contenu |
 |---|---|---|
-| [etat-actuel-2026-08-01.md](etat-actuel-2026-08-01.md) | 🟢 **référence d'état** | Ce qui est vrai de l'environnement courant, du périmètre autorisé et des limites actives |
+| [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md) | 🟢 **référence d'état de source** | État du checkout, limites de preuve et renvois vers les validations locales ou de cible |
+| [etat-actuel-2026-08-01.md](etat-actuel-2026-08-01.md) | 🗄️ | Relevé historique du 1er août, remplacé comme référence vivante |
 | [readiness-production-2026-07-19.md](readiness-production-2026-07-19.md) | 🗄️ | Audit de readiness niveau 4 (mis à jour le 2026-08-01) |
 | [exception-audit-dependances-staging-2026-07-26.md](exception-audit-dependances-staging-2026-07-26.md) | 🗄️ | Exception React Router — **clôturée** |
 
 > ⚠️ Le périmètre autorisé reste **données fictives uniquement**. La cible technique nommée
 > `production` est un environnement persistant de tests internes : ni usage clinique, ni
-> utilisateur tiers, ni donnée réelle. Voir [etat-actuel-2026-08-01.md](etat-actuel-2026-08-01.md).
+> utilisateur tiers, ni donnée réelle. Voir [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md).
 
 ## 6. Stratégie, feuille de route et chantiers 🟢
 
@@ -92,21 +98,23 @@
 | [suivi-execution-feuille-route.md](suivi-execution-feuille-route.md) | Journal d'exécution de cette feuille de route |
 | [lots-paralleles.md](lots-paralleles.md) | Découpage des chantiers en lots parallélisables |
 | [prompts-lots.md](prompts-lots.md) · [prompt-execution-autonome-feuille-route.md](prompt-execution-autonome-feuille-route.md) | Prompts de travail prêts à l'emploi (outillage interne) |
-| [l61-liste-patients-recherche-tri-identite.md](l61-liste-patients-recherche-tri-identite.md) | **Spécifié le 2026-09-11** — L61 à L65 : preuve du socle colonnes/recherche code/tri technique déjà présent, tri par variable analytique, puis nom et recherche nominative sous contrôle RLS/audit |
+| [l61-liste-patients-recherche-tri-identite.md](l61-liste-patients-recherche-tri-identite.md) | **Plan révisé par le code le 2026-09-13** — socle colonnes/recherche code/tri technique et recherche nominative contrôlée sont présents localement ; le tri clinique et la preuve navigateur/cible restent distincts |
 | [chantiers-interactions-comptes.md](chantiers-interactions-comptes.md) | Problèmes ouverts sur les interactions entre comptes, options écartées comprises |
 | [chantiers-export-analyse.md](chantiers-export-analyse.md) | 🟢 **L45 à L49 livrés** (2026-08-28, choix du profil dans l'interface le 2026-09-01) — export directement exploitable dans Excel, R, SPSS ou Stata ; **L50** différé |
 | [idees-post-readiness.md](idees-post-readiness.md) | File d'attente produit tenue à jour |
 | [idees-fonctionnalites-futures.md](idees-fonctionnalites-futures.md) | Réserve d'idées UX — rien n'y est engagé |
-| [spec-experience-utilisateur.md](spec-experience-utilisateur.md) | **Spécifiée, révisée le 2026-09-11** — UX-0 à UX-16 : brouillons, blocs/sommaire, champs à choix, navigation, erreurs et opérations ; l'UX-12 conserve un socle déjà présent mais son tri clinique/nominatif est découpé dans L61 à L65 ; éditeur dimensionné pour **216 variables et plus de 20 règles**, recherche et création groupée de règles ; rubriques communes renommables/déplaçables et placement du diagnostic ; audit et critères intégrés |
-| [spec-evolution-formulaire.md](spec-evolution-formulaire.md) | **Décision métier du 2026-09-15, à implémenter** — évolution du formulaire dans la même base, complétion des patients existants, associations diagnostiques additives, historique et versionnage gérés en arrière-plan |
-| [lots-evolution-formulaire.md](lots-evolution-formulaire.md) | **E0 à E7 spécifiés, à réaliser, révisés le 2026-09-15** — contrats, préparations, application atomique, dossiers compatibles, éditeur, complétion, exports/historique et validation ; paramètres sans justification obligatoire pour le propriétaire, audit conservé ; dépendances, critères, suivi et prompt de reprise |
+| [spec-experience-utilisateur.md](spec-experience-utilisateur.md) · [suivi-correctifs-ux.md](suivi-correctifs-ux.md) | **Spécification + état d'implémentation** — UX-0 à UX-16 : le premier document conserve les contrats et critères ; le second recense les livraisons/validations locales, notamment brouillons de travail, recherche nominative contrôlée, éditeur et rubriques communes, sans les confondre avec une preuve déployée |
+| [design/editeur-registre/](design/editeur-registre/) | 🗄️ Maquette et transmission archivées de l'éditeur ; consulter le suivi UX et le checkout pour l'état courant |
+| [spec-evolution-formulaire.md](spec-evolution-formulaire.md) | **Contrat E0 documenté le 2026-09-16, implémentation à réaliser** — états de préparation, révision/empreinte, compatibilité et provenance, classification additive/sémantique, états exportables d’absence, règle d’isolation A/B, erreurs structurées, dispense propriétaire bornée et purge par code |
+| [lots-evolution-formulaire.md](lots-evolution-formulaire.md) | **E0 documenté le 2026-09-16 ; E1 à E7 à réaliser** — contrats, préparations, application atomique, dossiers compatibles, éditeur, complétion, exports/historique et validation ; justification propriétaire sans élargissement des droits, accès identité et suppression de base séparés ; dépendances, critères, suivi et prompt de reprise |
 | [spec-formulaire-papier.md](spec-formulaire-papier.md) | **Spécifiée le 2026-09-14, non implémentée** — formulaire vierge A4, placement compact par blocs/sections/sous-sections et type de variable, profils de densité, pagination et réglages papier |
 | [lots-formulaire-papier.md](lots-formulaire-papier.md) | **PAP-0 à PAP-5 spécifiés, à réaliser** — mesure de baseline, modèle de placement, prévisualisation/PDF, persistance éventuelle, réglages éditeur et validation étudiante ; PAP-5 conditionnel aux groupes répétables |
 | [spec-observabilite-erreurs.md](spec-observabilite-erreurs.md) | 🟢 **Implémentée** (L11, 2026-08-13) — journal d'incidents web borné et écran `SystemStatus` ; l'alerting sortant reste rattaché à B5 |
 | [spec-variables-multivaluees.md](spec-variables-multivaluees.md) | 🟢 **Implémentée** (L20 à L25, 2026-08-18) — listes de diagnostics : saisie, export, cohortes, hors-ligne. Son **§12 seul** reste une cible non implémentée, close le 2026-08-19 |
 | [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | 📋 **Revue le 2026-09-05, partiellement implémentée** — **L51** ([l51-contains-any.md](l51-contains-any.md)), **L54**, **L52** et **L53** ([l53-projection-export.md](l53-projection-export.md)) implémentés et non déployés — blocs cliniques conditionnels dans une base de même gouvernance, tronc commun pour les variables partagées, sections à deux niveaux et projection d’export sûre pour les formules |
 | [spec-collecte-diagnostique.md](spec-collecte-diagnostique.md) | 📋 **Partiellement implémentée, revue le 2026-09-05** — **L55** ([l55-configuration-diagnostique.md](l55-configuration-diagnostique.md)) et **L56** ([l56-parcours-et-suivi.md](l56-parcours-et-suivi.md)) implémentés et non déployés : diagnostic pilote versionné et couverture, puis socle enregistrable sans bloc et file des cas non couverts réservée au médecin propriétaire. La preuve navigateur de L56 manque encore ; reprise/notifications en cadrage différé L57 |
-| [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md) | **L58 et L59 implémentés et validés localement, non déployés** — import serveur d'un bloc par copie, puis choix du bloc dans l'éditeur (catalogue, aperçu, conflits clé par clé, avertissement `required`) ; **L60 reste spécifié**. File séquentielle, après L52 et L54 |
+| [l56-feuille-de-route.md](l56-feuille-de-route.md) | Support de réalisation et preuves locales de L56 ; ne vaut pas preuve navigateur ou cible |
+| [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md) | **L58, L59 et L60 implémentés localement, non déployés** — import serveur d'un bloc par copie, catalogue/aperçu et reconnexion sûre de la règle d'activation ; contrôles locaux détaillés dans la fiche |
 | [spec-groupes-repetables.md](spec-groupes-repetables.md) | 📋 **Spécifiée le 2026-09-12, non implémentée** — **L66** à **L71** : plusieurs occurrences portant chacune leurs propres attributs (interventions, lésions, hématomes), projetées sur `encounter` et discriminées par le bloc (`group_section_key`) plutôt que par le type de rencontre ; socle serveur, éditeur, saisie en tableau dans la fiche, export et hors-ligne |
 | [brief-audit-prochain.md](brief-audit-prochain.md) | Cadrage du prochain audit |
 | [strategie-produit-post-mvp.md](strategie-produit-post-mvp.md) · [-claude.md](strategie-produit-post-mvp-claude.md) · [-synthese.md](strategie-produit-post-mvp-synthese.md) | 🗄️ Études de marché datées (juillet) + synthèse d'arbitrage |
@@ -145,7 +153,9 @@
 
 ## 9. Données d'exemple
 
-`exemple-import-neurochirurgie.csv` et `.xlsx` — jeux **fictifs** pour essayer la fonction d'import.
+Aucun fichier d'exemple d'import n'est actuellement suivi dans le checkout. Préparer un CSV/XLSX
+**entièrement fictif**, préfixé `QA-`, à partir des exemples inline de
+[checklist-fonctionnalites-site.md](checklist-fonctionnalites-site.md) avant un essai d'import.
 
 ---
 
@@ -160,5 +170,5 @@
 
 ---
 
-*Index vérifié le 11 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
+*Index vérifié le 16 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
 document dans `docs/`.*

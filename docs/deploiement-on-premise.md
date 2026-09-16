@@ -407,7 +407,8 @@ Depuis un **poste utilisateur connecté au WiFi**, contrôlez une par une :
 - [ ] Un `system_admin` se connecte, crée un gabarit et le **publie** ; il ne voit **aucune**
       donnée patient.
 - [ ] Un `medecin` se connecte, crée une base, un patient, une rencontre ; il **importe** un
-      fichier d'exemple (`docs/exemple-import-neurochirurgie.csv`).
+      CSV/XLSX entièrement fictif, préfixé `QA-` et préparé pour le test (aucun fichier d'exemple
+      n'est suivi dans ce checkout).
 - [ ] Un collaborateur **sans** accès identité ne voit pas les noms des patients.
 - [ ] Un `curateur` voit le pool de curation, réserve, structure puis finalise un cas.
 - [ ] L'export d'une cohorte figée ne contient **aucune identité ni image**.

@@ -4,6 +4,10 @@ Ce document sert de reference pour tester le site deploye, soit manuellement, so
 Il complete `docs/qa-parcours-site.md` : le plan existant donne un parcours ordonne, celui-ci liste
 l'ensemble des fonctionnalites a couvrir par domaine.
 
+Il décrit un **protocole à exécuter**, pas une preuve déjà obtenue. Relever le SHA affiché dans
+`/sync` et consigner chaque résultat ; l'état de source, les validations locales et les preuves de
+cible connues sont séparés dans [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md).
+
 ## 1. Regles generales
 
 - N'utiliser que des donnees fictives.
@@ -108,6 +112,12 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - `F5` simple sur les memes routes.
 - Changement de version apres deploiement : `/sync` doit afficher le nouveau commit.
 - PWA/cache : une ancienne version ne doit pas rester bloquee apres rechargement force.
+- PWA de démarrage à froid : sur un **build déployé ou `npm run preview`**, ouvrir l'application
+  en ligne, attendre l'installation du service worker, fermer les onglets, couper le réseau puis
+  rouvrir `/` et une route analytique préparée. Noter séparément toute alerte de préparation
+  incomplète ; elle ne doit jamais être masquée.
+- Ne pas compter un essai via `npm run dev` comme preuve PWA : ce serveur n'active pas le service
+  worker de production.
 
 ### Attendu
 
@@ -187,6 +197,8 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Creation d'un patient avec meme nom + meme date de naissance.
 - Creation apres confirmation explicite de doublon.
 - Edition des donnees permanentes.
+- Brouillon de travail d'une rencontre compatible : commencer la saisie fictive, attendre la
+  sauvegarde temporaire, recharger puis choisir de reprendre, valider ou abandonner le brouillon.
 - Finalisation d'un patient.
 - Suppression soft delete avec motif.
 - Consultation d'une fiche patient.
@@ -199,6 +211,8 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Au clic sur `Enregistrer`, si doublon non confirme, notification temporaire + message inline.
 - Soft delete demande un motif.
 - Les patients supprimes disparaissent des listes standards.
+- Un brouillon de travail ne crée pas seul une fiche métier et n'apparaît ni dans les listes,
+  statistiques, cohortes ni exports avant sa validation explicite.
 
 ## 8 bis. Modèle d'observation de la base
 
@@ -275,6 +289,14 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Affichage conditionnel : poser une regle de visibilite, verifier que la valeur d'un champ masque
   est effacee ET que l'utilisateur en est averti (jamais en silence).
 - Sections personnalisables : creer, renommer, reordonner ; verifier le gel sur version publiee.
+- Rubriques communes : en version brouillon, créer plusieurs rubriques, les renommer et les
+  réordonner avant/après les blocs cliniques ; déplacer une variable commune et vérifier l'aperçu
+  puis un formulaire rendu.
+- Variable diagnostique pilote : vérifier que les critères d'éligibilité sont lisibles, que son
+  placement dans une rubrique commune est conservé et qu'une rubrique commune ne devient jamais
+  une condition d'activation de bloc.
+- Version/copie : vérifier qu'une version issue d'une version antérieure conserve une structure
+  commune cohérente et que l'écriture est refusée au propriétaire non autorisé ou sur version gelée.
 - Apercu du formulaire : ouvrir l'apercu depuis l'editeur de version.
 - Codes d'options : donner un code interne a une option, verifier qu'il apparait a l'export et pas
   a la saisie. En profil `Analyse` il occupe la colonne principale ; en profil `Complet` il vit
@@ -291,6 +313,9 @@ Quand l'agent a une limite de temps courte, reprendre au premier bloc non termin
 - Le clone depuis bibliotheque cree un jeu personnel.
 - Une version publiee refuse toute modification structurelle et invite a creer une version.
 - La case `Accepte plusieurs valeurs` n'est offerte que pour le type referentiel.
+- Les rubriques communes ne changent ni l'appartenance clinique des variables ni les règles de
+  visibilité ; un conflit ou un gel est présenté sans erreur technique brute et sans écriture
+  partielle.
 
 CSV conseille :
 
@@ -547,12 +572,19 @@ Ce parcours est distinct des invitations entre medecins ci-dessus. Il n'utilise 
 - Tester avec deuxieme medecin sans permission identite.
 - Ajouter permission identite.
 - Recharger et verifier apparition des consultations.
+- Avec un médecin ayant `can_view_identity`, saisir au moins deux caractères d'un nom **fictif**
+  dans la recherche patient ; sélectionner le résultat puis vérifier que la liste reste
+  pseudonymisée (code/identifiant, pas de colonne « nom complet »).
+- Avec un rôle ou un accès sans identité, vérifier que la recherche nominative ne donne aucun
+  résultat ni nom ; révoquer l'accès du médecin, recharger, puis vérifier le même refus.
 
 ### Attendu
 
 - Une consultation d'identite est journalisee.
 - Un profil sans permission ne voit pas l'identite.
 - Apres permission, la consultation apparait dans le tableau.
+- La recherche nominative est auditée côté serveur et ne rend jamais le nom dans le résultat de
+  liste ; chercher et afficher une identité restent deux autorisations distinctes.
 
 ## 18. Journal d'activite
 
@@ -645,6 +677,11 @@ Ce parcours est distinct des invitations entre medecins ci-dessus. Il n'utilise 
   resultat ecrit correspond exactement a cet apercu.
 - Conflit ne portant que sur des champs a valeur unique : l'issue `garder les deux` ne doit PAS
   etre proposee.
+- Saisie *intake-only* : ne la tester que sur un preview construit avec
+  `VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true` et `VITE_OFFLINE_INTAKE=demo`, après
+  avoir préparé le contexte en ligne. Créer un patient/une rencontre fictifs hors ligne, recharger,
+  reconnecter puis vérifier le rejeu idempotent. Sinon relever `NON TESTE`, sans extrapoler depuis
+  `npm run dev` ni depuis un formulaire déjà ouvert avant la coupure réseau.
 
 ### Attendu
 
@@ -653,6 +690,8 @@ Ce parcours est distinct des invitations entre medecins ci-dessus. Il n'utilise 
 - Conflits visibles et resolubles.
 - `garder les deux` n'apparait que lorsqu'elle sauve reellement au moins une valeur.
 - Pas de donnees d'une autre base dans le cache.
+- La saisie *intake-only* reste limitée au contexte préparé et ne doit jamais rendre une identité,
+  un document brut ou un export disponible hors ligne.
 
 ## 22. Cooperation a deux comptes
 

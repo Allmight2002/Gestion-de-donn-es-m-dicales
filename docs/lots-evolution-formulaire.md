@@ -1,7 +1,7 @@
 # Évolution du formulaire — lots E0 à E7
 
-- Révision : **2026-09-15**.
-- Statut : **spécifié, implémentation et validations à réaliser**.
+- Révision : **2026-09-16**.
+- Statut : **contrat E0 documenté ; implémentation et validations E1 à E7 à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
 - Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
@@ -17,7 +17,7 @@ Le responsable n’a pas à créer ni rattacher manuellement une version.
 
 | Lot | Résultat | Prérequis | État | Preuves |
 |---|---|---|---|---|
-| [E0](#e0) | Contrats et classification des changements | Spécification métier | À réaliser | Aucune |
+| [E0](#e0) | Contrats et classification des changements | Spécification métier | **Documenté le 2026-09-16 ; aucune implémentation** | Inspection code/migrations, `git diff --check`, contrôle des liens |
 | [E1](#e1) | Préparations persistantes et droits serveur | E0 | À réaliser | Aucune |
 | [E2](#e2) | Application atomique dans la même base | E1 | À réaliser | Aucune |
 | [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | À réaliser | Aucune |
@@ -42,6 +42,8 @@ La mise à disposition du parcours complet attend E7 : E2 seul ne suffit pas à 
 ### Contrats et classification des changements
 
 **Objectif.** Fixer le contrat partagé avant les modifications du serveur et de l’interface.
+Le livrable E0 est documentaire : il ne simule pas l’interface, ne crée pas de migration et ne
+déclare pas le comportement cible implémenté.
 
 **Travail et surfaces.** Relire le code actuel des versions, bases, patients, rencontres,
 règles, exports et brouillons. Documenter les interfaces de préparation, d’impact, de lecture
@@ -49,30 +51,40 @@ compatible et d’écriture. Réutiliser les mécanismes existants après vérif
 créer un système de brouillons concurrent. Définir les états et erreurs structurées.
 
 Préciser la définition applicable à chaque champ et valeur, y compris après plusieurs évolutions
-successives ; une seule version portée par la fiche ne décrit pas tous ses compléments.
-Définir comment distinguer à l’export « non disponible à cette date », « disponible mais vide »
-et « non applicable ». Traiter le cas de deux bases utilisant le même jeu : appliquer à A ne
-doit pas faire évoluer B implicitement. Vérifier également le cas d’un jeu partagé ou publié
-que le responsable de A peut utiliser sans avoir le droit de modifier sa source.
+successives ; une seule version portée par la fiche ne décrit pas tous ses compléments. Le contrat
+finalisé dans la spécification (§§5 à 7) fixe les états `active`/`ready`/`applied`/`discarded`/
+`conflict`/`expired`, `expected_revision`, `expected_fingerprint`, `content_fingerprint`, la
+classification additive/sémantique et les erreurs bornées. Il définit aussi les états exportables
+`not_defined`, `empty`, `not_applicable`, `present` et `explicit_missing`, ainsi que la provenance
+par définition et par valeur.
+Définir le cas de deux bases utilisant le même jeu : appliquer à A ne doit jamais faire évoluer B
+implicitement ; une dérivation propre à A et sa provenance sont obligatoires. Vérifier le cas d’un
+jeu partagé ou publié que le responsable de A peut utiliser sans avoir le droit de modifier sa
+source. Les associations diagnostiques restent les objets `validation_rule` existants.
 
 **Sortie attendue.** Contrats et matrice de compatibilité documentés avec exemples pour ajout,
-renommage, déplacement, ajout d’option, association diagnostique et changement sémantique.
-Un déplacement qui change l’applicabilité ne peut pas être classé comme pure présentation.
-Une nouvelle association vers un bloc déjà rempli conserve les valeurs de ce bloc.
+renommage, déplacement, ajout d’option, association diagnostique et changement sémantique ;
+contrat de purge par code à cinq caractères ; inventaire des motifs exigés par domaine et règle
+d’exception propriétaire. Un déplacement qui change l’applicabilité ne peut pas être classé
+comme pure présentation. Une nouvelle association vers un bloc déjà rempli conserve les valeurs
+de ce bloc. Les erreurs de conflit, de refus sémantique, de fiche et de purge ont un code stable,
+un indicateur de rejeu et des détails bornés.
 
 **Risques et vérification.** Revue des parcours de lecture/écriture réellement exécutés et des
-permissions. Toute décision non résolue concernant la compatibilité est explicitée avant E1.
-Les conversions complexes de L57 restent hors périmètre : en leur absence, refuser clairement
-l’opération incompatible, conserver la préparation et expliquer la marche à suivre.
+permissions. Les preuves E0 sont l’inspection en lecture des migrations, contrats et appelants,
+un contrôle de liens documentaires et `git diff --check`; aucun test runtime, navigateur, schéma
+ou cloud n’est déclaré. Les bloqueurs techniques à fermer avant E1 sont listés au §13.2 de la
+spécification. Les conversions complexes de L57 restent hors périmètre : en leur absence,
+refuser clairement l’opération incompatible, conserver la préparation et expliquer la marche à
+suivre.
 
-**Ajout du 2026-09-15 — justification propriétaire.** Inventorier les opérations de configuration
-et leurs exigences de motif, de l’écran au serveur. Appliquer le §4.5 de la spécification :
-pas de justification textuelle obligatoire pour le propriétaire, audit automatique conservé.
-Distinguer attribution d’accès à l’identité et suppression de base des opérations dispensées.
-L’extension du §4.5 couvre aussi les opérations autorisées du propriétaire sur les patients,
-rencontres et leurs documents, corrections d’identité comprises sans élargissement des droits.
-Inventorier les motifs dans chaque écran/RPC, les transitions de statut et la synchronisation.
-Définir également le contrat de confirmation de purge par code aléatoire de cinq caractères (§4.6).
+**Livraison E0 du 2026-09-16 — justification propriétaire et purge.** L’inventaire du §7.4 de la
+spécification couvre les opérations de configuration, patients, rencontres et documents, de
+l’écran au serveur, y compris la synchronisation hors connexion. La dispense retire seulement le
+texte pour les opérations allowlistées du propriétaire après contrôle serveur ; elle ne s’applique
+ni à l’attribution d’un accès à l’identité ni à la suppression de la base elle-même. Le contrat du
+§4.6 fixe la confirmation de purge par code aléatoire de cinq caractères, stable dans le dialogue
+et renouvelé à sa réouverture.
 
 ## E1
 
@@ -82,14 +94,16 @@ Définir également le contrat de confirmation de purge par code aléatoire de c
 
 **Travail et surfaces.** Migrations additives, opérations serveur, types et appels dans la couche
 de données. Ouvrir/reprendre, lire, sauvegarder et abandonner une préparation liée à la base,
-à son auteur et à la révision source. Définir expiration, nettoyage et rétention de l’audit.
-Conserver variables, sections, rubriques UX-16, règles et provenance dans une copie autonome.
+à son auteur et à `expected_revision`/`expected_fingerprint`. Définir expiration, nettoyage,
+idempotence, `content_fingerprint` et rétention de l’audit. Choisir un stockage de préparation
+dédié, ou un type strictement isolé, qui conserve variables, sections, rubriques UX-16, règles et
+provenance sans pouvoir atteindre `commit_work_draft`.
 Adapter les contrats de configuration identifiés par E0 pour accepter l’absence de motif du
-propriétaire, y compris pour les opérations patient/rencontre, vérifié côté serveur, sans motif
-artificiel ni suppression de l’audit. Tester la
-dispense et les tentatives de contournement par les autres rôles ; préserver les appelants existants.
-Adapter le contrat de purge si nécessaire au code court sans contourner une vérification serveur
-du nom ; préserver droits, rétention, concurrence et rejeu.
+propriétaire uniquement sur l’allowlist, y compris pour les opérations patient/rencontre/document
+concernées, vérifiée côté serveur, sans motif artificiel ni suppression de l’audit. Tester la
+dispense et les tentatives de contournement par les autres rôles ; préserver les appelants
+existants et les motifs déjà en file hors connexion. Adapter le contrat de purge au challenge
+court, sans remplacer les contrôles de propriétaire, rétention, concurrence, audit et rejeu.
 
 **Acceptation.** Une préparation survit à la fermeture après sauvegarde confirmée ; une erreur
 ne fait pas afficher « sauvegardé ». Abandonner ne touche aucune fiche. Les droits sont revérifiés
@@ -128,8 +142,10 @@ références entre règles et champs. Contrôles de migrations, RLS et privilèg
 
 **Travail et surfaces.** Contextes de lecture patients/rencontres, lectures signées, validation
 serveur et opérations d’enregistrement. Exposer les champs historiques et les ajouts compatibles
-avec leur définition, applicabilité et provenance. Valider la totalité de l’écriture sans
-supprimer les clés historiques absentes d’un écran. Refuser les clés et conversions inconnues.
+avec leur définition, applicabilité et provenance, avec `definition_state`/`value_state` distincts
+(`not_defined`, `empty`, `not_applicable`, `present`, `explicit_missing`). Valider la totalité de
+l’écriture avec `expected_record_revision` sans supprimer les clés historiques absentes d’un
+écran. Refuser les clés et conversions inconnues.
 
 **Acceptation.** Après ajout, un patient existant peut recevoir la nouvelle valeur en conservant
 ses valeurs antérieures. Même résultat pour une rencontre existante, avec respect des portées.
@@ -202,9 +218,9 @@ clavier et absence de double envoi. Ce sous-lot dépend aussi du contrat E1.
 **Objectif.** Expliquer chaque valeur et chaque absence après l’évolution du formulaire.
 
 **Travail et surfaces.** Exports serveur, dictionnaires et écran d’historique. Exposer la
-définition applicable et les dates d’application/complétion selon le contrat E0. Préserver les
-profils d’export et le cloisonnement d’identité. Garder lisibles les variables retirées et
-les anciennes options, sans les remettre implicitement en saisie.
+définition applicable, les dates d’application/complétion, la provenance et les états d’absence
+selon le contrat E0. Préserver les profils d’export et le cloisonnement d’identité. Garder lisibles
+les variables retirées et les anciennes options, sans les remettre implicitement en saisie.
 
 **Acceptation.** Exporter une cohorte mêlant anciennes et nouvelles fiches conserve toutes les
 valeurs autorisées et distingue les différents états d’absence. L’historique indique auteur,

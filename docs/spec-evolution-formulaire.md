@@ -1,7 +1,8 @@
 # Spécification — évolution fluide du formulaire et complétion des dossiers existants
 
-- Révision : **2026-09-15** (ajout : paramètres de base sans justification obligatoire pour le propriétaire).
-- Statut : **décision métier retenue, implémentation à planifier**.
+- Révision : **2026-09-16** (contrat E0 fixé : états, révision/empreinte, compatibilité,
+  provenance, justification propriétaire et purge).
+- Statut : **contrat E0 documenté ; implémentation et validations à réaliser**.
 - Origine : retour d’usage sur le versionnage des jeux de variables. Le responsable d’une base
   ne comprend pas pourquoi une variable ou une règle devient impossible à modifier, et ne doit
   pas avoir à créer un nouveau jeu de variables ni une nouvelle base pour faire évoluer sa
@@ -14,7 +15,9 @@ Cette décision complète UX-14/UX-16, L51 à L56 et le modèle de version décr
 [`architecture.md`](architecture.md). Elle **ne modifie pas encore le code ni le schéma**.
 Tant que les lots ci-dessous ne sont pas livrés, les gardes actuelles des versions publiées ou
 utilisées restent actives. Elle précise le comportement cible qui remplacera l’exposition du
-versionnage technique dans le parcours courant.
+versionnage technique dans le parcours courant. Les sections qui décrivent le contrat cible ne
+constituent donc pas une preuve d’implémentation : le code et les migrations observés restent la
+référence de l’état présent, documenté au §13.
 
 ## 1. Décision produit
 
@@ -50,10 +53,17 @@ décision, jamais comme une étape obligatoire du parcours nominal.
 | Complétion | Saisie d’une nouvelle variable dans une fiche existante | Oui |
 | Migration sémantique | Transformation explicite d’une variable existante dont le sens ou le type change | Oui, avec décision |
 | Historique | Liste des applications, auteurs, dates, impacts et définitions précédentes | Secondaire |
+| Révision de base | Jeton opaque et monotone de la définition active d’une base ; il ne se confond pas avec `version_number` | Non |
+| Révision attendue | Valeur de révision et d’empreinte relue par le client puis exigée par une écriture | Non |
+| Empreinte | Hash canonique d’une définition structurelle ou du contenu normalisé d’une préparation | Non |
+| État de valeur | État exportable calculé dans le contexte d’une fiche : présente, vide, non applicable ou absence explicitement codée | Indirectement |
+| Provenance | Auteur, date, opération, révision de définition et origine d’une définition ou d’une valeur | Historique/export |
 
 Une fiche existante conserve son auteur, ses valeurs, sa provenance et la définition sous laquelle
 elles ont été enregistrées. Cela n’empêche pas d’y ajouter une nouvelle valeur compatible. Une
-valeur manquante reste manquante jusqu’à une saisie explicite.
+valeur manquante reste manquante jusqu’à une saisie explicite. Une absence structurelle, une valeur
+vide et une non-applicabilité sont trois faits différents ; le contrat d’export ne les encode pas
+dans une seule cellule vide.
 
 ## 3. Objectifs et limites
 
@@ -150,24 +160,29 @@ configuration nécessaires à leur traçabilité. Aucun motif fictif tel que « 
 n’est envoyé pour contourner un ancien contrat obligatoire. Les confirmations d’impact et les
 protections contre les changements incompatibles restent applicables.
 
-**Extension du 2026-09-15 :** la dispense s’applique également aux opérations autorisées du
-propriétaire sur les patients de cette base et leurs rencontres : saisie et correction de données
-analytiques ou d’identité, changement de statut/curation, suppression et restauration des fiches,
-ainsi qu’aux opérations sur leurs documents lorsqu’un motif est actuellement exigé.
-Elle retire l’obligation de rédiger un motif, sans accorder de droit supplémentaire sur les données.
-Les contrôles de propriété, droits d’identité, transitions de statut, concurrence et confirmations
-des actions destructrices restent applicables. Le journal conserve la trace réelle des opérations,
-avec séparation des données d’identité et analytiques ; aucun motif automatique fictif n’est créé.
+**Extension du 2026-09-16 :** la dispense s’applique aux opérations autorisées du propriétaire
+sur les patients, rencontres et documents de sa base lorsqu’un motif d’audit est actuellement
+exigé : corrections analytiques ou d’identité, changements de statut/curation et suppressions
+de fiches ou de pièces jointes. Elle retire uniquement l’obligation de rédiger un motif, sans
+accorder de droit supplémentaire sur les données. Une restauration qui n’exige pas aujourd’hui
+de motif, comme la restauration de base observée, reste simplement sans motif ; elle n’est pas
+transformée en exception implicite. Les contrôles de propriété, droits d’identité, transitions de
+statut, concurrence et confirmations des actions destructrices restent applicables. Le journal
+conserve la trace réelle des opérations, avec séparation des données d’identité et analytiques ;
+aucun motif automatique fictif n’est créé.
 
-Les justifications relatives à l’attribution d’un accès à l’identité à un autre compte et les
-motifs de suppression de la base elle-même restent hors de cette dispense. Les autres rôles
-conservent leurs droits et obligations actuels. L’inventaire E0 doit couvrir toutes les opérations
-sur les patients et rencontres, y compris leurs appels serveur directs et leur synchronisation.
+Les justifications relatives à l’attribution d’un accès à l’identité à un autre compte et le
+motif de suppression de la base elle-même restent hors de cette dispense. La confirmation de
+purge est encore un contrôle séparé. Les autres rôles conservent leurs droits et obligations
+actuels. L’inventaire E0 couvre les opérations de configuration, patients, rencontres et documents,
+leurs appels serveur directs, leurs chemins hors connexion et les opérations explicitement
+identifiées sans motif au §7.4.
 
-**Constat local du 2026-09-15 :** dans `BaseSettings.tsx`, le changement de modèle d’observation
+**Constat local du 2026-09-16 :** dans `BaseSettings.tsx`, le changement de modèle d’observation
 ne demande déjà aucun motif ; le motif obligatoire visible dans cet écran concerne la suppression.
-L’inventaire E0 devra identifier les autres opérations concernées avant toute suppression de
-contrôle. Ce constat ne prouve pas la conformité de tous les parcours de configuration.
+La purge de `Trash.tsx` vérifie aujourd’hui le nom exact et ne possède pas encore le challenge à
+cinq caractères décrit ci-dessous. Ces constats ne prouvent pas la conformité de tous les
+parcours ; ils sont détaillés et bornés par les sources du §13.
 
 ### 4.6 Confirmer une suppression définitive par un code court
 
@@ -189,6 +204,23 @@ par l’application.
 - Garder le champ accessible au clavier et au lecteur d’écran avec un libellé explicite ; le code
   est une confirmation d’intention, pas un secret ni un facteur d’authentification.
 
+Le contrat de session de purge est :
+
+1. Une ouverture autorisée obtient du serveur un `challenge_id`, un code d’affichage de cinq
+   caractères et une durée d’expiration. Le serveur génère le code avec un générateur
+   cryptographiquement sûr, dans un alphabet tel que `ABCDEFGHJKMNPQRSTUVWXYZ23456789` ; le
+   code n’est ni dérivé du nom, ni réutilisé entre deux ouvertures.
+2. Tant que le même dialogue reste ouvert pour la même base, `challenge_id` et code restent
+   stables malgré les rendus et les soumissions répétées. Une réponse perdue se vérifie avec le
+   même `operation_id` ; elle ne se rejoue pas avec une nouvelle clé.
+3. La fermeture, l’annulation, la réouverture ou le changement de base invalide le challenge et
+   en génère un nouveau. Le serveur vérifie à nouveau le propriétaire, l’état de la base et les
+   conditions de purge ; le code seul ne donne aucun droit.
+4. La confirmation transmet `base_id`, `challenge_id`, le code normalisé et `operation_id`.
+   Le serveur compare une représentation protégée du challenge, ne journalise pas le code en
+   clair, verrouille la base et renvoie un résultat idempotent. Il ne remplace pas le code par le
+   nom de la base envoyé par un client ancien.
+
 Le serveur continue de vérifier les droits et les conditions de purge. Si le contrat existant
 vérifie une ressaisie du nom côté serveur, le remplacer par un contrat cohérent avec ce parcours,
 sans envoyer discrètement le nom à la place de l’utilisateur pour contourner le contrôle.
@@ -197,59 +229,168 @@ distincte. Les protections de rétention et les éventuels motifs ne sont pas su
 
 ## 5. Classification des changements
 
-L’application classe les changements pour éviter de bloquer les corrections courantes tout en
-signalant les transformations qui demandent une décision.
+La classification est calculée côté serveur en comparant la définition active et le contenu
+normalisé de la préparation. Elle ne dépend ni du libellé saisi dans l’interface ni d’un choix du
+navigateur. Une préparation qui contient au moins un changement sémantique est globalement
+`semantic`, même si elle contient aussi des ajouts ; elle ne peut pas être appliquée par le
+parcours additif. Une préparation exclusivement additive peut passer à `ready`, sous réserve des
+règles et droits habituels. Le sous-type `additive_required` signale un effort de complétion mais
+ne change pas la compatibilité des anciennes valeurs.
 
-| Changement | Parcours cible | Effet sur les fiches existantes |
-|---|---|---|
-| Ajouter une variable facultative | Autorisé dans la préparation | Nouvelle colonne vide, renseignable |
-| Ajouter une variable obligatoire | Autorisé avec avertissement et compteur « à compléter » | Aucune invalidation silencieuse ; la fiche peut être complétée |
-| Ajouter une section ou sous-section | Autorisé | Présentation disponible selon le bloc et ses règles |
-| Ajouter une association diagnostic → bloc | Autorisé avec aperçu des fiches concernées | Bloc disponible si le diagnostic correspond, sans valeur créée |
-| Renommer un libellé ou déplacer une variable | Autorisé | Valeurs conservées ; la présentation suit la définition active |
-| Ajouter une option à une liste | Autorisé après validation du référentiel | Les anciennes valeurs restent valides |
-| Modifier une clé interne, un type ou un scope | Assistant de migration explicite | Aucune conversion silencieuse |
-| Changer le sens d’une règle ou d’une formule | Assistant d’impact, confirmation obligatoire | Les anciennes valeurs ne sont pas réinterprétées sans décision |
-| Changer un code d’option ou supprimer une option utilisée | Refus ou migration explicite | Les valeurs historiques restent lisibles |
-| Retirer une variable du formulaire courant | Confirmation | La saisie courante la masque ; l’historique et l’export versionné la conservent |
+| Changement classé | Classification | Parcours cible | Effet sur les fiches existantes |
+|---|---|---|---|
+| Ajouter une variable facultative | `additive` | Autorisé dans la préparation | Nouvelle variable vide, renseignable |
+| Ajouter une variable obligatoire | `additive_required` | Autorisé avec avertissement et compteur « à compléter » | Aucune invalidation silencieuse ; la fiche peut être complétée |
+| Ajouter une section ou sous-section | `additive` | Autorisé | Présentation disponible selon le bloc et ses règles |
+| Renommer un libellé sans changer la clé, le type, le scope ni l’applicabilité | `additive` / `presentation` | Autorisé | Valeurs conservées ; la présentation suit la définition active |
+| Déplacer une variable en conservant clé, type, scope, `encounter_types` et applicabilité | `additive` / `presentation` | Autorisé | Valeurs conservées ; seul l’ordre ou le regroupement change |
+| Ajouter une option à une liste | `additive` | Autorisé après validation du référentiel | Les anciennes valeurs restent valides |
+| Ajouter une association diagnostic → bloc qui n’altère aucune interprétation existante | `additive` | Autorisé avec aperçu des fiches concernées | Bloc disponible si le diagnostic correspond, sans valeur créée |
+| Modifier une clé interne, un type, une unité ou un scope | `semantic` | Refus dans le parcours additif ; migration explicite séparée | Aucune conversion silencieuse |
+| Déplacer une variable en changeant son scope, ses types de rencontre ou son applicabilité | `semantic` | Refus dans le parcours additif ; migration explicite séparée | La portée historique ne change pas |
+| Renommer ou supprimer un code d’option, ou retirer une option déjà utilisée | `semantic` | Refus ou migration explicite | Les valeurs historiques restent lisibles |
+| Changer le sens d’une règle, d’une formule ou d’une association diagnostique existante | `semantic` | Refus dans le parcours additif ; analyse d’impact séparée | Les anciennes valeurs ne sont pas réinterprétées |
+| Retirer une variable du formulaire courant | `semantic` (ou `unsupported` si aucune stratégie d’historique n’est définie) | Refus dans le parcours additif ; décision explicite | La saisie courante peut la masquer plus tard, mais l’historique et l’export la conservent |
 
 Une variable obligatoire ajoutée ne modifie pas automatiquement `validation_status` des fiches.
 Le système expose un état séparé, par exemple **À compléter pour le formulaire courant**, afin
 de distinguer la qualité historique de la nouvelle obligation. Une fiche déjà `curated` ne devient
-pas silencieusement non curatée.
+pas silencieusement non curatée. Une modification de présentation n’est additive que si les
+propriétés qui déterminent la signification et l’applicabilité restent strictement identiques.
+L’ajout d’une règle est additif seulement s’il rend un bloc nouvellement éligible sans
+réinterpréter une valeur existante ; la modification ou la suppression d’une règle existante est
+sémantique.
+
+Le résultat de classification comporte au minimum `classification` (`additive`, `semantic` ou
+`unsupported`), `subtype` éventuel, les changements détectés, les fiches potentiellement
+concernées et la raison d’un refus. Le serveur ne convertit pas une préparation sémantique en
+préparation additive par simple renommage de clé ou de libellé.
 
 ## 6. Conservation des données et des versions
 
 Le versionnage technique est conservé, mais il cesse d’être le mécanisme que l’utilisateur doit
 manipuler.
 
-1. Chaque patient et chaque rencontre conserve la révision sous laquelle ses valeurs existantes
-   ont été enregistrées.
+1. Chaque patient et chaque rencontre conserve la révision de définition de ses valeurs
+   existantes. Une seule révision portée par la ligne de fiche ne suffit pas à décrire un
+   complément ajouté après plusieurs évolutions : le contexte de chaque définition et de chaque
+   valeur reste consultable.
 2. Une évolution additive ajoute des définitions compatibles à la vue du formulaire de la base.
-   Une clé absente de la donnée est rendue comme vide, jamais comme une valeur par défaut inventée.
-3. Une écriture de complément conserve les clés historiques et ajoute uniquement les champs
-   autorisés par la nouvelle définition. Le serveur valide l’ensemble réellement envoyé.
-4. Les changements de type, de clé, de portée ou de sens utilisent une migration explicite, un
-   nouveau champ ou un nouveau parcours approuvé ; ils ne sont pas déduits du seul libellé.
-5. Les exports doivent pouvoir indiquer la révision de définition de chaque valeur et distinguer
-   une valeur absente d’une variable qui n’existait pas encore dans la fiche.
-6. Le dictionnaire et l’audit conservent l’auteur, la date, la préparation appliquée et la
-   définition précédente. Aucun pointeur vivant vers une copie source n’est utilisé.
+   Une clé absente peut être présentée comme vide dans la projection de saisie, mais le contexte
+   typé et l’export indiquent s’il s’agit d’une variable nouvellement définie, d’une variable vide
+   ou d’une non-applicabilité ; aucune valeur par défaut n’est inventée.
+3. Une écriture de complément est un patch contrôlé : elle conserve les clés historiques et
+   ajoute uniquement les champs autorisés par la nouvelle définition. Le serveur valide
+   l’ensemble réellement envoyé et exige la révision attendue de la fiche.
+4. Les changements de type, de clé, d’unité, de portée, d’applicabilité ou de sens utilisent une
+   migration explicite, un nouveau champ ou un nouveau parcours approuvé ; ils ne sont pas déduits
+   du seul libellé.
+5. Les exports indiquent le contexte demandé, la définition applicable et l’état de valeur de
+   chaque colonne. Ils distinguent notamment « variable non définie à la révision de la fiche »,
+   « variable définie mais vide » et « variable définie mais non applicable ».
+6. Le dictionnaire et l’audit conservent l’auteur, la date, l’opération, la préparation appliquée,
+   la définition précédente et la provenance des compléments. Aucun pointeur vivant vers une copie
+   source n’est utilisé.
+
+### 6.1 Deux bases qui utilisent le même jeu de variables
+
+Le jeu ou la version source peut être commun à plusieurs bases, ou deux bases peuvent seulement
+avoir des définitions identiques. Dans les deux cas, une application est toujours liée à une base
+et à sa révision attendue : **une évolution de A ne modifie jamais B implicitement**.
+
+Exemple : A et B utilisent la définition `V` et A ajoute `date_debut_symptomes`. L’application
+atomique crée une révision dérivée propre à A, par exemple `V_A`, rattache uniquement A à `V_A` et
+enregistre la provenance `V → V_A`. B reste rattachée à `V` avec ses anciennes règles, champs et
+droits ; elle ne reçoit la variable que si une action explicite et autorisée est engagée pour B.
+Une version source publiée ou utilisée n’est jamais modifiée en place pour satisfaire A.
+
+Le propriétaire de A peut utiliser une source partagée sans avoir le droit de modifier cette
+source. Il prépare alors une dérivation propre à A, sous le droit de gérer le formulaire de A.
+Cette dérivation n’accorde aucun droit sur B, sur la source partagée, sur l’identité ou sur les
+documents. L’empreinte identique de A et B ne remplace pas la liaison serveur à `base_id` et ne
+permet pas de rejouer l’opération de A sur B.
 
 La vue compatible doit être calculée côté serveur ou à partir d’un contexte signé et contrôlé.
 Le navigateur ne peut pas décider seul qu’une variable est additive, qu’une fiche est compatible
 ou qu’une valeur historique peut être convertie.
 
-## 7. Contrat technique cible
+## 7. Contrat partagé E0 (cible normative)
 
-Les noms ci-dessous sont des propositions de contrat et doivent être alignés sur les conventions
-du dépôt avant migration. Ils décrivent les responsabilités, pas une permission d’ajouter des RPC
-sans revue de sécurité.
+Les noms et formes ci-dessous constituent le contrat fonctionnel à respecter par E1 à E7. Ils
+décrivent les invariants et les résultats attendus, pas une permission d’ajouter des RPC sans
+revue de sécurité. La forme physique (tables, colonnes, RPC ou service) sera arrêtée en E1 sans
+changer ce contrat. Le contrat d’une préparation de formulaire reste distinct du brouillon
+clinique actuel, même si certains mécanismes de sécurité sont réutilisés.
 
 ### 7.1 Préparation de formulaire
 
 Une préparation est liée à une base, à son propriétaire et à la révision source observée. Elle
 porte un état borné : `active`, `ready`, `applied`, `discarded`, `conflict` ou `expired`.
+
+`Aucune modification` n’est pas une préparation persistée. `local`, `saved` et `error` sont des
+états d’affichage ou de transport éventuels du client, jamais des états d’autorisation serveur.
+Les transitions persistées sont les suivantes :
+
+| État | Signification et transitions autorisées |
+|---|---|
+| `active` | Préparation modifiable, ouverte ou sauvegardée ; une modification qui invalide un aperçu revient ici. |
+| `ready` | Aperçu serveur réussi, classification additive et contrôles passés ; application possible tant que la révision attendue reste actuelle. |
+| `applied` | Application atomique réussie ; état terminal avec reçu et révision produite. |
+| `discarded` | Abandon explicite sans écriture clinique ni changement de formulaire ; état terminal. |
+| `conflict` | Révision, empreinte ou opération devenue incompatible ; les entrées locales sont conservées et aucune application n’est permise avant une reprise explicite. |
+| `expired` | Durée de vie dépassée ; lecture limitée à l’historique et nouvelle préparation nécessaire. |
+
+Une préparation `active` peut devenir `ready`, puis `applied`, ou être abandonnée/expirer. Une
+préparation `ready` peut revenir à `active` si son contenu change. Un conflit ne déclenche jamais
+une fusion automatique : une reprise explicite peut créer un nouvel état `active` en conservant
+les choix locaux et le contexte relu. Les états `applied`, `discarded` et `expired` sont
+immutables.
+
+### 7.1.1 Révision, empreintes et liaison de base
+
+Le contexte retourné à l’ouverture et la demande d’écriture portent au minimum :
+
+| Champ | Contrat |
+|---|---|
+| `base_id` | Liaison obligatoire, vérifiée côté serveur pour chaque opération. |
+| `preparation_id` | Identifiant de la préparation ; il ne peut pas être utilisé sur une autre base ou par un autre propriétaire sans droit. |
+| `created_by` / `owner_id` | Acteur qui a ouvert la préparation et propriétaire serveur de la base ; ces identités ne sont jamais acceptées depuis une valeur déclarée par le client. |
+| `source_revision` / `source_fingerprint` | Valeurs capturées par le serveur à l’ouverture ; elles sont renvoyées comme contexte et recopiées dans les champs `expected_*` exigés par les mutations. |
+| `expected_revision` | Jeton opaque, monotone et propre à la définition active de la base au moment de la lecture. Ce n’est pas `template_version.version_number`. |
+| `expected_fingerprint` | Empreinte canonique de la définition structurelle observée ; elle doit correspondre à la révision attendue. |
+| `content_fingerprint` | Empreinte canonique du contenu normalisé de la préparation, conservée avec la clé d’opération pour détecter un rejeu différent. |
+| `operation_id` | Clé d’idempotence fournie par l’appelant pour chaque mutation ; même clé et même contenu rendent le même reçu, même clé et contenu différent produisent un conflit. |
+| `classification` / `state` | Résultat serveur de la classification et état borné ci-dessus. |
+| `created_at`, `updated_at`, `expires_at` | Horodatage serveur et durée de vie contrôlée ; jamais une date fournie par le navigateur pour contourner l’expiration. |
+
+L’empreinte de définition est calculée sur une représentation canonique, ordonnée et normalisée
+(sections, hiérarchie, groupes communs, champs, clés et attributs, options/codes, règles,
+formules, configuration diagnostique, références de release et provenance structurelle). Elle ne
+contient ni identité, ni valeur clinique, ni document brut. Les identifiants techniques générés
+par une copie ne doivent pas rendre deux structures identiques artificiellement différentes, mais
+la liaison `base_id`, la révision attendue et les droits restent vérifiés séparément. Une empreinte
+ne constitue ni une autorisation ni une preuve que deux bases ont le même propriétaire.
+
+`expected_revision` et `expected_fingerprint` sont exigés par les opérations qui sauvegardent,
+prévisualisent, appliquent ou abandonnent une préparation lorsque la base a pu changer. Le serveur
+retourne le contexte courant dans un conflit, sans données non autorisées. L’application ne
+remplace jamais silencieusement une révision périmée.
+
+### 7.1.2 Interfaces et brouillons existants
+
+Le contrat partagé expose les opérations conceptuelles `open_or_resume`, `read`, `save`, `preview`,
+`apply` et `discard`. Chaque réponse retourne l’état réel, la révision/empreinte courante, le
+résultat de classification et un reçu éventuel. `preview` ne crée ni fiche, ni valeur, ni révision
+active ; `apply` est la seule transition qui rattache une nouvelle définition à la base.
+
+Le `work_draft` actuel est un brouillon clinique : ses types sont
+`patient_create`, `patient_update`, `encounter_create` et `encounter_update`, son payload contient
+des valeurs et son `commit_work_draft` écrit des lignes cliniques. Il ne peut donc pas être
+réutilisé tel quel pour une préparation de structure. E1 peut reprendre ses motifs éprouvés
+(révision optimiste, hash de requête, opération idempotente, tombstone, expiration, RLS et codes
+`DRAFT_*`), mais doit isoler le type/payload et le chemin d’application de formulaire ; jamais une
+préparation E0 ne doit atteindre `commit_work_draft` ou contenir une identité, une valeur clinique
+ou un document.
 
 Le serveur doit fournir les opérations suivantes, sous RLS et verrou optimiste :
 
@@ -262,9 +403,13 @@ Le serveur doit fournir les opérations suivantes, sous RLS et verrou optimiste 
 - abandonner explicitement une préparation non appliquée ;
 - lister l’historique des applications sans exposer de données d’identité non autorisées.
 
+Seule une préparation additive `ready` peut être appliquée par ce parcours. Une préparation
+`semantic` ou `unsupported` reste conservée pour analyse et retourne
+`FORM_SEMANTIC_MIGRATION_REQUIRED` ou `FORM_CHANGE_UNSUPPORTED` ; elle ne convertit aucune valeur.
 L’application atomique doit créer la nouvelle révision technique, recopier les métadonnées et
-règles validées, mettre à jour le formulaire actif de **la même base A**, et enregistrer l’audit.
-Une erreur laisse la base et la préparation dans leur état précédent.
+règles validées, produire les métadonnées de provenance, mettre à jour le formulaire actif de
+**la même base A**, et enregistrer l’audit. Une erreur laisse la base et la préparation dans leur
+état précédent. Aucun écrit sur les patients, rencontres, identités ou documents n’est implicite.
 
 ### 7.2 Vue d’une fiche existante
 
@@ -281,6 +426,43 @@ champs seulement si le serveur les classe comme compatibles avec la révision de
 refuse une clé inconnue, une portée incompatible, une conversion implicite ou une écriture sur une
 fiche devenue inaccessible.
 
+Le contexte de lecture/écriture doit être explicite, y compris après plusieurs évolutions. Pour
+chaque patient ou rencontre autorisé, il comprend `record_kind`, `record_id` analytique,
+`record_revision`, `base_id`, `active_revision`, `record_definition_revision` et une liste de
+champs dont chaque élément contient au minimum `field_key`, `definition_revision`, `scope`,
+`applicability`, `value_state` et `provenance`. Les données d’identité et le contenu brut des
+documents restent dans leurs parcours autorisés ; l’absence d’accès n’est jamais transformée en
+`not_applicable`.
+
+Les états de valeur sont distincts et exportables :
+
+| Métadonnée exportée | Signification |
+|---|---|
+| `definition_state = not_defined` | La variable n’existait pas dans la définition applicable à la révision de la fiche ; elle ne constituait pas une attente historique. |
+| `definition_state = defined` + `value_state = empty` | La variable est définie et applicable dans le contexte demandé, mais aucune valeur n’a été saisie. |
+| `definition_state = defined` + `value_state = not_applicable` | La variable existe dans la définition, mais sa portée ou la règle diagnostique ne la rend pas applicable à cette fiche. |
+| `definition_state = defined` + `value_state = present` | Une valeur autorisée est présente ; sa provenance est fournie séparément. |
+| `definition_state = defined` + `value_state = explicit_missing` | L’utilisateur a choisi un code de valeur manquante autorisé (`non_fait`, `inconnu`, `non_applicable`, `refus` ou `non_documente`) ; `missing_code` est exporté séparément. |
+
+Pour une variable ajoutée après la création d’une fiche, un export courant peut donc porter
+`definition_state = not_defined` à la révision historique et `value_state = empty` dans la vue
+active si le champ est aujourd’hui applicable. Un champ ancien simplement non renseigné porte
+`defined/empty`. Une non-applicabilité structurelle porte `defined/not_applicable` et ne doit pas
+être confondue avec le code clinique explicite `missing_code = non_applicable`. L’export ne réduit
+aucun de ces cas à une cellule vide sans métadonnée ; une demande historique doit prendre comme
+référence une révision ou une date et ne doit jamais inventer une variable absente.
+
+Les écritures de complément sont des patches fusionnés côté serveur. Elles portent
+`expected_record_revision`, la révision de définition et une clé d’opération ; elles ne remplacent
+pas tout le JSON de la fiche. Les clés historiques absentes de l’écran sont conservées, et un
+conflit de fiche conserve les inputs locaux au lieu de choisir silencieusement une version.
+
+La provenance minimale d’un complément est `origin` (`initial`, `completion`, `correction`,
+`import` ou `offline_replay`), `captured_by`, `captured_at`, `definition_revision` et
+`operation_id`. Lorsque la valeur provient d’un document, la référence au document reste limitée
+au contexte autorisé de lecture des documents bruts. Les changements successifs restent dans
+l’audit ; la nouvelle valeur ne réécrit pas l’origine historique.
+
 ### 7.3 Associations diagnostiques
 
 Les associations restent les mêmes objets `validation_rule` que dans L51/L52/L55. La préparation
@@ -296,7 +478,157 @@ La couverture et la complétude restent deux résultats différents. L’aperçu
 compter les fiches concernées, sans retourner leur identité à un utilisateur qui ne peut pas la
 voir.
 
+Ajouter une nouvelle association vers un bloc existant est `additive` seulement si l’association
+est représentée par le modèle `validation_rule` existant et si elle ne retire, ne recode et ne
+réévalue aucune valeur déjà enregistrée. Les règles doivent respecter le pilote diagnostique, le
+scope, la release et les contraintes de bloc saisissable déjà imposées par L51/L52/L55. Changer ou
+supprimer une association existante, ou modifier une règle de manière à changer l’interprétation
+d’une fiche déjà renseignée, est `semantic`.
+
+### 7.4 Inventaire des motifs de justification actuels
+
+Cet inventaire sépare le motif d’audit d’une correction des **raisons de valeur manquante** d’une
+variable ou du message expliquant qu’une règle est invalide. Il décrit les contrats observés dans
+les appelants et les migrations au 2026-09-16. « Non identifié » signifie qu’aucun champ ou
+paramètre de motif n’a été trouvé dans le parcours inspecté ; cela ne crée pas une exigence
+nouvelle pour l’opération.
+
+| Domaine et opération | Exigence observée aujourd’hui | Règle E0 pour le propriétaire de la base |
+|---|---|---|
+| Configuration du formulaire : sections, champs, règles, ordre, publication/archivage, duplication et création de version | Les appels `templates.ts` et les RPC d’administration de version inspectés n’exposent pas de `p_reason` | Dispense de texte pour l’opération autorisée ; classification, droits, verrouillage et audit restent obligatoires. |
+| Configuration de la base : modèle d’observation, rattachement de version, cible d’inclusion et réglages associés | `setObservationModel`, `setTemplateVersion` et `set_base_inclusion_target` n’exigent pas de motif textuel identifié | Aucun champ de motif à ajouter pour cette seule raison ; les gardes existantes et la révision attendue restent applicables. |
+| Gestion des accès ordinaires : invitation, révocation, permissions | Aucun motif textuel identifié dans les repositories/RPC inspectés | La dispense n’ajoute ni ne retire un droit d’accès ; l’autorisation de gérer les accès reste contrôlée séparément. |
+| Évolution de formulaire E0 | Aucun contrat persistant correspondant n’existe encore | Le propriétaire autorisé n’a pas à rédiger de justification ; l’empreinte, la classification, l’audit et l’application atomique restent requis. |
+| Patient : correction des données analytiques (`update_patient`) | `EditPatient.tsx`, `patients.ts` et le RPC transmettent `p_reason`; le formulaire le rend obligatoire | Le propriétaire peut omettre le texte après vérification serveur de sa propriété et de `can_edit_structured_data`; aucun droit supplémentaire. |
+| Patient : correction d’identité (`update_patient_identity`) | `EditPatientIdentity.tsx`, `patients.ts` et le RPC transmettent `p_reason`; le formulaire le rend obligatoire | Même dispense limitée pour l’opération d’écriture d’identité déjà autorisée ; elle ne donne pas `can_view_identity` ni ne change l’audit de lecture. |
+| Patient : mise en corbeille (`soft_delete_patient`) | `DeleteWithReason.tsx`, `patients.ts` et `20260616091300_soft_delete.sql` exigent un motif | Le propriétaire peut omettre le texte pour cette suppression autorisée ; confirmation, droit, verrouillage, audit et conséquences restent séparés. |
+| Patient : création, finalisation et import inspectés | Aucun motif de justification textuel identifié dans les appels de création/finalisation/import | Ne pas inventer de champ ; les contrôles d’identité, validation, provenance et idempotence restent inchangés. |
+| Rencontre : correction (`update_encounter`) | `EditEncounter.tsx`, `patients.ts` et l’optimistic lock transmettent `p_reason` | Dispense propriétaire selon le même allowlist ; `expected_updated_at`, validation et conflit restent obligatoires. |
+| Rencontre : rejeu de correction hors connexion | L’outbox porte un `reason` requis et `replay_encounter_update` l’intègre à son hash et à son audit | Un nouveau rejeu propriétaire peut représenter l’absence selon le contrat serveur ; les opérations déjà en file gardent leur motif et leur clé, sans suppression ni invention. |
+| Brouillon clinique de correction et son commit | `work_draft`/`WorkDraftPayload` portent un `reason` pour les corrections ; le commit écrit ensuite dans le chemin clinique | L’exception éventuelle porte sur l’opération clinique autorisée, jamais sur le stockage de préparation de formulaire ; les brouillons déjà ouverts et leur clé restent compatibles. |
+| Rencontre : mise en corbeille (`soft_delete_encounter`) | `DeleteWithReason.tsx`, `patients.ts` et `soft_delete_encounter` exigent un motif | Dispense propriétaire limitée à cette action autorisée ; statut, accès, concurrence et audit persistent. |
+| Rencontre : création inspectée | Aucun motif de justification textuel identifié dans `create_encounter` | Ne pas ajouter une exigence par effet de bord. |
+| Document : suppression d’une pièce jointe clinique (`soft_delete_attachment`) | `PatientDetail.tsx`, `attachments.ts` et `soft_delete_attachment` exigent un motif | Dispense propriétaire si le droit de supprimer cette pièce existe déjà ; elle n’accorde pas `can_view_raw_documents` et ne contourne pas les contrôles de stockage. |
+| Document : suppression d’une demande de curation, avec ou sans suppression du patient | Le formulaire et `curation.ts` exigent un motif ; le SQL accepte actuellement `null` et retombe sur `Demande supprimee` | Le propriétaire autorisé est dispensé du texte ; E1 doit supprimer le faux motif de repli et auditer `owner_exempt`, sans autoriser un autre rôle. La suppression du patient reste une décision de portée distincte. |
+| Document brut : ajout/upload, inspection, finalisation, lecture signée | Aucun motif de justification textuel identifié dans les appelants inspectés ; la lecture signée exige toutefois les droits et l’audit de lecture | Ne pas confondre absence de motif avec absence de permission. Une future suppression de document brut devra conserver son contrat de sécurité et être ajoutée à l’allowlist avant dispense. |
+| Base : mise en corbeille (`soft_delete_base`) | `BaseSettings.tsx`, `bases.ts` et `soft_delete_base` utilisent un motif ; le SQL accepte actuellement un défaut `Base supprimee` | **Hors dispense** : la suppression de la base elle-même conserve une justification textuelle distincte, en plus des droits propriétaire. Le repli textuel est un point E1 à traiter, pas une justification fournie par le propriétaire. |
+| Base : restauration de la corbeille | `restoreDeletedBase` n’exige pas de motif textuel identifié | Rester sans motif ; restaurer ne confère aucun droit nouveau et reste soumis au propriétaire/serveur. |
+| Base : purge définitive | Le parcours actuel vérifie le nom exact dans l’UI et transmet une clé d’opération à l’Edge ; aucun motif de correction ne remplace cette confirmation | Contrat séparé du §4.6 : code à cinq caractères, vérification serveur, rétention et idempotence. Le code n’est ni une justification ni une authentification, et ne dispense pas du motif de mise en corbeille. |
+| Accès à l’identité d’un compte de mission | `provision_mission_access` exige `p_identity_justification` lorsque `can_view_identity` est accordé | **Jamais dispensé** par le statut de propriétaire : l’attribution d’un accès à l’identité reste une justification dédiée. Les droits `can_view_identity`, `can_write_identity` et `can_manage_access` sont séparés. |
+
+La dispense est une propriété de l’acteur et de l’opération, pas une permission générale. Pour
+chaque action allowlistée, le serveur vérifie d’abord `is_base_owner(base_id)` puis les mêmes
+droits de domaine, états, révisions, concurrence et confirmations que pour les autres comptes.
+Il accepte une justification absente uniquement dans ce cas et écrit dans l’audit un statut
+structuré tel que `justification_status = owner_exempt`, avec acteur, date, base, cible, action et
+changements. Il n’envoie pas un texte factice et ne prend pas le nom de la base comme motif.
+
+Un collaborateur, un curateur ou un compte de mission conserve l’exigence de motif lorsqu’elle
+existe aujourd’hui. Un appel RPC forgé ne peut pas obtenir la dispense en déclarant un rôle de
+propriétaire. L’accès à l’identité, l’écriture d’identité, l’accès aux documents, l’export et la
+suppression de la base restent des contrôles indépendants ; la dispense ne les élargit jamais.
+
+### 7.5 Erreurs structurées et résultats sûrs
+
+Toute opération E0 à E7 retourne, en succès comme en erreur, un contrat borné. Une erreur a au
+minimum cette forme :
+
+```json
+{
+  "code": "FORM_PREPARATION_CONFLICT",
+  "message": "La définition de la base a changé depuis l’ouverture de la préparation.",
+  "retryable": false,
+  "operation_id": "op-fictif-001",
+  "details": {
+    "kind": "stale_revision",
+    "expected_revision": "rev-12",
+    "expected_fingerprint": "sha256:fictif-attendu",
+    "current_revision": "rev-13",
+    "current_fingerprint": "sha256:fictif-courant",
+    "changed_scopes": ["fields", "rules"]
+  }
+}
+```
+
+`code` est stable et exploitable par un client ; `message` est localisable et ne contient pas de
+SQL, de stack trace, de secret, d’identité ou de valeur clinique ; `details` est borné à ce qui est
+nécessaire pour agir sans divulguer les données. `retryable` signifie qu’un nouvel envoi est
+possible avec la même intention et, pour une mutation idempotente, la même `operation_id`. Une
+réponse réseau inconnue ne justifie jamais une nouvelle clé avant une vérification du reçu.
+
+Les codes cibles sont :
+
+| Code | Cas et action attendue |
+|---|---|
+| `FORM_PREPARATION_FORBIDDEN` | Base, acteur ou opération non autorisé ; ne pas révéler le contexte caché. |
+| `FORM_PREPARATION_NOT_FOUND` | Préparation inconnue ou non visible. |
+| `FORM_PREPARATION_INVALID` | Payload ou empreinte de contenu invalide ; conserver les entrées locales. |
+| `FORM_PREPARATION_CLOSED` / `FORM_PREPARATION_EXPIRED` | Préparation terminale ou expirée ; ouvrir une nouvelle préparation. |
+| `FORM_PREPARATION_CONFLICT` | Révision/empreinte de base périmée ; relire et comparer explicitement. |
+| `FORM_PREPARATION_OPERATION_CONFLICT` | Même clé d’opération avec un contenu différent ; ne pas appliquer la seconde intention. |
+| `FORM_SEMANTIC_MIGRATION_REQUIRED` | Changement sémantique détecté ; conserver la préparation, refuser l’application additive. |
+| `FORM_CHANGE_UNSUPPORTED` | Changement hors contrat, par exemple suppression sans stratégie historique. |
+| `FORM_RULE_INVALID` | Règle ou association incompatible avec les validations existantes. |
+| `FORM_CONTEXT_CHANGED` | Contexte de fiche ou de définition modifié depuis la lecture. |
+| `FORM_FIELD_UNKNOWN` / `FORM_SCOPE_INCOMPATIBLE` / `FORM_VALUE_CONVERSION_REQUIRED` | Écriture de complément non compatible ; ne pas supprimer les anciennes clés. |
+| `FORM_RECORD_FORBIDDEN` / `FORM_RECORD_CONFLICT` | Fiche inaccessible ou révision de fiche concurrente. |
+| `JUSTIFICATION_REQUIRED` | Motif encore requis pour un acteur ou une opération hors allowlist propriétaire. |
+| `PURGE_FORBIDDEN` / `PURGE_CODE_REQUIRED` / `PURGE_CODE_INVALID` | Purge interdite, code absent ou code incorrect ; ne pas révéler le code attendu. |
+| `PURGE_CHALLENGE_EXPIRED` | Challenge fermé ou expiré ; rouvrir le dialogue et obtenir un nouveau code. |
+| `PURGE_CONFLICT` / `PURGE_OPERATION_CONFLICT` | État de base concurrent ou clé réutilisée avec une intention différente. |
+| `PURGE_ALREADY_COMPLETED` | Résultat idempotent d’une purge déjà confirmée ; ne pas relancer une suppression. |
+
+Les codes existants `DRAFT_*` restent ceux des brouillons cliniques. Les erreurs actuelles
+`CONFLIT_VERSION`, `CLIENT_UPDATE_REQUIRED` et `OFFLINE_OPERATION_*` peuvent être traduites par
+un adaptateur vers cette enveloppe pour les parcours concernés, sans exposer leur message interne
+et sans faire croire que le contrat de préparation existe déjà.
+
+Exemples complémentaires :
+
+```json
+{
+  "code": "FORM_SEMANTIC_MIGRATION_REQUIRED",
+  "message": "Cette modification peut changer le sens de données existantes.",
+  "retryable": false,
+  "operation_id": "op-fictif-002",
+  "details": {
+    "classification": "semantic",
+    "changes": [{"field_key": "score", "kind": "type_changed"}],
+    "preparation_preserved": true
+  }
+}
+```
+
+```json
+{
+  "code": "PURGE_CODE_INVALID",
+  "message": "Le code de confirmation ne correspond pas.",
+  "retryable": false,
+  "operation_id": "purge-op-fictif-001",
+  "details": {"challenge_id": "purge-challenge-fictif-001", "length": 5}
+}
+```
+
+Le résultat d’une prévisualisation additive peut au contraire être :
+
+```json
+{
+  "state": "ready",
+  "classification": "additive_required",
+  "expected_revision": "rev-12",
+  "expected_fingerprint": "sha256:fictif-attendu",
+  "impact": {"added_fields": 1, "potentially_completable_records": 100}
+}
+```
+
+Le nombre d’impact est une métadonnée agrégée soumise aux droits ; il ne vaut pas divulgation de
+l’identité des dossiers et ne constitue pas une preuve d’application.
+
 ## 8. Interface utilisateur cible
+
+Cette section reste une cible de parcours et ne simule ni ne livre le comportement. E0 ne modifie
+aucun composant, ne remplace pas les contrôles actuels et ne considère pas une maquette, un test
+isolé ou la présence d’un bouton comme une preuve serveur.
 
 Le parcours d’une base affiche une action principale **Modifier le formulaire**. Dans l’éditeur :
 
@@ -359,8 +691,9 @@ rencontres, diagnostics couverts et non couverts, variables communes, blocs et s
    aucune perte d’inputs.
 9. Une réponse réseau perdue puis rejouée n’applique la préparation qu’une fois.
 10. L’aperçu, l’ouverture d’une préparation et son abandon n’écrivent aucune donnée clinique.
-11. Les exports et le dictionnaire distinguent une variable absente parce qu’elle n’existait pas
-    encore d’une variable existante mais non renseignée.
+11. Les exports et le dictionnaire distinguent une variable non définie à la révision de la fiche,
+    une variable définie mais vide, une variable non applicable et une absence clinique explicitement
+    codée ; aucune de ces situations n’est réduite à une cellule vide sans métadonnée.
 12. Un utilisateur sans droit de gestion peut renseigner une variable selon ses droits de saisie,
     mais ne peut pas modifier ni appliquer la préparation du formulaire.
 13. Les parcours mobiles et bureau ne rendent pas le bouton d’application inaccessible derrière
@@ -411,3 +744,69 @@ constitue pas une preuve de fonctionnement déployé.
 - Le versionnage technique est automatique et secondaire dans l’interface.
 - Le futur parcours de reprise complexe de dossiers, notifications et conversions reste séparé
   du présent lot, conformément au cadrage L57.
+
+## 13. Preuves E0, état observé et points bloquants pour E1
+
+### 13.1 Sources réellement inspectées
+
+La vérification du 2026-09-16 a porté sur les instructions et documents demandés, puis sur les
+contrats exécutés du dépôt :
+
+| Surface | Sources inspectées | Faits établis pour E0 |
+|---|---|---|
+| Versions, bases et droits | `supabase/migrations/20260616090200_tables.sql`, `20260616090700_template_admin.sql`, `20260616094800_base_template_version_same_template.sql`, `20260616095600_base_template_version_rpc_guard.sql`, `20260616096000_soft_delete_base.sql`, `src/data/bases.ts`, `src/data/templates.ts` | `base.current_template_version_id`, versions publiées protégées, copie de modèle à la création de base, droits propriétaire/identité distincts ; aucun contrat E0 de préparation existant. |
+| Patients, rencontres et corrections | `src/data/patients.ts`, `src/screens/member/EditPatient.tsx`, `EditPatientIdentity.tsx`, `EditEncounter.tsx`, `PatientDetail.tsx`, `supabase/migrations/20260616091300_soft_delete.sql`, `20260616092200_encounter_optimistic_lock.sql`, `20260712000400_patient_update_compatibility.sql` | Motifs actuellement transmis pour les corrections et mises en corbeille ; révisions/erreurs de concurrence existantes à préserver. |
+| Hors connexion et brouillons | `src/data/offline.ts`, `src/data/workDrafts.ts`, `src/data/workDraftSession.ts`, `src/data/localWorkDrafts.ts`, `supabase/migrations/20260713195422_offline_encounter_replay_idempotency.sql`, `20260910233212_ux_work_drafts.sql` | L’outbox et `work_draft` portent des écritures cliniques ; `work_draft` ne doit pas devenir une préparation de structure. |
+| Règles et diagnostic | `supabase/migrations/20260905160000_block_visibility.sql`, `20260906061539_diagnosis_configuration.sql`, `20260911210000_ux_rule_batch.sql`, `20260912090000_ux_common_group.sql`, `src/data/templates.ts` | Les associations diagnostiques restent des `validation_rule` ; des empreintes et opérations existent pour certaines surfaces, mais pas pour E0. |
+| Documents et stockage | `src/data/attachments.ts`, `src/data/curation.ts`, `src/screens/member/CurationBoard.tsx`, `CurationTask.tsx`, `supabase/storage.sql`, fonctions Edge d’upload/inspection/lecture signée | Suppression de pièce jointe et suppression de demande ont un motif ; upload, inspection, finalisation et lecture signée ont des contrats de permission/audit distincts. |
+| Exports | `supabase/functions/generate-export/exportContract.ts`, `supabase/functions/generate-export/handler.ts`, `src/data/signedRead.ts` | Les profils, identifiants et codes de valeur manquante existent ; le format actuel ne porte pas encore de triplet explicite `not_defined`/`empty`/`not_applicable` par valeur. |
+| Motifs et purge | `src/screens/member/DeleteWithReason.tsx`, `BaseSettings.tsx`, `Trash.tsx`, `src/data/bases.ts`, `src/data/mission.ts`, `supabase/migrations/20260729104500_mission_accounts.sql` | Dispense propriétaire à appliquer seulement aux actions allowlistées ; accès à l’identité, suppression de base et purge restent séparés. La purge actuelle ressaisit le nom et transmet une clé d’opération, sans challenge à cinq caractères. |
+
+Ces constats sont des observations du code et des migrations versionnés, pas des déclarations de
+fonctionnalité livrée. Le snapshot existant `docs/schema-etat-final.md` n’a pas été régénéré.
+
+### 13.2 Bloqueurs techniques à fermer avant E1
+
+Le besoin produit est décidé par les §§5 à 7. Les points suivants restent des choix de conception
+et de vérification nécessaires avant une migration sûre ; ils ne doivent pas être résolus par une
+inférence côté interface :
+
+1. Arrêter la forme physique d’un stockage de préparation dédié ou d’un type strictement isolé,
+   avec un chemin d’application distinct du `commit_work_draft` clinique.
+2. Définir dans le serveur la source du jeton `expected_revision`, l’algorithme canonique de
+   `expected_fingerprint` et la manière de dériver une révision propre à A sans modifier B.
+3. Garantir le stockage et la restitution de la provenance par définition et par valeur, ainsi
+   que le calcul des trois états d’absence dans les lectures et exports, sans réidentifier un
+   dossier à un utilisateur non autorisé.
+4. Définir la compatibilité avec les appels existants : erreurs `DRAFT_*`, `CONFLIT_VERSION`,
+   `CLIENT_UPDATE_REQUIRED`, rejoués hors connexion, motifs déjà en file et suppression des
+   replis textuels comme `Base supprimee` ou `Demande supprimee` là où l’allowlist propriétaire
+   assume l’absence de motif.
+5. Arrêter le protocole serveur du challenge de purge, son expiration, le hash éventuel, la
+   liaison à la session de dialogue et la conservation de l’idempotence de l’Edge, avec RLS,
+   `SECURITY DEFINER`, allowlist et audit revus.
+6. Confirmer que le parcours additif refuse toute préparation `semantic` et qu’une éventuelle
+   migration sémantique fera l’objet d’un contrat séparé ; E1 ne doit pas en inventer la
+   conversion.
+
+Tant que ces points ne sont pas fermés et vérifiés, E1 ne doit pas créer de migration, RPC ou
+   adaptateur qui simule ces garanties.
+
+### 13.3 Preuves de travail et limites
+
+- `git status --short --branch` a confirmé la branche `codex/spec-evolution-formulaire` et trois
+  fichiers PNG non suivis (`.tmp-editor-maquette*.png`) ; ils appartiennent au travail local du
+  formulaire papier/éditeur et ont été préservés.
+- La vérification finale montre également des modifications locales dans d’autres documents du
+  checkout et le fichier non suivi `docs/etat-actuel-2026-09-16.md`. Ils n’ont été ni modifiés ni
+  réinitialisés dans E0 ; les documents `spec-formulaire-papier.md` et `lots-formulaire-papier.md`
+  n’ont pas été touchés.
+- `git diff --stat` et `git diff --cached --stat` étaient vides avant cette mise à jour ; aucune
+  modification suivie ou indexée étrangère n’a été écrasée.
+- Aucun code applicatif, migration, test, snapshot ou environnement distant n’a été modifié.
+- Aucun test, lint, typecheck, build, navigateur réel, base jetable ou contrôle cloud n’a été
+  exécuté dans E0 : la preuve obtenue est documentaire et issue de l’inspection en lecture du
+  code/migrations. Le contrôle local des cinq documents de référence et de leurs ancres a retourné
+  `LINK_CHECK_OK files=5 paths_and_anchors=true`, et `git diff --check` n’a signalé aucune erreur
+  de contenu (Git a seulement affiché ses avertissements habituels de conversion LF/CRLF). Ces
+  contrôles documentaires ne sont pas une preuve runtime.

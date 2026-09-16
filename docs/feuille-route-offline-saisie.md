@@ -1,15 +1,22 @@
 # Feuille de route technique — saisie de nouveaux patients hors-ligne
 
-- **Statut :** code des lots O0 à O5 livré le 2026-08-23 ; O6 (preuve navigateur) et O7
-  (activation/release) restent ouverts
+- **Statut :** code des lots O0 à O5 livré localement le 2026-08-23 ; O6 (preuve navigateur) et
+  O7 (autorisation/activation vérifiée) restent ouverts. Le workflow de release configure un build
+  `demo`, ce qui ne prouve ni la cible ni l'achèvement d'O7.
 - **Date de cadrage :** 2026-08-21
 - **Objectif :** permettre la création d’un nouveau patient hors-ligne, sans rendre la base consultable hors-ligne, puis synchroniser la saisie au retour du réseau.
 - **Périmètre de cette feuille de route :** architecture, code, base, RLS, tests, PWA et preuves techniques uniquement.
 - **Références :** [architecture](architecture.md), [sécurité du mode hors-ligne](securite-mode-hors-ligne.md), [E2E navigateur](e2e-browser.md), [QA du site](qa-parcours-site.md).
 
 > Les lots O0 à O5 sont maintenant implémentés localement, mais cette feuille ne constitue pas une
-> preuve staging ni une autorisation de données réelles. Le mode reste désactivé dans les builds
-> persistants jusqu'à la fin d'O6 et d'O7.
+> preuve staging ni une autorisation de données réelles. La configuration actuelle du workflow de
+> release prévoit une dérogation `demo` : elle doit être contrôlée dans le bundle et sur la cible,
+> et ne clôt ni O6 ni O7. Voir [la politique hors-ligne](securite-mode-hors-ligne.md).
+
+> **Mise à jour de source du 13 septembre.** La coque PWA est désormais découplée de la session et
+> le parcours affiche une disponibilité incomplète lorsque le service worker ou son cache ne sont
+> pas prêts. Cela améliore le diagnostic du démarrage à froid, mais ne remplace pas l'épreuve O6
+> dans un navigateur installé et hors réseau.
 
 ## Décision de cadrage — 2026-08-21
 

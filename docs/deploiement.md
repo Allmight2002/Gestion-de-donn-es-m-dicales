@@ -18,7 +18,7 @@ pour le périmètre approuvé et les événements qui imposeront une nouvelle re
 ## 1. Prérequis
 - Un compte **Supabase** (cloud) + la **CLI** : `npm i -g supabase` (ou `npx supabase`).
 - Un compte d'**hébergement statique** pour le frontend (Vercel, Netlify, Cloudflare Pages…).
-- Node ≥ 20 et ce dépôt cloné.
+- Node.js `>=22.22.0` et `<23`, npm `>=10` et `<12`, puis ce dépôt cloné (voir `package.json`).
 
 ---
 
@@ -101,6 +101,8 @@ supabase functions deploy finalize-upload --import-map deno.json
 supabase functions deploy cleanup-upload --import-map deno.json
 supabase functions deploy generate-export --import-map deno.json
 supabase functions deploy reconcile-quarantine --import-map deno.json
+supabase functions deploy create-mission-account --import-map deno.json
+supabase functions deploy purge-deleted-base --import-map deno.json
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
@@ -114,6 +116,11 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      INSPECTION_RETRY_COOLDOWN_MS=60000 \
                      QUARANTINE_BUCKET=quarantined-uploads
 ```
+`create-mission-account` exige en plus le secret distinct
+`MISSION_CREDENTIALS_ENCRYPTION_KEY`, à poser sans l'afficher selon
+[edge-functions.md](edge-functions.md) §10.5 avant son déploiement. Les huit commandes décrivent
+la cible de source ; elles ne constituent pas une autorisation de modifier un projet cloud.
+
 > **Inspection antivirus en pause depuis le 12 août 2026**
 > ([décision](decision-pause-inspection-2026-08-12.md)). Les deux secrets `CLAMAV_*` et
 > `REQUIRE_SERVER_INSPECTION=true` ci-dessus ne concernent que `INSPECTION_MODE=strict`. En
@@ -187,8 +194,9 @@ un deplacement vers `quarantined-uploads` a ete interrompu entre Storage et la f
 ## 7. Vérification de mise en ligne (smoke test)
 - [ ] Connexion d'un compte créé (e-mail/mot de passe).
 - [ ] `system_admin` : créer/publier un gabarit ; **aucun** accès aux données patient.
-- [ ] `medecin` : créer une base, un patient, une rencontre ; **importer** un fichier d'exemple
-      ([docs/exemple-import-neurochirurgie.csv](exemple-import-neurochirurgie.csv)).
+- [ ] `medecin` : créer une base, un patient, une rencontre ; **importer** un CSV/XLSX préparé
+      pour le test, entièrement fictif et préfixé `QA-` (aucun fichier d'exemple n'est suivi dans
+      ce checkout).
 - [ ] Séparation des zones : un collaborateur **sans** accès identité ne voit pas les noms.
 - [ ] Export : aucune identité ni image dans le fichier.
 - [ ] `curateur` : voir le pool, réserver, finaliser un cas.
@@ -205,9 +213,11 @@ Ce pilote est sûr **uniquement avec des données fictives**. Pour des données 
   des données** (région d'hébergement Supabase), accord de traitement (DPA). Le dossier
   complet (textes applicables, registre des traitements, AIPD, notice/consentement,
   procédures, dossier éthique, checklist GO/NO-GO) est dans **[docs/juridique/](juridique/README.md)**.
-- **Durcissement serveur** : deploiement et verification des Edge Functions (`signed-read`,
-  `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), activation de
-  l'inspection stricte et controle `env:check:cloud`. Voir **[docs/edge-functions.md](edge-functions.md)**.
+- **Durcissement serveur** : déploiement et vérification des huit Edge Functions (`signed-read`,
+  `inspect-upload`, `finalize-upload`, `cleanup-upload`, `generate-export`,
+  `reconcile-quarantine`, `create-mission-account`, `purge-deleted-base`), activation de
+  l'inspection stricte et contrôle `env:check:cloud`. Voir
+  **[docs/edge-functions.md](edge-functions.md)**.
 - **Limite d'anonymat** : la RLS protège l'accès *applicatif*, mais l'administrateur du serveur
   peut techniquement lire la base. Une garantie forte suppose un chiffrement côté client ou des
   identités hors serveur central.

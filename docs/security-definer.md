@@ -2,17 +2,17 @@
 
 La liste normative se trouve dans
 [`supabase/security-definer-allowlist.json`](../supabase/security-definer-allowlist.json). Elle
-rattache chacune des **112** signatures exécutables par le rôle `authenticated` à une justification
-bornée, en huit catégories (décompte relu dans l'inventaire le 2026-08-20) :
+rattache chacune des **132** signatures exécutables par le rôle `authenticated` à une justification
+bornée, en huit catégories (décompte vérifié dans le fichier source le 2026-09-16) :
 
 | Catégorie | Signatures | Objet |
 |---|---:|---|
-| `authorization-policy-helper` | 30 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
-| `clinical-curation-rpc` | 22 | Commandes cliniques et de curation |
-| `template-administration-rpc` | 18 | Administration des jeux de variables |
-| `access-and-base-administration-rpc` | 17 | Administration des accès et des bases |
-| `audited-sensitive-read` | 12 | Lectures sensibles tracées |
-| `import-idempotence-concurrency-rpc` | 7 | Import, idempotence, concurrence |
+| `authorization-policy-helper` | 34 | Évaluer l'appelant sans récursion de policy (RLS, Storage, RPC gardées) |
+| `clinical-curation-rpc` | 26 | Commandes cliniques et de curation |
+| `template-administration-rpc` | 28 | Administration des jeux de variables |
+| `access-and-base-administration-rpc` | 16 | Administration des accès et des bases |
+| `audited-sensitive-read` | 13 | Lectures sensibles tracées |
+| `import-idempotence-concurrency-rpc` | 9 | Import, idempotence, concurrence |
 | `file-inspection-rpc` | 4 | Inspection des fichiers déposés |
 | `client-error-observability-rpc` | 2 | Remontée bornée des erreurs client |
 

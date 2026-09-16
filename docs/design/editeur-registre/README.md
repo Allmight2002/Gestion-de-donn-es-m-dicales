@@ -1,6 +1,10 @@
 # Transmission — éditeur des jeux de variables
 
-Date : 11 septembre 2026. Statut : **proposition d’interface et dossier de transmission**. Ce dossier ne signifie pas que la refonte est implémentée ou validée dans MedData.
+Date : 11 septembre 2026. Statut : **proposition d’interface et dossier de transmission archivé**.
+Le code des 12–13 septembre a réalisé une grande partie de la cible UX-14/UX-16 ; consulter
+[le suivi des correctifs UX](../../suivi-correctifs-ux.md) et le checkout courant pour son état
+exact. Ce dossier conserve la maquette, le raisonnement et les critères initiaux ; il ne prouve pas
+à lui seul une validation navigateur ou déployée.
 
 ## Démarrage dans une nouvelle session
 
@@ -84,7 +88,11 @@ Ne pas porter le JavaScript de démonstration tel quel dans React. Il contient d
 
 ## État observé et points d’entrée
 
-Repère du 11 septembre 2026 : branche `codex/ux-correctifs`, HEAD `170207fb6652bb66360c1e19c58434f70e6ee6f3`, avec de nombreuses modifications locales, dont l’éditeur et les formulaires. **Le HEAD seul ne reproduit pas cet état.** Relire `git status`, les diffs et les fichiers avant tout travail ; ne rien réinitialiser pour repartir artificiellement d’un arbre propre.
+Repère historique du 11 septembre 2026 : branche `codex/ux-correctifs`, HEAD
+`170207fb6652bb66360c1e19c58434f70e6ee6f3`, avec de nombreuses modifications locales, dont
+l’éditeur et les formulaires. Ce repère n'est plus l'état courant : relire `git status`, les diffs,
+le suivi UX et les fichiers avant tout travail ; ne rien réinitialiser pour recréer artificiellement
+l'ancien arbre.
 
 Les trois espaces Variables / Sections / Règles et l’appel à `DiagnosisConfigurationEditor` dans Sections ont été retrouvés dans le code local. Des recherches, filtres, groupes repliables et liens variable/règle existent déjà. Leur présence ne vaut pas validation de la refonte cible ni preuve de déploiement.
 

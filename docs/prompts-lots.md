@@ -91,7 +91,7 @@ dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État documentaire au 2026-09-05
+## État documentaire au 2026-09-16
 
 **Vérifier cet état avant de lancer un thread**, pour ne pas faire refaire du travail déjà fait.
 La source de vérité du suivi reste le tableau et la section « Ordre suggéré » de
@@ -102,18 +102,19 @@ La source de vérité du suivi reste le tableau et la section « Ordre suggéré
 | **L34** | Filtre d'une variable Diagnostic à valeur unique |
 | **L38 à L44** | Lots issus de l'audit du 2026-08-18 (L38 prioritaire : `inspection=paused` en production) |
 | **L50** | Concepts diagnostiques dans l'export — **différé**, il attend un référentiel gouverné |
-| **L51**, **L54** | Blocs cliniques conditionnels : opérateur d’appartenance et deux niveaux de sections — parallélisables entre eux |
-| **L55** | Configuration diagnostique et couverture — après L51/L54/L52 |
-| **L56** | Socle et suivi — après L55 ; preuve complète avec L53 |
 | **L57** | Cadrage différé de la reprise/notifications — après pilote L56 |
-| **L58** à **L60** | Blocs réutilisables entre jeux de variables — séquentiels, après L52/L54 |
-| **L52** | Visibilité au niveau bloc — **après L51 et L54**, jamais avec L51 |
-| **L53** | Projection d’export par blocs — **après L54** ; ne pas lancer avec L50 |
+| **L62**, **L63** | Tri clinique serveur puis commande de tri accessible dans la liste patient |
+| **L65** | Preuves intégrées de la liste patient après le périmètre réellement livré |
 | **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
+| **L66** à **L71** | Groupes répétables, après relecture de leur contrat et des collisions de l'éditeur |
+| **E0** à **E7** | Évolution additive du formulaire dans une même base — spécifiée, non implémentée |
+| **PAP-0** à **PAP-5** | Formulaire papier vierge — spécifié, non implémenté |
 
-**Tout le reste est soldé** : L1 à L33 (dont L26, clos sans exécution), L35, L36, L37 (écarté du
-profil Analyse), L45 à L49 et D10. Leurs prompts sont **barrés** ci-dessous et conservés pour
-mémoire — ne pas les relancer.
+**État local à ne pas relancer automatiquement** : L51 à L56 et L58 à L60 sont implémentés
+localement, non déployés ; consulter leurs fiches avant toute correction. L1 à L33 (dont L26,
+clos sans exécution), L35, L36, L37 (écarté du profil Analyse), L45 à L49 et D10 restent aussi
+soldés dans leur périmètre historique. Les prompts barrés sont conservés pour mémoire, pas comme
+autorisation de rejouer une livraison.
 
 <details>
 <summary>Tableau d'origine du 2026-08-10 (conservé pour mémoire)</summary>
@@ -1837,7 +1838,10 @@ n'envoyer aucun message. Le lancement attend les observations du pilote.
 
 ---
 
-## L58 — Blocs réutilisables : import serveur d'un bloc
+## ~~L58 — Blocs réutilisables : import serveur d'un bloc~~ — implémenté localement
+
+> Ne pas relancer ce prompt : utiliser [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md)
+> pour les contrôles exécutés et partir d'un défaut observé.
 
 ```
 NE LANCE PAS CE LOT AVANT QUE L52 ET L54 SOIENT FUSIONNÉS. L54 apporte la notion
@@ -1924,7 +1928,10 @@ demande explicite.
 
 ---
 
-## L59 — Blocs réutilisables : choisir un bloc dans l'éditeur
+## ~~L59 — Blocs réutilisables : choisir un bloc dans l'éditeur~~ — implémenté localement
+
+> Ne pas relancer ce prompt : la fiche de spécification consigne l'interface et ses limites de
+> preuve actuelles.
 
 ```
 NE LANCE PAS CE LOT AVANT QUE L58 SOIT FUSIONNÉ : il appelle ses deux fonctions.
@@ -1985,7 +1992,10 @@ sans demande explicite.
 
 ---
 
-## L60 — Blocs réutilisables : reconnexion de la règle d'activation
+## ~~L60 — Blocs réutilisables : reconnexion de la règle d'activation~~ — implémenté localement
+
+> Ne pas relancer ce prompt : L60 utilise désormais le chemin de règles existant ; conserver ce
+> principe et diagnostiquer un défaut réel avant toute modification.
 
 ```
 NE LANCE PAS CE LOT AVANT QUE L59 SOIT FUSIONNÉ : il part du rapport d'import.

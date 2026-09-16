@@ -1,8 +1,10 @@
 # Preuve de responsabilités et d'exploitation
 
-Le déploiement de production échoue fermé sans le secret d'environnement GitHub
-`OPERATIONS_EVIDENCE_JSON`. Le validateur exige une preuve JSON actuelle, valable
-au maximum 90 jours et liée au SHA exact du candidat.
+En régime normal, le déploiement de production échoue fermé sans le secret d'environnement GitHub
+`OPERATIONS_EVIDENCE_JSON`. Le validateur exige une preuve JSON actuelle, valable au maximum
+90 jours et liée au SHA exact du candidat. La dérogation pilote
+[`PILOT_EVIDENCE_WAIVER=true`](derogations-readiness.md) autorise seulement l'absence de preuve en
+la journalisant ; elle ne rend pas le contrôle satisfait et ne convient jamais à un usage clinique.
 
 La preuve doit référencer, sans stocker de noms ni de coordonnées dans le dépôt :
 
@@ -30,4 +32,5 @@ Le validateur contrôle la cohérence et les empreintes, mais ne nomme personne,
 ne crée pas l'astreinte et n'approuve pas la QA. Une checklist vide, un document
 en projet ou une simulation déclarative ne constitue pas une preuve. B10 reste
 donc ouvert jusqu'à production et archivage des affectations, de la simulation,
-des revues d'accès et du procès-verbal QA réels.
+des revues d'accès et du procès-verbal QA réels, y compris lorsqu'une dérogation pilote permet
+techniquement de poursuivre sans cette preuve.
