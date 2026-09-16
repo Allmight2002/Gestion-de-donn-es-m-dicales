@@ -55,9 +55,11 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 UX-12(c) : la recherche nominative traverse la frontiere d’identite une seule fois,
     // dans une fonction qui verifie role et permission, journalise l’acces et ne rend que des
     // identifiants. L’inventaire force la revue de cette autorisation.
-    expect(signatures).toHaveLength(132);
+    // +9 E1 : RPC de préparation persistante et challenge de purge ; les helpers
+    // internes et les tables restent fermés aux clients.
+    expect(signatures).toHaveLength(141);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(144);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(153);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
