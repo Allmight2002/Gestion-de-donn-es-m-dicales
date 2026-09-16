@@ -274,6 +274,9 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
         order by p.proname`,
     )).rows.map((r) => r.proname as string);
     expect(readers).toEqual([
+      // E2 : recalcule la classification cote serveur avant la recopie atomique ; il lit la
+      // formule sans jamais l'evaluer.
+      'apply_form_preparation',
       // L55 : refuse un pilote diagnostique calcule, et refuse de declarer couvert un bloc
       // dont aucune variable n'est saisissable. Il LIT la colonne pour ecarter les variables
       // calculees -- il n'analyse jamais leur contenu.
