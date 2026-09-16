@@ -48,7 +48,7 @@ export interface FormPreparationOpenResult {
 export interface FormPreparationReceipt {
   preparation: FormPreparation;
   operationId: string;
-  operationKind: 'save' | 'preview' | 'resume' | 'discard';
+  operationKind: 'save' | 'preview' | 'resume' | 'discard' | 'apply';
   audit: {
     sourceRevision: number;
     sourceFingerprint: string;
@@ -57,6 +57,8 @@ export interface FormPreparationReceipt {
     state: FormPreparationState;
     classification: FormPreparationClassification;
   };
+  impact?: Record<string, unknown>;
+  application?: Record<string, unknown>;
 }
 
 export interface FormPreparationMutation {
@@ -82,12 +84,35 @@ export interface FormPreparationDiscard extends FormPreparationMutation {
   expectedSourceFingerprint: string;
 }
 
+export interface FormPreparationApply extends FormPreparationMutation {
+  expectedSourceRevision: number;
+  expectedSourceFingerprint: string;
+}
+
+export interface FormPreparationErrorReceipt {
+  code: string;
+  error: string;
+  preparationId?: string;
+  operationId?: string;
+  retryable?: boolean;
+  classification?: FormPreparationClassification;
+  reason?: string;
+  payloadPreserved?: boolean;
+  impact?: Record<string, unknown>;
+  application?: Record<string, unknown>;
+  currentSourceTemplateVersionId?: string;
+  currentSourceRevision?: number;
+  currentSourceFingerprint?: string;
+  currentPreparationRevision?: number;
+}
+
 export interface FormPreparationRepository {
   readonly available: boolean;
   openOrResume(baseId: string): Promise<FormPreparationOpenResult>;
   read(preparationId: string): Promise<FormPreparation>;
   save(input: FormPreparationSave): Promise<FormPreparationReceipt>;
   preview(input: FormPreparationPreview): Promise<FormPreparationReceipt>;
+  apply(input: FormPreparationApply): Promise<FormPreparationReceipt>;
   resume(input: FormPreparationMutation): Promise<FormPreparationReceipt>;
   discard(input: FormPreparationDiscard): Promise<FormPreparationReceipt>;
   issuePurgeChallenge(baseId: string, operationId: string): Promise<PurgeChallengeReceipt & { code?: string }>;
@@ -111,8 +136,11 @@ const PREPARATION_MESSAGES: Record<string, string> = {
   FORM_PREPARATION_TOO_LARGE: 'La préparation dépasse la taille autorisée.',
   FORM_PREPARATION_CLOSED: 'Cette préparation est déjà terminée ou expirée.',
   FORM_PREPARATION_CONFLICT: 'La définition source ou la préparation a changé. Votre préparation est conservée pour reprise explicite.',
+  FORM_PREPARATION_NOT_READY: 'La préparation doit d’abord être prévisualisée et validée par le serveur.',
+  FORM_PREPARATION_APPLY_FAILED: 'L’application du formulaire n’a pas abouti. Aucun changement partiel n’a été conservé.',
   FORM_PREPARATION_OPERATION_CONFLICT: 'Cette clé d’opération a déjà été utilisée avec un autre contenu.',
   FORM_PREPARATION_OPERATION_INVALID: 'La clé d’opération est invalide.',
+  FORM_RULE_INVALID: 'Une règle ou une association diagnostique n’est pas compatible avec le formulaire.',
   FORM_SEMANTIC_MIGRATION_REQUIRED: 'Cette évolution nécessite une migration sémantique avant toute application.',
   FORM_CHANGE_UNSUPPORTED: 'Cette évolution n’est pas prise en charge par cette préparation.',
   JUSTIFICATION_REQUIRED: 'Un motif est requis pour cette opération avec vos droits actuels.',
@@ -126,7 +154,11 @@ const PREPARATION_MESSAGES: Record<string, string> = {
 };
 
 export class FormPreparationError extends Error {
-  constructor(readonly code: string, support: 'local' | 'server' = 'server') {
+  constructor(
+    readonly code: string,
+    support: 'local' | 'server' = 'server',
+    readonly receipt?: FormPreparationErrorReceipt,
+  ) {
     super(support === 'local'
       ? PREPARATION_MESSAGES.FORM_PREPARATION_UNAVAILABLE
       : PREPARATION_MESSAGES[code] ?? PREPARATION_MESSAGES.FORM_PREPARATION_UNAVAILABLE);
@@ -154,7 +186,7 @@ function asPreparation(row: Record<string, unknown>): FormPreparation {
 
 function asReceipt(row: Record<string, unknown>): FormPreparationReceipt {
   const audit = (row.audit ?? {}) as Record<string, unknown>;
-  return {
+  const receipt: FormPreparationReceipt = {
     preparation: asPreparation(row.preparation as Record<string, unknown>),
     operationId: String(row.operationId),
     operationKind: row.operationKind as FormPreparationReceipt['operationKind'],
@@ -167,6 +199,13 @@ function asReceipt(row: Record<string, unknown>): FormPreparationReceipt {
       classification: audit.classification as FormPreparationClassification,
     },
   };
+  if (row.impact && typeof row.impact === 'object' && !Array.isArray(row.impact)) {
+    receipt.impact = row.impact as Record<string, unknown>;
+  }
+  if (row.application && typeof row.application === 'object' && !Array.isArray(row.application)) {
+    receipt.application = row.application as Record<string, unknown>;
+  }
+  return receipt;
 }
 
 function safeCode(error: unknown): string {
@@ -175,6 +214,47 @@ function safeCode(error: unknown): string {
   const candidates = Object.keys(PREPARATION_MESSAGES);
   return candidates.find((candidate) => message.includes(candidate) || detail.includes(candidate))
     ?? 'FORM_PREPARATION_UNAVAILABLE';
+}
+
+function knownCode(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !Object.prototype.hasOwnProperty.call(PREPARATION_MESSAGES, value)) return undefined;
+  return value;
+}
+
+function knownClassification(value: unknown): FormPreparationClassification | undefined {
+  return value === 'additive' || value === 'additive_required' || value === 'semantic' || value === 'unsupported'
+    ? value
+    : undefined;
+}
+
+function asErrorReceipt(value: Record<string, unknown>): FormPreparationErrorReceipt | undefined {
+  const code = knownCode(value.code) ?? knownCode(value.error);
+  if (!code) return undefined;
+  const receipt: FormPreparationErrorReceipt = { code, error: code };
+  if (typeof value.preparationId === 'string') receipt.preparationId = value.preparationId;
+  if (typeof value.operationId === 'string') receipt.operationId = value.operationId;
+  if (typeof value.retryable === 'boolean') receipt.retryable = value.retryable;
+  if (typeof value.reason === 'string') receipt.reason = value.reason;
+  if (typeof value.payloadPreserved === 'boolean') receipt.payloadPreserved = value.payloadPreserved;
+  if (value.impact && typeof value.impact === 'object' && !Array.isArray(value.impact)) {
+    receipt.impact = value.impact as Record<string, unknown>;
+  }
+  if (value.application && typeof value.application === 'object' && !Array.isArray(value.application)) {
+    receipt.application = value.application as Record<string, unknown>;
+  }
+  const classification = knownClassification(value.classification);
+  if (classification) receipt.classification = classification;
+  if (typeof value.currentSourceTemplateVersionId === 'string') {
+    receipt.currentSourceTemplateVersionId = value.currentSourceTemplateVersionId;
+  }
+  if (typeof value.currentSourceRevision === 'number' || typeof value.currentSourceRevision === 'string') {
+    receipt.currentSourceRevision = Number(value.currentSourceRevision);
+  }
+  if (typeof value.currentSourceFingerprint === 'string') receipt.currentSourceFingerprint = value.currentSourceFingerprint;
+  if (typeof value.currentPreparationRevision === 'number' || typeof value.currentPreparationRevision === 'string') {
+    receipt.currentPreparationRevision = Number(value.currentPreparationRevision);
+  }
+  return receipt;
 }
 
 function checkSize(payload: FormPreparationPayload): void {
@@ -194,7 +274,8 @@ export function createFormPreparationRepository(client: SupabaseClient | null): 
       const { data, error } = await client.rpc(name, params);
       if (error) throw error;
       if (data && typeof data === 'object' && !Array.isArray(data) && typeof (data as { error?: unknown }).error === 'string') {
-        throw new FormPreparationError(String((data as { error: string }).error));
+        const receipt = asErrorReceipt(data as Record<string, unknown>);
+        throw new FormPreparationError(receipt?.code ?? 'FORM_PREPARATION_UNAVAILABLE', 'server', receipt);
       }
       return data as T;
     } catch (error) {
@@ -225,6 +306,15 @@ export function createFormPreparationRepository(client: SupabaseClient | null): 
     },
     async preview(input) {
       return asReceipt(await rpc<Record<string, unknown>>('preview_form_preparation', {
+        p_preparation_id: input.preparationId,
+        p_expected_preparation_revision: input.expectedPreparationRevision,
+        p_expected_source_revision: input.expectedSourceRevision,
+        p_expected_source_fingerprint: input.expectedSourceFingerprint,
+        p_operation_id: input.operationId,
+      }));
+    },
+    async apply(input) {
+      return asReceipt(await rpc<Record<string, unknown>>('apply_form_preparation', {
         p_preparation_id: input.preparationId,
         p_expected_preparation_revision: input.expectedPreparationRevision,
         p_expected_source_revision: input.expectedSourceRevision,

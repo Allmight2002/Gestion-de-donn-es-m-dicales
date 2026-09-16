@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260916120000_form_preparation_terminal_guard.sql`
-- Tables : 54 · Policies RLS : 64 · Triggers : 82 · Fonctions : 355
+- Dernière migration incluse : `20260916130000_form_preparation_apply.sql`
+- Tables : 55 · Policies RLS : 64 · Triggers : 82 · Fonctions : 362
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -491,6 +491,27 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 Triggers :
 - `trg_form_preparation_terminal_state` — BEFORE UPDATE → `guard_form_preparation_terminal_state()`
 
+### form_preparation_application · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| owner_id | uuid | non |  |
+| operation_id | uuid | non |  |
+| preparation_id | uuid | non |  |
+| base_id | uuid | non |  |
+| source_template_version_id | uuid | non |  |
+| target_template_version_id | uuid | non |  |
+| source_revision | bigint | non |  |
+| source_fingerprint | text | non |  |
+| content_fingerprint | text | non |  |
+| impact | jsonb | non |  |
+| status | text | non |  |
+| transaction_id | bigint | non |  |
+| created_at | timestamp with time zone | non | `clock_timestamp()` |
+| completed_at | timestamp with time zone | oui |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ### form_preparation_operation · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -916,6 +937,8 @@ Policies :
 | anchor_order | integer | non | `0` |
 | is_default | boolean | non | `false` |
 | created_at | timestamp with time zone | non | `now()` |
+| source_template_version_id | uuid | oui |  |
+| source_group_key | text | oui |  |
 
 Policies :
 - `tcg_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -947,6 +970,8 @@ Policies :
 | is_multiple | boolean | non | `false` |
 | formula | text | oui |  |
 | common_group_id | uuid | oui |  |
+| source_template_version_id | uuid | oui |  |
+| source_field_key | text | oui |  |
 
 Policies :
 - `tf_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -1015,6 +1040,11 @@ Triggers :
 | created_at | timestamp with time zone | non | `now()` |
 | published_at | timestamp with time zone | oui |  |
 | diagnosis_configuration | jsonb | non | `'[]'::jsonb` |
+| derived_from_template_version_id | uuid | oui |  |
+| derived_from_preparation_id | uuid | oui |  |
+| derived_from_content_fingerprint | text | oui |  |
+| applied_operation_id | uuid | oui |  |
+| applied_at | timestamp with time zone | oui |  |
 
 Policies :
 - `tv_delete` (DELETE) — USING (owns_template(template_id) AND (status = 'draft'::text))
@@ -1115,6 +1145,8 @@ Policies :
 | rule | jsonb | non |  |
 | message | text | oui |  |
 | severity | text | non | `'block'::text` |
+| source_template_version_id | uuid | oui |  |
+| source_validation_rule_id | uuid | oui |  |
 
 Policies :
 - `vr_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -1168,6 +1200,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | activity_public_metadata | p_action text, p_metadata jsonb, p_is_owner boolean | DEFINER | sql |
 | add_template_section | p_version_id uuid, p_key text, p_label text, p_parent_key text | DEFINER | plpgsql |
 | answer_clarification | p_clarification_id uuid, p_answer text | DEFINER | plpgsql |
+| apply_form_preparation | p_preparation_id uuid, p_expected_preparation_revision bigint, p_expected_source_revision bigint, p_expected_source_fingerprint text, p_operation_id uuid | DEFINER | plpgsql |
 | archive_template_version | p_version_id uuid | DEFINER | plpgsql |
 | armor | bytea | INVOKER | c |
 | armor | bytea, text[], text[] | INVOKER | c |
@@ -1286,6 +1319,11 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | find_identity_matches | p_base_id uuid, p_full_name text, p_date_of_birth date | DEFINER | plpgsql |
 | fips_mode | — | INVOKER | c |
 | form_justification_status | p_base_id uuid, p_reason text | DEFINER | plpgsql |
+| form_preparation_apply_assert_definition | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
+| form_preparation_apply_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
+| form_preparation_apply_error_json | p_code text, p_preparation_id uuid, p_operation_id uuid, p_retryable boolean, p_details jsonb | DEFINER | sql |
+| form_preparation_apply_impact | p_base_id uuid, p_source jsonb, p_candidate jsonb, p_classification jsonb | DEFINER | plpgsql |
+| form_preparation_apply_text_array | p_value jsonb | DEFINER | plpgsql |
 | form_preparation_assert_no_clinical_keys | p_value jsonb | DEFINER | plpgsql |
 | form_preparation_assert_owner | p_base_id uuid | DEFINER | plpgsql |
 | form_preparation_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
@@ -1296,6 +1334,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_normalize | p_payload jsonb | DEFINER | plpgsql |
 | form_preparation_operation_result | p_operation_id uuid, p_request_hash text | DEFINER | plpgsql |
 | form_preparation_order_array | p_value jsonb, p_key text | DEFINER | plpgsql |
+| form_preparation_rebind_allowed | p_base_id uuid, p_old_version_id uuid, p_new_version_id uuid | DEFINER | sql |
 | form_preparation_receipt | p_row form_preparation, p_operation_id uuid, p_operation_kind text | DEFINER | sql |
 | form_preparation_source_definition | p_version_id uuid | DEFINER | sql |
 | gen_random_bytes | integer | INVOKER | c |

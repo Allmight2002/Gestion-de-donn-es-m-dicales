@@ -57,9 +57,11 @@ describe('inventaire SECURITY DEFINER', () => {
     // identifiants. L’inventaire force la revue de cette autorisation.
     // +9 E1 : RPC de préparation persistante et challenge de purge ; les helpers
     // internes et les tables restent fermés aux clients.
-    expect(signatures).toHaveLength(141);
+    // +1 E2 : application atomique ; la table de contexte, les helpers de copie et le
+    // rattachement cross-template restent fermes aux clients.
+    expect(signatures).toHaveLength(142);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(153);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(154);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

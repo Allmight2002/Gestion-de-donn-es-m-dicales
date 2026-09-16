@@ -153,6 +153,7 @@
         "import_template_section(p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[])",
         "move_template_section(p_version_id uuid, p_section_id uuid, p_parent_key text)",
         "open_or_resume_form_preparation(p_base_id uuid)",
+        "apply_form_preparation(p_preparation_id uuid, p_expected_preparation_revision bigint, p_expected_source_revision bigint, p_expected_source_fingerprint text, p_operation_id uuid)",
         "preview_rule_batch(p_version_id uuid, p_payload jsonb)",
         "preview_form_preparation(p_preparation_id uuid, p_expected_preparation_revision bigint, p_expected_source_revision bigint, p_expected_source_fingerprint text, p_operation_id uuid)",
         "preview_template_section_import(p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[])",
