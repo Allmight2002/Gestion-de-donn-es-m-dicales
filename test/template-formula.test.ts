@@ -304,6 +304,11 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // E1 : recopie la formule dans la definition source de la preparation,
       // sans la decouper ni l'evaluer.
       'form_preparation_source_definition',
+      // E3 : lit la formule pour verifier qu'un champ historique reste compatible avec le
+      // champ actif. Ces gardes n'evaluent jamais le calcul.
+      'form_record_assert_patch',
+      'form_record_context_json',
+      'form_record_field_compatible',
       'guard_template_field_update',
       'missing_required_fields',
       // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
