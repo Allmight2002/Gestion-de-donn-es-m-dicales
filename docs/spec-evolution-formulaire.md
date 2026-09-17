@@ -1,10 +1,10 @@
 # Spécification — évolution fluide du formulaire et complétion des dossiers existants
 
-- Révision : **2026-09-17** (contrat E0 fixé ; E1 à E4 implémentés et contrôlés localement : états,
+- Révision : **2026-09-17** (contrat E0 fixé ; E1 à E5 implémentés et contrôlés localement : états,
   révision/empreinte, compatibilité, provenance, application atomique, justification propriétaire,
-  purge et éditeur de préparation).
-- Statut : **contrat E0 documenté ; E1 à E4 implémentés localement et non déployés, sans preuve
-  navigateur ; E5 à E7 à réaliser**.
+  purge, éditeur de préparation et complétion des dossiers existants).
+- Statut : **contrat E0 documenté ; E1 à E5 implémentés localement et non déployés ; E5 dispose
+  d'une preuve navigateur sur banc local fictif, E1 à E4 n'en ont pas ; E6 et E7 à réaliser**.
 - Origine : retour d’usage sur le versionnage des jeux de variables. Le responsable d’une base
   ne comprend pas pourquoi une variable ou une règle devient impossible à modifier, et ne doit
   pas avoir à créer un nouveau jeu de variables ni une nouvelle base pour faire évoluer sa

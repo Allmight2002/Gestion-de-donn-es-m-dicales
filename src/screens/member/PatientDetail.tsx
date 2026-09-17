@@ -17,6 +17,7 @@ import {
 import { withSections } from '../../data/templates';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
+import { addedFieldsForRecord } from '../../domain/recordCompletion';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
@@ -27,6 +28,7 @@ import { useSignedFile } from '../../lib/useSignedFile';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { DiagnosisCoverageNotice, diagnosisCoverageOrNull } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
@@ -370,6 +372,29 @@ export function PatientDetail() {
   const versionFor = (versionId?: string | null): DisplayVersion | undefined =>
     (versionId ? versions[versionId] : undefined) ?? fallbackVersion;
   const patientVersion = versionFor(patient.templateVersionId);
+  // E5 : les variables ajoutees au formulaire de la base APRES l'enregistrement de cette fiche.
+  // C'est une restitution de presentation, calculee avec le meme moteur de regles que le reste
+  // de l'ecran ; elle n'autorise rien et ne cree aucune valeur. Le serveur reste seul juge de ce
+  // qu'il accepte au moment de l'ecriture. Hors ligne, aucun ajout n'est annonce : la politique
+  // hors connexion n'est pas elargie par ce lot.
+  const activeVersion = currentVersionId ? versions[currentVersionId] : undefined;
+  const additionsFor = (
+    scope: 'patient' | 'encounter',
+    recordVersion: DisplayVersion | undefined,
+    data: Record<string, unknown>,
+    encounterType?: string,
+  ): TemplateField[] => {
+    if (offlineView || !activeVersion || !recordVersion || activeVersion === recordVersion) return [];
+    return addedFieldsForRecord({
+      activeFields: activeVersion.ruleFields.filter((field) => field.scope === scope),
+      activeRules: activeVersion.rules,
+      activeSections: activeVersion.sections,
+      recordFieldKeys: new Set(recordVersion.ruleFields.filter((field) => field.scope === scope).map((field) => field.fieldKey)),
+      data,
+      encounterType,
+    });
+  };
+  const patientAdditions = additionsFor('patient', patientVersion, patient.data);
   const patientHidden = patientVersion
     ? hiddenFieldKeys(
       patientVersion.rules,
@@ -478,6 +503,19 @@ export function PatientDetail() {
             patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
           )}
         />
+        <RecordCompletionNotice
+          labels={patientAdditions.map((field) => field.label)}
+          requiredLabels={patientAdditions.filter((field) => field.required).map((field) => field.label)}
+          action={canEdit ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
+              className="mt-2 text-xs font-medium underline"
+            >
+              {t('completion.open')}
+            </button>
+          ) : undefined}
+        />
         {groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout).map((group) => (
           <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">
@@ -518,6 +556,7 @@ export function PatientDetail() {
                 .filter((field) => !encounterHidden.has(field.fieldKey));
               const sectionsForEncounter = encounterVersion?.sections;
               const formulaFields = encounterVersion?.fields ?? encounterFields;
+              const encounterAdditions = additionsFor('encounter', encounterVersion, e.data, e.encounterType);
               return (
               <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
@@ -556,6 +595,19 @@ export function PatientDetail() {
                       e.templateVersionId, encounterVersion?.diagnosisContext, 'encounter', e.data,
                       encounterRuleFields, encounterVersion?.rules ?? [], sectionsForEncounter,
                     )}
+                  />
+                  <RecordCompletionNotice
+                    labels={encounterAdditions.map((field) => field.label)}
+                    requiredLabels={encounterAdditions.filter((field) => field.required).map((field) => field.label)}
+                    action={!offlineView ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/${e.id}/edit`)}
+                        className="mt-2 text-xs font-medium underline"
+                      >
+                        {t('completion.open')}
+                      </button>
+                    ) : undefined}
                   />
                   {groupFieldsBySection(fieldsForEncounter, sectionsForEncounter, encounterVersion?.commonLayout).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">

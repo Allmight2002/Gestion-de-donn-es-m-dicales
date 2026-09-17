@@ -8,6 +8,7 @@ import { useBaseRepository, usePatientRepository, useTemplateRepository } from '
 import type { RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
+import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
 import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -16,6 +17,7 @@ import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from '.
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
 import { useOnline } from '../../data/offline';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
@@ -155,8 +157,22 @@ export function EditPatient() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
 
+  // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
+  // Le formulaire est donc RENDU avec la meme liste que la validation locale : sans cela,
+  // l'ecran afficherait une erreur bloquante pour une variable que l'enregistrement accepte.
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const completion = useMemo(() => recordCompletionSummary(recordContext), [recordContext]);
   const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
+  // Le serveur a decide ce qui est un ajout applicable et ce que le formulaire courant attend ;
+  // l'ecran ne fait que retirer du compte ce qui vient d'etre saisi.
+  const toFillKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
+  const pendingRequiredKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -276,17 +292,25 @@ export function EditPatient() {
           </select>
         </label>
 
+        {/* E5 : les variables ajoutees depuis l'enregistrement de cette fiche, comptees a partir
+            du contexte serveur. Rien n'est prerempli et le statut clinique reste celui choisi. */}
+        <RecordCompletionNotice
+          labels={[...toFillKeys].map(labelOf)}
+          requiredLabels={[...pendingRequiredKeys].map(labelOf)}
+        />
+
         {fields.length === 0 ? (
           <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
         ) : (
           <EncounterFields
-            fields={fields}
+            fields={validationFields}
             values={values}
             hiddenKeys={hidden}
             sections={sections}
             commonLayout={commonLayout}
             rules={validationRules}
             requireComplete={isMissionAccount(profile) || status !== 'draft'}
+            toFillKeys={toFillKeys}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
           />

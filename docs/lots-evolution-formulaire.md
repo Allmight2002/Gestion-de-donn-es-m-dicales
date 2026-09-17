@@ -1,7 +1,7 @@
 # Évolution du formulaire — lots E0 à E7
 
 - Révision : **2026-09-17**.
-- Statut : **E0 documenté ; E1 à E4 implémentés localement et contrôlés ; E5 à E7 à réaliser**.
+- Statut : **E0 documenté ; E1 à E5 implémentés localement et contrôlés ; E6 et E7 à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
 - Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
@@ -22,7 +22,7 @@ Le responsable n’a pas à créer ni rattacher manuellement une version.
 | [E2](#e2) | Application atomique dans la même base | E1 | **Implémenté localement ; non déployé** | `form-preparation-apply.test.ts` (7/7), ACL (3/3), typecheck/lint |
 | [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | **Implémenté localement ; non déployé** | `form-compatible-records.test.ts` (11/11), web E3 (2/2), ACL (3/3), schema/schema:check, typecheck/lint |
 | [E4](#e4) | Éditeur avec versionnage en arrière-plan | E2, contrat E3 stabilisé | **Implémenté localement ; non déployé ; sans preuve navigateur** | `form-preparation-editor-payload.test.ts` (4/4), `FormPreparationEditor.test.tsx` (6/6), `Trash.test.tsx` (9/9), éditeur/aperçu/coquille (5 fichiers), typecheck, lint, build `VITE_USE_SIGNED_READ=true` |
-| [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | À réaliser | Aucune |
+| [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | **Implémenté localement ; non déployé ; sous-lot justification propriétaire ouvert** | `RecordCompletion.test.tsx` (11/11), suites web des écrans touchés, `npm run test:web`, typecheck, lint, preuve navigateur bureau/mobile sur banc fictif |
 | [E6](#e6) | Exports, provenance et historique | E3 | À réaliser | Aucune |
 | [E7](#e7) | Validation intégrée et dossier de preuves | E0 à E6 | À réaliser | Aucune |
 
@@ -269,6 +269,42 @@ statuts cliniques, suppression/restauration et erreurs réseau sans perte de sai
 aléatoire de cinq caractères du §4.6. Garder le nom visible, l’avertissement d’irréversibilité et
 les conditions de purge. Tester génération à l’ouverture, stabilité, renouvellement, validation,
 clavier et absence de double envoi. Ce sous-lot dépend aussi du contrat E1.
+
+**État local au 2026-09-17.** Le contexte E3 d’une fiche est désormais traduit en présentation par
+`src/domain/recordCompletion.ts` : le serveur décide seul ce qui est un ajout applicable et ce que
+le formulaire courant attend ; l’écran ne fait que retirer du compte ce qui vient d’être saisi.
+Chaque ajout encore vide porte la mention « À renseigner » à côté de son libellé, chaque bloc
+affiche « n à renseigner » dans son en-tête, le résumé du formulaire ajoute le total et un bouton
+« Prochaine variable ajoutée » conduit d’un ajout au suivant. Une annonce non bloquante nomme les
+ajouts, isole ceux que le formulaire courant attend et rappelle qu’aucune valeur n’est créée et
+que le statut du dossier ne change pas. `PatientDetail` porte la même annonce pour le patient et
+pour chaque rencontre, avec « Compléter cette fiche » ; hors connexion, aucun ajout n’est annoncé
+et aucun droit de saisie n’est ouvert.
+
+Un ajout obligatoire compte mais ne devient pas une obligation rétroactive : les formulaires sont
+rendus avec la liste déjà utilisée par la validation locale (`fieldsForLocalValidation`), donc
+aucune erreur bloquante n’apparaît pour une variable que l’enregistrement accepte, et une fiche
+`curated` conserve son statut. L’écriture reste le patch compatible E3 : seul le complément saisi
+part, les valeurs et la provenance historiques ne sont jamais renvoyées, et un contexte périmé
+rend `FORM_CONTEXT_CHANGED` avec conservation des saisies et bouton de rechargement.
+
+Preuves : `RecordCompletion.test.tsx` (11/11 — ajout facultatif et obligatoire, patient et
+rencontre, fiche curatée, plusieurs diagnostics avec sous-section, diagnostic sans bloc, absence de
+diagnostic, portée par type de rencontre, contexte périmé, annonce et lien de la fiche),
+`npm run test:web` (777/778 ; `OfflineIntake.test.tsx` a échoué une fois sur un `findByText` dans
+la campagne complète en parallèle, puis a repassé seul et dans une reprise ciblée de dix fichiers —
+flake de rythme, hors périmètre E5), `npm run typecheck`, `npm run lint`. La saisie réelle a été vérifiée au
+navigateur sur `completion-harness.html`, banc local sans serveur monté sur la même fixture
+fictive que les tests : ajouts vides marqués, compteurs par bloc, navigation « Prochaine variable
+ajoutée », enregistrement d’un complément dont le patch ne portait que la clé saisie, statut
+`Finalisé` conservé, rendu bureau et mobile sans débordement ni action hors d’atteinte.
+
+**Limites déclarées.** Aucune cible Supabase locale ou distante n’a été exercée : le banc navigateur
+et les tests web rejouent le contrat E3, ils ne prouvent pas le comportement d’un serveur déployé.
+Le sous-lot **Extension propriétaire** reste ouvert : le contrat serveur existe depuis E1
+(`form_justification_status`, statut d’audit `owner_exempt`), mais les écrans patient, rencontre
+et document demandent toujours un motif obligatoire. La **confirmation de purge** a été livrée avec
+E4 et n’est pas rouverte ici.
 
 ## E6
 

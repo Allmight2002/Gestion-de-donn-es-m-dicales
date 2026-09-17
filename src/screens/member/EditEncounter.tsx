@@ -9,6 +9,7 @@ import { useBaseRepository, usePatientRepository, useTemplateRepository } from '
 import type { FieldChange, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
+import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import {
@@ -20,6 +21,7 @@ import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, fieldApp
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
@@ -96,8 +98,20 @@ export function EditEncounter() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections, applicableFields]);
 
+  // E5 : voir `EditPatient` — un ajout requis est annonce et compte, sans devenir une
+  // obligation retroactive ; le rendu suit donc la meme liste que la validation locale.
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const renderedFields = useMemo(() => fieldsForLocalValidation(applicableFields, recordContext), [applicableFields, recordContext]);
+  const completion = useMemo(() => recordCompletionSummary(recordContext), [recordContext]);
   const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
+  const toFillKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
+  const pendingRequiredKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -350,14 +364,22 @@ export function EditEncounter() {
           </select>
         </label>
 
+        {/* E5 : ajouts du formulaire courant encore vides sur CETTE rencontre. La portee et le
+            type de rencontre sont ceux du contexte serveur ; aucune valeur n'est proposee. */}
+        <RecordCompletionNotice
+          labels={[...toFillKeys].map(labelOf)}
+          requiredLabels={[...pendingRequiredKeys].map(labelOf)}
+        />
+
         <EncounterFields
-          fields={applicableFields}
+          fields={renderedFields}
           values={values}
           hiddenKeys={hidden}
           sections={sections}
           commonLayout={commonLayout}
           rules={validationRules}
           requireComplete={isMissionAccount(profile) || status !== 'draft'}
+          toFillKeys={toFillKeys}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}
         />
