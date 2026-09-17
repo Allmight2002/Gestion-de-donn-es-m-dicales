@@ -1,7 +1,7 @@
 # Évolution du formulaire — lots E0 à E7
 
-- Révision : **2026-09-16**.
-- Statut : **contrat E0 documenté ; implémentation et validations E1 à E7 à réaliser**.
+- Révision : **2026-09-17**.
+- Statut : **E0 documenté ; E1 à E3 implémentés localement et contrôlés ; E4 à E7 à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
 - Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
@@ -18,9 +18,9 @@ Le responsable n’a pas à créer ni rattacher manuellement une version.
 | Lot | Résultat | Prérequis | État | Preuves |
 |---|---|---|---|---|
 | [E0](#e0) | Contrats et classification des changements | Spécification métier | **Documenté le 2026-09-16 ; aucune implémentation** | Inspection code/migrations, `git diff --check`, contrôle des liens |
-| [E1](#e1) | Préparations persistantes et droits serveur | E0 | À réaliser | Aucune |
-| [E2](#e2) | Application atomique dans la même base | E1 | À réaliser | Aucune |
-| [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | À réaliser | Aucune |
+| [E1](#e1) | Préparations persistantes et droits serveur | E0 | **Implémenté localement ; non déployé** | `form-preparations.test.ts` (10/10), snapshot/schema:check |
+| [E2](#e2) | Application atomique dans la même base | E1 | **Implémenté localement ; non déployé** | `form-preparation-apply.test.ts` (7/7), ACL (3/3), typecheck/lint |
+| [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | **Implémenté localement ; non déployé** | `form-compatible-records.test.ts` (11/11), web E3 (2/2), ACL (3/3), schema/schema:check, typecheck/lint |
 | [E4](#e4) | Éditeur avec versionnage en arrière-plan | E2, contrat E3 stabilisé | À réaliser | Aucune |
 | [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | À réaliser | Aucune |
 | [E6](#e6) | Exports, provenance et historique | E3 | À réaliser | Aucune |
@@ -67,16 +67,19 @@ renommage, déplacement, ajout d’option, association diagnostique et changemen
 contrat de purge par code à cinq caractères ; inventaire des motifs exigés par domaine et règle
 d’exception propriétaire. Un déplacement qui change l’applicabilité ne peut pas être classé
 comme pure présentation. Une nouvelle association vers un bloc déjà rempli conserve les valeurs
-de ce bloc. Les erreurs de conflit, de refus sémantique, de fiche et de purge ont un code stable,
-un indicateur de rejeu et des détails bornés.
+de ce bloc. Une modification sémantique peut suivre un parcours distinct : duplication à nouvelle
+clé, convertisseur approuvé, aperçu sans écriture et ajout non destructif des valeurs converties.
+Les erreurs de conflit, de refus sémantique, de fiche et de purge ont un code stable, un indicateur
+de rejeu et des détails bornés.
 
 **Risques et vérification.** Revue des parcours de lecture/écriture réellement exécutés et des
 permissions. Les preuves E0 sont l’inspection en lecture des migrations, contrats et appelants,
 un contrôle de liens documentaires et `git diff --check`; aucun test runtime, navigateur, schéma
-ou cloud n’est déclaré. Les bloqueurs techniques à fermer avant E1 sont listés au §13.2 de la
-spécification. Les conversions complexes de L57 restent hors périmètre : en leur absence,
-refuser clairement l’opération incompatible, conserver la préparation et expliquer la marche à
-suivre.
+ou cloud n’est déclaré. Les tâches techniques à réaliser en E1 sont listées au §13.2 de la
+spécification. Les conversions heuristiques ou silencieuses restent hors périmètre : en
+l’absence d’un convertisseur approuvé, refuser clairement l’opération incompatible, conserver la
+préparation et expliquer la marche à suivre. Le parcours non destructif de duplication/conversion
+est décrit au §5.1 de la spécification et sera implémenté dans les lots serveur concernés.
 
 **Livraison E0 du 2026-09-16 — justification propriétaire et purge.** L’inventaire du §7.4 de la
 spécification couvre les opérations de configuration, patients, rencontres et documents, de
@@ -123,16 +126,26 @@ et inspection du snapshot puis contrôle de cohérence du schéma.
 **Travail et surfaces.** Même responsable pour migration/RPC, couche de données et contrats.
 Calculer l’impact côté serveur, classifier les changements, créer la révision interne,
 copier/remapper sections, rubriques communes, champs et règles, rattacher A et auditer dans une
-transaction. Les associations diagnostiques restent des règles du modèle existant.
+transaction. Pour une modification sémantique, appliquer uniquement le parcours explicite du §5.1 :
+nouvelle clé, mapping/convertisseur approuvé, aperçu puis ajout des valeurs converties sans toucher
+à la source. Les associations diagnostiques restent des règles du modèle existant.
 
 **Acceptation.** Échec à n’importe quelle étape : aucune application partielle. Deux applications
 concurrentes : une seule réussit, l’autre reçoit un conflit. Réponse perdue : le rejeu retrouve
 le résultat de la même opération. Aucune fiche ni valeur n’est créée par l’application.
 Une autre base B liée au même jeu conserve son formulaire jusqu’à sa propre évolution explicite.
+Une migration sémantique non convertible ne supprime ni ne remplace les valeurs de la variable
+source ; les dossiers concernés restent signalés comme à compléter ou `not_convertible`.
 
 **Risques et vérification.** Tests transactionnels, concurrence, idempotence, refus sémantiques,
 provenance et fidélité des copies. Vérifier les groupes UX-16 sans faux blocs cliniques et les
 références entre règles et champs. Contrôles de migrations, RLS et privilèges serveur.
+
+**État local au 2026-09-16.** La migration E2 ajoute `apply_form_preparation` et ses contrôles
+de provenance, recalcule l’impact côté serveur, copie les métadonnées dans une révision technique
+autonome, remappe les sections/rubriques UX-16/règles, puis rattache uniquement la base A. Les
+contrôles ciblés PostgreSQL embarqué, snapshot, ACL, typecheck et lint sont passés ; aucune preuve
+navigateur, cible distante ou déploiement n’est déclarée.
 
 ## E3
 
@@ -156,6 +169,24 @@ ouverte reçoit un contexte compatible ou un conflit explicite conservant les in
 formules, diagnostics multiples ou sans bloc, droits révoqués et payload d’un ancien client.
 Un ajout d’association ne vide jamais un bloc déjà renseigné. Vérifier le contexte signé réel,
 pas uniquement des objets simulés dans les tests React.
+
+**État local au 2026-09-17.** La migration additive `20260916140000_form_compatible_records.sql`
+ajoute la révision de fiche des rencontres, la provenance des valeurs et les RPC de lecture et de
+complément pour les patients et les rencontres. Le contexte est calculé par le serveur sous
+`SECURITY DEFINER`, lié à la base et à la fiche, puis protégé par une empreinte de contexte ; il
+n’embarque aucune identité. La fusion du patch conserve les clés historiques, n’autorise que les
+clés et portées validées, refuse les conversions implicites et revalide droits, définition,
+révision, empreinte et idempotence. Les ajouts requis apparaissent comme `not_defined`/`empty` et
+ne modifient pas rétroactivement le statut clinique ; couverture diagnostique et complétude sont
+calculées séparément.
+
+Les tests PostgreSQL embarqué couvrent patients et rencontres, champs masqués, valeurs historiques,
+association vers un bloc déjà renseigné, diagnostics unique/multiples/absent/sans bloc, concurrence,
+anciens payloads, réutilisation d’opération, contexte altéré, portée/conversion, révocation et fuite
+d’identité. Les tests web ciblés couvrent les deux écrans avec dépôt de brouillons disponible et
+vérifient le chemin E3 direct ; le chemin hors-ligne reste inchangé. Le contexte réel est exercé par
+les RPC SQL, mais aucun navigateur réel, Edge de lecture signée de contexte ou environnement distant
+n’est validé par ce lot ; l’empreinte E3 ne doit pas être présentée comme une URL signée de fichier.
 
 ## E4
 

@@ -1,8 +1,9 @@
 # Spécification — évolution fluide du formulaire et complétion des dossiers existants
 
-- Révision : **2026-09-16** (contrat E0 fixé : états, révision/empreinte, compatibilité,
-  provenance, justification propriétaire et purge).
-- Statut : **contrat E0 documenté ; implémentation et validations à réaliser**.
+- Révision : **2026-09-17** (contrat E0 fixé ; E1 à E3 implémentés et contrôlés localement : états,
+  révision/empreinte, compatibilité, provenance, application atomique, justification propriétaire
+  et purge).
+- Statut : **contrat E0 documenté ; E1 à E3 implémentés localement et non déployés ; E4 à E7 à réaliser**.
 - Origine : retour d’usage sur le versionnage des jeux de variables. Le responsable d’une base
   ne comprend pas pourquoi une variable ou une règle devient impossible à modifier, et ne doit
   pas avoir à créer un nouveau jeu de variables ni une nouvelle base pour faire évoluer sa
@@ -12,12 +13,12 @@
   juridique et éthique du projet n’est pas validé.
 
 Cette décision complète UX-14/UX-16, L51 à L56 et le modèle de version décrit dans
-[`architecture.md`](architecture.md). Elle **ne modifie pas encore le code ni le schéma**.
-Tant que les lots ci-dessous ne sont pas livrés, les gardes actuelles des versions publiées ou
-utilisées restent actives. Elle précise le comportement cible qui remplacera l’exposition du
-versionnage technique dans le parcours courant. Les sections qui décrivent le contrat cible ne
-constituent donc pas une preuve d’implémentation : le code et les migrations observés restent la
-référence de l’état présent, documenté au §13.
+[`architecture.md`](architecture.md). Les lots E1 à E3 disposent désormais d’une implémentation
+locale additive (migrations, RPC, couche de données et contrôles ciblés), non appliquée à une cible
+distante. Les gardes actuelles des versions publiées ou utilisées restent actives pour les autres
+parcours. Elle précise le comportement cible qui remplacera l’exposition du versionnage technique
+dans le parcours courant ; le code et les migrations observés restent la référence de l’état
+présent, documenté au §13.
 
 ## 1. Décision produit
 
@@ -37,6 +38,14 @@ La promesse utilisateur est la suivante :
 > Je peux faire évoluer le formulaire de ma base, puis renseigner cette nouvelle information
 > pour les patients déjà présents. L’application garde l’historique et m’avertit seulement quand
 > une modification pourrait changer le sens d’une donnée existante.
+
+« Préparer l’évolution » signifie uniquement préparer une nouvelle **définition du formulaire**
+de la base : par exemple ajouter un champ, le déplacer ou modifier une règle dans une copie de
+travail liée à A. Cela ne prépare ni ne modifie les données d’un patient. Tant que le responsable
+n’a pas confirmé l’application, le formulaire actif de A reste inchangé ; l’aperçu lit la
+préparation sans créer de fiche, de rencontre ou de valeur. Après application, A utilise la
+nouvelle définition et les fiches existantes peuvent recevoir les compléments autorisés. B reste
+inchangée.
 
 Le versionnage reste une propriété technique et scientifique du système. Il apparaît uniquement
 dans l’historique, les exports de dictionnaire et les messages d’impact nécessaires à une
@@ -82,7 +91,9 @@ dans une seule cellule vide.
 
 ### Hors périmètre de cette décision
 
-- Convertir automatiquement une valeur existante vers un autre type ou une autre unité.
+- Convertir silencieusement une valeur existante vers un autre type ou une autre unité. Une
+  migration sémantique explicite, avec nouvelle variable, aperçu et conservation de l’ancienne,
+  est décrite au §5.1 mais reste un parcours distinct de l’évolution additive.
 - Réinterpréter silencieusement une réponse historique selon une nouvelle règle.
 - Remplir automatiquement une nouvelle variable avec une valeur supposée.
 - Modifier une fiche à laquelle l’utilisateur n’a plus accès.
@@ -246,10 +257,10 @@ ne change pas la compatibilité des anciennes valeurs.
 | Déplacer une variable en conservant clé, type, scope, `encounter_types` et applicabilité | `additive` / `presentation` | Autorisé | Valeurs conservées ; seul l’ordre ou le regroupement change |
 | Ajouter une option à une liste | `additive` | Autorisé après validation du référentiel | Les anciennes valeurs restent valides |
 | Ajouter une association diagnostic → bloc qui n’altère aucune interprétation existante | `additive` | Autorisé avec aperçu des fiches concernées | Bloc disponible si le diagnostic correspond, sans valeur créée |
-| Modifier une clé interne, un type, une unité ou un scope | `semantic` | Refus dans le parcours additif ; migration explicite séparée | Aucune conversion silencieuse |
-| Déplacer une variable en changeant son scope, ses types de rencontre ou son applicabilité | `semantic` | Refus dans le parcours additif ; migration explicite séparée | La portée historique ne change pas |
-| Renommer ou supprimer un code d’option, ou retirer une option déjà utilisée | `semantic` | Refus ou migration explicite | Les valeurs historiques restent lisibles |
-| Changer le sens d’une règle, d’une formule ou d’une association diagnostique existante | `semantic` | Refus dans le parcours additif ; analyse d’impact séparée | Les anciennes valeurs ne sont pas réinterprétées |
+| Modifier une clé interne, un type ou une unité | `semantic` | Refus dans le parcours additif ; duplication et migration explicite possibles | L’ancienne variable et ses valeurs restent intactes |
+| Changer un scope, des types de rencontre ou une applicabilité | `semantic` | Refus dans le parcours additif ; nouvelle variable et migration explicite possibles | La portée historique ne change pas |
+| Renommer ou supprimer un code d’option, ou retirer une option déjà utilisée | `semantic` | Refus dans le parcours additif ; mapping explicite vers une nouvelle variable | Les anciennes valeurs et codes restent lisibles |
+| Changer le sens d’une règle, d’une formule ou d’une association diagnostique existante | `semantic` | Refus dans le parcours additif ; migration contrôlée si un convertisseur est approuvé | Les anciennes valeurs ne sont pas réinterprétées |
 | Retirer une variable du formulaire courant | `semantic` (ou `unsupported` si aucune stratégie d’historique n’est définie) | Refus dans le parcours additif ; décision explicite | La saisie courante peut la masquer plus tard, mais l’historique et l’export la conservent |
 
 Une variable obligatoire ajoutée ne modifie pas automatiquement `validation_status` des fiches.
@@ -265,6 +276,41 @@ Le résultat de classification comporte au minimum `classification` (`additive`,
 `unsupported`), `subtype` éventuel, les changements détectés, les fiches potentiellement
 concernées et la raison d’un refus. Le serveur ne convertit pas une préparation sémantique en
 préparation additive par simple renommage de clé ou de libellé.
+
+### 5.1 Migration sémantique explicite et non destructive
+
+Lorsqu’un changement de type, d’unité, de portée, de code d’option, de formule ou de sens est
+nécessaire, l’utilisateur peut demander une **migration sémantique** distincte du parcours
+additif. La migration ne modifie jamais la variable d’origine :
+
+1. Le serveur duplique la définition sous une nouvelle clé interne stable, par exemple
+   `score_v2`, et conserve un lien `derived_from = score` ainsi que les deux révisions de
+   définition.
+2. L’utilisateur indique ou confirme le mapping et le convertisseur autorisé. Le convertisseur
+   est versionné, déterministe et exécuté côté serveur ; aucun code arbitraire fourni par le
+   navigateur n’est exécuté.
+3. L’aperçu non écrivant montre le rendu de la nouvelle définition et, lorsque les droits le
+   permettent, une comparaison source/cible pour des valeurs fictives ou autorisées. Il calcule
+   aussi le nombre de valeurs convertibles, vides, non applicables, non convertibles, hors limites
+   et déjà migrées. Les exemples de valeurs ne sont retournés que si l’utilisateur possède le droit
+   de les voir ; le compteur agrégé ne révèle pas l’identité.
+4. L’application exige une confirmation explicite. Elle crée la nouvelle variable et ajoute les
+   valeurs converties dans celle-ci, avec une provenance `origin = semantic_migration`, le
+   convertisseur, sa version, la variable source, l’auteur, la date et l’opération. La valeur
+   source, son audit et son export historique ne sont jamais écrasés.
+5. Une valeur non convertible reste dans l’ancienne variable et reste lisible. La nouvelle
+   variable reste vide pour cette fiche, avec un résultat de migration `not_convertible` ; si elle
+   est obligatoire, la fiche conserve un état séparé « à compléter ». Aucune conversion partielle
+   ne doit supprimer ou remplacer une donnée source.
+6. La création de la révision, du lien entre variables, du journal de migration et des nouvelles
+   valeurs validées est atomique. En cas d’échec technique ou de conflit de révision, aucune
+   modification de structure ni de valeur nouvelle n’est conservée.
+
+Appeler `apply` sur une préparation `semantic` reste interdit et retourne
+`FORM_SEMANTIC_MIGRATION_REQUIRED`. Le parcours dédié peut proposer `preview_migration` puis
+`apply_migration`, avec sa propre clé d’opération et sa propre vérification de révision. L’absence
+d’un convertisseur sûr, d’un mapping complet ou d’une validation de la nouvelle variable bloque
+l’application mais ne supprime pas la préparation ni la donnée source.
 
 ## 6. Conservation des données et des versions
 
@@ -334,7 +380,7 @@ Les transitions persistées sont les suivantes :
 | État | Signification et transitions autorisées |
 |---|---|
 | `active` | Préparation modifiable, ouverte ou sauvegardée ; une modification qui invalide un aperçu revient ici. |
-| `ready` | Aperçu serveur réussi, classification additive et contrôles passés ; application possible tant que la révision attendue reste actuelle. |
+| `ready` | Aperçu serveur réussi et contrôles passés ; une préparation additive est prête pour `apply`, une préparation sémantique est prête uniquement pour `apply_migration` avec son convertisseur approuvé. |
 | `applied` | Application atomique réussie ; état terminal avec reçu et révision produite. |
 | `discarded` | Abandon explicite sans écriture clinique ni changement de formulaire ; état terminal. |
 | `conflict` | Révision, empreinte ou opération devenue incompatible ; les entrées locales sont conservées et aucune application n’est permise avant une reprise explicite. |
@@ -379,9 +425,10 @@ remplace jamais silencieusement une révision périmée.
 ### 7.1.2 Interfaces et brouillons existants
 
 Le contrat partagé expose les opérations conceptuelles `open_or_resume`, `read`, `save`, `preview`,
-`apply` et `discard`. Chaque réponse retourne l’état réel, la révision/empreinte courante, le
-résultat de classification et un reçu éventuel. `preview` ne crée ni fiche, ni valeur, ni révision
-active ; `apply` est la seule transition qui rattache une nouvelle définition à la base.
+`preview_migration`, `apply`, `apply_migration` et `discard`. Chaque réponse retourne l’état réel,
+la révision/empreinte courante, le résultat de classification et un reçu éventuel. `preview` et
+`preview_migration` ne créent ni fiche, ni valeur, ni révision active ; `apply` et
+`apply_migration` sont les seules transitions qui rattachent une nouvelle définition à la base.
 
 Le `work_draft` actuel est un brouillon clinique : ses types sont
 `patient_create`, `patient_update`, `encounter_create` et `encounter_update`, son payload contient
@@ -403,9 +450,10 @@ Le serveur doit fournir les opérations suivantes, sous RLS et verrou optimiste 
 - abandonner explicitement une préparation non appliquée ;
 - lister l’historique des applications sans exposer de données d’identité non autorisées.
 
-Seule une préparation additive `ready` peut être appliquée par ce parcours. Une préparation
-`semantic` ou `unsupported` reste conservée pour analyse et retourne
-`FORM_SEMANTIC_MIGRATION_REQUIRED` ou `FORM_CHANGE_UNSUPPORTED` ; elle ne convertit aucune valeur.
+Seule une préparation additive `ready` peut être appliquée par `apply`. Une préparation
+`semantic` ou `unsupported` appelée par ce parcours retourne `FORM_SEMANTIC_MIGRATION_REQUIRED`
+ou `FORM_CHANGE_UNSUPPORTED` ; elle ne convertit aucune valeur. La préparation sémantique ne peut
+passer par `apply_migration` qu’après aperçu, mapping et convertisseur approuvé au §5.1.
 L’application atomique doit créer la nouvelle révision technique, recopier les métadonnées et
 règles validées, produire les métadonnées de provenance, mettre à jour le formulaire actif de
 **la même base A**, et enregistrer l’audit. Une erreur laisse la base et la préparation dans leur
@@ -567,6 +615,8 @@ Les codes cibles sont :
 | `FORM_PREPARATION_CONFLICT` | Révision/empreinte de base périmée ; relire et comparer explicitement. |
 | `FORM_PREPARATION_OPERATION_CONFLICT` | Même clé d’opération avec un contenu différent ; ne pas appliquer la seconde intention. |
 | `FORM_SEMANTIC_MIGRATION_REQUIRED` | Changement sémantique détecté ; conserver la préparation, refuser l’application additive. |
+| `FORM_MIGRATION_CONVERTER_UNAVAILABLE` / `FORM_MIGRATION_MAPPING_INVALID` | Migration explicite impossible ou mapping incomplet ; ne rien convertir et conserver la préparation. |
+| `FORM_MIGRATION_CONFLICT` | Révision ou résultat de migration concurrent ; conserver la variable source et les entrées locales. |
 | `FORM_CHANGE_UNSUPPORTED` | Changement hors contrat, par exemple suppression sans stratégie historique. |
 | `FORM_RULE_INVALID` | Règle ou association incompatible avec les validations existantes. |
 | `FORM_CONTEXT_CHANGED` | Contexte de fiche ou de définition modifié depuis la lecture. |
@@ -685,8 +735,10 @@ rencontres, diagnostics couverts et non couverts, variables communes, blocs et s
    sans créer de valeur ni de patient/rencontre supplémentaire.
 6. Un diagnostic couvert, plusieurs diagnostics, un diagnostic sans bloc, un cas mixte et une
    absence de diagnostic produisent les résultats attendus du moteur existant.
-7. Une modification de type, scope, clé, option ou formule déclenche l’assistant ou le refus
-   prévu ; aucune valeur historique n’est convertie en silence.
+7. Une modification de type, scope, clé, option ou formule est classée sémantique ; le parcours
+   additif la refuse, tandis qu’une migration explicite peut dupliquer la variable, prévisualiser
+   les conversions et ajouter les résultats validés sans écraser aucune valeur historique. Les
+   valeurs non convertibles restent dans la variable source et sont signalées.
 8. Deux responsables appliquant une préparation concurrente obtiennent un conflit explicite et
    aucune perte d’inputs.
 9. Une réponse réseau perdue puis rejouée n’applique la préparation qu’une fois.
@@ -713,7 +765,8 @@ rencontres, diagnostics couverts et non couverts, variables communes, blocs et s
 
 Le [plan détaillé E0 à E7](lots-evolution-formulaire.md) est la référence d’exécution et de suivi :
 surfaces, dépendances, critères de sortie, risques, vérifications et prompt de reprise.
-Tous les lots restent **à réaliser**. Le tableau ci-dessous en donne la synthèse.
+Les lots **E0 à E3 sont documentés et contrôlés localement** ; E4 à E7 restent à réaliser. Le tableau
+ci-dessous en donne la synthèse.
 
 Les lots couplés doivent avoir un seul responsable d’écriture pour les interfaces, migrations,
 RPC et appelants.
@@ -740,7 +793,8 @@ constitue pas une preuve de fonctionnement déployé.
 - Une nouvelle variable est complétable dans les dossiers déjà présents, vide au départ.
 - Une nouvelle association diagnostique peut rendre un bloc disponible sans remplir ce bloc.
 - L’historique protège les anciennes valeurs ; il ne bloque pas les compléments compatibles.
-- Les transformations sémantiques restent explicites et contrôlées.
+- Les transformations sémantiques restent explicites et contrôlées : une nouvelle variable peut
+  être créée avec un convertisseur approuvé et un aperçu, sans jamais écraser la variable source.
 - Le versionnage technique est automatique et secondaire dans l’interface.
 - Le futur parcours de reprise complexe de dossiers, notifications et conversions reste séparé
   du présent lot, conformément au cadrage L57.
@@ -762,35 +816,33 @@ contrats exécutés du dépôt :
 | Exports | `supabase/functions/generate-export/exportContract.ts`, `supabase/functions/generate-export/handler.ts`, `src/data/signedRead.ts` | Les profils, identifiants et codes de valeur manquante existent ; le format actuel ne porte pas encore de triplet explicite `not_defined`/`empty`/`not_applicable` par valeur. |
 | Motifs et purge | `src/screens/member/DeleteWithReason.tsx`, `BaseSettings.tsx`, `Trash.tsx`, `src/data/bases.ts`, `src/data/mission.ts`, `supabase/migrations/20260729104500_mission_accounts.sql` | Dispense propriétaire à appliquer seulement aux actions allowlistées ; accès à l’identité, suppression de base et purge restent séparés. La purge actuelle ressaisit le nom et transmet une clé d’opération, sans challenge à cinq caractères. |
 
-Ces constats sont des observations du code et des migrations versionnés, pas des déclarations de
-fonctionnalité livrée. Le snapshot existant `docs/schema-etat-final.md` n’a pas été régénéré.
+Ces constats décrivent l’état observé au cadrage E0 et ne constituent pas, à eux seuls, une preuve
+de fonctionnalité déployée. Le snapshot `docs/schema-etat-final.md` a depuis été régénéré pour les
+migrations locales E1 à E3 ; les preuves ciblées sont suivies dans `lots-evolution-formulaire.md`.
 
 ### 13.2 Bloqueurs techniques à fermer avant E1
 
-Le besoin produit est décidé par les §§5 à 7. Les points suivants restent des choix de conception
-et de vérification nécessaires avant une migration sûre ; ils ne doivent pas être résolus par une
-inférence côté interface :
+Le besoin produit est décidé par les §§5 à 7. Les éléments ci-dessous ne sont donc pas six
+questions à renvoyer à l’utilisateur : ce sont les décisions déjà prises et les tâches techniques
+qu’E1 doit réaliser avant d’écrire une migration sûre.
 
-1. Arrêter la forme physique d’un stockage de préparation dédié ou d’un type strictement isolé,
-   avec un chemin d’application distinct du `commit_work_draft` clinique.
-2. Définir dans le serveur la source du jeton `expected_revision`, l’algorithme canonique de
-   `expected_fingerprint` et la manière de dériver une révision propre à A sans modifier B.
-3. Garantir le stockage et la restitution de la provenance par définition et par valeur, ainsi
-   que le calcul des trois états d’absence dans les lectures et exports, sans réidentifier un
-   dossier à un utilisateur non autorisé.
-4. Définir la compatibilité avec les appels existants : erreurs `DRAFT_*`, `CONFLIT_VERSION`,
-   `CLIENT_UPDATE_REQUIRED`, rejoués hors connexion, motifs déjà en file et suppression des
-   replis textuels comme `Base supprimee` ou `Demande supprimee` là où l’allowlist propriétaire
-   assume l’absence de motif.
-5. Arrêter le protocole serveur du challenge de purge, son expiration, le hash éventuel, la
-   liaison à la session de dialogue et la conservation de l’idempotence de l’Edge, avec RLS,
-   `SECURITY DEFINER`, allowlist et audit revus.
-6. Confirmer que le parcours additif refuse toute préparation `semantic` et qu’une éventuelle
-   migration sémantique fera l’objet d’un contrat séparé ; E1 ne doit pas en inventer la
-   conversion.
+| Décision E0 | Réalisation attendue en E1 |
+|---|---|
+| Une table dédiée aux préparations de formulaire | Créer le stockage, sa RLS, son audit et un chemin d’application qui ne peut pas appeler `commit_work_draft`. |
+| Une révision propre à chaque base et une empreinte canonique | Choisir les colonnes exactes, l’algorithme de canonisation, l’incrément atomique et le contrôle qui garantit qu’une évolution de A ne change jamais B. |
+| États de valeur et provenance explicites | Implémenter le calcul/stockage de `not_defined`, `empty`, `not_applicable`, `present` et `explicit_missing`, avec provenance par définition et par valeur, sans fuite d’identité. |
+| Compatibilité des clients et de l’hors-connexion | Conserver les motifs et clés déjà en file, traduire les erreurs existantes dans l’enveloppe E0 et remplacer les replis textuels par un statut structuré lorsque l’absence de motif est autorisée. |
+| Challenge de purge à cinq caractères | Implémenter génération, durée de vie, invalidation à la réouverture, vérification serveur, RLS, audit et idempotence de l’Edge. |
+| Migration sémantique non destructive | Implémenter un duplicata à nouvelle clé, un mapping et un convertisseur serveur approuvés, un aperçu sans écriture, puis une application explicite qui ajoute les valeurs converties sans toucher à la variable source. |
 
-Tant que ces points ne sont pas fermés et vérifiés, E1 ne doit pas créer de migration, RPC ou
-   adaptateur qui simule ces garanties.
+Le dernier point fixe aussi le comportement des valeurs non convertibles : elles restent dans la
+variable source, la nouvelle variable reste vide pour la fiche concernée et le résultat
+`not_convertible` est exposé. E1/E2 doivent définir le registre des convertisseurs, les mappings,
+les contrôles de révision et l’atomicité ; ils ne doivent pas inventer de conversion heuristique ou
+silencieuse.
+
+E1 peut donc démarrer avec ce contrat. Les « points à fermer » désignent la traduction de ces
+décisions en schéma, RPC, RLS et tests, pas une nouvelle fonctionnalité à simuler dans l’interface.
 
 ### 13.3 Preuves de travail et limites
 

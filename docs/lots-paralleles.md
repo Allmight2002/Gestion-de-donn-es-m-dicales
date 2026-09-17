@@ -127,14 +127,15 @@ analytique explicite la justifie.
 > et les preuves attendues sont dans
 > [`l61-liste-patients-recherche-tri-identite.md`](l61-liste-patients-recherche-tri-identite.md).
 
-> **Révision du 2026-09-16 — évolution fluide du formulaire, contrat E0 documenté et réalisation
-> à venir.**
+> **Révision du 2026-09-17 — évolution fluide du formulaire, contrat E0 documenté et E1 à E3
+> implémentés localement, non déployés.**
 > Huit lots, **E0 à E7**, rendent le versionnage technique secondaire et permettent de compléter
 > les patients et rencontres existants dans la même base. Le [plan détaillé](lots-evolution-formulaire.md)
 > porte les contrats, critères, risques et vérifications. E0 fixe désormais les états de préparation,
 > la révision/empreinte attendue, la classification additive/sémantique, le contexte exportable
 > `not_defined`/`empty`/`not_applicable`, la provenance, les erreurs structurées et le cas A/B ;
-> E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7 ;
+> E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7 ; E3 couvre désormais localement la lecture et le
+> complément compatibles des patients et rencontres, avec contrôles PostgreSQL et web ciblés ;
 > E4/E6 peuvent être séparés après E3 si leurs surfaces restent distinctes. Le propriétaire de la
 > base n’a pas de justification textuelle obligatoire pour les opérations autorisées ; l’audit,
 > les droits et les confirmations de purge par code à cinq caractères restent contrôlés. Aucune
@@ -226,7 +227,7 @@ analytique explicite la justifie.
 | **E0** | Évolution du formulaire : contrats, compatibilité et classification des changements | `docs/spec-evolution-formulaire.md`, contrats de version, données et export | **contrat documenté le 2026-09-16 ; avant E1** ; aucune migration ni implémentation |
 | **E1** | Évolution du formulaire : préparations persistantes, droits et audit | migration additive, RPC/repository de préparation, RLS/ACL, tests DB | **après E0** ; propriétaire unique des contrats serveur |
 | **E2** | Évolution du formulaire : application atomique dans la même base | migration/RPC d’application, copie des sections/champs/règles, idempotence | **après E1** ; jamais avec une autre copie de version |
-| **E3** | Évolution du formulaire : lecture/écriture compatible des dossiers existants | `patients.ts`, formulaires patients/rencontres, validation serveur, tests | **après E2** ; jamais avec un lot modifiant les mêmes RPC patients |
+| **E3** | Évolution du formulaire : lecture/écriture compatible des dossiers existants | `patients.ts`, formulaires patients/rencontres, validation serveur, tests | **implémenté localement après E2 ; non déployé** ; jamais avec un lot modifiant les mêmes RPC patients |
 | **E4** | Évolution du formulaire : éditeur, diagnostic, aperçu et versionnage invisible | `TemplateVersionEditor.tsx`, éditeurs de structure/règles/diagnostic, i18n | **après E2 et E3** ; coordonner UX-16, L59/L60 et L67 |
 | **E5** | Évolution du formulaire : complétion des patients et rencontres | `SectionedFields.tsx`, `EditPatient.tsx`, formulaires de rencontre, i18n | **après E3 et E4** ; jamais avec un autre lot ouvrant ces fiches |
 | **E6** | Évolution du formulaire : exports, provenance et historique | contrat d’export, dictionnaire, historique, tests de cloisonnement | **après E3** ; préserver les profils d’export |

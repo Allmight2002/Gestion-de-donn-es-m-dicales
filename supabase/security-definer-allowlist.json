@@ -131,9 +131,13 @@
         "soft_delete_encounter(p_encounter_id uuid, p_reason text)",
         "soft_delete_patient(p_patient_id uuid, p_reason text)",
         "submit_curation_request(p_task_id uuid)",
+        "read_encounter_form_context(p_base_id uuid, p_encounter_id uuid)",
+        "read_patient_form_context(p_base_id uuid, p_patient_id uuid)",
         "update_encounter(p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone)",
+        "update_encounter_compatible(p_base_id uuid, p_encounter_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text)",
         "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text)",
         "update_patient(p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint)",
+        "update_patient_compatible(p_base_id uuid, p_patient_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text)",
         "update_patient_identity(p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint)"
       ]
     },

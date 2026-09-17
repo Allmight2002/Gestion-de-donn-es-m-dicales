@@ -59,9 +59,11 @@ describe('inventaire SECURITY DEFINER', () => {
     // internes et les tables restent fermés aux clients.
     // +1 E2 : application atomique ; la table de contexte, les helpers de copie et le
     // rattachement cross-template restent fermes aux clients.
-    expect(signatures).toHaveLength(142);
+    // +4 E3 : lectures de contexte et compléments atomiques patient/rencontre. Le serveur
+    // calcule l'applicabilité, protège l'empreinte et contrôle portée, révision et provenance.
+    expect(signatures).toHaveLength(146);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(154);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(158);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260916130000_form_preparation_apply.sql`
-- Tables : 55 · Policies RLS : 64 · Triggers : 82 · Fonctions : 362
+- Dernière migration incluse : `20260916140000_form_compatible_records.sql`
+- Tables : 57 · Policies RLS : 64 · Triggers : 83 · Fonctions : 380
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -400,6 +400,7 @@ Triggers :
 | deleted_at | timestamp with time zone | oui |  |
 | deleted_by | uuid | oui |  |
 | deletion_reason | text | oui |  |
+| record_revision | bigint | non | `1` |
 
 Policies :
 - `e_select` (SELECT) — USING (has_base_access(base_of_patient(patient_id)) AND (deleted_at IS NULL))
@@ -410,6 +411,7 @@ Triggers :
 - `trg_encounter_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
 - `trg_encounter_no_downgrade` — BEFORE UPDATE → `guard_no_curated_downgrade()`
 - `trg_encounter_recompute_age` — BEFORE UPDATE → `recompute_encounter_age()`
+- `trg_encounter_record_revision` — BEFORE UPDATE → `bump_encounter_record_revision()`
 - `trg_encounter_structural_immutable` — BEFORE UPDATE → `guard_structural_immutable()`
 - `trg_encounter_updated` — BEFORE UPDATE → `set_updated_at()`
 - `trg_refresh_patient_inclusion_date` — AFTER INSERT/UPDATE → `trg_refresh_patient_inclusion_date()`
@@ -850,6 +852,37 @@ Triggers :
 - `trg_raw_submission_cross_sectional_rejected` — BEFORE INSERT/UPDATE → `reject_cross_sectional_encounter_submission()`
 - `trg_xbase_submission` — BEFORE INSERT/UPDATE → `guard_xbase_submission()`
 
+### record_field_provenance · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| record_kind | text | non |  |
+| record_id | uuid | non |  |
+| field_key | text | non |  |
+| origin | text | non |  |
+| captured_by | uuid | oui |  |
+| captured_at | timestamp with time zone | non | `clock_timestamp()` |
+| definition_revision | uuid | non |  |
+| operation_id | uuid | oui |  |
+| value_fingerprint | text | non |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
+### record_form_operation · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| actor_id | uuid | non |  |
+| operation_id | uuid | non |  |
+| record_kind | text | non |  |
+| record_id | uuid | non |  |
+| request_fingerprint | text | non |  |
+| receipt | jsonb | non |  |
+| created_at | timestamp with time zone | non | `clock_timestamp()` |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ### release_component_state · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -1209,7 +1242,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | assert_common_layout_access | p_version_id uuid | DEFINER | plpgsql |
 | assert_common_layout_read_access | p_version_id uuid | DEFINER | plpgsql |
 | assert_contains_any_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
-| assert_curated_complete | — | INVOKER | plpgsql |
+| assert_curated_complete | — | DEFINER | plpgsql |
 | assert_data_valid | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_diagnosis_client | — | INVOKER | plpgsql |
 | assert_diagnosis_configuration | p_version uuid, p_config jsonb | INVOKER | plpgsql |
@@ -1239,6 +1272,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | begin_mission_credential_regeneration | p_operation_id uuid, p_actor_id uuid, p_access_id uuid, p_password_ciphertext text, p_password_nonce text, p_request_fingerprint text | DEFINER | plpgsql |
 | bump_base_form_revision | — | DEFINER | plpgsql |
 | bump_curation_draft_revision | — | INVOKER | plpgsql |
+| bump_encounter_record_revision | — | DEFINER | plpgsql |
 | bump_patient_row_version | — | INVOKER | plpgsql |
 | calculated_field_rule_conflicts | p_version_id uuid | INVOKER | sql |
 | can_create_structured_data | p_base uuid | DEFINER | sql |
@@ -1337,6 +1371,19 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_rebind_allowed | p_base_id uuid, p_old_version_id uuid, p_new_version_id uuid | DEFINER | sql |
 | form_preparation_receipt | p_row form_preparation, p_operation_id uuid, p_operation_kind text | DEFINER | sql |
 | form_preparation_source_definition | p_version_id uuid | DEFINER | sql |
+| form_record_assert_json_type | p_field template_field, p_value jsonb | DEFINER | plpgsql |
+| form_record_assert_known_data | p_historical_version uuid, p_active_version uuid, p_scope text, p_data jsonb | DEFINER | plpgsql |
+| form_record_assert_no_changed_hidden_values | p_active_version uuid, p_scope text, p_old jsonb, p_new jsonb | DEFINER | plpgsql |
+| form_record_assert_patch | p_historical_version uuid, p_active_version uuid, p_scope text, p_patch jsonb, p_encounter_type text | DEFINER | plpgsql |
+| form_record_assert_read_access | p_base_id uuid | DEFINER | plpgsql |
+| form_record_assert_write_access | p_base_id uuid, p_created_by uuid, p_existing_status text, p_requested_status text | DEFINER | plpgsql |
+| form_record_context_fingerprint | p_record_kind text, p_record_id uuid, p_record_revision bigint, p_base_id uuid, p_active_revision bigint, p_definition_revision uuid, p_data jsonb | DEFINER | sql |
+| form_record_context_json | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
+| form_record_definition | p_version uuid | DEFINER | sql |
+| form_record_error | p_code text, p_reason text | DEFINER | plpgsql |
+| form_record_field_compatible | p_historical template_field, p_active template_field | DEFINER | sql |
+| form_record_merge_legacy_payload | p_historical_version uuid, p_active_version uuid, p_scope text, p_existing jsonb, p_payload jsonb | DEFINER | plpgsql |
+| form_record_value_fingerprint | p_value jsonb | DEFINER | sql |
 | gen_random_bytes | integer | INVOKER | c |
 | gen_random_uuid | — | INVOKER | c |
 | gen_salt | text | INVOKER | c |
@@ -1463,7 +1510,9 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | purge_client_error_log | — | DEFINER | plpgsql |
 | purge_work_drafts | — | DEFINER | plpgsql |
 | quarantine_reconciliation_candidates | p_limit integer | DEFINER | sql |
+| read_encounter_form_context | p_base_id uuid, p_encounter_id uuid | DEFINER | plpgsql |
 | read_form_preparation | p_preparation_id uuid | DEFINER | plpgsql |
+| read_patient_form_context | p_base_id uuid, p_patient_id uuid | DEFINER | plpgsql |
 | recompute_encounter_age | — | DEFINER | plpgsql |
 | reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
 | record_client_error | p_occurred_at timestamp with time zone, p_name text, p_message text, p_stack text, p_component_stack text, p_context text, p_app_version text, p_severity text | DEFINER | plpgsql |
@@ -1538,8 +1587,10 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | trg_refresh_patient_inclusion_date | — | DEFINER | plpgsql |
 | update_base_access_permissions | p_access_id uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | plpgsql |
 | update_encounter | p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
+| update_encounter_compatible | p_base_id uuid, p_encounter_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
+| update_patient_compatible | p_base_id uuid, p_patient_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text | DEFINER | plpgsql |
 | update_patient_identity | p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
