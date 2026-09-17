@@ -67,6 +67,7 @@ export function isRefreshRequiredError(e: unknown): boolean {
     ? String((e as Record<string, unknown>).message ?? '') : String(e ?? '');
   return /^(block_hidden_value|contains_any_hidden_value|conflict_version)$/.test(code)
     || code === 'DRAFT_CONTEXT_CHANGED' || code === 'DRAFT_CONFLICT'
+    || code === 'FORM_CONTEXT_CHANGED' || code === 'FORM_RECORD_CONFLICT'
     || action === 'refresh_required' || hint === 'refresh_required'
     || /CONFLIT_VERSION/i.test(message);
 }
@@ -78,6 +79,21 @@ export function errorMessage(e: unknown, fallback: string): string {
   }
   if (code === 'conflict_version') {
     return 'La fiche a été modifiée entre-temps. Vos saisies sont conservées : rechargez les données avant de recommencer.';
+  }
+  if (code === 'FORM_CONTEXT_CHANGED' || code === 'FORM_RECORD_CONFLICT') {
+    return 'La fiche ou son formulaire a changé entre-temps. Vos saisies sont conservées : rechargez les données avant de recommencer.';
+  }
+  if (code === 'FORM_FIELD_UNKNOWN') {
+    return "La variable envoyée n'existe pas dans le formulaire de cette fiche. Vos saisies n'ont pas été enregistrées.";
+  }
+  if (code === 'FORM_SCOPE_INCOMPATIBLE') {
+    return "La variable envoyée ne s'applique pas à cette fiche. Vos saisies n'ont pas été enregistrées.";
+  }
+  if (code === 'FORM_VALUE_CONVERSION_REQUIRED') {
+    return "Cette modification nécessite une conversion explicite du formulaire. Vos saisies n'ont pas été enregistrées.";
+  }
+  if (code === 'FORM_RECORD_FORBIDDEN') {
+    return "L'accès à cette fiche ou la permission de la modifier a changé. Vos saisies n'ont pas été enregistrées.";
   }
   if (e instanceof Error && e.message) return humanize(e.message);
   if (typeof e === 'string' && e) return humanize(e);

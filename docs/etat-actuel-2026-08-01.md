@@ -1,4 +1,8 @@
-# État courant vérifié — 1er août 2026
+# Archive — état courant vérifié le 1er août 2026
+
+> **Archive datée.** Ce relevé demeure la preuve de ce qui a été vérifié le 1er août 2026 ; son
+> corps n'est pas réécrit. Pour l'état de source actuel et ses limites de preuve, consulter
+> [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md).
 
 Ce document est la référence de lecture de l'état **actuel** de MedData. Les audits, décisions
 et comptes rendus datés conservent leurs constats à leur date ; ils ne doivent pas être lus comme

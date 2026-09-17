@@ -24,14 +24,14 @@ l'URL uniquement apres :
 2. insertion de la trace `audit_log` avant livraison de l'URL ;
 3. signature Storage avec la cle `service_role`.
 
-### Deploy
+### Déployer `signed-read` uniquement
+
+Ce bloc couvre la lecture signée auditée, pas les huit fonctions du dépôt. Pour une mise en ligne
+complète, suivre le bloc « Deploy Edge + frontend » plus bas et les prérequis propres aux comptes de
+mission (§10.5).
 
 ```bash
 supabase functions deploy signed-read --import-map deno.json
-supabase functions deploy finalize-upload --import-map deno.json
-supabase functions deploy cleanup-upload --import-map deno.json
-supabase functions deploy generate-export --import-map deno.json
-supabase functions deploy purge-deleted-base --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE
@@ -419,6 +419,11 @@ En production, le service antivirus doit etre traite comme une dependance de sec
 
 ### Deploy Edge + frontend
 
+Cette procédure couvre les huit fonctions déclarées dans `supabase/config.toml`. Avant la ligne
+`create-mission-account`, poser séparément et sans l'exposer
+`MISSION_CREDENTIALS_ENCRYPTION_KEY` selon le protocole §10.5 ; ne pas lancer ce sous-ensemble sans
+ce prérequis.
+
 ```bash
 supabase functions deploy signed-read --import-map deno.json
 supabase functions deploy inspect-upload --import-map deno.json
@@ -426,6 +431,7 @@ supabase functions deploy finalize-upload --import-map deno.json
 supabase functions deploy cleanup-upload --import-map deno.json
 supabase functions deploy generate-export --import-map deno.json
 supabase functions deploy reconcile-quarantine --import-map deno.json
+supabase functions deploy create-mission-account --import-map deno.json
 supabase functions deploy purge-deleted-base --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \

@@ -274,6 +274,9 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
         order by p.proname`,
     )).rows.map((r) => r.proname as string);
     expect(readers).toEqual([
+      // E2 : recalcule la classification cote serveur avant la recopie atomique ; il lit la
+      // formule sans jamais l'evaluer.
+      'apply_form_preparation',
       // L55 : refuse un pilote diagnostique calcule, et refuse de declarer couvert un bloc
       // dont aucune variable n'est saisissable. Il LIT la colonne pour ecarter les variables
       // calculees -- il n'analyse jamais leur contenu.
@@ -298,6 +301,14 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // regle, une position ou un calcul ne peut pas fonctionner. Il LIT `new.formula` pour
       // savoir s'il a quelque chose a verifier -- il n'analyse jamais son contenu.
       'enforce_template_field_formula_rules',
+      // E1 : recopie la formule dans la definition source de la preparation,
+      // sans la decouper ni l'evaluer.
+      'form_preparation_source_definition',
+      // E3 : lit la formule pour verifier qu'un champ historique reste compatible avec le
+      // champ actif. Ces gardes n'evaluent jamais le calcul.
+      'form_record_assert_patch',
+      'form_record_context_json',
+      'form_record_field_compatible',
       'guard_template_field_update',
       'missing_required_fields',
       // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la

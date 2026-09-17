@@ -1,10 +1,12 @@
 # Cahier des charges — Métier (fonctionnel)
 ### Registre clinique pseudonymisé — MedData / registre-clinique v3.0
 
-> Ce document décrit **ce que le système doit faire** et **pourquoi**, tel que réellement
-> construit et déployé. Il sert de spécification de référence et de base aux audits. Le pendant
-> technique (comment c'est réalisé) est dans [cahier-des-charges-technique.md](cahier-des-charges-technique.md) ;
-> la vue d'ensemble développeur dans [architecture.md](architecture.md).
+> Ce document décrit **ce que le système doit faire** et **pourquoi**, à partir des contrats et de
+> la source versionnée. Il sert de spécification de référence et de base aux audits. Le statut du
+> checkout, les validations locales et les preuves de cible sont distingués dans
+> [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md). Le pendant technique (comment c'est
+> réalisé) est dans [cahier-des-charges-technique.md](cahier-des-charges-technique.md) ; la vue
+> d'ensemble développeur dans [architecture.md](architecture.md).
 >
 > Convention : **EF** = exigence fonctionnelle, **RG** = règle de gestion (non négociable sauf
 > mention), **HP** = hors périmètre.
@@ -24,8 +26,9 @@ l'identité des patients** au-delà du strict nécessaire.
   source structurés par un pôle de curation.
 - **Pari central** : le **patient** est l'objet central, **pas l'étude**. Selon la base, il porte
   une saisie unique, des rencontres répétées ou des événements indépendants.
-- **Statut** : MVP avancé, **déployé** (Supabase cloud + Vercel). **Données entièrement fictives**
-  tant qu'un cadre juridique et éthique n'est pas établi.
+- **Statut** : MVP avancé dans la source locale. Un déploiement d'un SHA donné, son comportement
+  navigateur et ses contrôles cloud exigent une preuve datée distincte. **Données entièrement
+  fictives** tant qu'un cadre juridique et éthique n'est pas établi.
 
 ---
 
@@ -371,9 +374,10 @@ preparing ──soumission (≥1 doc)──► open ──réservation──► 
 - Exploitation clinique de l'inspection antivirus : activer le vrai moteur ClamAV, les secrets Edge
   et la politique stricte en production.
 - Usage clinique réel de la création **hors-ligne** de patients / identité / documents : le code
-  *intake-only* O0–O5 existe pour des previews explicitement autorisés, mais reste désactivé dans
-  les builds persistants tant que la preuve navigateur O6, la revue de risque et l'activation O7 ne
-  sont pas terminées. Les images et documents hors-ligne restent hors périmètre.
+  *intake-only* O0–O5 existe pour des démonstrations explicitement autorisées. Le workflow de
+  release configure actuellement une dérogation `demo`, mais cette configuration de source ne
+  prouve ni le bundle ni la cible et ne remplace pas la preuve navigateur O6, la revue de risque ou
+  l'autorisation O7. Les images et documents hors-ligne restent hors périmètre.
 - Chiffrement local du cache, politique d'« appareil de confiance », verrouillage de session.
 - Détection automatique fine des doublons inter-fichiers au-delà de l'avertissement.
 

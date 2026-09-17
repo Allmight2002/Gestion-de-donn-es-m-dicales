@@ -1,9 +1,10 @@
 # Cahier des charges — Technique
 ### Registre clinique pseudonymisé — MedData / registre-clinique v3.0
 
-> Décrit **comment** le système est réalisé : architecture, pile technique, modèle de données,
-> mise en œuvre de la sécurité, contrats des procédures serveur, tests et déploiement — tel que
-> réellement construit et déployé. Pendant fonctionnel :
+> Décrit **comment** le système est réalisé dans la source : architecture, pile technique, modèle
+> de données, mise en œuvre de la sécurité, contrats des procédures serveur, tests et procédure de
+> déploiement. Une présence dans ce cahier ne prouve pas qu'un SHA est déployé ou validé sur cible ;
+> consulter [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md). Pendant fonctionnel :
 > [cahier-des-charges-metier.md](cahier-des-charges-metier.md). Vue d'ensemble :
 > [architecture.md](architecture.md).
 >
@@ -42,7 +43,7 @@ bundle. Seules les variables `VITE_*` sont injectées à la compilation.
 | PWA | `vite-plugin-pwa` (installable, service worker) |
 | Backend | **Supabase** : **PostgreSQL 18**, Auth (GoTrue), Storage, **Edge Functions** (Deno) |
 | Tableurs | **SheetJS `xlsx` 0.20.3** (CDN officiel ; corrige les CVE de 0.18.5), parsing en **Web Worker** |
-| Tests | **Vitest 2**, **`embedded-postgres` (PG 18)** pour la RLS, `@testing-library/react` + jsdom, `fake-indexeddb` |
+| Tests | **Vitest 4.1**, **`embedded-postgres` (PG 18)** pour la RLS, `@testing-library/react` + jsdom, `fake-indexeddb` |
 | Hors-ligne | **IndexedDB** (instantanés + file d'écritures) |
 | CI | GitHub Actions (typecheck, lint ESLint, tests, build PWA) |
 | Hébergement | **Vercel** (frontend) + **Supabase cloud** (backend) |
@@ -213,6 +214,11 @@ synchronisation hors-ligne.
 
 ## 8. Mode hors-ligne (PWA)
 
+> **Lecture de l'état actif.** Cette section décrit les capacités et contrats du produit. La
+> configuration effective d'un bundle doit être vérifiée séparément : le workflow de release du
+> checkout prévoit actuellement une dérogation de démonstration *intake-only*, sans preuve
+> navigateur ou cible jointe. Voir [securite-mode-hors-ligne.md](securite-mode-hors-ligne.md).
+
 - **ET-19. Stockage** : IndexedDB (`meddata-offline`) avec `snapshots` (instantané **analytique**
   d'une base : patients + rencontres + champs ; **jamais** identité ni images), `outbox` (union
   discriminée pour corrections et créations *intake-only*) et `intake_context` (gabarit, règles,
@@ -281,13 +287,16 @@ npm run db:verify # applique toutes les migrations depuis zéro
 
 ## 11. Déploiement
 
-- **ET-24. Frontend** : **Vercel** (`https://gestion-de-donn-es-m-dicales.vercel.app`). Variables
-  d'environnement : `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, **`VITE_USE_SIGNED_READ=true`**
-  (Production **et** Preview) — sans quoi le build échoue (ET-14).
-- **ET-25. Backend** : **Supabase cloud** (projet `lrzmbwdnrjjzwossntun`). Les migrations sont
-  poussées par `npx supabase db push` (source de vérité du schéma/RLS). Données **fictives**.
-- **ET-26. Edge Function `signed-read`** déployée (`verify_jwt = false`, l'autorisation est faite
-  par la RLS à l'intérieur).
+- **ET-24. Frontend cible** : **Vercel** (`https://gestion-de-donn-es-m-dicales.vercel.app`). Les
+  variables attendues sont `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` et
+  **`VITE_USE_SIGNED_READ=true`** (Production **et** Preview) — sans quoi le build échoue
+  (ET-14). La configuration et l'URL ne constituent pas une preuve de publication d'un SHA.
+- **ET-25. Backend cible** : **Supabase cloud** (projet `lrzmbwdnrjjzwossntun`). Les migrations
+  sont publiées explicitement par `npx supabase db push` ; elles restent la source de vérité du
+  schéma/RLS. Données **fictives**. Une revue locale ne confirme pas le schéma distant.
+- **ET-26. Edge Function `signed-read`** : la source et la configuration déclarent
+  `verify_jwt = false`, l'autorisation étant refaite avec le JWT et la RLS dans la fonction. Son
+  déploiement réel doit être prouvé pour le SHA visé.
 - **Administration des comptes** : back-office Supabase ou `scripts/create-account.mjs`
   (`service_role`, gardé local). Promotion des rôles via **Admin → Rôles**.
 

@@ -6,7 +6,9 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { FieldChange } from '../../data/patients';
+import type { FieldChange, RecordFormContext } from '../../data/patients';
+import { buildCompatiblePatch } from '../../data/patients';
+import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import {
@@ -41,23 +43,30 @@ export function EditEncounter() {
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
+  // Les regles actives pilotent la visibilite/couverture ; la validation d'une rencontre
+  // historique reste celle de sa definition d'origine.
+  const [validationRules, setValidationRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
   const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [encounterType, setEncounterType] = useState('consultation');
   const [reason, setReason] = useState('');
   const [history, setHistory] = useState<FieldChange[]>([]);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
+  const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION de la rencontre (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
   const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
+  const [activeDiagnosisVersionId, setActiveDiagnosisVersionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocking, setBlocking] = useState<string[]>([]);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [reloadRequired, setReloadRequired] = useState(false);
+  const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
@@ -68,7 +77,9 @@ export function EditEncounter() {
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
   const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${encounterId}`);
   const work = useWorkDraft({
-    context: baseId && encounterId && diagnosisVersionId && baseUpdatedAt ? {
+    // Une fois le contexte E3 obtenu, la soumission passe par le patch compatible : le brouillon
+    // clinique historique ne sait pas porter les ajouts actifs et ne doit pas les perdre.
+    context: !recordContext && baseId && encounterId && diagnosisVersionId && baseUpdatedAt ? {
       baseId, targetId: encounterId, kind: 'encounter_update', templateVersionId: diagnosisVersionId, entityRevision: String(Date.parse(baseUpdatedAt)),
     } : null,
     ownerId: profile?.id ?? '', payload: { values, status, reason }, dirty: navigation.dirty, online,
@@ -85,7 +96,8 @@ export function EditEncounter() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections, applicableFields]);
 
-  const coverage = useDiagnosisCoverage(diagnosisVersionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
+  const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -115,6 +127,8 @@ export function EditEncounter() {
           const { age_at_encounter: _drop, ...rest } = enc.data;
           void _drop;
           setValues(rest);
+          setInitialValues(rest);
+          setRecordContext(null);
           setStatus(enc.validationStatus);
           setInitialStatus(enc.validationStatus);
           setEncounterType(enc.encounterType);
@@ -133,24 +147,36 @@ export function EditEncounter() {
         setFields(encFields as unknown as TemplateField[]);
         const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
+        setValidationRules(offlineRules as unknown as ValidationRule[]);
         setSections((enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || []);
         setCommonLayout(undefined);
         // L'instantane transporte le contrat par version : il n'ouvre aucun hors-ligne nouveau.
         setDiagnosisVersionId(enc?.templateVersionId ?? null);
         setDiagnosisContext(enc?.templateVersionId ? snap?.diagnosisContextByVersion?.[enc.templateVersionId] : undefined);
+        setActiveDiagnosisVersionId(enc?.templateVersionId ?? null);
         setError(null);
         return;
       }
 
-      const [enc, base, hist] = await Promise.all([
+      const contextPromise = patients.getEncounterFormContext
+        ? patients.getEncounterFormContext(baseId, encounterId).catch((e: unknown) => {
+          // Déploiement progressif : seule l'absence précise de la RPC autorise le repli ancien.
+          if (isMissingRecordFormContextError(e)) return null;
+          throw e;
+        })
+        : Promise.resolve(null);
+      const [enc, base, hist, context] = await Promise.all([
         patients.getEncounter(encounterId),
         bases.getBase(baseId),
         patients.listFieldChanges('encounter', encounterId),
+        contextPromise,
       ]);
       if (enc) {
         const { age_at_encounter: _drop, ...rest } = enc.data;
         void _drop;
         setValues(rest);
+        setInitialValues(rest);
+        setRecordContext(context);
         setStatus(enc.validationStatus);
         setInitialStatus(enc.validationStatus);
         setEncounterType(enc.encounterType);
@@ -160,15 +186,35 @@ export function EditEncounter() {
       // §7.4 : une rencontre HISTORIQUE s'edite avec SA version de gabarit (libelles, champs et
       // regles de l'epoque = memes controles que le serveur). La version courante de la base ne
       // sert que de repli (et a la CREATION d'une nouvelle rencontre).
-      const versionId = enc?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
-      if (versionId) {
-        const version = await templates.getVersion(versionId);
-        setFields(version.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
-        setRules(version.rules);
-        setSections(version.sections ?? []);
-        setCommonLayout(version.version.commonLayout);
-        setDiagnosisVersionId(version.version.id);
-        setDiagnosisContext(version.version.diagnosisContext);
+      const historicalVersionId = context?.record_definition_revision ?? enc?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
+      const activeVersionId = context
+        ? (definitionVersionId(context.active_definition) ?? base?.base.currentTemplateVersionId ?? historicalVersionId)
+        : historicalVersionId;
+      if (historicalVersionId) {
+        const historicalPromise = templates.getVersion(historicalVersionId);
+        const activePromise = activeVersionId && activeVersionId !== historicalVersionId
+          ? templates.getVersion(activeVersionId)
+          : historicalPromise;
+        const [historical, active] = await Promise.all([historicalPromise, activePromise]);
+        if (context) {
+          setFields(mergeRecordFormFields(context, historical.fields, active.fields, 'encounter'));
+          setRules(active.rules);
+          setValidationRules(historical.rules);
+          setSections(active.sections ?? []);
+          setCommonLayout(active.version.commonLayout);
+        } else {
+          setFields(historical.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
+          setRules(historical.rules);
+          setValidationRules(historical.rules);
+          setSections(historical.sections ?? []);
+          setCommonLayout(historical.version.commonLayout);
+        }
+        setDiagnosisVersionId(historical.version.id);
+        setDiagnosisContext(context ? active.version.diagnosisContext : historical.version.diagnosisContext);
+        setActiveDiagnosisVersionId(active.version.id);
+      } else {
+        setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
+        setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
       }
       setError(null);
       loadedFor.current = `${baseId}:${encounterId}`;
@@ -195,12 +241,12 @@ export function EditEncounter() {
     // bloquantes : finalisation seule.
     const requireComplete = isMissionAccount(profile) || status !== 'draft';
     const ruleEval = evaluateRules(
-      rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
+      validationRules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
       submittedData,
       hidden,
     );
     const block = [
-      ...validateValues(fields, submittedData, requireComplete, hidden)
+      ...validateValues(validationFields, submittedData, requireComplete, hidden)
         .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ...(requireComplete ? ruleEval.blocking : []),
     ];
@@ -230,7 +276,29 @@ export function EditEncounter() {
         });
       } else {
         // EN LIGNE : RPC validee, avec verrou optimiste (refuse si la rencontre a change).
-        if (work.enabled) await work.commit();
+        if (recordContext && patients.updateEncounterCompatible) {
+          const patch = buildCompatiblePatch(
+            initialValues,
+            values,
+            hidden,
+            fields.map((field) => field.fieldKey),
+          );
+          const requestKey = JSON.stringify([recordContext.context_fingerprint, patch, status, reason.trim()]);
+          if (compatibleAttempt.current?.requestKey !== requestKey) {
+            compatibleAttempt.current = { requestKey, operationId: crypto.randomUUID() };
+          }
+          await patients.updateEncounterCompatible({
+            baseId,
+            encounterId,
+            patch,
+            validationStatus: status,
+            reason: reason.trim(),
+            expectedRecordRevision: recordContext.record_revision,
+            recordDefinitionRevision: recordContext.record_definition_revision,
+            operationId: compatibleAttempt.current.operationId,
+            contextFingerprint: recordContext.context_fingerprint,
+          });
+        } else if (work.enabled) await work.commit();
         else await patients.updateEncounter(encounterId, submittedData, status, reason.trim(), baseUpdatedAt);
       }
       navigation.markClean();
@@ -288,7 +356,7 @@ export function EditEncounter() {
           hiddenKeys={hidden}
           sections={sections}
           commonLayout={commonLayout}
-          rules={rules}
+          rules={validationRules}
           requireComplete={isMissionAccount(profile) || status !== 'draft'}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}

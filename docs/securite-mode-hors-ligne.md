@@ -14,29 +14,31 @@ ni DevTools, ni XSS, ni un malware ou un utilisateur controlant une session acti
 permanente ne doit pas etre embarquee dans le frontend. Une exception future devra combiner B+C,
 une cle de session, TTL strict, revue RSSI/DPO et MDM.
 
-## Dérogation en cours : hors-ligne actif en production (décision du 2026-09-05)
+## Configuration de dérogation de démonstration dans le dépôt (décision du 2026-09-05)
 
-Par dérogation explicite à la politique ci-dessus, la **production** est déployée depuis le
-2026-09-05 avec le hors-ligne de démonstration actif, saisie comprise : `VITE_OFFLINE_MODE=demo`,
-`VITE_OFFLINE_ADMIN_ACK=true`, `VITE_OFFLINE_INTAKE=demo` et `ALLOW_OFFLINE_DEMO_BUILD=true`.
-Aucune date de fin n'est fixée à ce jour.
+Par dérogation explicite à la politique ci-dessus, le job `production` de
+`.github/workflows/coordinated-release.yml` **construit** un bundle de démonstration avec
+`VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true`, `VITE_OFFLINE_INTAKE=demo` et
+`ALLOW_OFFLINE_DEMO_BUILD=true`. Cette configuration de source ne prouve pas qu'un déploiement
+particulier porte ces variables : relever le commit, le manifeste et le comportement réel avant de
+qualifier une cible. Aucune date de fin n'est définie dans le dépôt.
 
-**Motif.** Éprouver la saisie hors-ligne livrée le 2026-08-23 dans ses conditions réelles d'usage —
+**Motif.** Préparer l'épreuve de la saisie hors-ligne livrée le 2026-08-23 dans ses conditions réelles d'usage —
 PWA installée, coupure réseau franche, rejeu à la reconnexion — ce qu'aucun essai local ne reproduit :
 le service worker n'est pas généré par `npm run dev`, faute de `devOptions` dans `vite.config.ts`.
 
-**Condition qui rend la dérogation acceptable.** La base ne contient que des données fictives. Cette
+**Condition qui rendrait la dérogation acceptable sur une cible.** La base ne doit contenir que des données fictives. Cette
 dérogation n'est donc pas l'« exception future » évoquée plus haut, qui concerne les données réelles
 et exigerait B+C, clé de session, revue RSSI/DPO et MDM. Elle devient caduque, et doit être levée
 avant toute saisie, dès la première donnée réelle. Ni O6 ni O7 ne sont levés.
 
-**Portée.** Les deux blocs d'environnement du job `production` de
+**Portée de la configuration.** Les deux blocs d'environnement du job `production` de
 `.github/workflows/coordinated-release.yml` — l'ancre `&production_env` et le step qui construit le
 bundle expédié — plus les variables correspondantes dans le dashboard Vercel. Le build de validation,
 jamais déployé, et le frontend staging restent à `disabled`/`false` : le staging conserve son rôle de
 témoin « hors-ligne éteint ».
 
-**Conséquence assumée.** Chaque appareil connecté conserve des données cliniques dans IndexedDB
+**Conséquence à vérifier avant usage.** Chaque appareil connecté peut conserver des données cliniques dans IndexedDB
 pendant 24 heures au plus, et la session d'authentification est persistée pour l'usage hors-ligne.
 
 **Levée de la dérogation, en une seule opération.** Remettre les deux blocs du workflow à
@@ -48,7 +50,8 @@ acquittement et de son autorisation reste une combinaison valide pour
 `scripts/offline-build-policy.mjs`. Le garde-fou `test/deployment.test.ts` ne couvre que le versant
 workflow ; aucun test ne couvre le dashboard Vercel.
 
-Suivi : PR #280.
+Suivi : PR #280. Le statut de cette PR, du dashboard Vercel et de toute cible se vérifie hors de
+ce document ; aucun des trois n'est déduit du checkout.
 
 ## Implémentation actuelle : saisie hors-ligne seule (*intake-only*)
 

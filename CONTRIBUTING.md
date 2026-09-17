@@ -5,38 +5,45 @@ une version**, et les **spécificités** de ce projet à ne pas oublier.
 
 ---
 
-## 1. Les deux branches
+## 1. Branches protégées et branches de travail
 
 | Branche | Rôle | Déploiement |
 |---|---|---|
 | **`main`** | Version **stable**. On n'y travaille **pas directement**. | **Production** (URL publique Vercel) |
-| **`develop`** | Branche de **travail** : tout le développement s'y fait. | **Prévisualisation** (URL Vercel séparée) |
+| **`develop`** | Branche d'intégration des lots relus. On n'y travaille pas directement pour une fonctionnalité. | Aucun déploiement Git implicite |
+| **`codex/<sujet>`** (ou branche de fonctionnalité équivalente) | Travail isolé d'un lot, issu de `develop`. | Aucun ; Pull Request vers `develop` |
 
 ```
-develop  ──● ──● ──● ────────●  (travail au quotidien)
+develop  ──● ──● ──● ────────●  (intégration après revue)
               \                 \  Pull Request (release)
-main      ●────────────────────────●  (stable, déployé en production)
+codex/<sujet>  ●──●──●  Pull Request vers develop
+main      ●────────────────────────●  (stable ; release coordonnée explicite)
 ```
 
 ---
 
-## 2. Au quotidien (sur `develop`)
+## 2. Au quotidien (sur une branche de lot)
 
 ```bash
-git status                 # vérifier qu'on est bien sur develop
-# (si besoin) git switch develop
+git status
+git switch develop
+git pull --ff-only
+git switch -c codex/<sujet>
 
 # … faire ses modifications …
 
-git add -A
+git add <fichiers-du-lot>
+git diff --cached --check
 git commit -m "message clair de ce qui change"
-git push
+git push -u origin codex/<sujet>
 ```
 
-À chaque `push` sur `develop` :
+À chaque `push` sur une branche suivie par la CI :
 - la **CI** se lance (typecheck + lint + **toute la suite de tests** : projet `db` pour la
   sécurité RLS et projet `web` pour le rendu + build) → coche verte = tout va bien ;
-- **Vercel** crée une **prévisualisation** (URL dédiée) pour tester avant la production.
+- la disponibilité d'une prévisualisation ou d'une cible ne doit pas être présumée :
+  `vercel.json` désactive les déploiements Git automatiques. Utiliser uniquement le workflow
+  de release autorisé et consigner son SHA/résultat.
 
 > Les compteurs de tests évoluent à chaque lot : ne pas les figer ici. La sortie de Vitest et
 > `npm run manifest` font foi.
@@ -52,7 +59,9 @@ Quand `develop` est **stable et validé** :
 2. base = **`main`** ← compare = **`develop`** → **Create pull request**
 3. Attendre la **CI verte**, puis **Merge**
 
-Le merge sur `main` déclenche le **déploiement de production** Vercel.
+Le merge sur `main` ne déploie pas automatiquement. Une mise en ligne passe par le workflow
+manuel de release coordonnée, avec l'autorisation et les preuves exigées ; voir
+[docs/pipeline-release-coordonnee.md](docs/pipeline-release-coordonnee.md).
 
 > Variante en ligne de commande :
 > ```bash
@@ -63,11 +72,9 @@ Le merge sur `main` déclenche le **déploiement de production** Vercel.
 
 ## 4. Spécificités de CE projet (à ne pas oublier)
 
-- **Migrations SQL** (`supabase/migrations/`) : le frontend se déploie tout seul (Vercel), **mais
-  pas la base de données**. Après une release qui ajoute une migration, l'appliquer au cloud :
-  ```bash
-  npx supabase db push
-  ```
+- **Migrations SQL** (`supabase/migrations/`) : une migration locale ne modifie jamais la base
+  cloud. Ne lancer `npx supabase db push` que dans une release coordonnée explicitement autorisée,
+  sur la cible vérifiée et avec les contrôles du runbook.
 - **Vercel — variable `VITE_USE_SIGNED_READ`** : doit valoir `true` sur **Production ET Preview**.
   Sinon le build échoue (garde-fou §5.7 : lecture de fichiers auditée obligatoire). Réglage :
   Vercel → Settings → Environment Variables.

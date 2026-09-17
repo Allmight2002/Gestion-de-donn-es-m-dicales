@@ -14,6 +14,7 @@ import { terminologyRepository, type TerminologyRepository } from './terminology
 import { missionRepository, type MissionRepository } from './mission';
 import { clientErrorRepository, type ClientErrorRepository } from './clientErrors';
 import { workDraftRepository, type WorkDraftRepository } from './workDrafts';
+import { formPreparationRepository, type FormPreparationRepository } from './formPreparations';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -31,6 +32,7 @@ interface Repositories {
   missions: MissionRepository;
   clientErrors: ClientErrorRepository;
   workDrafts: WorkDraftRepository;
+  formPreparations: FormPreparationRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -49,6 +51,7 @@ const RepositoryContext = createContext<Repositories>({
   missions: missionRepository,
   clientErrors: clientErrorRepository,
   workDrafts: workDraftRepository,
+  formPreparations: formPreparationRepository,
 });
 
 export function RepositoryProvider({
@@ -68,6 +71,7 @@ export function RepositoryProvider({
   missions = missionRepository,
   clientErrors = clientErrorRepository,
   workDrafts = workDraftRepository,
+  formPreparations = formPreparationRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -85,9 +89,10 @@ export function RepositoryProvider({
   missions?: MissionRepository;
   clientErrors?: ClientErrorRepository;
   workDrafts?: WorkDraftRepository;
+  formPreparations?: FormPreparationRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors, workDrafts }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors, workDrafts, formPreparations }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -151,4 +156,8 @@ export function useClientErrorRepository(): ClientErrorRepository {
 
 export function useWorkDraftRepository(): WorkDraftRepository {
   return useContext(RepositoryContext).workDrafts;
+}
+
+export function useFormPreparationRepository(): FormPreparationRepository {
+  return useContext(RepositoryContext).formPreparations;
 }
