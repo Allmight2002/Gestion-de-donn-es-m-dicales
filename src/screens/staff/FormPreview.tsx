@@ -82,6 +82,7 @@ export function FormPreview({
   fields,
   rules,
   sections,
+  preparationMode = false,
   onClose,
 }: {
   version: TemplateVersion;
@@ -89,6 +90,8 @@ export function FormPreview({
   rules: ValidationRule[];
   /** Sections de la version (L31) : l'apercu doit montrer les regroupements REELS. */
   sections?: readonly TemplateSection[] | null;
+  /** En préparation E4, le numéro de la version source reste une information secondaire. */
+  preparationMode?: boolean;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -236,8 +239,8 @@ export function FormPreview({
             ← {t('preview.back')}
           </button>
           <h2 className="text-xl font-semibold tracking-tight">{t('preview.title')}</h2>
-          <span className="badge">
-            {t('admin.version')} {version.versionNumber}
+          <span className={preparationMode ? 'text-xs text-slate-500' : 'badge'}>
+            {preparationMode ? `${t('formprep.source_version')} ${version.versionNumber}` : `${t('admin.version')} ${version.versionNumber}`}
           </span>
         </div>
         <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">

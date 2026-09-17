@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Search, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
+import type { TemplateRepository } from '../../data/templates';
 import type { MessageKey } from '../../i18n/messages';
 import type { NewField, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
@@ -83,6 +84,9 @@ export function TemplateVersionEditor({
   onNewVersion,
   observationModel,
   templateName,
+  repository,
+  preparationMode = false,
+  onDirtyChange,
 }: {
   versionId: string;
   onBack: () => void;
@@ -92,8 +96,15 @@ export function TemplateVersionEditor({
   observationModel?: ObservationModel;
   /** Contexte lisible transmis par la carte ou la base qui a ouvert l’éditeur. */
   templateName?: string;
+  /** Dépôt structural injecté par E4 ; le chemin historique garde le dépôt de contexte. */
+  repository?: TemplateRepository;
+  /** Rend la version technique secondaire quand l’écran édite une préparation de formulaire. */
+  preparationMode?: boolean;
+  /** Informe le contrôleur E4 qu’un sous-formulaire contient encore une saisie non accusée. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const repo = useTemplateRepository();
+  const contextRepository = useTemplateRepository();
+  const repo = repository ?? contextRepository;
   const { t } = useI18n();
   const [data, setData] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,6 +171,11 @@ export function TemplateVersionEditor({
     window.addEventListener('beforeunload', preventLoss);
     return () => window.removeEventListener('beforeunload', preventLoss);
   }, [dirty]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
 
   useEffect(() => {
     if (!fieldFormOpen || space !== 'structure') return;
@@ -559,7 +575,9 @@ export function TemplateVersionEditor({
               </button>
               <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('admin.editor_context')}</span>
               <h2 className="text-xl font-semibold tracking-tight text-slate-900">{templateName ?? t('admin.editor_context')}</h2>
-              <span className="badge">{t('admin.version')} {version.versionNumber} · {t(`status.${version.status}`)}</span>
+              <span className={preparationMode ? 'text-xs text-slate-500' : 'badge'}>
+                {preparationMode ? `${t('formprep.source_version')} ${version.versionNumber}` : `${t('admin.version')} ${version.versionNumber} · ${t(`status.${version.status}`)}`}
+              </span>
             </div>
           </div>
           <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:justify-end">
@@ -1198,7 +1216,7 @@ export function TemplateVersionEditor({
         </div>
       </div>
       <div hidden={space !== 'preview'} id="editor-panel-preview" role="tabpanel" aria-labelledby="editor-space-preview">
-        {previewVisited && <FormPreview version={version} fields={fields} rules={rules} sections={sections} onClose={() => changeSpace('structure')} />}
+        {previewVisited && <FormPreview version={version} fields={fields} rules={rules} sections={sections} preparationMode={preparationMode} onClose={() => changeSpace('structure')} />}
       </div>
     </section>
   );
