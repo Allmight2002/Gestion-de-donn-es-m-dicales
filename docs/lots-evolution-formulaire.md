@@ -1,7 +1,7 @@
 # Évolution du formulaire — lots E0 à E7
 
 - Révision : **2026-09-17**.
-- Statut : **E0 documenté ; E1 à E3 implémentés localement et contrôlés ; E4 à E7 à réaliser**.
+- Statut : **E0 documenté ; E1 à E4 implémentés localement et contrôlés ; E5 à E7 à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
 - Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
@@ -21,7 +21,7 @@ Le responsable n’a pas à créer ni rattacher manuellement une version.
 | [E1](#e1) | Préparations persistantes et droits serveur | E0 | **Implémenté localement ; non déployé** | `form-preparations.test.ts` (10/10), snapshot/schema:check |
 | [E2](#e2) | Application atomique dans la même base | E1 | **Implémenté localement ; non déployé** | `form-preparation-apply.test.ts` (7/7), ACL (3/3), typecheck/lint |
 | [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | **Implémenté localement ; non déployé** | `form-compatible-records.test.ts` (11/11), web E3 (2/2), ACL (3/3), schema/schema:check, typecheck/lint |
-| [E4](#e4) | Éditeur avec versionnage en arrière-plan | E2, contrat E3 stabilisé | À réaliser | Aucune |
+| [E4](#e4) | Éditeur avec versionnage en arrière-plan | E2, contrat E3 stabilisé | **Implémenté localement ; non déployé ; sans preuve navigateur** | `form-preparation-editor-payload.test.ts` (4/4), `FormPreparationEditor.test.tsx` (6/6), `Trash.test.tsx` (9/9), éditeur/aperçu/coquille (5 fichiers), typecheck, lint, build `VITE_USE_SIGNED_READ=true` |
 | [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | À réaliser | Aucune |
 | [E6](#e6) | Exports, provenance et historique | E3 | À réaliser | Aucune |
 | [E7](#e7) | Validation intégrée et dossier de preuves | E0 à E6 | À réaliser | Aucune |
@@ -209,6 +209,34 @@ justification au propriétaire ; les confirmations d’impact restent distinctes
 **Risques et vérification.** Tests web ciblés des actions, droits, retours de navigation et inputs.
 Vérification visuelle bureau/mobile : barre latérale escamotable, en-têtes non envahissants,
 actions atteignables. Aucun bouton factice pour une dépendance serveur manquante.
+
+**État local au 2026-09-17.** `BaseTemplateEditor` ouvre désormais l’écran de préparation :
+ouverture/reprise, enregistrement, impact serveur, application et abandon passent par les RPC
+E1/E2. L’éditeur de version existant est réutilisé tel quel, avec un dépôt de préparation injecté :
+les cinq espaces, la recherche globale, « Toutes les variables », la provenance et la navigation
+section/variable/règle sont conservés ; le numéro technique devient une mention secondaire et
+l’aperçu réutilise le moteur réel avec ses dépôts inertes. La définition rendue par le serveur est
+l’état de référence du candidat : une partie du formulaire que personne n’a modifiée repart telle
+qu’elle est venue, clés inconnues comprises. Sans cette fidélité, la comparaison objet par objet de
+E1 classait toute ouverture comme sémantique et aucune évolution n’était applicable.
+
+La corbeille demande le code aléatoire à cinq caractères du §4.6 avec le nom de la base affiché ;
+la confirmation serveur du challenge **précède** la purge Edge D10, qui garde sa clé d’opération
+rejouable et ses contrôles de propriétaire, de rétention et d’audit. Aucune justification textuelle
+n’est demandée au propriétaire pour la configuration du formulaire ni pour son application :
+l’inventaire du §7.4 est vérifié dans le code, aucun `p_reason` n’existe sur ces chemins. Le motif
+de mise en corbeille d’une base et la justification d’accès à l’identité restent hors dispense.
+
+Les trois captures de maquette `.tmp-editor-maquette*.png`, relevées comme non suivies par E0
+(§13.3 de la spécification) et sans lien avec ce lot, ont été supprimées à la demande du porteur.
+
+**Limites déclarées.** Aucune preuve navigateur bureau ni mobile : ce poste n’a ni Docker ni cible
+Supabase locale/jetable, et le projet cloud configuré ne porte pas les migrations E1 à E3 ; la
+vérification visuelle demandée reste donc ouverte. Le classifieur E1 durci traite libellé,
+description, section, rubrique commune et ajout d’option comme de la présentation ; retirer une
+variable, changer son type ou déplacer une variable commune vers un bloc clinique reste sémantique
+et refusé, avec la préparation conservée. Si le serveur ne publie pas les RPC de préparation,
+l’écran annonce l’indisponibilité et n’offre aucun repli vers l’ancien parcours de versions.
 
 ## E5
 
