@@ -1,8 +1,9 @@
 # Spécification — saisie protégée, navigation et formulaires sobres
 
-- Révision : **2026-09-11**.
-- Statut : **spécifié, non implémenté au titre de ce chantier**. Des composants et protections
-  préexistent ; leur présence est distinguée des corrections et extensions demandées.
+- Révision de la spécification : **2026-09-11** ; état de source synchronisé le **2026-09-16**.
+- Statut : **contrats conservés, implémentation locale consignée séparément**. Les livraisons des
+  12–13 septembre ne valent ni validation navigateur ni preuve de cible ; leur état et leurs
+  contrôles sont dans [suivi-correctifs-ux.md](suivi-correctifs-ux.md).
 - Origine : échanges produit sur les sections conditionnelles, la perte de saisie, les champs
   `select` / `multiselect`, puis audit UX du 10 septembre 2026. Retour complémentaire du porteur :
   l'édition d'un jeu de **216 variables et plus de 20 règles** devient difficilement utilisable.
@@ -55,6 +56,12 @@ limitée aux données fictives, tandis que la feuille de route garde les preuves
 Cette mention documentaire n'est pas une vérification de l'environnement déployé actuel et
 ne vaut pas autorisation d'usage de données réelles. Cette spec ne modifie aucune activation.
 
+> **Mise à jour de statut.** Les sections suivantes gardent le diagnostic et les critères qui ont
+> guidé le chantier UX. Elles ne constituent plus un backlog vierge : UX-2 et UX-16 sont notamment
+> validés localement, les autres livraisons UX sont qualifiées une à une dans le suivi. Avant de
+> lancer un lot, consulter ce suivi, le code et les tests plutôt que de déduire son état de ce plan
+> du 10 septembre.
+
 ## 2. État constaté et limites de preuve
 
 Référence de l'audit : code local **`f6abd00`**, branche `codex/l60-reconnexion-activation`,
@@ -69,7 +76,7 @@ le 10 septembre 2026. Les constats sont à revérifier avant l'implémentation d
 | C05 | `ConfirmDialog` laisse le focus derrière la fenêtre ; la confirmation des valeurs masquées est placée après les champs sans gestion de focus | [ConfirmDialog](../src/components/ConfirmDialog.tsx), [EncounterFields](../src/screens/member/EncounterFields.tsx) | UX-4/13 |
 | C06 | Type/date/statut restent sur trois colonnes sans breakpoint ; les choix suivent un retour à la ligne selon leur largeur | [EncounterForm](../src/screens/member/EncounterForm.tsx), [FieldInput](../src/screens/member/FieldInput.tsx) | UX-10 |
 | C07 | Le checkout courant réinitialise déjà page, recherche, tri et données de liste lors d'un changement direct de base ; ce comportement doit être prouvé avec une sortie de runner saine avant d'être qualifié de validé | [BaseHome](../src/screens/member/BaseHome.tsx), [Patients.test](../src/screens/member/Patients.test.tsx) | L61 / UX-12 |
-| C08 | Le checkout courant possède une recherche par code et les tris serveur `created_at` / `patient_code` avant pagination ; le tri par variable clinique et l'identité nominative restent absents | [BaseHome](../src/screens/member/BaseHome.tsx), [patients.ts](../src/data/patients.ts) | L61 à L64 / UX-12 |
+| C08 | Au 10 septembre, le checkout possédait la recherche par code et les tris serveur `created_at` / `patient_code`. Depuis, la recherche nominative contrôlée est implémentée localement ; le tri par variable clinique et la colonne « nom complet » restent des décisions séparées | [BaseHome](../src/screens/member/BaseHome.tsx), [patients.ts](../src/data/patients.ts), [suivi UX](suivi-correctifs-ux.md) | L61 à L65 / UX-12 |
 | C09 | La palette charge les bases une seule fois, mémorise un échec comme liste vide et propose des destinations non adaptées à tous les rôles | [CommandPalette](../src/components/CommandPalette.tsx) | UX-12 |
 | C10 | Le renommage d'un modèle ferme l'édition même après échec ; les erreurs de l'éditeur peuvent être éloignées de son panneau de saisie | [MyTemplates](../src/screens/member/MyTemplates.tsx), [TemplateVersionEditor](../src/screens/staff/TemplateVersionEditor.tsx) | UX-1/14 |
 | C11 | Les conflits de synchronisation sont comparés en JSON ; les sections sont principalement distinguées par indentation | [SyncCenter](../src/screens/member/SyncCenter.tsx), [SectionsEditor](../src/screens/staff/SectionsEditor.tsx) | UX-14/15 |
@@ -583,9 +590,10 @@ globale avant les contrôles d'accessibilité. Respecter la réduction des anima
 
 ## 7. Lots, dépendances, charge et sortie
 
-Toutes les lignes ci-dessous sont **à réaliser/valider** dans ce chantier. UX-0 dispose d'un
-audit initial, mais son contrat complet et sa matrice de reprise ne sont pas déclarés achevés.
-Les charges sont relatives et seront affinées après UX-0 ; elles ne sont pas des délais.
+Les lignes ci-dessous définissent les **contrats et critères** du chantier. Leur statut de livraison
+est désormais celui de [suivi-correctifs-ux.md](suivi-correctifs-ux.md) : elles ne doivent pas être
+interprétées comme « à réaliser » sans contrôle du checkout actuel. Les charges restent relatives
+et ne sont pas des délais.
 
 | Lot | Objet | Dépendances de livraison | Charge |
 |---|---|---|---|

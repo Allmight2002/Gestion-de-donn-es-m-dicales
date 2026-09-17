@@ -67,10 +67,12 @@ Le critère de découpage est le **fichier touché**, pas le thème. Deux lots q
 modifient le même fichier produiront un conflit de fusion, même si leurs sujets
 n'ont aucun rapport.
 
-> **Chantier UX du 2026-09-10, révisé le 2026-09-11 — spécifié, non implémenté au titre de ce chantier.**
-> [La spécification d'expérience utilisateur](spec-experience-utilisateur.md) regroupe
-> **UX-0 à UX-16**, avec dépendances, charges, risques, responsables de surfaces et critères
-> de sortie. Les lots UX ne renumérotent pas les lots L/O et ne changent pas leur statut.
+> **Chantier UX du 2026-09-10, spécification révisée le 2026-09-11.**
+> [La spécification d'expérience utilisateur](spec-experience-utilisateur.md) conserve les
+> contrats UX-0 à UX-16, leurs dépendances, risques et critères de sortie. Le code livré les
+> 12–13 septembre a dépassé ce plan initial :
+> [suivi-correctifs-ux.md](suivi-correctifs-ux.md) est la source de statut pour les livraisons et
+> validations locales. Aucun de ces statuts ne vaut une preuve navigateur ou cible.
 > Ils couvrent les brouillons et la conservation de saisie, les blocs/sommaires, les champs
 > à choix, la navigation des bases/patients, les erreurs, l'édition des modèles et les opérations.
 > UX-16 ajoute des rubriques communes renommables/déplaçables et le placement libre du diagnostic,
@@ -124,6 +126,20 @@ analytique explicite la justifie.
 > Le tri clinique (L62/L63) et l'identité nominative (L64) restent à réaliser. Le contrat détaillé
 > et les preuves attendues sont dans
 > [`l61-liste-patients-recherche-tri-identite.md`](l61-liste-patients-recherche-tri-identite.md).
+
+> **Révision du 2026-09-17 — évolution fluide du formulaire, contrat E0 documenté et E1 à E3
+> implémentés localement, non déployés.**
+> Huit lots, **E0 à E7**, rendent le versionnage technique secondaire et permettent de compléter
+> les patients et rencontres existants dans la même base. Le [plan détaillé](lots-evolution-formulaire.md)
+> porte les contrats, critères, risques et vérifications. E0 fixe désormais les états de préparation,
+> la révision/empreinte attendue, la classification additive/sémantique, le contexte exportable
+> `not_defined`/`empty`/`not_applicable`, la provenance, les erreurs structurées et le cas A/B ;
+> E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7 ; E3 couvre désormais localement la lecture et le
+> complément compatibles des patients et rencontres, avec contrôles PostgreSQL et web ciblés ;
+> E4/E6 peuvent être séparés après E3 si leurs surfaces restent distinctes. Le propriétaire de la
+> base n’a pas de justification textuelle obligatoire pour les opérations autorisées ; l’audit,
+> les droits et les confirmations de purge par code à cinq caractères restent contrôlés. Aucune
+> migration ni implémentation de ce comportement n’est incluse dans E0.
 
 > **Ajout du 2026-09-15 — formulaire papier compact, spécifié et à réaliser.**
 > Le [plan PAP-0 à PAP-5](lots-formulaire-papier.md) détaille le
@@ -187,16 +203,16 @@ analytique explicite la justifie.
 | ~~L48~~ | ~~Dates XLSX natives, CSV ISO et unités des durées~~ | **Livré le 2026-08-28** (série Excel UTC, formats posés, date invalide laissée en texte) | — |
 | ~~L49~~ | ~~Dictionnaire simplifié et feuille `Métadonnées`~~ | **Livré le 2026-08-28** (classeur Analyse à quatre feuilles ; Complet inchangé) | — |
 | **L50** | Concepts diagnostiques et référentiel terminologique dans l'export | référentiel, contrat d'export, tests | **différé ; après L46** |
-| **L51** | Blocs cliniques conditionnels : opérateur d’appartenance `contains_any` dans le moteur de règles | moteur SQL, `templateRules.ts`, `validation.ts`, `RuleForm.tsx`, i18n | L54 ; **jamais avec L52** |
-| **L55** | Pilote diagnostique et couverture versionnée | règles, templates, éditeurs, copies, RPC | Après L51/L54/L52 ; jamais avec eux |
-| **L56** | Socle enregistrable et suivi autorisé | formulaires, patients/bases, RPC, routes | Après L55 ; collisions L41/L42/offline ; preuve avec L53 |
+| ~~L51~~ | ~~Blocs cliniques conditionnels : opérateur d’appartenance `contains_any` dans le moteur de règles~~ | **Implémenté localement, non déployé** ; voir [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | Ne pas relancer sans défaut nouveau |
+| ~~L55~~ | ~~Pilote diagnostique et couverture versionnée~~ | **Implémenté localement, non déployé** ; voir [l55-configuration-diagnostique.md](l55-configuration-diagnostique.md) | La preuve navigateur reste distincte |
+| ~~L56~~ | ~~Socle enregistrable et suivi autorisé~~ | **Implémenté localement, non déployé** ; voir [l56-parcours-et-suivi.md](l56-parcours-et-suivi.md) | Preuve navigateur/cible à produire |
 | **L57** | Reprise et notifications : cadrage différé | documentation seulement | Après observations pilote L56 ; pas prêt à coder |
-| **L54** | Blocs cliniques conditionnels : deux niveaux de sections et tronc commun créable explicitement | `template_section`, `template_field.section`, primitive de recopie, commandes atomiques, éditeur, rendu, hors-ligne | L51 ; **avant L52 et L53** |
-| **L52** | Blocs cliniques conditionnels : visibilité au niveau **bloc** et invariants de version | moteur SQL, `templateRules.ts`, `validation.ts`, mutations de champs/sections, `RuleForm.tsx` | L53 ; **après L51 et L54**, jamais avec L51 |
-| **L53** | Blocs cliniques conditionnels : projection d’export par blocs | `exportContract.ts`, `handler.ts`, `exports.ts`, `ExportPanel.tsx` | L52 ; **après L54** ; **jamais avec L50** |
-| **L58** | Blocs réutilisables : import serveur d’un bloc dans une version | migration (provenance sur `template_section`, prévisualisation et RPC d’import), tests SQL | **après L52 et L54** ; jamais avec un lot qui redéfinit `copy_template_fields` |
-| **L59** | Blocs réutilisables : choisir un bloc dans l’éditeur | `templates.ts`, `SectionsEditor.tsx`, `TemplateVersionEditor.tsx`, i18n | **après L58** ; **jamais avec L41** (`TemplateVersionEditor.tsx`) |
-| **L60** | Blocs réutilisables : reconnexion de la règle d’activation | `templateRules.ts`, `RuleForm.tsx`, i18n | **après L59** ; jamais avec un lot du moteur de règles |
+| ~~L54~~ | ~~Blocs cliniques conditionnels : deux niveaux de sections et tronc commun créable explicitement~~ | **Implémenté localement, non déployé** ; voir [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | Ne pas relancer sans défaut nouveau |
+| ~~L52~~ | ~~Blocs cliniques conditionnels : visibilité au niveau bloc et invariants de version~~ | **Implémenté localement, non déployé** ; voir [spec-blocs-pathologies.md](spec-blocs-pathologies.md) | Preuve intégrée encore distincte |
+| ~~L53~~ | ~~Blocs cliniques conditionnels : projection d’export par blocs~~ | **Implémenté localement, non déployé** ; voir [l53-projection-export.md](l53-projection-export.md) | Ne pas relancer avec L50 |
+| ~~L58~~ | ~~Blocs réutilisables : import serveur d’un bloc dans une version~~ | **Implémenté localement** ; contrôles détaillés dans [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md) | Non déployé |
+| ~~L59~~ | ~~Blocs réutilisables : choisir un bloc dans l’éditeur~~ | **Implémenté localement** ; catalogue, aperçu et import raccordés | Non déployé |
+| ~~L60~~ | ~~Blocs réutilisables : reconnexion de la règle d’activation~~ | **Implémenté localement** ; chemin de règles existant, sans RPC parallèle | Non déployé |
 | **L61** | Liste patient : stabiliser et prouver le socle colonnes/recherche par code/tri technique déjà présent | `BaseHome.tsx`, `patients.ts`, `Patients.test.tsx`, documentation | **avant L62** ; seul propriétaire de `BaseHome` pendant la preuve |
 | **L62** | Liste patient : contrat serveur de tri par variable analytique | migration/RPC si nécessaire, `patients.ts`, tests DB et snapshot | **après L61** ; jamais avec L42, L56 ou un autre lot modifiant les RPC/repository patients |
 | **L63** | Liste patient : sélecteur de variable et deux sens de tri accessibles | `BaseHome.tsx`, `Patients.test.tsx`, i18n | **après L62** ; jamais avec L61/L64 (même écran) |
@@ -208,6 +224,14 @@ analytique explicite la justifie.
 | **L69** | Groupes répétables : création de patient, occurrences tamponnées et rejeu ordonné | `NewPatient.tsx`, `patients.ts`, tests web | **après L68** ; **jamais avec L41 ni L42** (même `useCallback` de `NewPatient.tsx`) |
 | **L70** | Groupes répétables : export, métadonnée de groupe et colonnes de comptage | `exportContract.ts`, Edge `generate-export`, `ExportPanel.tsx` | **après L66** ; jamais avec L50 (différé) ni L53 |
 | **L71** | Groupes répétables : instantané et rejeu hors-ligne | `offlineIntake.ts`, RPC d’instantané et `replay_encounter_create` | **après L66** ; jamais avec O6 ni O7 |
+| **E0** | Évolution du formulaire : contrats, compatibilité et classification des changements | `docs/spec-evolution-formulaire.md`, contrats de version, données et export | **contrat documenté le 2026-09-16 ; avant E1** ; aucune migration ni implémentation |
+| **E1** | Évolution du formulaire : préparations persistantes, droits et audit | migration additive, RPC/repository de préparation, RLS/ACL, tests DB | **après E0** ; propriétaire unique des contrats serveur |
+| **E2** | Évolution du formulaire : application atomique dans la même base | migration/RPC d’application, copie des sections/champs/règles, idempotence | **après E1** ; jamais avec une autre copie de version |
+| **E3** | Évolution du formulaire : lecture/écriture compatible des dossiers existants | `patients.ts`, formulaires patients/rencontres, validation serveur, tests | **implémenté localement après E2 ; non déployé** ; jamais avec un lot modifiant les mêmes RPC patients |
+| **E4** | Évolution du formulaire : éditeur, diagnostic, aperçu et versionnage invisible | `TemplateVersionEditor.tsx`, éditeurs de structure/règles/diagnostic, i18n | **après E2 et E3** ; coordonner UX-16, L59/L60 et L67 |
+| **E5** | Évolution du formulaire : complétion des patients et rencontres | `SectionedFields.tsx`, `EditPatient.tsx`, formulaires de rencontre, i18n | **après E3 et E4** ; jamais avec un autre lot ouvrant ces fiches |
+| **E6** | Évolution du formulaire : exports, provenance et historique | contrat d’export, dictionnaire, historique, tests de cloisonnement | **après E3** ; préserver les profils d’export |
+| **E7** | Évolution du formulaire : validation intégrée et preuves | tests DB/web, fixture 216/21/26, navigateur, documentation | **après E0 à E6** ; validation seule |
 | **PAP-0** | Formulaire papier : mesurer pages, espaces inutilisés et lisibilité | documentation, fixtures fictives et relevés de baseline | — |
 | **PAP-1** | Formulaire papier : modèle A4 et placement déterministe par hiérarchie/type | module de layout pur, tests, `src/data/types.ts` après inspection | **après PAP-0** ; vérifier les contrats partagés |
 | **PAP-2** | Formulaire papier : prévisualisation paginée et impression navigateur/PDF | `FormPreview.tsx`, écran d'impression, CSS print, tests navigateur | **après PAP-1** ; jamais avec E4, UX-16, L59, L60 ou L67 sur les mêmes surfaces |
@@ -752,7 +776,7 @@ population a été calculée avec le défaut.
 > `20260821120000_template_field_formula_datetime.sql` et
 > `20260821130000_template_field_formula_units.sql` couvrent la grammaire, `datetime` et les
 > unités d'affichage. Le détail de l'implémentation et des contrôles exécutés est consigné dans
-> [`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md#lot-l35--variables-calculées--arithmétique-définie-par-lutilisateur-2026-08-20).
+> [`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md#lot-l35-variables-calculées-arithmétique-définie-par-lutilisateur-2026-08-20).
 
 L'utilisateur définit une variable dont la valeur est un calcul sur d'autres variables du même
 gabarit : `duree_sejour = date_sortie − date_entree`, `delta_score = score_j7 − score_j0`. Il
@@ -1067,7 +1091,7 @@ Le chantier D10 est déjà livré hors de la séquence L1–L50. La migration ad
 gèrent une purge immédiate, explicite et irréversible, avec manifeste Storage, reprise idempotente,
 conservation des preuves d'audit/export et suppression PostgreSQL transactionnelle. Le détail et
 les vérifications sont dans la section D10 du
-[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md#lot-d10--purge-définitive-des-bases-de-la-corbeille-2026-08-20).
+[`suivi-execution-feuille-route.md`](suivi-execution-feuille-route.md#lot-d10-purge-définitive-des-bases-de-la-corbeille-2026-08-20).
 
 ### ~~O0 à O5 — Saisie hors-ligne *intake-only*~~ — **code livré le 2026-08-23**
 
@@ -1129,7 +1153,9 @@ de version ; séquencer avec L54. La preuve intégrée L56 inclut l’export apr
 
 ## Blocs réutilisables — L58 à L60
 
-**L58 implémenté localement le 2026-09-08, non déployé ; L59 et L60 restent spécifiés, non implémentés.** [Contrat détaillé](spec-blocs-reutilisables.md).
+**L58, L59 et L60 sont implémentés localement, non déployés** (respectivement les 8, 9 et
+13 septembre). [Le contrat détaillé et les contrôles exécutés](spec-blocs-reutilisables.md)
+restent la référence. Les prompts historiques ne doivent pas être relancés sans défaut nouveau.
 Ces trois lots ne changent aucune sémantique de bloc : ils ajoutent le seul verbe qui manque,
 **insérer un bloc lisible dans une version en cours d’édition**, avec ses sous-sections, ses
 variables et ses règles internes. Le bloc reste une `template_section` sans parent (L54) ; aucun
@@ -1166,23 +1192,27 @@ choix, et aucun groupe ne doit être ouvert.
 correctifs UX modifient en ce moment.** Ne pas ouvrir L67 tant que cette branche n'est pas
 fusionnée.
 
-## Ordre suggéré — état documentaire au 2026-09-05
+## Ordre suggéré — état de source au 2026-09-16
 
 **Niveau atteint.** Les lots **L1 à L33** sont soldés : 32 sont livrés et **L26 est clos sans
 exécution**. **L14 est bien livré le 2026-08-18**. **L35** est livré le 2026-08-21. **L36** a
 été livré dans son périmètre historique le 2026-08-20, puis requalifié par L47 pour le profil
 Export Analyse. **D10** et **O0 à O5** sont livrés hors de la séquence L1–L50. Le chantier
 d'export **L45 à L49** est livré : contrat serveur le 2026-08-28, choix du profil dans
-l'interface le 2026-09-01.
+l'interface le 2026-09-01. Les blocs conditionnels **L51 à L56** et les blocs réutilisables
+**L58 à L60** sont également implémentés localement, sans preuve de déploiement. Les statuts UX
+locaux sont consignés séparément dans [suivi-correctifs-ux.md](suivi-correctifs-ux.md).
 
 **Travail actif.** Aucun lot fonctionnel n'est actuellement en cours ni en PR ouverte. Le fichier
 `.freebuff/` non suivi dans le checkout principal n'appartient à aucun lot et doit être préservé.
 
 Restent ouverts : **L34**, les lots d'audit **L38 à L44**, **L50** (différé, il attend un
-référentiel diagnostique gouverné), les blocs cliniques conditionnels **L51 à L54**, la collecte **L55/L56**, le cadrage différé
-**L57**, les blocs réutilisables **L58 à L60**, la file liste patient **L61 à L65**, ainsi que **O6** et
-**O7** pour la preuve et l'activation du mode *intake-only*. **L37** est écarté du profil Analyse
-et **L36** ne doit plus être relancé séparément ; voir les révisions en tête du document.
+référentiel diagnostique gouverné), le cadrage différé **L57**, le tri clinique **L62/L63** et les
+preuves intégrées **L65** de la liste patient, les groupes répétables **L66 à L71**, ainsi que
+**O6/O7** pour la preuve et l'autorisation du mode *intake-only*. La recherche nominative contrôlée
+est présente localement, mais la colonne de nom complet et les validations de cible ne sont pas
+déduites de cette présence. **L37** est écarté du profil Analyse et **L36** ne doit plus être
+relancé séparément ; voir les révisions en tête du document.
 
 1. ~~**Famille « moteur de formulaires »**~~ — **close le 2026-08-15** :
    1. ~~**L27**~~ — texte d'aide par variable — **livré** ;
@@ -1214,19 +1244,16 @@ et **L36** ne doit plus être relancé séparément ; voir les révisions en tê
    site déployé reste à produire.
 7. **L50**, différé après L46 : il dépend du référentiel diagnostique et ne doit pas retarder le
    jalon MVP de l'Export Analyse.
-8. **L51** et **L54** peuvent être menés en parallèle : opérateur `contains_any` d'un côté,
-   hiérarchie de sections et tronc commun créable explicitement de l'autre. **L54** doit être fusionné avant
-   L52 et L53 ; L51 et L52 ne tournent jamais ensemble.
-9. Après L51 + L54, **L52** sécurise la visibilité de bloc et les invariants de version. Après
-   L54, **L53** peut avancer en parallèle de L52 ; ne pas le lancer avec L50.
-10. **L58 → L59 → L60**, blocs réutilisables entre jeux de variables : import serveur, choix du
-   bloc dans l’éditeur, reconnexion de l’activation. Strictement séquentiels, après L52 et L54 ;
-   **L59 ne tourne jamais avec L41**.
-11. **L61 → L62 → L63 → L64 → L65**, liste patient : preuve du socle actuel, contrat serveur de
-   tri clinique, interface, identité contrôlée puis validation. **L62** ne tourne jamais avec
-   L42/L56 ; L61/L63/L64 se réservent `BaseHome.tsx`. Voir
+8. ~~**L51, L54, L52 et L53**~~ — implémentés localement. Avant toute reprise, lire leurs
+   spécifications et repartir d'un défaut démontré plutôt que de rejouer les plans de livraison.
+9. ~~**L58 → L59 → L60**~~ — implémentés localement. Leur enchaînement est conservé comme
+   contrainte historique d'architecture ; ne pas ouvrir de second chemin d'import ou de règles.
+10. **L61 → L62 → L63 → L64 → L65**, liste patient : le socle et la recherche nominative contrôlée
+   ont évolué dans le code local ; le tri clinique, la commande accessible et la validation intégrée
+   restent à cadrer à partir de l'état réel. **L62** ne tourne jamais avec L42/L56 ; L61/L63/L64 se
+   réservent `BaseHome.tsx`. Voir
    [`l61-liste-patients-recherche-tri-identite.md`](l61-liste-patients-recherche-tri-identite.md).
-12. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
+11. **O6**, preuve navigateur sur un preview isolé avec données fictives ; puis **O7**, décision
    d'activation et preuve de release. Aucun de ces deux lots n'autorise l'usage de données réelles.
 
 > **Historique de coordination** : L21, L22 et L24 ont été livrés le 2026-08-18, puis L23 et L25 ;

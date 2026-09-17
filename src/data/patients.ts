@@ -124,6 +124,142 @@ export interface Encounter {
   templateVersionId?: string | null;
 }
 
+/** Etats d'une valeur dans le contexte serveur d'une fiche E3. */
+export type RecordFormKind = 'patient' | 'encounter';
+export type RecordFormOrigin = 'initial' | 'completion' | 'correction' | 'import' | 'offline_replay';
+export type RecordFormValueState = 'empty' | 'present' | 'explicit_missing' | 'not_applicable';
+export type RecordFormDefinitionState = 'defined' | 'not_defined';
+
+export interface RecordFormProvenance {
+  origin: RecordFormOrigin;
+  captured_by: string | null;
+  captured_at: string | null;
+  definition_revision: string;
+  operation_id: string | null;
+}
+
+export interface RecordFormFieldContext {
+  field_key: string;
+  definition_revision: string;
+  active_definition_revision: string;
+  scope: RecordFormKind;
+  definition_state: RecordFormDefinitionState;
+  applicability: 'applicable' | 'not_applicable';
+  applicability_reason: string;
+  value_state: RecordFormValueState;
+  provenance: RecordFormProvenance | null;
+  definition: Record<string, unknown>;
+  active_definition: Record<string, unknown> | null;
+  value?: unknown;
+  missing_code?: string | null;
+}
+
+export interface RecordFormObligation {
+  field_key: string;
+  label: string;
+  definition_revision: string;
+  reason: 'missing_value' | 'not_defined';
+}
+
+export interface RecordFormCompleteness {
+  current_missing_field_keys: string[];
+  current_missing_count: number;
+  current_complete: boolean;
+  historical_missing_field_keys: string[];
+  historical_missing_count: number;
+  historical_complete: boolean;
+}
+
+/** Vue calculée par le moteur diagnostique serveur (la forme exacte reste versionnée). */
+export type RecordFormDiagnosisCoverage = Record<string, unknown>;
+
+/** Contexte calculé côté serveur et protégé par une empreinte : aucune décision de compatibilité n'est prise par l'UI. */
+export interface RecordFormContext {
+  record_kind: RecordFormKind;
+  record_id: string;
+  record_revision: number;
+  base_id: string;
+  active_revision: number;
+  record_definition_revision: string;
+  historical_definition: Record<string, unknown>;
+  active_definition: Record<string, unknown>;
+  fields: RecordFormFieldContext[];
+  values: Record<string, unknown>;
+  current_obligations: RecordFormObligation[];
+  completeness: RecordFormCompleteness;
+  diagnosis_coverage: RecordFormDiagnosisCoverage | null;
+  validation_status: string;
+  encounter_type: string | null;
+  context_fingerprint: string;
+}
+
+export interface CompatiblePatientUpdateInput {
+  baseId: string;
+  patientId: string;
+  patch: Record<string, unknown>;
+  validationStatus: string | null;
+  reason: string;
+  expectedRecordRevision: number;
+  recordDefinitionRevision: string;
+  operationId: string;
+  contextFingerprint: string;
+}
+
+export interface CompatibleEncounterUpdateInput {
+  baseId: string;
+  encounterId: string;
+  patch: Record<string, unknown>;
+  validationStatus: string | null;
+  reason: string;
+  expectedRecordRevision: number;
+  recordDefinitionRevision: string;
+  operationId: string;
+  contextFingerprint: string;
+}
+
+export interface CompatibleRecordUpdateReceipt {
+  recordKind: RecordFormKind;
+  recordId: string;
+  recordRevision: number;
+  validationStatus: string;
+  operationId: string;
+  activeRevision: number;
+  recordDefinitionRevision: string;
+  contextFingerprint: string;
+}
+
+/**
+ * Construit uniquement le complément explicite d'un écran. Les champs masqués restent hors
+ * patch ; une absence historique ne devient jamais une suppression implicite.
+ */
+export function buildCompatiblePatch(
+  initial: Record<string, unknown>,
+  current: Record<string, unknown>,
+  hiddenKeys: ReadonlySet<string>,
+  editableKeys: readonly string[],
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const has = (object: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(object, key);
+  const same = (left: unknown, right: unknown) => {
+    if (Object.is(left, right)) return true;
+    try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
+  };
+
+  for (const key of editableKeys) {
+    if (hiddenKeys.has(key)) continue;
+    const wasPresent = has(initial, key);
+    const isPresent = has(current, key);
+    if (!isPresent) {
+      // A previously stored value can be cleared deliberately. `null` keeps the JSON key
+      // and lets the server apply the field's normal empty-value semantics.
+      if (wasPresent) patch[key] = null;
+      continue;
+    }
+    if (!wasPresent || !same(initial[key], current[key])) patch[key] = current[key];
+  }
+  return patch;
+}
+
 export interface FieldChange {
   fieldKey: string;
   oldValue: unknown;
@@ -179,6 +315,8 @@ export interface PatientRepository {
   /** Rejeu IDEMPOTENT d'une creation hors-ligne : une meme cle + charge ne cree jamais deux fois. */
   replayPatientCreate(baseId: string, input: ReplayPatientCreateInput): Promise<{ id: string; code: string }>;
   getPatient(baseId: string, patientId: string): Promise<PatientListItem | null>;
+  /** E3 : contexte serveur historique + projection active, sans identité. */
+  getPatientFormContext?(baseId: string, patientId: string): Promise<RecordFormContext | null>;
   /** Age calcule par le systeme (DOB jamais exposee). null si pas de date de naissance. */
   computeAge(patientId: string, at: string, unit?: string): Promise<number | null>;
   createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
@@ -186,6 +324,8 @@ export interface PatientRepository {
   replayEncounterCreate(input: ReplayEncounterCreateInput): Promise<{ id: string; patientId: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
   getEncounter(encounterId: string): Promise<Encounter | null>;
+  /** E3 : contexte serveur historique + projection active, sans identité. */
+  getEncounterFormContext?(baseId: string, encounterId: string): Promise<RecordFormContext | null>;
   updateEncounter(
     encounterId: string,
     data: Record<string, unknown>,
@@ -201,6 +341,10 @@ export interface PatientRepository {
   finalizePatient(patientId: string): Promise<void>;
   /** Corrige / complete les donnees PERMANENTES d'un patient (journalise, re-validees). */
   updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string, expectedVersion: number | null): Promise<{ version: number | null; updatedAt: string | null }>;
+  /** E3 : complément fusionné côté serveur avec révision et empreinte de contexte. */
+  updatePatientCompatible?(input: CompatiblePatientUpdateInput): Promise<CompatibleRecordUpdateReceipt>;
+  /** E3 : complément fusionné côté serveur avec révision et empreinte de contexte. */
+  updateEncounterCompatible?(input: CompatibleEncounterUpdateInput): Promise<CompatibleRecordUpdateReceipt>;
   /** Corrige la zone identite complete via la RPC dediee, auditee et verrouillee. */
   updatePatientIdentity(patientId: string, identity: PatientIdentityInfo, reason: string, expectedVersion: number | null): Promise<{ version: number | null; updatedAt: string | null }>;
   /** Import par lots (patients + rencontres). dryRun=true -> apercu sans ecriture. */
@@ -515,6 +659,15 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       };
     },
 
+    async getPatientFormContext(baseId, patientId) {
+      const { data, error } = await client.rpc('read_patient_form_context', {
+        p_base_id: baseId,
+        p_patient_id: patientId,
+      });
+      if (error) throw error;
+      return (data as RecordFormContext | null) ?? null;
+    },
+
     async listEncounters(patientId) {
       const { data, error } = await client
         .from('encounter')
@@ -535,6 +688,15 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         .maybeSingle();
       if (error) throw error;
       return data ? mapEncounter(data as EncounterRow) : null;
+    },
+
+    async getEncounterFormContext(baseId, encounterId) {
+      const { data, error } = await client.rpc('read_encounter_form_context', {
+        p_base_id: baseId,
+        p_encounter_id: encounterId,
+      });
+      if (error) throw error;
+      return (data as RecordFormContext | null) ?? null;
     },
 
     async updateEncounter(encounterId, data, status, reason, expectedUpdatedAt, operationId) {
@@ -599,6 +761,38 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
       const r = (Array.isArray(row) ? row[0] : row) as PatientRow;
       return { version: r.row_version ?? null, updatedAt: r.updated_at ?? null };
+    },
+
+    async updatePatientCompatible(input) {
+      const { data, error } = await client.rpc('update_patient_compatible', {
+        p_base_id: input.baseId,
+        p_patient_id: input.patientId,
+        p_patch: input.patch,
+        p_validation_status: input.validationStatus,
+        p_reason: input.reason,
+        p_expected_record_revision: input.expectedRecordRevision,
+        p_record_definition_revision: input.recordDefinitionRevision,
+        p_operation_id: input.operationId,
+        p_context_fingerprint: input.contextFingerprint,
+      });
+      if (error) throw error;
+      return data as CompatibleRecordUpdateReceipt;
+    },
+
+    async updateEncounterCompatible(input) {
+      const { data, error } = await client.rpc('update_encounter_compatible', {
+        p_base_id: input.baseId,
+        p_encounter_id: input.encounterId,
+        p_patch: input.patch,
+        p_validation_status: input.validationStatus,
+        p_reason: input.reason,
+        p_expected_record_revision: input.expectedRecordRevision,
+        p_record_definition_revision: input.recordDefinitionRevision,
+        p_operation_id: input.operationId,
+        p_context_fingerprint: input.contextFingerprint,
+      });
+      if (error) throw error;
+      return data as CompatibleRecordUpdateReceipt;
     },
 
     async updatePatientIdentity(patientId, identity, reason, expectedVersion) {

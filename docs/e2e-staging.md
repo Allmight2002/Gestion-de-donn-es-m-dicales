@@ -29,8 +29,11 @@ documents.
    (fichier LOCAL, gitignoré : `STAGING_SUPABASE_URL`, `_ANON_KEY`, `_SERVICE_ROLE_KEY`,
    `_DB_URL` (Session pooler, mot de passe **percent-encodé**), comptes de test).
 2. Provisionner le staging : `db push` (toutes les migrations), `apply-storage.mjs`
-   (buckets + policies), deployer les Edge Functions (`signed-read`, `inspect-upload`,
-   `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`), creer un compte `medecin`.
+   (buckets + policies), déployer les huit Edge Functions (`signed-read`, `inspect-upload`,
+   `finalize-upload`, `cleanup-upload`, `generate-export`, `reconcile-quarantine`,
+   `create-mission-account`, `purge-deleted-base`) puis créer un compte `medecin`. Les scénarios
+   de ce preflight n'exercent qu'un sous-ensemble lecture/inspection ; les prérequis du compte de
+   mission restent décrits dans [edge-functions.md](edge-functions.md) §10.5.
 3. **Scanner ClamAV joignable par l'Edge — `INSPECTION_MODE=strict` uniquement.**
    `inspect-upload` s'exécute dans le cloud : il ne peut pas joindre `localhost`. En local :
    ```bash
@@ -45,7 +48,15 @@ documents.
 
 ```bash
 npm run inspection:pause -- --target=staging   # suspend la politique DB (transactionnel)
-npm run e2e:staging                            # INSPECTION_MODE=paused
+INSPECTION_MODE=paused npm run e2e:staging
+```
+
+Sous PowerShell, lancer explicitement le mode lu par le script, puis le retirer :
+
+```powershell
+$env:INSPECTION_MODE = 'paused'
+npm run e2e:staging
+Remove-Item Env:INSPECTION_MODE
 ```
 
 | Famille | Mode `paused` |
@@ -87,8 +98,12 @@ soumission de curation avec documents. Ordre correct :
 ## Lancer le preflight
 
 ```bash
-npm run e2e:staging
+INSPECTION_MODE=strict npm run e2e:staging
 ```
+
+Sous PowerShell, utiliser `$env:INSPECTION_MODE = 'strict'` avant la commande. Ne réactivez pas
+la politique DB stricte sans avoir satisfait l'ordre d'activation ci-dessus ; le mode du processus
+et celui de la base doivent rester cohérents.
 
 Scénarios (13 assertions), tous doivent être verts :
 

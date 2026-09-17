@@ -25,6 +25,9 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
   const latest = useRef({ key, payload, dirty, onRestore, context, online: availableNow });
   useLayoutEffect(() => { latest.current = { key, payload, dirty, onRestore, context, online: availableNow }; });
   const session = useRef<WorkDraftSession | null>(null);
+  // Issue de l'initialisation en cours : un enregistrement demande avant sa fin l'attend au
+  // lieu d'etre refuse. Toujours tenue, jamais rejetee (la liste gere son propre echec).
+  const initialization = useRef<Promise<void> | null>(null);
   const generation = useRef(0);
   const dirtySince = useRef<number | null>(null);
   const deleteOperations = useRef(new Map<string, string>());
@@ -59,10 +62,11 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
     session.current = null;
     setState(null); setCandidates([]); setCompleted([]); setLoadError(null); dirtySince.current = null;
     setLoadedKey(null); setDiscarding(false); discardFlight.current = null;
+    initialization.current = null;
     const currentContext = latest.current.context;
     if (!currentContext || !repository.available || !latest.current.online) { setLoading(false); return; }
     setLoading(true);
-    void repository.list(currentContext).then((drafts) => {
+    initialization.current = repository.list(currentContext).then((drafts) => {
       if (token !== generation.current) return;
       const active = drafts.filter((draft) => draft.state === 'active' && sameForm(draft, currentContext));
       setCandidates(active);
@@ -180,8 +184,14 @@ export function useWorkDraft({ context, ownerId, payload, dirty, online, onResto
       if (discardFlight.current === token) { discardFlight.current = null; setDiscarding(false); }
     }
   }
+  // Le clic peut preceder la fin de `list_work_drafts` : attendre l'issue de l'initialisation,
+  // sinon une saisie rapide repart avec un message de brouillon alors que la FICHE n'a pas ete
+  // ecrite. Apres l'attente, seuls des refs decident : l'etat du rendu du clic est perime. Une
+  // session n'est attachee que sans reprise en attente (liste, resume, startNew, discard) ; son
+  // absence couvre donc la liste en echec, le contexte change et les brouillons a arbitrer.
   async function commit(identity?: WorkDraftIdentity) {
-    if (!session.current || loadingCurrent || candidates.length || discardFlight.current !== null) throw new WorkDraftError('DRAFT_UNAVAILABLE');
+    await initialization.current;
+    if (!session.current || discardFlight.current !== null) throw new WorkDraftError('DRAFT_UNAVAILABLE');
     return session.current.commit(latest.current.payload, identity);
   }
   return {

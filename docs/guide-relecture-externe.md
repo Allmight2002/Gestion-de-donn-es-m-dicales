@@ -24,12 +24,13 @@ doit l'être. Les comptes de démonstration et leur mot de passe sont volontaire
 [`supabase/seed.sql`](../supabase/seed.sql) : ce sont des comptes de démonstration sur des données
 inventées, pas une fuite.
 
-**État vérifié le 19 août 2026** : `npm run db:verify` → **129 migrations rejouées proprement
-depuis zéro** (~10 s) ; schéma `public` : 42 tables, 261 fonctions, 63 politiques RLS,
-63 triggers (décomptes du fichier **généré** [schema-etat-final.md](schema-etat-final.md), qui
-fait foi) ; **`npm test` → 134 fichiers, 1256/1256 tests verts** (RLS embarqué + UI, 121 s en
-intégration continue), dont `npm run test:web` → 467/467 sur 65 fichiers ; 7 Edge Functions.
-Environ 21 200 lignes de TypeScript applicatif (hors tests) et 19 400 lignes de SQL de migration.
+**État de source au 16 septembre 2026** : le schéma **généré**
+[schema-etat-final.md](schema-etat-final.md), qui fait foi, inclut 148 migrations et recense
+50 tables, 328 fonctions, 64 politiques RLS et 79 triggers ; huit Edge Functions sont présentes.
+`npm.cmd run schema:check` confirme que ce snapshot est à jour. Le dernier résultat complet de
+tests et de rejeu de base reste une preuve datée : ne pas le présenter comme validation de ce
+checkout sans le rejouer. L'état de source, les validations locales consignées et les limites de
+preuve sont résumés dans [etat-actuel-2026-09-16.md](etat-actuel-2026-09-16.md).
 
 > Le décompte complet vient du job `build-test` de l'intégration continue, qui rejoue **les deux
 > projets Vitest** (`db` et `web`) sur un PostgreSQL embarqué. Sur un poste Windows, comptez
@@ -70,9 +71,9 @@ npm run db:verify
 ```
 
 `db:verify` monte un **vrai PostgreSQL 18 embarqué** (binaire téléchargé par npm, aucun service
-externe), y rejoue les 112 migrations depuis zéro, applique le seed et résume le schéma obtenu.
-C'est la façon la plus rapide de voir que le schéma tient debout. Comptez ~13 s après le premier
-téléchargement.
+externe), y rejoue depuis zéro toutes les migrations présentes (148 au 2026-09-16), applique le
+seed et résume le schéma obtenu. C'est la façon la plus rapide de voir que le schéma tient debout ;
+le temps dépend du téléchargement initial et de la machine.
 
 ```bash
 npm test          # suite complète : projet "db" (RLS/SQL) + projet "web" (rendu React)
@@ -104,14 +105,15 @@ Pour lancer le produit **bout-en-bout** avec une vraie pile Supabase locale, sui
 | 3 | [`supabase/migrations/20260616090400_rls.sql`](../supabase/migrations/20260616090400_rls.sql) | Les politiques RLS d'origine : le cœur du produit |
 | 4 | [`src/data/`](../src/data/) | Les repositories : toute la surface d'accès aux données, injectables |
 | 5 | [`src/domain/`](../src/domain/) | La logique pure (validation, règles, import/export) — testable sans React |
-| 6 | [`supabase/functions/`](../supabase/functions/) | Les 7 fonctions serveur Deno |
+| 6 | [`supabase/functions/`](../supabase/functions/) | Les 8 fonctions serveur Deno |
 | 7 | [schema-etat-final.md](schema-etat-final.md) | L'état **résultant** de toutes les migrations, généré — évite de les rejouer de tête |
 
 ### 3.3 Conventions du dépôt (utiles pour juger le code)
 
 - **Migrations forward-only.** Une migration déjà appliquée n'est **jamais** modifiée. Tout
   changement passe par une nouvelle migration horodatée, additive, compatible avec les données
-  existantes. D'où les 112 fichiers : c'est un choix, pas une dérive.
+  existantes. Les 148 fichiers du checkout sont une trace d'évolution, pas une invitation à les
+  réécrire.
 - **Écritures cliniques par RPC uniquement.** Les `INSERT`/`UPDATE` directs sur les tables
   cliniques sont fermés. L'autorisation, la validation et la journalisation vivent dans la
   fonction, pas dans l'appelant.
@@ -124,9 +126,9 @@ Pour lancer le produit **bout-en-bout** avec une vraie pile Supabase locale, sui
 
 ### 3.4 Questions sur lesquelles un avis extérieur nous aiderait
 
-1. **Le découpage `data` / `domain` / `screens` tient-il** à 169 fichiers TypeScript, ou faut-il
+1. **Le découpage `data` / `domain` / `screens` tient-il** à 261 fichiers `.ts`/`.tsx` sous `src/`, ou faut-il
    déjà une couche intermédiaire ?
-2. **112 migrations forward-only** : à partir de quel volume faut-il consolider un socle, et
+2. **148 migrations forward-only** : à partir de quel volume faut-il consolider un socle, et
    comment le faire sans casser la reproductibilité que garantit `db:verify` ?
 3. **Le couplage à Supabase** est-il raisonnablement isolé (`src/lib/supabase.ts`,
    `src/data/*`), ou une migration vers un autre backend serait-elle un chantier majeur ?
@@ -155,7 +157,7 @@ Ce qui est **dans** le périmètre défendu :
 | Une lecture de document privé n'est pas tracée | L'`audit_log` est écrit **avant** que l'URL signée soit produite | `signed-read` |
 | Un compte de mission survit à sa mission | Échéance obligatoire (≤ 24 mois) revérifiée **par RLS à chaque requête** | `guard_base_access_medecin` |
 | Une escalade de privilège par `user_metadata` | Le rôle est porté par `app_metadata` (non modifiable par l'utilisateur) | [spec-comptes-mission.md](spec-comptes-mission.md) |
-| Une fonction privilégiée est ajoutée en douce | Inventaire normatif de 94 signatures ; toute divergence **casse la CI** | [security-definer.md](security-definer.md) |
+| Une fonction privilégiée est ajoutée en douce | Inventaire normatif de 132 signatures `authenticated` (12 `service_role` séparées) ; toute divergence **casse la CI** | [security-definer.md](security-definer.md) |
 
 Ce qui est **hors** du périmètre, explicitement :
 
@@ -176,7 +178,8 @@ Ce qui est **hors** du périmètre, explicitement :
    `base`/`base_access` **sans** déclencher leur propre RLS, pour éviter la récursion. C'est le
    point le plus délicat du design : ils ne renvoient qu'un booléen sur `auth.uid()`.
 3. [`supabase/security-definer-allowlist.json`](../supabase/security-definer-allowlist.json) — les
-   94 fonctions privilégiées, classées et justifiées une à une.
+   132 signatures privilégiées exécutables par `authenticated`, classées et justifiées une à une ;
+   les 12 signatures `service_role` sont séparées.
 4. [`supabase/functions/signed-read/index.ts`](../supabase/functions/signed-read/index.ts) —
    autorisation par RLS avec le JWT de l'utilisateur, **audit bloquant avant signature**, contrôle
    `path.startsWith(baseId + '/')`.
@@ -245,9 +248,11 @@ Puis `npx vitest run --project db test/mon-attaque.test.ts`.
 
 ## 5. Ce qui est déjà connu (ne perdez pas de temps dessus)
 
-Le dernier audit technique interne
-([audits/audit-technique-complet-2026-08-09.md](audits/audit-technique-complet-2026-08-09.md),
-≈8,8/10, aucun constat critique ou élevé) a laissé ouverts :
+Le dernier audit technique interne archivé est
+([audits/audit-technique-complet-2026-08-18.md](audits/audit-technique-complet-2026-08-18.md)).
+Ses constats restent datés : comparer leur périmètre aux contrôles ultérieurs avant de les traiter
+comme des défauts actuels. Les sujets connus ci-dessous sont donc des pistes de relecture, pas un
+verdict de disponibilité de la version présente :
 
 | Point connu | Statut |
 |---|---|

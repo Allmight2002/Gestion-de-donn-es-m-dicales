@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
-import type { WorkDraft, WorkDraftContext, WorkDraftRepository } from '../../data/workDrafts';
+import { WorkDraftError, type WorkDraft, type WorkDraftContext, type WorkDraftRepository } from '../../data/workDrafts';
 import { useWorkDraft } from './useWorkDraft';
 
 const context: WorkDraftContext = { baseId: 'base-a', kind: 'patient_create', targetId: null, templateVersionId: 'v1', entityRevision: null };
@@ -46,5 +46,50 @@ describe('work draft entry context', () => {
     await act(async () => resolveOld([draft]));
     expect(result.current.candidates).toEqual([]);
     expect(repository.discard).not.toHaveBeenCalled();
+  });
+
+  // Un enregistrement demande pendant la recherche de brouillons ne doit pas etre refuse : la
+  // fiche, elle, n'a pas ete ecrite, et le refus se lisait comme une indisponibilite du seul
+  // brouillon. Regression observee en e2e staging, ou le clic precede la reponse de la liste.
+  test('honours a save clicked before the draft list answers', async () => {
+    let resolveList!: (drafts: WorkDraft[]) => void;
+    const repository = { available: true,
+      list: vi.fn(() => new Promise<WorkDraft[]>((resolve) => { resolveList = resolve; })),
+      save: vi.fn<WorkDraftRepository['save']>(async (_context, id, expectedRevision) => ({ id, revision: expectedRevision + 1,
+        updatedAt: '2026-09-17T10:16:00Z', expiresAt: '2026-09-24T10:16:00Z' })),
+      commit: vi.fn<WorkDraftRepository['commit']>(async () => ({ id: 'patient-a' })),
+      discard: vi.fn(),
+    } satisfies WorkDraftRepository;
+    const { result } = renderHook(() => useWorkDraft({ context, ownerId: 'owner',
+      payload: { values: { score: 8 }, reason: 'Passage complete' }, dirty: true, online: true, repository, onRestore: vi.fn() }));
+    expect(result.current.loading).toBe(true);
+
+    let receipt: { id: string } | undefined;
+    await act(async () => {
+      const saving = result.current.commit();
+      resolveList([]);
+      receipt = await saving;
+    });
+    expect(receipt).toEqual({ id: 'patient-a' });
+    expect(repository.commit).toHaveBeenCalledOnce();
+    expect(repository.save.mock.calls[0]?.[4]).toEqual({ values: { score: 8 }, reason: 'Passage complete' });
+  });
+
+  test('still refuses a save when the draft list fails, without touching the record', async () => {
+    let rejectList!: (error: unknown) => void;
+    const repository = { available: true,
+      list: vi.fn(() => new Promise<WorkDraft[]>((_resolve, reject) => { rejectList = reject; })),
+      save: vi.fn(), commit: vi.fn(), discard: vi.fn(),
+    } satisfies WorkDraftRepository;
+    const { result } = renderHook(() => useWorkDraft({ context, ownerId: 'owner',
+      payload: { values: { score: 8 } }, dirty: true, online: true, repository, onRestore: vi.fn() }));
+
+    await act(async () => {
+      const saving = result.current.commit();
+      rejectList(new WorkDraftError('DRAFT_UNAVAILABLE'));
+      await expect(saving).rejects.toThrow(/brouillons serveur sont indisponibles/);
+    });
+    expect(repository.commit).not.toHaveBeenCalled();
+    expect(repository.save).not.toHaveBeenCalled();
   });
 });

@@ -20,12 +20,16 @@ produit : **séparation des zones** (identité / analytique / documents bruts) e
 curation complète (pool → finalisation **par le curateur**, sans étape de validation séparée).
 Tests Vitest, RLS et migrations sont rejouables localement ; les compteurs exacts sont fournis par
 `npm run manifest`, `npm run schema` et les sorties de test.
-Build PWA OK ; **déployé** (Vercel + Supabase cloud, **données fictives**).
+Le dépôt produit une PWA ; l'état d'un déploiement, du service worker et des fonctions Edge doit
+être prouvé séparément pour le commit concerné. Voir
+[l'état de référence](docs/etat-actuel-2026-09-16.md) et les rapports de validation datés.
 
-**Instantané du schéma vérifié le 24 août 2026** : `docs/schema-etat-final.md` recense les
-132 migrations, 43 tables, 269 fonctions, 63 politiques RLS et 66 triggers du schéma `public` ;
-le dépôt contient 8 Edge Functions. Les validations d'une livraison donnée restent à lire dans
-son journal d'exécution : un état de schéma local ne vaut pas preuve de déploiement cloud.
+**Instantané de schéma courant dans ce checkout** :
+[`docs/schema-etat-final.md`](docs/schema-etat-final.md) inclut
+`20260912160000_ux_patient_identity_search.sql` et recense 50 tables, 328 fonctions, 64
+politiques RLS et 79 triggers du schéma `public`. Le dépôt contient huit Edge Functions ; le
+contrôle de fraîcheur du snapshot (`npm.cmd run schema:check`) réussit. Ces faits de source ne
+valent pas preuve de déploiement cloud.
 
 > Besoin d'un backend Supabase pour le login réel ? Voir
 > [docs/configurer-supabase.md](docs/configurer-supabase.md) (voie cloud, sans Docker).
@@ -114,8 +118,8 @@ en `curated` entrent dans les cohortes et exports. Le médecin peut supprimer un
 | Base de données | **PostgreSQL 18 + RLS** | Schéma portable vers Supabase tel quel |
 | Backend cible | **Supabase** (Postgres + Auth + RLS + Storage + Edge Functions) | `auth.users` + table `profiles` |
 | Frontend | **React 19 + TypeScript 5 strict + Vite 8 (PWA)** + Tailwind v4 | auth + gating par rôle |
-| Routage / i18n | react-router 8 + i18n maison (fr/en) | 41 routes (44 `<Route>`), `ProtectedRoute` par rôle |
-| Code serveur | **Edge Functions Deno** (`supabase/functions/`) | 7 fonctions ; chemins non pilotables par le navigateur seul |
+| Routage / i18n | react-router 8 + i18n maison (fr/en) | 43 chemins déclarés (42 hors repli `*`), 45 `<Route>`, `ProtectedRoute` par rôle |
+| Code serveur | **Edge Functions Deno** (`supabase/functions/`) | 8 fonctions ; chemins non pilotables par le navigateur seul |
 | Antivirus | **ClamAV** en service HTTP (`services/clamav-scanner`) | appelé par `inspect-upload` |
 | Tests de sécurité | **Vitest + PostgreSQL embarqué** (`embedded-postgres`) | **sans Docker**, voir ci-dessous |
 | Tests frontend | **Vitest + jsdom + Testing Library** | rendu + gating par rôle |
@@ -160,7 +164,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   │                                          #   audit infalsifiable, hors-ligne, gouvernance des
 │   │                                          #   accès, exports audités… (voir
 │   │                                          #   docs/schema-etat-final.md pour l'état résultant)
-│   ├── functions/                        # Edge Functions Deno (code SERVEUR, 7 fonctions)
+│   ├── functions/                        # Edge Functions Deno (code SERVEUR, 8 fonctions)
 │   │   ├── signed-read/                  # URL signée délivrée APRÈS écriture de l'audit
 │   │   ├── inspect-upload/               # extension/magic-bytes + ClamAV → verdict
 │   │   ├── finalize-upload/              # preuve hash/taille/MIME revérifiée après commit
@@ -183,7 +187,7 @@ Supabase fournit déjà (`auth.uid()`, rôles `anon`/`authenticated`/`service_ro
 │   ├── i18n/                             # messages fr/en + provider
 │   ├── lib/                              # client Supabase (clé ANON), env, écriture gardée, réseau
 │   ├── pwa/                              # politique d'enregistrement du service worker
-│   ├── routes/                           # routage (41 routes) + ProtectedRoute (gating par rôle)
+│   ├── routes/                           # routage (43 chemins déclarés, 45 <Route>) + ProtectedRoute (gating par rôle)
 │   ├── screens/                          # member/ (médecin, curateur, saisisseur) + staff/ (admin)
 │   ├── components/                       # AppShell, ErrorBoundary, palette de commandes, UI
 │   └── main.tsx · App.tsx
@@ -389,11 +393,12 @@ d'exemple, et des cas de curation de démonstration.
 Entrées principales :
 
 - **[docs/guide-relecture-externe.md](docs/guide-relecture-externe.md)** — 🔍 pour un relecteur extérieur : parcours **développeur** et parcours **sécurité**.
+- **[docs/etat-actuel-2026-09-16.md](docs/etat-actuel-2026-09-16.md)** — état du code local, limites de preuve et orientations vers les validations adaptées.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — flux de travail Git (branches `main`/`develop`), releases, déploiement.
 - **[docs/architecture.md](docs/architecture.md)** — vue d'ensemble (modèle, rôles, RLS, curation, Edge, carte du code).
 - **[docs/cahier-des-charges-metier.md](docs/cahier-des-charges-metier.md)** — spécification **fonctionnelle** (EF / RG).
 - **[docs/cahier-des-charges-technique.md](docs/cahier-des-charges-technique.md)** — spécification **technique** (ET).
-- **[docs/edge-functions.md](docs/edge-functions.md)** — les 7 fonctions serveur (lecture signée auditée, inspection antivirus, export, comptes de mission).
+- **[docs/edge-functions.md](docs/edge-functions.md)** — les 8 fonctions serveur (lecture signée auditée, inspection antivirus, export, comptes de mission et purge).
 - **[docs/schema-etat-final.md](docs/schema-etat-final.md)** — état du schéma **généré** par `npm run schema` (prévaut sur toute description manuelle).
 - **[docs/deploiement.md](docs/deploiement.md)** — mettre le service en ligne (pilote à données fictives) + prérequis avant données réelles.
 - **[docs/configurer-supabase.md](docs/configurer-supabase.md)** — créer un projet Supabase (cloud).

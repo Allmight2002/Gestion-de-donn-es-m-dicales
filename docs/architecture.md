@@ -10,11 +10,12 @@
 > parcours développeur et un parcours sécurité. L'index de toute la documentation est dans
 > [README.md](README.md).
 
-**Instantané vérifié le 24 août 2026** (`npm run db:verify` : les 132 migrations rejouées
-proprement depuis zéro en ~10 s ; décomptes du schéma `public` repris de
-[schema-etat-final.md](schema-etat-final.md), qui est **généré** et fait foi) :
-43 tables · 269 fonctions · 63 politiques RLS · 66 triggers · 8 Edge Functions · ~21 200 lignes de
-TypeScript applicatif (hors tests) · ~19 400 lignes de SQL de migration.
+**Instantané de source au 16 septembre 2026** : le document généré
+[schema-etat-final.md](schema-etat-final.md) — qui fait foi — inclut la migration
+`20260912160000_ux_patient_identity_search.sql` et recense 50 tables · 328 fonctions · 64
+politiques RLS · 79 triggers · 8 Edge Functions. `npm.cmd run schema:check` a confirmé que le
+snapshot est à jour pendant cette mise à jour documentaire. Ce contrôle ne rejoue pas les migrations
+et ne vaut pas preuve de déploiement ou de fonctionnement sur une cible.
 
 Spécifications de référence (reconstituées à partir du code réel, versionnées) :
 **[cahier-des-charges-metier.md](cahier-des-charges-metier.md)** (fonctionnel : EF / RG) et
@@ -24,10 +25,10 @@ en reste la **vue d'ensemble développeur**.
 
 ---
 
-> **Évolution spécifiée, non implémentée (2026-09-05)** : la
-> [collecte diagnostique](spec-collecte-diagnostique.md) complète les blocs L51–L54 par L55/L56
-> (socle enregistrable même sans bloc) ; L57 cadre ultérieurement les reprises et notifications.
-> Ce chantier ne change pas encore les comportements décrits ci-dessous.
+> **État de source révisé.** Les lots L51 à L56 de la
+> [collecte diagnostique](spec-collecte-diagnostique.md) sont implémentés localement et restent
+> non déployés ; L57 (reprises versionnées et notifications) demeure à cadrer. Leur présence dans
+> le checkout ne transforme pas les preuves locales en validation navigateur ou cible.
 
 ## 1. Principe central : un registre, trois zones
 
@@ -186,6 +187,15 @@ type, bornes, valeurs autorisées, `required`, `scope` (permanent / rencontre) e
 `allow_missing_codes`. Les règles de cohérence sont du JSON contrôlé (opérateurs en
 liste blanche). Un gabarit est **global** (admin) ou **personnel** (médecin propriétaire).
 
+**Reprise de saisie et présentation de formulaire** (`work_draft`, `work_draft_operation`,
+`template_common_group`, `common_layout_operation`)
+Les brouillons de travail analytiques restent séparés des fiches métier, de l'identité, des
+documents bruts et de la file *intake-only*. Ils possèdent une révision et un reçu d'opération pour
+éviter les écritures partielles après une réponse perdue. Les rubriques communes sont versionnées :
+elles organisent l'affichage des variables communes sans les transformer en blocs cliniques. Leur
+écriture passe par une opération atomique contrôlée, tandis que la lecture reste limitée aux
+gabarits que l'appelant peut déjà consulter.
+
 **Comptes & bases** (`profiles`, `base`, `base_access`, `base_invitation`,
 `mission_account_credential`, `mission_credential_operation`)
 `profiles` est lié à `auth.users` (on ne recrée pas de table utilisateur). Une `base`
@@ -197,7 +207,10 @@ technique non affichée. Le mot de passe généré est conservé uniquement sous
 La génération active est copiée dans le JWT et comparée côté base afin d'invalider immédiatement
 les sessions antérieures lors d'une régénération.
 
-**Zone identité** (`patient_identity`, `clinical_attachment`) — restreinte, jamais exportée.
+**Zone identité** (`patient_identity`, `clinical_attachment`) — restreinte, jamais exportée. La
+recherche nominative récente passe par une fonction serveur étroite qui vérifie rôle, accès de base
+et capacité identité, journalise l'accès sans conserver le terme recherché, et ne donne pas au client
+un accès direct à `patient_identity`.
 
 **Zone analytique** (`patient`, `encounter`, `field_change_log`)
 `patient` = données permanentes ; `encounter` = rencontres avec `age_value`/`age_unit`
@@ -313,7 +326,7 @@ seule, ou le patient **et** la demande.
 
 | Couche | Emplacement | Rôle |
 |---|---|---|
-| **Migrations SQL** | `supabase/migrations/` (132) | Schéma, RLS, fonctions, RPC — **source de vérité** |
+| **Migrations SQL** | `supabase/migrations/` (148 au 2026-09-16) | Schéma, RLS, fonctions, RPC — **source de vérité** |
 | **Edge Functions** | `supabase/functions/` (8) | Code **serveur** Deno : chemins non pilotables par le navigateur seul (§9) |
 | Inventaire privilèges | `supabase/security-definer-allowlist.json` | Fonctions `SECURITY DEFINER` justifiées une à une |
 | Données de démo | `supabase/seed.sql` | Comptes + 10 patients **fictifs** |
@@ -323,7 +336,7 @@ seule, ou le patient **et** la demande.
 | **Domaine pur** | `src/domain/` | Validation de saisie, règles JSON, import/export, tableur |
 | **Écrans** | `src/screens/member`, `src/screens/staff` | UI React |
 | Auth & rôles | `src/auth/` | `AuthProvider`, gating par rôle (logique pure testée) |
-| Routage | `src/routes/` | 13 routes + `ProtectedRoute` (gating par rôle) |
+| Routage | `src/routes/` | 43 chemins déclarés (42 hors repli `*`), 45 éléments `<Route>` dont les routes index/groupées, + `ProtectedRoute` |
 | Hors-ligne / PWA | `src/pwa/`, `src/data/offline.ts`, `src/data/offlineIntake.ts` | Snapshot analytique historique, corrections et saisie *intake-only* idempotente |
 | i18n | `src/i18n/` | Messages fr/en |
 | **Tests** | `test/` (db) + `src/**/*.test.tsx` (web) + `e2e/` | RLS + domaine + rendu + bout-en-bout |
@@ -374,6 +387,12 @@ seule, ou le patient **et** la demande.
 20260820120000_template_field_formula        20260820210000_base_purge
 20260821120000_template_field_formula_datetime  20260821130000_template_field_formula_units
 20260822000000_offline_intake_idempotency
+
+# Blocs réutilisables, brouillons UX, mise en page commune et identité
+20260908090000_reusable_block_import          20260909025040_reusable_block_preview_guards
+20260909170000_importable_block_catalog        20260910233212_ux_work_drafts
+20260911210000_ux_rule_batch                   20260912090000_ux_common_group
+20260912160000_ux_patient_identity_search
 ```
 
 ---
@@ -389,7 +408,7 @@ recrée ce que Supabase fournit déjà (`auth.uid()`, rôles) ; il n'est jamais 
 npm test            # tout : RLS (projet db) + frontend (projet web)
 npm run test:rls    # uniquement la sécurité RLS
 npm run test:web    # uniquement le rendu UI
-npm run db:verify   # rejoue les 132 migrations depuis zéro (~10 s) et résume le schéma
+npm run db:verify   # rejoue les 148 migrations depuis zéro et résume le schéma
 npm run test:web -- --coverage   # couverture du projet web
 ```
 

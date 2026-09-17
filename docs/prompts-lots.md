@@ -46,6 +46,10 @@
   **L66 est bloquant** ; ensuite la file **L67 → L68 → L69**, et **L70**/**L71** en parallèle.
   Le jalon utilisable est **L68**. **L67 ne tourne jamais avec les correctifs UX de l’éditeur**,
   **L69 jamais avec L41 ni L42**, **L70 jamais avec L50 ni L53**.
+- **Révisé le 2026-09-15** : huit prompts ajoutés (**E0 à E7**) pour l’évolution fluide du
+  formulaire dans la même base, la complétion des patients existants, la dispense de justification
+  du propriétaire et la confirmation de purge par code court. Ils suivent l’ordre E0 → E7 décrit
+  dans [`lots-evolution-formulaire.md`](lots-evolution-formulaire.md).
 - **Révisé le 2026-09-15** : six prompts ajoutés (**PAP-0 à PAP-5**) pour le formulaire vierge
   imprimable, issus de [`spec-formulaire-papier.md`](spec-formulaire-papier.md). PAP-0 à PAP-4
   forment le chemin principal ; PAP-5 reste conditionnel au contrat des groupes répétables.
@@ -87,7 +91,7 @@ dépôt. Trois clauses y reviennent volontairement à l'identique — poser les
 questions avant de commencer, l'autorisation d'aller jusqu'au bout du circuit, et
 la définition de « terminé ».
 
-## État documentaire au 2026-09-05
+## État documentaire au 2026-09-16
 
 **Vérifier cet état avant de lancer un thread**, pour ne pas faire refaire du travail déjà fait.
 La source de vérité du suivi reste le tableau et la section « Ordre suggéré » de
@@ -98,18 +102,19 @@ La source de vérité du suivi reste le tableau et la section « Ordre suggéré
 | **L34** | Filtre d'une variable Diagnostic à valeur unique |
 | **L38 à L44** | Lots issus de l'audit du 2026-08-18 (L38 prioritaire : `inspection=paused` en production) |
 | **L50** | Concepts diagnostiques dans l'export — **différé**, il attend un référentiel gouverné |
-| **L51**, **L54** | Blocs cliniques conditionnels : opérateur d’appartenance et deux niveaux de sections — parallélisables entre eux |
-| **L55** | Configuration diagnostique et couverture — après L51/L54/L52 |
-| **L56** | Socle et suivi — après L55 ; preuve complète avec L53 |
 | **L57** | Cadrage différé de la reprise/notifications — après pilote L56 |
-| **L58** à **L60** | Blocs réutilisables entre jeux de variables — séquentiels, après L52/L54 |
-| **L52** | Visibilité au niveau bloc — **après L51 et L54**, jamais avec L51 |
-| **L53** | Projection d’export par blocs — **après L54** ; ne pas lancer avec L50 |
+| **L62**, **L63** | Tri clinique serveur puis commande de tri accessible dans la liste patient |
+| **L65** | Preuves intégrées de la liste patient après le périmètre réellement livré |
 | **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
+| **L66** à **L71** | Groupes répétables, après relecture de leur contrat et des collisions de l'éditeur |
+| **E0** à **E7** | Évolution additive du formulaire dans une même base — spécifiée, non implémentée |
+| **PAP-0** à **PAP-5** | Formulaire papier vierge — spécifié, non implémenté |
 
-**Tout le reste est soldé** : L1 à L33 (dont L26, clos sans exécution), L35, L36, L37 (écarté du
-profil Analyse), L45 à L49 et D10. Leurs prompts sont **barrés** ci-dessous et conservés pour
-mémoire — ne pas les relancer.
+**État local à ne pas relancer automatiquement** : L51 à L56 et L58 à L60 sont implémentés
+localement, non déployés ; consulter leurs fiches avant toute correction. L1 à L33 (dont L26,
+clos sans exécution), L35, L36, L37 (écarté du profil Analyse), L45 à L49 et D10 restent aussi
+soldés dans leur périmètre historique. Les prompts barrés sont conservés pour mémoire, pas comme
+autorisation de rejouer une livraison.
 
 <details>
 <summary>Tableau d'origine du 2026-08-10 (conservé pour mémoire)</summary>
@@ -416,6 +421,243 @@ ambigu. Utilise uniquement les contrats répétables existants et rapporte sépa
 les tests de layout, le PDF et toute vérification papier. Ne committe, ne pousse, ne
 fusionne et ne déploie rien sans demande explicite.
 ```
+
+---
+
+## E0 — Contrats et classification de l’évolution du formulaire
+
+```text
+Tu reprends le lot E0 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, docs/lots-evolution-formulaire.md et la ligne
+E0 de docs/lots-paralleles.md. Inspecte git status, les diffs, les migrations et les contrats
+réels des versions, bases, patients, rencontres, règles, exports et brouillons. Préserve les
+travaux locaux, notamment les lots du formulaire papier.
+
+Fixe le contrat partagé avant toute migration : états d’une préparation, empreinte et révision
+attendue, classification additive/sémantique, contexte compatible d’une fiche existante,
+provenance et distinction exportable entre variable inexistante, variable vide et variable non
+applicable. Décris le cas de deux bases utilisant le même jeu de variables : une évolution de A
+ne modifie jamais B implicitement. Les associations diagnostiques restent les objets de règle
+existants.
+
+Inventorie chaque opération de configuration, patient, rencontre et document qui exige aujourd’hui
+un motif. Spécifie la dispense de justification textuelle pour le propriétaire de la base sur
+ses opérations autorisées, sans élargir ses droits ; sépare l’accès à l’identité et la suppression
+de la base. Spécifie aussi la confirmation de purge par code aléatoire de cinq caractères,
+stable pendant le dialogue et renouvelé à sa réouverture.
+
+Mets à jour les documents et contrats de référence avec des exemples et les erreurs structurées.
+Ne simule pas le comportement dans l’interface et ne modifie pas encore le schéma. Signale toute
+ambiguïté qui bloquerait E1. Vérifie les liens documentaires et consigne les preuves réellement
+obtenues. Ne committe, ne pousse, ne fusionne et ne déploie rien sans demande explicite.
+```
+
+---
+
+## E1 — Préparations persistantes, permissions et audit
+
+```text
+Tu reprends le lot E1 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, le skill meddata-db-safety, docs/spec-evolution-formulaire.md, le lot E0 et la
+ligne E1 de docs/lots-paralleles.md. Vérifie que le contrat E0 est stabilisé. Inspecte l’état
+Git, les migrations existantes de brouillons/versionnage, les RPC et leurs privilèges ; garde un
+seul responsable d’écriture pour migration, RPC, repository et appelants couplés.
+
+Implémente une préparation liée à la base, au propriétaire, à la révision source et à une
+empreinte. Elle doit pouvoir être ouverte/reprise, lue, sauvegardée, prévisualisée et abandonnée
+sans écrire de donnée clinique. Ajoute les états bornés, l’expiration, les conflits, les clés
+d’opération et l’audit selon E0. Vérifie les droits à chaque appel et ne stocke ni identité ni
+réponse patient dans la préparation.
+
+Applique la dispense de motif du propriétaire aux opérations de configuration et aux opérations
+autorisées sur patients, rencontres et documents recensées par E0. Le serveur vérifie le rôle et
+la base ; l’interface ne forge aucun motif. Ne retire pas les contrôles d’accès à l’identité,
+les transitions de statut ou la suppression de base. Prépare le contrat de purge qui recevra un
+code aléatoire de cinq caractères, sans remplacer discrètement ce code par le nom.
+
+Ajoute les tests DB/RLS/ACL de droits révoqués, comptes voisins, préparation périmée, taille,
+double envoi, clé réutilisée avec un autre contenu et absence de données cliniques. Exécute
+npm run schema, inspecte le snapshot puis npm run schema:check sur une cible locale/jetable.
+Ne lance aucune migration distante et ne committe, ne pousse, ne fusionne et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## E2 — Application atomique dans la même base
+
+```text
+Tu reprends le lot E2 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, docs/lots-evolution-formulaire.md et les lots
+E0/E1. Inspecte les primitives existantes de copie de versions, sections, champs, règles et
+associations diagnostiques. Un seul propriétaire écrit les migrations/RPC et leurs appelants.
+
+Implémente l’application d’une préparation dans une transaction : recalcul d’impact côté serveur,
+reclassification des changements, création de la révision technique, copie autonome des
+métadonnées, remappage UX-16 et règles, puis rattachement du formulaire actif à la même base.
+Une évolution de A ne doit pas modifier une autre base B qui utilise la source. Les objets
+validation_rule restent les mêmes objets métier ; aucune table de règles concurrente.
+
+Gère empreinte, révision attendue, verrou optimiste, clé d’opération et réponse rejouable. Une
+erreur, un conflit ou une réponse réseau perdue ne doit ni appliquer une moitié de préparation ni
+effacer les choix locaux. L’application ne crée aucun patient, rencontre, brouillon clinique ou
+valeur par défaut.
+
+Ajoute les tests transactionnels de concurrence, rejeu, refus sémantique, copie de provenance,
+groupes communs, sections imbriquées, associations diagnostiques et droits entre bases. Vérifie
+le schéma, les ACL et les privilèges après migration sur une cible locale/jetable. Ne committe,
+ne pousse, ne fusionne et ne déploie rien sans demande explicite.
+```
+
+---
+
+## E3 — Lecture et écriture compatibles des dossiers existants
+
+```text
+Tu reprends le lot E3 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, les lots E0 à E2 et la ligne E3 de
+docs/lots-paralleles.md. Inspecte les lectures signées, patients.ts, les formulaires patients et
+rencontres, les validations serveur et les tests actuels. Préserve toute modification locale et
+évite les collisions avec L41, L42, L56, L68 ou un lot d’identité.
+
+Expose dans le contexte d’une fiche : définition historique, ajouts compatibles, applicabilité
+du moteur de règles, diagnostic, obligations courantes, valeurs présentes et provenance. Une clé
+absente dans une fiche historique apparaît vide et à renseigner après application ; aucune valeur
+par défaut n’est inventée. Une écriture de complément conserve toutes les clés historiques et
+ajoute seulement les champs autorisés. Le serveur refuse clé inconnue, portée incompatible,
+conversion implicite, accès révoqué et contexte périmé.
+
+Conserve les statuts cliniques existants lorsqu’un champ obligatoire est ajouté. Distingue
+couverture diagnostique et complétude. Vérifie diagnostic unique, diagnostics multiples, aucun
+diagnostic, diagnostic sans bloc et ajout d’une association vers un bloc déjà renseigné.
+
+Ajoute les tests web/serveur de patients et rencontres existants, champs masqués, valeurs
+historiques, concurrence et payload ancien. Vérifie le contexte signé réel et l’absence de fuite
+d’identité. Ne modifie pas le mode hors-ligne au-delà du contrat existant et ne committe, ne
+pousse, ne fusionne et ne déploie rien sans demande explicite.
+```
+
+---
+
+## E4 — Éditeur et versionnage technique en arrière-plan
+
+```text
+Tu reprends le lot E4 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, docs/lots-evolution-formulaire.md, la ligne E4
+de docs/lots-paralleles.md et les contrats E1 à E3. Inspecte les diffs locaux avant de toucher
+TemplateVersionEditor.tsx, EditorStructure.tsx, SectionsEditor.tsx, RuleForm.tsx,
+DiagnosisConfigurationEditor.tsx, FormPreview.tsx ou les traductions. Coordonne les collisions
+UX-16, L59, L60, L67 et PAP-4 ; un seul auteur modifie une interface couplée.
+
+Expose « Modifier le formulaire », reprise, impact, application et abandon. Les espaces Structure
+du formulaire, Sections, Règles, Collecte diagnostique et Aperçu restent accessibles avec la
+recherche globale, Toutes les variables, la provenance et la navigation section/variable/règle.
+Le numéro technique devient secondaire. L’aperçu réutilise le moteur réel et n’écrit rien.
+
+Supprime toute justification textuelle obligatoire pour le propriétaire dans les opérations de
+configuration et l’application autorisées. Garde les confirmations d’impact, les droits, les
+protections de saisie, les conflits et les règles de purge. Dans le dialogue de suppression
+définitive, affiche le nom mais demande le code aléatoire de cinq caractères prévu par E0/E1.
+
+Ajoute les tests web des états local/enregistré/conflit, navigation, Escape, fermeture, droits,
+inputs conservés, code erroné/correct, casse, renouvellement, double clic et aperçu non écrivant.
+Vérifie bureau et mobile dans l’application réelle. Ne remplace pas une dépendance absente par
+une maquette et ne committe, ne pousse, ne fusionne et ne déploie rien sans demande explicite.
+```
+
+---
+
+## E5 — Complétion des patients et rencontres
+
+```text
+Tu reprends le lot E5 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, les lots E0 à E4 et la ligne E5 de
+docs/lots-paralleles.md. Inspecte les formulaires réels, SectionedFields.tsx, EditPatient.tsx,
+PatientDetail.tsx, les écrans de rencontre, brouillons et validations. Ne remplace pas les
+modifications locales d’un autre lot ouvrant ces fiches.
+
+Après une évolution appliquée, rends les variables ajoutées visibles dans les patients et
+rencontres existants, vides au départ et marquées « À renseigner ». Respecte portée, applicabilité,
+diagnostics et sections ; chaque sous-section reste un bloc de parcours séparé. Une variable
+obligatoire ajoutée affiche le compteur attendu sans décurater silencieusement une fiche déjà
+curatée. Une correction indépendante peut être enregistrée sans forcer la complétion totale.
+
+Conserve toutes les valeurs et provenance historiques à l’enregistrement. Les associations
+diagnostiques rendent un bloc éligible sans créer de réponse. Les brouillons, reprises, conflits
+et réponses réseau perdues conservent les inputs. Aucun droit hors-ligne nouveau n’est introduit.
+
+Ajoute les tests patients/rencontres avec champ facultatif et obligatoire, plusieurs diagnostics,
+diagnostic sans bloc, absence de diagnostic, fiche curatée et contexte périmé. Vérifie la saisie
+réelle dans un navigateur si le lot modifie l’interface. Ne committe, ne pousse, ne fusionne et
+ne déploie rien sans demande explicite.
+```
+
+---
+
+## E6 — Exports, provenance et historique
+
+```text
+Tu reprends le lot E6 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, les lots E0 à E3 et la ligne E6 de
+docs/lots-paralleles.md. Inspecte exportContract.ts, les Edge Functions d’export, dictionnaires,
+profils analysis/complete, provenance et écrans d’historique. Préserve les contrats d’identité et
+les modifications locales de L45 à L50.
+
+Rends chaque valeur compréhensible après plusieurs évolutions : révision de définition, auteur,
+date, application et complétion selon les droits. Distingue dans les exports et le dictionnaire
+une variable qui n’existait pas encore, une variable disponible mais vide et une variable non
+applicable. Les variables retirées et anciennes options restent lisibles dans l’historique sans
+réapparaître implicitement dans la saisie.
+
+Conserve les profils d’export et le cloisonnement identité/analyse/documents. L’historique ne
+contient pas de pointeur vivant vers une copie qui pourrait changer. Les opérations du propriétaire
+sans motif restent auditées par auteur, date, base, opération et changements ; ne fabrique aucun
+motif textuel.
+
+Ajoute les tests d’export avant/après complétion, options retirées, champs masqués, formules,
+patient/rencontre, droits et non-divulgation entre bases. Inspecte le fichier produit et les
+métadonnées, pas seulement le composant. Ne committe, ne pousse, ne fusionne et ne déploie rien
+sans demande explicite.
+```
+
+---
+
+## E7 — Validation intégrée et dossier de preuves
+
+```text
+Tu reprends le lot E7 du projet MedData (registre-clinique).
+
+Lis AGENTS.md, docs/spec-evolution-formulaire.md, docs/lots-evolution-formulaire.md et la ligne
+E7 de docs/lots-paralleles.md. Vérifie que E0 à E6 sont réellement livrés et que chaque contrat
+est aligné avec le code, les migrations et les appelants. Préserve les lots papier et toute
+modification locale hors de cette validation.
+
+Prépare une fixture entièrement fictive : au moins 216 variables, 21 sections, 26 règles,
+rubriques communes, sous-sections, patients/rencontres existants, dossiers curatés, diagnostics
+uniques/multiples/sans bloc et cas mixte. Ajoute une variable facultative, une obligatoire et une
+association diagnostique ; applique, puis complète une ancienne fiche et vérifie l’export.
+
+Exécute les tests DB/RLS, web et intégration de E1 à E6, le typecheck, le lint et le build avec
+VITE_USE_SIGNED_READ=true. Si une migration existe, exécute npm run schema, inspecte le snapshot
+et npm run schema:check sur une cible locale/jetable. Vérifie dans un navigateur réel l’éditeur,
+l’impact, l’application, la fiche existante, la complétion, l’historique, l’aperçu sans écriture
+et la purge par code de cinq caractères.
+
+Consigne pour les 16 critères d’acceptation le résultat, la commande, le SHA, l’environnement,
+les captures et les limites. Distingue code présent, test local, navigateur réel et validation
+distante. Aucun compteur fixe, maquette ou PR ne remplace une preuve. Ne committe, ne pousse,
+ne fusionne et ne déploie rien sans demande explicite.
+```
+
+---
+
 ## L61 — Stabiliser et prouver le socle actuel de la liste patient
 
 \`\`\`text
@@ -1596,7 +1838,10 @@ n'envoyer aucun message. Le lancement attend les observations du pilote.
 
 ---
 
-## L58 — Blocs réutilisables : import serveur d'un bloc
+## ~~L58 — Blocs réutilisables : import serveur d'un bloc~~ — implémenté localement
+
+> Ne pas relancer ce prompt : utiliser [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md)
+> pour les contrôles exécutés et partir d'un défaut observé.
 
 ```
 NE LANCE PAS CE LOT AVANT QUE L52 ET L54 SOIENT FUSIONNÉS. L54 apporte la notion
@@ -1683,7 +1928,10 @@ demande explicite.
 
 ---
 
-## L59 — Blocs réutilisables : choisir un bloc dans l'éditeur
+## ~~L59 — Blocs réutilisables : choisir un bloc dans l'éditeur~~ — implémenté localement
+
+> Ne pas relancer ce prompt : la fiche de spécification consigne l'interface et ses limites de
+> preuve actuelles.
 
 ```
 NE LANCE PAS CE LOT AVANT QUE L58 SOIT FUSIONNÉ : il appelle ses deux fonctions.
@@ -1744,7 +1992,10 @@ sans demande explicite.
 
 ---
 
-## L60 — Blocs réutilisables : reconnexion de la règle d'activation
+## ~~L60 — Blocs réutilisables : reconnexion de la règle d'activation~~ — implémenté localement
+
+> Ne pas relancer ce prompt : L60 utilise désormais le chemin de règles existant ; conserver ce
+> principe et diagnostiquer un défaut réel avant toute modification.
 
 ```
 NE LANCE PAS CE LOT AVANT QUE L59 SOIT FUSIONNÉ : il part du rapport d'import.

@@ -1,10 +1,12 @@
 # Preuve de gouvernance d'une release clinique
 
 Le code ne peut ni produire ni remplacer une décision juridique, clinique,
-scientifique, éthique, opérationnelle ou de sécurité. Le workflow production
+scientifique, éthique, opérationnelle ou de sécurité. En régime normal, le workflow production
 exige donc un manifeste externe dans le secret d'environnement GitHub
 `GOVERNANCE_EVIDENCE_JSON`. Il est contrôlé avant toute sauvegarde ou écriture
-cloud et doit correspondre exactement au SHA promu.
+cloud et doit correspondre exactement au SHA promu. La dérogation pilote
+[`PILOT_EVIDENCE_WAIVER=true`](derogations-readiness.md) ne permet que de journaliser une absence
+de manifeste ; elle n'est ni une approbation ni une autorisation d'usage clinique.
 
 Le manifeste ne contient pas les documents signés. Il contient uniquement leurs
 références, leurs empreintes SHA-256, leurs dates et les décisions `approved`.
@@ -26,7 +28,6 @@ Le validateur refuse les mentions `projet`, `draft`, `pending`, `TODO` ou
 `placeholder`, un manifeste expiré, un autre SHA, un contrat non signé ou une
 acceptation de risque autre que `accepted-low-only`.
 
-L'absence actuelle de ce secret est volontairement bloquante. La présence d'un
-JSON techniquement valide n'atteste pas l'authenticité des signatures : celle-ci
-doit être vérifiée par les autorités compétentes et par les reviewers protégés de
-l'environnement `production`.
+Hors dérogation pilote, l'absence de ce secret est volontairement bloquante. La présence d'un
+JSON techniquement valide n'atteste pas l'authenticité des signatures : celle-ci doit être vérifiée
+par les autorités compétentes et par les reviewers protégés de l'environnement `production`.

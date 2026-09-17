@@ -5,6 +5,9 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import type { RecordFormContext } from '../../data/patients';
+import { buildCompatiblePatch } from '../../data/patients';
+import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -39,14 +42,20 @@ export function EditPatient() {
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
+  // Les regles actives calculent la visibilite/couverture ; les regles historiques restent
+  // la seule validation bloquante d'une fiche deja existante.
+  const [validationRules, setValidationRules] = useState<ValidationRule[]>([]);
   const [sections, setSections] = useState<TemplateSection[]>([]);
   const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
+  const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
   const [diagnosisContext, setDiagnosisContext] = useState<DiagnosisContext[] | undefined>(undefined);
+  const [activeDiagnosisVersionId, setActiveDiagnosisVersionId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -54,6 +63,7 @@ export function EditPatient() {
   const [blocking, setBlocking] = useState<string[]>([]);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [reloadRequired, setReloadRequired] = useState(false);
+  const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
@@ -61,7 +71,9 @@ export function EditPatient() {
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
   const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`);
   const work = useWorkDraft({
-    context: baseId && patientId && diagnosisVersionId && baseVersion !== null ? {
+    // Une fois le contexte E3 obtenu, la soumission passe par le patch compatible : le brouillon
+    // clinique historique ne sait pas porter les ajouts actifs et ne doit pas les perdre.
+    context: !recordContext && baseId && patientId && diagnosisVersionId && baseVersion !== null ? {
       baseId, targetId: patientId, kind: 'patient_update', templateVersionId: diagnosisVersionId, entityRevision: String(baseVersion),
     } : null,
     ownerId: profile?.id ?? '', payload: { values, status, reason }, dirty: navigation.dirty, online,
@@ -73,19 +85,56 @@ export function EditPatient() {
     setLoading(true);
     setReloadRequired(false);
     try {
-      const [p, base] = await Promise.all([patients.getPatient(baseId, patientId), bases.getBase(baseId)]);
-      if (p) { setValues(p.data); setStatus(p.validationStatus); setInitialStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
+      const contextPromise = patients.getPatientFormContext
+        ? patients.getPatientFormContext(baseId, patientId).catch((e: unknown) => {
+          // Déploiement progressif : l'absence précise de la RPC conserve le parcours ancien ;
+          // un refus, une erreur réseau ou un contexte invalide restent visibles.
+          if (isMissingRecordFormContextError(e)) return null;
+          throw e;
+        })
+        : Promise.resolve(null);
+      const [p, base, context] = await Promise.all([
+        patients.getPatient(baseId, patientId),
+        bases.getBase(baseId),
+        contextPromise,
+      ]);
+      const loadedValues = p?.data ?? {};
+      setValues(loadedValues);
+      setInitialValues(loadedValues);
+      setRecordContext(context);
+      if (p) { setStatus(p.validationStatus); setInitialStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
       // §7.4 (audit v12, etendu) : un patient HISTORIQUE s'edite avec SA version de gabarit — memes
       // libelles/champs/regles que le serveur. La version courante de la base n'est qu'un repli.
-      const versionId = p?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
-      if (versionId) {
-        const version = await templates.getVersion(versionId);
-        setFields(version.fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder));
-        setRules(version.rules);
-        setSections(version.sections ?? []);
-        setCommonLayout(version.version.commonLayout);
-        setDiagnosisVersionId(version.version.id);
-        setDiagnosisContext(version.version.diagnosisContext);
+      const historicalVersionId = context?.record_definition_revision ?? p?.templateVersionId ?? base?.base.currentTemplateVersionId ?? null;
+      const activeVersionId = context
+        ? (definitionVersionId(context.active_definition) ?? base?.base.currentTemplateVersionId ?? historicalVersionId)
+        : historicalVersionId;
+      if (historicalVersionId) {
+        const historicalPromise = templates.getVersion(historicalVersionId);
+        const activePromise = activeVersionId && activeVersionId !== historicalVersionId
+          ? templates.getVersion(activeVersionId)
+          : historicalPromise;
+        const [historical, active] = await Promise.all([historicalPromise, activePromise]);
+        if (context) {
+          setFields(mergeRecordFormFields(context, historical.fields, active.fields, 'patient'));
+          setRules(active.rules);
+          setValidationRules(historical.rules);
+          setSections(active.sections ?? []);
+          setCommonLayout(active.version.commonLayout);
+        } else {
+          const historicalFields = historical.fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder);
+          setFields(historicalFields);
+          setRules(historical.rules);
+          setValidationRules(historical.rules);
+          setSections(historical.sections ?? []);
+          setCommonLayout(historical.version.commonLayout);
+        }
+        setDiagnosisVersionId(historical.version.id);
+        setDiagnosisContext(context ? active.version.diagnosisContext : historical.version.diagnosisContext);
+        setActiveDiagnosisVersionId(active.version.id);
+      } else {
+        setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
+        setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
       }
       setError(null);
       loadedFor.current = `${baseId}:${patientId}`;
@@ -106,7 +155,8 @@ export function EditPatient() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
 
-  const coverage = useDiagnosisCoverage(diagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
+  const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -132,10 +182,10 @@ export function EditPatient() {
       // En brouillon : le MEDECIN n'exige pas la completude (mais valide les valeurs
       // renseignees) ; un compte de mission, lui, ne peut jamais enregistrer de brouillon
       // partiel -- comme des la sortie du brouillon ('complete') pour tous les comptes.
-      ...validateValues(fields, submittedData, isMissionAccount(profile) || status !== 'draft', hidden)
+      ...validateValues(validationFields, submittedData, isMissionAccount(profile) || status !== 'draft', hidden)
         .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ...(isMissionAccount(profile) || status !== 'draft' ? evaluateRules(
-        rules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
+        validationRules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
         submittedData,
         hidden,
       ).blocking : []),
@@ -157,7 +207,29 @@ export function EditPatient() {
 
     setBusy(true);
     try {
-      if (work.enabled) await work.commit();
+      if (baseId && recordContext && patients.updatePatientCompatible) {
+        const patch = buildCompatiblePatch(
+          initialValues,
+          values,
+          hidden,
+          fields.map((field) => field.fieldKey),
+        );
+        const requestKey = JSON.stringify([recordContext.context_fingerprint, patch, status, reason.trim()]);
+        if (compatibleAttempt.current?.requestKey !== requestKey) {
+          compatibleAttempt.current = { requestKey, operationId: crypto.randomUUID() };
+        }
+        await patients.updatePatientCompatible({
+          baseId,
+          patientId: patientId!,
+          patch,
+          validationStatus: status,
+          reason: reason.trim(),
+          expectedRecordRevision: recordContext.record_revision,
+          recordDefinitionRevision: recordContext.record_definition_revision,
+          operationId: compatibleAttempt.current.operationId,
+          contextFingerprint: recordContext.context_fingerprint,
+        });
+      } else if (work.enabled) await work.commit();
       else await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
       navigation.markClean();
       toast(t('toast.patient_saved')); // UI-2
@@ -213,7 +285,7 @@ export function EditPatient() {
             hiddenKeys={hidden}
             sections={sections}
             commonLayout={commonLayout}
-            rules={rules}
+            rules={validationRules}
             requireComplete={isMissionAccount(profile) || status !== 'draft'}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}

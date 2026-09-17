@@ -20,8 +20,8 @@ npm run e2e:browser:critical   # tous les scénarios @critical
 
 Sans `E2E_BASE_URL`, Playwright démarre Vite sur `127.0.0.1:5173` ; il faut alors fournir une
 configuration Supabase locale/test. Les échecs conservent trace, capture et vidéo (`retain-on-failure`),
-jamais en cas de succès. Les retries sont désactivés (`retries: 0`) : une erreur d'infrastructure doit
-être identifiée et corrigée, pas masquée par des relances.
+jamais en cas de succès. Les retries sont à `0` en local et à `2` en CI : la reprise CI distingue un
+incident réseau transitoire d'une régression, sans masquer une erreur locale au premier essai.
 
 ## Couverture réellement disponible
 
@@ -38,25 +38,29 @@ jamais en cas de succès. Les retries sont désactivés (`retries: 0`) : une err
 | **Parcours export** | UI → Edge `generate-export` → historique → téléchargement (CSV) | oui (correction lot 10) |
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 | **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
+| **LOT13 dédié** | révocation dynamique, indisponibilité/reconnexion Supabase, idempotence après réponse perdue, import, retry d'upload, hors-ligne historique et suppression | scénarios présents dans `e2e/lot13-complete.spec.ts`, exécutés seulement par le job staging dédié ; leur présence ne vaut pas preuve actuelle d'un run réussi |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
 
-## Couverture encore absente
+## Hors du socle `@critical`
 
-Les scénarios suivants **ne sont pas** couverts par cette suite navigateur. Ils ne doivent pas être
-considérés comme implicitement couverts par les tests unitaires, RLS ou par le préflight API : ce sont
-des couvertures **complémentaires et distinctes**, pas un substitut au parcours navigateur.
+Les scénarios suivants ne font pas partie de la suite navigateur `@critical`. Ils ne doivent pas
+être considérés comme implicitement couverts par les tests unitaires, RLS ou le préflight API : ce
+sont des couvertures **complémentaires et distinctes**, pas un substitut au parcours navigateur.
 
 - Parcours patient avancé : conflit de version concurrent, complétion, rencontres, images.
-- Import : reprise d'un lot, CSV/XLSX, historique, refus d'un export forgé côté client.
-- Fichiers / upload : dépôt navigateur, états `pending` → accepté/rejeté, lecture refusée puis autorisée.
-- Hors-ligne historique : instantané, réécritures/outbox, reconnexion, verrou optimiste.
+- Import : un scénario nominal est présent dans LOT13 ; reprise de lot, XLSX, historique et refus
+  d'un export forgé côté client restent hors du socle.
+- Fichiers / upload : LOT13 couvre un upload navigateur avec réponse Storage perdue puis retry
+  idempotent ; les états complets `pending` → accepté/rejeté et la lecture refusée restent à couvrir.
+- Hors-ligne historique : LOT13 couvre instantané, démarrage à froid, outbox, reconnexion,
+  expiration et changement de compte ; il reste hors du socle `@critical`.
 - Saisie hors-ligne *intake-only* : le scénario O6 existe, mais exige un preview construit avec
   `VITE_OFFLINE_MODE=demo`, `VITE_OFFLINE_ADMIN_ACK=true`, `VITE_OFFLINE_INTAKE=demo` et des
   fixtures staging ; sa présence dans le dépôt ne vaut pas preuve d'exécution.
-- Révocation dynamique de permissions et changement de compte.
-- API indisponible / dégradée côté navigateur.
+- Révocation dynamique de permissions et changement de compte : scénario LOT13 dédié.
+- API indisponible / dégradée côté navigateur : scénario LOT13 dédié.
 
 ## Stratégie de fixtures et nettoyage (`e2e/fixtures.ts`)
 
@@ -83,28 +87,25 @@ des couvertures **complémentaires et distinctes**, pas un substitut au parcours
 | `E2E_MEDECIN_BASE_ID` | base de test possédée par le médecin (gabarit **sans champ patient obligatoire**) | parcours patient marqué indisponible |
 | `E2E_EXPORT_BASE_ID` / `E2E_EXPORT_COHORT_ID` | cohorte figée **éligible** semée côté staging | parcours export marqué indisponible |
 
-## Scénarios différés (documentés, non instables)
+## Scénarios dédiés hors socle
 
 Ces scénarios sont volontairement **reportés** pour ne pas introduire de test instable. Leur absence
 n'est pas un succès silencieux : elle est tracée ici.
 
-### Upload navigateur (correction recommandée 5)
+### Upload navigateur (LOT13 dédié)
 
-Parcours cible : dépôt d'un petit fichier fictif autorisé → état `pending` → progression → lecture
-refusée tant que non accepté → lecture autorisée après acceptation. **Reporté** : le scanner
-ClamAV staging est désormais vérifié joignable par l'Edge, mais ce parcours navigateur n'est pas
-encore automatisé. Le préflight API
-`npm run e2e:staging` (`scripts/e2e-staging.mjs`) exerce déjà **de bout en bout** la chaîne
-inspection / quarantaine / scanner sur du vrai cloud ; il ne remplace pas un parcours navigateur, qui
-reste à ajouter lorsque les prérequis seront réunis (condition explicite `E2E_UPLOAD_ENABLED`).
+`e2e/lot13-complete.spec.ts` couvre le dépôt d'un fichier fictif dont la réponse Storage est perdue,
+puis le retry du même fichier sans doublon. Ce scénario est réservé au job staging LOT13 et ne
+prouve pas un run récent. Le parcours complet `pending` → accepté/rejeté, lecture refusée puis
+autorisée reste à ajouter ; le préflight API `npm run e2e:staging` couvre une chaîne serveur
+complémentaire, sans remplacer le navigateur.
 
-### Révocation dynamique de rôle (correction recommandée 6)
+### Révocation dynamique de rôle (LOT13 dédié)
 
-Parcours cible : utilisateur avec accès confirmé → permission révoquée côté serveur → refresh / nouvelle
-requête → accès refusé sans donnée sensible visible. **Reporté** : il exige une orchestration cloud plus
-lourde (second utilisateur, octroi puis révocation d'un `base_access` croisé). La révocation **côté
-serveur** est déjà prouvée par les tests RLS (`test/access.test.ts`, `test/exports.test.ts`) ; le
-parcours **navigateur** reste à ajouter avec une fixture administrative dédiée.
+`e2e/lot13-complete.spec.ts` exerce l'absence d'accès, l'octroi, le refresh puis la révocation
+d'un `base_access` croisé. Il reste hors de la suite `@critical` et exige le job staging dédié ; la
+révocation côté serveur est aussi couverte par les tests RLS (`test/access.test.ts`,
+`test/exports.test.ts`).
 
 ## Intégration continue
 

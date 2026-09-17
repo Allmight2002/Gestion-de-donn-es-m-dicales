@@ -80,13 +80,14 @@ Mot de passe commun : **`Password123!`**
 | `admin@demo.test` | system_admin | Administration des **gabarits** (aucun accès patient) |
 | `alice@demo.test` | propriétaire de la base | Tout : patients, rencontres, cohortes, export, accès, **curation** |
 | `editor@demo.test` | éditeur (identité) | Saisie patients/rencontres + images |
-| `curator1@demo.test` | curateur | **Structurer puis finaliser** une tâche de curation (affectée, NCH-002) |
+| `curator1@demo.test` | curateur | Réserver NCH-002 ouverte, puis **structurer et finaliser** la tâche de curation |
 | `validator@demo.test` | curateur | Compte hérité (le rôle `validateur` est supprimé) |
 | `anna.analyst@demo.test` | médecin (partage `viewer` + export) | Cohortes + **export** ; ne voit **jamais** identité/documents bruts |
 
 ### Parcours suggéré pour voir la curation (cœur v3.0)
-1. `alice@demo.test` → base → **Curation** : une tâche existe (patient NCH-002, curateur Carl).
-2. `curator1@demo.test` → base → **Curation** → ouvrir la tâche → remplir le brouillon
+1. `alice@demo.test` → base → **Curation** : une tâche ouverte existe pour le patient NCH-002,
+   sans curateur affecté.
+2. `curator1@demo.test` → base → **Curation** → réserver la tâche NCH-002 → remplir le brouillon
    (données permanentes + une rencontre), demander éventuellement une **clarification**,
    puis **Finaliser la curation**.
 3. La rencontre apparaît alors au statut **`curated`** sur la fiche patient (et entre

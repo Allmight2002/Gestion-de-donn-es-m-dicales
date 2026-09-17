@@ -1,9 +1,9 @@
 # L61 à L65 — Liste des patients d'une base : colonnes, tri, recherche et identité
 
-> **Document vivant — spécifié le 2026-09-11.** Il organise la demande produit sur l'accueil
-> d'une base : mémoriser les colonnes affichées, trier par variable, rechercher dans la base et,
-> sous contrôle strict, rendre le nom sélectionnable. Il ne constitue ni une migration appliquée,
-> ni une preuve de déploiement, ni une autorisation d'utiliser des données réelles.
+> **Document vivant — spécifié le 2026-09-11, état de source révisé le 2026-09-16.** Il organise
+> la demande produit sur l'accueil d'une base : mémoriser les colonnes affichées, trier par
+> variable, rechercher dans la base et, sous contrôle strict, rendre le nom sélectionnable. Il ne
+> constitue ni une preuve de déploiement, ni une autorisation d'utiliser des données réelles.
 
 ## 1. État réel avant lancement
 
@@ -15,12 +15,17 @@ socle est déjà présente ; elle ne doit donc pas être recréée sous un autre
 | Colonnes analytiques choisies par l'utilisateur | `BaseHome` mémorise les seules clés de colonnes dans `localStorage`, par utilisateur et par base ; les clés supprimées sont purgées | Prouver le comportement sur un navigateur et corriger seulement un écart constaté |
 | Recherche dans la base | Recherche par **code patient**, côté serveur avant pagination, séparée de `Ctrl/Cmd+K` | Recherche nominative contrôlée dans L64 |
 | Tri | Ordre serveur par `created_at` ou `patient_code`, avec départage par `id` | Tri par une variable clinique autorisée dans L62/L63 |
-| Nom complet dans la liste | Absent : les lignes restent pseudonymisées | Colonne et recherche nominative, uniquement dans L64 |
+| Nom complet dans la liste | Les lignes restent pseudonymisées. Une recherche nominative contrôlée existe localement et ne renvoie que des identifiants ; la colonne « Nom complet » n'est pas livrée | Décider et réaliser séparément l'affichage éventuel, sans élargir la fuite d'identité |
 
-Le test web ciblé `Patients.test.tsx` a affiché **18 assertions réussies** le 2026-09-11, puis le
-processus Vitest s'est terminé avec le code `-1073741819`. Cette exécution démontre les assertions
-mais **ne valide pas le lot** : L61 doit obtenir une sortie de processus saine ou expliquer puis
-éliminer cette anomalie avant de déclarer le socle validé localement.
+Le rapport de suivi UX postérieur consigne une exécution locale saine de `Patients.test.tsx` et des
+tests de recherche identité. Cette preuve reste locale et ne couvre ni le tri clinique, ni un
+parcours navigateur, ni une cible déployée ; consulter
+[suivi-correctifs-ux.md](suivi-correctifs-ux.md) pour les commandes et limites exactes.
+
+> **Écart de séquence assumé.** Le code local a réalisé la recherche nominative contrôlée avant le
+> tri clinique L62/L63, avec un endpoint serveur qui vérifie les droits et journalise l'accès sans
+> conserver le terme. Les sections L62 à L65 restent le contrat utile pour le travail non livré ;
+> ne pas rejouer L64 comme si cette implémentation n'existait pas.
 
 ## 2. Décisions produit et limites non négociables
 
