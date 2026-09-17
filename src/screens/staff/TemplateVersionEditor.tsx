@@ -23,7 +23,7 @@ import { FieldMoveDialog, type FieldMove } from './FieldMoveDialog';
 import { templateFieldToNewField } from '../../domain/templateFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { EditorStructure, editorGroups } from './EditorStructure';
+import { EditorStructure, editorGroups, type EditorGroup } from './EditorStructure';
 
 interface Loaded {
   version: TemplateVersion;
@@ -38,10 +38,10 @@ const FIELD_SCOPES: TemplateField['scope'][] = ['patient', 'encounter'];
 /** Comparaison de consultation : accents et casse ignores, nombres compares comme des nombres. */
 const COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
-type EditorSpace = 'structure' | 'rules' | 'diagnosis' | 'preview';
-const EDITOR_SPACES: EditorSpace[] = ['structure', 'rules', 'diagnosis', 'preview'];
+type EditorSpace = 'structure' | 'sections' | 'rules' | 'diagnosis' | 'preview';
+const EDITOR_SPACES: EditorSpace[] = ['structure', 'sections', 'rules', 'diagnosis', 'preview'];
 const SPACE_LABELS: Record<EditorSpace, MessageKey> = {
-  structure: 'editor.structure', rules: 'admin.rules', diagnosis: 'editor.diagnosis', preview: 'editor.preview',
+  structure: 'editor.structure', sections: 'editor.sections', rules: 'admin.rules', diagnosis: 'editor.diagnosis', preview: 'editor.preview',
 };
 type DisplaySort = 'form' | 'label' | 'key' | 'section' | 'type' | 'scope';
 const DISPLAY_SORTS: DisplaySort[] = ['form', 'label', 'key', 'section', 'type', 'scope'];
@@ -109,7 +109,6 @@ export function TemplateVersionEditor({
   const [requiredOnly, setRequiredOnly] = useState(false);
   // `null` = aucun choix explicite encore fait ; `''` = choix explicite « Toutes les variables ».
   const [activeGroupChoice, setActiveGroup] = useState<string | null>(null);
-  const [managementOpen, setManagementOpen] = useState(false);
   const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const [ruleDirty, setRuleDirty] = useState(false);
   const [diagnosisDirty, setDiagnosisDirty] = useState(false);
@@ -231,10 +230,19 @@ export function TemplateVersionEditor({
   const ruleCountByFieldId = useMemo(() => {
     const counts = new Map<string, number>();
     if (!data) return counts;
-    const parentOf = new Map(data.sections.map((section) => [section.sectionKey, section.parentSectionKey ?? section.sectionKey]));
+    const parentOf = new Map(data.sections.map((section) => [section.sectionKey, section.parentSectionKey ?? null]));
+    const rootOfSection = (key: string): string => {
+      let current = key;
+      const visited = new Set<string>();
+      while (parentOf.get(current) && !visited.has(current)) {
+        visited.add(current);
+        current = parentOf.get(current)!;
+      }
+      return current;
+    };
     const parsed = data.rules.map((rule) => ruleParticipants(rule.rule));
     for (const field of data.fields) {
-      const root = field.section ? parentOf.get(field.section) ?? field.section : null;
+      const root = field.section ? rootOfSection(field.section) : null;
       let total = 0;
       for (const parts of parsed) {
         if (parts.fields.includes(field.fieldKey) || (root !== null && parts.sections.includes(root))) total += 1;
@@ -250,6 +258,7 @@ export function TemplateVersionEditor({
   const { version, fields, rules, sections } = data;
 
   const editable = version.status === 'draft';
+  const sectionEditingAvailable = editable && !!repo.addSection && !!repo.renameSection && !!repo.deleteSection && !!repo.reorderSections;
   const normalizedSearch = search.trim().toLocaleLowerCase();
   // Un seul predicat pour la liste ET pour la verification d'apres enregistrement : sans cela,
   // une variable pourrait sortir du filtre sans que l'ecran sache le dire.
@@ -268,16 +277,27 @@ export function TemplateVersionEditor({
       && (!scopeFilter || candidate.scope === scopeFilter)
       && (!requiredOnly || candidate.required);
   };
-  // L'ecran s'ouvre sur la PREMIERE rubrique du sommaire, comme la maquette : ouvrir un grand
-  // modele ne doit pas commencer par derouler ses 216 variables. Une recherche ou un filtre
-  // bascule explicitement vers « Toutes les variables », qui donne le chemin de chaque resultat.
-  // Premiere rubrique NON VIDE : un modele dont le tronc commun est vide ouvrirait sinon sur
-  // une page sans aucune variable, alors que l'utilisateur vient justement voir les siennes.
+  // L'ecran s'ouvre sur le PREMIER BLOC CLINIQUE non vide : les rubriques communes restent
+  // dans le sommaire UX-16 mais ne masquent pas le contenu clinique attendu a l'ouverture.
+  // Une recherche ou un filtre bascule explicitement vers « Toutes les variables », qui donne
+  // le chemin de chaque resultat. Si le modele ne contient aucun bloc clinique, une rubrique
+  // commune non vide sert de repli afin de ne jamais ouvrir une page vide.
   const activeGroup = activeGroupChoice
-    ?? (groups.find((group) => group.fields.length > 0)?.key ?? groups[0]?.key ?? '');
+    ?? (groups.find((group) => group.fields.length > 0 && !group.common)?.key
+      ?? groups.find((group) => group.fields.length > 0)?.key
+      ?? groups[0]?.key ?? '');
   const selectedGroup = groups.find((group) => group.key === activeGroup);
   const fieldGroupOf = (field: TemplateField) => groups.find((group) => group.fields.some((candidate) => candidate.id === field.id));
-  const rootOf = (key: string) => sections.find((section) => section.sectionKey === key)?.parentSectionKey ?? key;
+  const sectionParentByKey = new Map(sections.map((section) => [section.sectionKey, section.parentSectionKey ?? null]));
+  const rootOf = (key: string) => {
+    let current = key;
+    const visited = new Set<string>();
+    while (sectionParentByKey.get(current) && !visited.has(current)) {
+      visited.add(current);
+      current = sectionParentByKey.get(current)!;
+    }
+    return current;
+  };
   const rulesForField = (rule: ValidationRule, field: TemplateField) => {
     const parts = ruleParticipants(rule.rule);
     return parts.fields.includes(field.fieldKey) || (!!field.section && parts.sections.includes(rootOf(field.section)));
@@ -285,7 +305,16 @@ export function TemplateVersionEditor({
   const rulesForGroup = (rule: ValidationRule, key: string) => {
     const group = groups.find((candidate) => candidate.key === key);
     if (!group) return false;
-    const relevantFields = [...group.fields, ...groups.filter((candidate) => candidate.parentKey === key).flatMap((candidate) => candidate.fields)];
+    const relevantFields = groups.filter((candidate) => {
+      let current: EditorGroup | undefined = candidate;
+      const visited = new Set<string>();
+      while (current && !visited.has(current.key)) {
+        if (current.key === key) return true;
+        visited.add(current.key);
+        current = current.parentKey ? groups.find((parent) => parent.key === current!.parentKey) : undefined;
+      }
+      return false;
+    }).flatMap((candidate) => candidate.fields);
     const parts = ruleParticipants(rule.rule);
     return (!group.common && parts.sections.includes(rootOf(key))) || relevantFields.some((field) => parts.fields.includes(field.fieldKey));
   };
@@ -303,7 +332,16 @@ export function TemplateVersionEditor({
   // porte par la variable peut dater d'avant un renommage.
   const sectionNameOf = (field: TemplateField) => {
     const group = fieldGroupOf(field);
-    return group ? [groups.find((parent) => parent.key === group.parentKey)?.label, group.label].filter(Boolean).join(' / ') : sectionLabel(t, { sectionKey: field.section, label: field.sectionLabel });
+    if (!group) return sectionLabel(t, { sectionKey: field.section, label: field.sectionLabel });
+    const labels: string[] = [];
+    let current: EditorGroup | undefined = group;
+    const visited = new Set<string>();
+    while (current && !visited.has(current.key)) {
+      visited.add(current.key);
+      labels.unshift(current.label);
+      current = current.parentKey ? groups.find((parent) => parent.key === current!.parentKey) : undefined;
+    }
+    return labels.join(' / ');
   };
   const sortKeyOf = (field: TemplateField) => {
     switch (displaySort) {
@@ -511,7 +549,7 @@ export function TemplateVersionEditor({
     <section className="space-y-5 sm:space-y-6">
       <div
         data-testid="template-editor-toolbar"
-        className="-mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:z-30"
+        className="-mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:-mx-6 sm:px-6"
       >
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
@@ -542,7 +580,7 @@ export function TemplateVersionEditor({
                 </button>
               </>
             ) : (
-              !editable && onNewVersion && (
+              onNewVersion && (
                 <button
                   onClick={async () => {
                     setBusy(true);
@@ -550,8 +588,9 @@ export function TemplateVersionEditor({
                     catch (e) { setError(msg(e)); }
                     finally { setBusy(false); }
                   }}
-                  disabled={busy}
+                  disabled={busy || dirty}
                   className="btn-secondary"
+                  title={t('admin.new_version_hint')}
                 >
                   {t('admin.new_version')}
                 </button>
@@ -596,9 +635,8 @@ export function TemplateVersionEditor({
         </div>
       </div>
 
-      {/* Recherche, filtres et compteurs sortent de la barre collante : ils ne servent qu'une
-          fois, alors que leur hauteur se retranchait de l'ecran a chaque defilement. Seuls le
-          titre et les espaces restent en tete. */}
+      {/* Recherche, filtres et compteurs restent dans le flux de la page : leur hauteur ne
+          retranche plus de place a la liste pendant le defilement. */}
       <div className="space-y-2">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
           <span>{t('admin.variable_count').replace('{n}', String(fields.length))}</span>
@@ -618,7 +656,6 @@ export function TemplateVersionEditor({
               aria-label={t('admin.search_variables')}
             />
           </label>
-          <label className="sr-only" htmlFor="template-section-filter">{t('admin.filter_section')}</label>
           <select id="template-section-filter" className="input" value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_section')}>
             <option value="">{t('admin.all_sections')}</option>
             <option value={COMMON_SECTION_FILTER}>{t('admin.common_filter')}</option>
@@ -760,60 +797,6 @@ export function TemplateVersionEditor({
           onRules={(field) => openContextRules(field ? { field: field.fieldKey } : { group: activeGroup })}
           ruleCount={(field) => ruleCountByFieldId.get(field.id) ?? 0}
           context={inheritedRules.map((rule) => <p key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></p>)}
-          management={<><button type="button" className="btn-secondary mb-4" aria-expanded={managementOpen} onClick={() => setManagementOpen(!managementOpen)}>{t('editor.manage_structure')}</button>      <div hidden={!managementOpen} className="space-y-5" aria-label={t('editor.manage_structure')}>
-      {editable && (
-        <SectionsEditor
-          sections={sections}
-          fields={fields}
-          busy={busy}
-          onDirtyChange={setSectionsDirty}
-          onAdd={(sectionKey, label, parentKey) => void run(() => repo.addSection!(version.id, sectionKey, label, parentKey))}
-          onMove={(id, parentKey) => void run(() => repo.moveSection!(version.id, id, parentKey))}
-          onReorderSiblings={(parentKey, ids) => void run(() => repo.reorderSectionSiblings!(version.id, parentKey, ids))}
-          onRename={(sectionId, label) => void run(() => repo.renameSection!(sectionId, label))}
-          onDelete={(sectionId) => void run(() => repo.deleteSection!(sectionId))}
-          onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}
-          onImportBlock={repo.listImportableSections ? () => setImportOpen(true) : undefined}
-        />
-      )}
-      {editable && importOpen && (
-        <SectionImportDialog
-          repo={repo}
-          targetVersionId={version.id}
-          onClose={() => setImportOpen(false)}
-          // Le cache de session est deja vide par `importSection` ; ce rechargement
-          // rapporte le bloc, ses variables et ses regles dans l'ecran.
-          onImported={reload}
-          onActivate={(next) => {
-            setImportOpen(false);
-            setActivation(next);
-            setRuleFormOpen(true);
-            // L'activation se decide dans l'espace Regles : on y conduit directement.
-            setSpace('rules');
-          }}
-        />
-      )}
-      {/* Les blocs d'abord : ils sont la structure du formulaire. Les rubriques communes ne
-          regroupent que les variables restees hors bloc, et se replient tant qu'on ne s'en
-          occupe pas. Sans variable commune, il n'y a rien a organiser ni a signaler. */}
-      {commonFieldCount > 0 && version.commonLayout === undefined && <p role="status" className="text-sm text-amber-800">{t('editor.layout_unavailable')}</p>}
-      {commonFieldCount > 0 && version.commonLayout !== undefined && (
-        <CommonLayoutEditor
-          layout={version.commonLayout}
-          onDirtyChange={setLayoutDirty}
-          fields={fields}
-          sections={sections}
-          disabled={!editable || busy}
-          onSave={async (operationId, payload, expectedFingerprint) => {
-            if (!repo.setCommonLayout) throw new Error('COMMON_LAYOUT_UNSUPPORTED');
-            await repo.setCommonLayout(version.id, operationId, payload, expectedFingerprint);
-            await reload();
-          }}
-        />
-      )}
-      </div>
-
-</>}
         />
         {fieldFormOpen && (
           <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
@@ -829,82 +812,50 @@ export function TemplateVersionEditor({
               aria-labelledby="template-field-panel-title"
               onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); guardLeave(closeFieldEditor); } }}
             >
-              <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-4 backdrop-blur">
+              <div className="border-b border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{templateName ?? t('admin.editor_context')}</p>
                     <h3 id="template-field-panel-title" className="mt-1 text-lg font-semibold text-slate-900">
                       {editing ? t('admin.edit_variable') : t('admin.add_variable')}
                     </h3>
-                    {editing && <p className="mt-1 break-words font-mono text-xs text-slate-500">{editing.fieldKey} · {t(`scope.${editing.scope}`)}</p>}
                   </div>
                   <button type="button" className="icon-button h-11 w-11" onClick={() => guardLeave(closeFieldEditor)} aria-label={t('admin.close_panel')}>
                     <X size={18} aria-hidden />
                   </button>
                 </div>
-                {editing && (
-                  <>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" className="btn-secondary" disabled={!previousField || busy} onClick={() => previousField && guardLeave(() => openFieldEditor(previousField))}>
-                        <ArrowLeft size={16} aria-hidden /> {t('admin.previous_variable')}
-                      </button>
-                      <button type="button" className="btn-secondary" disabled={!nextField || busy} onClick={() => nextField && guardLeave(() => openFieldEditor(nextField))}>
-                        {t('admin.next_variable')} <ArrowRight size={16} aria-hidden />
-                      </button>
-                    </div>
-                    {/* Position et section : savoir ou l'on se trouve dans les resultats affiches,
-                        et reconnaitre la fin de liste au lieu de la deviner. */}
-                    <p className="mt-2 text-xs text-slate-500">
+              </div>
+              {editing && (
+                <div className="space-y-3 px-4 pt-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="btn-secondary" disabled={!previousField || busy} onClick={() => previousField && guardLeave(() => openFieldEditor(previousField))}>
+                      <ArrowLeft size={16} aria-hidden /> {t('admin.previous_variable')}
+                    </button>
+                    <button type="button" className="btn-secondary" disabled={!nextField || busy} onClick={() => nextField && guardLeave(() => openFieldEditor(nextField))}>
+                      {t('admin.next_variable')} <ArrowRight size={16} aria-hidden />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>
                       {t('admin.panel_position')
                         .replace('{index}', String(Math.max(1, navigationFields.findIndex((field) => field.id === editing.id) + 1)))
                         .replace('{total}', String(navigationFields.length))}
-                      {' · '}
-                      {t('admin.panel_section').replace('{section}', sectionNameOf(editing))}
-                    </p>
-                    {!nextField && <p className="mt-1 text-xs text-amber-800">{t('admin.panel_last')}</p>}
-                    {!previousField && <p className="mt-1 text-xs text-amber-800">{t('admin.panel_first')}</p>}
-                    <p className="mt-1 text-xs text-slate-500" aria-live="polite">
-                      {t(SAVE_STATE_KEYS[panelSaveState])}
-                    </p>
-                    {/* UX-14(b) : les regles liees se lisent la ou l'on modifie la variable. */}
-                    <div className="mt-3 rounded-xl border border-slate-200 p-3 text-xs">
-                      {editing.section && rules.filter((rule) => ruleParticipants(rule.rule).sections.includes(rootOf(editing.section!))).map((rule) => (
-                        <div key={rule.id} className="mb-2"><p className="font-medium">{t('editor.inherited_condition')}</p><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>
-                      ))}
-                      {linkedRules.triggers.length === 0 && linkedRules.targets.length === 0 && (
-                        <p className="text-slate-500">{t('admin.rules_linked_none')}</p>
-                      )}
-                      {linkedRules.triggers.length > 0 && (
-                        <>
-                          <p className="font-medium text-slate-700">{t('admin.rules_triggers')}</p>
-                          <ul className="mt-1 space-y-1">
-                            {linkedRules.triggers.map((rule) => (
-                              <li key={rule.id}><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                      {linkedRules.targets.length > 0 && (
-                        <>
-                          <p className="mt-2 font-medium text-slate-700">{t('admin.rules_targets')}</p>
-                          <ul className="mt-1 space-y-1">
-                            {linkedRules.targets.map((rule) => (
-                              <li key={rule.id}><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className="mt-2 font-medium text-teal-700 underline underline-offset-2"
-                        onClick={() => openContextRules({ field: editing.fieldKey })}
-                      >
-                        {t('admin.rules_open_space')}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+                    </span>
+                    <span>{t('admin.panel_section').replace('{section}', sectionNameOf(editing))}</span>
+                    {!previousField && <span className="text-amber-800">{t('admin.panel_first')}</span>}
+                    {!nextField && <span className="text-amber-800">{t('admin.panel_last')}</span>}
+                  </div>
+                  <p className="text-xs text-slate-500" aria-live="polite">{t(SAVE_STATE_KEYS[panelSaveState])}</p>
+                  <div className="rounded-xl border border-slate-200 p-3 text-xs">
+                    {editing.section && rules.filter((rule) => ruleParticipants(rule.rule).sections.includes(rootOf(editing.section!))).map((rule) => (
+                      <div key={rule.id} className="mb-2"><p className="font-medium">{t('editor.inherited_condition')}</p><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>
+                    ))}
+                    {linkedRules.triggers.length === 0 && linkedRules.targets.length === 0 && <p className="text-slate-500">{t('admin.rules_linked_none')}</p>}
+                    {linkedRules.triggers.length > 0 && <><p className="font-medium text-slate-700">{t('admin.rules_triggers')}</p><ul className="mt-1 space-y-1">{linkedRules.triggers.map((rule) => <li key={rule.id}><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></li>)}</ul></>}
+                    {linkedRules.targets.length > 0 && <><p className="mt-2 font-medium text-slate-700">{t('admin.rules_targets')}</p><ul className="mt-1 space-y-1">{linkedRules.targets.map((rule) => <li key={rule.id}><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></li>)}</ul></>}
+                    <button type="button" className="mt-2 font-medium text-teal-700 underline underline-offset-2" onClick={() => openContextRules({ field: editing.fieldKey })}>{t('admin.rules_open_space')}</button>
+                  </div>
+                </div>
+              )}
               <fieldset disabled={!editable || busy} className="min-w-0 flex-1 p-4">
                 {editing ? (
                   <FieldForm
@@ -967,6 +918,66 @@ export function TemplateVersionEditor({
               </fieldset>
             </aside>
           </div>
+        )}
+      </div>
+
+      <div hidden={space !== 'sections'} id="editor-panel-sections" role="tabpanel" aria-labelledby="editor-space-sections" className="space-y-5">
+        <div className="border-b border-slate-200 pb-3 dark:border-slate-700">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('editor.manage_structure')}</h3>
+          <p className="mt-1 text-sm text-slate-500">{t('admin.section_index_hint')}</p>
+        </div>
+        {sectionEditingAvailable ? (
+          <SectionsEditor
+            sections={sections}
+            fields={fields}
+            busy={busy}
+            onDirtyChange={setSectionsDirty}
+            onAdd={(sectionKey, label, parentKey) => void run(() => repo.addSection!(version.id, sectionKey, label, parentKey))}
+            onMove={repo.moveSection ? (id, parentKey) => void run(() => repo.moveSection!(version.id, id, parentKey)) : undefined}
+            onReorderSiblings={repo.reorderSectionSiblings ? (parentKey, ids) => void run(() => repo.reorderSectionSiblings!(version.id, parentKey, ids)) : undefined}
+            onRename={(sectionId, label) => void run(() => repo.renameSection!(sectionId, label))}
+            onDelete={(sectionId) => void run(() => repo.deleteSection!(sectionId))}
+            onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}
+            onImportBlock={repo.listImportableSections ? () => setImportOpen(true) : undefined}
+          />
+        ) : editable ? (
+          <div className="space-y-3">
+            <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{t('editor.sections_unavailable')}</p>
+            {repo.listImportableSections && (
+              <button type="button" className="btn-secondary" onClick={() => setImportOpen(true)}>
+                {t('blockimport.command')}
+              </button>
+            )}
+          </div>
+        ) : null}
+        {editable && importOpen && (
+          <SectionImportDialog
+            repo={repo}
+            targetVersionId={version.id}
+            onClose={() => setImportOpen(false)}
+            onImported={reload}
+            onActivate={(next) => {
+              setImportOpen(false);
+              setActivation(next);
+              setRuleFormOpen(true);
+              setSpace('rules');
+            }}
+          />
+        )}
+        {commonFieldCount > 0 && version.commonLayout === undefined && <p role="status" className="text-sm text-amber-800">{t('editor.layout_unavailable')}</p>}
+        {commonFieldCount > 0 && version.commonLayout !== undefined && (
+          <CommonLayoutEditor
+            layout={version.commonLayout}
+            onDirtyChange={setLayoutDirty}
+            fields={fields}
+            sections={sections}
+            disabled={!editable || busy}
+            onSave={async (operationId, payload, expectedFingerprint) => {
+              if (!repo.setCommonLayout) throw new Error('COMMON_LAYOUT_UNSUPPORTED');
+              await repo.setCommonLayout(version.id, operationId, payload, expectedFingerprint);
+              await reload();
+            }}
+          />
         )}
       </div>
 
