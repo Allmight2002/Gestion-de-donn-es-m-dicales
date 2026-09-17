@@ -299,9 +299,11 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async listTemplates() {
+      // Provenance also links fields to their source version. Count fields owned by this
+      // version, not fields derived from it (PostgREST otherwise returns PGRST201).
       const { data, error } = await client
         .from('template')
-        .select('id, name, specialty, owner_user_id, is_global, template_version(id, template_id, version_number, status, template_field(id))')
+        .select('id, name, specialty, owner_user_id, is_global, template_version(id, template_id, version_number, status, template_field!template_field_template_version_id_fkey(id))')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data ?? []).map((t) => ({
