@@ -666,6 +666,9 @@ export const messages = {
     'completion.required_count': 'Dont {n} attendue(s) par le formulaire courant.',
     'completion.status_unchanged': 'Aucune valeur n’est créée et le statut de ce dossier reste inchangé : une correction indépendante peut être enregistrée sans tout compléter.',
     'completion.open': 'Compléter cette fiche',
+    // E5 §4.5 — le serveur accepte l'absence de motif pour le proprietaire reel de la base.
+    'justification.owner_optional': 'Facultatif pour le propriétaire de la base',
+    'justification.owner_optional_hint': 'L’auteur, la date et les modifications restent journalisés.',
     'form.previous_block': 'Bloc précédent',
     'form.next_block': 'Bloc suivant',
     'leave.title': 'Quitter cette saisie ?',

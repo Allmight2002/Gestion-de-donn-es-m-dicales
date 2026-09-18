@@ -663,6 +663,8 @@ export const messages = {
     'completion.required_count': 'Including {n} expected by the current form.',
     'completion.status_unchanged': 'No value is created and this record keeps its status: an independent correction can be saved without completing everything.',
     'completion.open': 'Complete this record',
+    'justification.owner_optional': 'Optional for the base owner',
+    'justification.owner_optional_hint': 'The author, date and changes stay in the log.',
     'form.previous_block': 'Previous block',
     'form.next_block': 'Next block',
     'leave.title': 'Leave this entry?',

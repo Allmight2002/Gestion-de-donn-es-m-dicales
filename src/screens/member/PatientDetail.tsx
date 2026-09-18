@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, PatientListItem } from '../../data/patients';
+import type { BaseListing } from '../../data/bases';
 import type { AttachmentItem } from '../../data/attachments';
 import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
@@ -18,6 +19,8 @@ import { withSections } from '../../data/templates';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { addedFieldsForRecord } from '../../domain/recordCompletion';
+import { ownerJustificationExempt } from '../../domain/ownerJustification';
+import { useAuth } from '../../auth/useAuth';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
@@ -167,6 +170,7 @@ export function PatientDetail() {
   const patients = usePatientRepository();
   const attachmentsRepo = useAttachmentRepository();
   const audit = useAuditRepository();
+  const { profile } = useAuth();
 
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
@@ -182,6 +186,9 @@ export function PatientDetail() {
   const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [canCorrectIdentity, setCanCorrectIdentity] = useState(false);
+  // §4.5 : dispense accordée par le serveur au propriétaire réel ; l'écran ne fait que cesser
+  // d'exiger le texte. Les suppressions gardent leur confirmation, leur droit et leur audit.
+  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -242,6 +249,7 @@ export function PatientDetail() {
         setOfflineView(true);
         setCanEdit(false);
         setCanCorrectIdentity(false);
+        setBaseListing(null);
         setIsCrossSectional(false);
         setAttachments([]);
         if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
@@ -289,6 +297,7 @@ export function PatientDetail() {
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       setCanCorrectIdentity(canCorrectPatientIdentity(base, p));
+      setBaseListing(base ?? null);
       setIsCrossSectional((base?.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       if (base?.base.currentTemplateVersionId) {
         setCurrentVersionId(base.base.currentTemplateVersionId);
@@ -371,6 +380,7 @@ export function PatientDetail() {
     ?? Object.values(versions)[0];
   const versionFor = (versionId?: string | null): DisplayVersion | undefined =>
     (versionId ? versions[versionId] : undefined) ?? fallbackVersion;
+  const reasonOptional = ownerJustificationExempt(baseListing, profile);
   const patientVersion = versionFor(patient.templateVersionId);
   // E5 : les variables ajoutees au formulaire de la base APRES l'enregistrement de cette fiche.
   // C'est une restitution de presentation, calculee avec le meme moteur de regles que le reste
@@ -420,6 +430,7 @@ export function PatientDetail() {
             {canEdit && (
               <DeleteWithReason
                 label={t('del.patient')}
+                reasonOptional={reasonOptional}
                 onConfirm={async (reason) => {
                   if (!patientId) return;
                   await patients.softDeletePatient(patientId, reason);
@@ -581,6 +592,7 @@ export function PatientDetail() {
                         {t('encounter.edit')}
                       </button>
                       <DeleteWithReason
+                        reasonOptional={reasonOptional}
                         onConfirm={(reason) => patients.softDeleteEncounter(e.id, reason)}
                         onSuccess={load}
                         verifyDeletedAfterError={async () => !(await patients.listEncounters(patientId!)).some((current) => current.id === e.id)}
@@ -675,6 +687,7 @@ export function PatientDetail() {
                     </div>
                     {canEdit && (
                       <DeleteWithReason
+                        reasonOptional={reasonOptional}
                         onConfirm={(reason) => attachmentsRepo.softDeleteAttachment(a.id, reason)}
                         onSuccess={load}
                         verifyDeletedAfterError={async () => !(await attachmentsRepo.listAttachments(patientId!)).some((current) => current.id === a.id)}
