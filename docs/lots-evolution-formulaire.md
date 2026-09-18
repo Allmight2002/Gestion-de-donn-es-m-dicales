@@ -1,7 +1,7 @@
 # Évolution du formulaire — lots E0 à E7
 
-- Révision : **2026-09-17**.
-- Statut : **E0 documenté ; E1 à E5 implémentés localement et contrôlés ; E6 et E7 à réaliser**.
+- Révision : **2026-09-18**.
+- Statut : **E0 documenté ; E1 à E6 implémentés localement et contrôlés ; E7 à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
 - Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
@@ -23,7 +23,7 @@ Le responsable n’a pas à créer ni rattacher manuellement une version.
 | [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | **Implémenté localement ; non déployé** | `form-compatible-records.test.ts` (11/11), web E3 (2/2), ACL (3/3), schema/schema:check, typecheck/lint |
 | [E4](#e4) | Éditeur avec versionnage en arrière-plan | E2, contrat E3 stabilisé | **Implémenté localement ; non déployé ; sans preuve navigateur** | `form-preparation-editor-payload.test.ts` (4/4), `FormPreparationEditor.test.tsx` (6/6), `Trash.test.tsx` (9/9), éditeur/aperçu/coquille (5 fichiers), typecheck, lint, build `VITE_USE_SIGNED_READ=true` |
 | [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | **Implémenté localement ; non déployé** (complétion + extension propriétaire) | `RecordCompletion.test.tsx` (11/11), `OwnerJustification.test.tsx` (6/6), suites web des écrans touchés, typecheck, lint, preuve navigateur bureau/mobile sur banc fictif |
-| [E6](#e6) | Exports, provenance et historique | E3 | À réaliser | Aucune |
+| [E6](#e6) | Exports, provenance et historique | E3 | **Implémenté localement ; non déployé** | `deno task edge:test` (232/232), `ActivityLog.test.tsx` (5/5), `test/activity.test.ts`, typecheck, lint, edge:lint/edge:fmt, `npm run schema` + `schema:check` |
 | [E7](#e7) | Validation intégrée et dossier de preuves | E0 à E6 | À réaliser | Aucune |
 
 Ordre conseillé : **E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7**.
@@ -346,6 +346,75 @@ date, impact et révision. Les définitions d’anciennes valeurs restent consul
 **Risques et vérification.** Fixtures d’export avant/après complétion, options retirées, champs
 masqués, formules, retrait de variable et périmètres patient/rencontre. Tests de non-divulgation
 entre bases et profils. Vérifier le fichier exporté, pas uniquement le composant de téléchargement.
+
+**État local au 2026-09-18.**
+
+*Export — une valeur complétée ne disparaît plus.* Une fiche ancienne conserve sa révision de
+définition ; la variable ajoutée par E2 vit dans une révision **dérivée**. L’export comparait
+l’appartenance de façon exacte : la valeur écrite par un complément E3 était donc **vidée à la
+sortie**, présente en base et absente du fichier. `exportContract.ts` reçoit désormais la lignée
+des révisions (`derived_from_template_version_id`, de l’active vers la plus ancienne) et rend la
+valeur dès qu’elle est atteignable depuis la révision de la fiche. Sans lignée fournie, le
+comportement antérieur au lot est conservé intact.
+
+*Les trois absences sont distinguées.* `not_defined` (la variable n’existait pas dans la révision
+de la fiche), `not_applicable` (elle existe mais sa portée ne s’applique pas), `empty` (elle
+s’applique et personne ne l’a renseignée), auxquels s’ajoutent `present` et `explicit_missing`.
+L’état voyage dans une colonne `state__<colonne>` posée **immédiatement après** la colonne de
+valeur. Deux garde-fous la rendent supportable, dans la lignée de `blockColumns` et
+`commonGroupColumns` : aucune colonne d’état tant que la cohorte ne mélange pas plusieurs
+révisions — une base dont le formulaire n’a jamais évolué produit exactement le fichier d’avant le
+lot — et, dans une cohorte mélangée, seules les variables dont l’absence est réellement ambiguë.
+Le plafond de 256 colonnes XLSX interdisait une colonne d’état systématique.
+
+*Le dictionnaire explique la variable, les métadonnées expliquent le fichier.* Quand la cohorte
+mélange des révisions, le dictionnaire gagne `in_current_form`, `introduced_in_revision`,
+`introduced_at`, `encounter_types` et `state_column`. Une variable **retirée** du formulaire
+courant y reste documentée et lisible avec `in_current_form = false` ; la saisie, elle, ne lit que
+la version active et ne la fait pas réapparaître. Les **anciennes options** étaient déjà conservées
+par `mergeExportFields` et `buildModalities` (`(inactif)`, `is_active = false`) ; le lot ajoute la
+preuve. La feuille `Métadonnées` nomme la révision active et les révisions présentes.
+
+*Provenance.* Une feuille `Provenance` restitue `record_field_provenance` pour les fiches
+exportées : variable, origine (`initial`/`completion`/`correction`/`import`/`offline_replay`),
+auteur, date, révision de définition et clé d’opération. Elle n’existe que pour les valeurs
+**ajoutées ou corrigées après coup** — une saisie initiale n’y produit aucune ligne —, elle reste
+donc proportionnelle aux compléments et non au produit fiches × variables. L’auteur est le nom
+minimisé, comme au journal d’activité ; aucun identifiant de compte ni donnée d’identité ne sort,
+et une origine dont la variable n’est pas restituée (projection, profil) n’y figure pas.
+
+*Historique.* La migration additive `20260918120000_form_evolution_history.sql` remplace
+`activity_public_metadata` pour ouvrir une branche `form_preparation_applied` : classification,
+révisions source et cible, nombres de variables (dont obligatoires), sections, règles et
+associations ajoutées, fiches potentiellement concernées ; les clés de variables ajoutées restent
+réservées au propriétaire. Tout vient de **l’instantané** figé par `apply_form_preparation` dans
+`audit_log.metadata` : aucune ligne ne pointe vers la version de gabarit vivante, qui pourrait
+changer et faire mentir l’historique après coup. `ActivityLog` expose l’action et son résumé.
+
+*Propriétaire sans motif.* `jsonb_strip_nulls` retire la clé `reason` absente : l’historique
+n’affiche pas de motif et n’en fabrique aucun, tandis qu’auteur, date, base et opération restent
+journalisés.
+
+**Preuves.** `deno task edge:test` (232/232, dont 18 tests E6 : valeur complétée conservée,
+trois absences distinguées, portée par type de rencontre, code de valeur manquante, formule
+ajoutée, portée patient, patient sans rencontre, révision unique inchangée, dictionnaire,
+options retirées, provenance, métadonnées, profil Analyse, plus quatre tests qui **inspectent le
+classeur XLSX réellement écrit** — données, dictionnaire, métadonnées, provenance, projection et
+non-régression d’une base non évoluée) ; `deno task edge:lint` ; `deno task edge:fmt` ;
+`src/screens/member/ActivityLog.test.tsx` (5/5) ; `test/activity.test.ts` sur PostgreSQL embarqué
+(métadonnées d’évolution par rôle, absence de pointeur de version, opération propriétaire sans
+motif) ; `npm run typecheck` ; `npx eslint` sur les fichiers touchés ; `npm run schema` puis
+`npm run schema:check`.
+
+**Limites déclarées.** La non-applicabilité par **règle de visibilité** n’est pas calculée par
+l’export : le moteur de règles vit en base et une valeur masquée est effacée à l’enregistrement
+(L32), donc un champ masqué par une règle arrive vide et se lit `empty`, pas `not_applicable`.
+Le comportement est figé par un test nommé comme tel plutôt que laissé implicite ; seule la
+non-applicabilité **structurelle** (portée par type de rencontre, variable absente de la révision)
+est distinguée. Aucune cible Supabase locale ou distante n’a été exercée : les doublures de
+l’Edge Function rejouent le contrat, elles ne prouvent pas un serveur déployé. Aucune preuve
+navigateur n’est produite pour l’écran d’historique. Le fichier exporté est vérifié sur des
+fixtures ; la campagne intégrée sur la fixture 216/21/26 reste le travail d’E7.
 
 ## E7
 

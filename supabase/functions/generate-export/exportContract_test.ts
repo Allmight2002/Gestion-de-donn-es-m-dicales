@@ -8,12 +8,14 @@ import { assertAlmostEquals, assertEquals, assertStringIncludes, assertThrows } 
 import {
   analyticId,
   assertNoAnalyticIdCollisions,
+  assertNoIdentity,
   buildDictionary,
   buildEncounterExport,
   buildMetadata,
   buildModalities,
   buildMultivalueTable,
   buildPatientExport,
+  buildProvenance,
   checkFormula,
   codeColumnId,
   columnId,
@@ -28,9 +30,12 @@ import {
   formulaFieldIndex,
   type FormulaFieldRef,
   hasCommonGroupFields,
+  makeRevisionContext,
   mergeExportFields,
   nbColumnId,
   optionCodeColumnId,
+  stateColumnId,
+  stateColumnsFor,
   toCsv,
   withExcelDateSerials,
 } from './exportContract.ts';
@@ -1296,4 +1301,348 @@ Deno.test('le dictionnaire porte la rubrique commune a part du bloc', () => {
   assertEquals(ligne?.section, '');
   // Et une variable de bloc ne recoit jamais de rubrique.
   assertEquals(avec.rows.find((r) => r.column_id === columnId(bloc))?.common_group, '');
+});
+
+// =============================================================================
+// E6 — expliquer une valeur et une absence apres plusieurs evolutions
+// =============================================================================
+//
+// Le piege de ce lot : une fiche ancienne garde SA revision de definition. Une variable
+// ajoutee ensuite vit dans une revision DERIVEE. Sans lignee, l'export jugeait la variable
+// etrangere a la fiche et vidait la cellule — la valeur etait en base, le fichier disait
+// « rien ». C'est le premier test ci-dessous, et c'est une perte de donnee, pas un confort.
+
+/** V1 --- derive ---> V2 : la base a evolue une fois. `makeRevisionContext` prend l'ACTIVE d'abord. */
+const V1 = 'rev-1';
+const V2 = 'rev-2';
+
+/** `poids` existe depuis V1, `fievre` est ajoutee en V2, `retiree` disparait en V2. */
+const POIDS = champ({ fieldKey: 'poids', type: 'number', templateVersionIds: [V1, V2], displayOrder: 1 });
+const FIEVRE = champ({ fieldKey: 'fievre', type: 'boolean', templateVersionIds: [V2], displayOrder: 2 });
+const RETIREE = champ({ fieldKey: 'retiree', type: 'text', templateVersionIds: [V1], displayOrder: 3 });
+const CHAMPS_E6 = [POIDS, FIEVRE, RETIREE];
+
+const contexteE6 = (fields = CHAMPS_E6, revisions = [V1, V2]) =>
+  makeRevisionContext([V2, V1], stateColumnsFor(fields, revisions));
+
+const rencontreVersionnee = (
+  id: string,
+  templateVersionId: string,
+  data: Record<string, unknown>,
+  encounterType = 'consultation',
+): ExportEncounter => ({
+  id,
+  patientCode: 'P0001',
+  encounterDate: '2026-01-01',
+  encounterType,
+  data,
+  templateVersionId,
+});
+
+Deno.test('E6 : une valeur ajoutee par complement sur une fiche ancienne reste exportee', () => {
+  // La fiche est restee sous V1 ; le complement E3 a ecrit `fievre`, definie en V2 seulement.
+  const ancienne = rencontreVersionnee('e1', V1, { poids: 12, fievre: true });
+  const table = buildEncounterExport([ancienne], CHAMPS_E6, 'complete', undefined, contexteE6());
+  assertEquals(table.rows[0][columnId(FIEVRE)], '1');
+  assertEquals(table.rows[0][stateColumnId(FIEVRE)], 'present');
+
+  // Sans contexte de revisions, le comportement ANTERIEUR au lot est conserve : c'est ce qui
+  // garantit qu'un appelant non migre ne change pas de sortie.
+  const sansContexte = buildEncounterExport([ancienne], CHAMPS_E6, 'complete');
+  assertEquals(sansContexte.rows[0][columnId(FIEVRE)], '');
+  assertEquals(sansContexte.columns.includes(stateColumnId(FIEVRE)), false);
+});
+
+Deno.test('E6 : les trois absences sont distinguees, jamais reduites a une cellule vide', () => {
+  const ancienne = rencontreVersionnee('e1', V1, { poids: 12 });
+  const recente = rencontreVersionnee('e2', V2, { poids: 14 });
+  const table = buildEncounterExport([ancienne, recente], CHAMPS_E6, 'complete', undefined, contexteE6());
+  const [ligneAncienne, ligneRecente] = table.rows;
+
+  // La variable n'existait pas dans la revision de CETTE fiche : ce n'etait pas une attente.
+  assertEquals(ligneAncienne[stateColumnId(FIEVRE)], 'not_defined');
+  // Elle existe pour la fiche recente, et personne ne l'a renseignee.
+  assertEquals(ligneRecente[stateColumnId(FIEVRE)], 'empty');
+  // La variable retiree du formulaire courant reste lisible pour la fiche qui la portait.
+  assertEquals(ligneAncienne[stateColumnId(RETIREE)], 'empty');
+  assertEquals(ligneRecente[stateColumnId(RETIREE)], 'not_defined');
+  // Une variable definie partout et sans portee restreinte ne recoit PAS de colonne d'etat :
+  // son absence n'est pas ambigue, et une colonne par variable doublerait le fichier.
+  assertEquals(table.columns.includes(stateColumnId(POIDS)), false);
+});
+
+Deno.test('E6 : la portee par type de rencontre donne not_applicable, pas un vide', () => {
+  const suivi = champ({
+    fieldKey: 'suivi',
+    type: 'text',
+    templateVersionIds: [V1, V2],
+    encounterTypes: ['controle'],
+    displayOrder: 4,
+  });
+  const fields = [...CHAMPS_E6, suivi];
+  const context = contexteE6(fields);
+  const table = buildEncounterExport(
+    [rencontreVersionnee('e1', V2, {}, 'consultation'), rencontreVersionnee('e2', V2, {}, 'controle')],
+    fields,
+    'complete',
+    undefined,
+    context,
+  );
+  assertEquals(table.rows[0][stateColumnId(suivi)], 'not_applicable');
+  assertEquals(table.rows[1][stateColumnId(suivi)], 'empty');
+});
+
+Deno.test('E6 : un code de valeur manquante n est pas une non-applicabilite', () => {
+  const table = buildEncounterExport(
+    [rencontreVersionnee('e1', V2, { fievre: { __missing__: 'non_applicable' } })],
+    CHAMPS_E6,
+    'complete',
+    undefined,
+    contexteE6(),
+  );
+  // Le code clinique reste dans la cellule de VALEUR ; l'etat dit qu'une reponse a ete donnee.
+  assertEquals(table.rows[0][columnId(FIEVRE)], 'non_applicable');
+  assertEquals(table.rows[0][stateColumnId(FIEVRE)], 'explicit_missing');
+});
+
+Deno.test('E6 : une variable calculee ajoutee ne se calcule pas sur une fiche ancienne', () => {
+  const debut = champ({ fieldKey: 'debut', type: 'date', templateVersionIds: [V1, V2], displayOrder: 1 });
+  const fin = champ({ fieldKey: 'fin', type: 'date', templateVersionIds: [V1, V2], displayOrder: 2 });
+  const duree = champ({
+    fieldKey: 'duree',
+    type: 'number',
+    formula: 'fin - debut',
+    templateVersionIds: [V2],
+    displayOrder: 3,
+  });
+  const fields = [debut, fin, duree];
+  const data = { debut: '2026-01-01', fin: '2026-01-04' };
+  const table = buildEncounterExport(
+    [rencontreVersionnee('e1', V1, data), rencontreVersionnee('e2', V2, data)],
+    fields,
+    'complete',
+    undefined,
+    contexteE6(fields),
+  );
+  // La formule appartient a la version (L35) : la fiche V1 n'en a pas, et l'etat le dit.
+  assertEquals(table.rows[0][columnId(duree)], '');
+  assertEquals(table.rows[0][stateColumnId(duree)], 'not_defined');
+  assertEquals(table.rows[1][columnId(duree)], 3);
+  assertEquals(table.rows[1][stateColumnId(duree)], 'present');
+});
+
+Deno.test('E6 : la portee patient suit la revision du patient, pas celle de la rencontre', () => {
+  const groupe = champ({ fieldKey: 'groupe', type: 'text', scope: 'patient', templateVersionIds: [V2] });
+  const fields = [groupe, POIDS];
+  const context = contexteE6(fields);
+  const patients: ExportPatient[] = [
+    { code: 'P0001', data: {}, templateVersionId: V1 },
+    { code: 'P0002', data: { groupe: 'B' }, templateVersionId: V2 },
+  ];
+  const table = buildPatientExport(patients, [], fields, 'first', 'complete', undefined, context);
+  assertEquals(table.rows[0][stateColumnId(groupe)], 'not_defined');
+  assertEquals(table.rows[1][stateColumnId(groupe)], 'present');
+});
+
+Deno.test('E6 : sans rencontre, la ligne patient ne fabrique aucun etat de rencontre', () => {
+  const fields = [POIDS, FIEVRE];
+  const table = buildPatientExport(
+    [{ code: 'P0001', data: {}, templateVersionId: V1 }],
+    [],
+    fields,
+    'first',
+    'complete',
+    undefined,
+    contexteE6(fields),
+  );
+  // Aucune fiche derriere la colonne : inventer `not_applicable` laisserait croire a une
+  // decision de portee, alors qu'il n'y a simplement rien a decrire.
+  assertEquals(table.rows[0][stateColumnId(FIEVRE)], '');
+});
+
+Deno.test('E6 : une cohorte a revision unique produit exactement le fichier d avant le lot', () => {
+  const fields = [POIDS, FIEVRE];
+  assertEquals(stateColumnsFor(fields, [V2]).size, 0);
+  const table = buildEncounterExport(
+    [rencontreVersionnee('e1', V2, { poids: 3 })],
+    fields,
+    'complete',
+    undefined,
+    makeRevisionContext([V2], stateColumnsFor(fields, [V2])),
+  );
+  assertEquals(table.columns.some((c) => c.startsWith('state__')), false);
+});
+
+Deno.test('E6 : le dictionnaire dit depuis quand une variable existe et si elle est encore en saisie', () => {
+  const revisions = {
+    activeRevision: V2,
+    lineage: [V2, V1],
+    labels: {
+      [V1]: { versionNumber: 1, at: '2026-01-01T00:00:00.000Z' },
+      [V2]: { versionNumber: 2, at: '2026-06-01T00:00:00.000Z' },
+    },
+    stateColumns: stateColumnsFor(CHAMPS_E6, [V1, V2]),
+  };
+  const dict = buildDictionary(CHAMPS_E6, { revisions });
+  const ligne = (f: ExportField) => dict.rows.find((r) => r.column_id === columnId(f));
+
+  assertEquals(ligne(POIDS)?.introduced_in_revision, '1');
+  assertEquals(ligne(POIDS)?.introduced_at, '2026-01-01T00:00:00.000Z');
+  assertEquals(ligne(POIDS)?.in_current_form, 'true');
+  assertEquals(ligne(FIEVRE)?.introduced_in_revision, '2');
+  assertEquals(ligne(FIEVRE)?.in_current_form, 'true');
+  // Une variable RETIREE reste documentee et lisible ; la case dit qu'elle n'est plus saisie.
+  assertEquals(ligne(RETIREE)?.in_current_form, 'false');
+  // Le dictionnaire renvoie a la colonne qui porte l'etat de chaque case.
+  assertEquals(ligne(FIEVRE)?.state_column, stateColumnId(FIEVRE));
+  assertEquals(ligne(POIDS)?.state_column, '');
+
+  // Sans revisions melangees, pas une colonne de plus qu'avant le lot.
+  assertEquals(buildDictionary(CHAMPS_E6).columns.includes('in_current_form'), false);
+});
+
+Deno.test('E6 : une option retiree reste lisible au dictionnaire et aux modalites', () => {
+  const avant = champ({
+    fieldKey: 'issue',
+    type: 'select',
+    templateVersionIds: [V1],
+    allowedOptions: [
+      { value_key: 'gueri', label: 'Gueri', is_active: true },
+      { value_key: 'transfere', label: 'Transfere', is_active: true },
+    ],
+  });
+  const apres = champ({
+    fieldKey: 'issue',
+    type: 'select',
+    templateVersionIds: [V2],
+    allowedOptions: [{ value_key: 'gueri', label: 'Gueri', is_active: true }],
+  });
+  const dict = buildDictionary([avant, apres]);
+  assertStringIncludes(String(dict.rows[0].allowed_values), 'Transfere');
+  const modalites = buildModalities([avant, apres]);
+  const retiree = modalites.rows.find((r) => r.code === 'transfere');
+  assertEquals(retiree?.label, 'Transfere');
+
+  // Et la valeur historique reste rendue, pas effacee, sur la fiche qui la porte.
+  const table = buildEncounterExport(
+    [rencontreVersionnee('e1', V1, { issue: 'transfere' })],
+    [avant, apres],
+    'complete',
+    undefined,
+    contexteE6([avant, apres]),
+  );
+  assertEquals(table.rows[0][columnId(avant)], 'Transfere');
+});
+
+Deno.test('E6 : la feuille Provenance nomme l auteur, la date et la revision, sans identite', () => {
+  const table = buildProvenance([
+    {
+      patientCode: 'P0002',
+      encounterId: 'e9',
+      scope: 'encounter',
+      fieldKey: 'fievre',
+      origin: 'completion',
+      capturedBy: 'Dr Diallo',
+      capturedAt: '2026-06-02T10:00:00.000Z',
+      definitionRevision: 2,
+      operationId: 'op-2',
+    },
+    {
+      patientCode: 'P0001',
+      encounterId: '',
+      scope: 'patient',
+      fieldKey: 'groupe',
+      origin: 'correction',
+      capturedBy: 'Dr Ba',
+      capturedAt: '2026-06-01T10:00:00.000Z',
+      definitionRevision: 1,
+      operationId: 'op-1',
+    },
+  ]);
+  assertEquals(table.rows.map((r) => r.patient_code), ['P0001', 'P0002']);
+  assertEquals(table.rows[0].variable, 'patient__groupe');
+  assertEquals(table.rows[1].origin, 'completion');
+  assertEquals(table.rows[1].captured_by, 'Dr Diallo');
+  assertEquals(table.rows[1].definition_revision, 2);
+  // Aucune colonne d'identite : la feuille se lit avec les memes cles que les autres.
+  assertNoIdentity(table.columns);
+});
+
+Deno.test('E6 : les metadonnees nomment les revisions presentes dans le fichier', () => {
+  const meta = buildMetadata({
+    profile: 'analysis',
+    generatedAt: '2026-07-12T00:00:00.000Z',
+    baseName: 'Base Test',
+    cohortName: 'Cohorte Test',
+    mode: 'encounter',
+    selectionRule: 'first',
+    templateVersions: [V1, V2],
+    rowCount: 2,
+    excludedPatientCount: 0,
+    excludedEncounterCount: 0,
+    definitionRevisions: { activeVersionNumber: 2, versionNumbers: [1, 2] },
+  });
+  const by = new Map(meta.rows.map((r) => [r.attribute, r.value]));
+  assertEquals(by.get('active_definition_revision'), 2);
+  assertEquals(by.get('definition_revisions'), '1; 2');
+  // Sans melange de revisions, la feuille reste celle d'avant le lot.
+  const sans = buildMetadata({
+    profile: 'analysis',
+    generatedAt: '2026-07-12T00:00:00.000Z',
+    baseName: 'Base Test',
+    cohortName: 'Cohorte Test',
+    mode: 'encounter',
+    selectionRule: 'first',
+    templateVersions: [V2],
+    rowCount: 1,
+    excludedPatientCount: 0,
+    excludedEncounterCount: 0,
+  });
+  assertEquals(sans.rows.some((r) => r.attribute === 'definition_revisions'), false);
+});
+
+Deno.test('E6 : le profil Analyse garde son contrat de colonnes et gagne l etat', () => {
+  const liste = champ({
+    fieldKey: 'issue',
+    type: 'select',
+    templateVersionIds: [V2],
+    allowedOptions: [{ value_key: 'gueri', label: 'Gueri', is_active: true }],
+  });
+  const fields = [POIDS, liste];
+  const context = contexteE6(fields);
+  const table = buildEncounterExport(
+    [rencontreVersionnee('e1', V1, {}), rencontreVersionnee('e2', V2, { issue: 'gueri' })],
+    fields,
+    'analysis',
+    undefined,
+    context,
+  );
+  // L46 : en Analyse la colonne principale porte le CODE, et pas de colonne `option_code__`.
+  assertEquals(table.columns.includes(optionCodeColumnId(liste)), false);
+  assertEquals(table.rows[1][columnId(liste)], 'gueri');
+  assertEquals(table.rows[0][stateColumnId(liste)], 'not_defined');
+  assertEquals(table.rows[1][stateColumnId(liste)], 'present');
+});
+
+// LIMITE DECLAREE E6 — la non-applicabilite par REGLE de visibilite n'est pas calculee ici.
+// Le moteur de regles vit en base ; l'export ne recoit que les valeurs et la structure. Un
+// champ masque par une regle voit sa valeur EFFACEE a l'enregistrement (L32) : il arrive donc
+// vide, et l'export le classe `empty`, pas `not_applicable`. Ce test fige ce comportement
+// pour qu'il reste un choix visible, pas une surprise : la non-applicabilite STRUCTURELLE
+// (portee par type de rencontre, variable absente de la revision) est, elle, bien distinguee.
+Deno.test('E6 : un champ masque par une REGLE arrive vide et se lit empty, pas not_applicable', () => {
+  const masque = champ({ fieldKey: 'masque', type: 'text', templateVersionIds: [V1, V2], displayOrder: 5 });
+  const fields = [...CHAMPS_E6, masque];
+  const table = buildEncounterExport(
+    // La regle a masque `masque` : L32 a efface sa valeur, la cle n'est plus dans `data`.
+    [rencontreVersionnee('e1', V2, { poids: 14 })],
+    fields,
+    'complete',
+    undefined,
+    contexteE6(fields),
+  );
+  // Aucune colonne d'etat : sans ambiguite de definition ni portee declaree, l'export n'a
+  // rien a dire de plus que la cellule vide.
+  assertEquals(table.columns.includes(stateColumnId(masque)), false);
+  assertEquals(table.rows[0][columnId(masque)], '');
 });

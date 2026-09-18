@@ -58,6 +58,12 @@ export interface ExportField {
   /** Libelle de la rubrique commune. `null` quand `commonGroup` est nul. */
   commonGroupLabel?: string | null;
   type: string;
+  /**
+   * E6 : types de rencontre auxquels la variable s'applique. `null` ou liste vide = toutes.
+   * C'est la seule non-applicabilite STRUCTURELLE que l'export sait calculer : les regles de
+   * visibilite, elles, sont evaluees en base et ne voyagent pas jusqu'ici.
+   */
+  encounterTypes?: string[] | null;
   /** Variable multivaluee (L22) : accepte une liste ordonnee de couples terminologiques. */
   isMultiple?: boolean | null;
   unit: string | null;
@@ -825,6 +831,19 @@ function formulaUnitEntries(field: ExportField): Record<string, string | null> {
   return entries;
 }
 
+/**
+ * Union des portees par type de rencontre : `null` (aucune restriction) ABSORBE toute liste,
+ * parce qu une seule revision sans restriction suffit a rendre la variable applicable partout.
+ */
+function mergeEncounterTypes(
+  a: string[] | null | undefined,
+  b: string[] | null | undefined,
+): string[] | null {
+  if (!Array.isArray(a) || a.length === 0) return null;
+  if (!Array.isArray(b) || b.length === 0) return null;
+  return [...new Set([...a, ...b])].sort();
+}
+
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
 export function mergeExportFields(input: ExportField[]): ExportField[] {
   // D13 : préserver l'ordre du formulaire (scope -> display_order -> fieldKey)
@@ -842,6 +861,10 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
     if (previous) {
       previous.templateVersionIds = [...new Set([...(previous.templateVersionIds ?? []), ...versions])].sort();
       previous.isMultiple = Boolean(previous.isMultiple || field.isMultiple);
+      // E6 : la portee par type de rencontre s UNIT. Une version qui n en declare aucune ouvre
+      // la variable a tous les types : la colonne fusionnee ne peut plus la dire restreinte,
+      // sinon une valeur bien saisie serait annoncee `not_applicable`.
+      previous.encounterTypes = mergeEncounterTypes(previous.encounterTypes, field.encounterTypes);
       // Une colonne peut traverser plusieurs versions dont les raisons different. Le
       // dictionnaire doit couvrir TOUT ce que la colonne peut contenir, sinon il decrit
       // une version et laisse un code inexplique en face d'une fiche plus ancienne.
@@ -877,6 +900,9 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       merged.set(key, {
         ...field,
         isMultiple: Boolean(field.isMultiple),
+        encounterTypes: Array.isArray(field.encounterTypes) && field.encounterTypes.length > 0
+          ? [...new Set(field.encounterTypes)].sort()
+          : null,
         templateVersionIds: [...new Set(versions)].sort(),
         missingReasons: field.missingReasons ? sortMissingReasons(field.missingReasons) : field.missingReasons,
         formulaByVersion: formulaEntries(field),
@@ -985,12 +1011,172 @@ export function referencedTemplateVersions(patients: ExportPatient[], encounters
   ].sort();
 }
 
+// =============================================================================
+// Etats de definition et de valeur (E6) — expliquer une case vide
+// =============================================================================
+//
+// Apres une evolution du formulaire, une case vide ne dit plus rien par elle-meme. Le contrat
+// E0 (§7.2 de la specification) distingue TROIS absences differentes, et l export ne doit en
+// reduire aucune a une cellule vide sans metadonnee :
+//
+//   not_defined     la variable n'existait pas dans la revision de definition de LA FICHE ;
+//                   elle n a jamais ete une attente pour elle ;
+//   not_applicable  la variable existe, mais sa portee ne la rend pas applicable a cette fiche ;
+//   empty           la variable existe, s applique, et personne ne l a renseignee.
+//
+// `explicit_missing` (un code de valeur manquante clinique) et `present` completent l echelle.
+// `not_applicable` STRUCTUREL ne se confond pas avec le code clinique `non_applicable`, qui
+// reste, lui, dans la cellule de valeur.
+export const FIELD_VALUE_STATES = [
+  'present',
+  'explicit_missing',
+  'empty',
+  'not_applicable',
+  'not_defined',
+] as const;
+export type FieldValueState = (typeof FIELD_VALUE_STATES)[number];
+
+/** Colonne d'etat qui accompagne une colonne de valeur. Prefixe reserve, jamais un libelle. */
+export const stateColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `state__${columnId(field)}`;
+
+/**
+ * Chaine des revisions de definition d'une base, de l'ACTIVE vers la plus ancienne, reliees par
+ * `derived_from_template_version_id` (E2). Une fiche restee sous une revision ancienne peut
+ * avoir recu, par complement E3, une valeur dont la definition vit dans une revision DERIVEE de
+ * la sienne : sans cette chaine, l'export effacerait cette valeur.
+ */
+export interface RevisionContext {
+  readonly lineage: readonly string[];
+  /** Colonnes (`columnId`) qui portent une colonne d etat dans CE fichier. */
+  readonly stateColumns: ReadonlySet<string>;
+  /** Revisions derivees d une revision de fiche, celle-ci comprise. */
+  reachOf(versionId: string): ReadonlySet<string>;
+}
+
+export function makeRevisionContext(
+  lineage: readonly string[],
+  stateColumns: ReadonlySet<string> = new Set(),
+): RevisionContext {
+  const reach = new Map<string, ReadonlySet<string>>();
+  lineage.forEach((versionId, index) => {
+    // `lineage[0]` est l'active : les descendants d'une revision sont donc les elements
+    // qui la PRECEDENT dans la chaine, elle comprise.
+    reach.set(versionId, new Set(lineage.slice(0, index + 1)));
+  });
+  return {
+    lineage,
+    stateColumns,
+    reachOf: (versionId) => reach.get(versionId) ?? new Set([versionId]),
+  };
+}
+
+/**
+ * La variable est-elle definie DANS la revision de la fiche ? C'est cela, et rien d'autre, qui
+ * separe `not_defined` d un vide ordinaire. Une variable sans rattachement de version connu
+ * (instantane anterieur aux lots de versionnage) est consideree comme definie, comme avant.
+ */
+export const isDefinedInRevision = (
+  field: Pick<ExportField, 'templateVersionIds'>,
+  versionId: string | undefined,
+): boolean => !versionId || !field.templateVersionIds?.length || field.templateVersionIds.includes(versionId);
+
+/**
+ * La variable est-elle ATTEIGNABLE depuis la revision de la fiche ? Elle l est si elle y est
+ * definie, ou si elle est definie dans une revision derivee de celle-ci — le cas d un ajout
+ * applique par E2 puis renseigne par un complement E3 sur une fiche ancienne. Sans contexte de
+ * revisions, le comportement anterieur au lot est conserve tel quel.
+ */
+export function reachesRevision(
+  field: Pick<ExportField, 'templateVersionIds'>,
+  versionId: string | undefined,
+  context?: RevisionContext,
+): boolean {
+  if (isDefinedInRevision(field, versionId)) return true;
+  if (!context || !versionId) return false;
+  const reach = context.reachOf(versionId);
+  return (field.templateVersionIds ?? []).some((id) => reach.has(id));
+}
+
+/** Non-applicabilite STRUCTURELLE par type de rencontre ; la seule que l'export sait calculer. */
+export const isOutOfEncounterScope = (
+  field: Pick<ExportField, 'scope' | 'encounterTypes'>,
+  encounterType: string | null | undefined,
+): boolean =>
+  field.scope === 'encounter' && Boolean(encounterType) &&
+  Array.isArray(field.encounterTypes) && field.encounterTypes.length > 0 &&
+  !field.encounterTypes.includes(encounterType as string);
+
+const hasStoredValue = (raw: unknown): boolean =>
+  !(raw === undefined || raw === null || raw === '' || (Array.isArray(raw) && raw.length === 0));
+
+/**
+ * Etat de LA CELLULE reellement ecrite. `emitted` est ce que la colonne de valeur porte : une
+ * variable calculee n a rien de stocke, seul son resultat dit si la case parle.
+ */
+export function cellState(
+  field: ExportField,
+  data: Record<string, unknown> | null | undefined,
+  versionId: string | undefined,
+  encounterType: string | null | undefined,
+  emitted?: unknown,
+): FieldValueState | '' {
+  // Aucune fiche derriere la ligne (patient sans rencontre) : il n y a pas d etat a decrire,
+  // et inventer `not_applicable` laisserait croire a une decision de portee.
+  if (!data) return '';
+  const raw = data[field.fieldKey];
+  if (hasStoredValue(raw)) return missingCodeOf(raw) ? 'explicit_missing' : 'present';
+  if (isCalculatedField(field) && emitted !== '' && emitted !== undefined && emitted !== null) return 'present';
+  if (!isDefinedInRevision(field, versionId)) return 'not_defined';
+  if (isOutOfEncounterScope(field, encounterType)) return 'not_applicable';
+  return 'empty';
+}
+
+/**
+ * Colonnes d'etat A PRODUIRE. Deux garde-fous, parce qu'une colonne d'etat par variable
+ * doublerait la largeur du fichier et se heurterait au plafond de colonnes :
+ *
+ *   1. aucune colonne d etat tant que la cohorte ne melange pas plusieurs revisions de
+ *      definition — une base dont le formulaire n a jamais evolue garde exactement le fichier
+ *      qu elle produisait avant ce lot ;
+ *   2. dans une cohorte melangee, seules les variables dont l absence est AMBIGUE : celles qui
+ *      ne sont pas definies dans toutes les revisions en presence, et celles dont la portee par
+ *      type de rencontre peut produire un `not_applicable`.
+ */
+export function stateColumnsFor(
+  fields: readonly ExportField[],
+  recordRevisions: readonly (string | undefined)[],
+): Set<string> {
+  const revisions = [...new Set(recordRevisions.filter((id): id is string => Boolean(id)))];
+  const columns = new Set<string>();
+  if (revisions.length < 2) return columns;
+  for (const field of fields) {
+    const defined = revisions.map((revision) => isDefinedInRevision(field, revision));
+    const uneven = defined.some((value) => value !== defined[0]);
+    const scoped = field.scope === 'encounter' && Array.isArray(field.encounterTypes) &&
+      field.encounterTypes.length > 0;
+    if (uneven || scoped) columns.add(columnId(field));
+  }
+  return columns;
+}
+
 const EMPTY_FORMULA_INDEX: ReadonlyMap<string, FormulaFieldRef> = new Map();
 
-const belongsToField = (versionId: string | undefined, field: ExportField) =>
-  !versionId || !field.templateVersionIds?.length || field.templateVersionIds.includes(versionId);
-const valueFor = (data: Record<string, unknown>, versionId: string | undefined, field: ExportField) =>
-  belongsToField(versionId, field) ? formatValue(data[field.fieldKey], field.type) : '';
+/**
+ * E6 : une fiche restee sous une revision ancienne PEUT porter la valeur d une variable ajoutee
+ * ensuite — c est tout l objet du complement E3. Sans contexte de revisions on garde la regle
+ * anterieure (appartenance exacte), avec contexte on suit la lignee derivee.
+ */
+const belongsToField = (
+  versionId: string | undefined,
+  field: ExportField,
+  context?: RevisionContext,
+) => reachesRevision(field, versionId, context);
+const valueFor = (
+  data: Record<string, unknown>,
+  versionId: string | undefined,
+  field: ExportField,
+  context?: RevisionContext,
+) => (belongsToField(versionId, field, context) ? formatValue(data[field.fieldKey], field.type) : '');
 
 /** Renseigne la colonne du champ et ses colonnes analytiques derivees. */
 function assignField(
@@ -1002,8 +1188,17 @@ function assignField(
   peers: ReadonlyMap<string, FormulaFieldRef> = EMPTY_FORMULA_INDEX,
   /** Profil d'export (L46) : le select simple rend son code stable en Analyse. */
   profile: ExportProfile = 'complete',
+  /** E6 : lignee des revisions et colonnes d etat demandees. Absent = comportement anterieur. */
+  context?: RevisionContext,
+  /** E6 : type de la rencontre decrite par la ligne, pour la portee `not_applicable`. */
+  encounterType?: string | null,
 ): void {
-  const applicable = Boolean(data) && belongsToField(versionId, field);
+  const applicable = Boolean(data) && belongsToField(versionId, field, context);
+  /** Ecrit l etat de la case, une fois la colonne de valeur remplie. */
+  const writeState = (emitted?: unknown) => {
+    if (!context?.stateColumns.has(columnId(field))) return;
+    row[stateColumnId(field)] = cellState(field, data, versionId, encounterType, emitted);
+  };
   // L35 : rien n'est stocke sous cette cle, la colonne est RECALCULEE ici. La formule
   // retenue est celle de la version de LA FICHE, pas celle de la version courante.
   const formula = applicable ? formulaForVersion(field, versionId) : null;
@@ -1011,16 +1206,21 @@ function assignField(
     const value = evaluateFormulaText(formula, data, peers, formulaUnitForVersion(field, versionId));
     // Resultat absent -> cellule vide, jamais zero : un zero se lirait comme une mesure.
     row[columnId(field)] = value === null ? '' : value;
+    writeState(value);
     return;
   }
   if (field.type === 'multiselect') {
     // L47 : en Analyse, la feuille principale ne porte pas les formes techniques du multiselect
     // (libelle/codes concatenes, compteur) ; seules les indicatrices, ecrites par l'appelant.
-    if (profile === 'analysis') return;
+    if (profile === 'analysis') {
+      writeState();
+      return;
+    }
     const cells = applicable ? optionCells(field, data![field.fieldKey]) : { label: '', code: '' };
     row[columnId(field)] = cells.label;
     row[optionCodeColumnId(field)] = cells.code;
     row[nbColumnId(field)] = applicable ? nbOf(field, data![field.fieldKey]) : '';
+    writeState();
     return;
   }
   if (isOptionList(field)) {
@@ -1031,15 +1231,18 @@ function assignField(
     if (profile === 'analysis') {
       const missing = applicable ? missingCodeOf(data![field.fieldKey]) : null;
       row[columnId(field)] = missing ?? cells.code;
+      writeState();
       return;
     }
     // L30 : le libelle dans la colonne principale, le code dans la sienne. C'est le code
     // qui reste stable quand un libelle est corrige, donc lui qui permet de compter.
     row[columnId(field)] = cells.label;
     row[optionCodeColumnId(field)] = cells.code;
+    writeState();
     return;
   }
-  row[columnId(field)] = data ? valueFor(data, versionId, field) : '';
+  row[columnId(field)] = data ? valueFor(data, versionId, field, context) : '';
+  writeState();
   if (field.type !== 'terminology') return;
   row[codeColumnId(field)] = applicable ? codeOf(data![field.fieldKey]) : '';
   if (field.isMultiple) {
@@ -1158,8 +1361,9 @@ function assignIndicators(
   data: Record<string, unknown> | null | undefined,
   versionId: string | undefined,
   profile: ExportProfile,
+  context?: RevisionContext,
 ): void {
-  const applicable = Boolean(data) && belongsToField(versionId, field);
+  const applicable = Boolean(data) && belongsToField(versionId, field, context);
   for (const ind of indicators) {
     if (!applicable || !data) {
       row[ind.columnId] = '';
@@ -1184,6 +1388,8 @@ export function buildEncounterExport(
    * Absent = les colonnes servent aussi d'operandes, comportement anterieur au lot.
    */
   operandFields?: ExportField[],
+  /** E6 : lignee des revisions et colonnes d etat. Absent = fichier identique a avant le lot. */
+  context?: RevisionContext,
 ): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
   const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
@@ -1198,7 +1404,10 @@ export function buildEncounterExport(
     ...encFields.flatMap((f) => {
       const base = columnsForFields([f], profile);
       const inds = (indicatorsByField.get(f.fieldKey) ?? []).map((i) => i.columnId);
-      return [...base, ...inds];
+      // E6 : la colonne d etat suit IMMEDIATEMENT la colonne de valeur, pour que l absence
+      // s explique sans chercher a l autre bout du fichier.
+      const state = context?.stateColumns.has(columnId(f)) ? [stateColumnId(f)] : [];
+      return [...base, ...state, ...inds];
     }),
   ];
 
@@ -1215,8 +1424,16 @@ export function buildEncounterExport(
       age_unit: e.ageUnit ?? '',
     };
     for (const f of encFields) {
-      assignField(row, e.data, e.templateVersionId, f, encPeers, profile);
-      assignIndicators(row, f, indicatorsByField.get(f.fieldKey) ?? [], e.data, e.templateVersionId, profile);
+      assignField(row, e.data, e.templateVersionId, f, encPeers, profile, context, e.encounterType);
+      assignIndicators(
+        row,
+        f,
+        indicatorsByField.get(f.fieldKey) ?? [],
+        e.data,
+        e.templateVersionId,
+        profile,
+        context,
+      );
     }
     return row;
   });
@@ -1237,6 +1454,8 @@ export function buildPatientExport(
   profile: ExportProfile = 'complete',
   /** L53 : dictionnaire NON PROJETE des operandes possibles (voir `buildEncounterExport`). */
   operandFields?: ExportField[],
+  /** E6 : lignee des revisions et colonnes d etat. Absent = fichier identique a avant le lot. */
+  context?: RevisionContext,
 ): ExportTable {
   const all = mergeExportFields(fields);
   const patientFields = all.filter((f) => f.scope === 'patient');
@@ -1250,15 +1469,16 @@ export function buildPatientExport(
   const patPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'patient'));
   const encPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'encounter'));
 
+  const stateOf = (f: ExportField) => (context?.stateColumns.has(columnId(f)) ? [stateColumnId(f)] : []);
   const patientCols = patientFields.flatMap((f) => {
     const base = columnsForFields([f], profile);
     const inds = (patIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
-    return [...base, ...inds];
+    return [...base, ...stateOf(f), ...inds];
   });
   const encounterCols = encounterFields.flatMap((f) => {
     const base = columnsForFields([f], profile);
     const inds = (encIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
-    return [...base, ...inds];
+    return [...base, ...stateOf(f), ...inds];
   });
 
   const columns = [
@@ -1274,15 +1494,31 @@ export function buildPatientExport(
   const rows = [...patients].sort((a, b) => a.code.localeCompare(b.code)).map((p) => {
     const row: Record<string, unknown> = { patient_code: p.code };
     for (const f of patientFields) {
-      assignField(row, p.data, p.templateVersionId, f, patPeers, profile);
-      assignIndicators(row, f, patIndicators.get(f.fieldKey) ?? [], p.data, p.templateVersionId, profile);
+      assignField(row, p.data, p.templateVersionId, f, patPeers, profile, context, null);
+      assignIndicators(
+        row,
+        f,
+        patIndicators.get(f.fieldKey) ?? [],
+        p.data,
+        p.templateVersionId,
+        profile,
+        context,
+      );
     }
     const e = pickEncounter(byPatient.get(p.code) ?? [], rule);
     row.age_value = e ? formatAgeValue(e.ageValue ?? e.data.age_at_encounter) : '';
     row.age_unit = e?.ageUnit ?? '';
     for (const f of encounterFields) {
-      assignField(row, e ? e.data : null, e?.templateVersionId, f, encPeers, profile);
-      assignIndicators(row, f, encIndicators.get(f.fieldKey) ?? [], e?.data, e?.templateVersionId, profile);
+      assignField(row, e ? e.data : null, e?.templateVersionId, f, encPeers, profile, context, e?.encounterType);
+      assignIndicators(
+        row,
+        f,
+        encIndicators.get(f.fieldKey) ?? [],
+        e?.data,
+        e?.templateVersionId,
+        profile,
+        context,
+      );
     }
     return row;
   });
@@ -1357,6 +1593,66 @@ export function buildModalities(fields: ExportField[]): ExportTable {
   return { columns, rows };
 }
 
+/**
+ * Feuille `Provenance` (E6). Une valeur seule ne dit pas d'ou elle vient : apres plusieurs
+ * evolutions, un lecteur doit pouvoir separer ce qui a ete saisi a la creation de la fiche de
+ * ce qui a ete AJOUTE ensuite, par qui, quand, et sous quelle revision de definition.
+ *
+ * La feuille ne liste QUE les valeurs qui portent une origine enregistree : elle ne pese donc
+ * pas le produit du nombre de fiches par le nombre de variables, mais le nombre reel de
+ * complements et de corrections. Une valeur d'origine sans ligne ici est une saisie initiale.
+ *
+ * Elle ne porte aucune donnee d'identite : le code patient pseudonymise et l'identifiant
+ * analytique de rencontre sont ceux des autres feuilles, et `captured_by` est le nom d acteur
+ * deja minimise par l'appelant — jamais un identifiant technique de compte.
+ */
+export interface ProvenanceEntry {
+  patientCode: string;
+  /** Vide pour une valeur de portee patient. */
+  encounterId: string;
+  scope: 'patient' | 'encounter';
+  fieldKey: string;
+  /** `initial`, `completion`, `correction`, `import` ou `offline_replay` (contrat E0 §7.2). */
+  origin: string;
+  capturedBy: string;
+  capturedAt: string;
+  /** Numero lisible de la revision de definition, pas son uuid. */
+  definitionRevision: number | '';
+  operationId: string;
+}
+
+const PROVENANCE_COLUMNS = [
+  'patient_code',
+  'encounter_id',
+  'variable',
+  'origin',
+  'captured_by',
+  'captured_at',
+  'definition_revision',
+  'operation_id',
+];
+
+export function buildProvenance(entries: readonly ProvenanceEntry[]): ExportTable {
+  const rows = [...entries]
+    .sort((a, b) =>
+      a.patientCode.localeCompare(b.patientCode) ||
+      a.encounterId.localeCompare(b.encounterId) ||
+      analyticId(a).localeCompare(analyticId(b)) ||
+      a.capturedAt.localeCompare(b.capturedAt)
+    )
+    .map((entry) => ({
+      patient_code: entry.patientCode,
+      encounter_id: entry.encounterId,
+      variable: analyticId(entry),
+      origin: entry.origin,
+      captured_by: entry.capturedBy,
+      captured_at: entry.capturedAt,
+      definition_revision: entry.definitionRevision,
+      operation_id: entry.operationId,
+    }));
+  return { columns: [...PROVENANCE_COLUMNS], rows };
+}
+
 export interface DictionaryOptions {
   indicatorsByField?: Map<string, IndicatorMeta[]>;
   omittedFieldKeys?: Set<string>;
@@ -1376,6 +1672,51 @@ export interface DictionaryOptions {
    * structure de sortie est strictement identique a celle d'avant le lot.
    */
   commonGroupColumns?: boolean;
+  /**
+   * E6 : contexte des revisions de definition. Present UNIQUEMENT quand la cohorte melange
+   * plusieurs revisions ; sinon le dictionnaire garde exactement les colonnes d avant le lot.
+   */
+  revisions?: DictionaryRevisions;
+}
+
+/**
+ * Ce qu il faut au dictionnaire pour expliquer une variable APRES plusieurs evolutions :
+ * depuis quelle revision elle existe, si le formulaire courant la porte encore, et quelle
+ * colonne du fichier dit l etat de chaque case.
+ */
+export interface DictionaryRevisions {
+  /** Revision ACTIVE de la base au moment de l export. */
+  activeRevision: string;
+  /** Lignee des revisions, de l ACTIVE vers la plus ancienne. */
+  lineage: readonly string[];
+  /** Numero et date d une revision : un uuid ne se lit pas. */
+  labels: Readonly<Record<string, { versionNumber: number; at: string }>>;
+  /** Colonnes de valeur qui portent une colonne d etat. */
+  stateColumns: ReadonlySet<string>;
+}
+
+/** Colonnes E6, ajoutees A LA FIN pour ne deplacer aucune colonne existante. */
+const REVISION_DICTIONARY_COLUMNS = [
+  'in_current_form',
+  'introduced_in_revision',
+  'introduced_at',
+  'encounter_types',
+  'state_column',
+];
+
+/**
+ * Revision la PLUS ANCIENNE de la lignee qui definit la variable : c est celle-la qui repond a
+ * « depuis quand cette variable existe-t-elle ». La lignee va de l active vers l ancien, on la
+ * parcourt donc a l envers.
+ */
+function introducedRevision(field: ExportField, revisions: DictionaryRevisions): string | null {
+  const defined = new Set(field.templateVersionIds ?? []);
+  if (defined.size === 0) return null;
+  for (let index = revisions.lineage.length - 1; index >= 0; index -= 1) {
+    const candidate = revisions.lineage[index];
+    if (defined.has(candidate)) return candidate;
+  }
+  return [...defined].sort()[0] ?? null;
 }
 
 /**
@@ -1455,7 +1796,9 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
   const blockColumns = options?.blockColumns === true;
   const commonGroupColumns = options?.commonGroupColumns === true;
   const withBlocks = blockColumns ? withBlockColumns(base) : [...base];
-  const columns = commonGroupColumns ? withCommonGroupColumns(withBlocks) : withBlocks;
+  const withCommon = commonGroupColumns ? withCommonGroupColumns(withBlocks) : withBlocks;
+  const revisions = options?.revisions;
+  const columns = revisions ? [...withCommon, ...REVISION_DICTIONARY_COLUMNS] : withCommon;
   return {
     columns,
     rows: mergeExportFields(fields).flatMap((f) => {
@@ -1480,6 +1823,23 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
           ? f.allowedValues.join('; ')
           : '',
         missing_reasons: (f.missingReasons ?? []).join('; '),
+        // E6 : les colonnes de revision decrivent LA VARIABLE ; elles se repetent donc sur ses
+        // colonnes derivees (code, nombre, indicatrices), qui parlent de la meme variable.
+        ...(revisions
+          ? (() => {
+            const introduced = introducedRevision(f, revisions);
+            const label = introduced ? revisions.labels[introduced] : undefined;
+            return {
+              // Une variable RETIREE du formulaire courant reste ici, lisible, et cette case
+              // dit qu elle ne revient pas en saisie.
+              in_current_form: (f.templateVersionIds ?? []).includes(revisions.activeRevision) ? 'true' : 'false',
+              introduced_in_revision: label ? String(label.versionNumber) : '',
+              introduced_at: label?.at ?? '',
+              encounter_types: (f.encounterTypes ?? []).join('; '),
+              state_column: '',
+            };
+          })()
+          : {}),
         ...(isAnalysis ? {} : {
           field_key: f.fieldKey,
           scope: f.scope,
@@ -1490,7 +1850,15 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
         // formule d'utilisateur : la case reste vide chez elles.
         formula: '',
       };
-      const valueRow = { column_id: columnId(f), label: f.label, type: f.type, ...common, formula: formulaLabel(f) };
+      const valueRow = {
+        column_id: columnId(f),
+        label: f.label,
+        type: f.type,
+        ...common,
+        formula: formulaLabel(f),
+        // Seule la colonne de VALEUR porte un etat : les colonnes derivees se lisent avec elle.
+        ...(revisions ? { state_column: revisions.stateColumns.has(columnId(f)) ? stateColumnId(f) : '' } : {}),
+      };
       const derivedRows: Record<string, unknown>[] = [];
       if (isMultivalueField(f)) {
         // L47/L49 : en Analyse, le multiselect n'a NI colonne `option_code` NI colonne `nb` :
@@ -1572,6 +1940,12 @@ export interface MetadataInput {
    * projection garde donc exactement la feuille `Métadonnées` d'avant le lot.
    */
   sectionProjection?: SectionProjection | null;
+  /**
+   * E6 : revisions de DEFINITION presentes dans le fichier, de l active vers l ancienne, avec
+   * leur numero lisible. Absent quand la cohorte n en melange qu une : la feuille reste alors
+   * identique a celle d avant le lot.
+   */
+  definitionRevisions?: { activeVersionNumber: number; versionNumbers: number[] } | null;
 }
 
 /**
@@ -1598,6 +1972,12 @@ export function buildMetadata(input: MetadataInput): ExportTable {
   // bouge : `row_count` ci-dessus reste celui de la cohorte entiere.
   if (input.sectionProjection?.mode === 'selected') {
     add('section_projection_blocks', (input.sectionProjection.blockKeys ?? []).join('; '));
+  }
+  // E6 : un fichier qui melange plusieurs revisions doit dire LESQUELLES, sinon la colonne
+  // d etat renvoie a un contexte que le lecteur n a pas.
+  if (input.definitionRevisions) {
+    add('active_definition_revision', input.definitionRevisions.activeVersionNumber);
+    add('definition_revisions', input.definitionRevisions.versionNumbers.join('; '));
   }
   return { columns: ['attribute', 'value'], rows };
 }
