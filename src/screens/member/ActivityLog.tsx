@@ -18,6 +18,9 @@ const PAGE_SIZE = 50;
 const ACTION_OPTIONS = [
   'data_imported', 'access_granted', 'access_changed', 'access_revoked', 'invitation_created',
   'patient_deleted', 'encounter_deleted', 'export_created', 'template_published', 'file_inspected', 'base_deleted',
+  // E6 : une evolution du formulaire est une action de la base comme une autre, et c'est ici
+  // qu'on retrouve QUI l'a appliquee, QUAND, avec quel impact et vers quelle revision.
+  'form_preparation_applied',
 ] as const;
 const KNOWN_ACTIONS = new Set<string>(ACTION_OPTIONS);
 
@@ -85,6 +88,39 @@ export function ActivityLog() {
     }
     if ((e.action === 'patient_deleted' || e.action === 'encounter_deleted') && typeof m.reason === 'string') {
       return `« ${m.reason} »`;
+    }
+    // E6 : l'impact est l'INSTANTANE fige par le serveur au moment de l'application. On ne
+    // relit pas la version de gabarit vivante : elle a pu changer depuis, et l'historique
+    // raconterait alors une evolution qui n'a pas eu lieu.
+    if (e.action === 'form_preparation_applied') {
+      const parts: string[] = [];
+      if (typeof m.target_revision === 'number') {
+        parts.push(`${t('activity.form_revision')} ${m.target_revision}`);
+      }
+      const added = Number(m.added_fields ?? 0);
+      if (added > 0) {
+        const required = Number(m.added_required_fields ?? 0);
+        parts.push(
+          `${added} ${t('activity.form_added_fields')}${
+            required > 0 ? ` (${required} ${t('activity.form_added_required')})` : ''
+          }`,
+        );
+      }
+      const rules = Number(m.added_rules ?? 0);
+      if (rules > 0) parts.push(`${rules} ${t('activity.form_added_rules')}`);
+      const associations = Number(m.added_diagnosis_associations ?? 0);
+      if (associations > 0) parts.push(`${associations} ${t('activity.form_added_associations')}`);
+      const patients = Number(m.affected_patients ?? 0);
+      const encounters = Number(m.affected_encounters ?? 0);
+      if (patients + encounters > 0) {
+        parts.push(`${patients + encounters} ${t('activity.form_affected_records')}`);
+      }
+      // Le detail nominatif des variables n'arrive que pour le proprietaire ; sans lui, le
+      // resume reste vrai, simplement moins precis.
+      if (Array.isArray(m.added_field_keys) && m.added_field_keys.length > 0) {
+        parts.push(m.added_field_keys.filter((k): k is string => typeof k === 'string').join(', '));
+      }
+      return parts.length > 0 ? parts.join(' · ') : null;
     }
     if (e.action === 'file_inspected' && typeof m.status === 'string') {
       return [m.status, m.engine, m.detected_mime_type].filter((v) => typeof v === 'string' && v.length > 0).join(' · ');

@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260917110000_form_compatible_legacy_regressions.sql`
+- Dernière migration incluse : `20260918120000_form_evolution_history.sql`
 - Tables : 57 · Policies RLS : 64 · Triggers : 83 · Fonctions : 380
 
 ## Tables (colonnes, RLS, policies, triggers)
