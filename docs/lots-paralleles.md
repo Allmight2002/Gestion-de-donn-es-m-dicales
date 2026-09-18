@@ -136,7 +136,9 @@ analytique explicite la justifie.
 > `not_defined`/`empty`/`not_applicable`, la provenance, les erreurs structurées et le cas A/B ;
 > E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7 ; E3 couvre désormais localement la lecture et le
 > complément compatibles des patients et rencontres, avec contrôles PostgreSQL et web ciblés ;
-> E4/E6 peuvent être séparés après E3 si leurs surfaces restent distinctes. Le propriétaire de la
+> E5 rend les ajouts visibles et renseignables dans les fiches existantes, avec l'état
+> « À renseigner », les compteurs du formulaire courant et une preuve navigateur sur banc fictif ;
+> E6 peut être séparé après E3 si ses surfaces restent distinctes. Le propriétaire de la
 > base n’a pas de justification textuelle obligatoire pour les opérations autorisées ; l’audit,
 > les droits et les confirmations de purge par code à cinq caractères restent contrôlés. Aucune
 > migration ni implémentation de ce comportement n’est incluse dans E0.
@@ -229,7 +231,7 @@ analytique explicite la justifie.
 | **E2** | Évolution du formulaire : application atomique dans la même base | migration/RPC d’application, copie des sections/champs/règles, idempotence | **après E1** ; jamais avec une autre copie de version |
 | **E3** | Évolution du formulaire : lecture/écriture compatible des dossiers existants | `patients.ts`, formulaires patients/rencontres, validation serveur, tests | **implémenté localement après E2 ; non déployé** ; jamais avec un lot modifiant les mêmes RPC patients |
 | **E4** | Évolution du formulaire : éditeur, diagnostic, aperçu et versionnage invisible | `TemplateVersionEditor.tsx`, éditeurs de structure/règles/diagnostic, i18n | **implémenté localement après E2/E3 ; non déployé ; sans preuve navigateur** ; coordonner UX-16, L59/L60 et L67 |
-| **E5** | Évolution du formulaire : complétion des patients et rencontres | `SectionedFields.tsx`, `EditPatient.tsx`, formulaires de rencontre, i18n | **après E3 et E4** ; jamais avec un autre lot ouvrant ces fiches |
+| ~~E5~~ | ~~Évolution du formulaire : complétion des patients et rencontres~~ | **implémenté localement les 2026-09-17/18 ; non déployé** ; complétion, dispense de justification du propriétaire et preuve navigateur sur banc fictif | ne pas rouvrir ces fiches avec un autre lot ; hors connexion, le motif reste exigé |
 | **E6** | Évolution du formulaire : exports, provenance et historique | contrat d’export, dictionnaire, historique, tests de cloisonnement | **après E3** ; préserver les profils d’export |
 | **E7** | Évolution du formulaire : validation intégrée et preuves | tests DB/web, fixture 216/21/26, navigateur, documentation | **après E0 à E6** ; validation seule |
 | **PAP-0** | Formulaire papier : mesurer pages, espaces inutilisés et lisibilité | documentation, fixtures fictives et relevés de baseline | — |

@@ -5,9 +5,12 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import type { BaseListing } from '../../data/bases';
 import type { RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
+import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
+import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -16,6 +19,8 @@ import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from '.
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
+import { JustificationField } from './JustificationField';
 import { useOnline } from '../../data/offline';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
@@ -51,6 +56,7 @@ export function EditPatient() {
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
+  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
@@ -102,6 +108,7 @@ export function EditPatient() {
       setValues(loadedValues);
       setInitialValues(loadedValues);
       setRecordContext(context);
+      setBaseListing(base ?? null);
       if (p) { setStatus(p.validationStatus); setInitialStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
       // §7.4 (audit v12, etendu) : un patient HISTORIQUE s'edite avec SA version de gabarit — memes
       // libelles/champs/regles que le serveur. La version courante de la base n'est qu'un repli.
@@ -155,8 +162,25 @@ export function EditPatient() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
 
+  // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
+  // Le formulaire est donc RENDU avec la meme liste que la validation locale : sans cela,
+  // l'ecran afficherait une erreur bloquante pour une variable que l'enregistrement accepte.
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const completion = useMemo(() => recordCompletionSummary(recordContext), [recordContext]);
   const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
+  // Le serveur a decide ce qui est un ajout applicable et ce que le formulaire courant attend ;
+  // l'ecran ne fait que retirer du compte ce qui vient d'etre saisi.
+  const toFillKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
+  // §4.5 : le serveur accepte l'absence de motif pour le proprietaire reel de la base. L'ecran
+  // se contente de ne plus l'exiger ; un autre compte garde l'obligation actuelle.
+  const reasonOptional = ownerJustificationExempt(baseListing, profile);
+  const pendingRequiredKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -190,7 +214,7 @@ export function EditPatient() {
         hidden,
       ).blocking : []),
     ];
-    if (!reason.trim()) block.unshift(t('encounter.reason_required'));
+    if (!reason.trim() && !reasonOptional) block.unshift(t('encounter.reason_required'));
     setBlocking(block);
     if (block.length > 0) return;
 
@@ -276,17 +300,25 @@ export function EditPatient() {
           </select>
         </label>
 
+        {/* E5 : les variables ajoutees depuis l'enregistrement de cette fiche, comptees a partir
+            du contexte serveur. Rien n'est prerempli et le statut clinique reste celui choisi. */}
+        <RecordCompletionNotice
+          labels={[...toFillKeys].map(labelOf)}
+          requiredLabels={[...pendingRequiredKeys].map(labelOf)}
+        />
+
         {fields.length === 0 ? (
           <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
         ) : (
           <EncounterFields
-            fields={fields}
+            fields={validationFields}
             values={values}
             hiddenKeys={hidden}
             sections={sections}
             commonLayout={commonLayout}
             rules={validationRules}
             requireComplete={isMissionAccount(profile) || status !== 'draft'}
+            toFillKeys={toFillKeys}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
           />
@@ -307,10 +339,7 @@ export function EditPatient() {
           />
         )}
 
-        <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-700">{t('encounter.reason')} <span className="text-red-500">*</span></span>
-          <input className="input mt-1" value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
+        <JustificationField value={reason} onChange={setReason} optional={reasonOptional} />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

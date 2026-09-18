@@ -7,6 +7,9 @@ import type { IdentityMatch, PatientIdentityInfo, PatientListItem, PatientReposi
 import { useBaseRepository, usePatientRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
+import { ownerJustificationExempt } from '../../domain/ownerJustification';
+import { useAuth } from '../../auth/useAuth';
+import { JustificationField } from './JustificationField';
 import { useI18n } from '../../i18n/useI18n';
 import { errorMessage } from '../../lib/errorMessage';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -18,6 +21,7 @@ export function EditPatientIdentity() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const bases = useBaseRepository();
+  const { profile } = useAuth();
   const patients = usePatientRepository();
   const { toast } = useToast();
 
@@ -88,7 +92,9 @@ export function EditPatientIdentity() {
     event.preventDefault();
     if (busy) return;
     if (!baseId || !patientId || !patient || !canCorrectPatientIdentity(base, patient)) return;
-    if (!reason.trim()) {
+    // §4.5 : la dispense porte sur l'ecriture d'identite DEJA autorisee. Elle n'accorde ni
+    // `can_view_identity`, ni `can_write_identity` : `canCorrectPatientIdentity` reste la garde.
+    if (!reason.trim() && !ownerJustificationExempt(base, profile)) {
       setError(t('encounter.reason_required'));
       return;
     }
@@ -208,10 +214,7 @@ export function EditPatientIdentity() {
             </div>
           )}
 
-          <label className="block text-sm">
-            <span className="font-medium text-slate-700">{t('encounter.reason')} <span className="text-red-500">*</span></span>
-            <input className="input mt-1" value={reason} onChange={(event) => setReason(event.target.value)} />
-          </label>
+          <JustificationField value={reason} onChange={setReason} optional={ownerJustificationExempt(base, profile)} />
 
           <div className="flex items-center gap-2">
             <button type="submit" disabled={busy} className="btn-primary">{t('patient.save_identity')}</button>

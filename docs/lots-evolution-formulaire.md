@@ -1,7 +1,7 @@
 # Évolution du formulaire — lots E0 à E7
 
 - Révision : **2026-09-17**.
-- Statut : **E0 documenté ; E1 à E4 implémentés localement et contrôlés ; E5 à E7 à réaliser**.
+- Statut : **E0 documenté ; E1 à E5 implémentés localement et contrôlés ; E6 et E7 à réaliser**.
 - Référence métier : [spécification de l’évolution du formulaire](spec-evolution-formulaire.md).
 - Prompts d’exécution : [prompts-lots.md](prompts-lots.md), sections **E0 à E7**.
 - Ce document porte le découpage et le suivi des lots E. Les identifiants L, UX et O existants ne sont pas renumérotés.
@@ -22,7 +22,7 @@ Le responsable n’a pas à créer ni rattacher manuellement une version.
 | [E2](#e2) | Application atomique dans la même base | E1 | **Implémenté localement ; non déployé** | `form-preparation-apply.test.ts` (7/7), ACL (3/3), typecheck/lint |
 | [E3](#e3) | Lecture et écriture compatibles des dossiers existants | E2 | **Implémenté localement ; non déployé** | `form-compatible-records.test.ts` (11/11), web E3 (2/2), ACL (3/3), schema/schema:check, typecheck/lint |
 | [E4](#e4) | Éditeur avec versionnage en arrière-plan | E2, contrat E3 stabilisé | **Implémenté localement ; non déployé ; sans preuve navigateur** | `form-preparation-editor-payload.test.ts` (4/4), `FormPreparationEditor.test.tsx` (6/6), `Trash.test.tsx` (9/9), éditeur/aperçu/coquille (5 fichiers), typecheck, lint, build `VITE_USE_SIGNED_READ=true` |
-| [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | À réaliser | Aucune |
+| [E5](#e5) | Complétion dans les formulaires patients et rencontres | E3, E4 | **Implémenté localement ; non déployé** (complétion + extension propriétaire) | `RecordCompletion.test.tsx` (11/11), `OwnerJustification.test.tsx` (6/6), suites web des écrans touchés, typecheck, lint, preuve navigateur bureau/mobile sur banc fictif |
 | [E6](#e6) | Exports, provenance et historique | E3 | À réaliser | Aucune |
 | [E7](#e7) | Validation intégrée et dossier de preuves | E0 à E6 | À réaliser | Aucune |
 
@@ -269,6 +269,63 @@ statuts cliniques, suppression/restauration et erreurs réseau sans perte de sai
 aléatoire de cinq caractères du §4.6. Garder le nom visible, l’avertissement d’irréversibilité et
 les conditions de purge. Tester génération à l’ouverture, stabilité, renouvellement, validation,
 clavier et absence de double envoi. Ce sous-lot dépend aussi du contrat E1.
+
+**État local au 2026-09-17.** Le contexte E3 d’une fiche est désormais traduit en présentation par
+`src/domain/recordCompletion.ts` : le serveur décide seul ce qui est un ajout applicable et ce que
+le formulaire courant attend ; l’écran ne fait que retirer du compte ce qui vient d’être saisi.
+Chaque ajout encore vide porte la mention « À renseigner » à côté de son libellé, chaque bloc
+affiche « n à renseigner » dans son en-tête, le résumé du formulaire ajoute le total et un bouton
+« Prochaine variable ajoutée » conduit d’un ajout au suivant. Une annonce non bloquante nomme les
+ajouts, isole ceux que le formulaire courant attend et rappelle qu’aucune valeur n’est créée et
+que le statut du dossier ne change pas. `PatientDetail` porte la même annonce pour le patient et
+pour chaque rencontre, avec « Compléter cette fiche » ; hors connexion, aucun ajout n’est annoncé
+et aucun droit de saisie n’est ouvert.
+
+Un ajout obligatoire compte mais ne devient pas une obligation rétroactive : les formulaires sont
+rendus avec la liste déjà utilisée par la validation locale (`fieldsForLocalValidation`), donc
+aucune erreur bloquante n’apparaît pour une variable que l’enregistrement accepte, et une fiche
+`curated` conserve son statut. L’écriture reste le patch compatible E3 : seul le complément saisi
+part, les valeurs et la provenance historiques ne sont jamais renvoyées, et un contexte périmé
+rend `FORM_CONTEXT_CHANGED` avec conservation des saisies et bouton de rechargement.
+
+Preuves : `RecordCompletion.test.tsx` (11/11 — ajout facultatif et obligatoire, patient et
+rencontre, fiche curatée, plusieurs diagnostics avec sous-section, diagnostic sans bloc, absence de
+diagnostic, portée par type de rencontre, contexte périmé, annonce et lien de la fiche),
+`npm run test:web` (777/778 ; `OfflineIntake.test.tsx` a échoué une fois sur un `findByText` dans
+la campagne complète en parallèle, puis a repassé seul et dans une reprise ciblée de dix fichiers —
+flake de rythme, hors périmètre E5), `npm run typecheck`, `npm run lint`. La saisie réelle a été vérifiée au
+navigateur sur `completion-harness.html`, banc local sans serveur monté sur la même fixture
+fictive que les tests : ajouts vides marqués, compteurs par bloc, navigation « Prochaine variable
+ajoutée », enregistrement d’un complément dont le patch ne portait que la clé saisie, statut
+`Finalisé` conservé, rendu bureau et mobile sans débordement ni action hors d’atteinte.
+
+**Extension propriétaire — état local au 2026-09-18.** Le contrat serveur existait depuis E1 :
+`form_justification_status` n'accepte un motif absent qu'après avoir vérifié le propriétaire réel
+de la base et son rôle de médecin, puis journalise `justification_status = owner_exempt`. Ce lot
+n'ajoute donc aucune migration : il fait cesser l'exigence de texte dans les écrans qui la
+portaient encore. `src/domain/ownerJustification.ts` reflète la condition serveur à partir du rôle
+lu par `getBase`, jamais d'une déclaration du navigateur ; `JustificationField` retire l'astérisque
+et annonce ce qui reste journalisé.
+
+Couverture : correction analytique du patient et de la rencontre, correction d'identité, mise en
+corbeille du patient, de la rencontre et d'une pièce jointe, suppression d'une demande de curation
+— dont la RPC est déjà réservée au propriétaire et traite l'absence de motif comme `owner_exempt`.
+Restent inchangés, conformément au §7.4 : le motif de mise en corbeille de la **base**, la
+justification d'accès à l'identité d'un compte de mission, et la confirmation de purge livrée
+avec E4. Aucun droit n'est élargi : `canCorrectPatientIdentity`, le droit de supprimer, les
+transitions de statut, la concurrence et les confirmations restent les gardes existantes.
+
+Preuves : `OwnerJustification.test.tsx` (6/6 — reflet du contrat par rôle et par rôle global,
+enregistrement propriétaire sans motif avec motif vide réellement transmis, collaborateur et compte
+de mission toujours obligés, erreur réseau sans perte de saisie, correction d'identité),
+`DeleteWithReason.test.tsx` (16/16) et `Curation.test.tsx` (13/13) sans régression.
+
+**Limites déclarées.** Aucune cible Supabase locale ou distante n’a été exercée : le banc navigateur
+et les tests web rejouent les contrats E3 et E1, ils ne prouvent pas le comportement d’un serveur
+déployé. **Le parcours hors connexion garde son motif obligatoire** : la propriété ne peut pas y
+être revérifiée et une correction sans motif resterait bloquée dans la file au retour du réseau ;
+aucun droit hors connexion n'est ouvert ni retiré. La **confirmation de purge** a été livrée avec
+E4 et n’est pas rouverte ici.
 
 ## E6
 
