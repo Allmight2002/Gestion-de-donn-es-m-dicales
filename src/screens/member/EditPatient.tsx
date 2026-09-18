@@ -100,6 +100,10 @@ export function EditPatient() {
       ]);
       const loadedValues = p?.data ?? {};
       setValues(loadedValues);
+      // Keep the synchronous update path aligned with the loaded snapshot. The first
+      // keystroke can arrive before the effect below refreshes `valuesRef`; dropping that
+      // synchronization would rebuild the patch from `{}` and clear historical fields.
+      valuesRef.current = loadedValues;
       setInitialValues(loadedValues);
       setRecordContext(context);
       if (p) { setStatus(p.validationStatus); setInitialStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
