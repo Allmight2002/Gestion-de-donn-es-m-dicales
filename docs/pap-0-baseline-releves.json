@@ -1,0 +1,748 @@
+{
+  "generatedAt": "2026-09-18T20:16:46.231Z",
+  "baseUrl": "http://127.0.0.1:5173",
+  "page": {
+    "widthMm": 210,
+    "heightMm": 297,
+    "marginMm": 10,
+    "scale": 1
+  },
+  "usable": {
+    "widthPx": 718,
+    "heightPx": 1047,
+    "widthMm": 190,
+    "heightMm": 277
+  },
+  "thresholds": {
+    "nearlyEmptyRatio": 0.3,
+    "orphanMarginMm": 20,
+    "writingLineMm": 8
+  },
+  "results": [
+    {
+      "case": "court",
+      "scope": "patient",
+      "pdfPages": 1,
+      "pdfPath": "test-results/pap-0-baseline/pap0-court-patient.pdf",
+      "documentHeightMm": 277,
+      "derivedPages": 1,
+      "usableHeightMm": 277,
+      "renderedFields": 1,
+      "expectedFields": 1,
+      "companionFields": [],
+      "missingFields": [],
+      "perPage": [
+        {
+          "page": 1,
+          "contentMm": 29.6,
+          "chromeMm": 60.1,
+          "fillRatio": 0.107,
+          "nearlyEmpty": true
+        }
+      ],
+      "contentMm": 29.6,
+      "chromeMm": 60.1,
+      "splitFields": [],
+      "orphanTitles": [],
+      "writing": {
+        "answerable": 1,
+        "tooSmall": [],
+        "medianControlHeightMm": 11.6,
+        "medianControlWidthMm": 168.3,
+        "textFields": 1,
+        "medianTextControlHeightMm": 11.6
+      },
+      "choices": {
+        "lostChoices": [],
+        "printedChoices": []
+      },
+      "lonelyCheckboxes": 0,
+      "twoControlFields": 0,
+      "descriptions": {
+        "declared": 0,
+        "printed": 0
+      },
+      "contentCost": {
+        "fullWidthMm": 13,
+        "fullWidthPages": 1,
+        "twoColumnMm": 13,
+        "twoColumnPages": 1
+      }
+    },
+    {
+      "case": "court",
+      "scope": "rencontre",
+      "pdfPages": 3,
+      "pdfPath": "test-results/pap-0-baseline/pap0-court-rencontre.pdf",
+      "documentHeightMm": 633.1,
+      "derivedPages": 3,
+      "usableHeightMm": 277,
+      "renderedFields": 16,
+      "expectedFields": 17,
+      "companionFields": [],
+      "missingFields": [
+        "date_prochain_rdv"
+      ],
+      "perPage": [
+        {
+          "page": 1,
+          "contentMm": 116.4,
+          "chromeMm": 48.4,
+          "fillRatio": 0.42,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 2,
+          "contentMm": 216.4,
+          "chromeMm": 0,
+          "fillRatio": 0.781,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 3,
+          "contentMm": 40.7,
+          "chromeMm": 11.6,
+          "fillRatio": 0.147,
+          "nearlyEmpty": true
+        }
+      ],
+      "contentMm": 373.6,
+      "chromeMm": 60.1,
+      "splitFields": [
+        "tension_diastolique"
+      ],
+      "orphanTitles": [
+        {
+          "title": "Examen clinique",
+          "separatedFromFirstField": true,
+          "distanceToBreakMm": -4.2
+        }
+      ],
+      "writing": {
+        "answerable": 10,
+        "tooSmall": [],
+        "medianControlHeightMm": 11.6,
+        "medianControlWidthMm": 168.3,
+        "textFields": 4,
+        "medianTextControlHeightMm": 11.6
+      },
+      "choices": {
+        "lostChoices": [],
+        "printedChoices": [
+          {
+            "fieldKey": "type_consultation",
+            "optionCount": 3,
+            "visible": 3
+          },
+          {
+            "fieldKey": "douleur_cote",
+            "optionCount": 3,
+            "visible": 3
+          }
+        ]
+      },
+      "lonelyCheckboxes": 2,
+      "twoControlFields": 0,
+      "descriptions": {
+        "declared": 2,
+        "printed": 0
+      },
+      "contentCost": {
+        "fullWidthMm": 228.8,
+        "fullWidthPages": 1,
+        "twoColumnMm": 163.5,
+        "twoColumnPages": 1
+      }
+    },
+    {
+      "case": "moyen",
+      "scope": "patient",
+      "pdfPages": 2,
+      "pdfPath": "test-results/pap-0-baseline/pap0-moyen-patient.pdf",
+      "documentHeightMm": 297.1,
+      "derivedPages": 2,
+      "usableHeightMm": 277,
+      "renderedFields": 4,
+      "expectedFields": 5,
+      "companionFields": [],
+      "missingFields": [
+        "diagnostics_autre"
+      ],
+      "perPage": [
+        {
+          "page": 1,
+          "contentMm": 120.6,
+          "chromeMm": 48.4,
+          "fillRatio": 0.436,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 2,
+          "contentMm": 0,
+          "chromeMm": 0,
+          "fillRatio": 0,
+          "nearlyEmpty": true
+        }
+      ],
+      "contentMm": 120.6,
+      "chromeMm": 48.4,
+      "splitFields": [],
+      "orphanTitles": [],
+      "writing": {
+        "answerable": 3,
+        "tooSmall": [],
+        "medianControlHeightMm": 11.6,
+        "medianControlWidthMm": 168.3,
+        "textFields": 2,
+        "medianTextControlHeightMm": 11.6
+      },
+      "choices": {
+        "lostChoices": [],
+        "printedChoices": []
+      },
+      "lonelyCheckboxes": 0,
+      "twoControlFields": 0,
+      "descriptions": {
+        "declared": 1,
+        "printed": 0
+      },
+      "contentCost": {
+        "fullWidthMm": 69.3,
+        "fullWidthPages": 1,
+        "twoColumnMm": 60.6,
+        "twoColumnPages": 1
+      }
+    },
+    {
+      "case": "moyen",
+      "scope": "rencontre",
+      "pdfPages": 7,
+      "pdfPath": "test-results/pap-0-baseline/pap0-moyen-rencontre.pdf",
+      "documentHeightMm": 1836.2,
+      "derivedPages": 7,
+      "usableHeightMm": 277,
+      "renderedFields": 56,
+      "expectedFields": 72,
+      "companionFields": [],
+      "missingFields": [
+        "conversion_motif",
+        "hemoglobine_preop",
+        "leucocytes_preop",
+        "plaquettes_preop",
+        "creatinine_preop",
+        "crp_preop",
+        "albumine_preop",
+        "glycemie_preop",
+        "inr_preop",
+        "hemoglobine_postop",
+        "leucocytes_postop",
+        "plaquettes_postop",
+        "creatinine_postop",
+        "crp_postop",
+        "complications",
+        "date_deces"
+      ],
+      "perPage": [
+        {
+          "page": 1,
+          "contentMm": 116.4,
+          "chromeMm": 48.4,
+          "fillRatio": 0.42,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 2,
+          "contentMm": 213,
+          "chromeMm": 0,
+          "fillRatio": 0.769,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 3,
+          "contentMm": 213,
+          "chromeMm": 0,
+          "fillRatio": 0.769,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 4,
+          "contentMm": 221.7,
+          "chromeMm": 0,
+          "fillRatio": 0.8,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 5,
+          "contentMm": 220.7,
+          "chromeMm": 0,
+          "fillRatio": 0.797,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 6,
+          "contentMm": 207.7,
+          "chromeMm": 0,
+          "fillRatio": 0.75,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 7,
+          "contentMm": 119.9,
+          "chromeMm": 11.6,
+          "fillRatio": 0.433,
+          "nearlyEmpty": false
+        }
+      ],
+      "contentMm": 1312.3,
+      "chromeMm": 60.1,
+      "splitFields": [
+        "provenance",
+        "traitement_anticoagulant",
+        "date_intervention",
+        "drainage",
+        "antalgiques_palier",
+        "duree_sejour"
+      ],
+      "orphanTitles": [
+        {
+          "title": "Intervention",
+          "separatedFromFirstField": false,
+          "distanceToBreakMm": 12.2
+        }
+      ],
+      "writing": {
+        "answerable": 27,
+        "tooSmall": [],
+        "medianControlHeightMm": 11.6,
+        "medianControlWidthMm": 168.3,
+        "textFields": 11,
+        "medianTextControlHeightMm": 11.6
+      },
+      "choices": {
+        "lostChoices": [
+          {
+            "fieldKey": "score_asa",
+            "optionCount": 6
+          },
+          {
+            "fieldKey": "grade_clavien",
+            "optionCount": 6
+          }
+        ],
+        "printedChoices": [
+          {
+            "fieldKey": "service_admission",
+            "optionCount": 3,
+            "visible": 3
+          },
+          {
+            "fieldKey": "comorbidites",
+            "optionCount": 4,
+            "visible": 4
+          },
+          {
+            "fieldKey": "voie_abord",
+            "optionCount": 12,
+            "visible": 12
+          },
+          {
+            "fieldKey": "destination_sortie",
+            "optionCount": 3,
+            "visible": 3
+          }
+        ]
+      },
+      "lonelyCheckboxes": 17,
+      "twoControlFields": 2,
+      "descriptions": {
+        "declared": 5,
+        "printed": 0
+      },
+      "contentCost": {
+        "fullWidthMm": 942.6,
+        "fullWidthPages": 4,
+        "twoColumnMm": 674.8,
+        "twoColumnPages": 3
+      }
+    },
+    {
+      "case": "volumineux",
+      "scope": "patient",
+      "pdfPages": 15,
+      "pdfPath": "test-results/pap-0-baseline/pap0-volumineux-patient.pdf",
+      "documentHeightMm": 3960.5,
+      "derivedPages": 15,
+      "usableHeightMm": 277,
+      "renderedFields": 141,
+      "expectedFields": 190,
+      "companionFields": [],
+      "missingFields": [
+        "diagnostics_autre",
+        "bloc_01_direct_01",
+        "bloc_01_direct_02",
+        "bloc_01_direct_03",
+        "bloc_01_direct_04",
+        "bloc_01_direct_05",
+        "bloc_01_direct_07",
+        "bloc_01_direct_08",
+        "bloc_01_a_variable_01",
+        "bloc_01_a_variable_02",
+        "bloc_01_a_variable_03",
+        "bloc_01_a_variable_04",
+        "bloc_01_a_variable_06",
+        "bloc_01_a_variable_07",
+        "bloc_01_a_variable_08",
+        "bloc_01_a_variable_09",
+        "bloc_01_b_variable_01",
+        "bloc_01_b_variable_02",
+        "bloc_01_b_variable_03",
+        "bloc_01_b_variable_04",
+        "bloc_01_b_variable_06",
+        "bloc_01_b_variable_07",
+        "bloc_01_b_variable_08",
+        "bloc_01_b_variable_09",
+        "bloc_02_direct_04",
+        "bloc_03_b_variable_04",
+        "bloc_04_direct_01",
+        "bloc_04_direct_02",
+        "bloc_04_direct_03",
+        "bloc_04_direct_04",
+        "bloc_04_direct_05",
+        "bloc_04_direct_07",
+        "bloc_04_direct_08",
+        "bloc_04_a_variable_01",
+        "bloc_04_a_variable_02",
+        "bloc_04_a_variable_03",
+        "bloc_04_a_variable_04",
+        "bloc_04_a_variable_06",
+        "bloc_04_a_variable_07",
+        "bloc_04_a_variable_08",
+        "bloc_04_a_variable_09",
+        "bloc_04_b_variable_01",
+        "bloc_04_b_variable_02",
+        "bloc_04_b_variable_03",
+        "bloc_04_b_variable_04",
+        "bloc_04_b_variable_06",
+        "bloc_04_b_variable_07",
+        "bloc_04_b_variable_08",
+        "bloc_04_b_variable_09"
+      ],
+      "perPage": [
+        {
+          "page": 1,
+          "contentMm": 111.4,
+          "chromeMm": 48.4,
+          "fillRatio": 0.402,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 2,
+          "contentMm": 211.1,
+          "chromeMm": 0,
+          "fillRatio": 0.762,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 3,
+          "contentMm": 205.8,
+          "chromeMm": 0,
+          "fillRatio": 0.743,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 4,
+          "contentMm": 207.7,
+          "chromeMm": 0,
+          "fillRatio": 0.75,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 5,
+          "contentMm": 205.8,
+          "chromeMm": 0,
+          "fillRatio": 0.743,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 6,
+          "contentMm": 209.5,
+          "chromeMm": 0,
+          "fillRatio": 0.756,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 7,
+          "contentMm": 209.3,
+          "chromeMm": 0,
+          "fillRatio": 0.755,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 8,
+          "contentMm": 215.4,
+          "chromeMm": 0,
+          "fillRatio": 0.777,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 9,
+          "contentMm": 198.2,
+          "chromeMm": 0,
+          "fillRatio": 0.715,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 10,
+          "contentMm": 215.4,
+          "chromeMm": 0,
+          "fillRatio": 0.777,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 11,
+          "contentMm": 206.4,
+          "chromeMm": 0,
+          "fillRatio": 0.745,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 12,
+          "contentMm": 208.5,
+          "chromeMm": 0,
+          "fillRatio": 0.753,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 13,
+          "contentMm": 209.8,
+          "chromeMm": 0,
+          "fillRatio": 0.757,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 14,
+          "contentMm": 202.4,
+          "chromeMm": 0,
+          "fillRatio": 0.731,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 15,
+          "contentMm": 52.4,
+          "chromeMm": 0,
+          "fillRatio": 0.189,
+          "nearlyEmpty": true
+        }
+      ],
+      "contentMm": 2869.1,
+      "chromeMm": 48.4,
+      "splitFields": [
+        "bloc_02_direct_01",
+        "bloc_02_a_variable_06",
+        "bloc_02_b_variable_09",
+        "bloc_03_a_variable_03",
+        "bloc_03_b_variable_08",
+        "bloc_05_b_variable_04",
+        "bloc_06_direct_08",
+        "bloc_06_b_variable_02",
+        "bloc_07_direct_05",
+        "bloc_08_a_variable_07"
+      ],
+      "orphanTitles": [
+        {
+          "title": "Bloc 02",
+          "separatedFromFirstField": false,
+          "distanceToBreakMm": 8.7
+        },
+        {
+          "title": "Synthèse commune",
+          "separatedFromFirstField": true,
+          "distanceToBreakMm": -5.8
+        }
+      ],
+      "writing": {
+        "answerable": 102,
+        "tooSmall": [],
+        "medianControlHeightMm": 11.6,
+        "medianControlWidthMm": 168.3,
+        "textFields": 71,
+        "medianTextControlHeightMm": 11.6
+      },
+      "choices": {
+        "lostChoices": [],
+        "printedChoices": [
+          {
+            "fieldKey": "bloc_02_direct_01",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_02_direct_05",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_03_direct_01",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_03_direct_05",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_05_direct_01",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_05_direct_05",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_06_direct_01",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_06_direct_05",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_07_direct_01",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_07_direct_05",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_08_direct_01",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "bloc_08_direct_05",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "centre",
+            "optionCount": 2,
+            "visible": 2
+          },
+          {
+            "fieldKey": "statut_global",
+            "optionCount": 2,
+            "visible": 2
+          }
+        ]
+      },
+      "lonelyCheckboxes": 24,
+      "twoControlFields": 0,
+      "descriptions": {
+        "declared": 0,
+        "printed": 0
+      },
+      "contentCost": {
+        "fullWidthMm": 2439.4,
+        "fullWidthPages": 9,
+        "twoColumnMm": 2029.6,
+        "twoColumnPages": 8
+      }
+    },
+    {
+      "case": "volumineux",
+      "scope": "rencontre",
+      "pdfPages": 4,
+      "pdfPath": "test-results/pap-0-baseline/pap0-volumineux-rencontre.pdf",
+      "documentHeightMm": 962,
+      "derivedPages": 4,
+      "usableHeightMm": 277,
+      "renderedFields": 19,
+      "expectedFields": 26,
+      "companionFields": [],
+      "missingFields": [
+        "bloc_01_direct_06",
+        "bloc_01_a_variable_05",
+        "bloc_01_b_variable_05",
+        "bloc_03_direct_06",
+        "bloc_04_direct_06",
+        "bloc_04_a_variable_05",
+        "bloc_04_b_variable_05"
+      ],
+      "perPage": [
+        {
+          "page": 1,
+          "contentMm": 107.4,
+          "chromeMm": 48.4,
+          "fillRatio": 0.388,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 2,
+          "contentMm": 186.5,
+          "chromeMm": 0,
+          "fillRatio": 0.673,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 3,
+          "contentMm": 180.2,
+          "chromeMm": 0,
+          "fillRatio": 0.65,
+          "nearlyEmpty": false
+        },
+        {
+          "page": 4,
+          "contentMm": 77.3,
+          "chromeMm": 11.6,
+          "fillRatio": 0.279,
+          "nearlyEmpty": true
+        }
+      ],
+      "contentMm": 551.4,
+      "chromeMm": 60.1,
+      "splitFields": [
+        "bloc_03_a_variable_05",
+        "bloc_06_a_variable_05"
+      ],
+      "orphanTitles": [
+        {
+          "title": "Bloc 03 · Sous-section A",
+          "separatedFromFirstField": false,
+          "distanceToBreakMm": 16.4
+        }
+      ],
+      "writing": {
+        "answerable": 18,
+        "tooSmall": [],
+        "medianControlHeightMm": 11.6,
+        "medianControlWidthMm": 168.3,
+        "textFields": 13,
+        "medianTextControlHeightMm": 11.6
+      },
+      "choices": {
+        "lostChoices": [],
+        "printedChoices": []
+      },
+      "lonelyCheckboxes": 0,
+      "twoControlFields": 0,
+      "descriptions": {
+        "declared": 0,
+        "printed": 0
+      },
+      "contentCost": {
+        "fullWidthMm": 457.9,
+        "fullWidthPages": 2,
+        "twoColumnMm": 444.9,
+        "twoColumnPages": 2
+      }
+    }
+  ]
+}

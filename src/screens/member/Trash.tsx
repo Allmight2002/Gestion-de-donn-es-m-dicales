@@ -1,9 +1,11 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
-import { useBaseRepository } from '../../data/RepositoryProvider';
+import { useBaseRepository, useFormPreparationRepository } from '../../data/RepositoryProvider';
 import type { DeletedBase } from '../../data/bases';
+import type { PurgeChallengeReceipt } from '../../data/formPreparations';
+import { FormPreparationError } from '../../data/formPreparations';
 import { useOnline } from '../../data/offline';
 import { PageHeader } from '../../components/PageHeader';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -21,6 +23,7 @@ function newOperationId(): string {
 
 export function Trash() {
   const repo = useBaseRepository();
+  const formPreparations = useFormPreparationRepository();
   const { t } = useI18n();
   const online = useOnline();
   const [deleted, setDeleted] = useState<DeletedBase[]>([]);
@@ -30,9 +33,19 @@ export function Trash() {
   const [restoreTarget, setRestoreTarget] = useState<DeletedBase | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<DeletedBase | null>(null);
-  const [purgeName, setPurgeName] = useState('');
+  const [purgeCode, setPurgeCode] = useState('');
+  const [purgeChallenge, setPurgeChallenge] = useState<(PurgeChallengeReceipt & { code?: string }) | null>(null);
+  const [purgeIssueOperationId, setPurgeIssueOperationId] = useState<string | null>(null);
+  const [purgeConfirmOperationId, setPurgeConfirmOperationId] = useState<string | null>(null);
   const [purgeOperationId, setPurgeOperationId] = useState<string | null>(null);
+  const [purgeChallengeLoading, setPurgeChallengeLoading] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
   const [purging, setPurging] = useState(false);
+  const purgeInFlight = useRef(false);
+  // Un challenge consomme ne peut pas etre reconfirme : le rejeu d'une purge interrompue
+  // repart directement sur la meme cle d'operation Edge, sans redemander le code.
+  const purgeConfirmed = useRef(false);
+  const purgeDialogBaseId = useRef<string | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -72,36 +85,98 @@ export function Trash() {
     }
   }
 
+  async function issuePurgeChallenge(base: DeletedBase, operationId: string) {
+    if (!formPreparations.available) {
+      setPurgeError(t('base.purge_challenge_unavailable'));
+      setPurgeChallengeLoading(false);
+      return;
+    }
+    setPurgeChallengeLoading(true);
+    setPurgeError(null);
+    try {
+      const challenge = await formPreparations.issuePurgeChallenge(base.id, operationId);
+      if (!challenge.challengeId || !challenge.code || challenge.baseId !== base.id) {
+        if (purgeDialogBaseId.current === base.id) setPurgeError(t('base.purge_challenge_unavailable'));
+        return;
+      }
+      if (purgeDialogBaseId.current !== base.id) return;
+      // Le code est affiché pour une recopie volontaire ; il n'est ni journalisé, ni conservé,
+      // ni tenu pour une autorisation. Le serveur reste seul juge de la confirmation.
+      setPurgeChallenge(challenge);
+    } catch (cause) {
+      if (purgeDialogBaseId.current !== base.id) return;
+      setPurgeError(cause instanceof FormPreparationError && cause.code === 'FORM_PREPARATION_UNAVAILABLE'
+        ? t('base.purge_challenge_unavailable') : msg(cause));
+    } finally {
+      if (purgeDialogBaseId.current === base.id) setPurgeChallengeLoading(false);
+    }
+  }
+
   function openPurge(base: DeletedBase) {
+    purgeDialogBaseId.current = base.id;
     setPurgeTarget(base);
-    setPurgeName('');
+    setPurgeCode('');
+    setPurgeChallenge(null);
+    const issueOperationId = newOperationId();
+    setPurgeIssueOperationId(issueOperationId);
+    setPurgeConfirmOperationId(newOperationId());
     setPurgeOperationId(base.purgeOperationId ?? newOperationId());
+    purgeConfirmed.current = false;
+    setPurgeChallengeLoading(true);
     setError(null);
+    setPurgeError(null);
     setSuccess(null);
+    void issuePurgeChallenge(base, issueOperationId);
   }
 
   function closePurge() {
     if (purging) return;
+    purgeDialogBaseId.current = null;
     setPurgeTarget(null);
-    setPurgeName('');
+    setPurgeCode('');
+    setPurgeChallenge(null);
+    setPurgeIssueOperationId(null);
+    setPurgeConfirmOperationId(null);
     setPurgeOperationId(null);
+    purgeConfirmed.current = false;
+    setPurgeChallengeLoading(false);
+    setPurgeError(null);
   }
 
   async function purgeBase() {
-    if (!purgeTarget || !purgeOperationId || purgeName.trim() !== purgeTarget.name) return;
+    const normalizedCode = purgeCode.trim().toUpperCase();
+    if (!purgeTarget || !purgeChallenge || !purgeConfirmOperationId || !purgeOperationId || !purgeChallenge.code
+      || normalizedCode.length !== 5 || purgeChallengeLoading || purgeInFlight.current) return;
+    purgeInFlight.current = true;
     const purgedName = purgeTarget.name;
     setPurging(true);
-    setError(null);
+    setPurgeError(null);
     setSuccess(null);
     try {
+      if (!purgeConfirmed.current) {
+        await formPreparations.confirmPurgeChallenge(
+          purgeTarget.id,
+          purgeChallenge.challengeId,
+          normalizedCode,
+          purgeConfirmOperationId,
+        );
+        // Le serveur a consomme le challenge. La suppression definitive elle-meme reste une
+        // operation distincte, portee par l'Edge D10 et rejouable avec la meme cle.
+        purgeConfirmed.current = true;
+      }
       await repo.purgeDeletedBase(purgeTarget.id, purgeOperationId);
       setPurging(false);
       closePurge();
       await reload();
       setSuccess(t('base.purge_success').replace('{name}', purgedName));
     } catch (e) {
-      setError(msg(e));
+      const code = e instanceof FormPreparationError ? e.code : '';
+      setPurgeError(code === 'PURGE_CHALLENGE_MISMATCH' ? t('base.purge_code_mismatch') : msg(e));
+      // Un code errone est une NOUVELLE tentative de confirmation ; une reponse perdue doit au
+      // contraire rejouer la meme cle d'operation pour rester idempotente cote serveur.
+      if (code === 'PURGE_CHALLENGE_MISMATCH') setPurgeConfirmOperationId(newOperationId());
     } finally {
+      purgeInFlight.current = false;
       setPurging(false);
     }
   }
@@ -122,24 +197,48 @@ export function Trash() {
         title={t('base.purge_title')}
         body={purgeTarget ? (
           <div className="text-sm text-slate-700">
-            <label className="block space-y-1 text-sm font-medium text-slate-700" htmlFor="purge-base-name">
+            <p className="font-medium">{t('base.purge_irreversible')}</p>
+            {(purgeTarget.patientCount + purgeTarget.encounterCount + purgeTarget.documentCount + purgeTarget.attachmentCount) === 0 ? (
+              <p className="mt-2">{t('base.purge_empty_body')}</p>
+            ) : (
+              <p className="mt-2">{t('base.purge_contents').replace('{details}', [
+                purgeTarget.patientCount > 0 ? t('base.purge_patients').replace('{count}', String(purgeTarget.patientCount)) : '',
+                purgeTarget.encounterCount > 0 ? t('base.purge_encounters').replace('{count}', String(purgeTarget.encounterCount)) : '',
+                purgeTarget.documentCount > 0 ? t('base.purge_documents').replace('{count}', String(purgeTarget.documentCount)) : '',
+                purgeTarget.attachmentCount > 0 ? t('base.purge_attachments').replace('{count}', String(purgeTarget.attachmentCount)) : '',
+              ].filter(Boolean).join(', '))}</p>
+            )}
+            <p className="mt-2 text-xs text-slate-500">{t('base.purge_export_note')}</p>
+            {purgeChallengeLoading && <p role="status" className="mt-3 text-xs text-slate-500">{t('base.purge_challenge_loading')}</p>}
+            {purgeChallenge?.code && <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-center font-mono text-lg font-semibold tracking-[0.3em]" aria-label={t('base.purge_code_display_label')}>
+              {purgeChallenge.code}
+            </p>}
+            <label className="mt-3 block space-y-1 text-sm font-medium text-slate-700" htmlFor="purge-confirmation-code">
               <span>{t('base.purge_name_label').replace('{name}', purgeTarget.name)}</span>
               <input
-                id="purge-base-name"
+                id="purge-confirmation-code"
                 className="input w-full"
-                value={purgeName}
-                onChange={(event) => setPurgeName(event.target.value)}
+                value={purgeCode}
+                onChange={(event) => { setPurgeCode(event.target.value); setPurgeError(null); }}
                 autoComplete="off"
-                disabled={purging}
+                autoCapitalize="characters"
+                spellCheck={false}
+                maxLength={5}
+                disabled={purging || purgeChallengeLoading || !purgeChallenge?.code}
               />
             </label>
-            {purgeName.length > 0 && purgeName.trim() !== purgeTarget.name && (
-              <p className="text-xs text-red-600">{t('base.purge_name_invalid')}</p>
-            )}
+            <p className="mt-1 text-xs text-slate-500">{t('base.purge_code_hint')}</p>
+            {purgeCode.length > 0 && purgeCode.trim().length !== 5 && <p className="text-xs text-red-600">{t('base.purge_code_invalid')}</p>}
+            {purgeError && <p role="alert" className="text-xs text-red-600">{purgeError}</p>}
+            {!purgeChallengeLoading && !purgeChallenge && purgeIssueOperationId && <button
+              type="button"
+              className="text-xs font-medium text-teal-700 underline underline-offset-2"
+              onClick={() => purgeTarget && void issuePurgeChallenge(purgeTarget, purgeIssueOperationId)}
+            >{t('base.purge_code_retry')}</button>}
           </div>
         ) : undefined}
         confirmLabel={t('base.purge_confirm')}
-        confirmDisabled={!purgeTarget || purgeName.trim() !== purgeTarget.name}
+        confirmDisabled={!purgeTarget || !purgeChallenge?.code || purgeCode.trim().length !== 5 || purgeChallengeLoading}
         danger
         busy={purging}
         onCancel={closePurge}
@@ -180,7 +279,8 @@ export function Trash() {
                   type="button"
                   className="btn-danger"
                   onClick={() => openPurge(base)}
-                  disabled={purging}
+                  disabled={purging || !formPreparations.available}
+                  title={formPreparations.available ? undefined : t('base.purge_challenge_unavailable')}
                 >
                   {base.purgePending ? t('base.purge_retry') : t('base.purge')}
                 </button>

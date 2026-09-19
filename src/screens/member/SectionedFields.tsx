@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
-import { groupFieldsBySection, sectionLabel, type SectionGroup } from '../../domain/templateSections';
+import { groupFieldsBySection, sectionLabel, withRepeatableSteps, type SectionGroup } from '../../domain/templateSections';
 import { calculateFormProgress } from '../../domain/formProgress';
 import { useI18n } from '../../i18n/useI18n';
 import { ValidationSummary } from '../../components/ValidationSummary';
@@ -9,6 +9,7 @@ import { findProposalField, isProposalSource } from '../../domain/proposalField'
 const NO_VALUES: Record<string, unknown> = {};
 const NO_RULES: readonly ValidationRule[] = [];
 const NO_HIDDEN: ReadonlySet<string> = new Set();
+const NO_TO_FILL: ReadonlySet<string> = new Set();
 
 /** Le focus differe attend que le bloc vise soit affiche. Les demandes du composant partagent
  * un seul creneau : la plus recente remplace la precedente. Si l utilisateur a lui-meme pris
@@ -43,7 +44,7 @@ function FieldFrame({ id, fieldKey, message, children }: { id: string; fieldKey:
 /** The visible groups never own answers. Collapsing or single-block presentation keeps
  * controls mounted; applicability is provided by the existing engine in the caller. */
 export function SectionedFields({ fields, renderField, sections, values, allFields, rules = NO_RULES,
-  hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout, leadingBlock }: {
+  hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout, leadingBlock, toFillKeys = NO_TO_FILL, repeatableGroup }: {
   fields: TemplateField[];
   renderField: (field: TemplateField) => ReactNode;
   sections?: readonly TemplateSection[] | null;
@@ -55,6 +56,17 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   requireComplete?: boolean;
   /** Presentation only: identity never enters template fields, rules or analytical progress. */
   leadingBlock?: { label: string; content: ReactNode };
+  /** E5 — variables ajoutées après l'enregistrement de la fiche et encore vides. L'ensemble
+   * vient de l'appelant, qui le tient du contexte serveur ; ce composant ne fait que le
+   * compter, l'annoncer et y conduire. Aucune valeur n'est proposée. */
+  toFillKeys?: ReadonlySet<string>;
+  /**
+   * L68 — rendu d'un bloc REPETABLE. Un tel bloc decrit une occurrence, pas la fiche : ses
+   * variables ne se saisissent pas une a une ici, le tableau d'occurrences les porte. Sans ce
+   * rendu — ecran de rencontre, creation de patient — aucun bloc repetable n'est intercale et
+   * le formulaire garde exactement le comportement qu'il avait.
+   */
+  repeatableGroup?: (section: TemplateSection) => ReactNode;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -86,6 +98,12 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     for (const group of groups) visit(group);
     return result;
   }, [groups]);
+  // Les blocs repetables reprennent leur place parmi les autres blocs (§8.1). Ils ne portent
+  // aucune variable saisissable sur la fiche, donc `groupFieldsBySection` ne les voit pas.
+  const formSteps = useMemo(
+    () => withRepeatableSteps(formGroups, repeatableGroup ? sections : null),
+    [formGroups, sections, repeatableGroup],
+  );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   const [mobileContents, setMobileContents] = useState(false);
@@ -97,7 +115,11 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const previousGroups = useRef<string[] | null>(null);
   const currentField = useRef<string | null>(null);
   const leadingKey = `${id}-leading`;
-  const steps = leadingBlock ? [{ key: leadingKey }, ...formGroups] : formGroups;
+  const contentSteps = formSteps.map((step) => step.kind === 'repeatable'
+    ? { key: step.section.sectionKey, group: null, repeatable: step.section }
+    : { key: step.group.key, group: step.group, repeatable: null });
+  const steps: { key: string; group: SectionGroup<TemplateField> | null; repeatable: TemplateSection | null }[] =
+    leadingBlock ? [{ key: leadingKey, group: null, repeatable: null }, ...contentSteps] : contentSteps;
   const active = steps.some((root) => root.key === current) ? current : steps[0]?.key ?? null;
   const revealingInvalid = useRef(false);
   const focusFrame = useRef<number | null>(null);
@@ -111,12 +133,18 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const label = (key: string) => {
     if (key === leadingKey && leadingBlock) return leadingBlock.label;
     const group = groups.find((candidate) => candidate.key === key);
-    return sectionLabel(t, { sectionKey: key, label: group?.label });
+    // Un bloc repetable ne porte pas de groupe de variables : son libelle vient de la section
+    // declaree, jamais d'une chaine traduite (§8.6).
+    const declared = (sections ?? []).find((candidate) => candidate.sectionKey === key);
+    return sectionLabel(t, { sectionKey: key, label: group?.label ?? declared?.label });
   };
   const progress = useMemo(() => calculateFormProgress(allFields ?? fields, values ?? NO_VALUES, rules, hiddenKeys, requireComplete),
     [allFields, fields, values, rules, hiddenKeys, requireComplete]);
   const visibleIssues = progress.issues.filter((issue) => submitted || touched.has(issue.fieldKey));
   const issueByKey = new Map(visibleIssues.map((issue) => [issue.fieldKey, issue.message]));
+  // Une variable annoncée mais absente du rendu courant (bloc masqué, autre portée) ne serait
+  // atteignable par aucune étape : elle sort du compte au lieu de promettre un chemin inexistant.
+  const toFillSteps = [...toFillKeys].filter((key) => stepFor(key));
 
   const reveal = (rootKey: string, targetKey?: string) => {
     setCollapsed((before) => { const next = new Set(before); next.delete(rootKey); return next; });
@@ -132,7 +160,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   };
   const goToField = (key: string) => { const step = stepFor(key); if (step) reveal(step, key); };
 
-  const groupKeys = formGroups.map((group) => group.key).join('|');
+  const groupKeys = contentSteps.map((step) => step.key).join('|');
   useEffect(() => {
     const next = groupKeys ? groupKeys.split('|') : [];
     if (previousGroups.current) {
@@ -160,6 +188,11 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     const key = candidates[(index + 1) % candidates.length];
     if (key) goToField(key);
   };
+  const nextToFill = () => {
+    const index = currentField.current ? toFillSteps.indexOf(currentField.current) : -1;
+    const key = toFillSteps[(index + 1) % toFillSteps.length];
+    if (key) goToField(key);
+  };
   return <div ref={host} className="@container/sections space-y-4"
     onInvalidCapture={(event) => {
       event.preventDefault();
@@ -179,17 +212,24 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     onInputCapture={() => setNativeIssue(null)}
     onFocusCapture={(event) => {
       const field = (event.target as HTMLElement).closest<HTMLElement>('[data-field-key]');
-      if (field?.dataset.fieldKey) { currentField.current = field.dataset.fieldKey; setCurrent(stepFor(field.dataset.fieldKey)); }
+      if (!field?.dataset.fieldKey) return;
+      currentField.current = field.dataset.fieldKey;
+      // Une variable inconnue de CE formulaire — celles du formulaire d'occurrence d'un bloc
+      // repetable, rendues par un moteur imbrique — ne doit pas ramener l'ecran au premier
+      // bloc : la personne perdrait le groupe dans lequel elle est en train de saisir.
+      const step = stepFor(field.dataset.fieldKey);
+      if (step) setCurrent(step);
     }}
     onBlurCapture={(event) => {
       const key = (event.target as HTMLElement).closest<HTMLElement>('[data-field-key]')?.dataset.fieldKey;
       if (key) setTouched((before) => new Set(before).add(key));
     }}>
     <div className="space-y-2">
-      {values !== undefined && (progress.requiredKeys.size > 0 || visibleIssues.length > 0) && <p className="text-sm text-slate-600 dark:text-slate-300">
+      {values !== undefined && (progress.requiredKeys.size > 0 || visibleIssues.length > 0 || toFillSteps.length > 0) && <p className="text-sm text-slate-600 dark:text-slate-300">
         {progress.requiredKeys.size === 0 ? t('form.section_required_none')
           : t('form.section_required_count').replace('{done}', String(progress.filledRequired)).replace('{total}', String(progress.requiredKeys.size))}
         {visibleIssues.length > 0 && ` — ${t('form.section_errors').replace('{n}', String(visibleIssues.length))}`}
+        {toFillSteps.length > 0 && ` — ${t('form.to_fill_count').replace('{n}', String(toFillSteps.length))}`}
       </p>}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <button type="button" className="btn-secondary @min-[52rem]/sections:hidden" aria-expanded={mobileContents}
@@ -201,13 +241,16 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
         {progress.missingKeys.length > 0 && <button type="button" className="btn-secondary" onClick={nextMissing}>
           {t('form.next_missing')}
         </button>}
+        {toFillSteps.length > 0 && <button type="button" className="btn-secondary" onClick={nextToFill}>
+          {t('form.next_to_fill')}
+        </button>}
         {steps.length > 1 && <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
           <input type="checkbox" checked={single} onChange={(event) => setSingle(event.target.checked)} className="h-4 w-4 accent-teal-700" />
           {t('form.single_block')}
         </label>}
       </div>
     </div>
-    {newGroup && formGroups.some((group) => group.key === newGroup) && <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-teal-800 dark:text-teal-200">
+    {newGroup && contentSteps.some((step) => step.key === newGroup) && <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-teal-800 dark:text-teal-200">
       <span>{t('form.block_available')} {label(newGroup)}</span>
       <button type="button" className="btn-ghost min-h-11" onClick={() => { reveal(newGroup); setNewGroup(null); }}>{t('form.go_to_block')}</button>
     </div>}
@@ -227,10 +270,11 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       </nav>
       <div className="min-w-0 space-y-4">
         {steps.map((root) => {
-          const group = root.key === leadingKey ? null : formGroups.find((candidate) => candidate.key === root.key);
+          const group = root.group;
           const keys = new Set(group?.fields.map((field) => field.fieldKey) ?? []);
           const missing = progress.missingKeys.filter((key) => keys.has(key)).length;
           const errors = visibleIssues.filter((issue) => keys.has(issue.fieldKey)).length;
+          const toFill = toFillSteps.filter((key) => keys.has(key)).length;
           const expanded = single ? active === root.key : !collapsed.has(root.key);
           return <fieldset key={root.key} hidden={single && active !== root.key} aria-labelledby={`${groupId(root.key)}-title`}
             className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
@@ -239,11 +283,12 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
                 className="flex min-h-11 max-w-full flex-wrap items-center gap-x-3 gap-y-1 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
                 onClick={() => { setCurrent(root.key); setCollapsed((before) => { const next = new Set(before); if (next.has(root.key)) next.delete(root.key); else next.add(root.key); return next; }); }}>
                 <span aria-hidden="true">{expanded ? '▾' : '▸'}</span><span id={`${groupId(root.key)}-title`}>{label(root.key)}</span>
-                {values !== undefined && root.key !== leadingKey && (missing > 0 || errors > 0) && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{t('form.required_remaining').replace('{n}', String(missing))}{errors > 0 ? ` · ${t('form.section_errors').replace('{n}', String(errors))}` : ''}</span>}
+                {values !== undefined && root.key !== leadingKey && (missing > 0 || errors > 0 || toFill > 0) && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{t('form.required_remaining').replace('{n}', String(missing))}{errors > 0 ? ` · ${t('form.section_errors').replace('{n}', String(errors))}` : ''}{toFill > 0 ? ` · ${t('form.to_fill_remaining').replace('{n}', String(toFill))}` : ''}</span>}
               </button>
             </legend>
             <div id={`${groupId(root.key)}-body`} hidden={!expanded} className="@container space-y-5">
               {root.key === leadingKey && leadingBlock?.content}
+              {root.repeatable && repeatableGroup?.(root.repeatable)}
               {group?.parentSectionKey && (
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {label(group.parentSectionKey)}

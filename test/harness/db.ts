@@ -55,7 +55,13 @@ async function pickBindablePort(): Promise<number> {
   throw new Error('Aucun port TCP disponible pour PostgreSQL embarque');
 }
 
-export async function startTestDb(opts: { seed?: boolean } = {}): Promise<TestDb> {
+export async function startTestDb(opts: { seed?: boolean; beforeMigration?: string } = {}): Promise<TestDb> {
+  // Migration upgrade tests populate the previous schema, then apply the real migration.
+  // Reject a misspelled boundary rather than silently testing the final schema twice.
+  const migrations = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
+  if (opts.beforeMigration && !migrations.includes(opts.beforeMigration)) {
+    throw new Error(`Unknown test migration boundary: ${opts.beforeMigration}`);
+  }
   const databaseDir = mkdtempSync(join(tmpdir(), 'rls-pg-'));
   const port = await pickBindablePort();
 
@@ -79,7 +85,8 @@ export async function startTestDb(opts: { seed?: boolean } = {}): Promise<TestDb
 
   // 1) shim (test-only)  2) migrations (reelles)  3) seed (optionnel)
   await admin.query(readFileSync(SHIM, 'utf8'));
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
+  for (const file of migrations) {
+    if (file === opts.beforeMigration) break;
     await admin.query(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
   }
   if (opts.seed) {

@@ -52,6 +52,8 @@ async function createNonEmptyBase(): Promise<{
   baseId: string;
   patientId: string;
   encounterId: string;
+  offlinePatientOperationId: string;
+  offlineEncounterOperationId: string;
   rawDocumentId: string;
   exportId: string;
   paths: string[];
@@ -105,6 +107,20 @@ async function createNonEmptyBase(): Promise<{
     "insert into public.offline_encounter_operation(user_id, operation_id, encounter_id, request_fingerprint) values($1,$2,$3,$4)",
     [bobId, `d10-${baseId}`, encounterId, 'b'.repeat(64)],
   );
+  const offlinePatientOperationId = `d10-offline-patient-${baseId}`;
+  const offlineEncounterOperationId = `d10-offline-encounter-${baseId}`;
+  await db.admin.query(
+    `insert into public.offline_patient_create_operation
+       (user_id, operation_id, base_id, request_fingerprint, patient_id, result_patient_code, completed_at)
+     values ($1,$2,$3,$4,$5,'D10-P',now())`,
+    [bobId, offlinePatientOperationId, baseId, 'e'.repeat(64), patientId],
+  );
+  await db.admin.query(
+    `insert into public.offline_encounter_create_operation
+       (user_id, operation_id, request_fingerprint, patient_id, encounter_id, completed_at)
+     values ($1,$2,$3,$4,$5,now())`,
+    [bobId, offlineEncounterOperationId, 'f'.repeat(64), patientId, encounterId],
+  );
   await db.admin.query(
     "insert into public.field_change_log(base_id, entity, entity_id, field_key, old_value, new_value, changed_by) values($1,'patient',$2,'fictitious','null','{}'::jsonb,$3)",
     [baseId, patientId, bobId],
@@ -136,6 +152,8 @@ async function createNonEmptyBase(): Promise<{
     baseId,
     patientId,
     encounterId,
+    offlinePatientOperationId,
+    offlineEncounterOperationId,
     rawDocumentId,
     exportId,
     paths: [clinicalPath, clinicalQuarantinePath, rawPath, rawQuarantinePath, exportPath, ticketPath],
@@ -158,6 +176,30 @@ describe('D10 — purge definitive PostgreSQL', () => {
 
   test('une base non vide purge explicitement toutes les dependances, conserve audit et export_log', async () => {
     const fixture = await createNonEmptyBase();
+    // Une autre utilisatrice peut avoir le meme identifiant de parent : la cle
+    // des recus est (user_id, operation_id), donc la purge doit respecter les deux.
+    const otherBaseId = await createBase('D10 autre base avec cle de rejeu partagee');
+    const otherPatientId = (await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,'D10-OTHER',$2,'{}'::jsonb) returning id",
+      [otherBaseId, templateVersionId],
+    )).rows[0].id;
+    const otherEncounterId = (await db.admin.query(
+      "insert into public.encounter(patient_id, template_version_id, encounter_type, encounter_date, data) values($1,$2,'autre','2026-08-02','{}'::jsonb) returning id",
+      [otherPatientId, templateVersionId],
+    )).rows[0].id;
+    await db.admin.query(
+      `insert into public.offline_patient_create_operation
+         (user_id, operation_id, base_id, request_fingerprint, patient_id, result_patient_code, completed_at)
+       values ($1,$2,$3,$4,$5,'D10-OTHER',now())`,
+      [aliceId, fixture.offlinePatientOperationId, otherBaseId, '1'.repeat(64), otherPatientId],
+    );
+    const otherChildOperationId = `d10-other-child-${otherBaseId}`;
+    await db.admin.query(
+      `insert into public.offline_encounter_create_operation
+         (user_id, operation_id, parent_operation_id, request_fingerprint, patient_id, encounter_id, completed_at)
+       values ($1,$2,$3,$4,$5,$6,now())`,
+      [aliceId, otherChildOperationId, fixture.offlinePatientOperationId, '2'.repeat(64), otherPatientId, otherEncounterId],
+    );
     await softDelete(fixture.baseId);
     const operationId = '123e4567-e89b-42d3-a456-426614174002';
     const { prep, final } = await purge(fixture.baseId, operationId);
@@ -190,6 +232,22 @@ describe('D10 — purge definitive PostgreSQL', () => {
     for (const query of indirectOrphans) {
       expect((await db.admin.query(query, [fixture.baseId])).rows[0].n).toBe(0);
     }
+    expect((await db.admin.query(
+      'select operation_id from public.offline_patient_create_operation where user_id=$1 and operation_id=$2',
+      [bobId, fixture.offlinePatientOperationId],
+    )).rows).toHaveLength(0);
+    expect((await db.admin.query(
+      'select operation_id from public.offline_encounter_create_operation where user_id=$1 and operation_id=$2',
+      [bobId, fixture.offlineEncounterOperationId],
+    )).rows).toHaveLength(0);
+    expect((await db.admin.query(
+      'select operation_id from public.offline_patient_create_operation where user_id=$1 and operation_id=$2 and base_id=$3',
+      [aliceId, fixture.offlinePatientOperationId, otherBaseId],
+    )).rows).toHaveLength(1);
+    expect((await db.admin.query(
+      'select operation_id from public.offline_encounter_create_operation where user_id=$1 and operation_id=$2 and patient_id=$3 and encounter_id=$4',
+      [aliceId, otherChildOperationId, otherPatientId, otherEncounterId],
+    )).rows).toHaveLength(1);
     expect((await db.admin.query('select base_id, base_reference_id, cohort_id from public.export_log where id=$1', [fixture.exportId])).rows[0])
       .toMatchObject({ base_id: null, base_reference_id: fixture.baseId, cohort_id: null });
     const audit = (await db.admin.query(

@@ -91,10 +91,17 @@ export interface IdentityMatch {
 
 export interface NewEncounterInput {
   encounterType: string;
-  encounterDate: string;
+  /** L66 §4.3 : nulle pour une OCCURRENCE de groupe repetable, jamais pour une vraie rencontre. */
+  encounterDate: string | null;
   validationStatus: string;
   ageUnit: string;
   data: Record<string, unknown>;
+  /**
+   * L68 — bloc repetable auquel cette ligne appartient. Absent = rencontre ordinaire,
+   * comportement inchange. Le serveur impose alors `encounter_type = 'autre'` et refuse
+   * un bloc inconnu, non racine ou non repetable.
+   */
+  groupSectionKey?: string | null;
 }
 
 /** Rejeu idempotent d'une creation patient preparee hors-ligne (feuille de route O1). */
@@ -113,7 +120,8 @@ export interface ReplayEncounterCreateInput extends NewEncounterInput {
 export interface Encounter {
   id: string;
   encounterType: string;
-  encounterDate: string;
+  /** Nulle pour une occurrence de groupe non datee (L66 §4.3). */
+  encounterDate: string | null;
   validationStatus: string;
   ageValue: number | null;
   ageUnit: string | null;
@@ -122,6 +130,8 @@ export interface Encounter {
   updatedAt?: string | null;
   /** §7.4 — version de gabarit DE LA RENCONTRE : l'edition historique charge CE dictionnaire. */
   templateVersionId?: string | null;
+  /** Section répétable persistée. Undefined dans une réponse/cache ancien sans ce marqueur. */
+  groupSectionKey?: string | null;
 }
 
 /** Etats d'une valeur dans le contexte serveur d'une fiche E3. */
@@ -146,6 +156,8 @@ export interface RecordFormFieldContext {
   definition_state: RecordFormDefinitionState;
   applicability: 'applicable' | 'not_applicable';
   applicability_reason: string;
+  /** Distingue le filtrage des champs hors du groupe persistant des autres causes de non-applicabilite. */
+  repeatable_group_applicable?: boolean;
   value_state: RecordFormValueState;
   provenance: RecordFormProvenance | null;
   definition: Record<string, unknown>;
@@ -319,7 +331,7 @@ export interface PatientRepository {
   getPatientFormContext?(baseId: string, patientId: string): Promise<RecordFormContext | null>;
   /** Age calcule par le systeme (DOB jamais exposee). null si pas de date de naissance. */
   computeAge(patientId: string, at: string, unit?: string): Promise<number | null>;
-  createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
+  createEncounter(patientId: string, input: NewEncounterInput, operationKey?: string): Promise<{ id: string }>;
   /** Rejeu IDEMPOTENT d'une creation rencontre hors-ligne (dependante du patient parent). */
   replayEncounterCreate(input: ReplayEncounterCreateInput): Promise<{ id: string; patientId: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
@@ -402,6 +414,13 @@ function isMissingPatientRowVersion(error: unknown): boolean {
     && typeof candidate.message === 'string'
     && /\brow_version\b/i.test(candidate.message);
 }
+function isMissingEncounterGroupSectionKey(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === '42703'
+    && typeof candidate.message === 'string'
+    && /\bgroup_section_key\b/i.test(candidate.message);
+}
 type IdentityRow = {
   patient_code: string; full_name: string | null; date_of_birth: string | null; phone: string | null;
   address: string | null; external_identifier: string | null;
@@ -410,9 +429,9 @@ type IdentityMatchRow = {
   patient_id: string; code: string; full_name: string | null; date_of_birth: string | null;
 };
 type EncounterRow = {
-  id: string; encounter_type: string; encounter_date: string; validation_status: string;
+  id: string; encounter_type: string; encounter_date: string | null; validation_status: string;
   age_value: number | null; age_unit: string | null; data: Record<string, unknown>; updated_at?: string | null;
-  template_version_id?: string | null;
+  template_version_id?: string | null; group_section_key?: string | null;
 };
 type FieldChangeRow = {
   field_key: string; old_value: unknown; new_value: unknown; reason: string | null; changed_at: string;
@@ -448,6 +467,7 @@ const mapEncounter = (r: EncounterRow): Encounter => ({
   data: r.data ?? {},
   updatedAt: r.updated_at ?? null,
   templateVersionId: r.template_version_id ?? null,
+  ...(Object.prototype.hasOwnProperty.call(r, 'group_section_key') ? { groupSectionKey: r.group_section_key ?? null } : {}),
 });
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -600,15 +620,19 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return (data as number | null) ?? null;
     },
 
-    async createEncounter(patientId, input) {
-      const { data, error } = await client.rpc('create_encounter', {
+    async createEncounter(patientId, input, operationKey) {
+      const args = {
         p_patient_id: patientId,
         p_encounter_type: input.encounterType,
         p_encounter_date: input.encounterDate,
         p_validation_status: input.validationStatus,
         p_data: input.data,
         p_age_unit: input.ageUnit,
-      });
+        p_group_section_key: input.groupSectionKey ?? null,
+      };
+      const { data, error } = operationKey
+        ? await client.rpc('create_encounter_idempotent', { p_operation_id: operationKey, ...args })
+        : await client.rpc('create_encounter', args);
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string };
       return { id: row.id };
@@ -669,20 +693,28 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     },
 
     async listEncounters(patientId) {
-      const { data, error } = await client
+      const query = (columns: string) => client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id')
+        .select(columns)
         .eq('patient_id', patientId)
         .is('deleted_at', null)
-        .order('encounter_date', { ascending: true });
-      if (error) throw error;
-      return ((data ?? []) as EncounterRow[]).map(mapEncounter);
+        .order('encounter_date', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
+      const current = await query('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key');
+      if (!current.error) return ((current.data ?? []) as unknown as EncounterRow[]).map(mapEncounter);
+      if (!isMissingEncounterGroupSectionKey(current.error)) throw current.error;
+      // Une réponse sans la colonne reste lisible en ligne, mais n'affirme pas que la rencontre
+      // est ordinaire. Seul un null réellement renvoyé par un schéma à jour autorise l'édition hors-ligne.
+      const legacy = await query('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id');
+      if (legacy.error) throw legacy.error;
+        return ((legacy.data ?? []) as unknown as EncounterRow[]).map(mapEncounter);
     },
 
     async getEncounter(encounterId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key')
         .eq('id', encounterId)
         .is('deleted_at', null)
         .maybeSingle();

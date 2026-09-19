@@ -307,7 +307,12 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // E3 : lit la formule pour verifier qu'un champ historique reste compatible avec le
       // champ actif. Ces gardes n'evaluent jamais le calcul.
       'form_record_assert_patch',
-      'form_record_context_json',
+      // E3 : conserve le contexte historique de la definition ; lit formula seulement pour
+      // exclure les champs calcules des obligations, sans evaluer le calcul.
+      'form_record_context_json_base',
+      // L66 : conserve le contexte groupe de la definition ; lit formula seulement pour
+      // exclure les champs calcules des obligations, sans evaluer le calcul.
+      'form_record_context_json_group_context_base',
       'form_record_field_compatible',
       'guard_template_field_update',
       'missing_required_fields',

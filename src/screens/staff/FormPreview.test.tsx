@@ -7,7 +7,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
-import type { TemplateField, TemplateVersion, ValidationRule } from '../../data/types';
+import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import { FormPreview } from './FormPreview';
 
 const version: TemplateVersion = { id: 'v1', templateId: 't1', versionNumber: 3, status: 'draft' };
@@ -146,5 +146,50 @@ describe('FormPreview — aucune écriture', () => {
     // `registre.lang` est ecrit par le I18nProvider de ce test, pas par l'apercu : aucun
     // brouillon (`meddata:draft:…`) ni aucune autre cle ne doit apparaitre.
     expect(Object.keys(localStorage).filter((k) => k !== 'registre.lang')).toEqual([]);
+  });
+});
+
+// L67 — un bloc repetable ne se saisit pas champ par champ mais ligne par ligne. L'apercu
+// doit montrer CETTE forme, et rester ce qu'il est : un apercu qui ne cree rien.
+describe('FormPreview — bloc répétable (L67)', () => {
+  const groupSections: TemplateSection[] = [
+    { id: 's1', sectionKey: 'lesions', label: 'Lésions', displayOrder: 0, parentSectionKey: null, isRepeatable: true },
+    { id: 's2', sectionKey: 'examen', label: 'Examen', displayOrder: 1, parentSectionKey: null },
+  ];
+
+  const groupFields: TemplateField[] = [
+    field({ id: 'g1', fieldKey: 'niveau', label: 'Niveau', section: 'lesions', required: true, displayOrder: 1 }),
+    field({ id: 'g2', fieldKey: 'morphologie', label: 'Morphologie', section: 'lesions', displayOrder: 2 }),
+    field({ id: 'g3', fieldKey: 'conscience', label: 'Conscience', section: 'examen', displayOrder: 3 }),
+  ];
+
+  const renderGroups = () => render(
+    <I18nProvider>
+      <FormPreview version={version} fields={groupFields} rules={[]} sections={groupSections} onClose={() => undefined} />
+    </I18nProvider>,
+  );
+
+  test('les variables du groupe ne sont pas reclamees sur une vraie rencontre (§5)', () => {
+    renderGroups();
+    // Onglet « Rencontre » par defaut : seule la variable du bloc ordinaire y figure.
+    expect(screen.getByText('Conscience')).toBeInTheDocument();
+    expect(screen.queryByText('Morphologie')).toBeNull();
+  });
+
+  test('le bloc est rendu en tableau : en-tete, une ligne d exemple vide, ajout inactif', async () => {
+    renderGroups();
+    await userEvent.click(screen.getByRole('tab', { name: /Fiche patient/ }));
+
+    const table = screen.getByRole('table', { name: 'Lésions' });
+    expect(within(table).getByRole('columnheader', { name: /Niveau/ })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'Morphologie' })).toBeInTheDocument();
+    // Une seule ligne de corps, et elle est vide.
+    const bodyRows = within(table).getAllByRole('row').slice(1);
+    expect(bodyRows).toHaveLength(1);
+    expect(within(bodyRows[0]).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['—', '—']);
+    expect(screen.getByText('Ligne d’exemple, vide')).toBeInTheDocument();
+
+    // L'apercu ne cree rien : la commande d'ajout est rendue, mais inactive.
+    expect(screen.getByRole('button', { name: 'Ajouter une occurrence' })).toBeDisabled();
   });
 });

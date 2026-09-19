@@ -1,9 +1,10 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { CircleHelp } from 'lucide-react';
 import { isMultipleTerminology, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
+import { repeatableFieldKeys } from '../../domain/templateSections';
 import { calculatedValue, FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
@@ -11,10 +12,12 @@ import { SectionedFields } from './SectionedFields';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 export { SectionedFields } from './SectionedFields';
 
-export function FieldLabel({ field, fields, prefilled = false }: {
+export function FieldLabel({ field, fields, prefilled = false, toFill = false }: {
   field: TemplateField;
   fields?: readonly TemplateField[];
   prefilled?: boolean;
+  /** E5 : variable ajoutee au formulaire apres l'enregistrement de cette fiche, encore vide. */
+  toFill?: boolean;
 }) {
   const { t } = useI18n();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -54,6 +57,17 @@ export function FieldLabel({ field, fields, prefilled = false }: {
           className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500"
         >
           {t('form.prefilled')}
+        </span>
+      )}
+      {/* E5 : la variable existe desormais dans le formulaire de la base, mais cette fiche n'en
+          porte aucune valeur. L'etat est annonce tel quel -- ni erreur clinique, ni valeur
+          proposee pour remplir la case. */}
+      {toFill && (
+        <span
+          title={t('form.to_fill_hint')}
+          className="rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-800 dark:bg-teal-950 dark:text-teal-100"
+        >
+          {t('form.to_fill')}
         </span>
       )}
     </span>
@@ -101,6 +115,23 @@ export function CalculatedValue({
 /** Un champ de rencontre s'applique-t-il a ce type ? (encounterTypes null/vide = tous). */
 export const fieldAppliesToType = (f: TemplateField, type: string) =>
   !f.encounterTypes || f.encounterTypes.length === 0 || f.encounterTypes.includes(type);
+
+/**
+ * §5 — variables applicables a une rencontre ORDINAIRE, dans les DEUX branches de la regle.
+ *
+ * La seconde est celle qu'on oublie : une variable de bloc repetable decrit une occurrence, et
+ * son `encounterTypes` reste nul — sans ce retrait, elle serait reclamee sur toute consultation
+ * alors que le serveur ne la reclame plus. La retirer du rendu ne suffit pas : restee
+ * applicable, une variable REQUISE serait exigee sans etre saisissable nulle part.
+ */
+export function encounterApplicableFields(
+  fields: readonly TemplateField[],
+  sections: readonly TemplateSection[] | null | undefined,
+  encounterType: string,
+): TemplateField[] {
+  const groupKeys = repeatableFieldKeys(fields, sections);
+  return fields.filter((field) => !groupKeys.has(field.fieldKey) && fieldAppliesToType(field, encounterType));
+}
 
 /**
  * L32 — annonce les valeurs qui seront retirees a l'enregistrement parce que leur variable
@@ -164,6 +195,8 @@ export function EncounterFields({
   commonLayout,
   rules,
   requireComplete,
+  toFillKeys,
+  repeatableGroup,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -179,11 +212,19 @@ export function EncounterFields({
   commonLayout?: TemplateCommonLayout | null;
   rules?: readonly ValidationRule[];
   requireComplete?: boolean;
+  /** E5 : variables ajoutees apres l'enregistrement de la fiche et encore vides (contexte serveur). */
+  toFillKeys?: ReadonlySet<string>;
+  /** L68 — rendu d'un bloc repetable, delegue par `SectionedFields`. */
+  repeatableGroup?: (section: TemplateSection) => ReactNode;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
+  // §5, branche « hors groupe » : une variable de bloc repetable decrit une OCCURRENCE. Elle
+  // n'est jamais saisie ligne a ligne sur la fiche ni sur une rencontre ordinaire — meme quand
+  // son `encounterTypes` est nul, cas ou l'ancien filtre l'aurait laissee passer partout.
+  const groupKeys = repeatableFieldKeys(fields, sections);
   const visibleFields = fields.filter(
-    (field) => !companionKeys.has(field.fieldKey) && !hiddenKeys?.has(field.fieldKey),
+    (field) => !companionKeys.has(field.fieldKey) && !hiddenKeys?.has(field.fieldKey) && !groupKeys.has(field.fieldKey),
   );
   return (
     <SectionedFields
@@ -195,11 +236,13 @@ export function EncounterFields({
       rules={rules}
       hiddenKeys={hiddenKeys}
       requireComplete={requireComplete}
+      toFillKeys={toFillKeys}
+      repeatableGroup={repeatableGroup}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
           <div className="flex flex-col text-sm">
-                            <FieldLabel field={field} fields={fields} prefilled={prefilledKeys?.has(field.fieldKey) ?? false} />
+                            <FieldLabel field={field} fields={fields} prefilled={prefilledKeys?.has(field.fieldKey) ?? false} toFill={toFillKeys?.has(field.fieldKey) ?? false} />
             <div className="mt-1">
               {/* L35 : une variable calculee n'est JAMAIS saisissable — pas de champ, pas de
                   raison de valeur manquante, rien a enregistrer. */}

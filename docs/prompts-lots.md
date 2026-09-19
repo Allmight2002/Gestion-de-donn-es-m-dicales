@@ -108,7 +108,7 @@ La source de vérité du suivi reste le tableau et la section « Ordre suggéré
 | **O6**, **O7** | Preuve navigateur puis activation de la saisie hors-ligne *intake-only* |
 | **L66** à **L71** | Groupes répétables, après relecture de leur contrat et des collisions de l'éditeur |
 | **E0** à **E7** | Évolution additive du formulaire dans une même base — spécifiée, non implémentée |
-| **PAP-0** à **PAP-5** | Formulaire papier vierge — spécifié, non implémenté |
+| **PAP-1** à **PAP-5** | Formulaire papier vierge — spécifié, non implémenté ; **PAP-0 est mesuré** depuis le 2026-09-18 ([baseline](pap-0-baseline-formulaire-papier.md)) |
 
 **État local à ne pas relancer automatiquement** : L51 à L56 et L58 à L60 sont implémentés
 localement, non déployés ; consulter leurs fiches avant toute correction. L1 à L33 (dont L26,
@@ -246,7 +246,11 @@ Consigne le résultat à la fin de docs/suivi-execution-feuille-route.md.
 
 ---
 
-## PAP-0 - Mesurer le problème papier
+## ~~PAP-0 - Mesurer le problème papier~~
+
+> **Mesuré le 2026-09-18** — voir la [fiche de baseline](pap-0-baseline-formulaire-papier.md).
+> Le prompt est conservé pour mémoire ; rejouer la mesure se fait par `npm run paper:baseline`,
+> pas en refaisant le lot.
 
 ```text
 Tu reprends le lot PAP-0 du projet MedData (registre-clinique).

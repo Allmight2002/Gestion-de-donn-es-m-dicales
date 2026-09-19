@@ -6,6 +6,18 @@
 // Jetons techniques -> message ACTIONNABLE. NB : la detection de conflit de la synchro
 // hors-ligne (offline.ts, isConflict) lit err.message BRUT et n'est donc pas affectee.
 function humanize(message: string): string {
+  if (/L69_OPERATION_MISMATCH/i.test(message)) {
+    return 'Cette occurrence est liee a une autre operation. Rechargez la fiche avant de reessayer.';
+  }
+  if (/L69_OPERATION_INCOMPLETE/i.test(message)) {
+    return "Le serveur n'a pas confirme cette occurrence. Reprenez la ligne pour retrouver son etat avant de continuer.";
+  }
+  if (/L69_OPERATION_INVALID/i.test(message)) {
+    return "Cette occurrence ne respecte pas les parametres attendus et n'a pas ete enregistree.";
+  }
+  if (/L69_OCCURRENCE_PATIENT_NOT_FOUND/i.test(message)) {
+    return "Le patient associe a cette occurrence n'existe plus. Rechargez la fiche avant de continuer.";
+  }
   if (/WRITE_NOT_FOUND/i.test(message)) {
     return "La ressource n'existe plus. Rechargez la page avant de continuer.";
   }

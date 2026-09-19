@@ -232,6 +232,12 @@ export interface TemplateSection {
   sectionKey: string;
   label: string;
   displayOrder: number;
+  /**
+   * L67 — bloc répétable : ses variables décrivent une occurrence, pas le patient.
+   * True = répétable, false = ordinaire; undefined = état inconnu dans un ancien instantané.
+   * Ne vaut que sur un bloc racine : la base le garantit.
+   */
+  isRepeatable?: boolean;
 }
 
 export interface ValidationRule {

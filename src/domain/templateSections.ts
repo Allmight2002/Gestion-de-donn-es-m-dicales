@@ -8,7 +8,7 @@
 // Ce module tient les DEUX regles qui empechent le lot de changer quoi que ce soit a
 // l'existant : l'ordre de repli et le libelle de repli.
 
-import type { TemplateCommonLayout, TemplateField, TemplateSection } from '../data/types';
+import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../data/types';
 
 /**
  * Les trois codes historiques, DANS LEUR ORDRE D'ORIGINE.
@@ -372,4 +372,130 @@ export function groupFieldsBySection<T extends PresentationField>(
   return commonLayout && commonLayout.groups.length > 0
     ? groupFieldsByCommonLayout(fields, sections, commonLayout)
     : groupFieldsBySectionLegacy(fields, sections);
+}
+
+/**
+ * L68 — blocs REPETABLES declares par la version. La base garantit qu'un bloc repetable est
+ * une RACINE (`template_section_repeatable_root_only`) ; le filtre est conserve ici pour que
+ * l'ecran ne depende pas de cette garantie pour rester coherent.
+ */
+export function repeatableSectionsOf(
+  sections?: readonly TemplateSection[] | null,
+): TemplateSection[] {
+  return (sections ?? [])
+    .filter((section) => section.isRepeatable === true && !section.parentSectionKey)
+    .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey));
+}
+
+/**
+ * Cles des variables portees par un bloc repetable.
+ *
+ * C'est la branche « hors groupe » du §5 cote ecran : une variable de bloc repetable ne se
+ * saisit JAMAIS sur une rencontre ordinaire, meme quand son `encounterTypes` est nul. Sans ce
+ * filtre, le formulaire de consultation proposerait les variables d'une lesion, que le serveur
+ * ne reclame pourtant plus a cet endroit.
+ */
+export function repeatableFieldKeys(
+  fields: readonly Pick<TemplateField, 'fieldKey' | 'section'>[],
+  sections?: readonly TemplateSection[] | null,
+): ReadonlySet<string> {
+  const keys = new Set(repeatableSectionsOf(sections).map((section) => section.sectionKey));
+  if (keys.size === 0) return new Set<string>();
+  return new Set(
+    fields.filter((field) => field.section !== null && keys.has(sectionKeyOf(field))).map((field) => field.fieldKey),
+  );
+}
+
+/**
+ * Regles dont tous les operandes appartiennent au meme bloc repetable.
+ *
+ * Une occurrence ne dispose que de ses propres valeurs. Une regle qui depend d'un champ d'un
+ * autre bloc ou d'une rencontre ordinaire ne doit donc ni masquer ni bloquer ce formulaire.
+ */
+export function rulesForRepeatableSection(
+  rules: readonly ValidationRule[],
+  fields: readonly Pick<TemplateField, 'fieldKey' | 'section'>[],
+  sectionKey: string,
+): ValidationRule[] {
+  const fieldKeys = new Set(
+    fields.filter((field) => sectionKeyOf(field) === sectionKey).map((field) => field.fieldKey),
+  );
+  if (fieldKeys.size === 0) return [];
+
+  const fieldsReferencedBy = (rule: unknown): string[] => {
+    if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) return [];
+    const source = rule as Record<string, unknown>;
+    if ('if' in source && 'then' in source) {
+      const condition = typeof source.if === 'object' && source.if !== null
+        ? source.if as Record<string, unknown>
+        : null;
+      const outcome = typeof source.then === 'object' && source.then !== null
+        ? source.then as Record<string, unknown>
+        : null;
+      return [condition?.field, outcome?.field].filter((key): key is string => typeof key === 'string');
+    }
+    if ('operator' in source && 'left_field' in source && 'right_field' in source) {
+      return [source.left_field, source.right_field].filter((key): key is string => typeof key === 'string');
+    }
+    return [];
+  };
+
+  return rules.filter((rule) => {
+    const references = fieldsReferencedBy(rule.rule);
+    return references.length > 0 && references.every((key) => fieldKeys.has(key));
+  });
+}
+
+/** Etape de formulaire : un groupe ordinaire, ou un bloc repetable rendu comme un tableau. */
+export type SectionStep<T> =
+  | { kind: 'fields'; group: SectionGroup<T> }
+  | { kind: 'repeatable'; section: TemplateSection };
+
+/**
+ * Intercale les blocs repetables A LEUR PLACE parmi les groupes ordinaires (§8.1).
+ *
+ * Un bloc repetable ne porte aucune variable saisissable sur la fiche elle-meme : ses variables
+ * decrivent une occurrence. Il n'apparait donc pas dans `groups`, et il faut le replacer a son
+ * rang declare. Quand il y figure malgre tout — un appelant passant les variables de rencontre —
+ * le groupe est REMPLACE par l'etape repetable, jamais rendu variable par variable.
+ */
+export function withRepeatableSteps<T>(
+  groups: readonly SectionGroup<T>[],
+  sections?: readonly TemplateSection[] | null,
+): SectionStep<T>[] {
+  const repeatables = repeatableSectionsOf(sections);
+  if (repeatables.length === 0) return groups.map((group) => ({ kind: 'fields', group }));
+
+  const byKey = new Map(repeatables.map((section) => [section.sectionKey, section]));
+  const placed = new Set<string>();
+  const steps: SectionStep<T>[] = [];
+  for (const group of groups) {
+    const repeatable = byKey.get(group.key);
+    if (repeatable) {
+      if (placed.has(repeatable.sectionKey)) continue;
+      placed.add(repeatable.sectionKey);
+      steps.push({ kind: 'repeatable', section: repeatable });
+      continue;
+    }
+    steps.push({ kind: 'fields', group });
+  }
+
+  // Rang declare d'une etape : seule une section connue de la version fait autorite. Une
+  // rubrique de presentation (UX-16) n'en a pas et ne deplace donc jamais un bloc repetable.
+  const declaredOrder = new Map((sections ?? []).map((section) => [section.sectionKey, section.displayOrder]));
+  const rankOf = (step: SectionStep<T>): number | null => step.kind === 'repeatable'
+    ? step.section.displayOrder
+    : declaredOrder.get(step.group.key) ?? null;
+
+  for (const section of repeatables) {
+    if (placed.has(section.sectionKey)) continue;
+    const index = steps.findIndex((step) => {
+      const rank = rankOf(step);
+      return rank !== null && rank > section.displayOrder;
+    });
+    const step: SectionStep<T> = { kind: 'repeatable', section };
+    if (index === -1) steps.push(step); else steps.splice(index, 0, step);
+    placed.add(section.sectionKey);
+  }
+  return steps;
 }

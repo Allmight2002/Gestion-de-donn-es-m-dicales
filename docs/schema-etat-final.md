@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260917110000_form_compatible_legacy_regressions.sql`
-- Tables : 57 · Policies RLS : 64 · Triggers : 83 · Fonctions : 380
+- Dernière migration incluse : `20260919190252_create_encounter_idempotent.sql`
+- Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 387
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -388,7 +388,7 @@ Triggers :
 | patient_id | uuid | non |  |
 | template_version_id | uuid | non |  |
 | encounter_type | text | non |  |
-| encounter_date | date | non |  |
+| encounter_date | date | oui |  |
 | age_value | numeric | oui |  |
 | age_unit | text | oui |  |
 | data | jsonb | non | `'{}'::jsonb` |
@@ -401,6 +401,7 @@ Triggers :
 | deleted_by | uuid | oui |  |
 | deletion_reason | text | oui |  |
 | record_revision | bigint | non | `1` |
+| group_section_key | text | oui |  |
 
 Policies :
 - `e_select` (SELECT) — USING (has_base_access(base_of_patient(patient_id)) AND (deleted_at IS NULL))
@@ -415,6 +416,7 @@ Triggers :
 - `trg_encounter_structural_immutable` — BEFORE UPDATE → `guard_structural_immutable()`
 - `trg_encounter_updated` — BEFORE UPDATE → `set_updated_at()`
 - `trg_refresh_patient_inclusion_date` — AFTER INSERT/UPDATE → `trg_refresh_patient_inclusion_date()`
+- `trg_repeatable_encounter` — BEFORE INSERT/UPDATE → `guard_repeatable_encounter()`
 
 ### export_log · RLS activée
 
@@ -1013,6 +1015,7 @@ Policies :
 Triggers :
 - `trg_00_contains_any_lock` — BEFORE INSERT/UPDATE → `lock_contains_any_configuration()`
 - `trg_contains_any_revalidate` — AFTER UPDATE → `revalidate_contains_any_rules()`
+- `trg_repeatable_field` — AFTER INSERT/UPDATE → `guard_repeatable_field()`
 - `trg_template_field_allowed_options` — BEFORE INSERT/UPDATE → `enforce_template_field_allowed_options()`
 - `trg_template_field_default_value` — BEFORE INSERT/UPDATE → `enforce_template_field_default_value()`
 - `trg_template_field_formula` — BEFORE INSERT/UPDATE → `enforce_template_field_formula()`
@@ -1052,6 +1055,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | parent_section_id | uuid | oui |  |
 | source_template_version_id | uuid | oui |  |
 | source_section_key | text | oui |  |
+| is_repeatable | boolean | non | `false` |
 
 Policies :
 - `ts_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -1249,7 +1253,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | assert_export_columns_safe | p_template_version_id uuid, p_columns text[] | INVOKER | plpgsql |
 | assert_no_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_no_unknown_fields | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
-| assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
+| assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |
 | assert_rule_batch_access | p_version_id uuid | DEFINER | plpgsql |
 | assert_rule_calculated_operands | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
@@ -1303,7 +1307,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | create_base_invitation | p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | create_cohort_snapshot | p_base_id uuid, p_name text, p_filter jsonb, p_validated_only boolean | INVOKER | plpgsql |
 | create_curation_submission | p_base_id uuid, p_target_patient_id uuid, p_external_ref text, p_scope text | DEFINER | plpgsql |
-| create_encounter | p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text | DEFINER | plpgsql |
+| create_encounter | p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
+| create_encounter_idempotent | p_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
 | create_next_personal_template_version | p_template_id uuid | DEFINER | plpgsql |
 | create_patient | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
 | create_patient_curation_submission | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_idempotency_key text | DEFINER | plpgsql |
@@ -1371,6 +1376,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_rebind_allowed | p_base_id uuid, p_old_version_id uuid, p_new_version_id uuid | DEFINER | sql |
 | form_preparation_receipt | p_row form_preparation, p_operation_id uuid, p_operation_kind text | DEFINER | sql |
 | form_preparation_source_definition | p_version_id uuid | DEFINER | sql |
+| form_record_assert_encounter_group_patch | p_base_id uuid, p_encounter_id uuid, p_historical_version uuid, p_active_version uuid, p_patch jsonb, p_encounter_type text | INVOKER | plpgsql |
 | form_record_assert_json_type | p_field template_field, p_value jsonb | DEFINER | plpgsql |
 | form_record_assert_known_data | p_historical_version uuid, p_active_version uuid, p_scope text, p_data jsonb | DEFINER | plpgsql |
 | form_record_assert_no_changed_hidden_values | p_active_version uuid, p_scope text, p_old jsonb, p_new jsonb | DEFINER | plpgsql |
@@ -1379,9 +1385,12 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_record_assert_write_access | p_base_id uuid, p_created_by uuid, p_existing_status text, p_requested_status text | DEFINER | plpgsql |
 | form_record_context_fingerprint | p_record_kind text, p_record_id uuid, p_record_revision bigint, p_base_id uuid, p_active_revision bigint, p_definition_revision uuid, p_data jsonb | DEFINER | sql |
 | form_record_context_json | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
+| form_record_context_json_base | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
+| form_record_context_json_group_context_base | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
 | form_record_definition | p_version uuid | DEFINER | sql |
 | form_record_error | p_code text, p_reason text | DEFINER | plpgsql |
 | form_record_field_compatible | p_historical template_field, p_active template_field | DEFINER | sql |
+| form_record_field_group_applicable | p_version_id uuid, p_field_key text, p_group_section_key text | INVOKER | sql |
 | form_record_merge_legacy_payload | p_historical_version uuid, p_active_version uuid, p_scope text, p_existing jsonb, p_payload jsonb | DEFINER | plpgsql |
 | form_record_value_fingerprint | p_value jsonb | DEFINER | sql |
 | gen_random_bytes | integer | INVOKER | c |
@@ -1412,6 +1421,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_inspection_status | — | INVOKER | plpgsql |
 | guard_no_curated_downgrade | — | INVOKER | plpgsql |
 | guard_profile_role | — | DEFINER | plpgsql |
+| guard_repeatable_encounter | — | INVOKER | plpgsql |
+| guard_repeatable_field | — | INVOKER | plpgsql |
 | guard_storage_path_scope | — | DEFINER | plpgsql |
 | guard_structural_immutable | — | INVOKER | plpgsql |
 | guard_template_field_delete | — | DEFINER | plpgsql |
@@ -1466,7 +1477,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | log_identity_read | p_patient_id uuid | DEFINER | plpgsql |
 | log_raw_document_read | p_document_id uuid | DEFINER | plpgsql |
 | log_sensitive_read | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid | DEFINER | plpgsql |
-| missing_required_fields | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text | INVOKER | plpgsql |
+| missing_required_fields | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |
 | mission_account_lookup | p_email text | DEFINER | plpgsql |
 | mission_accounts | p_base_id uuid | DEFINER | plpgsql |
 | mission_accounts_owned | p_base_id uuid | DEFINER | plpgsql |

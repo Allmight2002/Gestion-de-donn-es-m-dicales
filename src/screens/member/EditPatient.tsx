@@ -5,17 +5,24 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { RecordFormContext } from '../../data/patients';
+import type { BaseListing } from '../../data/bases';
+import type { Encounter, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
+import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
+import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
+import { RepeatableGroup } from './RepeatableGroup';
+import { repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
+import { JustificationField } from './JustificationField';
 import { useOnline } from '../../data/offline';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
@@ -51,6 +58,7 @@ export function EditPatient() {
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
+  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
@@ -64,12 +72,36 @@ export function EditPatient() {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [reloadRequired, setReloadRequired] = useState(false);
   const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
+  // L68 — blocs repetables de la fiche. Une occurrence est une rencontre a part entiere : elle
+  // s'ecrit seule, avec son propre verrou, et ne participe jamais a l'enregistrement de la fiche.
+  const [canWrite, setCanWrite] = useState(false);
+  const [groupFields, setGroupFields] = useState<TemplateField[]>([]);
+  const [groupRules, setGroupRules] = useState<ValidationRule[]>([]);
+  const [occurrences, setOccurrences] = useState<readonly Encounter[] | null>(null);
+  const [occurrencesError, setOccurrencesError] = useState<string | null>(null);
+  const [groupDirty, setGroupDirty] = useState<Record<string, boolean>>({});
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const back = () => navigate(`/bases/${baseId}/patients/${patientId}`);
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
-  const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`);
+  // Une occurrence ouverte et non enregistree compte comme une saisie en cours : quitter
+  // l'ecran doit la signaler, comme n'importe quel champ modifie de la fiche.
+  const groupHasDraft = Object.values(groupDirty).some(Boolean);
+  const navigation = useDirtyForm({ values, status, reason, groupHasDraft }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`);
+  // Le tableau d'occurrences se charge A PART : le reste du formulaire ne l'attend pas, et une
+  // occurrence ecrite le rafraichit seule (§8.4).
+  const reloadOccurrences = useCallback(async () => {
+    if (!patientId) return;
+    try {
+      setOccurrences(await patients.listEncounters(patientId));
+      setOccurrencesError(null);
+    } catch (e) {
+      setOccurrences(null);
+      setOccurrencesError(errorMessage(e, t('common.error')));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, patients]);
   const work = useWorkDraft({
     // Une fois le contexte E3 obtenu, la soumission passe par le patch compatible : le brouillon
     // clinique historique ne sait pas porter les ajouts actifs et ne doit pas les perdre.
@@ -98,6 +130,7 @@ export function EditPatient() {
         bases.getBase(baseId),
         contextPromise,
       ]);
+      setCanWrite(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       const loadedValues = p?.data ?? {};
       setValues(loadedValues);
       // Keep the synchronous update path aligned with the loaded snapshot. The first
@@ -106,6 +139,7 @@ export function EditPatient() {
       valuesRef.current = loadedValues;
       setInitialValues(loadedValues);
       setRecordContext(context);
+      setBaseListing(base ?? null);
       if (p) { setStatus(p.validationStatus); setInitialStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
       // §7.4 (audit v12, etendu) : un patient HISTORIQUE s'edite avec SA version de gabarit — memes
       // libelles/champs/regles que le serveur. La version courante de la base n'est qu'un repli.
@@ -136,9 +170,20 @@ export function EditPatient() {
         setDiagnosisVersionId(historical.version.id);
         setDiagnosisContext(context ? active.version.diagnosisContext : historical.version.diagnosisContext);
         setActiveDiagnosisVersionId(active.version.id);
+        // Une occurrence est ecrite dans la version COURANTE de la base : c'est celle que
+        // create_encounter retient. Le formulaire d'occurrence suit donc la version active, pas
+        // la version historique de la fiche.
+        const groupKeys = new Set(repeatableSectionsOf(active.sections ?? []).map((section) => section.sectionKey));
+        setGroupFields(groupKeys.size === 0
+          ? []
+          : active.fields.filter((field) => field.scope === 'encounter'
+            && field.section !== null && groupKeys.has(sectionKeyOf(field))));
+        setGroupRules(active.rules);
+        if (groupKeys.size === 0) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
       } else {
         setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
         setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
+        setGroupFields([]); setGroupRules([]); setOccurrences([]); setOccurrencesError(null);
       }
       setError(null);
       loadedFor.current = `${baseId}:${patientId}`;
@@ -148,7 +193,7 @@ export function EditPatient() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patientId, bases, templates, patients]);
+  }, [baseId, patientId, bases, templates, patients, reloadOccurrences]);
 
   useEffect(() => { if (loadedFor.current !== `${baseId}:${patientId}`) void load(); }, [load, baseId, patientId]);
 
@@ -159,8 +204,25 @@ export function EditPatient() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
 
+  // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
+  // Le formulaire est donc RENDU avec la meme liste que la validation locale : sans cela,
+  // l'ecran afficherait une erreur bloquante pour une variable que l'enregistrement accepte.
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const completion = useMemo(() => recordCompletionSummary(recordContext), [recordContext]);
   const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
+  // Le serveur a decide ce qui est un ajout applicable et ce que le formulaire courant attend ;
+  // l'ecran ne fait que retirer du compte ce qui vient d'etre saisi.
+  const toFillKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
+  // §4.5 : le serveur accepte l'absence de motif pour le proprietaire reel de la base. L'ecran
+  // se contente de ne plus l'exiger ; un autre compte garde l'obligation actuelle.
+  const reasonOptional = ownerJustificationExempt(baseListing, profile);
+  const pendingRequiredKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -194,7 +256,7 @@ export function EditPatient() {
         hidden,
       ).blocking : []),
     ];
-    if (!reason.trim()) block.unshift(t('encounter.reason_required'));
+    if (!reason.trim() && !reasonOptional) block.unshift(t('encounter.reason_required'));
     setBlocking(block);
     if (block.length > 0) return;
 
@@ -258,6 +320,25 @@ export function EditPatient() {
 
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
+  const repeatableSections = repeatableSectionsOf(sections);
+  const renderRepeatableGroup = (section: TemplateSection) => (
+    <RepeatableGroup
+      section={section}
+      fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
+      rules={groupRules}
+      requireComplete={isMissionAccount(profile)}
+      patientId={patientId ?? null}
+      occurrences={occurrences}
+      occurrencesError={occurrencesError}
+      onChanged={reloadOccurrences}
+      onDirtyChange={(dirty) => setGroupDirty((current) => current[section.sectionKey] === dirty
+        ? current
+        : { ...current, [section.sectionKey]: dirty })}
+      canWrite={canWrite}
+      online={online}
+    />
+  );
+
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
       {navigation.guard}
@@ -280,19 +361,38 @@ export function EditPatient() {
           </select>
         </label>
 
+        {/* E5 : les variables ajoutees depuis l'enregistrement de cette fiche, comptees a partir
+            du contexte serveur. Rien n'est prerempli et le statut clinique reste celui choisi. */}
+        <RecordCompletionNotice
+          labels={[...toFillKeys].map(labelOf)}
+          requiredLabels={[...pendingRequiredKeys].map(labelOf)}
+        />
+
         {fields.length === 0 ? (
-          <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
+          <>
+            <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
+            {repeatableSections.map((section) => (
+              <fieldset key={section.sectionKey} className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
+                <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {section.label?.trim() || section.sectionKey}
+                </legend>
+                {renderRepeatableGroup(section)}
+              </fieldset>
+            ))}
+          </>
         ) : (
           <EncounterFields
-            fields={fields}
+            fields={validationFields}
             values={values}
             hiddenKeys={hidden}
             sections={sections}
             commonLayout={commonLayout}
             rules={validationRules}
             requireComplete={isMissionAccount(profile) || status !== 'draft'}
+            toFillKeys={toFillKeys}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
+            repeatableGroup={renderRepeatableGroup}
           />
         )}
 
@@ -311,10 +411,7 @@ export function EditPatient() {
           />
         )}
 
-        <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-700">{t('encounter.reason')} <span className="text-red-500">*</span></span>
-          <input className="input mt-1" value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
+        <JustificationField value={reason} onChange={setReason} optional={reasonOptional} />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

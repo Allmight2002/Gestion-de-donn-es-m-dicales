@@ -69,7 +69,7 @@ beforeEach(async () => { await outbox.remove('ob-1'); await offlineCache.remove(
 
 describe('resolveKeepBoth (L25)', () => {
   test('rejoue la charge FUSIONNEE, en forcant, sous le MEME operationId', async () => {
-    await outbox.put(entry());
+    await outbox.put(entry({ groupSectionKey: null }));
     const deps = recordingDeps();
 
     await resolveKeepBoth('ob-1', deps);
@@ -89,7 +89,7 @@ describe('resolveKeepBoth (L25)', () => {
 
   test('vide l\'outbox et fait converger le cache local vers la fusion', async () => {
     await cacheEncounter({ diagnostic: [HED] });
-    await outbox.put(entry());
+    await outbox.put(entry({ groupSectionKey: null }));
 
     await resolveKeepBoth('ob-1', recordingDeps());
 
@@ -101,7 +101,7 @@ describe('resolveKeepBoth (L25)', () => {
   });
 
   test('un second declenchement ne rejoue rien : l\'entree n\'existe plus', async () => {
-    await outbox.put(entry());
+    await outbox.put(entry({ groupSectionKey: null }));
     const deps = recordingDeps();
     await resolveKeepBoth('ob-1', deps);
     await resolveKeepBoth('ob-1', deps);
@@ -110,14 +110,14 @@ describe('resolveKeepBoth (L25)', () => {
 
   test('sans rien a fusionner, la charge est exactement celle de « garder ma version »', async () => {
     // L'ecran ne propose pas l'issue dans ce cas ; la couche de donnees, elle, ne se contredit pas.
-    await outbox.put(entry({ data: { glasgow_score: 12 }, serverData: { glasgow_score: 14 } }));
+    await outbox.put(entry({ groupSectionKey: null, data: { glasgow_score: 12 }, serverData: { glasgow_score: 14 } }));
     const deps = recordingDeps();
     await resolveKeepBoth('ob-1', deps);
     expect(deps.calls[0].data).toEqual({ glasgow_score: 12 });
   });
 
   test('une entree d\'un AUTRE compte n\'est pas resolue', async () => {
-    await outbox.put(entry({ ownerUserId: 'quelqu-un-d-autre' }));
+    await outbox.put(entry({ groupSectionKey: null, ownerUserId: 'quelqu-un-d-autre' }));
     const deps = recordingDeps();
     await resolveKeepBoth('ob-1', deps);
     expect(deps.calls).toHaveLength(0);
@@ -127,7 +127,7 @@ describe('resolveKeepBoth (L25)', () => {
 describe('resolveKeepMine — non-regression du partage de code', () => {
   test('envoie MA charge telle quelle, sans rien emprunter au serveur', async () => {
     await cacheEncounter({ diagnostic: [HED] });
-    await outbox.put(entry());
+    await outbox.put(entry({ groupSectionKey: null }));
     const deps = recordingDeps();
 
     await resolveKeepMine('ob-1', deps);

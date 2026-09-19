@@ -5,11 +5,16 @@ import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, PatientListItem } from '../../data/patients';
+import type { BaseListing } from '../../data/bases';
 import type { AttachmentItem } from '../../data/attachments';
 import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
-import { offlineCache, useOnline } from '../../data/offline';
+import {
+  fieldsForOfflineVersion, offlineCache, offlineEncounterFieldScopesKnown,
+  repeatableEncounterFieldKeys, sectionsForOfflineVersion,
+  useOnline, withoutOtherRepeatableEncounterValues,
+} from '../../data/offline';
 import {
   intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
   type PatientCreateEntry,
@@ -17,6 +22,9 @@ import {
 import { withSections } from '../../data/templates';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
+import { addedFieldsForRecord } from '../../domain/recordCompletion';
+import { ownerJustificationExempt } from '../../domain/ownerJustification';
+import { useAuth } from '../../auth/useAuth';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
@@ -27,9 +35,11 @@ import { useSignedFile } from '../../lib/useSignedFile';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { DiagnosisCoverageNotice, diagnosisCoverageOrNull } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
-import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
+import { groupFieldsBySection, sectionLabel, withRepeatableSteps } from '../../domain/templateSections';
+import { RepeatableGroupTable } from './RepeatableGroup';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 // L30 : `type` et les options voyagent avec la colonne pour que la fiche affiche le
@@ -165,9 +175,11 @@ export function PatientDetail() {
   const patients = usePatientRepository();
   const attachmentsRepo = useAttachmentRepository();
   const audit = useAuditRepository();
+  const { profile } = useAuth();
 
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
+  const [offlineEncounterScopeKnown, setOfflineEncounterScopeKnown] = useState<Record<string, boolean>>({});
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   // Dossier patient ENCORE LOCAL (cree hors-ligne) : vue dediee, sans aucun appel reseau.
   const [localPending, setLocalPending] = useState<PatientCreateEntry | null>(null);
@@ -180,6 +192,9 @@ export function PatientDetail() {
   const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [canCorrectIdentity, setCanCorrectIdentity] = useState(false);
+  // §4.5 : dispense accordée par le serveur au propriétaire réel ; l'écran ne fait que cesser
+  // d'exiger le texte. Les suppressions gardent leur confirmation, leur droit et leur audit.
+  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [isCrossSectional, setIsCrossSectional] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -212,6 +227,7 @@ export function PatientDetail() {
         if (isOfflineIntakeEnabled()) {
           setAttachments([]);
           setEncounters([]);
+          setOfflineEncounterScopeKnown({});
           setOfflineView(false);
           if (patientId && isLocalPatientId(patientId)) {
             const local = await intakeQueue.localPatient(patientId);
@@ -240,12 +256,36 @@ export function PatientDetail() {
         setOfflineView(true);
         setCanEdit(false);
         setCanCorrectIdentity(false);
+        setBaseListing(null);
         setIsCrossSectional(false);
         setAttachments([]);
-        if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
+        if (!op) {
+          setPatient(null);
+          setEncounters([]);
+          setOfflineEncounterScopeKnown({});
+          setError(t('offline.not_cached'));
+          return;
+        }
         setCurrentVersionId(snap?.templateVersionId ?? null);
         setPatient({ id: op.id, code: op.code, templateVersionId: op.templateVersionId, data: op.data, validationStatus: op.validationStatus, identity: null });
-        setEncounters(op.encounters.map((e) => ({ ...e })));
+        const scopeKnown: Record<string, boolean> = {};
+        const safeEncounters = op.encounters.map((encounter) => {
+          const sections = snap ? sectionsForOfflineVersion(snap, encounter.templateVersionId) : null;
+          const fields = snap ? fieldsForOfflineVersion(snap, encounter.templateVersionId) : null;
+          const safe = encounter.groupSectionKey === null && sections !== null && fields !== null
+            && offlineEncounterFieldScopesKnown(fields, sections);
+          scopeKnown[encounter.id] = safe;
+          return {
+            ...encounter,
+            // Les vieilles copies et toutes les rencontres groupées restent lisibles comme entête,
+            // mais leurs valeurs cliniques ne sont pas exposées hors-ligne.
+            data: safe && sections && fields
+              ? withoutOtherRepeatableEncounterValues(encounter.data, fields, sections, null)
+              : {},
+          };
+        });
+        setOfflineEncounterScopeKnown(scopeKnown);
+        setEncounters(safeEncounters);
         // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
         // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
         const versionIds = [...new Set([
@@ -275,6 +315,7 @@ export function PatientDetail() {
       }
 
       setOfflineView(false);
+      setOfflineEncounterScopeKnown({});
       setBlockedServerIdOffline(false);
       const [p, encs, base, atts] = await Promise.all([
         patients.getPatient(baseId, patientId),
@@ -287,6 +328,7 @@ export function PatientDetail() {
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       setCanCorrectIdentity(canCorrectPatientIdentity(base, p));
+      setBaseListing(base ?? null);
       setIsCrossSectional((base?.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       if (base?.base.currentTemplateVersionId) {
         setCurrentVersionId(base.base.currentTemplateVersionId);
@@ -369,7 +411,31 @@ export function PatientDetail() {
     ?? Object.values(versions)[0];
   const versionFor = (versionId?: string | null): DisplayVersion | undefined =>
     (versionId ? versions[versionId] : undefined) ?? fallbackVersion;
+  const reasonOptional = ownerJustificationExempt(baseListing, profile);
   const patientVersion = versionFor(patient.templateVersionId);
+  // E5 : les variables ajoutees au formulaire de la base APRES l'enregistrement de cette fiche.
+  // C'est une restitution de presentation, calculee avec le meme moteur de regles que le reste
+  // de l'ecran ; elle n'autorise rien et ne cree aucune valeur. Le serveur reste seul juge de ce
+  // qu'il accepte au moment de l'ecriture. Hors ligne, aucun ajout n'est annonce : la politique
+  // hors connexion n'est pas elargie par ce lot.
+  const activeVersion = currentVersionId ? versions[currentVersionId] : undefined;
+  const additionsFor = (
+    scope: 'patient' | 'encounter',
+    recordVersion: DisplayVersion | undefined,
+    data: Record<string, unknown>,
+    encounterType?: string,
+  ): TemplateField[] => {
+    if (offlineView || !activeVersion || !recordVersion || activeVersion === recordVersion) return [];
+    return addedFieldsForRecord({
+      activeFields: activeVersion.ruleFields.filter((field) => field.scope === scope),
+      activeRules: activeVersion.rules,
+      activeSections: activeVersion.sections,
+      recordFieldKeys: new Set(recordVersion.ruleFields.filter((field) => field.scope === scope).map((field) => field.fieldKey)),
+      data,
+      encounterType,
+    });
+  };
+  const patientAdditions = additionsFor('patient', patientVersion, patient.data);
   const patientHidden = patientVersion
     ? hiddenFieldKeys(
       patientVersion.rules,
@@ -379,6 +445,16 @@ export function PatientDetail() {
     )
     : new Set<string>();
   const visiblePatientFields = patientFields.filter((field) => !patientHidden.has(field.fieldKey));
+  // L68 — une occurrence de groupe n'est pas une rencontre : elle est rendue dans son bloc, et
+  // la liste des rencontres ne doit jamais la faire passer pour une consultation (§4.2).
+  const realEncounters = encounters.filter((encounter) => !encounter.groupSectionKey);
+  // Les occurrences suivent la version COURANTE de la base : c'est celle que create_encounter
+  // retient, donc celle dont le dictionnaire nomme leurs colonnes.
+  const groupVersion = versions[currentVersionId ?? ''] ?? patientVersion;
+  const groupColumnsOf = (sectionKey: string) => (groupVersion?.fields ?? [])
+    .filter((field) => field.scope === 'encounter' && field.section === sectionKey)
+    .sort((a, b) => a.displayOrder - b.displayOrder);
+  const occurrencesOf = (sectionKey: string) => encounters.filter((encounter) => encounter.groupSectionKey === sectionKey);
 
   return (
     <section className="max-w-4xl space-y-5 sm:space-y-6">
@@ -395,6 +471,7 @@ export function PatientDetail() {
             {canEdit && (
               <DeleteWithReason
                 label={t('del.patient')}
+                reasonOptional={reasonOptional}
                 onConfirm={async (reason) => {
                   if (!patientId) return;
                   await patients.softDeletePatient(patientId, reason);
@@ -478,13 +555,49 @@ export function PatientDetail() {
             patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
           )}
         />
-        {groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout).map((group) => (
-          <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
+        <RecordCompletionNotice
+          labels={patientAdditions.map((field) => field.label)}
+          requiredLabels={patientAdditions.filter((field) => field.required).map((field) => field.label)}
+          action={canEdit ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
+              className="mt-2 text-xs font-medium underline"
+            >
+              {t('completion.open')}
+            </button>
+          ) : undefined}
+        />
+        {withRepeatableSteps(
+          groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout),
+          groupVersion?.sections,
+        ).map((step) => step.kind === 'repeatable' ? (
+          <fieldset key={step.section.sectionKey} className="min-w-0 rounded-xl border border-slate-100 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">
-              {sectionLabel(t, { sectionKey: group.key, label: group.label })}
+              {step.section.label?.trim() || step.section.sectionKey}
+            </legend>
+            {/* Lecture seule : le tableau est rendu, aucune action d'ecriture ne l'est (§8.4). */}
+            <p className="mb-2 text-sm font-medium text-slate-600">
+              {t('form.repeatable_count').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
+            </p>
+            {offlineView && occurrencesOf(step.section.sectionKey).length > 0 && (
+              <p role="status" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {t('offline.group_data_online_only')}
+              </p>
+            )}
+            <RepeatableGroupTable
+              groupLabel={step.section.label?.trim() || step.section.sectionKey}
+              columns={groupColumnsOf(step.section.sectionKey)}
+              rows={occurrencesOf(step.section.sectionKey)}
+            />
+          </fieldset>
+        ) : (
+          <fieldset key={step.group.key} className="rounded-xl border border-slate-100 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">
+              {sectionLabel(t, { sectionKey: step.group.key, label: step.group.label })}
             </legend>
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              {group.fields.map((f) => {
+              {step.group.fields.map((f) => {
                 const renderedUnit = unitOf(f, visiblePatientFields, t);
                 return (
                   <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
@@ -503,26 +616,36 @@ export function PatientDetail() {
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>
-        {encounters.length === 0 ? (
+        {realEncounters.length === 0 ? (
           <EmptyState icon={CalendarDays} title={t('patient.no_encounters')} compact />
         ) : (
           <ul className="space-y-3">
-            {encounters.map((e) => {
+            {realEncounters.map((e) => {
               const encounterVersion = versionFor(e.templateVersionId);
-              const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter') ?? [];
+              const encounterScopeKnown = !offlineView || offlineEncounterScopeKnown[e.id] === true;
+              const repeatableFields = offlineView && encounterVersion
+                ? repeatableEncounterFieldKeys(encounterVersion.fields, encounterVersion.sections)
+                : new Set<string>();
+              const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter'
+                && (!offlineView || !repeatableFields.has(field.fieldKey))) ?? [];
               const encounterHidden = encounterVersion
                 ? hiddenFieldKeys(encounterVersion.rules, e.data, encounterRuleFields, encounterVersion.sections)
                 : new Set<string>();
-              const fieldsForEncounter = (encounterVersion?.fields ?? encounterFields)
+              const fieldsForEncounter = encounterScopeKnown ? (encounterVersion?.fields ?? encounterFields)
                 .filter((field) => field.scope === 'encounter' && (field.formula || field.fieldKey in e.data))
-                .filter((field) => !encounterHidden.has(field.fieldKey));
+                .filter((field) => !encounterHidden.has(field.fieldKey))
+                .filter((field) => !offlineView || !repeatableFields.has(field.fieldKey)) : [];
               const sectionsForEncounter = encounterVersion?.sections;
               const formulaFields = encounterVersion?.fields ?? encounterFields;
+              const encounterAdditions = encounterScopeKnown
+                ? additionsFor('encounter', encounterVersion, e.data, e.encounterType)
+                  .filter((field) => !offlineView || !repeatableFields.has(field.fieldKey))
+                : [];
               return (
               <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">
-                    {t(`encountertype.${e.encounterType}` as MessageKey)} · {formatDate(e.encounterDate, lang)}
+                    {t(`encountertype.${e.encounterType}` as MessageKey)}{e.encounterDate ? ` · ${formatDate(e.encounterDate, lang)}` : ''}
                     <span className="ml-2"><StatusBadge status={e.validationStatus} /></span>
                     {(e as { pending?: boolean }).pending && (
                       <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t('offline.pending_badge')}</span>
@@ -542,6 +665,7 @@ export function PatientDetail() {
                         {t('encounter.edit')}
                       </button>
                       <DeleteWithReason
+                        reasonOptional={reasonOptional}
                         onConfirm={(reason) => patients.softDeleteEncounter(e.id, reason)}
                         onSuccess={load}
                         verifyDeletedAfterError={async () => !(await patients.listEncounters(patientId!)).some((current) => current.id === e.id)}
@@ -550,12 +674,31 @@ export function PatientDetail() {
                   )}
                 </div>
                 <div className="space-y-3">
+                  {offlineView && !encounterScopeKnown ? (
+                    <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      {t('offline.group_data_refresh_required')}
+                    </p>
+                  ) : (
+                  <>
                   {/* L56 : couverture de LA VERSION de cette rencontre, information seulement. */}
                   <DiagnosisCoverageNotice
                     coverage={diagnosisCoverageOrNull(
                       e.templateVersionId, encounterVersion?.diagnosisContext, 'encounter', e.data,
                       encounterRuleFields, encounterVersion?.rules ?? [], sectionsForEncounter,
                     )}
+                  />
+                  <RecordCompletionNotice
+                    labels={encounterAdditions.map((field) => field.label)}
+                    requiredLabels={encounterAdditions.filter((field) => field.required).map((field) => field.label)}
+                    action={!offlineView ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/${e.id}/edit`)}
+                        className="mt-2 text-xs font-medium underline"
+                      >
+                        {t('completion.open')}
+                      </button>
+                    ) : undefined}
                   />
                   {groupFieldsBySection(fieldsForEncounter, sectionsForEncounter, encounterVersion?.commonLayout).map((group) => (
                     <fieldset key={group.key} className="rounded-lg border border-slate-100 p-3">
@@ -577,6 +720,8 @@ export function PatientDetail() {
                       </dl>
                     </fieldset>
                   ))}
+                  </>
+                  )}
                 </div>
               </li>
               );
@@ -623,6 +768,7 @@ export function PatientDetail() {
                     </div>
                     {canEdit && (
                       <DeleteWithReason
+                        reasonOptional={reasonOptional}
                         onConfirm={(reason) => attachmentsRepo.softDeleteAttachment(a.id, reason)}
                         onSuccess={load}
                         verifyDeletedAfterError={async () => !(await attachmentsRepo.listAttachments(patientId!)).some((current) => current.id === a.id)}
