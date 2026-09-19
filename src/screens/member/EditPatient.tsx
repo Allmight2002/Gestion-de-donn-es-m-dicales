@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { RecordFormContext } from '../../data/patients';
+import type { Encounter, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
@@ -13,6 +13,8 @@ import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } f
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
+import { RepeatableGroup } from './RepeatableGroup';
+import { repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -64,12 +66,36 @@ export function EditPatient() {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [reloadRequired, setReloadRequired] = useState(false);
   const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
+  // L68 — blocs repetables de la fiche. Une occurrence est une rencontre a part entiere : elle
+  // s'ecrit seule, avec son propre verrou, et ne participe jamais a l'enregistrement de la fiche.
+  const [canWrite, setCanWrite] = useState(false);
+  const [groupFields, setGroupFields] = useState<TemplateField[]>([]);
+  const [groupRules, setGroupRules] = useState<ValidationRule[]>([]);
+  const [occurrences, setOccurrences] = useState<readonly Encounter[] | null>(null);
+  const [occurrencesError, setOccurrencesError] = useState<string | null>(null);
+  const [groupDirty, setGroupDirty] = useState<Record<string, boolean>>({});
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const back = () => navigate(`/bases/${baseId}/patients/${patientId}`);
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
-  const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`);
+  // Une occurrence ouverte et non enregistree compte comme une saisie en cours : quitter
+  // l'ecran doit la signaler, comme n'importe quel champ modifie de la fiche.
+  const groupHasDraft = Object.values(groupDirty).some(Boolean);
+  const navigation = useDirtyForm({ values, status, reason, groupHasDraft }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`);
+  // Le tableau d'occurrences se charge A PART : le reste du formulaire ne l'attend pas, et une
+  // occurrence ecrite le rafraichit seule (§8.4).
+  const reloadOccurrences = useCallback(async () => {
+    if (!patientId) return;
+    try {
+      setOccurrences(await patients.listEncounters(patientId));
+      setOccurrencesError(null);
+    } catch (e) {
+      setOccurrences(null);
+      setOccurrencesError(errorMessage(e, t('common.error')));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, patients]);
   const work = useWorkDraft({
     // Une fois le contexte E3 obtenu, la soumission passe par le patch compatible : le brouillon
     // clinique historique ne sait pas porter les ajouts actifs et ne doit pas les perdre.
@@ -98,6 +124,7 @@ export function EditPatient() {
         bases.getBase(baseId),
         contextPromise,
       ]);
+      setCanWrite(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
       const loadedValues = p?.data ?? {};
       setValues(loadedValues);
       // Keep the synchronous update path aligned with the loaded snapshot. The first
@@ -136,9 +163,20 @@ export function EditPatient() {
         setDiagnosisVersionId(historical.version.id);
         setDiagnosisContext(context ? active.version.diagnosisContext : historical.version.diagnosisContext);
         setActiveDiagnosisVersionId(active.version.id);
+        // Une occurrence est ecrite dans la version COURANTE de la base : c'est celle que
+        // create_encounter retient. Le formulaire d'occurrence suit donc la version active, pas
+        // la version historique de la fiche.
+        const groupKeys = new Set(repeatableSectionsOf(active.sections ?? []).map((section) => section.sectionKey));
+        setGroupFields(groupKeys.size === 0
+          ? []
+          : active.fields.filter((field) => field.scope === 'encounter'
+            && field.section !== null && groupKeys.has(sectionKeyOf(field))));
+        setGroupRules(active.rules);
+        if (groupKeys.size === 0) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
       } else {
         setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
         setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
+        setGroupFields([]); setGroupRules([]); setOccurrences([]); setOccurrencesError(null);
       }
       setError(null);
       loadedFor.current = `${baseId}:${patientId}`;
@@ -148,7 +186,7 @@ export function EditPatient() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, patientId, bases, templates, patients]);
+  }, [baseId, patientId, bases, templates, patients, reloadOccurrences]);
 
   useEffect(() => { if (loadedFor.current !== `${baseId}:${patientId}`) void load(); }, [load, baseId, patientId]);
 
@@ -258,6 +296,25 @@ export function EditPatient() {
 
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
+  const repeatableSections = repeatableSectionsOf(sections);
+  const renderRepeatableGroup = (section: TemplateSection) => (
+    <RepeatableGroup
+      section={section}
+      fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
+      rules={groupRules}
+      requireComplete={isMissionAccount(profile)}
+      patientId={patientId ?? null}
+      occurrences={occurrences}
+      occurrencesError={occurrencesError}
+      onChanged={reloadOccurrences}
+      onDirtyChange={(dirty) => setGroupDirty((current) => current[section.sectionKey] === dirty
+        ? current
+        : { ...current, [section.sectionKey]: dirty })}
+      canWrite={canWrite}
+      online={online}
+    />
+  );
+
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
       {navigation.guard}
@@ -281,7 +338,17 @@ export function EditPatient() {
         </label>
 
         {fields.length === 0 ? (
-          <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
+          <>
+            <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
+            {repeatableSections.map((section) => (
+              <fieldset key={section.sectionKey} className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
+                <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {section.label?.trim() || section.sectionKey}
+                </legend>
+                {renderRepeatableGroup(section)}
+              </fieldset>
+            ))}
+          </>
         ) : (
           <EncounterFields
             fields={fields}
@@ -293,6 +360,7 @@ export function EditPatient() {
             requireComplete={isMissionAccount(profile) || status !== 'draft'}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
+            repeatableGroup={renderRepeatableGroup}
           />
         )}
 

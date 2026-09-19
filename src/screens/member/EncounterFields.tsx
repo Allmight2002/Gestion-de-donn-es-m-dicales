@@ -1,9 +1,10 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { CircleHelp } from 'lucide-react';
 import { isMultipleTerminology, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
+import { repeatableFieldKeys } from '../../domain/templateSections';
 import { calculatedValue, FORMULA_TIME_UNITS, formulaUsesTemporalOperands, isCalculatedField, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
@@ -103,6 +104,23 @@ export const fieldAppliesToType = (f: TemplateField, type: string) =>
   !f.encounterTypes || f.encounterTypes.length === 0 || f.encounterTypes.includes(type);
 
 /**
+ * §5 — variables applicables a une rencontre ORDINAIRE, dans les DEUX branches de la regle.
+ *
+ * La seconde est celle qu'on oublie : une variable de bloc repetable decrit une occurrence, et
+ * son `encounterTypes` reste nul — sans ce retrait, elle serait reclamee sur toute consultation
+ * alors que le serveur ne la reclame plus. La retirer du rendu ne suffit pas : restee
+ * applicable, une variable REQUISE serait exigee sans etre saisissable nulle part.
+ */
+export function encounterApplicableFields(
+  fields: readonly TemplateField[],
+  sections: readonly TemplateSection[] | null | undefined,
+  encounterType: string,
+): TemplateField[] {
+  const groupKeys = repeatableFieldKeys(fields, sections);
+  return fields.filter((field) => !groupKeys.has(field.fieldKey) && fieldAppliesToType(field, encounterType));
+}
+
+/**
  * L32 — annonce les valeurs qui seront retirees a l'enregistrement parce que leur variable
  * n'est plus affichee. La decision du lot est l'effacement, JAMAIS EN SILENCE : ce bandeau
  * est l'annonce, et rien n'est efface tant que la fiche n'est pas enregistree.
@@ -164,6 +182,7 @@ export function EncounterFields({
   commonLayout,
   rules,
   requireComplete,
+  repeatableGroup,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -179,11 +198,17 @@ export function EncounterFields({
   commonLayout?: TemplateCommonLayout | null;
   rules?: readonly ValidationRule[];
   requireComplete?: boolean;
+  /** L68 — rendu d'un bloc repetable, delegue par `SectionedFields`. */
+  repeatableGroup?: (section: TemplateSection) => ReactNode;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
+  // §5, branche « hors groupe » : une variable de bloc repetable decrit une OCCURRENCE. Elle
+  // n'est jamais saisie ligne a ligne sur la fiche ni sur une rencontre ordinaire — meme quand
+  // son `encounterTypes` est nul, cas ou l'ancien filtre l'aurait laissee passer partout.
+  const groupKeys = repeatableFieldKeys(fields, sections);
   const visibleFields = fields.filter(
-    (field) => !companionKeys.has(field.fieldKey) && !hiddenKeys?.has(field.fieldKey),
+    (field) => !companionKeys.has(field.fieldKey) && !hiddenKeys?.has(field.fieldKey) && !groupKeys.has(field.fieldKey),
   );
   return (
     <SectionedFields
@@ -195,6 +220,7 @@ export function EncounterFields({
       rules={rules}
       hiddenKeys={hiddenKeys}
       requireComplete={requireComplete}
+      repeatableGroup={repeatableGroup}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (
