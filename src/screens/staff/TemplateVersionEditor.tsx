@@ -796,7 +796,7 @@ export function TemplateVersionEditor({
           onMove={setMoving} onStep={moveField} onDelete={setDeleting} onDrop={dropOn}
           onRules={(field) => openContextRules(field ? { field: field.fieldKey } : { group: activeGroup })}
           ruleCount={(field) => ruleCountByFieldId.get(field.id) ?? 0}
-          context={inheritedRules.map((rule) => <p key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></p>)}
+          context={inheritedRules.map((rule) => <div key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>)}
         />
         {fieldFormOpen && (
           <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
