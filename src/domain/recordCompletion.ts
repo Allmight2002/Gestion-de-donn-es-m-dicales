@@ -10,6 +10,7 @@
 import type { RecordFormContext } from '../data/patients';
 import type { TemplateField, TemplateSection, ValidationRule } from '../data/types';
 import { isCalculatedField } from './fieldFormula';
+import { repeatableFieldKeys } from './templateSections';
 import { hiddenFieldKeys } from './validation';
 
 export interface RecordCompletionSummary {
@@ -89,7 +90,12 @@ export function addedFieldsForRecord({
   encounterType?: string | null;
 }): TemplateField[] {
   const hidden = hiddenFieldKeys(activeRules, data, activeFields, activeSections);
+  // §5 — une variable de bloc répétable décrit une OCCURRENCE, pas la fiche : elle ne se
+  // renseigne pas ici et le formulaire ne la rend jamais (voir `EncounterFields`). L'annoncer
+  // « à renseigner » enverrait vers un champ qui n'existe nulle part sur cet écran.
+  const grouped = repeatableFieldKeys(activeFields, activeSections);
   return activeFields.filter((field) => !recordFieldKeys.has(field.fieldKey)
+    && !grouped.has(field.fieldKey)
     && !hidden.has(field.fieldKey)
     && !isCalculatedField(field)
     && isEmptyValue(data[field.fieldKey])

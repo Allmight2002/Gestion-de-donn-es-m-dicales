@@ -226,7 +226,7 @@ analytique explicite la justifie.
 | **L63** | Liste patient : sélecteur de variable et deux sens de tri accessibles | `BaseHome.tsx`, `Patients.test.tsx`, i18n | **après L62** ; jamais avec L61/L64 (même écran) |
 | **L64** | Liste patient : nom complet sélectionnable et recherche nominative auditée | migration/RPC, `patients.ts`, `BaseHome.tsx`, allowlist/ACL, tests DB/web | **après L63** ; jamais en parallèle avec un lot identité ou `BaseHome` |
 | **L65** | Liste patient : preuves intégrées, performance et clôture documentaire | tests web/DB/ACL/browser, documentation | **après L61 à L64** ; validation seule, sans élargir le produit |
-| **L66** | Groupes répétables : socle serveur (`is_repeatable`, `group_section_key`, règle d’applicabilité, RPC, gardes) | migration, `missing_required_fields`, `base_completeness_stats`, `assert_required_complete`, `export_incomplete_records`, `create_encounter`, `copy_template_fields`, tests SQL | **bloquant pour L67 à L71** ; jamais avec un lot rouvrant `copy_template_fields` (L54, L58) |
+| ~~L66~~ | ~~Groupes répétables : socle serveur (`is_repeatable`, `group_section_key`, règle d’applicabilité, RPC, gardes)~~ | **Implémenté localement, non déployé** ; migration `20260918191752_repeatable_groups.sql`, preuves ci-dessous | Débloque L67 à L71 |
 | **L67** | Groupes répétables : déclarer un bloc répétable dans l’éditeur | `SectionsEditor.tsx`, `FormPreview.tsx`, `FieldForm.tsx`, `EditorStructure.tsx`, i18n | **après L66** ; **jamais avec les correctifs UX en cours** (mêmes fichiers), ni avec L59 ou L41 |
 | **L68** | Groupes répétables : le groupe en tableau dans une fiche existante | `RepeatableGroup.tsx` (nouveau), `SectionedFields.tsx`, `PatientDetail.tsx`, `EditPatient.tsx`, i18n | **après L67** ; jamais avec un autre lot ouvrant la fiche patient. **Jalon utilisable du chantier** |
 | **L69** | Groupes répétables : création de patient, occurrences tamponnées et rejeu ordonné | `NewPatient.tsx`, `patients.ts`, tests web | **après L68** ; **jamais avec L41 ni L42** (même `useCallback` de `NewPatient.tsx`) |
@@ -1199,6 +1199,39 @@ choix, et aucun groupe ne doit être ouvert.
 **Collision immédiate à connaître : L67 touche les quatre fichiers de l'éditeur que les
 correctifs UX modifient en ce moment.** Ne pas ouvrir L67 tant que cette branche n'est pas
 fusionnée.
+
+### L66 — état au 2026-09-18 : implémenté localement, non déployé
+
+Migration `20260918191752_repeatable_groups.sql`, additive, aucune migration déjà appliquée
+modifiée, aucune donnée clinique réécrite. La règle du §5 est portée par
+`missing_required_fields` et `base_completeness_stats`, et relayée par ses quatre appelants :
+`assert_required_complete`, `export_incomplete_records`, `assert_curated_complete` et
+`update_encounter_compatible`. `create_encounter` gagne `p_group_section_key` en dernière
+position ; `update_encounter` garde sa signature.
+
+**Vérifié localement**, sur PostgreSQL embarqué et données fictives :
+
+- `test/repeatable-groups.test.ts` — **17 tests passés**, couvrant les points 1, 2, 3, 4 bis,
+  5 (les sept gardes du §6.4, une par une), 6, 7, 8, 9, 10, 11 et 12 du §14.1, plus le refus
+  du §6.5 dans ses deux sens et un complément RLS/privilèges.
+- `test/repeatable-groups-regression.test.ts` — **3 tests passés**. Non-régression *démontrée*
+  et non affirmée : le harnais peuple le schéma **d'avant** la migration (8 patients,
+  32 rencontres, deux versions de gabarit), observe 160 verdicts de `missing_required_fields`
+  et les trois modes de `base_completeness_stats` sous deux acteurs, applique la migration,
+  puis ré-observe. Les résultats sont identiques champ à champ, ordre compris.
+- `npm run schema` puis `npm run schema:check` : snapshot régénéré, *Snapshot de schéma à
+  jour*. `npm run typecheck` et `eslint` sur les fichiers du lot : sans erreur.
+
+**Limite d'environnement, sans rapport avec le lot.** Sur le poste de développement,
+`db.stop()` n'arrête pas le PostgreSQL embarqué : `afterAll` expire au `hookTimeout` de 180 s
+et vitest marque la suite `FAIL` bien que tous les tests passent. Le défaut est préexistant —
+`test/groups.test.ts`, intouché par L66, échoue à l'identique. Le signal à lire est la ligne
+`Tests N passed`.
+
+**Non vérifié sur la cible.** Aucune migration n'a été appliquée à distance, aucun déploiement
+n'a eu lieu. Le comportement sous Supabase (PostgREST, rechargement de schéma, RLS réelle) reste
+à constater. Le choix `longitudinal` ou `event_registry` de la base, préalable non logiciel,
+reste à décider avant la première fiche.
 
 ## Ordre suggéré — état de source au 2026-09-16
 

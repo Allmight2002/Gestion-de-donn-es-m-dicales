@@ -16,7 +16,7 @@ import {
   isOfflineIntakeEnabled, type PatientCreateEntry,
 } from '../../data/offlineIntake';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, encounterApplicableFields } from './EncounterFields';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
@@ -110,8 +110,8 @@ export function EncounterForm() {
   // applicables au type choisi. Evaluer sur autre chose ferait diverger l'ecran du serveur
   // des qu'une variable pilote cesse de s'appliquer au type de visite.
   const applicableFields = useMemo(
-    () => fields.filter((f) => fieldAppliesToType(f, encounterType)),
-    [fields, encounterType],
+    () => encounterApplicableFields(fields, sections, encounterType),
+    [fields, sections, encounterType],
   );
   const { hidden, removed, data: submittedData } = useMemo(() => {
     const applicableData = Object.fromEntries(

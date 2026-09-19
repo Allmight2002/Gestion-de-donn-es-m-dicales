@@ -43,6 +43,10 @@ export interface TemplateRepository {
   addSection?(versionId: string, sectionKey: string, label: string, parentKey?: string | null): Promise<TemplateSection>;
   /** Corrige le LIBELLE d'une section. Son code interne, lui, ne se modifie jamais (L31). */
   renameSection?(sectionId: string, label: string): Promise<void>;
+  /** L67 : declare (ou retire) le caractere repetable d'un bloc racine. Les sept gardes de
+   *  `guard_template_section_write` tranchent : version deja utilisee, sous-section, variable
+   *  hors portee rencontre, bloc cible d'une regle d'affichage. */
+  setSectionRepeatable?(sectionId: string, isRepeatable: boolean): Promise<void>;
   /** Supprime une section. Refusee si elle porte encore une variable (garde serveur). */
   deleteSection?(sectionId: string): Promise<void>;
   /** Reordonne les sections d'une version : `orderedIds` dans le nouvel ordre. */
@@ -124,7 +128,7 @@ type FieldRow = {
   encounter_types: string[] | null;
 };
 type RuleRow = { id: string; rule: unknown; message: string | null; severity: RuleSeverity };
-type SectionRow = { parent_section_id?: string | null; id: string; section_key: string; label: string; display_order: number };
+type SectionRow = { parent_section_id?: string | null; id: string; section_key: string; label: string; display_order: number; is_repeatable?: boolean | null };
 
 /** Forme JSON de `common_layout_state`; elle est validee de facon defensive avant l'UI. */
 type CommonLayoutRow = {
@@ -178,9 +182,10 @@ const mapVersion = (r: VersionRow): TemplateVersion => ({
 const mapSection = (r: SectionRow, rows: SectionRow[] = []): TemplateSection => ({
   parentSectionKey: rows.find((p) => p.id === r.parent_section_id)?.section_key ?? null,
   id: r.id, sectionKey: r.section_key, label: r.label, displayOrder: r.display_order,
+  isRepeatable: r.is_repeatable === true,
 });
 
-const SECTION_COLUMNS = 'parent_section_id, id, section_key, label, display_order';
+const SECTION_COLUMNS = 'parent_section_id, id, section_key, label, display_order, is_repeatable';
 const VERSION_COLUMNS = 'id, template_id, version_number, status, diagnosis_configuration';
 const LEGACY_VERSION_COLUMNS = 'id, template_id, version_number, status';
 
@@ -299,9 +304,11 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async listTemplates() {
+      // Provenance also links fields to their source version. Count fields owned by this
+      // version, not fields derived from it (PostgREST otherwise returns PGRST201).
       const { data, error } = await client
         .from('template')
-        .select('id, name, specialty, owner_user_id, is_global, template_version(id, template_id, version_number, status, template_field(id))')
+        .select('id, name, specialty, owner_user_id, is_global, template_version(id, template_id, version_number, status, template_field!template_field_template_version_id_fkey(id))')
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data ?? []).map((t) => ({
@@ -525,6 +532,14 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       // SEUL le libelle part : le code interne est la reference stable des variables et
       // des instantanes hors-ligne, et le declencheur serveur refuse de le voir changer.
       const { error } = await client.from('template_section').update({ label }).eq('id', sectionId);
+      if (error) throw error;
+      clearVersionCache();
+    },
+
+    async setSectionRepeatable(sectionId, isRepeatable) {
+      // La colonne part SEULE : tout le reste de la ligne est deja gele par le declencheur,
+      // et l'ecran a converti les portees AVANT d'arriver ici.
+      const { error } = await client.from('template_section').update({ is_repeatable: isRepeatable }).eq('id', sectionId);
       if (error) throw error;
       clearVersionCache();
     },

@@ -814,7 +814,7 @@ export function TemplateVersionEditor({
           onMove={setMoving} onStep={moveField} onDelete={setDeleting} onDrop={dropOn}
           onRules={(field) => openContextRules(field ? { field: field.fieldKey } : { group: activeGroup })}
           ruleCount={(field) => ruleCountByFieldId.get(field.id) ?? 0}
-          context={inheritedRules.map((rule) => <p key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></p>)}
+          context={inheritedRules.map((rule) => <div key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>)}
         />
         {fieldFormOpen && (
           <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
@@ -957,6 +957,35 @@ export function TemplateVersionEditor({
             onDelete={(sectionId) => void run(() => repo.deleteSection!(sectionId))}
             onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}
             onImportBlock={repo.listImportableSections ? () => setImportOpen(true) : undefined}
+            observationModel={observationModel}
+            onRepeatableChange={repo.setSectionRepeatable ? (sectionId, isRepeatable, fieldsToConvert) => void run(async () => {
+              // L67 — les PORTEES partent avant l'indicateur : la base refuse un groupe
+              // repetable qui contient encore une variable de portee patient. `encounterTypes`
+              // repart a null (§5) : le bloc filtre desormais, plus le type de rencontre.
+              for (const field of fieldsToConvert) {
+                await repo.updateField(field.id, {
+                  fieldKey: field.fieldKey,
+                  label: field.label,
+                  description: field.description,
+                  defaultValue: field.defaultValue,
+                  scope: 'encounter',
+                  section: field.section,
+                  type: field.type,
+                  required: field.required,
+                  isMultiple: field.isMultiple,
+                  encounterTypes: null,
+                  allowedValues: field.allowedValues ? field.allowedValues.map(String) : null,
+                  allowedOptions: fieldOptions(field),
+                  minValue: field.minValue,
+                  maxValue: field.maxValue,
+                  unit: field.unit,
+                  allowMissingCodes: field.allowMissingCodes,
+                  missingReasons: field.missingReasons,
+                  formula: field.formula,
+                });
+              }
+              await repo.setSectionRepeatable!(sectionId, isRepeatable);
+            }) : undefined}
           />
         ) : editable ? (
           <div className="space-y-3">

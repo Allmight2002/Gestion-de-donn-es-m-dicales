@@ -13,7 +13,9 @@ import { userDataCaches } from '../pwa/appShellCaches';
 export interface OfflineEncounter {
   id: string;
   encounterType: string;
-  encounterDate: string;
+  encounterDate: string | null;
+  /** Preserve the discriminator for read-only display; L68 never queues group writes. */
+  groupSectionKey?: string | null;
   validationStatus: string;
   ageValue: number | null;
   ageUnit: string | null;
@@ -201,6 +203,7 @@ export function buildSnapshot(
         id: e.id, encounterType: e.encounterType, encounterDate: e.encounterDate,
         validationStatus: e.validationStatus, ageValue: e.ageValue, ageUnit: e.ageUnit, data: e.data,
         updatedAt: e.updatedAt ?? null, templateVersionId: e.templateVersionId,
+        ...(e.groupSectionKey ? { groupSectionKey: e.groupSectionKey } : {}),
       })),
     })),
     cachedAt: now,

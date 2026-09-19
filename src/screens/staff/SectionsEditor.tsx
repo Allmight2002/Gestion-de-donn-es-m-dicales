@@ -10,7 +10,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import { Checkbox } from '../../components/Checkbox';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import type { ObservationModel } from '../../data/bases';
 import type { TemplateField, TemplateSection } from '../../data/types';
 import { makeValueKey } from '../../domain/fieldOptions';
 import { sectionLabel } from '../../domain/templateSections';
@@ -42,6 +44,8 @@ export function SectionsEditor({
   onMove,
   onReorderSiblings,
   onImportBlock,
+  onRepeatableChange,
+  observationModel,
   onDirtyChange,
 }: {
   sections: TemplateSection[];
@@ -57,6 +61,17 @@ export function SectionsEditor({
   /** L59 : ouvre le choix d'un bloc reutilisable. Absente quand le serveur ne sait pas
    *  encore lister les blocs importables : la commande ne se rend alors pas du tout. */
   onImportBlock?: () => void;
+  /**
+   * L67 : declare un bloc racine repetable. `fieldsToConvert` porte les variables que
+   * l'ecran doit basculer en portee rencontre AVANT d'ecrire l'indicateur — la base refuse
+   * un groupe repetable qui contient encore une variable de portee patient.
+   * Absente quand le serveur ne sait pas encore ecrire l'indicateur : la case ne se rend pas.
+   */
+  onRepeatableChange?: (
+    sectionId: string, isRepeatable: boolean, fieldsToConvert: TemplateField[],
+  ) => void | Promise<unknown>;
+  /** Modele d'observation de la base. Un groupe repetable exige des variables de rencontre. */
+  observationModel?: ObservationModel;
   /** Notifie le parent de la saisie locale non accusee (ajout ou renommage). */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -72,7 +87,24 @@ export function SectionsEditor({
   const pendingRename = useRef<{ sectionId: string; label: string } | null>(null);
   const pendingAdd = useRef<{ sectionKey: string; label: string } | null>(null);
 
-  const countIn = (sectionKey: string) => fields.filter((f) => f.section === sectionKey).length;
+  const fieldsIn = (sectionKey: string) => fields.filter((f) => f.section === sectionKey);
+  const countIn = (sectionKey: string) => fieldsIn(sectionKey).length;
+
+  // L67 — une variable de rencontre est refusee sur une base transversale (garde serveur
+  // `enforce_observation_model_on_template_field`), donc un groupe repetable l'est aussi.
+  // Le modele se verrouille a la premiere fiche : c'est un fait acquis, pas un reglage a
+  // contourner, et l'ecran le presente comme tel.
+  const isCrossSectional = observationModel === 'cross_sectional';
+  const [pendingRepeatable, setPendingRepeatable] = useState<TemplateSection | null>(null);
+  const repeatableFields = pendingRepeatable ? fieldsIn(pendingRepeatable.sectionKey) : [];
+  // Le sens des lignes deja ecrites changerait : c'est ce qui bloque, avant toute conversion.
+  const repeatableBlocked = repeatableFields.filter((f) => f.inUse);
+  const repeatableToConvert = repeatableFields.filter((f) => f.scope !== 'encounter');
+  // L'ecriture couvre aussi les variables qui portent encore des types de rencontre : §5 veut
+  // `encounter_types` NUL sur les variables d'un bloc repetable, ce n'est plus lui qui filtre.
+  const repeatableToNormalize = repeatableFields.filter(
+    (f) => f.scope !== 'encounter' || (f.encounterTypes?.length ?? 0) > 0,
+  );
 
   const editingDirty = editingId !== null && draftLabel !== originalLabel.current;
   const dirty = (newLabel !== '' || parentKey !== '') || editingDirty;
@@ -319,6 +351,24 @@ export function SectionsEditor({
                   </div>
                 </>
               )}
+
+              {/* L67 — un bloc racine peut devenir un GROUPE REPETABLE. La case porte la regle
+                  de decision du §3.3 en libelle secondaire : elle se tranche sur l'unite
+                  d'analyse, pas sur la forme du formulaire. */}
+              {!section.parentSectionKey && onRepeatableChange && (
+                <div className="basis-full border-t border-slate-100 pt-2 dark:border-slate-700">
+                  <Checkbox
+                    label={t('section.repeatable')}
+                    description={isCrossSectional ? t('section.repeatable_locked_model') : t('section.repeatable_hint')}
+                    checked={section.isRepeatable === true}
+                    disabled={busy || isCrossSectional}
+                    onChange={(event) => {
+                      if (event.target.checked) setPendingRepeatable(section);
+                      else void onRepeatableChange(section.id, false, []);
+                    }}
+                  />
+                </div>
+              )}
             </li>
           );
         })}
@@ -342,6 +392,51 @@ export function SectionsEditor({
           if (section) beginEditing(section);
         }}
       />
+
+      {/* L67 — cocher ne bascule rien avant que les trois consequences aient ete lues, et
+          rien du tout si une variable du bloc porte deja des donnees. */}
+      <ConfirmDialog
+        open={pendingRepeatable !== null}
+        title={t('section.repeatable_confirm_title')
+          .replace('{block}', pendingRepeatable ? sectionLabel(t, pendingRepeatable) : '')}
+        confirmLabel={t('section.repeatable_confirm')}
+        confirmDisabled={busy || repeatableBlocked.length > 0}
+        onCancel={() => setPendingRepeatable(null)}
+        onConfirm={() => {
+          const target = pendingRepeatable;
+          setPendingRepeatable(null);
+          if (!target || repeatableBlocked.length > 0) return;
+          void onRepeatableChange?.(target.id, true, repeatableToNormalize);
+        }}
+      >
+        <div className="space-y-3 text-sm">
+          {repeatableBlocked.length > 0 ? (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+              <p className="font-medium">{t('section.repeatable_blocked_title')}</p>
+              <ul className="mt-1 list-disc pl-5">
+                {repeatableBlocked.map((field) => <li key={field.id}>{field.label}</li>)}
+              </ul>
+              <p className="mt-2">{t('section.repeatable_blocked_body')}</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <p className="font-medium text-slate-800 dark:text-slate-100">{t('section.repeatable_scope_title')}</p>
+                {repeatableFields.length === 0 ? (
+                  <p className="text-slate-600 dark:text-slate-300">{t('section.repeatable_empty')}</p>
+                ) : repeatableToConvert.length === 0 ? (
+                  <p className="text-slate-600 dark:text-slate-300">{t('section.repeatable_scope_none')}</p>
+                ) : (
+                  <ul className="mt-1 list-disc pl-5 text-slate-600 dark:text-slate-300">
+                    {repeatableToConvert.map((field) => <li key={field.id}>{field.label}</li>)}
+                  </ul>
+                )}
+              </div>
+              <p className="text-slate-600 dark:text-slate-300">{t('section.repeatable_types_note')}</p>
+            </>
+          )}
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

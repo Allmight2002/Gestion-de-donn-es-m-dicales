@@ -232,6 +232,12 @@ export interface TemplateSection {
   sectionKey: string;
   label: string;
   displayOrder: number;
+  /**
+   * L67 — bloc REPETABLE : ses variables decrivent une OCCURRENCE (une lesion, une
+   * intervention), pas le patient. Absent ou faux = bloc ordinaire, comportement inchange.
+   * Ne vaut que sur un bloc racine : la base le garantit.
+   */
+  isRepeatable?: boolean;
 }
 
 export interface ValidationRule {

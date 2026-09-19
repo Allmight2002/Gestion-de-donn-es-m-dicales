@@ -1,7 +1,50 @@
 import { describe, expect, test, vi } from 'vitest';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { makeTemplateRepository } from './templates';
 import type { NewField } from './types';
+
+describe('TemplateRepository.listTemplates', () => {
+  test('explicitly joins owned fields when provenance adds another version relationship', async () => {
+    const requests: URL[] = [];
+    const client = createClient('https://example.invalid', 'test-key', {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      global: {
+        fetch: async (input) => {
+          const url = new URL(String(input));
+          requests.push(url);
+          const select = url.searchParams.get('select') ?? '';
+          if (!select.includes('template_field!template_field_template_version_id_fkey(id)')) {
+            return new Response(JSON.stringify({
+              code: 'PGRST201',
+              message: "Could not embed because more than one relationship was found for 'template_version' and 'template_field'",
+            }), { status: 300, headers: { 'Content-Type': 'application/json' } });
+          }
+          return new Response(JSON.stringify([
+            {
+              id: 'personal', name: 'Personal', owner_user_id: 'owner', is_global: false,
+              template_version: [
+                { id: 'v2', template_id: 'personal', version_number: 2, status: 'draft', template_field: [] },
+                { id: 'v1', template_id: 'personal', version_number: 1, status: 'published', template_field: [{ id: 'f1' }, { id: 'f2' }] },
+              ],
+            },
+            { id: 'global', name: 'Global', is_global: true, template_version: [] },
+          ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        },
+      },
+    });
+
+    const templates = await makeTemplateRepository(client).listTemplates();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].pathname).toBe('/rest/v1/template');
+    expect(templates).toHaveLength(2);
+    expect(templates[0]).toMatchObject({ id: 'personal', ownerUserId: 'owner', isGlobal: false });
+    expect(templates[0].versions.map(({ id, fieldCount }) => ({ id, fieldCount }))).toEqual([
+      { id: 'v1', fieldCount: 2 }, { id: 'v2', fieldCount: 0 },
+    ]);
+    expect(templates[1]).toMatchObject({ id: 'global', isGlobal: true, versions: [] });
+  });
+});
 
 const source: NewField = {
   fieldKey: 'diagnostic',
