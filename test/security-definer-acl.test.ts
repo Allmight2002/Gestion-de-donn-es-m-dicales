@@ -61,9 +61,10 @@ describe('inventaire SECURITY DEFINER', () => {
     // rattachement cross-template restent fermes aux clients.
     // +4 E3 : lectures de contexte et compléments atomiques patient/rencontre. Le serveur
     // calcule l'applicabilité, protège l'empreinte et contrôle portée, révision et provenance.
-    expect(signatures).toHaveLength(146);
+    // +1 L69 : creation d occurrence rejouable par cle serveur, avec controle des droits a chaque rejeu.
+    expect(signatures).toHaveLength(147);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(158);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(159);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

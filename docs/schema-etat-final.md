@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260918191752_repeatable_groups.sql`
-- Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 382
+- Dernière migration incluse : `20260919190252_create_encounter_idempotent.sql`
+- Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 383
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1308,6 +1308,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | create_cohort_snapshot | p_base_id uuid, p_name text, p_filter jsonb, p_validated_only boolean | INVOKER | plpgsql |
 | create_curation_submission | p_base_id uuid, p_target_patient_id uuid, p_external_ref text, p_scope text | DEFINER | plpgsql |
 | create_encounter | p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
+| create_encounter_idempotent | p_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
 | create_next_personal_template_version | p_template_id uuid | DEFINER | plpgsql |
 | create_patient | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
 | create_patient_curation_submission | p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_idempotency_key text | DEFINER | plpgsql |

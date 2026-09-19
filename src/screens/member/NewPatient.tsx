@@ -28,6 +28,11 @@ import { DatePickerInput } from '../../components/DatePickerInput';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
+import { repeatableFieldKeys, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
+import {
+  hasUnsavedOccurrences, replayPendingOccurrences, unsavedOccurrences, type PendingOccurrence,
+} from '../../domain/pendingOccurrences';
+import { PendingRepeatableGroup } from './PendingRepeatableGroup';
 import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
 import { PatientDraftDialog } from './PatientDraftDialog';
@@ -39,6 +44,14 @@ import { localWorkDraftRepository } from '../../data/localWorkDrafts';
 //                cree le patient, puis CONFIE le cas au staff (pool) -> page de depot des
 //                documents deidentifies. Les donnees analytiques seront saisies par le staff.
 export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) {
+  const { id: baseId } = useParams();
+  // A confirmed route change between bases starts a fresh form instance, including local
+  // repeatable editors and patient identity fields. The guard stays mounted until navigation
+  // is confirmed, then the key change resets every draft from the previous base.
+  return <NewPatientForm key={`${baseId ?? ''}:${mode}`} mode={mode} />;
+}
+
+function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   const { id: baseId } = useParams();
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -86,10 +99,30 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   const [ackDuplicate, setAckDuplicate] = useState(false); // B5 : confirmation « patient different »
   const [confirmationOpen, setConfirmationOpen] = useState(false);
 
+  // L69 — une rencontre exige un patient existant. Les occurrences saisies ici restent donc
+  // EN MEMOIRE, marquees « non enregistree », et sont rejouees DANS L'ORDRE apres
+  // `create_patient`. Voir `domain/pendingOccurrences` pour les trois proprietes tenues.
+  const [groupFields, setGroupFields] = useState<TemplateField[]>([]);
+  const [pending, setPending] = useState<PendingOccurrence[]>([]);
+  const [pendingEditorSections, setPendingEditorSections] = useState<Set<string>>(() => new Set());
+  // Fiche deja creee : elle EXISTE cote serveur. Une reprise rejoue les occurrences restantes
+  // et ne repasse JAMAIS par `create_patient` — sans quoi une seconde fiche apparaitrait.
+  const [createdPatient, setCreatedPatient] = useState<{ id: string; code: string | null } | null>(null);
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
-  const navigation = useDirtyForm({ code, fullName, externalId, dob, phone, address, permanent }, !loading && versionId !== null, `${baseId}:${mode}`);
+  // Une ligne tamponnee non ecrite est une saisie en cours : quitter l'ecran doit la signaler,
+  // exactement comme un champ modifie. Le compte entre donc dans l'empreinte du formulaire.
+  const unsaved = unsavedOccurrences(pending);
+  const navigation = useDirtyForm(
+    {
+      code, fullName, externalId, dob, phone, address, permanent,
+      unsavedOccurrences: unsaved.length,
+      pendingOccurrenceEditor: pendingEditorSections.size > 0,
+    },
+    !loading && versionId !== null,
+    `${baseId}:${mode}`,
+  );
   const work = useWorkDraft({
     repository: useLocalSupport ? localWorkDraftRepository : undefined,
     support: useLocalSupport ? 'local' : 'server',
@@ -180,6 +213,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
       setCanViewIdentity(base.role === 'owner' || base.permissions.canViewIdentity);
       const patientFields = fields.filter((f) => f.scope === 'patient').sort((a, b) => a.displayOrder - b.displayOrder);
       setFields(patientFields);
+      // L69 — variables des blocs REPETABLES. Elles decrivent une occurrence, pas la fiche :
+      // elles ne rejoignent jamais `fields`, et leur saisie passe par le tableau du bloc.
+      const groupKeys = new Set(repeatableSectionsOf(version.sections ?? []).map((s) => s.sectionKey));
+      setGroupFields(groupKeys.size === 0
+        ? []
+        : fields.filter((f) => f.scope === 'encounter' && f.section !== null && groupKeys.has(sectionKeyOf(f))));
       // Preremplissage : CREATION seulement, cote client uniquement, et UNE SEULE FOIS -- un
       // rechargement ne doit pas faire reapparaitre une proposition que la personne a effacee.
       // Le serveur, lui, n'ecrit jamais ces valeurs de lui-meme.
@@ -232,9 +271,61 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   // Mode hors-ligne intake-only actif pour CET ecran (formulaire + soumission locaux).
   const offlineIntakeActive = useLocalSupport && isOfflineIntakeEnabled() && mode === 'manual';
 
+  /**
+   * Rejeu ORDONNE du tampon, apres `create_patient`. Un `create_encounter` par ligne, dans
+   * l'ordre de saisie, en s'arretant a la premiere qui echoue : ecrire la suivante la placerait
+   * avant elle. Les lignes deja ecrites portent leur identifiant serveur et sont sautees — c'est
+   * ce qui rend la reprise sans doublon, quel qu'en soit le nombre.
+   *
+   * Retourne `true` quand il ne reste plus AUCUNE ligne non enregistree : seul ce cas autorise
+   * l'ecran a se declarer propre et a naviguer.
+   */
+  async function replayOccurrences(patientId: string, rows: PendingOccurrence[], limit?: number): Promise<boolean> {
+    const outcome = await replayPendingOccurrences(
+      rows,
+      (row) => patients.createEncounter(patientId, {
+        encounterType: 'autre',
+        // Une lesion n'a pas de date ; le bloc peut porter la sienne parmi ses variables (§4.3).
+        encounterDate: null,
+        validationStatus: row.validationStatus,
+        ageUnit: 'years',
+        data: row.data,
+        groupSectionKey: row.sectionKey,
+      }, `l69-occurrence:${row.localId}`),
+      { limit, describeError: msg },
+    );
+    setPending(outcome.rows);
+    return !hasUnsavedOccurrences(outcome.rows);
+  }
+
+  /** Reprise depuis le bandeau : la fiche existe deja, seules les lignes restantes partent. */
+  async function resumeOccurrences(limit?: number) {
+    if (!createdPatient || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (await replayOccurrences(createdPatient.id, pending, limit)) {
+        toast(t('toast.patient_saved'));
+        navigation.markClean();
+        navigate(`/bases/${baseId}/patients/${createdPatient.id}`);
+      }
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Abandon explicite d'une ligne refusee ; une reponse perdue doit etre resolue avant abandon. */
+  function discardPending(localId: string) {
+    if (pending.some((row) => row.localId === localId && row.deliveryState === 'unknown')) return;
+    setPending((rows) => rows.filter((row) => row.localId !== localId));
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy || work.loading || work.candidates.length || work.discarding) return;
+    if (pendingEditorSections.size > 0) return;
     if (work.locked) { await persistPatient(); return; }
     // En hors-ligne intake-only, un code vide est ACCEPTED : il est genere depuis la cle
     // d'operation (stable, improbable a collision) a la mise en file. En ligne, le code
@@ -265,7 +356,11 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   }
 
   async function persistPatient() {
+    if (pendingEditorSections.size > 0) return;
     if (!baseId) return;
+    // La fiche existe deja : cette soumission ne peut plus etre qu'une reprise des occurrences
+    // restantes. Repasser par la creation produirait une seconde fiche pour le meme patient.
+    if (createdPatient) { await resumeOccurrences(); return; }
     const patientCurationInput = mode === 'submit' ? {
       code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
       address: address || null, externalIdentifier: externalId.trim() || null,
@@ -345,6 +440,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
         externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
       };
       const created = work.enabled ? await work.commit(identity) : await patients.createPatient(baseId, { ...identity, code: code.trim(), permanentData });
+      // La fiche EXISTE des cet instant. Elle est retenue avant tout rejeu : si une occurrence
+      // echoue, la reprise doit partir de cette fiche-la et n'en creer aucune autre.
+      setCreatedPatient({ id: created.id, code: created.code ?? null });
+      // L69 — rejeu ORDONNE des occurrences tamponnees. Tant qu'une ligne manque, l'ecran ne se
+      // declare ni propre ni termine : il reste ouvert sur l'etat reel.
+      if (!await replayOccurrences(created.id, pending)) return;
       toast(t('toast.patient_saved')); // UI-2
       navigation.markClean();
       navigate(`/bases/${baseId}/patients/${created.id}`);
@@ -378,8 +479,42 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
   // Une proposition est toujours rendue avec sa source. Cela vaut aussi pour les donnees
   // permanentes : le texte libre reste dans le champ compagnon, jamais dans le diagnostic.
   const companionKeys = proposalKeysOf(fields);
+  // §5, branche « hors groupe » : une variable de bloc repetable decrit une OCCURRENCE et ne se
+  // saisit jamais ligne a ligne sur la fiche. Le filtre de scope l'ecarte deja ; celui-ci tient
+  // aussi pour un gabarit dont une variable de bloc serait restee en portee patient.
+  const groupKeys = repeatableFieldKeys(fields, sections);
   const visibleFields = fields.filter(
-    (field) => !companionKeys.has(field.fieldKey) && !hidden.has(field.fieldKey),
+    (field) => !companionKeys.has(field.fieldKey) && !hidden.has(field.fieldKey) && !groupKeys.has(field.fieldKey),
+  );
+
+  // L69 — le bloc repetable est rendu A SA PLACE dans le formulaire (§8.1), avec le tableau de
+  // L68. Ses lignes restent tamponnees : rien ne part au serveur avant que la fiche existe.
+  const renderRepeatableGroup = (section: TemplateSection) => (
+    <PendingRepeatableGroup
+      key={`${baseId ?? ''}:${mode}:${section.sectionKey}`}
+      section={section}
+      fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
+      rules={rules}
+      requireComplete={isMissionAccount(profile)}
+      rows={pending.filter((row) => row.sectionKey === section.sectionKey)}
+      online={online && !offlineIntakeActive}
+      busy={busy}
+      onAdd={(data, validationStatus) => setPending((rows) => [...rows, {
+        localId: crypto.randomUUID(), sectionKey: section.sectionKey, data, validationStatus,
+        savedId: null, deliveryState: 'not_attempted', error: null,
+      }])}
+      // Corriger une ligne efface son dernier echec : le message decrivait les valeurs d'avant.
+      onEdit={(localId, data, validationStatus) => setPending((rows) => rows.map((row) => row.localId === localId
+        ? { ...row, data, validationStatus, deliveryState: 'not_attempted', error: null }
+        : row))}
+      onRemove={discardPending}
+      onDraftDirtyChange={(dirty) => setPendingEditorSections((current) => {
+        if (current.has(section.sectionKey) === dirty) return current;
+        const next = new Set(current);
+        if (dirty) next.add(section.sectionKey); else next.delete(section.sectionKey);
+        return next;
+      })}
+    />
   );
 
   const identification = <div className="space-y-4">
@@ -476,11 +611,67 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
       {mode === 'submit' && <p className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">{t('patient.submit_hint')}</p>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+
+      {/* L69 — la fiche est ecrite, des occurrences ne le sont pas. L'ecran dit PRECISEMENT
+          lesquelles, avec leur message, et porte la reprise : ce bandeau reste HORS du
+          formulaire gele, sans quoi ses actions seraient inertes. */}
+      {createdPatient && unsaved.length > 0 && (
+        <div role="alert" aria-label={t('form.pending_banner')} className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">
+            {t(pending.some((row) => row.deliveryState === 'unknown')
+              ? 'form.pending_uncertain_partial' : 'form.pending_partial')
+              .replace('{code}', createdPatient.code ?? code.trim())
+              .replace('{written}', String(pending.length - unsaved.length))
+              .replace('{total}', String(pending.length))}
+          </p>
+          <ul className="space-y-2">
+            {unsaved.map((row) => (
+              <li key={row.localId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="font-medium">
+                  {t('form.pending_row')
+                    .replace('{group}', sections.find((s) => s.sectionKey === row.sectionKey)?.label?.trim() || row.sectionKey)
+                    .replace('{n}', String(pending.filter((entry) => entry.sectionKey === row.sectionKey).indexOf(row) + 1))}
+                </span>
+                <span className="min-w-0 break-words">
+                  {row.deliveryState === 'unknown'
+                    ? t('form.pending_unknown_message')
+                    : row.error ?? t('form.pending_not_attempted')}
+                </span>
+                {row.deliveryState !== 'unknown' && (
+                  <button type="button" className="font-medium text-teal-700 hover:underline" disabled={busy}
+                    onClick={() => discardPending(row.localId)}>
+                    {t('form.pending_discard')}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Reprise LIGNE PAR LIGNE : une seule occurrence part, celle qui vient. Le rejeu
+                complet reste a cote pour reprendre tout ce qui reste, toujours dans l'ordre. */}
+            <button type="button" className="btn-primary" disabled={busy} onClick={() => void resumeOccurrences(1)}>
+              {t('form.pending_retry_next')}
+            </button>
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => void resumeOccurrences()}>
+              {t('form.pending_retry_all')}
+            </button>
+            <button type="button" className="font-medium text-teal-700 hover:underline"
+              onClick={() => navigate(`/bases/${baseId}/patients/${createdPatient.id}`)}>
+              {t('form.pending_open_record')}
+            </button>
+          </div>
+          <p className="text-xs">{t('form.pending_leave_warning')}</p>
+        </div>
+      )}
+
       <PatientDraftDialog draft={work} onCancel={() => navigate(`/bases/${baseId}`)} onNew={resetEntry} />
       <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
-        <fieldset disabled={busy || work.loading || work.locked || work.candidates.length > 0 || work.discarding} className="min-w-0 space-y-6">
+        {/* La fiche enregistree ne se ressaisit plus ici : le formulaire gele pour que l'etat
+            affiche reste l'etat reel. Ce qui manque encore se reprend depuis le bandeau, et une
+            correction de la fiche elle-meme passe par son ecran. */}
+        <fieldset disabled={busy || createdPatient !== null || work.loading || work.locked || work.candidates.length > 0 || work.discarding} className="min-w-0 space-y-6">
         {mode === 'submit' && <fieldset className="rounded-xl border border-slate-200 p-4"><legend className="px-1 text-sm font-semibold">{t('patient.identification')}</legend>{identification}</fieldset>}
         {/* L'identite ouvre le formulaire comme premier bloc : elle reste hors du gabarit,
             donc hors des regles et de la progression, mais se saisit dans le meme parcours
@@ -499,6 +690,7 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
               hiddenKeys={hidden}
               rules={rules}
               requireComplete={isMissionAccount(profile)}
+              repeatableGroup={renderRepeatableGroup}
               renderField={(field) => {
                 const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
                 return (
@@ -565,8 +757,12 @@ export function NewPatient({ mode = 'manual' }: { mode?: 'manual' | 'submit' }) 
 
         </fieldset>
         <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          <button type="submit" disabled={busy || work.loading || work.candidates.length > 0 || work.discarding} className="btn-primary">
-            {mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
+          {pendingEditorSections.size > 0 && <p role="status" className="w-full text-sm text-amber-700">{t('form.pending_editor_open')}</p>}
+          <button type="submit" disabled={busy || pendingEditorSections.size > 0 || work.loading || work.candidates.length > 0 || work.discarding} className="btn-primary">
+            {/* La fiche existe : le bouton ne promet plus de l'enregistrer, il reprend ce qui
+                manque. Un « enregistrer » ici laisserait croire qu'elle ne l'est pas encore. */}
+            {createdPatient ? t('form.pending_retry_all')
+              : mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
           </button>
           <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary">
             {t('common.cancel')}

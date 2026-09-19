@@ -35,6 +35,10 @@ const updateCall = `select * from public.update_encounter(
   $1::uuid, $2::jsonb, $3::text, $4::text, $5::timestamptz
 )`;
 
+const idempotentEncounterCall = `select * from public.create_encounter_idempotent(
+  $1::text, $2::uuid, $3::text, $4::date, $5::text, $6::jsonb, $7::text, $8::text
+)`;
+
 async function createEncounter(
   uid: string,
   pid: string,
@@ -587,5 +591,42 @@ describe('cycle de vie, concurrence et RLS', () => {
     expect(privileges.anon_create).toBe(false);
     expect(privileges.auth_create).toBe(true);
     expect(privileges.auth_export).toBe(false);
+  });
+});
+
+describe('L69 — création idempotente d occurrences', () => {
+  test('un même reçu concurrent puis rejoué renvoie une seule occurrence et refuse un payload différent', async () => {
+    const pid = await newPatient('l69-idempotence');
+    const operationId = `l69-occurrence:${uuid()}`;
+    const data = { [groupFieldKey]: 'L69, ligne une' };
+    const args = [operationId, pid, 'autre', null, 'complete', JSON.stringify(data), 'years', 'groupe_repetable'];
+
+    // Deux appels concurrents simulent le cas où le client perd l'une des réponses.
+    const concurrent = await Promise.all([
+      rowsAs(aliceId, idempotentEncounterCall, args),
+      rowsAs(aliceId, idempotentEncounterCall, args),
+    ]);
+    const results = concurrent.map((rows) => rows[0]);
+    expect(results).toHaveLength(2);
+    expect(new Set(results.map((row) => row.id)).size).toBe(1);
+    expect(results.map((row) => row.replayed).sort()).toEqual([false, true]);
+
+    const persisted = await db.admin.query(
+      'select id, encounter_date, group_section_key, data from public.encounter where patient_id=$1',
+      [pid],
+    );
+    expect(persisted.rows).toHaveLength(1);
+    expect(persisted.rows[0]).toMatchObject({
+      id: results[0].id,
+      encounter_date: null,
+      group_section_key: 'groupe_repetable',
+      data,
+    });
+
+    await expect(rowsAs(aliceId, idempotentEncounterCall, [
+      operationId, pid, 'autre', null, 'complete', JSON.stringify(data), 'years', 'bloc_ordinaire',
+    ])).rejects.toThrow(/L69_OPERATION_MISMATCH/);
+    await expect(rowsAs(annaId, idempotentEncounterCall, args)).rejects.toThrow(/WRITE_FORBIDDEN/);
+    expect((await db.admin.query('select id from public.encounter where patient_id=$1', [pid])).rows).toHaveLength(1);
   });
 });
