@@ -208,11 +208,18 @@ function asReceipt(row: Record<string, unknown>): FormPreparationReceipt {
   return receipt;
 }
 
+function errorText(error: unknown): string[] {
+  if (!error || typeof error !== 'object') return [String(error ?? '')];
+  const value = error as Record<string, unknown>;
+  return ['message', 'details', 'detail', 'hint', 'code', 'error']
+    .map((key) => value[key])
+    .filter((entry): entry is string => typeof entry === 'string');
+}
+
 function safeCode(error: unknown): string {
-  const message = error && typeof error === 'object' ? String((error as { message?: unknown }).message ?? '') : '';
-  const detail = error && typeof error === 'object' ? String((error as { details?: unknown }).details ?? '') : '';
+  const text = errorText(error);
   const candidates = Object.keys(PREPARATION_MESSAGES);
-  return candidates.find((candidate) => message.includes(candidate) || detail.includes(candidate))
+  return candidates.find((candidate) => text.some((entry) => entry.includes(candidate)))
     ?? 'FORM_PREPARATION_UNAVAILABLE';
 }
 
@@ -257,6 +264,31 @@ function asErrorReceipt(value: Record<string, unknown>): FormPreparationErrorRec
   return receipt;
 }
 
+function nestedErrorReceipt(error: unknown): FormPreparationErrorReceipt | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = error as Record<string, unknown>;
+  const direct = asErrorReceipt(value);
+  if (direct) return direct;
+  for (const key of ['details', 'detail', 'error'] as const) {
+    const nested = value[key];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      const receipt = asErrorReceipt(nested as Record<string, unknown>);
+      if (receipt) return receipt;
+    }
+    if (typeof nested !== 'string') continue;
+    try {
+      const parsed = JSON.parse(nested) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const receipt = asErrorReceipt(parsed as Record<string, unknown>);
+        if (receipt) return receipt;
+      }
+    } catch {
+      // A phrase in details/detail is still handled by safeCode below.
+    }
+  }
+  return undefined;
+}
+
 function checkSize(payload: FormPreparationPayload): void {
   let bytes: number;
   try {
@@ -280,7 +312,8 @@ export function createFormPreparationRepository(client: SupabaseClient | null): 
       return data as T;
     } catch (error) {
       if (error instanceof FormPreparationError) throw error;
-      throw new FormPreparationError(safeCode(error));
+      const receipt = nestedErrorReceipt(error);
+      throw new FormPreparationError(receipt?.code ?? safeCode(error), 'server', receipt);
     }
   }
 

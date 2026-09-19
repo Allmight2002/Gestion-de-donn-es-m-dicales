@@ -471,19 +471,19 @@ describe('EditEncounter (correction)', () => {
     expect(getVersion).not.toHaveBeenCalledWith('v1');
   });
 
-  test('le motif est requis ; avec motif, la correction est enregistree ; historique affiche', async () => {
+  // E5 §4.5 : ce compte est PROPRIETAIRE de la base fictive, et le serveur accepte alors un
+  // motif absent (`form_justification_status` -> `owner_exempt`). L'ecran ne le reclame donc
+  // plus ici ; l'exigence conservee pour les autres roles est couverte par
+  // `OwnerJustification.test.tsx`.
+  test('le motif reste transmis quand il est saisi ; historique affiche', async () => {
     const updateEncounter = vi.fn(async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }));
     renderAt('/bases/b1/patients/p1/encounters/e1/edit', makePatients({ updateEncounter }));
 
     // Historique des corrections affiche.
     expect(await screen.findByText(/correction saisie/)).toBeInTheDocument();
+    expect(screen.getByText('Facultatif pour le propriétaire de la base')).toBeInTheDocument();
 
-    // Sans motif -> bloque.
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
-    expect(screen.getByText(/motif de la correction est requis/i)).toBeInTheDocument();
-    expect(updateEncounter).not.toHaveBeenCalled();
-
-    // Avec motif -> enregistre.
+    // Avec motif -> enregistre, et le texte saisi est transmis tel quel.
     fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'erreur de frappe' } });
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
     expect(updateEncounter).toHaveBeenCalledTimes(1);

@@ -6,9 +6,12 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import type { BaseListing } from '../../data/bases';
 import type { FieldChange, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
+import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
+import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
 import {
@@ -20,6 +23,8 @@ import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, encounte
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
+import { RecordCompletionNotice } from './RecordCompletion';
+import { JustificationField } from './JustificationField';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
@@ -55,6 +60,7 @@ export function EditEncounter() {
   const [reason, setReason] = useState('');
   const [history, setHistory] = useState<FieldChange[]>([]);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
+  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION de la rencontre (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
@@ -99,8 +105,24 @@ export function EditEncounter() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections, applicableFields]);
 
+  // E5 : voir `EditPatient` — un ajout requis est annonce et compte, sans devenir une
+  // obligation retroactive ; le rendu suit donc la meme liste que la validation locale.
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  const renderedFields = useMemo(() => fieldsForLocalValidation(applicableFields, recordContext), [applicableFields, recordContext]);
+  const completion = useMemo(() => recordCompletionSummary(recordContext), [recordContext]);
   const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'encounter', submittedData, fields, rules, sections);
+  const toFillKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
+  // §4.5 : dispense serveur du proprietaire reel. Hors connexion, la file conserve son motif :
+  // la propriete ne peut pas etre reverifiee et une operation sans motif resterait bloquee au
+  // retour du reseau. Aucun droit hors connexion n'est ouvert ni retire par ce lot.
+  const reasonOptional = online && ownerJustificationExempt(baseListing, profile);
+  const pendingRequiredKeys = useMemo(
+    () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
+    [completion, values, hidden],
+  );
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -185,6 +207,7 @@ export function EditEncounter() {
         setEncounterType(enc.encounterType);
         setBaseUpdatedAt(enc.updatedAt ?? null);
       }
+      setBaseListing(base ?? null);
       setHistory(hist);
       // §7.4 : une rencontre HISTORIQUE s'edite avec SA version de gabarit (libelles, champs et
       // regles de l'epoque = memes controles que le serveur). La version courante de la base ne
@@ -253,7 +276,7 @@ export function EditEncounter() {
         .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ...(requireComplete ? ruleEval.blocking : []),
     ];
-    if (!reason.trim()) block.unshift(t('encounter.reason_required'));
+    if (!reason.trim() && !reasonOptional) block.unshift(t('encounter.reason_required'));
     setBlocking(block);
     if (block.length > 0) return;
 
@@ -353,14 +376,22 @@ export function EditEncounter() {
           </select>
         </label>
 
+        {/* E5 : ajouts du formulaire courant encore vides sur CETTE rencontre. La portee et le
+            type de rencontre sont ceux du contexte serveur ; aucune valeur n'est proposee. */}
+        <RecordCompletionNotice
+          labels={[...toFillKeys].map(labelOf)}
+          requiredLabels={[...pendingRequiredKeys].map(labelOf)}
+        />
+
         <EncounterFields
-          fields={applicableFields}
+          fields={renderedFields}
           values={values}
           hiddenKeys={hidden}
           sections={sections}
           commonLayout={commonLayout}
           rules={validationRules}
           requireComplete={isMissionAccount(profile) || status !== 'draft'}
+          toFillKeys={toFillKeys}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}
         />
@@ -380,12 +411,7 @@ export function EditEncounter() {
           />
         )}
 
-        <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-700">
-            {t('encounter.reason')} <span className="text-red-500">*</span>
-          </span>
-          <input className="input mt-1" value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
+        <JustificationField value={reason} onChange={setReason} optional={reasonOptional} />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

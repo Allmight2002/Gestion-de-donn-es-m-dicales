@@ -82,6 +82,18 @@ const SECTIONS = [
   { id: 's2', template_version_id: TV, section_key: 'x', label: 'Divers', display_order: 1 },
 ];
 
+// E6 : les revisions de definition de la base, reliees par `derived_from`. Par defaut une
+// seule : la cohorte ne melange alors aucune revision et le fichier reste celui d'avant le lot.
+const VERSIONS = [
+  {
+    id: TV,
+    version_number: 1,
+    created_at: '2026-01-01T00:00:00.000Z',
+    applied_at: null,
+    derived_from_template_version_id: null,
+  },
+];
+
 interface Opts {
   user?: { data: { user: { id: string } | null }; error?: unknown };
   cohort?: unknown;
@@ -97,6 +109,16 @@ interface Opts {
   encounterRows?: unknown[];
   /** UX-16 : rubriques communes servies par la doublure ; vide = aucune rubrique declaree. */
   commonGroupRows?: Array<Record<string, unknown>>;
+  /** E6 : revisions de definition servies par la doublure. */
+  versionRows?: Array<Record<string, unknown>>;
+  /** E6 : origines de valeur servies par la doublure ; vide = aucun complement enregistre. */
+  provenanceRows?: Array<Record<string, unknown>>;
+  /** E6 : comptes servant a nommer l'auteur d'un complement. */
+  profileRows?: Array<Record<string, unknown>>;
+  /** E6 : variables servies par la doublure, toutes revisions confondues. */
+  fieldRows?: Array<Record<string, unknown>>;
+  /** E6 : sections servies par la doublure. */
+  sectionRows?: Array<Record<string, unknown>>;
   incompleteRecords?: Array<{ record_kind: string; record_id: string }>;
   incompleteError?: unknown;
   fromResponder?: (call: FromCall) => DbResult | undefined;
@@ -108,6 +130,13 @@ function queriedRows<T extends Record<string, unknown>>(
   orderKey: keyof T,
 ): DbResult {
   let rows = [...input];
+  // Les filtres `eq` ne sont appliques qu'aux lignes qui PORTENT la colonne : la doublure sert
+  // des tables dont certaines n'ont pas la colonne de jointure du vrai schema, et les filtrer
+  // sur une colonne absente les ferait toutes disparaitre.
+  for (const op of call.ops.filter((candidate) => candidate.m === 'eq')) {
+    const [column, expected] = op.a as [string, unknown];
+    rows = rows.filter((row) => !(column in row) || row[column] === expected);
+  }
   for (const op of call.ops.filter((candidate) => candidate.m === 'in')) {
     const [column, rawValues] = op.a as [string, unknown[]];
     const values = new Set(rawValues);
@@ -127,7 +156,7 @@ function deps(opts: Opts = {}): GenerateExportDeps {
   const cohort = 'cohort' in opts
     ? opts.cohort
     : { id: COHORT, base_id: BASE, name: 'Traumatismes craniens', cohort_type: 'snapshot' };
-  const base = 'base' in opts ? opts.base : { name: 'Urgences pediatriques' };
+  const base = 'base' in opts ? opts.base : { name: 'Urgences pediatriques', current_template_version_id: TV };
   const userResponder: Responder = (call) =>
     call.kind === 'rpc' && call.rpc === 'can_export_data' ? okResult(opts.canExport ?? true) : okResult(null);
   const adminResponder: Responder = (call) => {
@@ -163,9 +192,15 @@ function deps(opts: Opts = {}): GenerateExportDeps {
         case 'encounter':
           return queriedRows(call, (opts.encounterRows ?? [ENCOUNTER]) as Array<Record<string, unknown>>, 'id');
         case 'template_field':
-          return queriedRows(call, FIELDS, 'id');
+          return queriedRows(call, (opts.fieldRows ?? FIELDS) as Array<Record<string, unknown>>, 'id');
         case 'template_section':
-          return queriedRows(call, SECTIONS, 'id');
+          return queriedRows(call, (opts.sectionRows ?? SECTIONS) as Array<Record<string, unknown>>, 'id');
+        case 'template_version':
+          return queriedRows(call, (opts.versionRows ?? VERSIONS) as Array<Record<string, unknown>>, 'id');
+        case 'record_field_provenance':
+          return queriedRows(call, (opts.provenanceRows ?? []) as Array<Record<string, unknown>>, 'id');
+        case 'profiles':
+          return queriedRows(call, (opts.profileRows ?? []) as Array<Record<string, unknown>>, 'id');
         case 'template_common_group':
           return queriedRows(call, opts.commonGroupRows ?? [], 'id');
         case 'export_log':
@@ -601,7 +636,7 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
         case 'cohort':
           return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte de test', cohort_type: 'snapshot' });
         case 'base':
-          return okResult({ name: 'Base de test' });
+          return okResult({ name: 'Base de test', current_template_version_id: TV });
         case 'cohort_member':
           return okResult([{ patient_id: 'p1' }]);
         case 'patient':
@@ -615,6 +650,12 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
         case 'template_section':
           return okResult(SECTIONS);
         case 'template_common_group':
+          return okResult([]);
+        case 'template_version':
+          return okResult(VERSIONS);
+        case 'record_field_provenance':
+          return okResult([]);
+        case 'profiles':
           return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'csv' });
@@ -698,7 +739,7 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
         case 'cohort':
           return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
         case 'base':
-          return okResult({ name: 'Base Test' });
+          return okResult({ name: 'Base Test', current_template_version_id: TV });
         case 'cohort_member':
           return okResult([{ patient_id: 'p1' }]);
         case 'patient':
@@ -712,6 +753,12 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
         case 'template_section':
           return okResult(SECTIONS);
         case 'template_common_group':
+          return okResult([]);
+        case 'template_version':
+          return okResult(VERSIONS);
+        case 'record_field_provenance':
+          return okResult([]);
+        case 'profiles':
           return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'xlsx' });
@@ -854,7 +901,7 @@ Deno.test('generate-export: XLSX -> dates natives (serie + format), date invalid
         case 'cohort':
           return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
         case 'base':
-          return okResult({ name: 'Base Test' });
+          return okResult({ name: 'Base Test', current_template_version_id: TV });
         case 'cohort_member':
           return okResult([{ patient_id: 'p1' }]);
         case 'patient':
@@ -868,6 +915,12 @@ Deno.test('generate-export: XLSX -> dates natives (serie + format), date invalid
         case 'template_section':
           return okResult(SECTIONS);
         case 'template_common_group':
+          return okResult([]);
+        case 'template_version':
+          return okResult(VERSIONS);
+        case 'record_field_provenance':
+          return okResult([]);
+        case 'profiles':
           return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'xlsx' });
@@ -966,7 +1019,7 @@ Deno.test('generate-export: Analyse produit la feuille Modalites, pas Complet (L
           case 'cohort':
             return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
           case 'base':
-            return okResult({ name: 'Base Test' });
+            return okResult({ name: 'Base Test', current_template_version_id: TV });
           case 'cohort_member':
             return okResult([{ patient_id: 'p1' }]);
           case 'patient':
@@ -980,6 +1033,12 @@ Deno.test('generate-export: Analyse produit la feuille Modalites, pas Complet (L
           case 'template_section':
             return okResult(SECTIONS);
           case 'template_common_group':
+            return okResult([]);
+          case 'template_version':
+            return okResult(VERSIONS);
+          case 'record_field_provenance':
+            return okResult([]);
+          case 'profiles':
             return okResult([]);
           case 'export_log':
             return okResult({ id: 'exp1', format: 'xlsx' });
@@ -1081,7 +1140,7 @@ Deno.test('generate-export: XLSX Analyse -> Donnees, Dictionnaire simplifie, Mod
         case 'cohort':
           return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
         case 'base':
-          return okResult({ name: 'Base Test' });
+          return okResult({ name: 'Base Test', current_template_version_id: TV });
         case 'cohort_member':
           return okResult([{ patient_id: 'p1' }]);
         case 'patient':
@@ -1095,6 +1154,12 @@ Deno.test('generate-export: XLSX Analyse -> Donnees, Dictionnaire simplifie, Mod
         case 'template_section':
           return okResult(SECTIONS);
         case 'template_common_group':
+          return okResult([]);
+        case 'template_version':
+          return okResult(VERSIONS);
+        case 'record_field_provenance':
+          return okResult([]);
+        case 'profiles':
           return okResult([]);
         case 'export_log':
           return okResult({ id: 'exp1', format: 'xlsx' });
@@ -1232,7 +1297,7 @@ Deno.test('generate-export: Analyse refuse un multiselect au-dela de 100 codes, 
             case 'cohort':
               return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
             case 'base':
-              return okResult({ name: 'Base Test' });
+              return okResult({ name: 'Base Test', current_template_version_id: TV });
             case 'cohort_member':
               return okResult([{ patient_id: 'p1' }]);
             case 'patient':
@@ -1246,6 +1311,12 @@ Deno.test('generate-export: Analyse refuse un multiselect au-dela de 100 codes, 
             case 'template_section':
               return okResult(SECTIONS);
             case 'template_common_group':
+              return okResult([]);
+            case 'template_version':
+              return okResult(VERSIONS);
+            case 'record_field_provenance':
+              return okResult([]);
+            case 'profiles':
               return okResult([]);
             case 'export_log':
               return okResult({ id: 'exp1', format: 'xlsx' });
@@ -1971,4 +2042,294 @@ Deno.test('UX-16 : le dictionnaire XLSX nomme la rubrique commune sans la confon
   assertEquals(parCle.get('encounter__age')?.section ?? '', '');
   // Et la variable de bloc ne recoit aucune rubrique.
   assertEquals(parCle.get('encounter__tb_statut')?.common_group ?? '', '');
+});
+
+// =============================================================================
+// E6 — le FICHIER produit apres une evolution du formulaire
+// =============================================================================
+//
+// Ces tests inspectent les octets reellement ecrits, pas le composant de telechargement :
+// une regression E6 se voit dans une cellule du classeur, pas dans un objet intermediaire.
+
+/** V1 --- derive ---> V2. `TV` reste V1, pour ne pas reecrire les fixtures existantes. */
+const TV_E6 = '523e4567-e89b-42d3-a456-426614174000';
+
+const E6_VERSIONS = [
+  {
+    id: TV,
+    version_number: 1,
+    created_at: '2026-01-01T00:00:00.000Z',
+    applied_at: null,
+    derived_from_template_version_id: null,
+  },
+  {
+    id: TV_E6,
+    version_number: 2,
+    created_at: '2026-06-01T00:00:00.000Z',
+    applied_at: '2026-06-01T12:00:00.000Z',
+    derived_from_template_version_id: TV,
+  },
+];
+
+/** `poids` traverse les deux revisions, `fievre` est ajoutee en V2, `retiree` disparait en V2. */
+const E6_FIELDS = [
+  ...[TV, TV_E6].map((version, index) => ({
+    id: `f_poids_${index}`,
+    template_version_id: version,
+    field_key: 'poids',
+    label: 'Poids',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'number',
+    unit: 'kg',
+    allowed_values: null,
+    display_order: 1,
+  })),
+  {
+    id: 'f_fievre',
+    template_version_id: TV_E6,
+    field_key: 'fievre',
+    label: 'Fievre',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'boolean',
+    unit: null,
+    allowed_values: null,
+    display_order: 2,
+  },
+  {
+    id: 'f_retiree',
+    template_version_id: TV,
+    field_key: 'retiree',
+    label: 'Ancienne mesure',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'text',
+    unit: null,
+    allowed_values: null,
+    display_order: 3,
+  },
+];
+
+const E6_SECTIONS = [TV, TV_E6].map((version, index) => ({
+  id: `s_vitals_${index}`,
+  template_version_id: version,
+  section_key: 'vitals',
+  label: 'Constantes',
+  display_order: 0,
+}));
+
+/** La fiche ancienne est restee sous V1 et a recu `fievre` par complement E3. */
+const E6_ENCOUNTERS = [
+  {
+    id: 'e1',
+    patient_id: 'p1',
+    template_version_id: TV,
+    encounter_date: '2020-01-01',
+    encounter_type: 'visit',
+    age_value: 3,
+    age_unit: 'y',
+    data: { poids: 12, fievre: true, retiree: 'ancienne valeur' },
+  },
+  {
+    id: 'e2',
+    patient_id: 'p1',
+    template_version_id: TV_E6,
+    encounter_date: '2026-06-02',
+    encounter_type: 'visit',
+    age_value: 9,
+    age_unit: 'y',
+    data: { poids: 14 },
+  },
+];
+
+const E6_PROVENANCE = [
+  {
+    id: 'pr1',
+    record_kind: 'encounter',
+    record_id: 'e1',
+    field_key: 'fievre',
+    origin: 'completion',
+    captured_by: 'u2',
+    captured_at: '2026-06-02T10:00:00.000Z',
+    definition_revision: TV_E6,
+    operation_id: 'op-1',
+  },
+  // Cloisonnement : une origine de PATIENT ne doit pas fuir dans un export de rencontres, et
+  // une fiche etrangere a la cohorte n'est meme pas lue.
+  {
+    id: 'pr2',
+    record_kind: 'patient',
+    record_id: 'p1',
+    field_key: 'poids',
+    origin: 'correction',
+    captured_by: 'u2',
+    captured_at: '2026-06-02T11:00:00.000Z',
+    definition_revision: TV_E6,
+    operation_id: 'op-2',
+  },
+  {
+    id: 'pr3',
+    record_kind: 'encounter',
+    record_id: 'e-autre-base',
+    field_key: 'fievre',
+    origin: 'completion',
+    captured_by: 'u2',
+    captured_at: '2026-06-02T12:00:00.000Z',
+    definition_revision: TV_E6,
+    operation_id: 'op-3',
+  },
+];
+
+interface Capture {
+  bytes: Uint8Array | null;
+  done: Promise<void> | null;
+}
+
+/** Capture deterministe des octets ecrits : on ATTEND la lecture du blob avant d assertion. */
+const captureUpload = (capture: Capture) => (method: string, args: unknown[]) => {
+  if (method !== 'upload') return;
+  const blob = args[1] as Blob;
+  capture.done = blob.arrayBuffer().then((buf) => {
+    capture.bytes = new Uint8Array(buf);
+  });
+};
+
+function e6Deps(capture: Capture, over: Partial<Opts> = {}): GenerateExportDeps {
+  const base = deps({
+    versionRows: E6_VERSIONS,
+    fieldRows: E6_FIELDS,
+    sectionRows: E6_SECTIONS,
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+    encounterRows: E6_ENCOUNTERS,
+    provenanceRows: E6_PROVENANCE,
+    profileRows: [{ id: 'u2', full_name: 'Dr Diallo' }],
+    base: { name: 'Base E6', current_template_version_id: TV_E6 },
+    onStorage: captureUpload(capture),
+    ...over,
+  });
+  return base;
+}
+
+Deno.test('E6 : le classeur distingue les absences et conserve la valeur complementee', async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const { status } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: { cohortId: COHORT, format: 'xlsx' } }), e6Deps(capture)),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  assert(capture.bytes !== null);
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  const main = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  const ancienne = main.find((row) => row.encounter_id === 'e1')!;
+  const recente = main.find((row) => row.encounter_id === 'e2')!;
+
+  // La valeur ecrite par complement sur une fiche restee en V1 est DANS le fichier.
+  assertEquals(String(ancienne['encounter__fievre']), '1');
+  assertEquals(ancienne['state__encounter__fievre'], 'present');
+  // La fiche recente porte la variable, personne ne l'a renseignee.
+  assertEquals(recente['state__encounter__fievre'], 'empty');
+  // La variable retiree du formulaire courant reste lisible pour la fiche qui la portait.
+  assertEquals(ancienne['encounter__retiree'], 'ancienne valeur');
+  assertEquals(recente['state__encounter__retiree'], 'not_defined');
+  // Une variable presente dans les deux revisions n'a pas de colonne d'etat : son absence
+  // n'est pas ambigue, et une colonne par variable doublerait la largeur du fichier.
+  assertEquals('state__encounter__poids' in ancienne, false);
+});
+
+Deno.test('E6 : dictionnaire, metadonnees et provenance expliquent le fichier', async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const { status } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: { cohortId: COHORT, format: 'xlsx' } }), e6Deps(capture)),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+
+  const dict = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const ligne = (columnId: string) => dict.find((row) => row.column_id === columnId)!;
+  assertEquals(ligne('encounter__fievre').in_current_form, 'true');
+  assertEquals(ligne('encounter__fievre').introduced_in_revision, '2');
+  assertEquals(ligne('encounter__fievre').introduced_at, '2026-06-01T12:00:00.000Z');
+  assertEquals(ligne('encounter__fievre').state_column, 'state__encounter__fievre');
+  // Retiree du formulaire courant, mais toujours documentee : elle ne revient pas en saisie
+  // et ne disparait pas de l'historique.
+  assertEquals(ligne('encounter__retiree').in_current_form, 'false');
+  assertEquals(ligne('encounter__retiree').introduced_in_revision, '1');
+  assertEquals(ligne('encounter__poids').in_current_form, 'true');
+
+  const meta = XLSX.utils.sheet_to_json(wb.Sheets['Métadonnées']) as Record<string, unknown>[];
+  const byAttribute = new Map(meta.map((row) => [row.attribute, row.value]));
+  assertEquals(byAttribute.get('active_definition_revision'), 2);
+  assertEquals(byAttribute.get('definition_revisions'), '1; 2');
+
+  const provenance = XLSX.utils.sheet_to_json(wb.Sheets['Provenance']) as Record<string, unknown>[];
+  assertEquals(provenance.length, 1);
+  assertEquals(provenance[0].variable, 'encounter__fievre');
+  assertEquals(provenance[0].origin, 'completion');
+  assertEquals(provenance[0].captured_by, 'Dr Diallo');
+  assertEquals(provenance[0].captured_at, '2026-06-02T10:00:00.000Z');
+  assertEquals(provenance[0].definition_revision, 2);
+  assertEquals(provenance[0].patient_code, 'P001');
+  // Cloisonnement : ni l'origine de portee patient, ni celle d'une fiche etrangere a la
+  // cohorte ne figurent dans un export de rencontres.
+  assertEquals(provenance.some((row) => row.operation_id === 'op-2'), false);
+  assertEquals(provenance.some((row) => row.operation_id === 'op-3'), false);
+  // Et aucune colonne d'identite nulle part.
+  for (const name of wb.SheetNames) {
+    const header = (XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1 })[0] ?? []) as string[];
+    assertEquals(header.some((cell) => /nom|prenom|birth|naissance|phone|telephone/i.test(String(cell))), false);
+  }
+});
+
+Deno.test('E6 : un champ masque par la projection ne laisse ni colonne d etat ni provenance', async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const fieldsAvecBloc = [
+    ...E6_FIELDS.map((field) => (field.field_key === 'fievre' ? { ...field, section: 'labo' } : field)),
+  ];
+  const sections = [
+    ...E6_SECTIONS,
+    { id: 's_labo', template_version_id: TV_E6, section_key: 'labo', label: 'Laboratoire', display_order: 1 },
+  ];
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: {
+          cohortId: COHORT,
+          format: 'xlsx',
+          options: { sectionProjection: { mode: 'selected', blockKeys: ['vitals'] } },
+        },
+      }),
+      e6Deps(capture, { fieldRows: fieldsAvecBloc, sectionRows: sections }),
+    ),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  const main = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  assertEquals('encounter__fievre' in main[0], false);
+  assertEquals('state__encounter__fievre' in main[0], false);
+  // La feuille Provenance ne decrit que ce que le fichier restitue : expliquer l'origine d'une
+  // colonne absente revelerait une structure que la projection a justement retiree.
+  assertEquals(wb.SheetNames.includes('Provenance'), false);
+});
+
+Deno.test('E6 : une base dont le formulaire n a pas evolue garde son fichier d avant le lot', async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { cohortId: COHORT, format: 'xlsx' } }),
+      deps({
+        onStorage: captureUpload(capture),
+      }),
+    ),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  const header = (XLSX.utils.sheet_to_json(wb.Sheets['Données'], { header: 1 })[0] ?? []) as string[];
+  assertEquals(header.some((cell) => String(cell).startsWith('state__')), false);
+  const dict = (XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire'], { header: 1 })[0] ?? []) as string[];
+  assertEquals(dict.includes('in_current_form'), false);
+  assertEquals(wb.SheetNames.includes('Provenance'), false);
 });

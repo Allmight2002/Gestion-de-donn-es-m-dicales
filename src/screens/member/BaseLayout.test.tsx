@@ -70,7 +70,7 @@ describe('BaseLayout — quatre destinations', () => {
     expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
     const subs = screen.getByRole('navigation', { name: 'Paramètres' });
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['Général', 'Variables', 'Accès', 'Journal']);
+      .toEqual(['Général', 'Formulaire', 'Accès', 'Journal']);
   });
 
   test('les propositions figurent dans A completer pour le seul proprietaire', async () => {
@@ -91,7 +91,7 @@ describe('BaseLayout — quatre destinations', () => {
     await userEvent.click(screen.getByRole('link', { name: /Paramètres/ }));
     const subs = await screen.findByRole('navigation', { name: 'Paramètres' });
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent)).toEqual(['Général', 'Journal']);
-    expect(screen.queryByRole('link', { name: 'Variables' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Formulaire' })).not.toBeInTheDocument();
   });
 
   test('un seul sous-onglet disponible : pas de barre secondaire', async () => {

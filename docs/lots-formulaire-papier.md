@@ -1,7 +1,7 @@
 # Formulaire papier compact - lots PAP-0 à PAP-5
 
-- Révision : **2026-09-15**.
-- Statut : **spécifié ; les six lots restent à réaliser**.
+- Révision : **2026-09-18**.
+- Statut : **PAP-0 mesuré le 2026-09-18 ; PAP-1 à PAP-5 restent à réaliser**.
 - Référence normative : [spécification du formulaire vierge imprimable](spec-formulaire-papier.md).
 - Les identifiants **PAP** appartiennent à ce chantier. Ils ne renumérotent pas les lots L, UX,
   E ou O existants.
@@ -28,11 +28,16 @@ obtient un document vierge lisible. Le document :
 La réduction du nombre de pages ne sera annoncée qu'après la mesure PAP-0. Une page plus courte
 mais impossible à remplir ne constitue pas un gain.
 
+**Mesure faite le 2026-09-18.** La baseline est de **4, 9 et 19 pages** pour les cas court, moyen
+et volumineux, avec 76 % seulement des variables imprimées. Les plafonds retenus pour la suite
+sont **2, 6 et 13 pages** à contenu complet, sous les seuils de lisibilité de la
+[fiche de baseline](pap-0-baseline-formulaire-papier.md).
+
 ## Ordre et suivi
 
 | Lot | Résultat | Prérequis | État | Preuves attendues |
 |---|---|---|---|---|
-| [PAP-0](#pap-0) | Mesure du gaspillage papier et fixtures fictives | Spécification | À réaliser | Baseline de trois formulaires et seuil documenté |
+| [PAP-0](#pap-0) | Mesure du gaspillage papier et fixtures fictives | Spécification | **Mesuré le 2026-09-18** | [Fiche de baseline](pap-0-baseline-formulaire-papier.md) et [relevés](pap-0-baseline-releves.json) : trois cas fictifs, 32 pages de référence, seuils fixés |
 | [PAP-1](#pap-1) | Modèle de document et algorithme déterministe de placement | PAP-0 | À réaliser | Tests purs du modèle et des règles de placement |
 | [PAP-2](#pap-2) | Prévisualisation A4 et impression navigateur | PAP-1 | À réaliser | Parcours réel, PDF de contrôle et vérification d'absence d'écriture |
 | [PAP-3](#pap-3) | Réglages de présentation persistants, si retenus | PAP-1 ; décision de persistance | À réaliser | Migration, RLS/ACL, concurrence, snapshot et tests |
@@ -94,6 +99,29 @@ pas accepté. Aucun pourcentage de réduction théorique n'est utilisé comme pr
 **Risques.** Mesurer uniquement un formulaire court masquerait le coût des sections imbriquées,
 des consignes longues, des listes nombreuses et des variables textuelles. Le cas volumineux doit
 rester dans la campagne jusqu'à la validation finale.
+
+**Résultat, mesuré le 2026-09-18.** Voir la
+[fiche de baseline](pap-0-baseline-formulaire-papier.md) et les
+[relevés reproductibles](pap-0-baseline-releves.json) ; la mesure se rejoue par
+`npm run paper:baseline`.
+
+- Cas fictifs figés dans `src/test/fixtures/paperForms.ts` : **court** (18 variables,
+  3 sections, 2 règles), **moyen** (77 / 10 / 9) et **volumineux**, qui réutilise la fixture
+  d'éditeur existante (**216 / 24 / 26**). Leurs tailles et leur cohérence sont tenues par
+  `src/test/fixtures/paperForms.test.tsx`.
+- Baseline : **4, 9 et 19 pages A4** pour les trois cas, soit **32 pages**, en imprimant
+  l'aperçu tout déplié depuis Chromium. Le nombre de pages du PDF et celui dérivé du DOM
+  coïncident pour les six documents.
+- Le formulaire imprimé est **incomplet** : 237 variables sur 311 (76 %), les cibles de règles
+  de visibilité étant masquées faute de réponse ; 0 consigne sur 8 imprimée ; 2 listes rendues
+  muettes par un menu déroulant ; 43 cases à cocher sans « Oui / Non ».
+- Le contenu coûte **13 à 18 mm par variable** en une colonne ; le rendu actuel en consomme
+  **28 à 51**. Cinq documents sur six finissent sur une page presque vide, 19 questions sont
+  coupées par un saut de page, 2 titres sont séparés de leur première question.
+- Seuils fixés à partir de ces mesures : **≤ 2, ≤ 6 et ≤ 13 pages** (au moins −30 % par cas) à
+  contenu **complet** ; ligne d'écriture ≥ 8 mm, largeur de réponse ≥ 4 unités sur 12, case
+  ≥ 4 mm, corps ≥ 9 pt ; **100 %** des variables applicables imprimées.
+- Ce lot n'a modifié ni le produit, ni le schéma, ni une version de formulaire.
 
 ## PAP-1
 
@@ -318,7 +346,7 @@ surface déjà réservée à un autre lot.
 
 | Lot | Code présent | Test ciblé | Navigateur/PDF | Papier étudiant | Cible/cloud |
 |---|---|---|---|---|---|
-| PAP-0 | Non vérifié | Aucune | Aucune | Aucune | Aucune |
+| PAP-0 | Cas fictifs, banc et script de mesure (hors produit) | `paperForms.test.tsx` : 29/29 | Baseline mesurée sur Chromium local, 6 PDF de contrôle | Aucune | Aucune |
 | PAP-1 | Non vérifié | Aucune | Aucune | Aucune | Aucune |
 | PAP-2 | Non vérifié | Aucune | Aucune | Aucune | Aucune |
 | PAP-3 | Non vérifié | Aucune | Aucune | Aucune | Aucune |

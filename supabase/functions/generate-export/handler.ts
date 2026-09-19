@@ -13,6 +13,7 @@ import {
   buildModalities,
   buildMultivalueTable,
   buildPatientExport,
+  buildProvenance,
   columnId,
   type ExportField,
   type ExportTable,
@@ -22,11 +23,14 @@ import {
   hasCommonGroupFields,
   hasSubsectionFields,
   isMultivalueField,
+  makeRevisionContext,
   MAX_INDICATOR_CODES,
   mergeExportFields,
   neutralizeExportTable,
   projectFields,
+  type ProvenanceEntry,
   referencedTemplateVersions,
+  stateColumnsFor,
   toCsv,
   withExcelDateSerials,
 } from './exportContract.ts';
@@ -55,6 +59,10 @@ export const EXPORT_LIMITS = {
   encounters: 50_000,
   dictionaryFields: 25_000,
   dictionarySections: 5_000,
+  /** E6 : origines de valeur. Une base tres corrigee doit echouer franchement, pas tronquer. */
+  provenanceEntries: 100_000,
+  /** E6 : une lignee de revisions plus longue que cela signale une boucle, pas un historique. */
+  definitionRevisions: 200,
   cells: 1_000_000,
   csvColumns: 1_000,
   xlsxColumns: 256,
@@ -348,7 +356,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
 
   const { data: base, error: baseErr } = await admin
     .from('base')
-    .select('name')
+    .select('name, current_template_version_id')
     .eq('id', cohort.base_id)
     .maybeSingle();
   if (baseErr || !base) return collectionFailureResponse(new ExportCollectionError('read', 'base'));
@@ -395,7 +403,29 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       missing_reasons: string[] | null;
       /** Variable calculee (L35). Null = variable saisie. */
       formula?: string | null;
+      /** E6 : portee par type de rencontre ; vide/null = tous les types. */
+      encounter_types?: string[] | null;
       display_order: number;
+    }
+    /** E6 : une revision de definition et son rattachement a celle dont elle derive. */
+    interface TemplateVersionRow {
+      id: string;
+      version_number: number;
+      created_at: string;
+      applied_at: string | null;
+      derived_from_template_version_id: string | null;
+    }
+    /** E6 : une origine de valeur enregistree par le complement E3. */
+    interface ProvenanceRow {
+      id: string;
+      record_kind: 'patient' | 'encounter';
+      record_id: string;
+      field_key: string;
+      origin: string;
+      captured_by: string | null;
+      captured_at: string;
+      definition_revision: string;
+      operation_id: string | null;
     }
     interface TemplateSectionRow {
       id: string;
@@ -634,15 +664,21 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
 
     const templateVersions = referencedTemplateVersions(patients, encounters);
     if (!templateVersions.length) return json(409, { error: 'Aucune version de gabarit referencee' });
+    // E6 : la revision ACTIVE entre dans le dictionnaire meme si aucune fiche ne la porte
+    // encore. Sans elle, une variable ajoutee et pas encore renseignee serait tout simplement
+    // absente du fichier — l'export dirait alors qu'elle n'existe pas, et non qu'elle est vide.
+    const activeRevision = base.current_template_version_id ?? null;
+    const definitionVersions = [...new Set([...templateVersions, ...(activeRevision ? [activeRevision] : [])])]
+      .sort();
     const rawFields = await readInChunks<TemplateFieldRow>({
-      values: templateVersions,
+      values: definitionVersions,
       resource: 'dictionary_fields',
       limit: EXPORT_LIMITS.dictionaryFields,
       keyOf: (row) => row.id,
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_field')
           .select(
-            'id, template_version_id, field_key, label, description, scope, section, common_group_id, type, is_multiple, unit, allowed_values, allowed_options, missing_reasons, formula, display_order',
+            'id, template_version_id, field_key, label, description, scope, section, common_group_id, type, is_multiple, unit, allowed_values, allowed_options, missing_reasons, formula, encounter_types, display_order',
             { count: 'exact' },
           )
           .in('template_version_id', chunk)
@@ -659,7 +695,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     // Les sections sont lues PAR VERSION, comme les champs : deux versions peuvent donner
     // deux libelles au meme code, et c'est celui de la version de la fiche qui fait foi.
     const rawSections = await readInChunks<TemplateSectionRow>({
-      values: templateVersions,
+      values: definitionVersions,
       resource: 'dictionary_sections',
       limit: EXPORT_LIMITS.dictionarySections,
       keyOf: (row) => row.id,
@@ -686,7 +722,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     // quelle : une version porte quelques rubriques la ou elle porte deja des dizaines de
     // sections, donc le plafond existant est deja large pour elles.
     const rawCommonGroups = await readInChunks<TemplateCommonGroupRow>({
-      values: templateVersions,
+      values: definitionVersions,
       resource: 'dictionary_common_groups',
       limit: EXPORT_LIMITS.dictionarySections,
       keyOf: (row) => row.id,
@@ -743,6 +779,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         commonGroupLabel: commonGroupById.get(f.common_group_id ?? '')?.label ?? null,
         type: f.type,
         isMultiple: Boolean(f.is_multiple),
+        // E6 : la seule non-applicabilite STRUCTURELLE que le fichier sait calculer.
+        encounterTypes: f.encounter_types ?? null,
         unit: f.unit,
         allowedValues: f.allowed_values,
         allowedOptions: f.allowed_options,
@@ -754,6 +792,43 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         templateVersionIds: [f.template_version_id],
       };
     });
+
+    // E6 : la LIGNEE des revisions, de l'active vers la plus ancienne, par
+    // `derived_from_template_version_id` (E2). Elle sert a deux choses : retrouver la valeur
+    // qu'un complement a ecrite sur une fiche restee sous une revision ancienne, et dire depuis
+    // quelle revision une variable existe. La marche est bornee : une chaine plus longue que la
+    // limite est une boucle, pas un historique.
+    const revisionRows = await readInChunks<TemplateVersionRow>({
+      values: definitionVersions,
+      resource: 'definition_revisions',
+      limit: EXPORT_LIMITS.definitionRevisions,
+      keyOf: (row) => row.id,
+      fetchPage: async (chunk, from, to) => {
+        const result = await admin.from('template_version')
+          .select('id, version_number, created_at, applied_at, derived_from_template_version_id', {
+            count: 'exact',
+          })
+          .in('id', chunk)
+          .order('id', { ascending: true })
+          .range(from, to);
+        return { data: result.data as TemplateVersionRow[] | null, error: result.error, count: result.count };
+      },
+    });
+    const revisionById = new Map(revisionRows.map((row) => [row.id, row]));
+    const revisionLineage: string[] = [];
+    {
+      const walked = new Set<string>();
+      let cursor = activeRevision;
+      while (cursor && !walked.has(cursor) && revisionLineage.length < EXPORT_LIMITS.definitionRevisions) {
+        walked.add(cursor);
+        revisionLineage.push(cursor);
+        cursor = revisionById.get(cursor)?.derived_from_template_version_id ?? null;
+      }
+    }
+    const recordRevisions = [...new Set([...templateVersions, ...(activeRevision ? [activeRevision] : [])])];
+    // Une cohorte qui ne melange qu'une seule revision garde EXACTEMENT le fichier d'avant le
+    // lot : ni colonne d'etat, ni colonnes de revision au dictionnaire.
+    const mixedRevisions = recordRevisions.length > 1;
 
     // L53 : `allFields` est le dictionnaire COMPLET — il sert aux validations et aux operandes
     // de formule. `fields`, plus bas, est le jeu RESTITUE : colonnes, dictionnaire, Modalites,
@@ -794,7 +869,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     if (blockColumns) {
       // Sur la liste NON FUSIONNEE : c'est la seule ou les versions parlent encore chacune
       // pour elle. `mergeExportFields` retiendrait la premiere section rencontree.
-      const ambiguous = findAmbiguousBlockFields(versionedFields);
+      // E6 : le controle porte sur les versions qui PORTENT des fiches. La revision active,
+      // lue depuis ce lot pour documenter les ajouts non encore renseignes, ne doit pas faire
+      // echouer un export qui passait avant : elle n embarque aucune ligne a rendre ambigue.
+      const recordVersionSet = new Set(templateVersions);
+      const ambiguous = findAmbiguousBlockFields(
+        versionedFields.filter((f) => (f.templateVersionIds ?? []).some((id) => recordVersionSet.has(id))),
+      );
       if (ambiguous.length > 0) {
         return json(409, {
           code: 'EXPORT_BLOCK_AMBIGUOUS',
@@ -806,6 +887,9 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
 
     // Le point UNIQUE de restitution, juste apres la fusion.
     const fields = projectFields(allFields, projection);
+
+    const stateColumns = mixedRevisions ? stateColumnsFor(fields, recordRevisions) : new Set<string>();
+    const revisionContext = makeRevisionContext(revisionLineage, stateColumns);
 
     const multivalueFields = fields.filter((f) => isMultivalueField(f));
     const multivalueDataRows = options.mode === 'patient' ? patients : encounters;
@@ -836,8 +920,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     // formule projetee reste donc juste meme quand ses operandes vivent hors de la projection,
     // sans que leurs colonnes soient restituees.
     const main = options.mode === 'patient'
-      ? buildPatientExport(patients, encounters, fields, options.rule, options.profile, allFields)
-      : buildEncounterExport(encounters, fields, options.profile, allFields);
+      ? buildPatientExport(patients, encounters, fields, options.rule, options.profile, allFields, revisionContext)
+      : buildEncounterExport(encounters, fields, options.profile, allFields, revisionContext);
     // L49 : le dictionnaire suit le profil — reduit a l'interpretation en Analyse, detaille en Complet.
     const dict = buildDictionary(fields, {
       indicatorsByField,
@@ -847,6 +931,20 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       // UX-16 : deux colonnes de plus SEULEMENT si une version exportee declare des rubriques.
       // Sans rubrique, le classeur garde exactement la structure d'avant le lot.
       commonGroupColumns: hasCommonGroupFields(allFields),
+      // E6 : depuis quelle revision la variable existe, si le formulaire courant la porte
+      // encore, et quelle colonne dit l'etat de ses cases.
+      revisions: mixedRevisions && activeRevision
+        ? {
+          activeRevision,
+          lineage: revisionLineage,
+          labels: Object.fromEntries(
+            revisionRows.map((
+              row,
+            ) => [row.id, { versionNumber: row.version_number, at: row.applied_at ?? row.created_at }]),
+          ),
+          stateColumns,
+        }
+        : undefined,
     });
     // L46 : la feuille Modalites accompagne l'Export Analyse (XLSX). Le CSV ne tient qu'une
     // feuille : la colonne principale porte deja le code stable et le libelle reste une fois
@@ -863,6 +961,83 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       const sheetName = exportFilenameSegment(f.label, f.fieldKey).slice(0, 31) || f.fieldKey.slice(0, 31);
       multivalueTables.push({ name: sheetName, table: safeTable });
     }
+
+    // E6 : les origines de valeur des fiches exportees. La table n'a de ligne que pour une
+    // valeur AJOUTEE ou CORRIGEE apres coup : une saisie initiale n'en produit pas, et la
+    // feuille reste donc proportionnelle aux complements, pas au produit fiches x variables.
+    // Aucun identifiant de compte ne sort : `captured_by` est resolu en nom d'acteur, comme
+    // le fait deja le journal d'activite.
+    const provenanceRecordIds = options.mode === 'patient'
+      ? patientRows.map((row) => row.id)
+      : encounters.map((encounter) => encounter.id);
+    const provenanceKind = options.mode === 'patient' ? 'patient' : 'encounter';
+    const rawProvenance = provenanceRecordIds.length === 0 ? [] : await readInChunks<ProvenanceRow>({
+      values: provenanceRecordIds,
+      resource: 'provenance',
+      limit: EXPORT_LIMITS.provenanceEntries,
+      keyOf: (row) => row.id,
+      fetchPage: async (chunk, from, to) => {
+        const result = await admin.from('record_field_provenance')
+          .select(
+            'id, record_kind, record_id, field_key, origin, captured_by, captured_at, definition_revision, operation_id',
+            { count: 'exact' },
+          )
+          .eq('record_kind', provenanceKind)
+          .in('record_id', chunk)
+          .order('captured_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
+        return { data: result.data as ProvenanceRow[] | null, error: result.error, count: result.count };
+      },
+    });
+    const actorIds = [
+      ...new Set(rawProvenance.map((row) => row.captured_by).filter((id): id is string => Boolean(id))),
+    ];
+    const actorRows = actorIds.length === 0 ? [] : await readInChunks<{ id: string; full_name: string | null }>({
+      values: actorIds,
+      resource: 'provenance_actors',
+      limit: EXPORT_LIMITS.provenanceEntries,
+      keyOf: (row) => row.id,
+      fetchPage: async (chunk, from, to) => {
+        const result = await admin.from('profiles')
+          .select('id, full_name', { count: 'exact' })
+          .in('id', chunk)
+          .order('id', { ascending: true })
+          .range(from, to);
+        return {
+          data: result.data as { id: string; full_name: string | null }[] | null,
+          error: result.error,
+          count: result.count,
+        };
+      },
+    });
+    const actorNameById = new Map(actorRows.map((row) => [row.id, row.full_name ?? '']));
+    const patientCodeById = new Map(patientRows.map((row) => [row.id, row.patient_code]));
+    const encounterPatientCodeById = new Map(
+      encounters.map((encounter) => [encounter.id, encounter.patientCode]),
+    );
+    const scopeByFieldKey = new Map(fields.map((field) => [field.fieldKey, field.scope]));
+    const provenanceEntries: ProvenanceEntry[] = rawProvenance
+      // Une origine dont la variable n'est pas restituee (projection, profil) n'a rien a
+      // expliquer dans CE fichier : elle resterait une fuite de structure sans colonne en face.
+      .filter((row) => scopeByFieldKey.has(row.field_key))
+      .map((row) => ({
+        patientCode: provenanceKind === 'patient'
+          ? patientCodeById.get(row.record_id) ?? ''
+          : encounterPatientCodeById.get(row.record_id) ?? '',
+        encounterId: provenanceKind === 'encounter' ? row.record_id : '',
+        scope: scopeByFieldKey.get(row.field_key) as 'patient' | 'encounter',
+        fieldKey: row.field_key,
+        origin: row.origin,
+        capturedBy: row.captured_by ? actorNameById.get(row.captured_by) ?? '' : '',
+        capturedAt: row.captured_at,
+        definitionRevision: revisionById.get(row.definition_revision)?.version_number ?? '',
+        operationId: row.operation_id ?? '',
+      }));
+    const provenance = provenanceEntries.length > 0 ? buildProvenance(provenanceEntries) : null;
+    const provenanceCells = format === 'xlsx' && provenance
+      ? (provenance.rows.length + 1) * provenance.columns.length
+      : 0;
 
     const dictionaryCells = format === 'xlsx' ? (dict.rows.length + 1) * dict.columns.length : 0;
     const modalitiesCells = format === 'xlsx' && modalities
@@ -885,6 +1060,18 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         excludedPatientCount,
         excludedEncounterCount,
         sectionProjection: projection,
+        definitionRevisions: mixedRevisions
+          ? {
+            activeVersionNumber: activeRevision ? revisionById.get(activeRevision)?.version_number ?? 0 : 0,
+            versionNumbers: [
+              ...new Set(
+                recordRevisions.map((id) => revisionById.get(id)?.version_number).filter((
+                  n,
+                ): n is number => typeof n === 'number'),
+              ),
+            ].sort((a, b) => a - b),
+          }
+          : null,
       })
       : null;
     const metadataCells = format === 'xlsx' && metadata ? (metadata.rows.length + 1) * metadata.columns.length : 0;
@@ -895,7 +1082,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       main.rows.length,
       main.columns.length,
       format,
-      dictionaryCells + modalitiesCells + multivalueCells + metadataCells,
+      dictionaryCells + modalitiesCells + multivalueCells + metadataCells + provenanceCells,
     );
     assertNoIdentity(main.columns);
     for (const m of multivalueTables) assertNoIdentity(m.table.columns);
@@ -912,11 +1099,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       const safeDict = neutralizeExportTable(dict);
       const safeModalities = modalities ? neutralizeExportTable(modalities) : null;
       const safeMetadata = metadata ? neutralizeExportTable(metadata) : null;
+      const safeProvenance = provenance ? neutralizeExportTable(provenance) : null;
       assertXlsxExportWithinLimits([
         safeMain,
         safeDict,
         ...(safeModalities ? [safeModalities] : []),
         ...(safeMetadata ? [safeMetadata] : []),
+        ...(safeProvenance ? [safeProvenance] : []),
         ...multivalueTables.map((m) => m.table),
       ]);
       const wb = XLSX.utils.book_new();
@@ -943,6 +1132,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
           wb,
           XLSX.utils.json_to_sheet(safeMetadata.rows, { header: safeMetadata.columns }),
           'Métadonnées',
+        );
+      }
+      if (safeProvenance) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(safeProvenance.rows, { header: safeProvenance.columns }),
+          'Provenance',
         );
       }
       for (const m of multivalueTables) {
