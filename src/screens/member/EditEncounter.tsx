@@ -16,7 +16,7 @@ import {
 } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
-import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, fieldAppliesToType } from './EncounterFields';
+import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, encounterApplicableFields } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -87,7 +87,10 @@ export function EditEncounter() {
   });
 
   // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
-  const applicableFields = useMemo(() => fields.filter((field) => fieldAppliesToType(field, encounterType)), [fields, encounterType]);
+  const applicableFields = useMemo(
+    () => encounterApplicableFields(fields, sections, encounterType),
+    [fields, sections, encounterType],
+  );
   const { hidden, removed, data: submittedData } = useMemo(() => {
     const applicableValues = Object.fromEntries(Object.entries(values).filter(([key]) => applicableFields.some((field) => field.fieldKey === key)));
     const hiddenKeys = hiddenFieldKeys(rules, applicableValues, applicableFields, sections);

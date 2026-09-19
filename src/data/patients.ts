@@ -91,10 +91,17 @@ export interface IdentityMatch {
 
 export interface NewEncounterInput {
   encounterType: string;
-  encounterDate: string;
+  /** L66 §4.3 : nulle pour une OCCURRENCE de groupe repetable, jamais pour une vraie rencontre. */
+  encounterDate: string | null;
   validationStatus: string;
   ageUnit: string;
   data: Record<string, unknown>;
+  /**
+   * L68 — bloc repetable auquel cette ligne appartient. Absent = rencontre ordinaire,
+   * comportement inchange. Le serveur impose alors `encounter_type = 'autre'` et refuse
+   * un bloc inconnu, non racine ou non repetable.
+   */
+  groupSectionKey?: string | null;
 }
 
 /** Rejeu idempotent d'une creation patient preparee hors-ligne (feuille de route O1). */
@@ -113,7 +120,8 @@ export interface ReplayEncounterCreateInput extends NewEncounterInput {
 export interface Encounter {
   id: string;
   encounterType: string;
-  encounterDate: string;
+  /** Nulle pour une occurrence de groupe non datee (L66 §4.3). */
+  encounterDate: string | null;
   validationStatus: string;
   ageValue: number | null;
   ageUnit: string | null;
@@ -122,6 +130,8 @@ export interface Encounter {
   updatedAt?: string | null;
   /** §7.4 — version de gabarit DE LA RENCONTRE : l'edition historique charge CE dictionnaire. */
   templateVersionId?: string | null;
+  /** L68 — bloc repetable de la ligne. `null` = vraie rencontre, pas une occurrence. */
+  groupSectionKey?: string | null;
 }
 
 /** Etats d'une valeur dans le contexte serveur d'une fiche E3. */
@@ -410,9 +420,9 @@ type IdentityMatchRow = {
   patient_id: string; code: string; full_name: string | null; date_of_birth: string | null;
 };
 type EncounterRow = {
-  id: string; encounter_type: string; encounter_date: string; validation_status: string;
+  id: string; encounter_type: string; encounter_date: string | null; validation_status: string;
   age_value: number | null; age_unit: string | null; data: Record<string, unknown>; updated_at?: string | null;
-  template_version_id?: string | null;
+  template_version_id?: string | null; group_section_key?: string | null;
 };
 type FieldChangeRow = {
   field_key: string; old_value: unknown; new_value: unknown; reason: string | null; changed_at: string;
@@ -448,6 +458,7 @@ const mapEncounter = (r: EncounterRow): Encounter => ({
   data: r.data ?? {},
   updatedAt: r.updated_at ?? null,
   templateVersionId: r.template_version_id ?? null,
+  groupSectionKey: r.group_section_key ?? null,
 });
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -608,6 +619,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         p_validation_status: input.validationStatus,
         p_data: input.data,
         p_age_unit: input.ageUnit,
+        p_group_section_key: input.groupSectionKey ?? null,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string };
@@ -671,10 +683,12 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async listEncounters(patientId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key')
         .eq('patient_id', patientId)
         .is('deleted_at', null)
-        .order('encounter_date', { ascending: true });
+        .order('encounter_date', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
       if (error) throw error;
       return ((data ?? []) as EncounterRow[]).map(mapEncounter);
     },
@@ -682,7 +696,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async getEncounter(encounterId) {
       const { data, error } = await client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id')
+        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key')
         .eq('id', encounterId)
         .is('deleted_at', null)
         .maybeSingle();

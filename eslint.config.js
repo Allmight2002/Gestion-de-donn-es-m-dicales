@@ -51,4 +51,11 @@ export default tseslint.config(
     files: ['scripts/**/*.mjs', 'services/**/*.mjs', 'test/**/*.ts', '*.config.js', '*.config.ts', 'vitest.config.ts', 'vite.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // Scenarios de verification navigateur : pilotes depuis Node, mais le code passe a
+    // `page.evaluate` s'execute DANS la page. Les deux jeux de globales y sont legitimes ;
+    // les scripts Node ordinaires, eux, gardent leur liste stricte ci-dessus.
+    files: ['verification/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
 );

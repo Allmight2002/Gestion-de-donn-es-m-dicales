@@ -29,7 +29,8 @@ import { SectionCard } from '../../components/SectionCard';
 import { DiagnosisCoverageNotice, diagnosisCoverageOrNull } from './DiagnosisCoverageNotice';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
-import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
+import { groupFieldsBySection, sectionLabel, withRepeatableSteps } from '../../domain/templateSections';
+import { RepeatableGroupTable } from './RepeatableGroup';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 // L30 : `type` et les options voyagent avec la colonne pour que la fiche affiche le
@@ -379,6 +380,16 @@ export function PatientDetail() {
     )
     : new Set<string>();
   const visiblePatientFields = patientFields.filter((field) => !patientHidden.has(field.fieldKey));
+  // L68 — une occurrence de groupe n'est pas une rencontre : elle est rendue dans son bloc, et
+  // la liste des rencontres ne doit jamais la faire passer pour une consultation (§4.2).
+  const realEncounters = encounters.filter((encounter) => !encounter.groupSectionKey);
+  // Les occurrences suivent la version COURANTE de la base : c'est celle que create_encounter
+  // retient, donc celle dont le dictionnaire nomme leurs colonnes.
+  const groupVersion = versions[currentVersionId ?? ''] ?? patientVersion;
+  const groupColumnsOf = (sectionKey: string) => (groupVersion?.fields ?? [])
+    .filter((field) => field.scope === 'encounter' && field.section === sectionKey)
+    .sort((a, b) => a.displayOrder - b.displayOrder);
+  const occurrencesOf = (sectionKey: string) => encounters.filter((encounter) => encounter.groupSectionKey === sectionKey);
 
   return (
     <section className="max-w-4xl space-y-5 sm:space-y-6">
@@ -478,13 +489,31 @@ export function PatientDetail() {
             patientVersion?.ruleFields ?? [], patientVersion?.rules ?? [], patientVersion?.sections,
           )}
         />
-        {groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout).map((group) => (
-          <fieldset key={group.key} className="rounded-xl border border-slate-100 p-3">
+        {withRepeatableSteps(
+          groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout),
+          groupVersion?.sections,
+        ).map((step) => step.kind === 'repeatable' ? (
+          <fieldset key={step.section.sectionKey} className="min-w-0 rounded-xl border border-slate-100 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">
-              {sectionLabel(t, { sectionKey: group.key, label: group.label })}
+              {step.section.label?.trim() || step.section.sectionKey}
+            </legend>
+            {/* Lecture seule : le tableau est rendu, aucune action d'ecriture ne l'est (§8.4). */}
+            <p className="mb-2 text-sm font-medium text-slate-600">
+              {t('form.repeatable_count').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
+            </p>
+            <RepeatableGroupTable
+              groupLabel={step.section.label?.trim() || step.section.sectionKey}
+              columns={groupColumnsOf(step.section.sectionKey)}
+              rows={occurrencesOf(step.section.sectionKey)}
+            />
+          </fieldset>
+        ) : (
+          <fieldset key={step.group.key} className="rounded-xl border border-slate-100 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">
+              {sectionLabel(t, { sectionKey: step.group.key, label: step.group.label })}
             </legend>
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              {group.fields.map((f) => {
+              {step.group.fields.map((f) => {
                 const renderedUnit = unitOf(f, visiblePatientFields, t);
                 return (
                   <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
@@ -503,11 +532,11 @@ export function PatientDetail() {
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>
-        {encounters.length === 0 ? (
+        {realEncounters.length === 0 ? (
           <EmptyState icon={CalendarDays} title={t('patient.no_encounters')} compact />
         ) : (
           <ul className="space-y-3">
-            {encounters.map((e) => {
+            {realEncounters.map((e) => {
               const encounterVersion = versionFor(e.templateVersionId);
               const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter') ?? [];
               const encounterHidden = encounterVersion
@@ -522,7 +551,7 @@ export function PatientDetail() {
               <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">
-                    {t(`encountertype.${e.encounterType}` as MessageKey)} · {formatDate(e.encounterDate, lang)}
+                    {t(`encountertype.${e.encounterType}` as MessageKey)}{e.encounterDate ? ` · ${formatDate(e.encounterDate, lang)}` : ''}
                     <span className="ml-2"><StatusBadge status={e.validationStatus} /></span>
                     {(e as { pending?: boolean }).pending && (
                       <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t('offline.pending_badge')}</span>
