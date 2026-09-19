@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
-import type { TemplateField } from '../../data/types';
+import type { TemplateField, TemplateSection } from '../../data/types';
 import { FieldForm } from './FieldForm';
 
 function renderForm(onSubmit = vi.fn()) {
@@ -639,5 +639,40 @@ describe('FieldForm — variables calculees (L35)', () => {
     );
     expect(screen.getByRole('checkbox', { name: 'Variable calculée' })).toBeDisabled();
     expect(screen.getByText(/Aucune variable ne peut servir au calcul/)).toBeInTheDocument();
+  });
+});
+
+// L67 §5 — dans un bloc repetable, le discriminant est le BLOC. Le reglage « types de
+// rencontre concernes » ne filtre plus rien : il disparait pour ces variables.
+describe('FieldForm — variable d un bloc repetable (L67)', () => {
+  const sections: TemplateSection[] = [
+    { id: 's1', sectionKey: 'lesions', label: 'Lésions', displayOrder: 0, parentSectionKey: null, isRepeatable: true },
+    { id: 's2', sectionKey: 'examen', label: 'Examen', displayOrder: 1, parentSectionKey: null },
+  ];
+
+  const renderWithSections = () => render(
+    <I18nProvider>
+      <FieldForm onSubmit={vi.fn()} sections={sections} />
+    </I18nProvider>,
+  );
+
+  test('le reglage « types de rencontre » disparait, et l ecran dit pourquoi', async () => {
+    const user = userEvent.setup();
+    // La section proposee par defaut est la PREMIERE de la version, ici le bloc repetable.
+    renderWithSections();
+    expect(screen.queryByText('Types de rencontre')).toBeNull();
+    expect(screen.getByText(/ce sont les lignes du bloc qui la portent/)).toBeInTheDocument();
+
+    // Le reglage revient des que la variable retourne dans un bloc ordinaire.
+    await user.selectOptions(screen.getByLabelText('Section'), 'examen');
+    expect(screen.getByText('Types de rencontre')).toBeInTheDocument();
+    expect(screen.queryByText(/ce sont les lignes du bloc qui la portent/)).toBeNull();
+  });
+
+  test('la portee est celle de la rencontre, et ne se choisit plus', () => {
+    renderWithSections();
+    const scope = screen.getByLabelText('Portée');
+    expect(scope).toHaveValue('encounter');
+    expect(scope).toBeDisabled();
   });
 });

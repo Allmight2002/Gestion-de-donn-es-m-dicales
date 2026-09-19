@@ -8,6 +8,7 @@ import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } 
 import { isTerminologyList, isTerminologyValue } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
+import { sectionLabel } from '../../domain/templateSections';
 import { CalculatedValue, EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
 import { FieldInput } from '../member/FieldInput';
 import { ChoiceWithProposal } from '../member/ChoiceWithProposal';
@@ -93,8 +94,23 @@ export function FormPreview({
 }) {
   const { t } = useI18n();
 
+  // L67 — les blocs REPETABLES se saisissent en tableau, une ligne par occurrence. Leurs
+  // variables quittent donc le formulaire de rencontre ordinaire : hors occurrence, elles ne
+  // s'appliquent a aucune vraie consultation (§5, seconde branche de la regle).
+  const repeatableSections = useMemo(
+    () => (sections ?? []).filter((section) => section.isRepeatable),
+    [sections],
+  );
+  const repeatableKeys = useMemo(
+    () => new Set(repeatableSections.map((section) => section.sectionKey)),
+    [repeatableSections],
+  );
+
   const patientFields = useMemo(() => sortedScope(fields, 'patient'), [fields]);
-  const encounterFields = useMemo(() => sortedScope(fields, 'encounter'), [fields]);
+  const encounterFields = useMemo(
+    () => sortedScope(fields, 'encounter').filter((field) => !repeatableKeys.has(field.section ?? '')),
+    [fields, repeatableKeys],
+  );
 
   const [tab, setTab] = useState<PreviewTab>(encounterFields.length > 0 ? 'encounter' : 'patient');
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
@@ -346,6 +362,48 @@ export function FormPreview({
                     }}
                   />
                 )}
+
+                {/* L67 — un bloc repetable ne se saisit pas champ par champ mais ligne par
+                    ligne : l'apercu montre CETTE forme-la, en-tete de tableau et une ligne
+                    d'exemple vide. L'apercu ne cree rien, le bouton d'ajout reste inactif. */}
+                {repeatableSections.map((section) => {
+                  const columns = fields.filter((field) => field.section === section.sectionKey);
+                  return (
+                    <section key={section.id} className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-800 dark:bg-violet-950/30">
+                      <h4 className="text-sm font-semibold text-violet-900 dark:text-violet-100">{sectionLabel(t, section)}</h4>
+                      <p className="mt-1 text-xs text-violet-800 dark:text-violet-200">{t('preview.repeatable_note')}</p>
+                      {columns.length === 0 ? (
+                        <p className="mt-2 text-sm text-slate-500">{t('section.repeatable_empty')}</p>
+                      ) : (
+                        <>
+                          <div className="mt-2 overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                              <caption className="sr-only">{sectionLabel(t, section)}</caption>
+                              <thead>
+                                <tr>
+                                  {columns.map((field) => (
+                                    <th key={field.id} scope="col" className="whitespace-nowrap px-2 py-1 text-left font-medium text-slate-700 dark:text-slate-200">
+                                      {field.label}{field.required && <span className="text-red-500"> *</span>}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  {columns.map((field) => <td key={field.id} className="px-2 py-1 text-slate-400">—</td>)}
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">{t('preview.repeatable_example_row')}</p>
+                        </>
+                      )}
+                      <button type="button" disabled className="btn-secondary mt-2 cursor-not-allowed opacity-60">
+                        {t('preview.repeatable_add')}
+                      </button>
+                    </section>
+                  );
+                })}
               </>
             ) : (
               <>

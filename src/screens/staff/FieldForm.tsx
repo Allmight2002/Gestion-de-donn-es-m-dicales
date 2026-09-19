@@ -211,7 +211,12 @@ export function FieldForm({
   const dateToken = type === 'datetime' ? NOW_TOKEN : TODAY_TOKEN;
 
   // --- L35 : assemblage et verification de la formule ------------------------------------
-  const effectiveScope: FieldScope = isCrossSectional ? 'patient' : scope;
+  // L67 §5 — dans un bloc REPETABLE, le discriminant est le BLOC : ses variables sont toutes
+  // de portee rencontre, et « types de rencontre concernes » ne filtre plus rien. Le reglage
+  // disparait donc pour elles, et `encounterTypes` reste nul.
+  const sectionIsRepeatable = !!section
+    && (sections ?? []).some((candidate) => candidate.sectionKey === section && candidate.isRepeatable);
+  const effectiveScope: FieldScope = isCrossSectional ? 'patient' : sectionIsRepeatable ? 'encounter' : scope;
   // Operandes admissibles : meme portee, variables SAISIES, nombre, date ou date-heure. Une variable
   // calculee n'y figure pas -- c'est ce qui supprime la question des cycles.
   const candidates = operandCandidates(fields, { scope: effectiveScope, fieldKey: fieldKey.trim() });
@@ -276,7 +281,7 @@ export function FieldForm({
         type: (outputType ?? 'number') as FieldType,
         required: false,
         isMultiple: false,
-        encounterTypes: !isCrossSectional && effectiveScope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
+        encounterTypes: !isCrossSectional && !sectionIsRepeatable && effectiveScope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
         allowedOptions: null,
         allowedValues: null,
         minValue: null,
@@ -292,12 +297,12 @@ export function FieldForm({
       return;
     }
     const built: NewField = {
-      fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null, scope: isCrossSectional ? 'patient' : scope, section, type, required,
+      fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null, scope: effectiveScope, section, type, required,
       // Un retour vers un autre type n'emporte JAMAIS la cardinalite : la base refuse
       // `is_multiple` hors terminologie, et l'ecran ne doit pas provoquer ce refus.
       isMultiple: type === 'terminology' && isMultiple,
       // Champ de rencontre uniquement ; liste vide = tous les types (null cote base).
-      encounterTypes: !isCrossSectional && scope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
+      encounterTypes: !isCrossSectional && !sectionIsRepeatable && effectiveScope === 'encounter' && encounterTypes.length > 0 ? encounterTypes : null,
       // Les DEUX partent : les options font foi, le miroir des codes garde lisible une
       // copie de l'application qui n'a pas encore ete rafraichie.
       allowedOptions: listed,
@@ -370,9 +375,9 @@ export function FieldForm({
         ) : (
           <select
             className={inputCls}
-            value={scope}
+            value={effectiveScope}
             onChange={(e) => setScope(e.target.value as FieldScope)}
-            disabled={lockStructural}
+            disabled={lockStructural || sectionIsRepeatable}
           >
             {SCOPES.map((s) => (
               <option key={s} value={s}>
@@ -738,7 +743,12 @@ export function FieldForm({
         </details>
       )}
 
-      {!isCrossSectional && scope === 'encounter' && (
+      {/* §5 : le reglage DISPARAIT pour une variable de bloc repetable, il dit pourquoi. */}
+      {!isCrossSectional && sectionIsRepeatable && (
+        <p className="helper-text sm:col-span-2 lg:col-span-3">{t('admin.encounter_types_repeatable')}</p>
+      )}
+
+      {!isCrossSectional && !sectionIsRepeatable && scope === 'encounter' && (
         <details className="surface-muted p-3 sm:col-span-2 lg:col-span-3">
           <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.encounter_category')}</summary>
           <fieldset className="mt-2">

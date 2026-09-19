@@ -390,6 +390,21 @@ export function createEditorRegistryRepository(): TemplateRepository {
     renameSection: async (sectionId, label) => {
       currentSections = currentSections.map((section) => section.id === sectionId ? { ...section, label } : section);
     },
+    // L67 : le banc rejoue les gardes serveur qui se voient depuis l'ecran — bloc racine,
+    // pas de sous-section, et rien d'autre que des variables de rencontre. L'editeur
+    // convertit les portees AVANT d'appeler ici, exactement comme face a la base.
+    setSectionRepeatable: async (sectionId, isRepeatable) => {
+      const target = currentSections.find((section) => section.id === sectionId);
+      if (!target) throw new Error('Section introuvable');
+      if (isRepeatable && target.parentSectionKey) throw new Error('Un groupe répétable est un bloc racine');
+      if (isRepeatable && currentSections.some((section) => section.parentSectionKey === target.sectionKey)) {
+        throw new Error('Un groupe répétable n’accepte pas de sous-section');
+      }
+      if (isRepeatable && currentFields.some((field) => field.section === target.sectionKey && field.scope !== 'encounter')) {
+        throw new Error('Un groupe répétable ne contient que des variables de rencontre');
+      }
+      currentSections = currentSections.map((section) => section.id === sectionId ? { ...section, isRepeatable } : section);
+    },
     deleteSection: async (sectionId) => {
       const section = currentSections.find((candidate) => candidate.id === sectionId);
       if (section && currentFields.some((candidate) => candidate.section === section.sectionKey)) throw new Error('Section non vide');

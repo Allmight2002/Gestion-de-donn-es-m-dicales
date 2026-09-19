@@ -13,6 +13,9 @@ export interface EditorGroup {
   label: string;
   parentKey: string | null;
   common: boolean;
+  /** L67 : bloc repetable. Le sommaire doit l'annoncer — un groupe ne se saisit pas comme
+   *  un bloc ordinaire, il se remplit ligne par ligne. */
+  repeatable: boolean;
   fields: TemplateField[];
 }
 
@@ -22,22 +25,24 @@ export function editorGroups(
   t: Parameters<typeof sectionLabel>[0],
 ): EditorGroup[] {
   const rendered = groupFieldsBySection(fields, sections, layout);
+  const repeatableKeys = new Set(sections.filter((section) => section.isRepeatable).map((section) => section.sectionKey));
   const groups = new Map<string, EditorGroup>();
   for (const group of rendered) groups.set(group.key, {
     key: group.key, label: sectionLabel(t, { sectionKey: group.key, label: group.label }),
     parentKey: group.parentSectionKey ?? null,
-    common: group.key === '__common__' || group.key.startsWith('__common_group__:'), fields: group.fields,
+    common: group.key === '__common__' || group.key.startsWith('__common_group__:'),
+    repeatable: repeatableKeys.has(group.key), fields: group.fields,
   });
   for (const section of sections) if (!groups.has(section.sectionKey)) groups.set(section.sectionKey, {
     key: section.sectionKey, label: sectionLabel(t, section), parentKey: section.parentSectionKey ?? null,
-    common: false, fields: [],
+    common: false, repeatable: section.isRepeatable === true, fields: [],
   });
   for (const group of layout?.groups ?? []) {
     const key = `__common_group__:${group.key}`;
-    if (!groups.has(key)) groups.set(key, { key, label: group.label, parentKey: null, common: true, fields: [] });
+    if (!groups.has(key)) groups.set(key, { key, label: group.label, parentKey: null, common: true, repeatable: false, fields: [] });
   }
   if (!layout?.groups.length && !groups.has('__common__')) groups.set('__common__', {
-    key: '__common__', label: t('section.common'), parentKey: null, common: true, fields: [],
+    key: '__common__', label: t('section.common'), parentKey: null, common: true, repeatable: false, fields: [],
   });
   const roots = sections.filter((section) => !section.parentSectionKey)
     .sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey));
@@ -158,10 +163,12 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
           {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
         </button>}
         <button type="button" aria-current={activeKey === group.key ? 'page' : undefined}
-          aria-label={`${group.label} · ${t('admin.variable_count').replace('{n}', String(count))}`}
+          aria-label={`${group.label} · ${t('admin.variable_count').replace('{n}', String(count))}${group.repeatable ? ` · ${t('section.repeatable_badge')}` : ''}`}
           className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === group.key ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
           onClick={() => onSelect(group.key)}>
-          <span className="break-words">{group.label}</span><span className="shrink-0 text-xs text-slate-500">{count}</span>
+          {/* Le marqueur est DANS le nom accessible ci-dessus : un groupe repetable ne se
+              distingue pas que par la couleur. */}
+          <span className="break-words">{group.label}{group.repeatable && <span aria-hidden className="ml-1 rounded bg-violet-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:bg-violet-900/50 dark:text-violet-100">{t('section.repeatable_badge')}</span>}</span><span className="shrink-0 text-xs text-slate-500">{count}</span>
         </button>
       </div>
       {expanded && descendants.map((child) => renderClinicalNode(child, depth + 1, nextVisited))}
@@ -204,6 +211,12 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
         {active && <p className="mb-1 text-xs text-slate-500">{pathOf(active)}</p>}
         <h3 id="editor-structure-heading" tabIndex={-1} className="text-lg font-semibold">{active?.label ?? t(activeKey ? 'editor.selection_unavailable' : 'editor.all_variables')}</h3>
         <p className="mt-1 text-sm text-slate-500">{t('admin.variable_count').replace('{n}', String(displayedFields.length))}</p>
+        {active?.repeatable && (
+          <p className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-2 py-1 text-xs font-medium text-violet-900 dark:bg-violet-900/40 dark:text-violet-100">
+            <span className="rounded bg-violet-200 px-1 uppercase tracking-wide dark:bg-violet-800">{t('section.repeatable_badge')}</span>
+            {t('section.repeatable_outline_hint')}
+          </p>
+        )}
         {/* Une rubrique commune n'a pas de condition : elle le dit au lieu de laisser la
             ligne vide. */}
         {active && <div className="mt-3 flex flex-wrap items-start justify-between gap-3 border-t border-slate-100 pt-3">
