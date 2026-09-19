@@ -150,6 +150,12 @@ analytique explicite la justifie.
 > étudiante. Ordre critique : **PAP-0 -> PAP-1 -> PAP-2 -> PAP-4** ; PAP-3 s'insère avant PAP-4
 > si les réglages sont persistants ; PAP-5 attend le contrat des groupes répétables L66 à L71.
 > PAP-4 doit être coordonné avec E4, UX-16, L59, L60 et L67 sur les surfaces de l'éditeur.
+>
+> **Mise à jour du 2026-09-18 : PAP-0 est mesuré.** La
+> [fiche de baseline](pap-0-baseline-formulaire-papier.md) fixe les trois cas fictifs, les
+> 4, 9 et 19 pages de référence et les seuils que PAP-1 à PAP-4 doivent atteindre. Les cas
+> vivent dans `src/test/fixtures/paperForms.ts` et ne doivent pas être remplacés par des
+> exemples plus simples.
 
 ## Vue d'ensemble
 
@@ -234,8 +240,8 @@ analytique explicite la justifie.
 | ~~E5~~ | ~~Évolution du formulaire : complétion des patients et rencontres~~ | **implémenté localement les 2026-09-17/18 ; non déployé** ; complétion, dispense de justification du propriétaire et preuve navigateur sur banc fictif | ne pas rouvrir ces fiches avec un autre lot ; hors connexion, le motif reste exigé |
 | ~~E6~~ | ~~Évolution du formulaire : exports, provenance et historique~~ | **implémenté localement le 2026-09-18 ; non déployé** ; états d’absence, dictionnaire de révisions, feuille Provenance, historique d’application | profils d’export préservés ; règle de visibilité hors périmètre de l’export |
 | **E7** | Évolution du formulaire : validation intégrée et preuves | tests DB/web, fixture 216/21/26, navigateur, documentation | **après E0 à E6** ; validation seule |
-| **PAP-0** | Formulaire papier : mesurer pages, espaces inutilisés et lisibilité | documentation, fixtures fictives et relevés de baseline | — |
-| **PAP-1** | Formulaire papier : modèle A4 et placement déterministe par hiérarchie/type | module de layout pur, tests, `src/data/types.ts` après inspection | **après PAP-0** ; vérifier les contrats partagés |
+| ~~PAP-0~~ | ~~Formulaire papier : mesurer pages, espaces inutilisés et lisibilité~~ | **Mesuré le 2026-09-18** ([baseline](pap-0-baseline-formulaire-papier.md)) ; cas fictifs `src/test/fixtures/paperForms.ts`, banc et script de mesure, hors produit | — |
+| **PAP-1** | Formulaire papier : modèle A4 et placement déterministe par hiérarchie/type | module de layout pur, tests, `src/data/types.ts` après inspection | **après PAP-0 (mesuré)** ; réutiliser `PAPER_FORM_CASES` et vérifier les contrats partagés |
 | **PAP-2** | Formulaire papier : prévisualisation paginée et impression navigateur/PDF | `FormPreview.tsx`, écran d'impression, CSS print, tests navigateur | **après PAP-1** ; jamais avec E4, UX-16, L59, L60 ou L67 sur les mêmes surfaces |
 | **PAP-3** | Formulaire papier : réglages persistants versionnés, si retenus | migration additive éventuelle, RPC/repository, RLS/ACL, tests de concurrence | **après PAP-1** ; propriétaire unique migration/RPC/appelants |
 | **PAP-4** | Formulaire papier : réglages dans l'éditeur et validation étudiante | `TemplateVersionEditor.tsx`, `SectionsEditor.tsx`, `FieldForm.tsx`, `FormPreview.tsx`, i18n | **après PAP-2** et PAP-3 si sauvegarde ; jamais avec E4, UX-16, L59, L60 ou L67 |
