@@ -135,7 +135,7 @@ describe('PatientDetail hors-ligne', () => {
       { v1: offlineSections },
     ));
     renderAt('/bases/b-grouped-cache/patients/p-grouped-cache', <PatientDetail />, '/bases/:id/patients/:patientId');
-    expect(await screen.findByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
+    expect(await screen.findByText(/Les valeurs des occurrences répétables ne sont pas disponibles hors ligne/)).toBeInTheDocument();
     expect(screen.queryByText('88')).not.toBeInTheDocument();
     expect(screen.queryByText('GROUP-VALUE')).not.toBeInTheDocument();
     await offlineCache.remove('b-grouped-cache');

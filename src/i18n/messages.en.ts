@@ -1234,6 +1234,7 @@ export const messages = {
     'offline.not_cached': 'This base is not available offline.',
     'offline.group_edit_requires_online': 'This occurrence is grouped or its cache does not identify its status. Reconnect to edit it online. An ordinary encounter can be edited offline after refreshing the cache.',
     'offline.group_data_refresh_required': 'The cache cannot verify this encounter’s group. Reconnect and refresh the offline copy to view its values.',
+    'offline.group_data_online_only': 'Values for repeatable occurrences are unavailable offline. Reconnect to view them.',
     'offline.large_confirm': 'This base has {n} patients. The offline download may be heavy (memory, storage, delay). Continue?',
     'offline.edit_queued_hint': 'Offline: your correction will be queued and synced when the network returns.',
     'offline.pending_badge': 'pending change',

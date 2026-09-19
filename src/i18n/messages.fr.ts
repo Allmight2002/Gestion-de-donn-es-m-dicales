@@ -1240,6 +1240,7 @@ export const messages = {
     'offline.not_cached': 'Cette base n’est pas disponible hors-ligne.',
     'offline.group_edit_requires_online': 'Cette occurrence est groupée ou son cache ne précise pas son statut. Reconnectez-vous pour la modifier en ligne. Une rencontre ordinaire peut être modifiée hors-ligne après actualisation du cache.',
     'offline.group_data_refresh_required': 'Le cache ne permet pas de vérifier le groupe de cette rencontre. Reconnectez-vous et actualisez la copie hors-ligne pour consulter ses valeurs.',
+    'offline.group_data_online_only': 'Les valeurs des occurrences répétables ne sont pas disponibles hors ligne. Reconnectez-vous pour les consulter.',
     'offline.large_confirm': 'Cette base contient {n} patients. Le téléchargement hors-ligne peut être lourd (mémoire, espace, délai). Continuer ?',
     'offline.edit_queued_hint': 'Hors-ligne : votre correction sera mise en file d’attente et synchronisée au retour du réseau.',
     'offline.pending_badge': 'modif. en attente',

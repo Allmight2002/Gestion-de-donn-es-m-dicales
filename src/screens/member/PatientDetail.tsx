@@ -580,6 +580,11 @@ export function PatientDetail() {
             <p className="mb-2 text-sm font-medium text-slate-600">
               {t('form.repeatable_count').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
             </p>
+            {offlineView && occurrencesOf(step.section.sectionKey).length > 0 && (
+              <p role="status" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {t('offline.group_data_online_only')}
+              </p>
+            )}
             <RepeatableGroupTable
               groupLabel={step.section.label?.trim() || step.section.sectionKey}
               columns={groupColumnsOf(step.section.sectionKey)}
