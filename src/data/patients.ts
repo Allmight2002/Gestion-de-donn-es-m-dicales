@@ -130,7 +130,7 @@ export interface Encounter {
   updatedAt?: string | null;
   /** §7.4 — version de gabarit DE LA RENCONTRE : l'edition historique charge CE dictionnaire. */
   templateVersionId?: string | null;
-  /** L68 — bloc repetable de la ligne. `null` = vraie rencontre, pas une occurrence. */
+  /** Section répétable persistée. Undefined dans une réponse/cache ancien sans ce marqueur. */
   groupSectionKey?: string | null;
 }
 
@@ -156,6 +156,8 @@ export interface RecordFormFieldContext {
   definition_state: RecordFormDefinitionState;
   applicability: 'applicable' | 'not_applicable';
   applicability_reason: string;
+  /** Distingue le filtrage des champs hors du groupe persistant des autres causes de non-applicabilite. */
+  repeatable_group_applicable?: boolean;
   value_state: RecordFormValueState;
   provenance: RecordFormProvenance | null;
   definition: Record<string, unknown>;
@@ -412,6 +414,13 @@ function isMissingPatientRowVersion(error: unknown): boolean {
     && typeof candidate.message === 'string'
     && /\brow_version\b/i.test(candidate.message);
 }
+function isMissingEncounterGroupSectionKey(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === '42703'
+    && typeof candidate.message === 'string'
+    && /\bgroup_section_key\b/i.test(candidate.message);
+}
 type IdentityRow = {
   patient_code: string; full_name: string | null; date_of_birth: string | null; phone: string | null;
   address: string | null; external_identifier: string | null;
@@ -458,7 +467,7 @@ const mapEncounter = (r: EncounterRow): Encounter => ({
   data: r.data ?? {},
   updatedAt: r.updated_at ?? null,
   templateVersionId: r.template_version_id ?? null,
-  groupSectionKey: r.group_section_key ?? null,
+  ...(Object.prototype.hasOwnProperty.call(r, 'group_section_key') ? { groupSectionKey: r.group_section_key ?? null } : {}),
 });
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -681,16 +690,22 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     },
 
     async listEncounters(patientId) {
-      const { data, error } = await client
+      const query = (columns: string) => client
         .from('encounter')
-        .select('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key')
+        .select(columns)
         .eq('patient_id', patientId)
         .is('deleted_at', null)
         .order('encounter_date', { ascending: true })
         .order('created_at', { ascending: true })
         .order('id', { ascending: true });
-      if (error) throw error;
-      return ((data ?? []) as EncounterRow[]).map(mapEncounter);
+      const current = await query('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key');
+      if (!current.error) return ((current.data ?? []) as unknown as EncounterRow[]).map(mapEncounter);
+      if (!isMissingEncounterGroupSectionKey(current.error)) throw current.error;
+      // Une réponse sans la colonne reste lisible en ligne, mais n'affirme pas que la rencontre
+      // est ordinaire. Seul un null réellement renvoyé par un schéma à jour autorise l'édition hors-ligne.
+      const legacy = await query('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id');
+      if (legacy.error) throw legacy.error;
+        return ((legacy.data ?? []) as unknown as EncounterRow[]).map(mapEncounter);
     },
 
     async getEncounter(encounterId) {

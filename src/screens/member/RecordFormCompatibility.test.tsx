@@ -11,6 +11,7 @@ import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type {
+  CompatibleEncounterUpdateInput,
   PatientRepository,
   PatientListItem,
   Encounter,
@@ -47,6 +48,7 @@ function field(
   type: TemplateField['type'],
   displayOrder: number,
   required = false,
+  encounterTypes: TemplateField['encounterTypes'] = null,
 ): TemplateField {
   return {
     id: fieldKey,
@@ -62,6 +64,7 @@ function field(
     allowMissingCodes: false,
     displayOrder,
     scope,
+    encounterTypes,
   };
 }
 
@@ -75,6 +78,7 @@ function context(
   fields: RecordFormContext['fields'],
   recordRevision: number,
   encounterType: string | null = null,
+  values: Record<string, unknown> = {},
 ): RecordFormContext {
   return {
     record_kind: kind,
@@ -86,7 +90,7 @@ function context(
     historical_definition: definition('v-old'),
     active_definition: definition('v-new'),
     fields,
-    values: {},
+    values,
     current_obligations: [{
       field_key: kind === 'patient' ? 'patient_added' : 'encounter_added',
       label: kind === 'patient' ? 'Ajout patient requis' : 'Ajout rencontre requis',
@@ -111,7 +115,12 @@ function context(
 function contextField(
   key: string,
   state: 'defined' | 'not_defined',
-  valueState: 'empty' | 'present',
+  valueState: 'empty' | 'present' | 'not_applicable',
+  options: {
+    applicability?: RecordFormContext['fields'][number]['applicability'];
+    applicabilityReason?: string;
+    repeatableGroupApplicable?: boolean;
+  } = {},
 ): RecordFormContext['fields'][number] {
   return {
     field_key: key,
@@ -119,8 +128,11 @@ function contextField(
     active_definition_revision: 'v-new',
     scope: key.startsWith('patient_') || key === 'historical_patient' ? 'patient' : 'encounter',
     definition_state: state,
-    applicability: 'applicable',
-    applicability_reason: state === 'defined' ? 'applicable' : 'new_addition',
+    applicability: options.applicability ?? 'applicable',
+    applicability_reason: options.applicabilityReason ?? (state === 'defined' ? 'applicable' : 'new_addition'),
+    ...(options.repeatableGroupApplicable === undefined
+      ? {}
+      : { repeatable_group_applicable: options.repeatableGroupApplicable }),
     value_state: valueState,
     provenance: valueState === 'present' ? {
       origin: 'initial', captured_by: 'u', captured_at: '2026-09-16T10:00:00Z',
@@ -140,10 +152,18 @@ const templates: TemplateRepository = {
         field('patient_added', 'Ajout patient requis', 'patient', 'text', 1, true),
       ];
     const encounterFields = versionId === 'v-old'
-      ? [field('historical_encounter', 'Valeur historique rencontre', 'encounter', 'integer', 0)]
+      ? [
+        field('historical_encounter', 'Valeur historique rencontre', 'encounter', 'integer', 0),
+        field('group_a_value', 'Valeur groupe A', 'encounter', 'text', 1, false, ['consultation']),
+        field('group_b_value', 'Valeur groupe B', 'encounter', 'text', 2),
+        field('ordinary_value', 'Valeur ordinaire', 'encounter', 'text', 3),
+      ]
       : [
         field('historical_encounter', 'Valeur historique rencontre', 'encounter', 'integer', 0),
         field('encounter_added', 'Ajout rencontre requis', 'encounter', 'integer', 1, true),
+        field('group_a_value', 'Valeur groupe A', 'encounter', 'text', 2, false, ['consultation']),
+        field('group_b_value', 'Valeur groupe B', 'encounter', 'text', 3),
+        field('ordinary_value', 'Valeur ordinaire', 'encounter', 'text', 4),
       ];
     return {
       version: { id: versionId, templateId: 't1', versionNumber: versionId === 'v-old' ? 1 : 2, status: 'published' as const },
@@ -172,6 +192,18 @@ function renderForm(element: ReactElement, patients: PatientRepository, workDraf
             <Route path="/bases/:id/patients/:patientId/edit" element={element} />
             <Route path="/bases/b1/patients/p1" element={<p>Fiche patient</p>} />
           </Routes>
+        </MemoryRouter>
+      </RepositoryProvider>
+    </I18nProvider>,
+  );
+}
+
+function renderEncounterEdit(patients: PatientRepository) {
+  return render(
+    <I18nProvider>
+      <RepositoryProvider bases={bases} templates={templates} patients={patients} workDrafts={serverDrafts}>
+        <MemoryRouter initialEntries={['/bases/b1/patients/p1/encounters/e1/edit']}>
+          <Routes><Route path="/bases/:id/patients/:patientId/encounters/:encounterId/edit" element={<EditEncounter />} /></Routes>
         </MemoryRouter>
       </RepositoryProvider>
     </I18nProvider>,
@@ -233,7 +265,7 @@ test('EditEncounter conserve la valeur historique et utilise le contexte de la r
       return context('encounter', 'e1', [
         contextField('historical_encounter', 'defined', 'present'),
         contextField('encounter_added', 'not_defined', 'empty'),
-      ], 6, 'consultation');
+      ], 6, 'consultation', { historical_encounter: 8 });
     },
     updateEncounterCompatible,
   } as unknown as PatientRepository;
@@ -249,6 +281,7 @@ test('EditEncounter conserve la valeur historique et utilise le contexte de la r
   );
   const added = await screen.findByLabelText('Ajout rencontre requis');
   expect(added).toHaveValue(null);
+  expect(screen.getByLabelText('Valeur historique rencontre')).toHaveValue(8);
   fireEvent.change(added, { target: { value: '12' } });
   fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'complétion fictive' } });
   await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
@@ -259,4 +292,112 @@ test('EditEncounter conserve la valeur historique et utilise le contexte de la r
     baseId: 'b1', encounterId: 'e1', expectedRecordRevision: 6, recordDefinitionRevision: 'v-old',
     patch: { encounter_added: 12 }, validationStatus: 'curated',
   }));
+});
+
+test.each([
+  {
+    name: 'groupe A',
+    encounterType: 'autre',
+    editableLabel: 'Valeur groupe A',
+    editableContextValue: 'valeur A issue du contexte',
+    changedValue: 'nouvelle valeur A',
+    expectedPatch: { group_a_value: 'nouvelle valeur A' },
+    groupAApplicable: true,
+    groupBApplicable: false,
+    ordinaryApplicable: false,
+    contextValues: {
+      historical_encounter: 8,
+      group_a_value: 'valeur A issue du contexte',
+    },
+  },
+  {
+    name: 'groupe B',
+    encounterType: 'autre',
+    editableLabel: 'Valeur groupe B',
+    editableContextValue: 'valeur B issue du contexte',
+    changedValue: 'nouvelle valeur B',
+    expectedPatch: { group_b_value: 'nouvelle valeur B' },
+    groupAApplicable: false,
+    groupBApplicable: true,
+    ordinaryApplicable: false,
+    contextValues: {
+      historical_encounter: 8,
+      group_b_value: 'valeur B issue du contexte',
+    },
+  },
+  {
+    name: 'rencontre ordinaire',
+    encounterType: 'consultation',
+    editableLabel: 'Valeur ordinaire',
+    editableContextValue: 'valeur ordinaire issue du contexte',
+    changedValue: 'nouvelle valeur ordinaire',
+    expectedPatch: { ordinary_value: 'nouvelle valeur ordinaire' },
+    groupAApplicable: false,
+    groupBApplicable: false,
+    ordinaryApplicable: true,
+    contextValues: {
+      historical_encounter: 8,
+      ordinary_value: 'valeur ordinaire issue du contexte',
+    },
+  },
+])('EditEncounter applique le contexte compatible pour $name', async (scenario) => {
+  const updateEncounterCompatible = vi.fn(async (_input: CompatibleEncounterUpdateInput) => ({
+    recordKind: 'encounter' as const, recordId: 'e1', recordRevision: 7, validationStatus: 'draft',
+    operationId: 'op-encounter', activeRevision: 2, recordDefinitionRevision: 'v-old',
+    contextFingerprint: `sha256:${'d'.repeat(64)}`,
+  }));
+  const getEncounterFormContext = vi.fn(async () => context('encounter', 'e1', [
+    contextField('historical_encounter', 'defined', 'present'),
+    contextField('group_a_value', 'defined', scenario.groupAApplicable ? 'present' : 'not_applicable', {
+      applicability: scenario.groupAApplicable ? 'applicable' : 'not_applicable',
+      applicabilityReason: scenario.groupAApplicable ? 'applicable' : 'rule_hidden',
+      repeatableGroupApplicable: scenario.groupAApplicable,
+    }),
+    contextField('group_b_value', 'defined', scenario.groupBApplicable ? 'present' : 'not_applicable', {
+      applicability: scenario.groupBApplicable ? 'applicable' : 'not_applicable',
+      applicabilityReason: scenario.groupBApplicable ? 'applicable' : 'rule_hidden',
+      repeatableGroupApplicable: scenario.groupBApplicable,
+    }),
+    contextField('ordinary_value', 'defined', scenario.ordinaryApplicable ? 'present' : 'not_applicable', {
+      applicability: scenario.ordinaryApplicable ? 'applicable' : 'not_applicable',
+      applicabilityReason: scenario.ordinaryApplicable ? 'applicable' : 'repeatable_group',
+      ...(scenario.ordinaryApplicable ? {} : { repeatableGroupApplicable: false }),
+    }),
+    contextField('encounter_added', 'not_defined', 'empty'),
+  ], 6, scenario.encounterType, scenario.contextValues));
+  const encounter: Encounter = {
+    id: 'e1', encounterType: scenario.encounterType, encounterDate: '2026-09-01', validationStatus: 'draft',
+    ageValue: 40, ageUnit: 'years',
+    data: {
+      historical_encounter: 8,
+      group_a_value: 'sentinelle groupe A brute',
+      group_b_value: 'sentinelle groupe B brute',
+      ordinary_value: 'valeur ordinaire brute',
+    },
+    updatedAt: '2026-09-16T10:00:00Z', templateVersionId: 'v-old',
+  };
+  const patients = {
+    async getEncounter() { return encounter; },
+    async listFieldChanges() { return []; },
+    getEncounterFormContext,
+    updateEncounterCompatible,
+  } as unknown as PatientRepository;
+
+  renderEncounterEdit(patients);
+
+  const input = await screen.findByLabelText(scenario.editableLabel);
+  expect(input).toHaveValue(scenario.editableContextValue);
+  expect(screen.getByLabelText('Valeur historique rencontre')).toHaveValue(8);
+  expect(getEncounterFormContext).toHaveBeenCalledWith('b1', 'e1');
+  for (const label of ['Valeur groupe A', 'Valeur groupe B']) {
+    if (label !== scenario.editableLabel) expect(screen.queryByLabelText(label)).toBeNull();
+  }
+
+  fireEvent.change(input, { target: { value: scenario.changedValue } });
+  fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'correction fictive' } });
+  await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+
+  await waitFor(() => expect(updateEncounterCompatible).toHaveBeenCalledTimes(1));
+  expect(updateEncounterCompatible.mock.calls[0]?.[0].patch).toEqual(scenario.expectedPatch);
+  expect(JSON.stringify(updateEncounterCompatible.mock.calls)).not.toContain('sentinelle');
 });
