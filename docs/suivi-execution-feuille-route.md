@@ -25,9 +25,11 @@ de dupliquer des statuts divergents.
 **Chantier ajouté le 2026-09-15 : formulaire papier compact PAP-0 à PAP-5.**
 La [spécification du formulaire vierge](spec-formulaire-papier.md) et le
 [découpage avec suivi par lot](lots-formulaire-papier.md#ordre-et-suivi) sont rédigés.
-PAP-0 à PAP-4 restent **à réaliser** ; PAP-5 est **conditionnel** au contrat des groupes
-répétables L66 à L71. Aucune preuve d’implémentation, de navigateur, de PDF ou d’impression
-papier n’est attribuée à ce chantier. Son suivi détaillé reste dans le plan PAP.
+**PAP-0 est mesuré le 2026-09-18** ([fiche de baseline](pap-0-baseline-formulaire-papier.md)) ;
+PAP-1 à PAP-4 restent **à réaliser** ; PAP-5 est **conditionnel** au contrat des groupes
+répétables L66 à L71. Aucune preuve d’implémentation produit, d’impression papier ou de
+déploiement n’est attribuée à ce chantier : PAP-0 n’a produit que des cas fictifs, un banc de
+mesure et une fiche. Son suivi détaillé reste dans le plan PAP.
 
 | Ordre | Lot | Statut | Branche / SHA | PR et CI | Staging | Limites restantes |
 |---|---|---|---|---|---|---|
@@ -3386,3 +3388,65 @@ Modification de documentation uniquement : aucun fichier de `src/`, `supabase/`,
 `test/` touché. `npm run typecheck` vert sur l'arbre mis à jour. Les liens relatifs de `docs/`
 ont été revérifiés. Aucun commit, aucune fusion, aucune migration distante, aucune modification
 cloud.
+
+## PAP-0 — baseline mesurée du formulaire papier (2026-09-18)
+
+### Contexte
+
+Premier lot du chantier [formulaire papier compact](lots-formulaire-papier.md), exécuté sur la
+branche de travail `feat/e6-export-provenance-historique`, SHA de base `650188d2aa0e`. Lot
+documentaire et préparatoire : ni produit, ni schéma, ni version de formulaire, ni donnée
+clinique modifiés.
+
+### Ce qui a été fait
+
+- **Trois cas fictifs figés** dans `src/test/fixtures/paperForms.ts` : court (18 variables,
+  3 sections, 2 règles), moyen (77 / 10 / 9) et volumineux, qui **réutilise** la fixture
+  d'éditeur existante (216 / 24 / 26) plutôt que d'en créer une seconde. Le cas moyen porte la
+  variété absente du volumineux : consignes, listes de 3 à 12 options, multisélection,
+  terminologie, formules, libellés longs, raisons de valeur manquante, rubriques communes et
+  variables détachées.
+- **Banc de mesure** (`paper-baseline-harness.html` + `src/dev/PaperBaselineHarness.tsx`) qui
+  monte le vrai `FormPreview` sur ces cas, et **script de mesure**
+  (`scripts/paper-baseline.mjs`, `npm run paper:baseline`) qui déplie tous les blocs, imprime en
+  PDF A4 par Chromium, compte les pages et relève le DOM en média `print`.
+- **Fiche de baseline** [`pap-0-baseline-formulaire-papier.md`](pap-0-baseline-formulaire-papier.md)
+  et relevés bruts [`pap-0-baseline-releves.json`](pap-0-baseline-releves.json).
+
+### Résultat mesuré
+
+- Baseline : **4, 9 et 19 pages A4** (32 au total, deux portées par cas). Le nombre de pages du
+  PDF Chromium et celui dérivé du DOM coïncident pour les six documents.
+- L'impression actuelle est **incomplète** : 237 variables sur 311 (76 %) — les cibles de règles
+  de visibilité sont masquées faute de réponse — 0 consigne sur 8, 2 listes muettes (menu
+  déroulant de 6 options), 43 cases à cocher sans « Oui / Non ».
+- Coût du contenu **13 à 18 mm par variable** contre **28 à 51 mm** consommés ; 5 documents sur 6
+  finissent sur une page presque vide, 19 questions sont coupées par un saut de page, 2 titres
+  sont séparés de leur première question.
+- Seuils fixés à partir de ces mesures : **≤ 2, ≤ 6 et ≤ 13 pages** à contenu complet (au moins
+  −30 % par cas) ; ligne d'écriture ≥ 8 mm, largeur ≥ 4 unités sur 12, case ≥ 4 mm, corps ≥ 9 pt ;
+  **100 %** des variables applicables imprimées.
+
+### Vérifications exécutées
+
+- `npx vitest run --project web src/test/fixtures/paperForms.test.tsx` : **29/29 verts**.
+- `npx eslint` sur les quatre fichiers ajoutés : vert.
+- `npx tsc --noEmit` : aucune erreur imputable à ce lot. Deux erreurs `TS6133` subsistent dans
+  `test/repeatable-groups.test.ts`, fichier non suivi appartenant au chantier des groupes
+  répétables et **laissé intact**.
+- Mesure rejouée deux fois : résultats identiques.
+
+### Limites
+
+Mesure locale, Chromium headless, un seul poste. Aucune impression physique, aucun exemplaire
+rempli par un étudiant : le confort réel reste à établir en PAP-4. Les PDF de contrôle sont
+conservés dans `test-results/pap-0-baseline/` (non versionné) et n'ont pas été relus page à page.
+Les seuils de lisibilité sont provisoires, dérivés des dimensions actuelles du produit.
+
+### Périmètre Git
+
+Aucun commit, aucune poussée, aucune fusion, aucun déploiement, aucune migration distante,
+aucune modification cloud. Les modifications locales d'autres lots présentes dans le checkout
+partagé (`templates.ts`, `AccessManagement.tsx`, `test/harness/db.ts`, migration et tests des
+groupes répétables, `schema-etat-final.md`, `security-definer-allowlist.json`) n'ont pas été
+touchées.
