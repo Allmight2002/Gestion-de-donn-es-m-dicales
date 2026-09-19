@@ -136,7 +136,9 @@ analytique explicite la justifie.
 > `not_defined`/`empty`/`not_applicable`, la provenance, les erreurs structurées et le cas A/B ;
 > E0 → E1 → E2 → E3 → E4 → E5 → E6 → E7 ; E3 couvre désormais localement la lecture et le
 > complément compatibles des patients et rencontres, avec contrôles PostgreSQL et web ciblés ;
-> E4/E6 peuvent être séparés après E3 si leurs surfaces restent distinctes. Le propriétaire de la
+> E5 rend les ajouts visibles et renseignables dans les fiches existantes, avec l'état
+> « À renseigner », les compteurs du formulaire courant et une preuve navigateur sur banc fictif ;
+> E6 peut être séparé après E3 si ses surfaces restent distinctes. Le propriétaire de la
 > base n’a pas de justification textuelle obligatoire pour les opérations autorisées ; l’audit,
 > les droits et les confirmations de purge par code à cinq caractères restent contrôlés. Aucune
 > migration ni implémentation de ce comportement n’est incluse dans E0.
@@ -148,6 +150,12 @@ analytique explicite la justifie.
 > étudiante. Ordre critique : **PAP-0 -> PAP-1 -> PAP-2 -> PAP-4** ; PAP-3 s'insère avant PAP-4
 > si les réglages sont persistants ; PAP-5 attend le contrat des groupes répétables L66 à L71.
 > PAP-4 doit être coordonné avec E4, UX-16, L59, L60 et L67 sur les surfaces de l'éditeur.
+>
+> **Mise à jour du 2026-09-18 : PAP-0 est mesuré.** La
+> [fiche de baseline](pap-0-baseline-formulaire-papier.md) fixe les trois cas fictifs, les
+> 4, 9 et 19 pages de référence et les seuils que PAP-1 à PAP-4 doivent atteindre. Les cas
+> vivent dans `src/test/fixtures/paperForms.ts` et ne doivent pas être remplacés par des
+> exemples plus simples.
 
 ## Vue d'ensemble
 
@@ -228,12 +236,12 @@ analytique explicite la justifie.
 | **E1** | Évolution du formulaire : préparations persistantes, droits et audit | migration additive, RPC/repository de préparation, RLS/ACL, tests DB | **après E0** ; propriétaire unique des contrats serveur |
 | **E2** | Évolution du formulaire : application atomique dans la même base | migration/RPC d’application, copie des sections/champs/règles, idempotence | **après E1** ; jamais avec une autre copie de version |
 | **E3** | Évolution du formulaire : lecture/écriture compatible des dossiers existants | `patients.ts`, formulaires patients/rencontres, validation serveur, tests | **implémenté localement après E2 ; non déployé** ; jamais avec un lot modifiant les mêmes RPC patients |
-| **E4** | Évolution du formulaire : éditeur, diagnostic, aperçu et versionnage invisible | `TemplateVersionEditor.tsx`, éditeurs de structure/règles/diagnostic, i18n | **après E2 et E3** ; coordonner UX-16, L59/L60 et L67 |
-| **E5** | Évolution du formulaire : complétion des patients et rencontres | `SectionedFields.tsx`, `EditPatient.tsx`, formulaires de rencontre, i18n | **après E3 et E4** ; jamais avec un autre lot ouvrant ces fiches |
-| **E6** | Évolution du formulaire : exports, provenance et historique | contrat d’export, dictionnaire, historique, tests de cloisonnement | **après E3** ; préserver les profils d’export |
+| **E4** | Évolution du formulaire : éditeur, diagnostic, aperçu et versionnage invisible | `TemplateVersionEditor.tsx`, éditeurs de structure/règles/diagnostic, i18n | **implémenté localement après E2/E3 ; non déployé ; sans preuve navigateur** ; coordonner UX-16, L59/L60 et L67 |
+| ~~E5~~ | ~~Évolution du formulaire : complétion des patients et rencontres~~ | **implémenté localement les 2026-09-17/18 ; non déployé** ; complétion, dispense de justification du propriétaire et preuve navigateur sur banc fictif | ne pas rouvrir ces fiches avec un autre lot ; hors connexion, le motif reste exigé |
+| ~~E6~~ | ~~Évolution du formulaire : exports, provenance et historique~~ | **implémenté localement le 2026-09-18 ; non déployé** ; états d’absence, dictionnaire de révisions, feuille Provenance, historique d’application | profils d’export préservés ; règle de visibilité hors périmètre de l’export |
 | **E7** | Évolution du formulaire : validation intégrée et preuves | tests DB/web, fixture 216/21/26, navigateur, documentation | **après E0 à E6** ; validation seule |
-| **PAP-0** | Formulaire papier : mesurer pages, espaces inutilisés et lisibilité | documentation, fixtures fictives et relevés de baseline | — |
-| **PAP-1** | Formulaire papier : modèle A4 et placement déterministe par hiérarchie/type | module de layout pur, tests, `src/data/types.ts` après inspection | **après PAP-0** ; vérifier les contrats partagés |
+| ~~PAP-0~~ | ~~Formulaire papier : mesurer pages, espaces inutilisés et lisibilité~~ | **Mesuré le 2026-09-18** ([baseline](pap-0-baseline-formulaire-papier.md)) ; cas fictifs `src/test/fixtures/paperForms.ts`, banc et script de mesure, hors produit | — |
+| **PAP-1** | Formulaire papier : modèle A4 et placement déterministe par hiérarchie/type | module de layout pur, tests, `src/data/types.ts` après inspection | **après PAP-0 (mesuré)** ; réutiliser `PAPER_FORM_CASES` et vérifier les contrats partagés |
 | **PAP-2** | Formulaire papier : prévisualisation paginée et impression navigateur/PDF | `FormPreview.tsx`, écran d'impression, CSS print, tests navigateur | **après PAP-1** ; jamais avec E4, UX-16, L59, L60 ou L67 sur les mêmes surfaces |
 | **PAP-3** | Formulaire papier : réglages persistants versionnés, si retenus | migration additive éventuelle, RPC/repository, RLS/ACL, tests de concurrence | **après PAP-1** ; propriétaire unique migration/RPC/appelants |
 | **PAP-4** | Formulaire papier : réglages dans l'éditeur et validation étudiante | `TemplateVersionEditor.tsx`, `SectionsEditor.tsx`, `FieldForm.tsx`, `FormPreview.tsx`, i18n | **après PAP-2** et PAP-3 si sauvegarde ; jamais avec E4, UX-16, L59, L60 ou L67 |

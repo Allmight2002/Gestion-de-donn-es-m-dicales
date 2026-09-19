@@ -120,8 +120,11 @@ function curStatusBadge(status: string): string {
   return `${base} ${tone[status] ?? 'bg-slate-100 text-slate-600 ring-slate-500/20'}`;
 }
 
-// Suppression d'une demande avec MOTIF (confirmation) et CHOIX de portee : la demande seule,
-// ou le patient ET la demande (utile si le patient avait ete cree juste pour cette demande).
+// Suppression d'une demande avec CONFIRMATION et CHOIX de portee : la demande seule, ou le
+// patient ET la demande (utile si le patient avait ete cree juste pour cette demande).
+// §4.5 : `delete_curation_request` est deja reserve au proprietaire de la base et traite un
+// motif absent comme `owner_exempt`. Le texte n'est donc plus exige ici ; un autre compte reste
+// refuse par le serveur, avec ou sans motif, et l'audit conserve la trace reelle.
 // DETTE TECHNIQUE (factorisation reportee) : ce menu partage la logique busy/erreur/reconciliation
 // de DeleteWithReason mais garde deux boutons de portee et une validation de motif plus legere. Un
 // hook commun (busy + erreur + reconciliation + fermeture) impliquerait de reecrire DeleteWithReason
@@ -152,7 +155,7 @@ function DeleteRequestMenu({
   }
 
   const confirm = async (deletePatient: boolean) => {
-    if (busy || submitting || !reason.trim()) return;
+    if (busy || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -182,6 +185,7 @@ function DeleteRequestMenu({
     <span className="inline-flex flex-wrap items-center justify-end gap-1">
       <input
         aria-label={t('del.reason')}
+        title={t('justification.owner_optional')}
         placeholder={t('del.reason')}
         className="rounded border border-slate-300 px-2 py-0.5 text-xs"
         value={reason}
@@ -189,10 +193,10 @@ function DeleteRequestMenu({
         disabled={busy || submitting}
         onChange={(e) => { setReason(e.target.value); setError(null); }}
       />
-      <button disabled={busy || submitting || !reason.trim()} onClick={() => { void confirm(false); }} className="rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50">
+      <button disabled={busy || submitting} onClick={() => { void confirm(false); }} className="rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50">
         {t('curation.delete_request_only')}
       </button>
-      <button disabled={busy || submitting || !reason.trim()} onClick={() => { void confirm(true); }} className="rounded bg-red-700 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50">
+      <button disabled={busy || submitting} onClick={() => { void confirm(true); }} className="rounded bg-red-700 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50">
         {t('curation.delete_with_patient')}
       </button>
       <button disabled={busy || submitting} onClick={() => { setOpen(false); setReason(''); setError(null); }} className="text-xs text-slate-500 hover:underline disabled:opacity-50">

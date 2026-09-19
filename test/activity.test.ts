@@ -74,6 +74,77 @@ describe('C3 base_activity_log (journal d activite lisible)', () => {
     expect(ownerLog.find((e) => e.action === 'patient_deleted')?.metadata).toMatchObject({ reason: 'motif confidentiel' });
   });
 
+  // E6 — l'evolution du formulaire doit etre LISIBLE dans l'historique : qui, quand, quel
+  // impact, vers quelle revision. Les compteurs et la classification viennent de l'instantane
+  // que `apply_form_preparation` a fige dans `audit_log.metadata` ; rien n'est relu dans la
+  // version de gabarit vivante, qui pourrait avoir change depuis.
+  test('une evolution du formulaire expose auteur, revision et impact, sans pointeur vivant', async () => {
+    await seedEvent('form_preparation_applied', {
+      operation_id: '00000000-0000-0000-0000-0000000000aa',
+      source_template_version_id: '00000000-0000-0000-0000-0000000000b1',
+      target_template_version_id: '00000000-0000-0000-0000-0000000000b2',
+      source_revision: 4,
+      target_revision: 5,
+      classification: 'additive',
+      impact: {
+        serverCounts: { patients: 12, encounters: 30 },
+        addedFields: [
+          { fieldKey: 'date_debut_symptomes', scope: 'encounter', required: false, potentiallyAffectedRecords: 30 },
+          { fieldKey: 'poids_admission', scope: 'patient', required: true, potentiallyAffectedRecords: 12 },
+        ],
+        addedSections: [{ sectionKey: 'suivi', parentSectionKey: null }],
+        addedRules: [],
+        addedDiagnosisAssociations: [{ scope: 'encounter', diagnosisFieldKey: 'diagnostic' }],
+      },
+    });
+
+    const editorLog = (await rowsAs(editorId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
+      { action: string; actorName: string; at: string; metadata: Record<string, unknown> }[];
+    const evolution = editorLog.find((e) => e.action === 'form_preparation_applied')!;
+
+    expect(typeof evolution.actorName).toBe('string');
+    expect(evolution.actorName.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(evolution.at))).toBe(false);
+    expect(evolution.metadata).toMatchObject({
+      classification: 'additive',
+      source_revision: 4,
+      target_revision: 5,
+      added_fields: 2,
+      added_required_fields: 1,
+      added_sections: 1,
+      added_diagnosis_associations: 1,
+      affected_patients: 12,
+      affected_encounters: 30,
+    });
+    // Un collaborateur voit l'ampleur, pas la structure nominative ajoutee.
+    expect(evolution.metadata).not.toHaveProperty('added_field_keys');
+    // Et jamais l'identifiant technique d'une version de gabarit : c'est le numero de revision
+    // qui fait foi dans l'historique, pas un pointeur vers un objet qui peut changer.
+    expect(JSON.stringify(evolution.metadata)).not.toContain('00000000-0000-0000-0000-0000000000b2');
+
+    const ownerLog = (await rowsAs(aliceId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
+      { action: string; metadata: Record<string, unknown> }[];
+    const ownerEvolution = ownerLog.find((e) => e.action === 'form_preparation_applied')!;
+    expect(ownerEvolution.metadata.added_field_keys).toEqual(['date_debut_symptomes', 'poids_admission']);
+  });
+
+  // E5/E6 — le proprietaire dispense de motif reste audite : auteur, date, base, operation. Le
+  // journal ne doit NI afficher un motif absent, NI en fabriquer un.
+  test('une operation du proprietaire sans motif reste auditee sans motif invente', async () => {
+    await seedEvent('patient_deleted', { patient_id: '00000000-0000-0000-0000-0000000000c1' });
+
+    const ownerLog = (await rowsAs(aliceId, 'select public.base_activity_log($1) as a', [baseId]))[0].a as
+      { action: string; actorName: string; at: string; metadata: Record<string, unknown> }[];
+    const sansMotif = ownerLog
+      .filter((e) => e.action === 'patient_deleted')
+      .find((e) => !('reason' in e.metadata))!;
+
+    expect(sansMotif).toBeDefined();
+    expect(sansMotif.actorName.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(sansMotif.at))).toBe(false);
+    expect(Object.keys(sansMotif.metadata)).toEqual([]);
+  });
+
   test('le journal est pagine et filtrable par action', async () => {
     await seedEvent('pagination_probe', {}, '2026-07-04T12:00:00.000Z');
     await seedEvent('export_created', { format: 'csv' }, '2026-07-04T11:30:00.000Z');

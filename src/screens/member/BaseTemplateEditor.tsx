@@ -4,9 +4,9 @@ import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { BaseListing } from '../../data/bases';
-import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 import { PageHeader } from '../../components/PageHeader';
 import { SkeletonList } from '../../components/Skeleton';
+import { FormPreparationEditor } from './FormPreparationEditor';
 
 // Edition LIBRE du gabarit d'une base par son medecin proprietaire (cahier v3.0) :
 // ajouter / modifier / supprimer des variables. Reutilise l'editeur de version (sans les
@@ -50,15 +50,8 @@ export function BaseTemplateEditor() {
 
   return (
     <section className="space-y-4">
-      <PageHeader title={t('basetemplate.title')} description={t('basetemplate.hint')} />
-      <TemplateVersionEditor
-        versionId={listing.base.currentTemplateVersionId}
-        templateName={listing.templateName ?? undefined}
-        onBack={back}
-        showVersionActions={false}
-        observationModel={listing.base.observationModel}
-        onNewVersion={async (id) => { await bases.setTemplateVersion(baseId!, id); await load(); }}
-      />
+      <PageHeader title={t('formprep.page_title')} description={t('formprep.page_description')} />
+      <FormPreparationEditor baseId={baseId!} listing={listing} onBack={back} />
     </section>
   );
 }

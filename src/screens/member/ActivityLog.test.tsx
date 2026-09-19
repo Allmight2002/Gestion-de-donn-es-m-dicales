@@ -46,6 +46,62 @@ describe('ActivityLog (C3)', () => {
     expect(within(list).getByText(/7 patients · 12 rencontres · 1 erreurs/)).toBeInTheDocument(); // detail (5+2)
   });
 
+  // E6 — apres une evolution du formulaire, l'historique doit repondre a « qui a change quoi,
+  // quand, et vers quelle revision ». Le detail vient de l'INSTANTANE minimise par le serveur :
+  // l'ecran ne relit aucune version de gabarit vivante.
+  test('resume une evolution du formulaire : revision, ajouts et fiches concernees', async () => {
+    const audit = makeAudit(async () => [
+      {
+        id: 'a1',
+        at: '2026-09-17T10:00:00.000Z',
+        action: 'form_preparation_applied',
+        actorName: 'Dr Mbassi',
+        metadata: {
+          classification: 'additive',
+          source_revision: 4,
+          target_revision: 5,
+          added_fields: 2,
+          added_required_fields: 1,
+          added_rules: 1,
+          added_diagnosis_associations: 1,
+          affected_patients: 12,
+          affected_encounters: 30,
+          added_field_keys: ['date_debut_symptomes', 'poids_admission'],
+        },
+      },
+    ]);
+    renderActivity(audit);
+
+    const list = await screen.findByRole('list');
+    expect(within(list).getByText('Formulaire modifié')).toBeInTheDocument();
+    const detail = within(list).getByText(/révision 5/);
+    expect(detail).toHaveTextContent('2 variables ajoutées (1 dont obligatoires)');
+    expect(detail).toHaveTextContent('1 règles ajoutées');
+    expect(detail).toHaveTextContent('1 associations diagnostiques');
+    expect(detail).toHaveTextContent('42 fiches concernées');
+    expect(detail).toHaveTextContent('date_debut_symptomes, poids_admission');
+  });
+
+  // Un collaborateur non proprietaire recoit les compteurs sans le detail nominatif ; l'ecran
+  // ne doit pas combler ce vide par une phrase inventee.
+  test('sans detail nominatif, le resume reste vrai et ne comble rien', async () => {
+    const audit = makeAudit(async () => [
+      {
+        id: 'a1',
+        at: '2026-09-17T10:00:00.000Z',
+        action: 'form_preparation_applied',
+        actorName: 'Dr Ngo',
+        metadata: { classification: 'additive', target_revision: 5, added_fields: 0 },
+      },
+    ]);
+    renderActivity(audit);
+
+    const list = await screen.findByRole('list');
+    expect(within(list).getByText('Formulaire modifié')).toBeInTheDocument();
+    expect(within(list).getByText('révision 5')).toBeInTheDocument();
+    expect(within(list).queryByText(/variables ajoutées/)).toBeNull();
+  });
+
   test('filtre le journal par action', async () => {
     const getBaseActivity = vi.fn<AuditRepository['getBaseActivity']>(async (_baseId, options) => {
       if (options?.action === 'access_revoked') {

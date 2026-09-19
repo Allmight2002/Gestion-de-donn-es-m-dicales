@@ -1,9 +1,10 @@
 # Spécification - formulaire papier compact imprimable
 
-- Révision : **2026-09-14**.
-- Statut : 📋 **spécifiée, non implémentée**.
-- Découpage opérationnel : [lots PAP-0 à PAP-5](lots-formulaire-papier.md), tous à réaliser sauf
-  PAP-5 qui reste conditionnel au contrat des groupes répétables.
+- Révision : **2026-09-14** ; statut de réalisation revu le **2026-09-18**.
+- Statut : 📋 **spécifiée, non implémentée** ; seule la mesure PAP-0 est faite.
+- Découpage opérationnel : [lots PAP-0 à PAP-5](lots-formulaire-papier.md). **PAP-0 est mesuré**
+  ([baseline du 2026-09-18](pap-0-baseline-formulaire-papier.md)) ; PAP-1 à PAP-4 restent à
+  réaliser et PAP-5 conditionnel au contrat des groupes répétables.
 - Origine : retours d'étudiants utilisant d'autres applications. Les formulaires imprimés
   occupent parfois beaucoup de pages à cause d'espaces mal répartis, de questions courtes
   présentées une par ligne et de sauts de page qui repoussent une section entière.
@@ -433,6 +434,10 @@ cliniques et des blocs d'export.
 - Conserver ces formulaires comme fixture fictive ; inclure la fixture éditeur de 216 variables,
   au moins 21 sections et plus de 20 règles lorsqu'elle est disponible.
 - Fixer le seuil de réduction de pages après cette mesure, plutôt que d'annoncer un gain théorique.
+
+**Fait le 2026-09-18** : [fiche de baseline](pap-0-baseline-formulaire-papier.md). Baseline de
+4, 9 et 19 pages pour les trois cas ; plafonds retenus de 2, 6 et 13 pages à contenu complet,
+sous les seuils de lisibilité de la fiche.
 
 ### PAP-1 - Modèle de document et algorithme de placement
 
