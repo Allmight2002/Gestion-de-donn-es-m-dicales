@@ -14,7 +14,7 @@ export interface OfflineEncounter {
   id: string;
   encounterType: string;
   encounterDate: string | null;
-  /** Preserve the discriminator for read-only display; L68 never queues group writes. */
+  /** Preserve the discriminator for display; only null proves a known ordinary encounter. */
   groupSectionKey?: string | null;
   validationStatus: string;
   ageValue: number | null;
@@ -56,6 +56,7 @@ export interface OfflineField {
   // unite, liste de valeurs, caractere requis, bornes, codes manquants, types de rencontre).
   // Optionnelles : un instantane ANTERIEUR a cette version n'en dispose pas (replis a l'affichage).
   section?: string | null;
+  parentSectionKey?: string | null;
   /** Consigne de saisie (L27) et valeur proposee (L28) : le formulaire hors-ligne est le meme. */
   description?: string | null;
   defaultValue?: string | null;
@@ -105,6 +106,143 @@ export interface OfflineSnapshot {
   ownerUserId?: string | null;
   /** §5.9 : cle IndexedDB composite `ownerUserId::baseId` (deux comptes ne s'ecrasent plus). */
   key?: string;
+}
+
+/** Clé d'erreur stable pour une correction hors-ligne groupée ou dont le groupe est inconnu. */
+export const OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE = 'OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE';
+
+/** Données JSON brutes de l'RPC : le cache TS utilise ensuite `groupSectionKey`. */
+export type SnapshotEncounterPayload = Omit<OfflineEncounter, 'groupSectionKey'> & {
+  group_section_key?: string | null;
+};
+
+function offlineSectionScopesKnown(sections: readonly TemplateSection[]): boolean {
+  if (sections.some((section) => typeof section.isRepeatable !== 'boolean')) return false;
+  if (!sections.some((section) => section.isRepeatable === true)) return true;
+
+  const byKey = new Map<string, TemplateSection>();
+  for (const section of sections) {
+    if (!section.sectionKey || byKey.has(section.sectionKey)) return false;
+    byKey.set(section.sectionKey, section);
+  }
+  for (const section of sections) {
+    // A repeatable cache must include the complete section tree; an absent parent could hide a
+    // nested group field behind a child section that looks ordinary.
+    if (section.parentSectionKey !== null && typeof section.parentSectionKey !== 'string') return false;
+    if (section.parentSectionKey && !byKey.has(section.parentSectionKey)) return false;
+    const visited = new Set<string>();
+    let current: TemplateSection | undefined = section;
+    while (current?.parentSectionKey) {
+      if (visited.has(current.sectionKey)) return false;
+      visited.add(current.sectionKey);
+      current = byKey.get(current.parentSectionKey);
+      if (!current) return false;
+    }
+  }
+  return true;
+}
+
+/** Renvoie les sections connues pour une version, ou null si l'ancien cache ne permet pas de les classifier. */
+export function sectionsForOfflineVersion(snap: OfflineSnapshot, versionId: string | null | undefined): TemplateSection[] | null {
+  if (!versionId) return null;
+  if (snap.sectionsByVersion) {
+    if (Object.prototype.hasOwnProperty.call(snap.sectionsByVersion, versionId)) {
+      const versionSections = snap.sectionsByVersion[versionId];
+      if (!Array.isArray(versionSections) || !offlineSectionScopesKnown(versionSections)) return null;
+      return versionSections;
+    }
+    // L'instantané porte aussi `sections` pour la version courante. Le SQL omet une clé
+    // `sectionsByVersion` quand cette version n'a aucune section; son tableau courant vide
+    // prouve alors explicitement qu'aucun champ n'appartient à un groupe.
+    if (snap.templateVersionId === versionId && Array.isArray(snap.sections)
+      && offlineSectionScopesKnown(snap.sections)) return snap.sections;
+    // Un objet par-version récent contient une entrée, même vide, pour chaque version connue.
+    // Une clé manquante ne prouve pas l'absence de groupes : elle rend ce cache incomplet.
+    return null;
+  }
+  if (snap.templateVersionId === versionId && Array.isArray(snap.sections)
+    && offlineSectionScopesKnown(snap.sections)) return snap.sections;
+  return null;
+}
+
+/** Renvoie le dictionnaire exact d'une version, ou null si l'instantané n'en prouve pas la présence. */
+export function fieldsForOfflineVersion(snap: OfflineSnapshot, versionId: string | null | undefined): OfflineField[] | null {
+  if (!versionId) return null;
+  if (snap.fieldsByVersion && Object.prototype.hasOwnProperty.call(snap.fieldsByVersion, versionId)) {
+    const versionFields = snap.fieldsByVersion[versionId];
+    return Array.isArray(versionFields) ? versionFields : null;
+  }
+  if (snap.templateVersionId === versionId && Array.isArray(snap.fields)) return snap.fields;
+  return null;
+}
+
+/** Champs de rencontre appartenant à un groupe répétable de cette version. */
+export function repeatableEncounterFieldKeys(
+  fields: readonly { fieldKey: string; scope: string; section?: string | null; parentSectionKey?: string | null }[],
+  sections: readonly TemplateSection[],
+): Set<string> {
+  const byKey = new Map(sections.map((section) => [section.sectionKey, section]));
+  const repeatableRootFor = (sectionKey: string | null | undefined): string | null => {
+    let current = typeof sectionKey === 'string' ? byKey.get(sectionKey) : undefined;
+    while (current) {
+      if (current.isRepeatable === true) return current.sectionKey;
+      current = current.parentSectionKey ? byKey.get(current.parentSectionKey) : undefined;
+    }
+    return null;
+  };
+  return new Set(fields
+    .filter((field) => field.scope === 'encounter'
+      && (repeatableRootFor(field.section) !== null || repeatableRootFor(field.parentSectionKey) !== null))
+    .map((field) => field.fieldKey));
+}
+
+/** Vérifie que les champs de rencontre peuvent être rattachés à leurs sections répétables. */
+export function offlineEncounterFieldScopesKnown(
+  fields: readonly { scope: string; section?: string | null; parentSectionKey?: string | null }[],
+  sections: readonly TemplateSection[],
+): boolean {
+  if (!offlineSectionScopesKnown(sections)) return false;
+  const hasRepeatableSection = sections.some((section) => section.isRepeatable === true);
+  if (!hasRepeatableSection) return true;
+  const sectionKeys = new Set(sections.map((section) => section.sectionKey));
+  return fields.every((field) => {
+    if (field.scope !== 'encounter') return true;
+    if (field.section === undefined) return false;
+    if (typeof field.section === 'string' && !sectionKeys.has(field.section)) return false;
+    if (typeof field.parentSectionKey === 'string' && !sectionKeys.has(field.parentSectionKey)) return false;
+    if (typeof field.section === 'string' && field.parentSectionKey !== undefined) {
+      const sectionParent = sections.find((section) => section.sectionKey === field.section)?.parentSectionKey;
+      if (sectionParent !== field.parentSectionKey) return false;
+    }
+    return true;
+  });
+}
+
+/** Supprime les valeurs des autres groupes; une rencontre ordinaire garde zéro valeur de groupe. */
+export function withoutOtherRepeatableEncounterValues(
+  data: Record<string, unknown>,
+  fields: readonly { fieldKey: string; scope: string; section?: string | null; parentSectionKey?: string | null }[],
+  sections: readonly TemplateSection[],
+  groupSectionKey: string | null | undefined,
+): Record<string, unknown> {
+  const byKey = new Map(sections.map((section) => [section.sectionKey, section]));
+  const repeatableRootFor = (sectionKey: string | null | undefined): string | null => {
+    let current = typeof sectionKey === 'string' ? byKey.get(sectionKey) : undefined;
+    while (current) {
+      if (current.isRepeatable === true) return current.sectionKey;
+      current = current.parentSectionKey ? byKey.get(current.parentSectionKey) : undefined;
+    }
+    return null;
+  };
+  const groupByFieldKey = new Map(fields
+    .filter((field) => field.scope === 'encounter'
+      && (repeatableRootFor(field.section) !== null || repeatableRootFor(field.parentSectionKey) !== null))
+    .map((field) => [field.fieldKey, repeatableRootFor(field.section) ?? repeatableRootFor(field.parentSectionKey)!]));
+  return Object.fromEntries(Object.entries(data).filter(([key]) => {
+    const sectionKey = groupByFieldKey.get(key);
+    if (sectionKey === undefined) return true;
+    return typeof groupSectionKey === 'string' && sectionKey === groupSectionKey;
+  }));
 }
 
 /** Metadonnees legeres d'un instantane (sans la liste des patients). */
@@ -166,6 +304,23 @@ export function buildSnapshot(
   sectionsByVersion?: Record<string, TemplateSection[]>,
   diagnosisContextByVersion?: Record<string, DiagnosisContext[]>,
 ): OfflineSnapshot {
+  const versionSections = (versionId: string | null | undefined): TemplateSection[] | undefined => {
+    if (!versionId) return undefined;
+    if (sectionsByVersion) {
+      if (Object.prototype.hasOwnProperty.call(sectionsByVersion, versionId)) {
+        const exactSections = sectionsByVersion[versionId];
+        return offlineSectionScopesKnown(exactSections) ? exactSections : undefined;
+      }
+      if (versionId === base.templateVersionId && sections && offlineSectionScopesKnown(sections)) return sections;
+      return undefined;
+    }
+    return versionId === base.templateVersionId && sections && offlineSectionScopesKnown(sections) ? sections : undefined;
+  };
+  const versionFields = (versionId: string | null | undefined): OfflineField[] | undefined => {
+    if (!versionId) return undefined;
+    if (fieldsByVersion && Object.prototype.hasOwnProperty.call(fieldsByVersion, versionId)) return fieldsByVersion[versionId];
+    return versionId === base.templateVersionId ? fields : undefined;
+  };
   return {
     dataType: 'analytic_snapshot',
     baseId: base.id,
@@ -175,7 +330,8 @@ export function buildSnapshot(
       id: f.id, fieldKey: f.fieldKey, label: f.label, scope: f.scope, type: f.type,
       isMultiple: f.isMultiple ?? false, displayOrder: f.displayOrder,
       // §7.5 : metadonnees completes conservees (edition hors-ligne fidele a l'edition en ligne).
-      section: f.section ?? null, description: f.description ?? null, defaultValue: f.defaultValue ?? null,
+      section: f.section, parentSectionKey: f.parentSectionKey,
+      description: f.description ?? null, defaultValue: f.defaultValue ?? null,
       unit: f.unit ?? null, allowedValues: f.allowedValues ?? null,
       // Les DEUX formes, meme raison qu'a L33 : les cles pour une copie de l'appli
       // anterieure au lot, les options pour les autres.
@@ -201,9 +357,17 @@ export function buildSnapshot(
       validationStatus: p.validationStatus,
       encounters: (encountersByPatient[p.id] ?? []).map((e) => ({
         id: e.id, encounterType: e.encounterType, encounterDate: e.encounterDate,
-        validationStatus: e.validationStatus, ageValue: e.ageValue, ageUnit: e.ageUnit, data: e.data,
+        validationStatus: e.validationStatus, ageValue: e.ageValue, ageUnit: e.ageUnit,
+        data: (() => {
+          const versionId = e.templateVersionId ?? p.templateVersionId;
+          const sectionsForVersion = versionSections(versionId);
+          const fieldsForVersion = versionFields(versionId);
+          return sectionsForVersion && fieldsForVersion && offlineEncounterFieldScopesKnown(fieldsForVersion, sectionsForVersion)
+            ? withoutOtherRepeatableEncounterValues(e.data, fieldsForVersion, sectionsForVersion, e.groupSectionKey)
+            : e.data;
+        })(),
         updatedAt: e.updatedAt ?? null, templateVersionId: e.templateVersionId,
-        ...(e.groupSectionKey ? { groupSectionKey: e.groupSectionKey } : {}),
+        groupSectionKey: e.groupSectionKey,
       })),
     })),
     cachedAt: now,
@@ -370,6 +534,8 @@ export interface OutboxEntry {
   reason: string;                    // motif de correction (requis)
   validationStatus: string;          // statut cible de la rencontre
   baseUpdatedAt: string | null;      // jeton optimiste = version vue hors-ligne
+  /** Preuve de snapshot: null pour une occurrence ordinaire; absent = ancienne entrée inconnue. */
+  groupSectionKey?: string | null;
   createdAt: number;
   expiresAt: number;
   state: 'pending' | 'syncing' | 'succeeded' | 'rejected' | 'expired' | 'conflict';
@@ -508,14 +674,23 @@ export async function enqueueEncounterUpdate(input: {
 }): Promise<OutboxEntry> {
   assertOfflineEnabled();
   if (!currentUser) throw new Error('Aucun proprietaire de cache hors-ligne actif.');
+  const snapshot = await offlineCache.get(input.baseId);
+  const encounter = snapshot?.patients.flatMap((patient) => patient.encounters).find((row) => row.id === input.encounterId);
+  const sections = snapshot && encounter ? sectionsForOfflineVersion(snapshot, encounter.templateVersionId) : null;
+  const fields = snapshot && encounter ? fieldsForOfflineVersion(snapshot, encounter.templateVersionId) : null;
+  if (!encounter || encounter.groupSectionKey !== null || sections === null || fields === null
+    || !offlineEncounterFieldScopesKnown(fields, sections)) {
+    throw new Error(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
+  }
+  const safeData = withoutOtherRepeatableEncounterValues(input.data, fields, sections, null);
   const createdAt = Date.now();
   const entry: OutboxEntry = {
     id: newId(), dataType: 'analytic_outbox', createdAt, expiresAt: createdAt + OUTBOX_TTL_MS,
-    state: 'pending', attemptCount: 0, ownerUserId: currentUser, ...input,
+    state: 'pending', attemptCount: 0, ownerUserId: currentUser, ...input, data: safeData, groupSectionKey: encounter.groupSectionKey,
   };
   await outbox.put(entry);
   await patchCachedEncounter(input.baseId, input.encounterId, (e) => ({
-    ...e, data: input.data, validationStatus: input.validationStatus, pending: true,
+    ...e, data: safeData, validationStatus: input.validationStatus, pending: true,
   }));
   return entry;
 }
@@ -536,16 +711,40 @@ export interface FlushReport { synced: number; conflicts: number; failed: number
 type SyncErrorKind = 'conflict' | 'rejected' | 'transient';
 const classifySyncError = (error: unknown): SyncErrorKind => {
   const e = error as { message?: string; code?: string; status?: number; statusCode?: number } | null;
-  const message = e?.message ?? String(error);
+  const message = syncErrorText(error);
   const status = e?.status ?? e?.statusCode;
   if (/CONFLIT_VERSION/i.test(message)) return 'conflict';
   if (status === 401 || status === 403 || e?.code === '42501' || /permission denied|not authorized|unauthorized|forbidden/i.test(message)) return 'rejected';
   if (
     status === 400 || status === 404 || status === 409 || status === 422
-    || /invalid payload|validation failed|resource .*not found|ressource .*supprimee|RESOURCE_NOT_FOUND|AUTHENTICATION_REQUIRED|OFFLINE_OPERATION_(?:INVALID|MISMATCH|INCOMPLETE)/i.test(message)
+    || /invalid payload|validation failed|resource .*not found|ressource .*supprimee|RESOURCE_NOT_FOUND|AUTHENTICATION_REQUIRED|OFFLINE_OPERATION_(?:INVALID|MISMATCH|INCOMPLETE)|OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE|FORM_SCOPE_INCOMPATIBLE/i.test(message)
   ) return 'rejected';
   return 'transient';
 };
+
+function syncErrorText(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (!error || typeof error !== 'object') return String(error);
+  const candidate = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+  const values = [candidate.message, candidate.code, candidate.details, candidate.hint]
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => typeof value === 'string' ? value : (() => {
+      try { return JSON.stringify(value); } catch { return ''; }
+    })());
+  return values.join(' ');
+}
+
+function isRepeatableGroupScopeError(error: unknown): boolean {
+  const text = syncErrorText(error);
+  return /FORM_SCOPE_INCOMPATIBLE/i.test(text) && /repeatable_group/i.test(text);
+}
+
+/** True when an outbox entry lacks a safe ordinary-encounter marker or was rejected as grouped. */
+export function outboxEntryRequiresOnline(entry: Pick<OutboxEntry, 'groupSectionKey' | 'lastError'>): boolean {
+  return entry.groupSectionKey !== null
+    || entry.lastError === OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE
+    || isRepeatableGroupScopeError(entry.lastError);
+}
 
 const activeSyncIds = new Set<string>();
 
@@ -564,6 +763,10 @@ export async function recoverAbandonedSyncing(baseId?: string): Promise<number> 
 export async function retryOutboxEntry(entryId: string): Promise<void> {
   const entry = await outbox.get(entryId);
   if (!entry) return;
+  if (outboxEntryRequiresOnline(entry)) {
+    await outbox.put({ ...entry, state: 'rejected', syncingStartedAt: undefined, lastError: OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE });
+    return;
+  }
   await outbox.put({ ...entry, state: 'pending', syncingStartedAt: undefined });
 }
 
@@ -586,6 +789,11 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
       rep.failed++; rep.errors.push(`Operation hors-ligne expiree: ${e.id}`);
       continue;
     }
+    if (outboxEntryRequiresOnline(e)) {
+      await outbox.put({ ...e, state: 'rejected', syncingStartedAt: undefined, lastError: OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE });
+      rep.failed++; rep.errors.push(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
+      continue;
+    }
     if (activeSyncIds.has(e.id)) continue;
     const attemptCount = (e.attemptCount ?? 0) + 1;
     const lastAttemptAt = Date.now();
@@ -599,7 +807,7 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
       await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
       rep.synced++;
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
+      const m = isRepeatableGroupScopeError(err) ? OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE : syncErrorText(err);
       const kind = classifySyncError(err);
       if (kind === 'conflict') {
         const server = await deps.getEncounter(e.encounterId).catch(() => null);
@@ -851,6 +1059,7 @@ export async function initializeOfflineForUser(
 // retrouve l'accuse et ne reecrit pas. D'ou l'exigence : la charge doit etre DETERMINISTE,
 // calculee depuis la seule entree d'outbox, jamais depuis un nouvel appel reseau.
 async function applyResolution(e: OutboxEntry, data: Record<string, unknown>, deps: FlushDeps): Promise<void> {
+  if (outboxEntryRequiresOnline(e)) throw new Error(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
   await deps.updateEncounter(e.encounterId, data, e.validationStatus, e.reason, null, e.id);
   await outbox.remove(e.id);
   const fresh = await deps.getEncounter(e.encounterId).catch(() => null);
@@ -915,7 +1124,7 @@ export interface RawSnapshotData {
   rulesByVersion?: Record<string, OfflineRule[]>;
   patients: {
     id: string; code: string; templateVersionId: string; data: Record<string, unknown>;
-    validationStatus: string; encounters: OfflineEncounter[];
+    validationStatus: string; encounters: SnapshotEncounterPayload[];
   }[];
 }
 
@@ -948,7 +1157,12 @@ export async function downloadBaseSnapshot(baseId: string, src: SnapshotSource, 
       const s = await src.fetchSnapshot(baseId);
       if (s && s.base) {
         const byPatient: Record<string, OfflineEncounter[]> = {};
-        for (const p of s.patients) byPatient[p.id] = p.encounters ?? [];
+        for (const p of s.patients) {
+          byPatient[p.id] = (p.encounters ?? []).map(({ group_section_key, ...encounter }) => ({
+            ...encounter,
+            groupSectionKey: group_section_key,
+          }));
+        }
         const snap = buildSnapshot(s.base, s.patients, byPatient, s.fields ?? [], now, s.fieldsByVersion, s.rulesByVersion, s.sections, s.sectionsByVersion, s.diagnosisContextByVersion);
         await offlineCache.save(snap);
         return snapshotMeta(snap);

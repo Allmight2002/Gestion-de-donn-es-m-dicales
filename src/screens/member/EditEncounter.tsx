@@ -13,7 +13,11 @@ import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormConte
 import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
 import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
-import { enqueueEncounterUpdate, isOfflineEnabled, offlineCache, useOnline } from '../../data/offline';
+import {
+  enqueueEncounterUpdate, fieldsForOfflineVersion, isOfflineEnabled, offlineCache, repeatableEncounterFieldKeys,
+  offlineEncounterFieldScopesKnown, sectionsForOfflineVersion, useOnline, withoutOtherRepeatableEncounterValues,
+  OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
+} from '../../data/offline';
 import {
   validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues, isMissing, missingCodeOf,
 } from '../../domain/validation';
@@ -30,6 +34,15 @@ import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
+
+function excludedEncounterFieldKeys(context: RecordFormContext | null): Set<string> {
+  return new Set((context?.fields ?? [])
+    .filter((field) => field.scope === 'encounter' && (
+      field.repeatable_group_applicable === false
+      || (field.applicability === 'not_applicable' && field.applicability_reason === 'encounter_type')
+    ))
+    .map((field) => field.field_key));
+}
 
 // Edition / correction d'une rencontre (cahier §10, critere 12). Le motif est requis ;
 // chaque champ modifie est journalise (field_change_log) cote serveur.
@@ -72,10 +85,14 @@ export function EditEncounter() {
   const [blocking, setBlocking] = useState<string[]>([]);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [reloadRequired, setReloadRequired] = useState(false);
+  const [offlineEditAllowed, setOfflineEditAllowed] = useState(false);
+  const [offlineEditBlocked, setOfflineEditBlocked] = useState(false);
   const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
-  const msg = (e: unknown) => (errorMessage(e, t('common.error')));
+  const msg = (e: unknown) => e instanceof Error && e.message === OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE
+    ? t('offline.group_edit_requires_online')
+    : errorMessage(e, t('common.error'));
   const fmt = (v: unknown): string => {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
     return displayFieldValue(v, '—');
@@ -85,7 +102,7 @@ export function EditEncounter() {
   const work = useWorkDraft({
     // Une fois le contexte E3 obtenu, la soumission passe par le patch compatible : le brouillon
     // clinique historique ne sait pas porter les ajouts actifs et ne doit pas les perdre.
-    context: !recordContext && baseId && encounterId && diagnosisVersionId && baseUpdatedAt ? {
+    context: !recordContext && baseId && encounterId && diagnosisVersionId && baseUpdatedAt && (online || offlineEditAllowed) ? {
       baseId, targetId: encounterId, kind: 'encounter_update', templateVersionId: diagnosisVersionId, entityRevision: String(Date.parse(baseUpdatedAt)),
     } : null,
     ownerId: profile?.id ?? '', payload: { values, status, reason }, dirty: navigation.dirty, online,
@@ -94,8 +111,8 @@ export function EditEncounter() {
 
   // L32 — champs masques par une regle d'affichage : ni rendus, ni valides, ni enregistres.
   const applicableFields = useMemo(
-    () => encounterApplicableFields(fields, sections, encounterType),
-    [fields, sections, encounterType],
+    () => recordContext ? fields : encounterApplicableFields(fields, sections, encounterType),
+    [fields, sections, encounterType, recordContext],
   );
   const { hidden, removed, data: submittedData } = useMemo(() => {
     const applicableValues = Object.fromEntries(Object.entries(values).filter(([key]) => applicableFields.some((field) => field.fieldKey === key)));
@@ -148,40 +165,66 @@ export function EditEncounter() {
         // HORS-LIGNE : la rencontre et les champs viennent de l'instantane local.
         const snap = await offlineCache.get(baseId);
         const enc = snap?.patients.flatMap((p) => p.encounters).find((e) => e.id === encounterId) ?? null;
-        if (enc) {
-          const { age_at_encounter: _drop, ...rest } = enc.data;
-          void _drop;
-          setValues(rest);
-          setInitialValues(rest);
-          setRecordContext(null);
-          setStatus(enc.validationStatus);
-          setInitialStatus(enc.validationStatus);
-          setEncounterType(enc.encounterType);
-          setBaseUpdatedAt(enc.updatedAt ?? null); // jeton optimiste pour la synchro
-        }
         setHistory([]);
+        setRecordContext(null);
+        setBaseListing(null);
+        if (!enc) {
+          setOfflineEditAllowed(false);
+          setOfflineEditBlocked(true);
+          setError(t('offline.not_cached'));
+          return;
+        }
+        const encounterSections = sectionsForOfflineVersion(snap!, enc.templateVersionId);
+        const dict = fieldsForOfflineVersion(snap!, enc.templateVersionId);
+        if (enc.groupSectionKey !== null || encounterSections === null || dict === null || !offlineEncounterFieldScopesKnown(dict, encounterSections)) {
+          setOfflineEditAllowed(false);
+          setOfflineEditBlocked(true);
+          setError(t('offline.group_edit_requires_online'));
+          setValues({});
+          setInitialValues({});
+          setFields([]);
+          setRules([]);
+          setValidationRules([]);
+          setSections([]);
+          return;
+        }
+        setOfflineEditAllowed(true);
+        setOfflineEditBlocked(false);
+        const groupFieldKeys = repeatableEncounterFieldKeys(dict, encounterSections);
+        const { age_at_encounter: _drop, ...withoutAge } = enc.data;
+        void _drop;
+        const rest = withoutOtherRepeatableEncounterValues(withoutAge, dict, encounterSections, null);
+        valuesRef.current = rest;
+        setValues(rest);
+        setInitialValues(rest);
+        setStatus(enc.validationStatus);
+        setInitialStatus(enc.validationStatus);
+        setEncounterType(enc.encounterType);
+        setBaseUpdatedAt(enc.updatedAt ?? null); // jeton optimiste pour la synchro
         // §7.4/§7.5 : dictionnaire de LA VERSION DE LA RENCONTRE (fieldsByVersion), pas celui de la
         // version courante de la base ; repli sur `fields` (instantane ancien, sans multi-versions).
-        const dict = (enc?.templateVersionId && snap?.fieldsByVersion?.[enc.templateVersionId]) || snap?.fields || [];
-        const encFields = withSections(dict, (enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || [])
+        const encFields = withSections(dict.filter((field) => !groupFieldKeys.has(field.fieldKey)), encounterSections)
           .filter((f) => f.scope === 'encounter')
           .sort((a, b) => a.displayOrder - b.displayOrder)
           // §7.5 : un instantane ANTERIEUR (dictionnaire minimal, sans `section`) doit rester
           // editable -> section par defaut, sinon EncounterFields (groupe par section) n'affiche rien.
           .map((f) => ({ ...f, section: f.section === undefined ? 'clinique' : f.section }));
         setFields(encFields as unknown as TemplateField[]);
-        const offlineRules = (enc?.templateVersionId && snap?.rulesByVersion?.[enc.templateVersionId]) || [];
+        const offlineRules = (enc.templateVersionId && snap!.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
         setValidationRules(offlineRules as unknown as ValidationRule[]);
-        setSections((enc?.templateVersionId && snap?.sectionsByVersion?.[enc.templateVersionId]) || snap?.sections || []);
+        setSections(encounterSections);
         setCommonLayout(undefined);
         // L'instantane transporte le contrat par version : il n'ouvre aucun hors-ligne nouveau.
-        setDiagnosisVersionId(enc?.templateVersionId ?? null);
-        setDiagnosisContext(enc?.templateVersionId ? snap?.diagnosisContextByVersion?.[enc.templateVersionId] : undefined);
-        setActiveDiagnosisVersionId(enc?.templateVersionId ?? null);
+        setDiagnosisVersionId(enc.templateVersionId ?? null);
+        setDiagnosisContext(enc.templateVersionId ? snap!.diagnosisContextByVersion?.[enc.templateVersionId] : undefined);
+        setActiveDiagnosisVersionId(enc.templateVersionId ?? null);
         setError(null);
         return;
       }
+
+      setOfflineEditAllowed(false);
+      setOfflineEditBlocked(false);
 
       const contextPromise = patients.getEncounterFormContext
         ? patients.getEncounterFormContext(baseId, encounterId).catch((e: unknown) => {
@@ -196,9 +239,14 @@ export function EditEncounter() {
         patients.listFieldChanges('encounter', encounterId),
         contextPromise,
       ]);
+      const excludedContextKeys = excludedEncounterFieldKeys(context);
       if (enc) {
-        const { age_at_encounter: _drop, ...rest } = enc.data;
+        const sourceValues = context
+          ? Object.fromEntries(Object.entries(context.values).filter(([key]) => !excludedContextKeys.has(key)))
+          : enc.data;
+        const { age_at_encounter: _drop, ...rest } = sourceValues;
         void _drop;
+        valuesRef.current = rest;
         setValues(rest);
         setInitialValues(rest);
         setRecordContext(context);
@@ -223,7 +271,8 @@ export function EditEncounter() {
           : historicalPromise;
         const [historical, active] = await Promise.all([historicalPromise, activePromise]);
         if (context) {
-          setFields(mergeRecordFormFields(context, historical.fields, active.fields, 'encounter'));
+          setFields(mergeRecordFormFields(context, historical.fields, active.fields, 'encounter')
+            .filter((field) => !excludedContextKeys.has(field.fieldKey)));
           setRules(active.rules);
           setValidationRules(historical.rules);
           setSections(active.sections ?? []);
@@ -250,11 +299,53 @@ export function EditEncounter() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId, encounterId, online, bases, templates, patients]);
+  }, [baseId, encounterId, online, bases, templates, patients, t]);
 
   useEffect(() => {
-    if (loadedFor.current !== `${baseId}:${encounterId}`) void load();
-  }, [load, baseId, encounterId]);
+    if (loadedFor.current !== `${baseId}:${encounterId}`) {
+      void load();
+      return;
+    }
+    if (online) {
+      setOfflineEditAllowed(false);
+      setOfflineEditBlocked(false);
+      return;
+    }
+    if (!baseId || !encounterId) return;
+
+    let active = true;
+    setOfflineEditAllowed(false);
+    setOfflineEditBlocked(true);
+    setError(t('offline.group_edit_requires_online'));
+    void offlineCache.get(baseId).then((snap) => {
+      if (!active) return;
+      const cached = snap?.patients.flatMap((patient) => patient.encounters).find((row) => row.id === encounterId);
+      const versionSections = cached ? sectionsForOfflineVersion(snap!, cached.templateVersionId) : null;
+      const dictionary = cached ? fieldsForOfflineVersion(snap!, cached.templateVersionId) : null;
+      if (!cached || cached.groupSectionKey !== null || versionSections === null || dictionary === null) {
+        setError(cached ? t('offline.group_edit_requires_online') : t('offline.not_cached'));
+        return;
+      }
+      if (!offlineEncounterFieldScopesKnown(dictionary, versionSections)) {
+        setError(t('offline.group_edit_requires_online'));
+        return;
+      }
+      const groupFieldKeys = repeatableEncounterFieldKeys(dictionary, versionSections);
+      const safeValues = withoutOtherRepeatableEncounterValues(valuesRef.current, dictionary, versionSections, null);
+      valuesRef.current = safeValues;
+      setValues(safeValues);
+      setInitialValues((current) => withoutOtherRepeatableEncounterValues(current, dictionary, versionSections, null));
+      setFields((current) => current.filter((field) => !groupFieldKeys.has(field.fieldKey)));
+      setRecordContext(null);
+      setSections(versionSections);
+      setOfflineEditAllowed(true);
+      setOfflineEditBlocked(false);
+      setError(null);
+    }).catch(() => {
+      if (active) setError(t('offline.group_edit_requires_online'));
+    });
+    return () => { active = false; };
+  }, [load, baseId, encounterId, online, t]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -295,6 +386,7 @@ export function EditEncounter() {
     try {
       if (!online) {
         if (!isOfflineEnabled()) throw new Error('Mode hors-ligne desactive par la politique de securite');
+        if (!offlineEditAllowed) throw new Error(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
         // HORS-LIGNE : on met la correction en file d'attente (synchro au retour du reseau).
         await enqueueEncounterUpdate({
           baseId, patientId, encounterId,
@@ -354,6 +446,12 @@ export function EditEncounter() {
         <h1 className="page-title mt-2">{t('encounter.edit_title')}</h1>
       </div>
 
+      {!online && offlineEditBlocked ? (
+        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {error ?? t('offline.group_edit_requires_online')}
+        </p>
+      ) : (
+      <>
       {!online && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
           {t('offline.edit_queued_hint')}
@@ -453,6 +551,8 @@ export function EditEncounter() {
           </ul>
         )}
       </div>
+      </>
+      )}
     </section>
   );
 }

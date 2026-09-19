@@ -4,9 +4,12 @@ import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildSnapshot, clearOfflineSnapshots, downloadBaseSnapshot, enqueueEncounterUpdate, flushOutbox,
-  isExpired, offlineCache, OFFLINE_TTL_MS, OUTBOX_TTL_MS, outbox, purgeExpiredOutbox, purgeExpiredSnapshots,
-  recoverAbandonedSyncing, resolveKeepMine,
-  resolveKeepServer, setOfflineUser, type FlushDeps, type SnapshotSource,
+  fieldsForOfflineVersion, isExpired, offlineCache, OFFLINE_TTL_MS, OUTBOX_TTL_MS, outbox, purgeExpiredOutbox, purgeExpiredSnapshots,
+  recoverAbandonedSyncing, repeatableEncounterFieldKeys, offlineEncounterFieldScopesKnown,
+  sectionsForOfflineVersion,
+  resolveKeepMine, resolveKeepBoth, retryOutboxEntry,
+  OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
+  resolveKeepServer, setOfflineUser, type FlushDeps, type OutboxEntry, type SnapshotSource,
 } from '../src/data/offline.js';
 
 beforeAll(() => {
@@ -22,13 +25,52 @@ async function seedBase(baseId: string, encUpdatedAt: string) {
     buildSnapshot(
       { id: baseId, name: baseId, templateVersionId: 'v1' },
       [{ id: 'p1', code: 'C1', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
-      { p1: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: 40, ageUnit: 'years', data: { glasgow_score: 10 }, updatedAt: encUpdatedAt }] },
+      { p1: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: 40, ageUnit: 'years', data: { glasgow_score: 10 }, updatedAt: encUpdatedAt, templateVersionId: 'v1', groupSectionKey: null }] },
       [],
       Date.now(),
+      undefined,
+      undefined,
+      [],
+      { v1: [] },
     ),
   );
 }
+async function seedBaseWithRepeatableScope(baseId: string) {
+  const fields = [
+    { id: 'f-ordinary', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 0, section: 'clinique' },
+    { id: 'f-group', fieldKey: 'group_marker', label: 'Marqueur', scope: 'encounter', type: 'text', displayOrder: 1, section: 'group-a' },
+    { id: 'f-group-child', fieldKey: 'group_child_marker', label: 'Marqueur imbriqué', scope: 'encounter', type: 'text', displayOrder: 2, section: 'group-a-child', parentSectionKey: 'group-a' },
+  ];
+  const sections = [
+    { id: 's-clinique', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, parentSectionKey: null, isRepeatable: false },
+    { id: 's-group-a', sectionKey: 'group-a', label: 'Groupe A', displayOrder: 1, parentSectionKey: null, isRepeatable: true },
+    { id: 's-group-a-child', sectionKey: 'group-a-child', label: 'Sous-section A', displayOrder: 2, parentSectionKey: 'group-a', isRepeatable: false },
+  ];
+  await offlineCache.save(buildSnapshot(
+    { id: baseId, name: baseId, templateVersionId: 'v1' },
+    [{ id: 'p1', code: 'C1', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
+    { p1: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: 40, ageUnit: 'years', data: { glasgow_score: 10 }, updatedAt: null, templateVersionId: 'v1', groupSectionKey: null }] },
+    fields, Date.now(), { v1: fields }, undefined, sections, { v1: sections },
+  ));
+}
 const cachedEnc = async (baseId: string) => (await offlineCache.get(baseId))!.patients[0].encounters[0];
+const manualOutboxEntry = (baseId: string, state: OutboxEntry['state'], groupSectionKey?: string | null): OutboxEntry => ({
+  dataType: 'analytic_outbox',
+  id: `manual-${baseId}`,
+  baseId,
+  patientId: 'p1',
+  encounterId: 'e1',
+  data: { glasgow_score: 12, group_marker: 'SENTINEL' },
+  reason: 'test',
+  validationStatus: 'curated',
+  baseUpdatedAt: null,
+  ...(groupSectionKey === undefined ? {} : { groupSectionKey }),
+  createdAt: Date.now(),
+  expiresAt: Date.now() + OUTBOX_TTL_MS,
+  state,
+  ownerUserId: 'offline-test-user',
+  ...(state === 'conflict' ? { serverData: { glasgow_score: 9, group_marker: 'SERVER' } } : {}),
+});
 
 describe('buildSnapshot — analytique seulement (securite)', () => {
   test('ne recopie JAMAIS l identite, meme si le patient en entree en contient', () => {
@@ -50,6 +92,40 @@ describe('buildSnapshot — analytique seulement (securite)', () => {
     expect(snap.patients[0].data).toEqual({ sexe: 'M', birth_year: 1980 }); // analytique conserve
     expect(snap.patients[0].encounters[0].data).toEqual({ glasgow_score: 12 });
     expect(snap.expiresAt).toBe(1000 + OFFLINE_TTL_MS);
+  });
+
+  test('retire les valeurs de sections répétables des rencontres ordinaires', () => {
+    const fields = [
+      { id: 'f-ordinary', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 0, section: 'clinique' },
+      { id: 'f-group', fieldKey: 'group_marker', label: 'Marqueur', scope: 'encounter', type: 'text', displayOrder: 1, section: 'group-a' },
+      { id: 'f-group-child', fieldKey: 'group_child_marker', label: 'Marqueur imbriqué', scope: 'encounter', type: 'text', displayOrder: 2, section: 'group-a-child', parentSectionKey: 'group-a' },
+    ];
+    const sections = [
+      { id: 's-clinique', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, parentSectionKey: null, isRepeatable: false },
+      { id: 's-group-a', sectionKey: 'group-a', label: 'Groupe A', displayOrder: 1, parentSectionKey: null, isRepeatable: true },
+      { id: 's-group-a-child', sectionKey: 'group-a-child', label: 'Sous-section A', displayOrder: 2, parentSectionKey: 'group-a', isRepeatable: false },
+    ];
+    expect(offlineEncounterFieldScopesKnown(fields, sections)).toBe(true);
+    expect(offlineEncounterFieldScopesKnown([{ scope: 'encounter' }], sections)).toBe(false);
+    expect(repeatableEncounterFieldKeys(fields, sections)).toEqual(new Set(['group_marker', 'group_child_marker']));
+    const snap = buildSnapshot(
+      { id: 'b-groups', name: 'Base', templateVersionId: 'v1' },
+      [{ id: 'p1', code: 'C1', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
+      {
+        p1: [
+          { id: 'ordinary', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 10, group_marker: 'SENTINEL', group_child_marker: 'NESTED-SENTINEL' }, groupSectionKey: null },
+          { id: 'grouped', encounterType: 'consultation', encounterDate: '2024-01-02', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 11, group_marker: 'OWN-GROUP', group_child_marker: 'OWN-NESTED-GROUP' }, groupSectionKey: 'group-a' },
+        ],
+      },
+      fields,
+      Date.now(),
+      { v1: fields },
+      undefined,
+      sections,
+      { v1: sections },
+    );
+    expect(snap.patients[0].encounters[0].data).toEqual({ glasgow_score: 10 });
+    expect(snap.patients[0].encounters[1].data).toEqual({ glasgow_score: 11, group_marker: 'OWN-GROUP', group_child_marker: 'OWN-NESTED-GROUP' });
   });
 });
 
@@ -113,10 +189,12 @@ describe('downloadBaseSnapshot', () => {
       fetchSnapshot: async () => ({
         base: { id: 'bS1', name: 'Base S1', templateVersionId: 'v9' },
         fields: [{ id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 }],
+        sections: [{ id: 's-clinique', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, isRepeatable: false }],
+        sectionsByVersion: { v9: [{ id: 's-clinique', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, isRepeatable: false }] },
         patients: [
           {
             id: 'p1', code: 'S-001', templateVersionId: 'v9', data: { sexe: 'M' }, validationStatus: 'curated',
-            encounters: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-03-01', validationStatus: 'curated', ageValue: 30, ageUnit: 'years', data: { glasgow_score: 15 }, updatedAt: null }],
+            encounters: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-03-01', validationStatus: 'curated', ageValue: 30, ageUnit: 'years', data: { glasgow_score: 15 }, updatedAt: null, templateVersionId: 'v9', group_section_key: null }],
           },
         ],
       }),
@@ -131,6 +209,8 @@ describe('downloadBaseSnapshot', () => {
     const snap = await offlineCache.get('bS1');
     expect(snap?.fields).toHaveLength(1);
     expect(snap?.patients[0].encounters[0].data).toEqual({ glasgow_score: 15 });
+    expect(snap?.patients[0].encounters[0].groupSectionKey).toBeNull();
+    expect(snap?.sectionsByVersion?.v9?.[0].isRepeatable).toBe(false);
     await offlineCache.remove('bS1');
   });
 
@@ -195,6 +275,31 @@ describe('downloadBaseSnapshot', () => {
 });
 
 describe('outbox — ecritures hors-ligne (Phase 2)', () => {
+  test.each([
+    { label: 'cache ancien sans marqueur', marker: undefined },
+    { label: 'rencontre groupée', marker: 'group-a' },
+  ])('enqueue refuse avant toute écriture : $label', async ({ label, marker }) => {
+    const baseId = `b-block-${label.replaceAll(' ', '-')}`;
+    await seedBase(baseId, '2024-01-01T00:00:00.000Z');
+    const snap = await offlineCache.get(baseId);
+    expect(snap).not.toBeNull();
+    const encounter = { ...snap!.patients[0].encounters[0] };
+    if (marker === undefined) delete encounter.groupSectionKey;
+    else encounter.groupSectionKey = marker;
+    await offlineCache.save({
+      ...snap!,
+      patients: [{ ...snap!.patients[0], encounters: [encounter] }],
+    });
+
+    await expect(enqueueEncounterUpdate({
+      baseId, patientId: 'p1', encounterId: 'e1', data: { glasgow_score: 12 },
+      reason: 'test', validationStatus: 'curated', baseUpdatedAt: null,
+    })).rejects.toThrow(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
+    expect(await outbox.count(baseId)).toBe(0);
+    expect((await cachedEnc(baseId)).pending).not.toBe(true);
+    await offlineCache.remove(baseId);
+  });
+
   test('enqueue : ecrit l entree + reflete la modif dans le cache (pending)', async () => {
     await seedBase('bOB', '2024-01-01T00:00:00.000Z');
     await enqueueEncounterUpdate({
@@ -205,6 +310,22 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
     const e = await cachedEnc('bOB');
     expect(e.data.glasgow_score).toBe(12); // maj optimiste
     expect(e.pending).toBe(true);
+    expect((await outbox.list('bOB'))[0].groupSectionKey).toBeNull();
+  });
+
+  test('enqueue : retire les champs de groupe, y compris ceux des sous-sections, avant les deux écritures', async () => {
+    const baseId = 'b-enqueue-group-projection';
+    await seedBaseWithRepeatableScope(baseId);
+    const entry = await enqueueEncounterUpdate({
+      baseId, patientId: 'p1', encounterId: 'e1',
+      data: { glasgow_score: 12, group_marker: 'OUTBOX-SENTINEL', group_child_marker: 'NESTED-OUTBOX-SENTINEL' },
+      reason: 'corr', validationStatus: 'curated', baseUpdatedAt: null,
+    });
+
+    expect(entry.data).toEqual({ glasgow_score: 12 });
+    expect((await cachedEnc(baseId)).data).toEqual({ glasgow_score: 12 });
+    await outbox.remove(entry.id);
+    await offlineCache.remove(baseId);
   });
 
   test('flush (succes) : rejoue via la RPC avec le jeton optimiste et un id stable, vide la file, leve pending', async () => {
@@ -449,6 +570,114 @@ describe('outbox — conflits (Phase 3)', () => {
     expect((await cachedEnc('bS')).data.glasgow_score).toBe(7); // valeur serveur restauree
     expect((await cachedEnc('bS')).pending).toBe(false);
     await offlineCache.remove('bS');
+  });
+});
+
+describe('scope des entrées hors-ligne', () => {
+  test('le snapshot courant avec zéro section reste éditable si la map par-version omet la clé vide', async () => {
+    const baseId = 'b-current-empty-sections';
+    await seedBase(baseId, '2024-01-01T00:00:00.000Z');
+    const snapshot = await offlineCache.get(baseId);
+    expect(snapshot).not.toBeNull();
+    snapshot!.sections = [];
+    snapshot!.sectionsByVersion = {};
+    snapshot!.fieldsByVersion = {};
+    await offlineCache.save(snapshot!);
+
+    expect(sectionsForOfflineVersion(snapshot!, 'v1')).toEqual([]);
+    expect(fieldsForOfflineVersion(snapshot!, 'v1')).toEqual([]);
+    const entry = await enqueueEncounterUpdate({
+      baseId, patientId: 'p1', encounterId: 'e1', data: { glasgow_score: 12 },
+      reason: 'test', validationStatus: 'curated', baseUpdatedAt: null,
+    });
+    expect(entry).toMatchObject({ groupSectionKey: null, data: { glasgow_score: 12 } });
+    await outbox.remove(entry.id);
+    await offlineCache.remove(baseId);
+  });
+
+  test.each([
+    { label: 'ancienne entrée sans marqueur', marker: undefined },
+    { label: 'entrée groupée', marker: 'group-a' },
+  ])('le flush et Retenter rejettent $label sans appel serveur', async ({ label, marker }) => {
+    const baseId = `b-flush-scope-${label.replaceAll(' ', '-')}`;
+    const entry = manualOutboxEntry(baseId, 'pending', marker);
+    await outbox.put(entry);
+    const updateEncounter = vi.fn(async () => ({}));
+    const getEncounter = vi.fn(async () => null);
+    const report = await flushOutbox({ updateEncounter, getEncounter }, baseId);
+    expect(report).toMatchObject({ synced: 0, conflicts: 0, failed: 1 });
+    expect(updateEncounter).not.toHaveBeenCalled();
+    expect(getEncounter).not.toHaveBeenCalled();
+    expect(await outbox.get(entry.id)).toMatchObject({
+      state: 'rejected', lastError: OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
+    });
+    await retryOutboxEntry(entry.id);
+    expect(await outbox.get(entry.id)).toMatchObject({ state: 'rejected' });
+    await outbox.remove(entry.id);
+  });
+
+  test.each([
+    { label: 'ancienne entrée sans marqueur', marker: undefined },
+    { label: 'entrée groupée', marker: 'group-a' },
+  ])('Garder ma version et Garder les deux bloquent $label', async ({ label, marker }) => {
+    const baseId = `b-resolve-scope-${label.replaceAll(' ', '-')}`;
+    const entry = manualOutboxEntry(baseId, 'conflict', marker);
+    await outbox.put(entry);
+    const updateEncounter = vi.fn(async () => ({}));
+    const deps: FlushDeps = { updateEncounter, getEncounter: async () => null };
+    await expect(resolveKeepMine(entry.id, deps)).rejects.toThrow(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
+    await expect(resolveKeepBoth(entry.id, deps)).rejects.toThrow(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
+    expect(updateEncounter).not.toHaveBeenCalled();
+    expect(await outbox.get(entry.id)).toMatchObject({ state: 'conflict' });
+    await outbox.remove(entry.id);
+  });
+
+  test('le rejet serveur repeatable_group est terminal et traduit comme nécessitant le réseau', async () => {
+    const baseId = 'b-server-group-reject';
+    await seedBase(baseId, '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId, patientId: 'p1', encounterId: 'e1', data: { glasgow_score: 12 },
+      reason: 'test', validationStatus: 'curated', baseUpdatedAt: null,
+    });
+    const entry = (await outbox.list(baseId))[0];
+    const updateEncounter = vi.fn(async () => {
+      throw Object.assign(new Error('FORM_SCOPE_INCOMPATIBLE'), {
+        details: JSON.stringify({ code: 'FORM_SCOPE_INCOMPATIBLE', reason: 'repeatable_group', action: 'reject' }),
+      });
+    });
+    const getEncounter = vi.fn(async () => null);
+    const report = await flushOutbox({ updateEncounter, getEncounter }, baseId);
+    expect(report).toMatchObject({ synced: 0, conflicts: 0, failed: 1, errors: [OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE] });
+    expect(await outbox.get(entry.id)).toMatchObject({
+      state: 'rejected', lastError: OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
+    });
+    expect(getEncounter).not.toHaveBeenCalled();
+    await retryOutboxEntry(entry.id);
+    expect(await outbox.get(entry.id)).toMatchObject({ state: 'rejected' });
+    await outbox.remove(entry.id);
+    await offlineCache.remove(baseId);
+  });
+
+  test('effacer les instantanés conserve la file ordinaire et le flush ne dépend pas du cache courant', async () => {
+    const baseId = 'b-clear-cache-outbox';
+    await seedBase(baseId, '2024-01-01T00:00:00.000Z');
+    await enqueueEncounterUpdate({
+      baseId, patientId: 'p1', encounterId: 'e1', data: { glasgow_score: 12 },
+      reason: 'test', validationStatus: 'curated', baseUpdatedAt: null,
+    });
+    await clearOfflineSnapshots();
+    expect(await offlineCache.get(baseId)).toBeNull();
+    const entry = (await outbox.list(baseId))[0];
+    expect(entry.groupSectionKey).toBeNull();
+    expect(await outbox.count(baseId)).toBe(1);
+    const updateEncounter = vi.fn(async () => ({}));
+    const report = await flushOutbox({
+      updateEncounter,
+      getEncounter: async () => ({ data: { glasgow_score: 12 }, updatedAt: '2024-01-02T00:00:00.000Z' }),
+    }, baseId);
+    expect(report).toMatchObject({ synced: 1, conflicts: 0, failed: 0 });
+    expect(updateEncounter).toHaveBeenCalledOnce();
+    expect(await outbox.count(baseId)).toBe(0);
   });
 });
 

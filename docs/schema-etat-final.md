@@ -5,7 +5,7 @@
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
 - Dernière migration incluse : `20260919190252_create_encounter_idempotent.sql`
-- Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 383
+- Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 387
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1376,6 +1376,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_rebind_allowed | p_base_id uuid, p_old_version_id uuid, p_new_version_id uuid | DEFINER | sql |
 | form_preparation_receipt | p_row form_preparation, p_operation_id uuid, p_operation_kind text | DEFINER | sql |
 | form_preparation_source_definition | p_version_id uuid | DEFINER | sql |
+| form_record_assert_encounter_group_patch | p_base_id uuid, p_encounter_id uuid, p_historical_version uuid, p_active_version uuid, p_patch jsonb, p_encounter_type text | INVOKER | plpgsql |
 | form_record_assert_json_type | p_field template_field, p_value jsonb | DEFINER | plpgsql |
 | form_record_assert_known_data | p_historical_version uuid, p_active_version uuid, p_scope text, p_data jsonb | DEFINER | plpgsql |
 | form_record_assert_no_changed_hidden_values | p_active_version uuid, p_scope text, p_old jsonb, p_new jsonb | DEFINER | plpgsql |
@@ -1384,9 +1385,12 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_record_assert_write_access | p_base_id uuid, p_created_by uuid, p_existing_status text, p_requested_status text | DEFINER | plpgsql |
 | form_record_context_fingerprint | p_record_kind text, p_record_id uuid, p_record_revision bigint, p_base_id uuid, p_active_revision bigint, p_definition_revision uuid, p_data jsonb | DEFINER | sql |
 | form_record_context_json | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
+| form_record_context_json_base | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
+| form_record_context_json_group_context_base | p_record_kind text, p_record_id uuid, p_base_id uuid, p_record_revision bigint, p_active_revision bigint, p_historical_version uuid, p_active_version uuid, p_data jsonb, p_validation_status text, p_created_by uuid, p_created_at timestamp with time zone, p_encounter_type text | DEFINER | plpgsql |
 | form_record_definition | p_version uuid | DEFINER | sql |
 | form_record_error | p_code text, p_reason text | DEFINER | plpgsql |
 | form_record_field_compatible | p_historical template_field, p_active template_field | DEFINER | sql |
+| form_record_field_group_applicable | p_version_id uuid, p_field_key text, p_group_section_key text | INVOKER | sql |
 | form_record_merge_legacy_payload | p_historical_version uuid, p_active_version uuid, p_scope text, p_existing jsonb, p_payload jsonb | DEFINER | plpgsql |
 | form_record_value_fingerprint | p_value jsonb | DEFINER | sql |
 | gen_random_bytes | integer | INVOKER | c |
