@@ -55,6 +55,7 @@ describe('SyncCenter — état du système (E3)', () => {
     const base: Omit<OutboxEntry, 'id' | 'state'> = {
       dataType: 'analytic_outbox', baseId: 'base-ui', patientId: 'patient-ui', encounterId: 'encounter-ui',
       data: { score: 4 }, reason: 'test UI', validationStatus: 'draft', baseUpdatedAt: null,
+      groupSectionKey: null,
       createdAt: Date.now(), expiresAt: Date.now() + 60_000, ownerUserId: 'sync-ui-user', attemptCount: 2,
     };
     await outbox.put({ ...base, id: 'ui-pending', state: 'pending', lastError: 'reseau indisponible' });
@@ -90,7 +91,7 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
   ): OutboxEntry => ({
     dataType: 'analytic_outbox', id: 'ui-keep-both', baseId: 'base-ui', patientId: 'patient-ui',
     encounterId: 'encounter-ui', data, serverData, reason: 'test UI', validationStatus: 'curated',
-    baseUpdatedAt: null, createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+    baseUpdatedAt: null, groupSectionKey: null, createdAt: Date.now(), expiresAt: Date.now() + 60_000,
     state: 'conflict', ownerUserId: 'sync-ui-user',
   });
 
@@ -125,6 +126,26 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
     expect(screen.getByRole('button', { name: 'Garder la version serveur' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder les deux' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Résultat de la fusion/)).not.toBeInTheDocument();
+    await purgeAllOfflineData();
+    setOfflineUser(null);
+  });
+
+  test('cache les valeurs et bloque les résolutions locales pour une rencontre groupée', async () => {
+    await purgeAllOfflineData();
+    setOfflineUser('sync-ui-user');
+    await outbox.put({
+      ...conflit({ glasgow_score: 12, group_marker: 'LOCAL-SENTINEL' }, { glasgow_score: 14, group_marker: 'SERVER-SENTINEL' }),
+      groupSectionKey: 'group-a',
+    });
+
+    renderSync();
+
+    expect(await screen.findByText(/n’a pas été synchronisée; reconnectez-vous/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Garder ma version' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Garder les deux' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Garder la version serveur' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copier les donnees' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/LOCAL-SENTINEL|SERVER-SENTINEL/)).not.toBeInTheDocument();
     await purgeAllOfflineData();
     setOfflineUser(null);
   });

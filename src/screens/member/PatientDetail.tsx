@@ -10,7 +10,11 @@ import type { AttachmentItem } from '../../data/attachments';
 import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
-import { offlineCache, useOnline } from '../../data/offline';
+import {
+  fieldsForOfflineVersion, offlineCache, offlineEncounterFieldScopesKnown,
+  repeatableEncounterFieldKeys, sectionsForOfflineVersion,
+  useOnline, withoutOtherRepeatableEncounterValues,
+} from '../../data/offline';
 import {
   intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
   type PatientCreateEntry,
@@ -175,6 +179,7 @@ export function PatientDetail() {
 
   const [patient, setPatient] = useState<PatientListItem | null>(null);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
+  const [offlineEncounterScopeKnown, setOfflineEncounterScopeKnown] = useState<Record<string, boolean>>({});
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   // Dossier patient ENCORE LOCAL (cree hors-ligne) : vue dediee, sans aucun appel reseau.
   const [localPending, setLocalPending] = useState<PatientCreateEntry | null>(null);
@@ -222,6 +227,7 @@ export function PatientDetail() {
         if (isOfflineIntakeEnabled()) {
           setAttachments([]);
           setEncounters([]);
+          setOfflineEncounterScopeKnown({});
           setOfflineView(false);
           if (patientId && isLocalPatientId(patientId)) {
             const local = await intakeQueue.localPatient(patientId);
@@ -253,10 +259,33 @@ export function PatientDetail() {
         setBaseListing(null);
         setIsCrossSectional(false);
         setAttachments([]);
-        if (!op) { setPatient(null); setEncounters([]); setError(t('offline.not_cached')); return; }
+        if (!op) {
+          setPatient(null);
+          setEncounters([]);
+          setOfflineEncounterScopeKnown({});
+          setError(t('offline.not_cached'));
+          return;
+        }
         setCurrentVersionId(snap?.templateVersionId ?? null);
         setPatient({ id: op.id, code: op.code, templateVersionId: op.templateVersionId, data: op.data, validationStatus: op.validationStatus, identity: null });
-        setEncounters(op.encounters.map((e) => ({ ...e })));
+        const scopeKnown: Record<string, boolean> = {};
+        const safeEncounters = op.encounters.map((encounter) => {
+          const sections = snap ? sectionsForOfflineVersion(snap, encounter.templateVersionId) : null;
+          const fields = snap ? fieldsForOfflineVersion(snap, encounter.templateVersionId) : null;
+          const safe = encounter.groupSectionKey === null && sections !== null && fields !== null
+            && offlineEncounterFieldScopesKnown(fields, sections);
+          scopeKnown[encounter.id] = safe;
+          return {
+            ...encounter,
+            // Les vieilles copies et toutes les rencontres groupées restent lisibles comme entête,
+            // mais leurs valeurs cliniques ne sont pas exposées hors-ligne.
+            data: safe && sections && fields
+              ? withoutOtherRepeatableEncounterValues(encounter.data, fields, sections, null)
+              : {},
+          };
+        });
+        setOfflineEncounterScopeKnown(scopeKnown);
+        setEncounters(safeEncounters);
         // §5.7 : dictionnaire de la VERSION du patient (repli sur la version courante) ; pour les
         // rencontres, union des dictionnaires de LEURS versions -> une ancienne variable garde son libelle.
         const versionIds = [...new Set([
@@ -286,6 +315,7 @@ export function PatientDetail() {
       }
 
       setOfflineView(false);
+      setOfflineEncounterScopeKnown({});
       setBlockedServerIdOffline(false);
       const [p, encs, base, atts] = await Promise.all([
         patients.getPatient(baseId, patientId),
@@ -587,16 +617,25 @@ export function PatientDetail() {
           <ul className="space-y-3">
             {realEncounters.map((e) => {
               const encounterVersion = versionFor(e.templateVersionId);
-              const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter') ?? [];
+              const encounterScopeKnown = !offlineView || offlineEncounterScopeKnown[e.id] === true;
+              const repeatableFields = offlineView && encounterVersion
+                ? repeatableEncounterFieldKeys(encounterVersion.fields, encounterVersion.sections)
+                : new Set<string>();
+              const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter'
+                && (!offlineView || !repeatableFields.has(field.fieldKey))) ?? [];
               const encounterHidden = encounterVersion
                 ? hiddenFieldKeys(encounterVersion.rules, e.data, encounterRuleFields, encounterVersion.sections)
                 : new Set<string>();
-              const fieldsForEncounter = (encounterVersion?.fields ?? encounterFields)
+              const fieldsForEncounter = encounterScopeKnown ? (encounterVersion?.fields ?? encounterFields)
                 .filter((field) => field.scope === 'encounter' && (field.formula || field.fieldKey in e.data))
-                .filter((field) => !encounterHidden.has(field.fieldKey));
+                .filter((field) => !encounterHidden.has(field.fieldKey))
+                .filter((field) => !offlineView || !repeatableFields.has(field.fieldKey)) : [];
               const sectionsForEncounter = encounterVersion?.sections;
               const formulaFields = encounterVersion?.fields ?? encounterFields;
-              const encounterAdditions = additionsFor('encounter', encounterVersion, e.data, e.encounterType);
+              const encounterAdditions = encounterScopeKnown
+                ? additionsFor('encounter', encounterVersion, e.data, e.encounterType)
+                  .filter((field) => !offlineView || !repeatableFields.has(field.fieldKey))
+                : [];
               return (
               <li key={e.id} className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between">
@@ -630,6 +669,12 @@ export function PatientDetail() {
                   )}
                 </div>
                 <div className="space-y-3">
+                  {offlineView && !encounterScopeKnown ? (
+                    <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      {t('offline.group_data_refresh_required')}
+                    </p>
+                  ) : (
+                  <>
                   {/* L56 : couverture de LA VERSION de cette rencontre, information seulement. */}
                   <DiagnosisCoverageNotice
                     coverage={diagnosisCoverageOrNull(
@@ -670,6 +715,8 @@ export function PatientDetail() {
                       </dl>
                     </fieldset>
                   ))}
+                  </>
+                  )}
                 </div>
               </li>
               );

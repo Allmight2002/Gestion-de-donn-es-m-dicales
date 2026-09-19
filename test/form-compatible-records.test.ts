@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { startTestDb, type TestDb } from './harness/db.js';
 
@@ -29,6 +30,12 @@ interface Fixture {
   encounterHiddenId: string;
   encounterHospitalisationId: string;
   encounterUniqueId: string;
+  encounterGroupAId: string;
+  encounterGroupBId: string;
+  encounterGroupACompleteId: string;
+  encounterOrdinaryId: string;
+  encounterHistoricalNoGroupId: string;
+  patientHistoricalNoGroupId: string;
 }
 
 interface Context {
@@ -45,8 +52,10 @@ interface Context {
   current_obligations: Array<Record<string, unknown>>;
   completeness: {
     current_missing_field_keys: string[];
+    current_missing_count: number;
     current_complete: boolean;
     historical_missing_field_keys: string[];
+    historical_missing_count: number;
     historical_complete: boolean;
   };
   diagnosis_coverage: {
@@ -101,7 +110,7 @@ function field(
   };
 }
 
-function addCompatibleFields(source: Definition): Definition {
+function addCompatibleFields(source: Definition, includeRepeatableGroups = false): Definition {
   const payload = JSON.parse(JSON.stringify(source)) as Definition;
   payload.fields.push(
     field('patient_added_optional', 'Ajout patient facultatif', 'patient', 'clinique', 'text', 80, {
@@ -120,6 +129,12 @@ function addCompatibleFields(source: Definition): Definition {
       defaultValue: null,
     }),
   );
+  if (includeRepeatableGroups) {
+    payload.fields.push(
+      field('group_a_added_required', 'Ajout requis groupe A', 'encounter', 'group_a', 'text', 82, { required: true }),
+      field('group_b_added_required', 'Ajout requis groupe B', 'encounter', 'group_b', 'text', 83, { required: true }),
+    );
+  }
   payload.rules.push(
     {
       rule: {
@@ -149,10 +164,13 @@ function addCompatibleFields(source: Definition): Definition {
   return payload;
 }
 
-async function createFixture(): Promise<Fixture> {
+async function createFixture(options: { repeatableGroups?: boolean } = {}): Promise<Fixture> {
+  const repeatableGroups = options.repeatableGroups ?? false;
   const baseId = randomUUID();
   const sourceTemplateId = randomUUID();
   const sourceVersionId = randomUUID();
+  const activeVersionId = repeatableGroups ? randomUUID() : sourceVersionId;
+  const noGroupHistoricalVersionId = repeatableGroups ? randomUUID() : sourceVersionId;
   const clinicalSectionId = randomUUID();
   const patientBlockSectionId = randomUUID();
   const encounterBlockSectionId = randomUUID();
@@ -163,6 +181,12 @@ async function createFixture(): Promise<Fixture> {
   const encounterHiddenId = randomUUID();
   const encounterHospitalisationId = randomUUID();
   const encounterUniqueId = randomUUID();
+  const encounterGroupAId = randomUUID();
+  const encounterGroupBId = randomUUID();
+  const encounterGroupACompleteId = randomUUID();
+  const encounterOrdinaryId = randomUUID();
+  const encounterHistoricalNoGroupId = randomUUID();
+  const patientHistoricalNoGroupId = randomUUID();
 
   await db.admin.query('begin');
   try {
@@ -199,10 +223,78 @@ async function createFixture(): Promise<Fixture> {
         ($1,'encounter_diagnosis_autre','Autre diagnostic rencontre','encounter',null,null,'text',null,false,true,14,null,null,null),
         ($1,'ct_result','Resultat historique masque','encounter','diagnostic_encounter',$4,'text',null,false,true,15,null,null,null)
     `, [sourceVersionId, clinicalSectionId, patientBlockSectionId, encounterBlockSectionId]);
+    if (repeatableGroups) {
+      const groupASectionId = randomUUID();
+      const groupBSectionId = randomUUID();
+      await db.admin.query(`
+        insert into public.template_section(id,template_version_id,section_key,label,display_order,is_repeatable)
+        values($1,$3,'group_a','Groupe A',3,true),($2,$3,'group_b','Groupe B',4,true)
+      `, [groupASectionId, groupBSectionId, sourceVersionId]);
+      await db.admin.query(`
+        insert into public.template_field(
+          template_version_id,field_key,label,scope,section,section_id,type,required,
+          allow_missing_codes,display_order,encounter_types
+        ) values
+          ($1,'group_a_required','Requis groupe A','encounter','group_a',$2,'text',true,true,20,null),
+          ($1,'group_b_required','Requis groupe B','encounter','group_b',$3,'text',true,true,21,null),
+          ($1,'ordinary_consultation_required','Requis consultation ordinaire','encounter','clinique',$4,'text',true,true,22,ARRAY['consultation']),
+          ($1,'group_moved_optional','Variable deplacee de A vers B','encounter','group_a',$2,'text',false,true,23,null)
+      `, [sourceVersionId, groupASectionId, groupBSectionId, clinicalSectionId]);
+
+      // E2 ne porte pas encore is_repeatable dans son document de préparation. Ce fixture E3
+      // crée donc explicitement la version active avec la copie L66, qui conserve les groupes.
+      await db.admin.query(`
+        insert into public.template_version(id,template_id,version_number,status,created_by)
+        values($1,$2,2,'draft',$3)
+      `, [activeVersionId, sourceTemplateId, alice]);
+      await db.admin.query('select public.copy_template_fields($1,$2,false)', [sourceVersionId, activeVersionId]);
+      const activeSections = (await db.admin.query(
+        'select section_key,id,is_repeatable from public.template_section where template_version_id=$1',
+        [activeVersionId],
+      )).rows;
+      const activeSectionId = new Map(activeSections.map((section) => [section.section_key as string, section.id as string]));
+      expect(activeSections.filter((section) => section.is_repeatable).map((section) => section.section_key).sort())
+        .toEqual(['group_a', 'group_b']);
+      await db.admin.query(`
+        insert into public.template_field(
+          template_version_id,field_key,label,scope,section,section_id,type,required,
+          allow_missing_codes,display_order,encounter_types
+        ) values
+          ($1,'group_a_added_required','Ajout requis groupe A','encounter','group_a',$2,'text',true,true,82,null),
+          ($1,'group_b_added_required','Ajout requis groupe B','encounter','group_b',$3,'text',true,true,83,null)
+      `, [activeVersionId, activeSectionId.get('group_a'), activeSectionId.get('group_b')]);
+      await db.admin.query(`
+        update public.template_field
+           set section='group_b', section_id=$2
+         where template_version_id=$1 and field_key='group_moved_optional'
+      `, [activeVersionId, activeSectionId.get('group_b')]);
+      const hideGroupBWhenDriverIsMissing = JSON.stringify({
+        if: { field: 'diagnosis', operator: 'equals', value: 'afficher-groupe-b' },
+        then: { field: 'group_b_required', operator: 'visible' },
+      });
+      await db.admin.query(`
+        insert into public.validation_rule(template_version_id,rule,message,severity)
+        select version_id,$2::jsonb,'Visibilite du groupe B','warn'
+          from unnest($1::uuid[]) as v(version_id)
+      `, [[sourceVersionId, activeVersionId], hideGroupBWhenDriverIsMissing]);
+
+      // Cas inter-version : l'occurrence provient d'une version sans bloc répétable tandis que
+      // la définition active en porte deux. Chaque liste de complétude doit suivre sa version.
+      await db.admin.query(`
+        insert into public.template_version(id,template_id,version_number,status,created_by)
+        values($1,$2,3,'draft',$3)
+      `, [noGroupHistoricalVersionId, sourceTemplateId, alice]);
+      await db.admin.query(`
+        insert into public.template_field(
+          template_version_id,field_key,label,scope,section,section_id,type,required,
+          allow_missing_codes,display_order,encounter_types
+        ) values($1,'legacy_ordinary_required','Requis historique ordinaire','encounter',null,null,'text',true,true,1,ARRAY['consultation'])
+      `, [noGroupHistoricalVersionId]);
+    }
     await db.admin.query(`
       insert into public.base(id,name,specialty,owner_user_id,current_template_version_id)
       values($1,'Base E3','e3-test',$2,$3)
-    `, [baseId, alice, sourceVersionId]);
+    `, [baseId, alice, activeVersionId]);
     await db.admin.query(`
       insert into public.patient(id,base_id,patient_code,template_version_id,data,collection_mode,validation_status,created_by)
       values
@@ -234,12 +326,18 @@ async function createFixture(): Promise<Fixture> {
         ($9,$2,$3,'consultation','2026-09-03',$10::jsonb,'direct','curated',$5)
     `, [
       encounterHiddenId, patientHiddenId, sourceVersionId,
-      JSON.stringify({ diagnosis: 'ancien', glasgow_score: 10, encounter_diagnosis: ['other'], ct_result: 'encounter-hidden-history' }),
+      JSON.stringify({
+        diagnosis: 'ancien', glasgow_score: 10, encounter_diagnosis: ['other'], ct_result: 'encounter-hidden-history',
+        ...(repeatableGroups ? { ordinary_consultation_required: 'fixture complet' } : {}),
+      }),
       alice,
       encounterHospitalisationId, patientUniqueId,
       JSON.stringify({ admission_date: '2026-09-02', diagnosis: 'hospitalisation', glasgow_score: 12, encounter_diagnosis: ['target'], ct_result: 'hospital-block-filled' }),
       encounterUniqueId,
-      JSON.stringify({ diagnosis: 'target', glasgow_score: 11, encounter_diagnosis: ['target'], ct_result: 'encounter-block-filled' }),
+      JSON.stringify({
+        diagnosis: 'target', glasgow_score: 11, encounter_diagnosis: ['target'], ct_result: 'encounter-block-filled',
+        ...(repeatableGroups ? { ordinary_consultation_required: 'fixture complet' } : {}),
+      }),
     ]);
     await db.admin.query('commit');
   } catch (error) {
@@ -247,32 +345,84 @@ async function createFixture(): Promise<Fixture> {
     throw error;
   }
 
-  const opened = await rpc<{ context: { sourceRevision: number; sourceFingerprint: string; definition: Definition } }>(
-    alice,
-    'select public.open_or_resume_form_preparation($1) as result',
-    [baseId],
-    true,
-  );
-  const payload = addCompatibleFields(opened.context.definition);
-  const preparationId = randomUUID();
-  const saved = await rpc<Record<string, unknown>>(alice,
-    'select public.save_form_preparation($1,$2,$3,$4,$5,$6,$7::jsonb) as result',
-    [preparationId, baseId, 0, opened.context.sourceRevision, opened.context.sourceFingerprint, randomUUID(), JSON.stringify(payload)],
-    true,
-  );
-  expect((saved.preparation as Record<string, unknown>).state).toBe('active');
-  const previewed = await rpc<Record<string, unknown>>(alice,
-    'select public.preview_form_preparation($1,$2,$3,$4,$5) as result',
-    [preparationId, 1, opened.context.sourceRevision, opened.context.sourceFingerprint, randomUUID()],
-    true,
-  );
-  expect((previewed.preparation as Record<string, unknown>).state).toBe('ready');
-  const applied = await rpc<Record<string, unknown>>(alice,
-    'select public.apply_form_preparation($1,$2,$3,$4,$5) as result',
-    [preparationId, 1, opened.context.sourceRevision, opened.context.sourceFingerprint, randomUUID()],
-    true,
-  );
-  expect((applied.application as Record<string, unknown>).targetTemplateVersionId).toEqual(expect.any(String));
+  if (!repeatableGroups) {
+    const opened = await rpc<{ context: { sourceRevision: number; sourceFingerprint: string; definition: Definition } }>(
+      alice,
+      'select public.open_or_resume_form_preparation($1) as result',
+      [baseId],
+      true,
+    );
+    const payload = addCompatibleFields(opened.context.definition);
+    const preparationId = randomUUID();
+    const saved = await rpc<Record<string, unknown>>(alice,
+      'select public.save_form_preparation($1,$2,$3,$4,$5,$6,$7::jsonb) as result',
+      [preparationId, baseId, 0, opened.context.sourceRevision, opened.context.sourceFingerprint, randomUUID(), JSON.stringify(payload)],
+      true,
+    );
+    expect((saved.preparation as Record<string, unknown>).state).toBe('active');
+    const previewed = await rpc<Record<string, unknown>>(alice,
+      'select public.preview_form_preparation($1,$2,$3,$4,$5) as result',
+      [preparationId, 1, opened.context.sourceRevision, opened.context.sourceFingerprint, randomUUID()],
+      true,
+    );
+    expect((previewed.preparation as Record<string, unknown>).state).toBe('ready');
+    const applied = await rpc<Record<string, unknown>>(alice,
+      'select public.apply_form_preparation($1,$2,$3,$4,$5) as result',
+      [preparationId, 1, opened.context.sourceRevision, opened.context.sourceFingerprint, randomUUID()],
+      true,
+    );
+    expect((applied.application as Record<string, unknown>).targetTemplateVersionId).toEqual(expect.any(String));
+  }
+
+  if (repeatableGroups) {
+    await db.admin.query(`
+      insert into public.encounter(
+        id,patient_id,template_version_id,encounter_type,encounter_date,data,collection_mode,
+        validation_status,created_by,group_section_key
+      ) values
+        ($1,$2,$3,'autre','2026-09-04',$4::jsonb,'direct','draft',$5,'group_a'),
+        ($6,$2,$3,'autre','2026-09-05',$7::jsonb,'direct','draft',$5,'group_b'),
+        ($8,$2,$3,'autre','2026-09-06',$9::jsonb,'direct','draft',$5,'group_a'),
+        ($10,$2,$3,'consultation','2026-09-07',$11::jsonb,'direct','draft',$5,null)
+    `, [
+      encounterGroupAId, patientHiddenId, sourceVersionId,
+      JSON.stringify({ group_b_required: 'valeur hors groupe B' }), alice,
+      encounterGroupBId,
+      JSON.stringify({ diagnosis: 'afficher-groupe-b', group_a_required: 'valeur hors groupe A' }),
+      encounterGroupACompleteId,
+      JSON.stringify({ group_a_required: 'valeur groupe A', group_a_added_required: 'ajout groupe A' }),
+      encounterOrdinaryId,
+      JSON.stringify({
+        diagnosis: 'rencontre ordinaire',
+        glasgow_score: 15,
+        group_a_required: 'valeur groupe A ordinaire',
+        group_b_required: 'valeur groupe B ordinaire',
+      }),
+    ]);
+    if (repeatableGroups) {
+      await db.admin.query(`
+        insert into public.patient(id,base_id,patient_code,template_version_id,data,collection_mode,validation_status,created_by)
+        values($1,$2,'historique-sans-groupe',$3,'{}'::jsonb,'direct','curated',$4)
+      `, [patientHistoricalNoGroupId, baseId, noGroupHistoricalVersionId, alice]);
+      await db.admin.query(`
+        insert into public.encounter(
+          id,patient_id,template_version_id,encounter_type,encounter_date,data,collection_mode,
+          validation_status,created_by,group_section_key
+        ) values($1,$2,$3,'consultation','2026-09-08',$4::jsonb,'direct','draft',$5,null)
+      `, [
+        encounterHistoricalNoGroupId,
+        patientHistoricalNoGroupId,
+        noGroupHistoricalVersionId,
+        JSON.stringify({
+          diagnosis: 'consultation historique',
+          glasgow_score: 15,
+          group_a_required: 'valeur groupe A historique hors portée',
+          group_b_required: 'valeur groupe B historique hors portée',
+        }),
+        alice,
+      ]);
+    }
+  }
 
   return {
     baseId,
@@ -284,6 +434,12 @@ async function createFixture(): Promise<Fixture> {
     encounterHiddenId,
     encounterHospitalisationId,
     encounterUniqueId,
+    encounterGroupAId,
+    encounterGroupBId,
+    encounterGroupACompleteId,
+    encounterOrdinaryId,
+    encounterHistoricalNoGroupId,
+    patientHistoricalNoGroupId,
   };
 }
 
@@ -299,6 +455,10 @@ function item(context: Context, fieldKey: string): ContextField {
   const found = context.fields.find((candidate) => candidate.field_key === fieldKey);
   if (!found) throw new Error(`Champ absent du contexte: ${fieldKey}`);
   return found;
+}
+
+function obligationKeys(context: Context): string[] {
+  return context.current_obligations.map((entry) => String(entry.field_key));
 }
 
 async function compatiblePatient(
@@ -335,21 +495,271 @@ async function compatibleEncounter(
   );
 }
 
+async function legacyEncounterUpdate(
+  encounterId: string,
+  data: Record<string, unknown>,
+  reason: string,
+  uid = alice,
+): Promise<unknown> {
+  return rpc<unknown>(uid,
+    'select public.update_encounter($1,$2::jsonb,$3,$4) as result',
+    [encounterId, JSON.stringify(data), 'draft', reason],
+  );
+}
+
+async function encounterWriteState(encounterId: string, operationId: string) {
+  return (await db.admin.query(`
+    select e.data, e.validation_status, e.record_revision, e.updated_at::text as updated_at,
+           (select count(*)::int from public.field_change_log l
+             where l.entity = 'encounter' and l.entity_id = e.id) as change_count,
+           (select count(*)::int from public.record_field_provenance p
+             where p.record_kind = 'encounter' and p.record_id = e.id) as provenance_count,
+           (select count(*)::int from public.record_form_operation o
+             where o.actor_id = $2 and o.operation_id = $3) as operation_count
+      from public.encounter e
+     where e.id = $1
+  `, [encounterId, alice, operationId])).rows[0];
+}
+
+async function expectStructuredScopeError(operation: Promise<unknown>, reason: string) {
+  const failure = await operation.then(
+    () => undefined,
+    (error: unknown) => error as { message?: string; detail?: string },
+  );
+  expect(failure).toBeDefined();
+  expect(failure?.message).toBe('FORM_SCOPE_INCOMPATIBLE');
+  expect(JSON.parse(failure?.detail ?? 'null')).toMatchObject({
+    code: 'FORM_SCOPE_INCOMPATIBLE', reason, action: 'reject',
+  });
+}
+
 let fixture: Fixture;
+let repeatableFixture: Fixture;
+let noGroupContextsBeforeMigration: Map<string, Context>;
+let noGroupPatientContextBeforeMigration: Context;
+
+const REPEATABLE_CONTEXT_MIGRATION = '20260919103000_form_compatible_group_context.sql';
+const GROUP_WRITE_GUARDS_MIGRATION = '20260919110000_form_compatible_group_write_guards.sql';
 
 beforeAll(async () => {
-  db = await startTestDb({ seed: true });
+  db = await startTestDb({ seed: true, beforeMigration: REPEATABLE_CONTEXT_MIGRATION });
   const users = new Map<string, string>(
     (await db.admin.query('select email,id from auth.users')).rows.map((row) => [row.email, row.id]),
   );
   alice = users.get('alice@demo.test')!;
   bob = users.get('bob@demo.test')!;
   fixture = await createFixture();
+
+  const baselineEncounterIds = [fixture.encounterHiddenId, fixture.encounterHospitalisationId, fixture.encounterUniqueId];
+  noGroupContextsBeforeMigration = new Map(
+    await Promise.all(baselineEncounterIds.map(async (id) => [id, await readEncounter(fixture, id)] as const)),
+  );
+  noGroupPatientContextBeforeMigration = await readPatient(fixture, fixture.patientHiddenId);
+  await db.admin.query(readFileSync(`supabase/migrations/${REPEATABLE_CONTEXT_MIGRATION}`, 'utf8'));
+  await db.admin.query(readFileSync(`supabase/migrations/${GROUP_WRITE_GUARDS_MIGRATION}`, 'utf8'));
+  repeatableFixture = await createFixture({ repeatableGroups: true });
 }, 240_000);
 
 afterAll(async () => { await db?.stop(); });
 
 describe('E3 : contexte compatible patient et rencontre', () => {
+  test('une version sans groupe conserve exactement le contexte de complétude avant la migration', async () => {
+    for (const [encounterId, before] of noGroupContextsBeforeMigration) {
+      expect(await readEncounter(fixture, encounterId)).toEqual(before);
+    }
+  });
+
+  test('la portée patient reste identique après le remplacement du calcul de contexte', async () => {
+    expect(await readPatient(fixture, fixture.patientHiddenId)).toEqual(noGroupPatientContextBeforeMigration);
+  });
+
+  test('une occurrence du groupe A ne réclame ni le groupe B ni les champs ordinaires', async () => {
+    const context = await readEncounter(repeatableFixture, repeatableFixture.encounterGroupAId);
+
+    expect(obligationKeys(context)).toEqual(['group_a_required', 'group_a_added_required']);
+    expect(context.current_obligations.map((entry) => entry.label)).not.toContain('Requis groupe B');
+    expect(context.completeness).toMatchObject({
+      current_missing_field_keys: ['group_a_required', 'group_a_added_required'],
+      current_missing_count: 2,
+      current_complete: false,
+      historical_missing_field_keys: ['group_a_required'],
+      historical_missing_count: 1,
+      historical_complete: false,
+    });
+    expect(item(context, 'group_b_required')).toMatchObject({
+      applicability: 'not_applicable', value_state: 'not_applicable', applicability_reason: 'rule_hidden',
+      repeatable_group_applicable: false,
+    });
+    expect(item(context, 'group_a_required')).not.toHaveProperty('repeatable_group_applicable');
+    expect(item(context, 'group_b_required')).not.toHaveProperty('value');
+    expect(context.values).not.toHaveProperty('group_b_required');
+    expect(JSON.stringify(context)).not.toContain('valeur hors groupe B');
+    expect(obligationKeys(context)).not.toContain('ordinary_consultation_required');
+  });
+
+  test('une occurrence du groupe B ne réclame ni le groupe A ni les champs ordinaires', async () => {
+    const context = await readEncounter(repeatableFixture, repeatableFixture.encounterGroupBId);
+
+    expect(obligationKeys(context)).toEqual(['group_b_required', 'group_b_added_required']);
+    expect(context.completeness).toMatchObject({
+      current_missing_field_keys: ['group_b_required', 'group_b_added_required'],
+      current_missing_count: 2,
+      current_complete: false,
+      historical_missing_field_keys: ['group_b_required'],
+      historical_missing_count: 1,
+      historical_complete: false,
+    });
+    expect(item(context, 'group_a_required')).toMatchObject({
+      applicability: 'not_applicable', value_state: 'not_applicable', applicability_reason: 'repeatable_group',
+      repeatable_group_applicable: false,
+    });
+    expect(context.values).not.toHaveProperty('group_a_required');
+    expect(JSON.stringify(context)).not.toContain('valeur hors groupe A');
+    expect(obligationKeys(context)).not.toContain('ordinary_consultation_required');
+  });
+
+  test('une rencontre ordinaire exclut tous les groupes puis garde le filtre de type', async () => {
+    const context = await readEncounter(repeatableFixture, repeatableFixture.encounterOrdinaryId);
+
+    expect(obligationKeys(context)).toEqual(['ordinary_consultation_required']);
+    expect(context.completeness).toMatchObject({
+      current_missing_field_keys: ['ordinary_consultation_required'],
+      current_missing_count: 1,
+      current_complete: false,
+      historical_missing_field_keys: ['ordinary_consultation_required'],
+      historical_missing_count: 1,
+      historical_complete: false,
+    });
+    expect(item(context, 'group_a_required')).toMatchObject({
+      applicability: 'not_applicable', value_state: 'not_applicable', applicability_reason: 'repeatable_group',
+      repeatable_group_applicable: false,
+    });
+    expect(item(context, 'group_b_required')).toMatchObject({
+      applicability: 'not_applicable', value_state: 'not_applicable', applicability_reason: 'rule_hidden',
+      repeatable_group_applicable: false,
+    });
+    expect(context.values).not.toHaveProperty('group_a_required');
+    expect(context.values).not.toHaveProperty('group_b_required');
+    expect(JSON.stringify(context)).not.toMatch(/valeur groupe [AB] ordinaire/);
+    expect(obligationKeys(context)).not.toContain('encounter_added_required');
+    expect(item(context, 'diagnosis')).toMatchObject({ applicability: 'applicable', value_state: 'present' });
+    expect(context.values.diagnosis).toBe('rencontre ordinaire');
+  });
+
+  test('le snapshot hors ligne transporte la cle de groupe et le statut repetable des sections', async () => {
+    const snapshot = await rpc<{
+      patients: Array<{ encounters: Array<{ id: string; group_section_key: string | null }> }>;
+      sections: Array<{ sectionKey: string; isRepeatable: boolean }>;
+      sectionsByVersion: Record<string, Array<{ sectionKey: string; isRepeatable: boolean }>>;
+    }>(alice, 'select public.download_base_snapshot($1) as result', [repeatableFixture.baseId]);
+    const encounters = new Map<string, { id: string; group_section_key: string | null }>();
+    for (const patient of snapshot.patients) {
+      for (const encounter of patient.encounters) encounters.set(encounter.id, encounter);
+    }
+
+    expect([...encounters.values()].every((encounter) => Object.hasOwn(encounter, 'group_section_key'))).toBe(true);
+    expect(encounters.get(repeatableFixture.encounterGroupAId)).toMatchObject({ group_section_key: 'group_a' });
+    expect(encounters.get(repeatableFixture.encounterGroupBId)).toMatchObject({ group_section_key: 'group_b' });
+    expect(encounters.get(repeatableFixture.encounterOrdinaryId)).toMatchObject({ group_section_key: null });
+
+    const activeVersionId = (await db.admin.query(
+      'select current_template_version_id from public.base where id=$1', [repeatableFixture.baseId],
+    )).rows[0].current_template_version_id as string;
+    for (const versionId of [repeatableFixture.sourceVersionId, activeVersionId]) {
+      const bySectionKey = new Map(snapshot.sectionsByVersion[versionId].map((section) => [section.sectionKey, section.isRepeatable]));
+      expect(bySectionKey.get('clinique')).toBe(false);
+      expect(bySectionKey.get('group_a')).toBe(true);
+      expect(bySectionKey.get('group_b')).toBe(true);
+    }
+    expect(snapshot.sections.find((section) => section.sectionKey === 'group_a')?.isRepeatable).toBe(true);
+  });
+
+  test('une rencontre sans groupe sépare la version historique sans groupe de l’active avec groupes', async () => {
+    const context = await readEncounter(repeatableFixture, repeatableFixture.encounterHistoricalNoGroupId);
+
+    expect(obligationKeys(context)).toEqual(['ordinary_consultation_required']);
+    expect(context.completeness).toMatchObject({
+      current_missing_field_keys: ['ordinary_consultation_required'],
+      current_missing_count: 1,
+      current_complete: false,
+      historical_missing_field_keys: ['legacy_ordinary_required'],
+      historical_missing_count: 1,
+      historical_complete: false,
+    });
+    expect(context.values).not.toHaveProperty('group_a_required');
+    expect(context.values).not.toHaveProperty('group_b_required');
+    expect(JSON.stringify(context)).not.toContain('valeur groupe A historique hors portée');
+    expect(JSON.stringify(context)).not.toContain('valeur groupe B historique hors portée');
+  });
+
+  test('courant et historique deviennent complets quand les champs applicables du groupe sont présents', async () => {
+    const context = await readEncounter(repeatableFixture, repeatableFixture.encounterGroupACompleteId);
+
+    expect(context.current_obligations).toEqual([]);
+    expect(context.completeness).toMatchObject({
+      current_missing_field_keys: [],
+      current_missing_count: 0,
+      current_complete: true,
+      historical_missing_field_keys: [],
+      historical_missing_count: 0,
+      historical_complete: true,
+    });
+    expect(context.values).toMatchObject({
+      group_a_required: 'valeur groupe A',
+      group_a_added_required: 'ajout groupe A',
+    });
+  });
+
+  test('les helpers restent internes et les façades prévues seules sont exécutables par authenticated', async () => {
+    const result = await db.admin.query(`
+      select p.proname,
+             coalesce(bool_or(a.grantee = 0 and a.privilege_type = 'EXECUTE'), false) as public_execute,
+             has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_execute
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+       where n.nspname = 'public'
+         and p.proname in ('form_record_context_json', 'form_record_context_json_base',
+                           'form_record_context_json_group_context_base',
+                           'form_record_field_group_applicable', 'form_record_assert_encounter_group_patch',
+                           'read_patient_form_context', 'read_encounter_form_context',
+                           'update_encounter', 'update_encounter_compatible',
+                           'download_base_snapshot', 'replay_encounter_update')
+       group by p.oid,p.proname
+       order by p.proname
+    `);
+    const byName = new Map(result.rows.map((row) => [row.proname as string, row]));
+
+    for (const helper of [
+      'form_record_context_json', 'form_record_context_json_base', 'form_record_context_json_group_context_base',
+      'form_record_field_group_applicable', 'form_record_assert_encounter_group_patch',
+    ]) {
+      expect(byName.get(helper)).toMatchObject({
+        public_execute: false, anon_execute: false, authenticated_execute: false,
+      });
+    }
+    for (const facade of ['read_patient_form_context', 'read_encounter_form_context']) {
+      expect(byName.get(facade)).toMatchObject({
+        public_execute: false, anon_execute: false, authenticated_execute: true,
+      });
+    }
+    for (const writeRpc of ['update_encounter', 'update_encounter_compatible']) {
+      expect(byName.get(writeRpc)).toMatchObject({
+        public_execute: false, anon_execute: false, authenticated_execute: true,
+      });
+    }
+    for (const integrationRpc of ['download_base_snapshot', 'replay_encounter_update']) {
+      expect(byName.get(integrationRpc)).toMatchObject({
+        public_execute: false, anon_execute: false, authenticated_execute: true,
+      });
+    }
+    expect((await db.admin.query(`
+      select count(*)::int as count from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='public' and p.proname='form_record_context_json'
+    `)).rows[0].count).toBe(1);
+  });
+
   test('expose historique, additions, obligations, provenance et diagnostic sans identite', async () => {
     const context = await readPatient(fixture, fixture.patientHiddenId);
     expect(context.record_definition_revision).toBe(fixture.sourceVersionId);
@@ -637,5 +1047,149 @@ describe('E3 : contexte compatible patient et rencontre', () => {
     const aliceContext = await readPatient(fixture, fixture.patientNoneId);
     await expect(compatiblePatient(fixture, fixture.patientNoneId, aliceContext, { patient_added_optional: 'bob-revoked' }, randomUUID(), bob))
       .rejects.toThrow('FORM_RECORD_FORBIDDEN');
+  });
+
+  test('refuse une cle du groupe B sur A sans ecriture et permet un retry idempotent dans A', async () => {
+    const encounterId = repeatableFixture.encounterGroupAId;
+    const context = await readEncounter(repeatableFixture, encounterId);
+    const operationId = randomUUID();
+    const before = await encounterWriteState(encounterId, operationId);
+
+    await expectStructuredScopeError(
+      compatibleEncounter(repeatableFixture, encounterId, context, { group_b_required: 'tentative groupe B' }, operationId),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
+
+    const validPatch = { group_a_added_required: 'completion groupe A' };
+    const receipt = await compatibleEncounter(repeatableFixture, encounterId, context, validPatch, operationId);
+    expect(receipt).toMatchObject({
+      recordKind: 'encounter', recordId: encounterId, recordRevision: context.record_revision + 1, operationId,
+    });
+    expect(await compatibleEncounter(repeatableFixture, encounterId, context, validPatch, operationId)).toEqual(receipt);
+
+    const after = (await db.admin.query('select data from public.encounter where id=$1', [encounterId])).rows[0].data;
+    expect(after).toMatchObject({
+      group_b_required: 'valeur hors groupe B',
+      group_a_added_required: 'completion groupe A',
+    });
+    expect((await encounterWriteState(encounterId, operationId)).operation_count).toBe(1);
+  });
+
+  test('refuse un champ repetable sur une rencontre ordinaire meme si encounter_types est nul', async () => {
+    const encounterId = repeatableFixture.encounterOrdinaryId;
+    const groupField = (await db.admin.query(`
+      select encounter_types from public.template_field
+       where template_version_id=$1 and field_key='group_a_required'
+    `, [repeatableFixture.sourceVersionId])).rows[0];
+    expect(groupField.encounter_types).toBeNull();
+
+    const context = await readEncounter(repeatableFixture, encounterId);
+    const operationId = randomUUID();
+    const before = await encounterWriteState(encounterId, operationId);
+    await expectStructuredScopeError(
+      compatibleEncounter(repeatableFixture, encounterId, context, { group_a_required: 'tentative groupe A' }, operationId),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
+    expect(before.operation_count).toBe(0);
+    expect(item(context, 'group_a_required')).toMatchObject({ repeatable_group_applicable: false });
+    expect(item(context, 'diagnosis')).not.toHaveProperty('repeatable_group_applicable');
+  });
+
+  test('refuse un champ deplace de A historique vers B actif sur une occurrence A', async () => {
+    const activeVersionId = (await db.admin.query(
+      'select current_template_version_id from public.base where id=$1', [repeatableFixture.baseId],
+    )).rows[0].current_template_version_id as string;
+    const definition = (await db.admin.query(`
+      select historical.section as historical_section, active.section as active_section
+        from public.template_field historical
+        join public.template_field active on active.field_key=historical.field_key
+       where historical.template_version_id=$1
+         and active.template_version_id=$2
+         and historical.field_key='group_moved_optional'
+    `, [repeatableFixture.sourceVersionId, activeVersionId])).rows[0];
+    expect(definition).toEqual({ historical_section: 'group_a', active_section: 'group_b' });
+
+    const encounterId = repeatableFixture.encounterGroupAId;
+    const context = await readEncounter(repeatableFixture, encounterId);
+    const operationId = randomUUID();
+    const before = await encounterWriteState(encounterId, operationId);
+    await expectStructuredScopeError(
+      compatibleEncounter(repeatableFixture, encounterId, context, { group_moved_optional: 'tentative A ancienne' }, operationId),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
+  });
+
+  test('la facade legacy preserve les valeurs hors groupe inchangees et refuse changement ou retrait', async () => {
+    const encounterId = repeatableFixture.encounterGroupAId;
+    const initial = (await db.admin.query('select data from public.encounter where id=$1', [encounterId])).rows[0].data;
+
+    await legacyEncounterUpdate(encounterId, {
+      ...initial,
+      group_a_required: 'correction valide groupe A',
+    }, 'legacy conserve valeur hors groupe');
+    const saved = (await db.admin.query('select data from public.encounter where id=$1', [encounterId])).rows[0].data;
+    expect(saved).toMatchObject({
+      group_a_required: 'correction valide groupe A',
+      group_b_required: 'valeur hors groupe B',
+    });
+
+    const operationId = randomUUID();
+    const beforeChange = await encounterWriteState(encounterId, operationId);
+    await expectStructuredScopeError(
+      legacyEncounterUpdate(encounterId, { ...saved, group_b_required: 'valeur groupe B modifiee' }, 'legacy modifie hors groupe'),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(beforeChange);
+
+    const withoutGroupB = { ...saved };
+    delete withoutGroupB.group_b_required;
+    await expectStructuredScopeError(
+      legacyEncounterUpdate(encounterId, withoutGroupB, 'legacy omet hors groupe'),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(beforeChange);
+  });
+
+  test('la facade legacy refuse aussi un champ de groupe sur une rencontre ordinaire', async () => {
+    const encounterId = repeatableFixture.encounterOrdinaryId;
+    const data = (await db.admin.query('select data from public.encounter where id=$1', [encounterId])).rows[0].data;
+    const operationId = randomUUID();
+    const before = await encounterWriteState(encounterId, operationId);
+
+    await expectStructuredScopeError(
+      legacyEncounterUpdate(encounterId, { ...data, group_a_required: 'tentative ordinaire vers A' }, 'legacy ordinaire vers groupe'),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
+  });
+
+  test('le rejeu hors ligne refuse une occurrence repetable avant toute ecriture ou receipt', async () => {
+    const encounterId = repeatableFixture.encounterGroupAId;
+    const operationId = randomUUID();
+    const before = await encounterWriteState(encounterId, operationId);
+    const unauthorizedOperationId = randomUUID();
+    await expect(db.asUser(bob, (client) => client.query(
+      'select * from public.replay_encounter_update($1,$2,$3::jsonb,$4,$5,$6::timestamptz)',
+      [unauthorizedOperationId, encounterId, JSON.stringify({ group_a_required: 'sans acces' }), 'draft', 'rejeu interdit', null],
+    ))).rejects.toMatchObject({ message: 'FORM_RECORD_FORBIDDEN' });
+    await expectStructuredScopeError(
+      db.asUser(alice, (client) => client.query(
+        'select * from public.replay_encounter_update($1,$2,$3::jsonb,$4,$5,$6::timestamptz)',
+        [operationId, encounterId, JSON.stringify({ group_a_required: 'tentative offline interdite' }), 'draft', 'rejeu groupe', null],
+      )),
+      'repeatable_group',
+    );
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
+    expect((await db.admin.query(`
+      select count(*)::int as count from public.offline_encounter_operation
+       where user_id=$1 and operation_id=$2
+    `, [alice, operationId])).rows[0].count).toBe(0);
+    expect((await db.admin.query(`
+      select count(*)::int as count from public.offline_encounter_operation
+       where user_id=$1 and operation_id=$2
+    `, [bob, unauthorizedOperationId])).rows[0].count).toBe(0);
   });
 });

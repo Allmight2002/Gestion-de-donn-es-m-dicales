@@ -29,6 +29,16 @@ const forbidNetwork = new Proxy(
   { get: () => async () => { throw new Error('reseau interdit hors-ligne'); } },
 ) as unknown as BaseRepository & TemplateRepository & PatientRepository & AttachmentRepository;
 
+const offlineSections = [
+  { id: 's-clinique', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, parentSectionKey: null, isRepeatable: false },
+  { id: 's-group-a', sectionKey: 'group_a', label: 'Groupe A', displayOrder: 1, parentSectionKey: null, isRepeatable: true },
+];
+const offlineFields = [
+  { id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 },
+  { id: 'f2', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 1, section: 'clinique' },
+  { id: 'f3', fieldKey: 'group_marker', label: 'Valeur de groupe', scope: 'encounter', type: 'text', displayOrder: 2, section: 'group_a' },
+];
+
 function renderAt(path: string, element: React.ReactNode, routePath: string) {
   return render(
     <I18nProvider>
@@ -52,11 +62,13 @@ beforeAll(async () => {
     buildSnapshot(
       { id: 'b1', name: 'Base hors-ligne', templateVersionId: 'v1' },
       [{ id: 'p-off', code: 'P-OFF', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'curated' }],
-      { 'p-off': [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'curated', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12 }, updatedAt: '2024-06-01T08:00:00.000Z' }] },
-      [
-        { id: 'f1', fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', displayOrder: 0 },
-        { id: 'f2', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 1 },
-      ],
+      { 'p-off': [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'curated', ageValue: 44, ageUnit: 'years', data: { glasgow_score: 12, group_marker: 'SENTINEL-GROUP-VALUE' }, updatedAt: '2024-06-01T08:00:00.000Z', groupSectionKey: null, templateVersionId: 'v1' }] },
+      offlineFields,
+      Date.now(),
+      { v1: offlineFields },
+      {},
+      offlineSections,
+      { v1: offlineSections },
     ),
   );
 });
@@ -88,10 +100,45 @@ describe('PatientDetail hors-ligne', () => {
     expect(screen.getByText('Sexe')).toBeInTheDocument();
     expect(screen.getByText('Glasgow')).toBeInTheDocument(); // libelle rencontre
     expect(screen.getByText('12')).toBeInTheDocument(); // valeur rencontre
+    expect(screen.queryByText('SENTINEL-GROUP-VALUE')).not.toBeInTheDocument();
+    expect(screen.queryByText('Valeur de groupe')).not.toBeInTheDocument();
     expect(screen.getByText('Lecture seule (hors-ligne)')).toBeInTheDocument();
     // Aucune action d'ecriture hors-ligne.
     expect(screen.queryByRole('button', { name: 'Supprimer ce patient' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Section identité|Identité/)).not.toBeInTheDocument();
+  });
+
+  test('un ancien cache sans marqueur de groupe masque les valeurs de rencontre', async () => {
+    await offlineCache.save(buildSnapshot(
+      { id: 'b-old-cache', name: 'Ancien cache', templateVersionId: 'v-old' },
+      [{ id: 'p-old-cache', code: 'P-OLD', templateVersionId: 'v-old', data: {}, validationStatus: 'curated' }],
+      { 'p-old-cache': [{ id: 'e-old-cache', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 77 } }] },
+      [{ id: 'f-old', fieldKey: 'glasgow_score', label: 'Glasgow (cache ancien)', scope: 'encounter', type: 'integer', displayOrder: 0 }],
+    ));
+    renderAt('/bases/b-old-cache/patients/p-old-cache', <PatientDetail />, '/bases/:id/patients/:patientId');
+    expect(await screen.findByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
+    expect(screen.queryByText('77')).not.toBeInTheDocument();
+    expect(screen.queryByText('Glasgow (cache ancien)')).not.toBeInTheDocument();
+    await offlineCache.remove('b-old-cache');
+  });
+
+  test('une rencontre groupée récente reste sans valeurs en lecture hors-ligne', async () => {
+    await offlineCache.save(buildSnapshot(
+      { id: 'b-grouped-cache', name: 'Cache groupé', templateVersionId: 'v1' },
+      [{ id: 'p-grouped-cache', code: 'P-GROUP', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
+      { 'p-grouped-cache': [{ id: 'e-grouped-cache', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 88, group_marker: 'GROUP-VALUE' }, groupSectionKey: 'group_a' }] },
+      offlineFields,
+      Date.now(),
+      { v1: offlineFields },
+      {},
+      offlineSections,
+      { v1: offlineSections },
+    ));
+    renderAt('/bases/b-grouped-cache/patients/p-grouped-cache', <PatientDetail />, '/bases/:id/patients/:patientId');
+    expect(await screen.findByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
+    expect(screen.queryByText('88')).not.toBeInTheDocument();
+    expect(screen.queryByText('GROUP-VALUE')).not.toBeInTheDocument();
+    await offlineCache.remove('b-grouped-cache');
   });
 });
 
@@ -101,13 +148,16 @@ describe('EditEncounter hors-ligne §7.4/§7.5 (version historique)', () => {
       buildSnapshot(
         { id: 'b2', name: 'Base multi-versions', templateVersionId: 'v2' },
         [{ id: 'p2', code: 'P-2', templateVersionId: 'v2', data: {}, validationStatus: 'curated' }],
-        { p2: [{ id: 'e2', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 9 }, updatedAt: null, templateVersionId: 'v-old' }] },
+        { p2: [{ id: 'e2', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 9 }, updatedAt: null, templateVersionId: 'v-old', groupSectionKey: null }] },
         // Dictionnaire de la version COURANTE (v2) : ne doit PAS etre utilise pour cette rencontre.
         [{ id: 'f2', fieldKey: 'glasgow_score', label: 'Glasgow v2', scope: 'encounter', type: 'integer', displayOrder: 0 }],
         Date.now(),
         // Dictionnaire de la version DE LA rencontre (v-old), volontairement SANS `section`
-        // (comme un instantane anterieur au §7.5) -> le repli section='clinique' doit l'afficher.
+        // l'inventaire versionnel explicite ci-dessous garantit l'absence de section répétable.
         { 'v-old': [{ id: 'f1', fieldKey: 'glasgow_score', label: 'Glasgow (ancien)', scope: 'encounter', type: 'integer', displayOrder: 0 }] },
+        undefined,
+        [{ id: 's-clinique-old', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, isRepeatable: false }],
+        { 'v-old': [] },
       ),
     );
     renderAt('/bases/b2/patients/p2/encounters/e2/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
@@ -132,6 +182,7 @@ describe('EditEncounter hors-ligne §7.4/§7.5 (version historique)', () => {
             data: { admission_date: '2024-01-05', discharge_date: '2024-01-01' },
             updatedAt: '2024-01-01T00:00:00.000Z',
             templateVersionId: 'v-rule',
+            groupSectionKey: null,
           }],
         },
         [{ id: 'f-current', fieldKey: 'admission_date', label: 'Admission courante', scope: 'encounter', type: 'date', displayOrder: 0 }],
@@ -150,6 +201,8 @@ describe('EditEncounter hors-ligne §7.4/§7.5 (version historique)', () => {
             severity: 'block',
           }],
         },
+        undefined,
+        { 'v-rule': [{ id: 's-clinique-rule', sectionKey: 'clinique', label: 'Clinique', displayOrder: 0, isRepeatable: false }] },
       ),
     );
 
@@ -178,6 +231,43 @@ describe('EditEncounter hors-ligne (Phase 2)', () => {
     expect(entry.encounterId).toBe('e1');
     expect(entry.reason).toBe('corr hors-ligne');
     expect(entry.baseUpdatedAt).toBe('2024-06-01T08:00:00.000Z'); // jeton optimiste du cache
+    expect(entry.groupSectionKey).toBeNull();
+    expect(entry.data).not.toHaveProperty('group_marker');
     await outbox.remove(entry.id);
+  });
+
+  test('bloque une rencontre groupée avant d afficher ses valeurs ou le formulaire', async () => {
+    await offlineCache.save(buildSnapshot(
+      { id: 'b-group-edit', name: 'Cache groupé', templateVersionId: 'v1' },
+      [{ id: 'p-group-edit', code: 'P-GROUP', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
+      { 'p-group-edit': [{ id: 'e-group-edit', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 99, group_marker: 'GROUP-SENTINEL' }, groupSectionKey: 'group_a', templateVersionId: 'v1' }] },
+      offlineFields,
+      Date.now(),
+      { v1: offlineFields },
+      {},
+      offlineSections,
+      { v1: offlineSections },
+    ));
+    renderAt('/bases/b-group-edit/patients/p-group-edit/encounters/e-group-edit/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Reconnectez-vous pour la modifier en ligne');
+    expect(screen.queryByLabelText('Glasgow')).not.toBeInTheDocument();
+    expect(screen.queryByText('GROUP-SENTINEL')).not.toBeInTheDocument();
+    expect(await outbox.count('b-group-edit')).toBe(0);
+    await offlineCache.remove('b-group-edit');
+  });
+
+  test('bloque une ancienne rencontre sans marqueur ou inventaire de sections', async () => {
+    await offlineCache.save(buildSnapshot(
+      { id: 'b-unknown-edit', name: 'Cache ancien', templateVersionId: 'v-old' },
+      [{ id: 'p-unknown-edit', code: 'P-UNKNOWN', templateVersionId: 'v-old', data: {}, validationStatus: 'curated' }],
+      { 'p-unknown-edit': [{ id: 'e-unknown-edit', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 66 }, templateVersionId: 'v-old' }] },
+      [{ id: 'f-old', fieldKey: 'glasgow_score', label: 'Glasgow ancien', scope: 'encounter', type: 'integer', displayOrder: 0 }],
+    ));
+    renderAt('/bases/b-unknown-edit/patients/p-unknown-edit/encounters/e-unknown-edit/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Reconnectez-vous pour la modifier en ligne');
+    expect(screen.queryByLabelText('Glasgow ancien')).not.toBeInTheDocument();
+    expect(screen.queryByText('66')).not.toBeInTheDocument();
+    expect(await outbox.count('b-unknown-edit')).toBe(0);
+    await offlineCache.remove('b-unknown-edit');
   });
 });
