@@ -331,7 +331,7 @@ export interface PatientRepository {
   getPatientFormContext?(baseId: string, patientId: string): Promise<RecordFormContext | null>;
   /** Age calcule par le systeme (DOB jamais exposee). null si pas de date de naissance. */
   computeAge(patientId: string, at: string, unit?: string): Promise<number | null>;
-  createEncounter(patientId: string, input: NewEncounterInput): Promise<{ id: string }>;
+  createEncounter(patientId: string, input: NewEncounterInput, operationKey?: string): Promise<{ id: string }>;
   /** Rejeu IDEMPOTENT d'une creation rencontre hors-ligne (dependante du patient parent). */
   replayEncounterCreate(input: ReplayEncounterCreateInput): Promise<{ id: string; patientId: string }>;
   listEncounters(patientId: string): Promise<Encounter[]>;
@@ -620,8 +620,8 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return (data as number | null) ?? null;
     },
 
-    async createEncounter(patientId, input) {
-      const { data, error } = await client.rpc('create_encounter', {
+    async createEncounter(patientId, input, operationKey) {
+      const args = {
         p_patient_id: patientId,
         p_encounter_type: input.encounterType,
         p_encounter_date: input.encounterDate,
@@ -629,7 +629,10 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         p_data: input.data,
         p_age_unit: input.ageUnit,
         p_group_section_key: input.groupSectionKey ?? null,
-      });
+      };
+      const { data, error } = operationKey
+        ? await client.rpc('create_encounter_idempotent', { p_operation_id: operationKey, ...args })
+        : await client.rpc('create_encounter', args);
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string };
       return { id: row.id };
