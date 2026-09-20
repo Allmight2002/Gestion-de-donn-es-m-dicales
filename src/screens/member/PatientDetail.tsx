@@ -11,9 +11,8 @@ import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
 import {
-  fieldsForOfflineVersion, offlineCache, offlineEncounterFieldScopesKnown,
-  repeatableEncounterFieldKeys, sectionsForOfflineVersion,
-  useOnline, withoutOtherRepeatableEncounterValues,
+  encounterScopeFieldKeys, fieldsForOfflineVersion, offlineCache, offlineEncounterFieldScopesKnown,
+  sectionsForOfflineVersion, useOnline, withinEncounterGroupScope,
 } from '../../data/offline';
 import {
   intakeContextCache, intakeQueue, isLocalPatientId, isOfflineIntakeEnabled,
@@ -272,15 +271,15 @@ export function PatientDetail() {
         const safeEncounters = op.encounters.map((encounter) => {
           const sections = snap ? sectionsForOfflineVersion(snap, encounter.templateVersionId) : null;
           const fields = snap ? fieldsForOfflineVersion(snap, encounter.templateVersionId) : null;
-          const safe = encounter.groupSectionKey === null && sections !== null && fields !== null
+          const safe = encounter.groupSectionKey !== undefined && sections !== null && fields !== null
             && offlineEncounterFieldScopesKnown(fields, sections);
           scopeKnown[encounter.id] = safe;
           return {
             ...encounter,
-            // Les vieilles copies et toutes les rencontres groupées restent lisibles comme entête,
-            // mais leurs valeurs cliniques ne sont pas exposées hors-ligne.
+            // Une copie antérieure au marqueur de groupe reste lisible comme entête, mais ses
+            // valeurs cliniques ne sont pas exposées : rien ne dit à quel groupe elles appartiennent.
             data: safe && sections && fields
-              ? withoutOtherRepeatableEncounterValues(encounter.data, fields, sections, null)
+              ? withinEncounterGroupScope(encounter.data, fields, sections, encounter.groupSectionKey ?? null)
               : {},
           };
         });
@@ -580,9 +579,12 @@ export function PatientDetail() {
             <p className="mb-2 text-sm font-medium text-slate-600">
               {t('form.repeatable_count').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
             </p>
-            {offlineView && occurrencesOf(step.section.sectionKey).length > 0 && (
+            {/* L71 : une occurrence est lisible hors-ligne. Seule une copie antérieure au
+                marqueur de groupe reste masquée, parce que rien n'y prouve la portée des valeurs. */}
+            {offlineView && occurrencesOf(step.section.sectionKey)
+              .some((occurrence) => offlineEncounterScopeKnown[occurrence.id] !== true) && (
               <p role="status" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                {t('offline.group_data_online_only')}
+                {t('offline.group_data_refresh_required')}
               </p>
             )}
             <RepeatableGroupTable
@@ -623,23 +625,25 @@ export function PatientDetail() {
             {realEncounters.map((e) => {
               const encounterVersion = versionFor(e.templateVersionId);
               const encounterScopeKnown = !offlineView || offlineEncounterScopeKnown[e.id] === true;
-              const repeatableFields = offlineView && encounterVersion
-                ? repeatableEncounterFieldKeys(encounterVersion.fields, encounterVersion.sections)
+              // §5 : hors-ligne, la portée de la ligne décide — les champs de son groupe pour une
+              // occurrence, ceux d'aucun groupe pour une rencontre ordinaire.
+              const scopeFields = offlineView && encounterVersion
+                ? encounterScopeFieldKeys(encounterVersion.fields, encounterVersion.sections, e.groupSectionKey ?? null)
                 : new Set<string>();
               const encounterRuleFields = encounterVersion?.ruleFields.filter((field) => field.scope === 'encounter'
-                && (!offlineView || !repeatableFields.has(field.fieldKey))) ?? [];
+                && (!offlineView || scopeFields.has(field.fieldKey))) ?? [];
               const encounterHidden = encounterVersion
                 ? hiddenFieldKeys(encounterVersion.rules, e.data, encounterRuleFields, encounterVersion.sections)
                 : new Set<string>();
               const fieldsForEncounter = encounterScopeKnown ? (encounterVersion?.fields ?? encounterFields)
                 .filter((field) => field.scope === 'encounter' && (field.formula || field.fieldKey in e.data))
                 .filter((field) => !encounterHidden.has(field.fieldKey))
-                .filter((field) => !offlineView || !repeatableFields.has(field.fieldKey)) : [];
+                .filter((field) => !offlineView || scopeFields.has(field.fieldKey)) : [];
               const sectionsForEncounter = encounterVersion?.sections;
               const formulaFields = encounterVersion?.fields ?? encounterFields;
               const encounterAdditions = encounterScopeKnown
                 ? additionsFor('encounter', encounterVersion, e.data, e.encounterType)
-                  .filter((field) => !offlineView || !repeatableFields.has(field.fieldKey))
+                  .filter((field) => !offlineView || scopeFields.has(field.fieldKey))
                 : [];
               return (
               <li key={e.id} className="card p-4 text-sm">

@@ -632,6 +632,59 @@ describe('BaseHome (liste patients)', () => {
     localStorage.removeItem('meddata:columns:u:b1');
   });
 
+  test('P01 — le choix de colonnes est ecrit sous la cle du compte et de la base, et revient au rechargement', async () => {
+    // Deux preferences VOISINES : un autre compte sur la meme base, et ce compte sur une autre
+    // base. L'ecran de u/b1 ne doit ni les lire ni les reecrire (risque nomme par le lot L61).
+    localStorage.setItem('meddata:columns:autre:b1', JSON.stringify(['birth_year']));
+    localStorage.setItem('meddata:columns:u:b2', JSON.stringify(['birth_year']));
+    const patients = { async listPatientsPage() { return { rows: [listRow(1)], total: 1 }; } } as unknown as PatientRepository;
+    const vue = renderList(patients);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Annee de naissance' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Colonnes affichées' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Annee de naissance' }));
+    await waitFor(() => expect(screen.queryByRole('columnheader', { name: 'Annee de naissance' })).not.toBeInTheDocument());
+    expect(JSON.parse(localStorage.getItem('meddata:columns:u:b1') ?? 'null')).toEqual(['sexe']);
+
+    // Rechargement de l'ecran : la preference de CETTE paire compte/base revient telle quelle.
+    vue.unmount();
+    renderList(patients);
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Sexe' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Annee de naissance' })).not.toBeInTheDocument();
+
+    // Les preferences voisines sont intactes : aucun effacement d'un autre compte ni d'une autre base.
+    expect(JSON.parse(localStorage.getItem('meddata:columns:autre:b1') ?? 'null')).toEqual(['birth_year']);
+    expect(JSON.parse(localStorage.getItem('meddata:columns:u:b2') ?? 'null')).toEqual(['birth_year']);
+    localStorage.clear();
+  });
+
+  test('P01 — un stockage refuse garde le choix de colonnes pour la session, sans le persister', async () => {
+    // Mode prive ou quota atteint : l ecriture est refusee. L ecran annonce que la preference
+    // tient alors la session ; un changement de page ne doit donc pas la ramener au defaut.
+    const vrai = Storage.prototype.setItem;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, k: string, v: string) {
+      if (k.startsWith('meddata:columns:')) throw new Error('quota');
+      vrai.call(this, k, v);
+    });
+    const listPatientsPage = vi.fn(async (_b: string, limit: number, offset: number) => ({
+      rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)), total: 40,
+    }));
+    renderList({ listPatientsPage } as unknown as PatientRepository);
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Colonnes affichées' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Annee de naissance' }));
+    await waitFor(() => expect(screen.queryByRole('columnheader', { name: 'Annee de naissance' })).not.toBeInTheDocument());
+    // Changement de page DANS LA MEME BASE : le choix doit tenir la session.
+    await userEvent.click(within(screen.getByRole('navigation', { name: 'Pagination, bas de liste' })).getByRole('button', { name: 'Suivant' }));
+    expect(await screen.findByText('P-0021')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Annee de naissance' })).not.toBeInTheDocument();
+    // Rien n a ete persiste : le repli vit en memoire, il ne contourne pas le refus du navigateur.
+    expect(localStorage.getItem('meddata:columns:u:b1')).toBeNull();
+    setItem.mockRestore();
+  });
+
   test('un motif de recherche ne devient jamais un joker involontaire', () => {
     expect(escapeLikePattern('100 %')).toBe('100 \\%');
     expect(escapeLikePattern('P_1')).toBe('P\\_1');

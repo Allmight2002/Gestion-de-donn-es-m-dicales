@@ -74,6 +74,7 @@
 | [qa-parcours-site.md](qa-parcours-site.md) · [instructions-agent-qa.md](instructions-agent-qa.md) | Plan de test du site déployé et cadrage de l'agent QA |
 | [plan-test-preuves-2026-08-19.md](plan-test-preuves-2026-08-19.md) | Plan de test des lots livrés (L14, corbeille, D9/D12, L20-L25, L27-L33, L11) en attente de preuve de fonctionnement sur le site déployé |
 | [guide-test-collecte-diagnostique.md](guide-test-collecte-diagnostique.md) | 🟢 Guide de test manuel des lots **L51 à L56** (blocs cliniques, visibilité de bloc, projection d'export, configuration diagnostique et suivi des cas non couverts) — preuve navigateur encore à produire |
+| [guide-test-groupes-repetables.md](guide-test-groupes-repetables.md) | 🟢 Guide de test manuel des lots **L66 à L71** (déclaration d’un bloc répétable, saisie en tableau, occurrences tamponnées à la création, applicabilité et complétude, export, hors-ligne) — la saisie d’une occurrence hors ligne reste fermée ; preuve navigateur encore à produire |
 | [redaction-diagnostic-sauvegarde.md](redaction-diagnostic-sauvegarde.md) | Expurger un diagnostic de sauvegarde avant de le journaliser |
 
 ## 5. État courant et readiness

@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260919190252_create_encounter_idempotent.sql`
+- Dernière migration incluse : `20260920170000_template_editor_in_use_scan.sql`
 - Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 387
 
 ## Tables (colonnes, RLS, policies, triggers)
@@ -1536,7 +1536,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | reorder_template_section_siblings | p_version_id uuid, p_parent_key text, p_section_ids uuid[] | DEFINER | plpgsql |
 | reorder_template_sections | p_version_id uuid, p_section_ids uuid[] | DEFINER | plpgsql |
 | repair_option_keys | p_base_id uuid, p_confirm boolean | DEFINER | plpgsql |
-| replay_encounter_create | p_operation_id text, p_parent_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text | DEFINER | plpgsql |
+| replay_encounter_create | p_operation_id text, p_parent_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
 | replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | replay_patient_create | p_operation_id text, p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
 | request_clarification | p_task_id uuid, p_question text | DEFINER | plpgsql |

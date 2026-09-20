@@ -40,6 +40,13 @@ function humanize(message: string): string {
     return 'Cette rencontre a été modifiée entre-temps (autre utilisateur ou autre onglet). '
       + 'Rechargez la fiche pour voir la version à jour, puis réappliquez votre correction.';
   }
+  // Delai serveur depasse (PostgreSQL 57014). Le message brut (« canceling statement due to
+  // statement timeout ») est un detail interne : il n'indique ni ce qui a echoue, ni quoi faire.
+  // L'ecriture a pu aboutir avant l'interruption -- d'ou « rechargez » avant « reessayez ».
+  if (/canceling statement due to|statement timeout/i.test(message)) {
+    return "Le serveur a interrompu l'opération : elle a dépassé le temps autorisé. "
+      + "Rechargez la page pour voir l'état réel avant de réessayer.";
+  }
   return message;
 }
 

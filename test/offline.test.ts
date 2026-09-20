@@ -35,7 +35,7 @@ async function seedBase(baseId: string, encUpdatedAt: string) {
     ),
   );
 }
-async function seedBaseWithRepeatableScope(baseId: string) {
+async function seedBaseWithRepeatableScope(baseId: string, groupSectionKey: string | null = null) {
   const fields = [
     { id: 'f-ordinary', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 0, section: 'clinique' },
     { id: 'f-group', fieldKey: 'group_marker', label: 'Marqueur', scope: 'encounter', type: 'text', displayOrder: 1, section: 'group-a' },
@@ -49,7 +49,7 @@ async function seedBaseWithRepeatableScope(baseId: string) {
   await offlineCache.save(buildSnapshot(
     { id: baseId, name: baseId, templateVersionId: 'v1' },
     [{ id: 'p1', code: 'C1', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
-    { p1: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: 40, ageUnit: 'years', data: { glasgow_score: 10 }, updatedAt: null, templateVersionId: 'v1', groupSectionKey: null }] },
+    { p1: [{ id: 'e1', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: 40, ageUnit: 'years', data: { glasgow_score: 10 }, updatedAt: null, templateVersionId: 'v1', groupSectionKey }] },
     fields, Date.now(), { v1: fields }, undefined, sections, { v1: sections },
   ));
 }
@@ -94,7 +94,7 @@ describe('buildSnapshot — analytique seulement (securite)', () => {
     expect(snap.expiresAt).toBe(1000 + OFFLINE_TTL_MS);
   });
 
-  test('retire les valeurs de sections répétables des rencontres ordinaires', () => {
+  test('chaque rencontre ne garde que les valeurs de SA portée (§5)', () => {
     const fields = [
       { id: 'f-ordinary', fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 0, section: 'clinique' },
       { id: 'f-group', fieldKey: 'group_marker', label: 'Marqueur', scope: 'encounter', type: 'text', displayOrder: 1, section: 'group-a' },
@@ -124,8 +124,10 @@ describe('buildSnapshot — analytique seulement (securite)', () => {
       sections,
       { v1: sections },
     );
+    // Rencontre ordinaire : aucune valeur de groupe. Occurrence : rien d'autre que son groupe --
+    // une variable de bloc ordinaire ne s'applique pas à une occurrence (§5, première branche).
     expect(snap.patients[0].encounters[0].data).toEqual({ glasgow_score: 10 });
-    expect(snap.patients[0].encounters[1].data).toEqual({ glasgow_score: 11, group_marker: 'OWN-GROUP', group_child_marker: 'OWN-NESTED-GROUP' });
+    expect(snap.patients[0].encounters[1].data).toEqual({ group_marker: 'OWN-GROUP', group_child_marker: 'OWN-NESTED-GROUP' });
   });
 });
 
@@ -275,17 +277,15 @@ describe('downloadBaseSnapshot', () => {
 });
 
 describe('outbox — ecritures hors-ligne (Phase 2)', () => {
-  test.each([
-    { label: 'cache ancien sans marqueur', marker: undefined },
-    { label: 'rencontre groupée', marker: 'group-a' },
-  ])('enqueue refuse avant toute écriture : $label', async ({ label, marker }) => {
-    const baseId = `b-block-${label.replaceAll(' ', '-')}`;
+  test('enqueue refuse avant toute écriture quand le cache ne prouve pas la portée', async () => {
+    // Marqueur absent : la copie est antérieure aux groupes et ne dit pas si la ligne est une
+    // occurrence. Une occurrence AVÉRÉE, elle, se met en file comme toute rencontre (L71).
+    const baseId = 'b-block-cache-ancien-sans-marqueur';
     await seedBase(baseId, '2024-01-01T00:00:00.000Z');
     const snap = await offlineCache.get(baseId);
     expect(snap).not.toBeNull();
     const encounter = { ...snap!.patients[0].encounters[0] };
-    if (marker === undefined) delete encounter.groupSectionKey;
-    else encounter.groupSectionKey = marker;
+    delete encounter.groupSectionKey;
     await offlineCache.save({
       ...snap!,
       patients: [{ ...snap!.patients[0], encounters: [encounter] }],
@@ -324,6 +324,22 @@ describe('outbox — ecritures hors-ligne (Phase 2)', () => {
 
     expect(entry.data).toEqual({ glasgow_score: 12 });
     expect((await cachedEnc(baseId)).data).toEqual({ glasgow_score: 12 });
+    await outbox.remove(entry.id);
+    await offlineCache.remove(baseId);
+  });
+
+  test('enqueue sur une occurrence : ses valeurs de groupe partent, les autres non', async () => {
+    const baseId = 'b-enqueue-occurrence';
+    await seedBaseWithRepeatableScope(baseId, 'group-a');
+    const entry = await enqueueEncounterUpdate({
+      baseId, patientId: 'p1', encounterId: 'e1',
+      data: { glasgow_score: 12, group_marker: 'OCCURRENCE', group_child_marker: 'NESTED-OCCURRENCE' },
+      reason: 'corr', validationStatus: 'curated', baseUpdatedAt: null,
+    });
+
+    expect(entry.groupSectionKey).toBe('group-a');
+    expect(entry.data).toEqual({ group_marker: 'OCCURRENCE', group_child_marker: 'NESTED-OCCURRENCE' });
+    expect((await cachedEnc(baseId)).data).toEqual({ group_marker: 'OCCURRENCE', group_child_marker: 'NESTED-OCCURRENCE' });
     await outbox.remove(entry.id);
     await offlineCache.remove(baseId);
   });
@@ -595,12 +611,9 @@ describe('scope des entrées hors-ligne', () => {
     await offlineCache.remove(baseId);
   });
 
-  test.each([
-    { label: 'ancienne entrée sans marqueur', marker: undefined },
-    { label: 'entrée groupée', marker: 'group-a' },
-  ])('le flush et Retenter rejettent $label sans appel serveur', async ({ label, marker }) => {
-    const baseId = `b-flush-scope-${label.replaceAll(' ', '-')}`;
-    const entry = manualOutboxEntry(baseId, 'pending', marker);
+  test('le flush et Retenter rejettent une entrée sans marqueur de portée, sans appel serveur', async () => {
+    const baseId = 'b-flush-scope-sans-marqueur';
+    const entry = manualOutboxEntry(baseId, 'pending', undefined);
     await outbox.put(entry);
     const updateEncounter = vi.fn(async () => ({}));
     const getEncounter = vi.fn(async () => null);
@@ -616,12 +629,21 @@ describe('scope des entrées hors-ligne', () => {
     await outbox.remove(entry.id);
   });
 
-  test.each([
-    { label: 'ancienne entrée sans marqueur', marker: undefined },
-    { label: 'entrée groupée', marker: 'group-a' },
-  ])('Garder ma version et Garder les deux bloquent $label', async ({ label, marker }) => {
-    const baseId = `b-resolve-scope-${label.replaceAll(' ', '-')}`;
-    const entry = manualOutboxEntry(baseId, 'conflict', marker);
+  test('L71 : une occurrence groupée se synchronise comme une rencontre ordinaire', async () => {
+    const baseId = 'b-flush-scope-occurrence';
+    const entry = manualOutboxEntry(baseId, 'pending', 'group-a');
+    await outbox.put(entry);
+    const updateEncounter = vi.fn(async () => ({}));
+    const getEncounter = vi.fn(async () => ({ data: entry.data, updatedAt: '2024-02-02T00:00:00.000Z' }));
+    const report = await flushOutbox({ updateEncounter, getEncounter }, baseId);
+    expect(report).toMatchObject({ synced: 1, conflicts: 0, failed: 0 });
+    expect(updateEncounter).toHaveBeenCalledOnce();
+    expect(await outbox.count(baseId)).toBe(0);
+  });
+
+  test('Garder ma version et Garder les deux bloquent une entrée sans marqueur de portée', async () => {
+    const baseId = 'b-resolve-scope-sans-marqueur';
+    const entry = manualOutboxEntry(baseId, 'conflict', undefined);
     await outbox.put(entry);
     const updateEncounter = vi.fn(async () => ({}));
     const deps: FlushDeps = { updateEncounter, getEncounter: async () => null };
@@ -632,7 +654,25 @@ describe('scope des entrées hors-ligne', () => {
     await outbox.remove(entry.id);
   });
 
-  test('le rejet serveur repeatable_group est terminal et traduit comme nécessitant le réseau', async () => {
+  test('L71 : la fusion de conflits traite une occurrence comme une rencontre, motif compris', async () => {
+    const baseId = 'b-resolve-scope-occurrence';
+    const entry = manualOutboxEntry(baseId, 'conflict', 'group-a');
+    await outbox.put(entry);
+    const calls: { data: Record<string, unknown>; reason: string; expected: string | null }[] = [];
+    const deps: FlushDeps = {
+      updateEncounter: async (_id, data, _status, reason, expected) => {
+        calls.push({ data, reason, expected: expected ?? null });
+        return {};
+      },
+      getEncounter: async () => null,
+    };
+    await resolveKeepMine(entry.id, deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ data: entry.data, reason: 'test', expected: null });
+    expect(await outbox.get(entry.id)).toBeNull();
+  });
+
+  test('un rejet de portée renvoyé par le serveur reste un rejet, avec son message', async () => {
     const baseId = 'b-server-group-reject';
     await seedBase(baseId, '2024-01-01T00:00:00.000Z');
     await enqueueEncounterUpdate({
@@ -647,13 +687,13 @@ describe('scope des entrées hors-ligne', () => {
     });
     const getEncounter = vi.fn(async () => null);
     const report = await flushOutbox({ updateEncounter, getEncounter }, baseId);
-    expect(report).toMatchObject({ synced: 0, conflicts: 0, failed: 1, errors: [OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE] });
-    expect(await outbox.get(entry.id)).toMatchObject({
-      state: 'rejected', lastError: OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
-    });
-    expect(getEncounter).not.toHaveBeenCalled();
-    await retryOutboxEntry(entry.id);
+    // Le serveur refuse une clé hors de la portée de la ligne : c'est un rejet terminal et
+    // explicable, pas un besoin de reconnexion — le message serveur n'est plus réécrit.
+    expect(report).toMatchObject({ synced: 0, conflicts: 0, failed: 1 });
+    expect(report.errors[0]).toMatch(/FORM_SCOPE_INCOMPATIBLE/);
     expect(await outbox.get(entry.id)).toMatchObject({ state: 'rejected' });
+    expect((await outbox.get(entry.id))!.lastError).toMatch(/FORM_SCOPE_INCOMPATIBLE/);
+    expect(getEncounter).not.toHaveBeenCalled();
     await outbox.remove(entry.id);
     await offlineCache.remove(baseId);
   });

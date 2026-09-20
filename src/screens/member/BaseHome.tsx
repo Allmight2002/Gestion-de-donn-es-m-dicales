@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { recordRecentBase } from '../../lib/recentBases';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowDownUp, Columns3, Download, Plus, Search, Upload, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
@@ -140,6 +140,11 @@ export function BaseHome() {
   }, [search, appliedSearch]);
 
   const columnsKey = columnsStorageKey(profile?.id, id);
+  // Repli de SESSION quand le navigateur refuse d'ecrire (mode prive, quota) : le choix de
+  // colonnes tient alors jusqu'a la fermeture de l'onglet, comme annonce plus haut. Il reste
+  // attache a la paire compte/base qui l'a produit, et n'est jamais repris sans cle : deux
+  // bases lues sans profil charge partageraient sinon la meme preference.
+  const sessionColumns = useRef<{ key: string; keys: string[] } | null>(null);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -239,7 +244,8 @@ export function BaseHome() {
         setFields(available);
         // La preference enregistree est relue ici, puis PURGEE des cles devenues inexistantes
         // dans la version courante (variable supprimee, droit retire) avant d'etre reecrite.
-        const stored = readStoredColumns(columnsKey);
+        const stored = readStoredColumns(columnsKey)
+          ?? (columnsKey && sessionColumns.current?.key === columnsKey ? sessionColumns.current.keys : null);
         setVisibleFieldKeys((current) => {
           const source = stored ?? current;
           const retained = source.filter((key) => available.some((field) => field.fieldKey === key));
@@ -391,7 +397,11 @@ export function BaseHome() {
   // toute façon, mais l'écran ne doit pas continuer à proposer ce qu'il n'a plus.
   if (searchMode === 'name' && !identitySearchAvailable && !loading) setSearchMode('code');
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const applyColumns = (next: string[]) => { setVisibleFieldKeys(next); writeStoredColumns(columnsKey, next); };
+  const applyColumns = (next: string[]) => {
+    setVisibleFieldKeys(next);
+    if (columnsKey) sessionColumns.current = { key: columnsKey, keys: next };
+    writeStoredColumns(columnsKey, next);
+  };
   const changeSort = (next: SortChoice) => { setSort(next); setPage(0); };
   // Deux acces a la pagination, deux informations differentes : en tete, la position dans
   // l'ensemble des resultats ; en pied, la plage affichee. Un meme texte rendu deux fois

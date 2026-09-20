@@ -82,6 +82,40 @@ tests, l'attente de CI et toute validation ou promotion cloud.
 - **Risque :** qualifier « livré » un comportement dont les assertions passent mais dont le runner
   ou le navigateur n'a pas terminé correctement ; effacer une préférence d'un autre compte/base.
 
+#### Preuves du 2026-09-20 (locales, hors cible)
+
+Le socle a ete verifie avant toute modification, puis un seul ecart a ete corrige. Etat par
+capacite, au sens de la section L65 :
+
+| Capacite | Etat |
+|---|---|
+| Cle de preference `meddata:columns:<utilisateur>:<base>`, ecriture et relecture | **validee localement** |
+| Preference d’un autre compte ou d’une autre base laissee intacte | **validee localement** |
+| Purge des cles absentes de la version courante | **validee localement** |
+| Recherche par code resolue par le serveur avant la pagination | **validee localement** |
+| Tris techniques `created_at` / `patient_code`, departage par `id` | **validee localement** |
+| Retour page 1 apres recherche, apres tri et au changement de base | **validee localement** |
+| Parcours navigateur (rechargement, changement de compte/base, code hors premiere page, deux sens de tri) | **non verifie** |
+
+**Ecart corrige.** Quand le navigateur refuse d’ecrire (navigation privee, quota), le choix de
+colonnes etait perdu au changement de page suivant, alors que `BaseHome.tsx` annonce une
+preference « valable pour la session seulement ». Un repli de session en memoire, attache a la
+paire compte/base qui l’a produit et jamais repris sans cle, retablit le comportement annonce
+sans rien persister de plus. Regression couverte par un test dedie.
+
+**Commandes et resultats.** `npm.cmd run test:web -- src/screens/member/Patients.test.tsx` :
+24 tests passes, code de sortie 0. Les trois autres fichiers web qui montent `BaseHome`
+(`Dashboard`, `OfflineIntake`, `OfflineRead`) : 24 tests passes, code de sortie 0.
+`npm run typecheck` et ESLint sur les deux fichiers touches : code de sortie 0.
+L’execution du 2026-09-11 terminee en `-1073741819` **ne se reproduit pas** sur ce checkout.
+
+**Limite d’environnement, non contournee.** Aucune preuve navigateur n’a ete produite : ce poste
+n’a pas Docker, donc pas de Supabase local, et la seule cible de developpement configuree
+(`.env.local`, `.claude/launch.json`) pointe vers le projet cloud. Lancer l’ecran l’aurait
+branche sur des donnees reelles, ce que le lot interdit. Cette preuve reste due, sur un preview
+isole a donnees fictives (voir O6), et le tri clinique, le nom complet et la recherche
+nominative demeurent hors de ce lot.
+
 ### L62 — Contrat serveur du tri par variable analytique
 
 - **Périmètre :** concevoir puis implémenter un unique contrat de liste qui accepte un champ de
