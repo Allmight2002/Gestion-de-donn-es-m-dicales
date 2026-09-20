@@ -240,7 +240,7 @@ Deno.test('liste multiple : libelles et codes voyagent dans le meme ordre', () =
     ],
   });
   const table = buildEncounterExport([rencontre({ signes: ['toux', 'fievre'] })], [multi]);
-  assertEquals(table.columns.slice(6, 9), [columnId(multi), optionCodeColumnId(multi), nbColumnId(multi)]);
+  assertEquals(table.columns.slice(7, 10), [columnId(multi), optionCodeColumnId(multi), nbColumnId(multi)]);
   assertEquals(table.rows[0][columnId(multi)], 'Toux; Fievre');
   assertEquals(table.rows[0][optionCodeColumnId(multi)], 'toux; fievre');
   assertEquals(table.rows[0][nbColumnId(multi)], 2);
@@ -383,7 +383,7 @@ Deno.test('L47 : en Analyse, un multiselect ne rend que ses indicatrices, sans c
   assertEquals(table.columns.includes(columnId(multi)), false);
   assertEquals(table.columns.includes(optionCodeColumnId(multi)), false);
   assertEquals(table.columns.includes(nbColumnId(multi)), false);
-  assertEquals(table.columns.slice(6), [douleur, fievre, toux]);
+  assertEquals(table.columns.slice(7), [douleur, fievre, toux]);
   assertEquals(table.rows[0][fievre], 1);
   assertEquals(table.rows[0][toux], 1);
   assertEquals(table.rows[0][douleur], 0);
@@ -483,7 +483,7 @@ Deno.test('L47 : le profil complete conserve les formes du multiselect, sans per
   });
   const encounter = { ...rencontre({ signes: ['toux', 'fievre'] }), patientCode: 'P0001' };
   const table = buildEncounterExport([encounter], [multi]);
-  assertEquals(table.columns.slice(6, 9), [columnId(multi), optionCodeColumnId(multi), nbColumnId(multi)]);
+  assertEquals(table.columns.slice(7, 10), [columnId(multi), optionCodeColumnId(multi), nbColumnId(multi)]);
   assertEquals(table.rows[0][columnId(multi)], 'Toux; Fievre');
   assertEquals(table.rows[0][optionCodeColumnId(multi)], 'toux; fievre');
   assertEquals(table.rows[0][nbColumnId(multi)], 2);
