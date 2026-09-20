@@ -111,10 +111,14 @@ export interface ReplayPatientCreateInput extends NewPatientInput {
 
 /** Rejeu idempotent d'une creation rencontre hors-ligne : le patient est designe soit
  * par la cle d'operation parente (patient en attente), soit par son UUID serveur. */
-export interface ReplayEncounterCreateInput extends NewEncounterInput {
+export interface ReplayEncounterCreateInput extends Omit<NewEncounterInput, 'encounterDate'> {
   operationKey: string;
   parentOperationKey: string | null;
   patientId: string | null;
+  /** Null seulement dans une occurrence de groupe : une vraie rencontre reste datee (§4.3). */
+  encounterDate: string | null;
+  /** L71 : bloc repetable de l'occurrence ; null pour une rencontre ordinaire. */
+  groupSectionKey?: string | null;
 }
 
 export interface Encounter {
@@ -650,6 +654,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         p_validation_status: input.validationStatus,
         p_data: input.data,
         p_age_unit: input.ageUnit,
+        p_group_section_key: input.groupSectionKey ?? null,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string; patient_id: string };

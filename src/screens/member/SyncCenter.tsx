@@ -303,7 +303,7 @@ function EntryCard({
 }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
-  const groupBlocked = outboxEntryRequiresOnline(entry);
+  const scopeUnknown = outboxEntryRequiresOnline(entry);
   const run = async (action: () => Promise<void>, successMessage = '') => {
     setBusy(true);
     try { await action(); onError(successMessage); }
@@ -317,13 +317,13 @@ function EntryCard({
         <button type="button" onClick={onView} className="text-xs text-teal-700 hover:underline">{t('sync.view_patient')}</button>
       </div>
       <EntryDetails entry={entry} />
-      {!groupBlocked && <pre className="overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-600">{JSON.stringify(entry.data, null, 2)}</pre>}
+      {!scopeUnknown && <pre className="overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-600">{JSON.stringify(entry.data, null, 2)}</pre>}
       {entry.reason && <p className="mt-1 text-xs italic text-slate-400">« {entry.reason} »</p>}
       <div className="mt-3 flex flex-wrap gap-2">
-        {(entry.state === 'pending' || entry.state === 'rejected') && !groupBlocked && (
+        {(entry.state === 'pending' || entry.state === 'rejected') && !scopeUnknown && (
           <button disabled={busy} type="button" onClick={() => void run(onRetry)} className="btn-secondary">{t('sync.retry')}</button>
         )}
-        {!groupBlocked && <button disabled={busy} type="button" onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>}
+        {!scopeUnknown && <button disabled={busy} type="button" onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>}
         {entry.state !== 'syncing' && (
           <button disabled={busy} type="button" onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700">{t('sync.delete')}</button>
         )}
@@ -345,18 +345,18 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
   // la fonction de domaine, pas de l'ecran : le bouton montre exactement ce que l'action ecrira.
   const merge = useMemo(() => mergeKeepBoth(entry.data, entry.serverData), [entry.data, entry.serverData]);
   const mergeable = merge.mergedKeys.length > 0;
-  const groupBlocked = outboxEntryRequiresOnline(entry);
+  const scopeUnknown = outboxEntryRequiresOnline(entry);
   const rows = conflictRows(entry, undefined, mergeable ? merge.data : null);
   const unreadable = t('sync.unreadable_value');
 
   return (
     <div className="card border-red-200 p-4 text-sm">
       <EntryDetails entry={entry} />
-      {!groupBlocked && <p className="mb-2 text-xs text-red-700">{t('sync.conflict_explain')}</p>}
+      {!scopeUnknown && <p className="mb-2 text-xs text-red-700">{t('sync.conflict_explain')}</p>}
       {/* La version du gabarit n'accompagne pas le conflit : on l'annonce au lieu de laisser
           croire que les libelles affiches viennent de la bonne version. */}
-      {!groupBlocked && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')}</p>}
-      {!groupBlocked && (
+      {!scopeUnknown && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')}</p>}
+      {!scopeUnknown && (
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-full text-left text-xs" aria-label={t('sync.conflict_table')}>
           <thead className="bg-slate-50 text-slate-600">
@@ -384,24 +384,24 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
         </table>
       </div>
       )}
-      {!groupBlocked && mergeable && (
+      {!scopeUnknown && mergeable && (
         <p className="mt-3 text-xs text-slate-500">
           {t('sync.merged')} · {t('sync.keep_both_recovered')} : {merge.recovered}. {t('sync.keep_both_explain')}
         </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {!groupBlocked && <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepMine(entry.id, deps))} className="btn-secondary" title={t('sync.keep_mine_hint')}>
+        {!scopeUnknown && <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepMine(entry.id, deps))} className="btn-secondary" title={t('sync.keep_mine_hint')}>
           {t('sync.keep_mine')}
         </button>}
-        {!groupBlocked && mergeable && (
+        {!scopeUnknown && mergeable && (
           <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepBoth(entry.id, deps))} className="btn-secondary" title={t('sync.keep_both_hint')}>
             {t('sync.keep_both')}
           </button>
         )}
-        {!groupBlocked && <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepServer(entry.id))} className="btn-secondary" title={t('sync.keep_server_hint')}>
+        {!scopeUnknown && <button type="button" disabled={busy} onClick={() => void run(() => resolveKeepServer(entry.id))} className="btn-secondary" title={t('sync.keep_server_hint')}>
           {t('sync.keep_server')}
         </button>}
-        {!groupBlocked && <button type="button" disabled={busy} onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>}
+        {!scopeUnknown && <button type="button" disabled={busy} onClick={() => void run(() => copyEntry(entry))} className="btn-secondary">{t('sync.copy')}</button>}
         <button type="button" disabled={busy} onClick={() => void run(() => discardOutboxEntry(entry.id))} className="btn-secondary text-red-700" title={t('sync.delete_hint')}>{t('sync.delete')}</button>
       </div>
     </div>

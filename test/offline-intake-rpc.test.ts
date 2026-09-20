@@ -272,7 +272,9 @@ describe('droits et cloisonnement', () => {
       .rejects.toThrow(/AUTHENTICATION_REQUIRED/);
     for (const signature of [
       'public.replay_patient_create(text,uuid,text,text,date,text,text,text,jsonb)',
-      'public.replay_encounter_create(text,text,uuid,text,date,text,jsonb,text)',
+      // L71 : la cle de groupe est le neuvieme parametre, avec defaut ; l'appel a huit
+      // arguments ci-dessus reste donc valide.
+      'public.replay_encounter_create(text,text,uuid,text,date,text,jsonb,text,text)',
     ]) {
       const metadata = (await db.admin.query(
         `select p.prosecdef, p.proconfig,

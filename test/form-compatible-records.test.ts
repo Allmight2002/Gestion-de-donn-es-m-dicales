@@ -540,6 +540,7 @@ let noGroupPatientContextBeforeMigration: Context;
 
 const REPEATABLE_CONTEXT_MIGRATION = '20260919103000_form_compatible_group_context.sql';
 const GROUP_WRITE_GUARDS_MIGRATION = '20260919110000_form_compatible_group_write_guards.sql';
+const OFFLINE_REPLAY_MIGRATION = '20260920090000_repeatable_groups_offline_replay.sql';
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true, beforeMigration: REPEATABLE_CONTEXT_MIGRATION });
@@ -557,6 +558,7 @@ beforeAll(async () => {
   noGroupPatientContextBeforeMigration = await readPatient(fixture, fixture.patientHiddenId);
   await db.admin.query(readFileSync(`supabase/migrations/${REPEATABLE_CONTEXT_MIGRATION}`, 'utf8'));
   await db.admin.query(readFileSync(`supabase/migrations/${GROUP_WRITE_GUARDS_MIGRATION}`, 'utf8'));
+  await db.admin.query(readFileSync(`supabase/migrations/${OFFLINE_REPLAY_MIGRATION}`, 'utf8'));
   repeatableFixture = await createFixture({ repeatableGroups: true });
 }, 240_000);
 
@@ -1166,30 +1168,53 @@ describe('E3 : contexte compatible patient et rencontre', () => {
     expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
   });
 
-  test('le rejeu hors ligne refuse une occurrence repetable avant toute ecriture ou receipt', async () => {
+  // L71 : le rejeu hors ligne d'une occurrence n'est plus refuse. Restent l'acces et la portee.
+  test('le rejeu hors ligne ecrit une occurrence, apres controle d acces et de portee', async () => {
     const encounterId = repeatableFixture.encounterGroupAId;
     const operationId = randomUUID();
     const before = await encounterWriteState(encounterId, operationId);
-    const unauthorizedOperationId = randomUUID();
-    await expect(db.asUser(bob, (client) => client.query(
-      'select * from public.replay_encounter_update($1,$2,$3::jsonb,$4,$5,$6::timestamptz)',
-      [unauthorizedOperationId, encounterId, JSON.stringify({ group_a_required: 'sans acces' }), 'draft', 'rejeu interdit', null],
-    ))).rejects.toMatchObject({ message: 'FORM_RECORD_FORBIDDEN' });
-    await expectStructuredScopeError(
-      db.asUser(alice, (client) => client.query(
+    const current = before.data as Record<string, unknown>;
+    const replayUpdate = (uid: string, opId: string, data: Record<string, unknown>, reason: string) =>
+      db.asUser(uid, (client) => client.query(
         'select * from public.replay_encounter_update($1,$2,$3::jsonb,$4,$5,$6::timestamptz)',
-        [operationId, encounterId, JSON.stringify({ group_a_required: 'tentative offline interdite' }), 'draft', 'rejeu groupe', null],
-      )),
+        [opId, encounterId, JSON.stringify(data), before.validation_status, reason, null],
+      ));
+    const receiptsOf = async (uid: string, opId: string) => (await db.admin.query(`
+      select completed_at from public.offline_encounter_operation
+       where user_id=$1 and operation_id=$2
+    `, [uid, opId])).rows;
+
+    // L'acces est verifie avant toute ecriture et avant tout accuse.
+    const unauthorizedOperationId = randomUUID();
+    await expect(replayUpdate(bob, unauthorizedOperationId, { ...current, group_a_required: 'sans acces' }, 'rejeu interdit'))
+      .rejects.toMatchObject({ message: 'FORM_RECORD_FORBIDDEN' });
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
+    expect(await receiptsOf(bob, unauthorizedOperationId)).toHaveLength(0);
+
+    // Une cle hors de la portee de CETTE occurrence reste refusee, sans accuse.
+    const crossGroupOperationId = randomUUID();
+    await expectStructuredScopeError(
+      replayUpdate(alice, crossGroupOperationId, { ...current, group_b_required: 'autre groupe' }, 'rejeu hors portee'),
       'repeatable_group',
     );
     expect(await encounterWriteState(encounterId, operationId)).toEqual(before);
-    expect((await db.admin.query(`
-      select count(*)::int as count from public.offline_encounter_operation
-       where user_id=$1 and operation_id=$2
-    `, [alice, operationId])).rows[0].count).toBe(0);
-    expect((await db.admin.query(`
-      select count(*)::int as count from public.offline_encounter_operation
-       where user_id=$1 and operation_id=$2
-    `, [bob, unauthorizedOperationId])).rows[0].count).toBe(0);
+    expect(await receiptsOf(alice, crossGroupOperationId)).toHaveLength(0);
+
+    // La correction d'une occurrence passe, avec accuse complet et rejeu idempotent.
+    const corrected = { ...current, group_a_required: 'correction hors ligne occurrence' };
+    const applied = await replayUpdate(alice, operationId, corrected, 'rejeu groupe');
+    expect(applied.rows[0].replayed).toBe(false);
+    const after = await encounterWriteState(encounterId, operationId);
+    expect(after.data).toMatchObject({
+      group_a_required: 'correction hors ligne occurrence',
+      group_b_required: current.group_b_required,
+    });
+
+    const replayed = await replayUpdate(alice, operationId, corrected, 'rejeu groupe');
+    expect(replayed.rows[0].replayed).toBe(true);
+    expect(await encounterWriteState(encounterId, operationId)).toEqual(after);
+    const receipt = await receiptsOf(alice, operationId);
+    expect(receipt).toHaveLength(1);
+    expect(receipt[0].completed_at).not.toBeNull();
   });
 });

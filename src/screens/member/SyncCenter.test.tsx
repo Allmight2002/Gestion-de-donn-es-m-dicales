@@ -130,13 +130,16 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
     setOfflineUser(null);
   });
 
-  test('cache les valeurs et bloque les résolutions locales pour une rencontre groupée', async () => {
+  test('cache les valeurs et bloque les résolutions locales sans marqueur de portée', async () => {
     await purgeAllOfflineData();
     setOfflineUser('sync-ui-user');
-    await outbox.put({
-      ...conflit({ glasgow_score: 12, group_marker: 'LOCAL-SENTINEL' }, { glasgow_score: 14, group_marker: 'SERVER-SENTINEL' }),
-      groupSectionKey: 'group-a',
-    });
+    // Entrée mise en file AVANT le marqueur de groupe : rien ne dit à quelle portée elle appartient.
+    const { groupSectionKey: _absent, ...sansMarqueur } = conflit(
+      { glasgow_score: 12, group_marker: 'LOCAL-SENTINEL' },
+      { glasgow_score: 14, group_marker: 'SERVER-SENTINEL' },
+    );
+    void _absent;
+    await outbox.put(sansMarqueur as OutboxEntry);
 
     renderSync();
 
@@ -146,6 +149,23 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
     expect(screen.queryByRole('button', { name: 'Garder la version serveur' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Copier les donnees' })).not.toBeInTheDocument();
     expect(screen.queryByText(/LOCAL-SENTINEL|SERVER-SENTINEL/)).not.toBeInTheDocument();
+    await purgeAllOfflineData();
+    setOfflineUser(null);
+  });
+
+  test('L71 : une occurrence groupée garde toutes ses issues de conflit', async () => {
+    await purgeAllOfflineData();
+    setOfflineUser('sync-ui-user');
+    await outbox.put({
+      ...conflit({ glasgow_score: 12, group_marker: 'LOCAL-SENTINEL' }, { glasgow_score: 14, group_marker: 'SERVER-SENTINEL' }),
+      groupSectionKey: 'group-a',
+    });
+
+    renderSync();
+
+    expect(await screen.findByRole('button', { name: 'Garder ma version' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Garder la version serveur' })).toBeInTheDocument();
+    expect(screen.queryByText(/n’a pas été synchronisée; reconnectez-vous/i)).not.toBeInTheDocument();
     await purgeAllOfflineData();
     setOfflineUser(null);
   });

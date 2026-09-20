@@ -14,8 +14,8 @@ import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordComp
 import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import {
-  enqueueEncounterUpdate, fieldsForOfflineVersion, isOfflineEnabled, offlineCache, repeatableEncounterFieldKeys,
-  offlineEncounterFieldScopesKnown, sectionsForOfflineVersion, useOnline, withoutOtherRepeatableEncounterValues,
+  encounterScopeFieldKeys, enqueueEncounterUpdate, fieldsForOfflineVersion, isOfflineEnabled, offlineCache,
+  offlineEncounterFieldScopesKnown, sectionsForOfflineVersion, useOnline, withinEncounterGroupScope,
   OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
 } from '../../data/offline';
 import {
@@ -34,6 +34,17 @@ import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
+
+/** Presente le bloc de l'occurrence comme une section ordinaire : ses champs se saisissent ici. */
+function sectionsForEncounterScope(
+  sections: readonly TemplateSection[],
+  groupSectionKey: string | null,
+): TemplateSection[] {
+  if (groupSectionKey === null) return [...sections];
+  return sections.map((section) => (section.sectionKey === groupSectionKey
+    ? { ...section, isRepeatable: false }
+    : section));
+}
 
 function excludedEncounterFieldKeys(context: RecordFormContext | null): Set<string> {
   return new Set((context?.fields ?? [])
@@ -176,7 +187,10 @@ export function EditEncounter() {
         }
         const encounterSections = sectionsForOfflineVersion(snap!, enc.templateVersionId);
         const dict = fieldsForOfflineVersion(snap!, enc.templateVersionId);
-        if (enc.groupSectionKey !== null || encounterSections === null || dict === null || !offlineEncounterFieldScopesKnown(dict, encounterSections)) {
+        // Seule une portee inconnue bloque : un cache anterieur au marqueur ne dit pas a quel
+        // groupe la ligne appartient, et editer a l'aveugle produirait une correction irrecuperable.
+        if (enc.groupSectionKey === undefined || encounterSections === null || dict === null
+          || !offlineEncounterFieldScopesKnown(dict, encounterSections)) {
           setOfflineEditAllowed(false);
           setOfflineEditBlocked(true);
           setError(t('offline.group_edit_requires_online'));
@@ -190,10 +204,11 @@ export function EditEncounter() {
         }
         setOfflineEditAllowed(true);
         setOfflineEditBlocked(false);
-        const groupFieldKeys = repeatableEncounterFieldKeys(dict, encounterSections);
+        // §5 : les champs du groupe pour une occurrence, ceux d'aucun groupe pour une rencontre.
+        const scopeFieldKeys = encounterScopeFieldKeys(dict, encounterSections, enc.groupSectionKey);
         const { age_at_encounter: _drop, ...withoutAge } = enc.data;
         void _drop;
-        const rest = withoutOtherRepeatableEncounterValues(withoutAge, dict, encounterSections, null);
+        const rest = withinEncounterGroupScope(withoutAge, dict, encounterSections, enc.groupSectionKey);
         valuesRef.current = rest;
         setValues(rest);
         setInitialValues(rest);
@@ -203,7 +218,7 @@ export function EditEncounter() {
         setBaseUpdatedAt(enc.updatedAt ?? null); // jeton optimiste pour la synchro
         // §7.4/§7.5 : dictionnaire de LA VERSION DE LA RENCONTRE (fieldsByVersion), pas celui de la
         // version courante de la base ; repli sur `fields` (instantane ancien, sans multi-versions).
-        const encFields = withSections(dict.filter((field) => !groupFieldKeys.has(field.fieldKey)), encounterSections)
+        const encFields = withSections(dict.filter((field) => field.scope !== 'encounter' || scopeFieldKeys.has(field.fieldKey)), encounterSections)
           .filter((f) => f.scope === 'encounter')
           .sort((a, b) => a.displayOrder - b.displayOrder)
           // §7.5 : un instantane ANTERIEUR (dictionnaire minimal, sans `section`) doit rester
@@ -213,7 +228,7 @@ export function EditEncounter() {
         const offlineRules = (enc.templateVersionId && snap!.rulesByVersion?.[enc.templateVersionId]) || [];
         setRules(offlineRules as unknown as ValidationRule[]);
         setValidationRules(offlineRules as unknown as ValidationRule[]);
-        setSections(encounterSections);
+        setSections(sectionsForEncounterScope(encounterSections, enc.groupSectionKey));
         setCommonLayout(undefined);
         // L'instantane transporte le contrat par version : il n'ouvre aucun hors-ligne nouveau.
         setDiagnosisVersionId(enc.templateVersionId ?? null);
@@ -322,7 +337,7 @@ export function EditEncounter() {
       const cached = snap?.patients.flatMap((patient) => patient.encounters).find((row) => row.id === encounterId);
       const versionSections = cached ? sectionsForOfflineVersion(snap!, cached.templateVersionId) : null;
       const dictionary = cached ? fieldsForOfflineVersion(snap!, cached.templateVersionId) : null;
-      if (!cached || cached.groupSectionKey !== null || versionSections === null || dictionary === null) {
+      if (!cached || cached.groupSectionKey === undefined || versionSections === null || dictionary === null) {
         setError(cached ? t('offline.group_edit_requires_online') : t('offline.not_cached'));
         return;
       }
@@ -330,14 +345,15 @@ export function EditEncounter() {
         setError(t('offline.group_edit_requires_online'));
         return;
       }
-      const groupFieldKeys = repeatableEncounterFieldKeys(dictionary, versionSections);
-      const safeValues = withoutOtherRepeatableEncounterValues(valuesRef.current, dictionary, versionSections, null);
+      const groupScope = cached.groupSectionKey;
+      const scopeFieldKeys = encounterScopeFieldKeys(dictionary, versionSections, groupScope);
+      const safeValues = withinEncounterGroupScope(valuesRef.current, dictionary, versionSections, groupScope);
       valuesRef.current = safeValues;
       setValues(safeValues);
-      setInitialValues((current) => withoutOtherRepeatableEncounterValues(current, dictionary, versionSections, null));
-      setFields((current) => current.filter((field) => !groupFieldKeys.has(field.fieldKey)));
+      setInitialValues((current) => withinEncounterGroupScope(current, dictionary, versionSections, groupScope));
+      setFields((current) => current.filter((field) => field.scope !== 'encounter' || scopeFieldKeys.has(field.fieldKey)));
       setRecordContext(null);
-      setSections(versionSections);
+      setSections(sectionsForEncounterScope(versionSections, groupScope));
       setOfflineEditAllowed(true);
       setOfflineEditBlocked(false);
       setError(null);

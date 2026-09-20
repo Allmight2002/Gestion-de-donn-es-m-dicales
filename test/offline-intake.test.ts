@@ -261,6 +261,62 @@ describe('synchronisation ordonnee (O4)', () => {
     expect(eAfter.serverPatientId).toBe('srv-p-1');
   });
 
+  test('L71 : trois occurrences de groupe partent dans l ordre, sans doublon ni second envoi', async () => {
+    setOfflineUser('user-a');
+    await seedContext();
+    const patient = await enqueuePatientCreate({ baseId: 'b1', operationKey: 'op-grp-p', payload: PATIENT_PAYLOAD });
+    // §4.2/§4.3 : le type est la constante de plomberie et une lésion n'a pas de date.
+    const occurrence = (rank: number) => ({
+      encounterType: 'autre',
+      encounterDate: null,
+      validationStatus: 'draft',
+      ageUnit: 'years',
+      data: { niveau: `L${rank}` },
+      groupSectionKey: 'lesions',
+    });
+    const queued: IntakeEntry[] = [];
+    for (const rank of [1, 2, 3]) {
+      queued.push(await enqueueEncounterCreate({
+        baseId: 'b1', operationKey: `op-grp-e${rank}`, parentOperationKey: patient.id, payload: occurrence(rank),
+      }));
+    }
+
+    const calls: string[] = [];
+    const groups: (string | null | undefined)[] = [];
+    const dates: (string | null)[] = [];
+    const deps: IntakeFlushDeps = {
+      replayPatientCreate: async (input) => {
+        calls.push(`patient:${input.operationKey}`);
+        return { id: 'srv-p-grp', code: input.code };
+      },
+      replayEncounterCreate: async (input) => {
+        calls.push(`encounter:${input.operationKey}`);
+        groups.push(input.groupSectionKey);
+        dates.push(input.encounterDate);
+        return { id: `srv-${input.operationKey}`, patientId: 'srv-p-grp' };
+      },
+    };
+
+    const rep = await flushIntake(deps);
+    // L'ordre existant patient -> rencontres couvre le cas sans modification (§10.3).
+    expect(calls).toEqual([
+      `patient:${patient.id}`, 'encounter:op-grp-e1', 'encounter:op-grp-e2', 'encounter:op-grp-e3',
+    ]);
+    expect(groups).toEqual(['lesions', 'lesions', 'lesions']);
+    expect(dates).toEqual([null, null, null]);
+    expect(rep).toMatchObject({ syncedPatients: 1, syncedEncounters: 3, failed: 0, conflicts: 0, blocked: 0 });
+
+    // Un second passage ne renvoie rien : les entrées sont confirmées, donc aucun doublon.
+    const again = await flushIntake(deps);
+    expect(again).toMatchObject({ syncedPatients: 0, syncedEncounters: 0, failed: 0, conflicts: 0 });
+    expect(calls).toHaveLength(4);
+    for (const entry of queued) {
+      const stored = await intakeQueue.get(entry.id) as Extract<IntakeEntry, { kind: 'encounter_create' }>;
+      expect(stored.state).toBe('succeeded');
+      expect(stored.serverEncounterId).toBe(`srv-${entry.id}`);
+    }
+  });
+
   test('une erreur TRANSITOIRE conserve la cle et la charge : rejeu idempotent possible', async () => {
     setOfflineUser('user-a');
     await seedContext();
