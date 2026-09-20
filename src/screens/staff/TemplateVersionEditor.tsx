@@ -197,18 +197,27 @@ export function TemplateVersionEditor({
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
-  const reload = useCallback(async () => {
+  // `load` PROPAGE son echec ; `reload` l'affiche. La distinction compte : quand une ecriture
+  // aboutit mais que la relecture qui suit echoue, l'ecran montre encore l'etat d'AVANT. Annoncer
+  // « enregistre » a ce moment-la ferait passer une relecture perdue pour un deplacement refuse.
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       setData(await repo.getVersion(versionId));
       setError(null);
-    } catch (e) {
-      setError(msg(e));
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, versionId]);
+
+  const reload = useCallback(async () => {
+    try {
+      await load();
+    } catch (e) {
+      setError(msg(e));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
 
   useEffect(() => {
     void reload();
@@ -221,7 +230,7 @@ export function TemplateVersionEditor({
     setSaveState('saving');
     try {
       await fn();
-      await reload();
+      await load();
       setError(null);
       setSaveState('saved');
       return true;

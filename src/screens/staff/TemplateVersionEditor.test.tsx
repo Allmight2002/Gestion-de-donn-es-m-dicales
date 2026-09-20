@@ -641,3 +641,33 @@ describe('TemplateVersionEditor — déplacement direct (UX-14(d))', () => {
     expect(screen.getByRole('button', { name: 'Déplacer · Tension artérielle' })).toBeDisabled();
   });
 });
+
+// Un deplacement enchaine DEUX allers-retours : l'ecriture de l'ordre, puis la relecture qui
+// rafraichit l'ecran. Quand la seconde echoue, l'ordre est enregistre mais la liste montre encore
+// l'etat d'avant : annoncer « Enregistre » ferait passer ce blocage pour un refus silencieux.
+describe('TemplateVersionEditor — relecture perdue apres un deplacement', () => {
+  test('signale l echec au lieu d annoncer l enregistrement', async () => {
+    const user = userEvent.setup();
+    const { repo } = makeRepository();
+    const reorderFields = vi.fn(async () => {});
+    const premiere = repo.getVersion;
+    let appels = 0;
+    const getVersion = vi.fn(async (versionId: string) => {
+      appels += 1;
+      if (appels > 1) {
+        throw { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null };
+      }
+      return premiere(versionId);
+    });
+    renderEditor({ ...repo, getVersion, reorderFields } as unknown as TemplateRepository);
+
+    await user.click(await screen.findByRole('button', { name: 'Descendre · Tension artérielle' }));
+
+    await waitFor(() => expect(reorderFields).toHaveBeenCalledTimes(1));
+    // Le motif interne de PostgreSQL ne sort pas tel quel ; la consigne, elle, est affichee.
+    const alerte = await screen.findByText(/Rechargez la page/);
+    expect(alerte).toBeInTheDocument();
+    expect(screen.queryByText(/canceling statement/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Enregistré')).not.toBeInTheDocument();
+  });
+});
