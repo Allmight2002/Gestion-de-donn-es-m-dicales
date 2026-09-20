@@ -360,15 +360,13 @@ describe('validation des invariants par instruction', () => {
 
     // La garde métier refuse une section peuplée; on la désactive uniquement dans cette
     // transaction jetable pour exercer directement le ON DELETE SET NULL de la FK.
-    await db.admin.query('begin');
+    await db.admin.query('alter table public.template_section disable trigger trg_template_section_write');
     try {
-      await db.admin.query('alter table public.template_section disable trigger trg_template_section_write');
       await db.admin.query('delete from public.template_section where id = $1', [sectionId]);
+    } finally {
+      // Each ALTER TABLE commits separately; the DELETE may queue AFTER triggers,
+      // which PostgreSQL will not allow to coexist with another ALTER TABLE.
       await db.admin.query('alter table public.template_section enable trigger trg_template_section_write');
-      await db.admin.query('commit');
-    } catch (error) {
-      await db.admin.query('rollback');
-      throw error;
     }
     expect((await db.admin.query('select section_id from public.template_field where id = $1', [linkedFieldId]))
       .rows[0].section_id).toBeNull();
@@ -408,14 +406,16 @@ describe('validation des invariants par instruction', () => {
     );
 
     await db.admin.query('delete from public.template_version where id = $1', [sourceVersionId]);
+    // Section provenance keeps its stable text key even after the source-version FK clears.
     expect((await db.admin.query(
       `select source_template_version_id,source_section_key from public.template_section
         where template_version_id = $1`, [targetVersionId],
-    )).rows[0]).toEqual({ source_template_version_id: null, source_section_key: null });
+    )).rows[0]).toEqual({ source_template_version_id: null, source_section_key: sourceSectionKey });
+    // Field provenance follows the same rule: clear the FK, retain the source key.
     expect((await db.admin.query(
       `select source_template_version_id,source_field_key from public.template_field
         where template_version_id = $1 and field_key = 'copied'`, [targetVersionId],
-    )).rows[0]).toEqual({ source_template_version_id: null, source_field_key: null });
+    )).rows[0]).toEqual({ source_template_version_id: null, source_field_key: 'source_target' });
     expect((await db.admin.query(
       `select source_template_version_id,source_validation_rule_id from public.validation_rule
         where template_version_id = $1`, [targetVersionId],
