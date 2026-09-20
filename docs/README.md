@@ -74,7 +74,7 @@
 | [qa-parcours-site.md](qa-parcours-site.md) · [instructions-agent-qa.md](instructions-agent-qa.md) | Plan de test du site déployé et cadrage de l'agent QA |
 | [plan-test-preuves-2026-08-19.md](plan-test-preuves-2026-08-19.md) | Plan de test des lots livrés (L14, corbeille, D9/D12, L20-L25, L27-L33, L11) en attente de preuve de fonctionnement sur le site déployé |
 | [guide-test-collecte-diagnostique.md](guide-test-collecte-diagnostique.md) | 🟢 Guide de test manuel des lots **L51 à L56** (blocs cliniques, visibilité de bloc, projection d'export, configuration diagnostique et suivi des cas non couverts) — preuve navigateur encore à produire |
-| [guide-test-groupes-repetables.md](guide-test-groupes-repetables.md) | 🟢 Guide de test manuel des lots **L66 à L71** (déclaration d’un bloc répétable, saisie en tableau, occurrences tamponnées à la création, applicabilité et complétude, export, hors-ligne) — la saisie d’une occurrence hors ligne reste fermée ; preuve navigateur encore à produire |
+| [guide-test-groupes-repetables.md](guide-test-groupes-repetables.md) | 🟢 Guide de test manuel des lots **L66 à L71** (déclaration d’un bloc répétable, saisie en tableau, occurrences tamponnées à la création, applicabilité et complétude, export, hors-ligne) — preuve navigateur encore à produire |
 | [redaction-diagnostic-sauvegarde.md](redaction-diagnostic-sauvegarde.md) | Expurger un diagnostic de sauvegarde avant de le journaliser |
 
 ## 5. État courant et readiness
@@ -118,6 +118,7 @@
 | [l56-feuille-de-route.md](l56-feuille-de-route.md) | Support de réalisation et preuves locales de L56 ; ne vaut pas preuve navigateur ou cible |
 | [spec-blocs-reutilisables.md](spec-blocs-reutilisables.md) | **L58, L59 et L60 implémentés localement, non déployés** — import serveur d'un bloc par copie, catalogue/aperçu et reconnexion sûre de la règle d'activation ; contrôles locaux détaillés dans la fiche |
 | [spec-groupes-repetables.md](spec-groupes-repetables.md) | 📋 **Spécifiée le 2026-09-12, non implémentée** — **L66** à **L71** : plusieurs occurrences portant chacune leurs propres attributs (interventions, lésions, hématomes), projetées sur `encounter` et discriminées par le bloc (`group_section_key`) plutôt que par le type de rencontre ; socle serveur, éditeur, saisie en tableau dans la fiche, export et hors-ligne |
+| [l72-groupe-repetable-sous-section.md](l72-groupe-repetable-sous-section.md) | 📋 **Cadré le 2026-09-20, non implémenté** — **L72** : un groupe répétable déclaré **sous** un bloc de diagnostic, pour hériter de son rang et de sa visibilité ; inventaire des trois ruptures silencieuses (résolution des variables, validation de la règle du bloc, agrégation d’export), sémantique du retrait, découpage L72a→e et contournement disponible sans le lot |
 | [brief-audit-prochain.md](brief-audit-prochain.md) | Cadrage du prochain audit |
 | [strategie-produit-post-mvp.md](strategie-produit-post-mvp.md) · [-claude.md](strategie-produit-post-mvp-claude.md) · [-synthese.md](strategie-produit-post-mvp-synthese.md) | 🗄️ Études de marché datées (juillet) + synthèse d'arbitrage |
 
