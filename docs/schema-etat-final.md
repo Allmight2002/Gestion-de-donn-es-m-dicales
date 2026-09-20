@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260920170000_template_editor_in_use_scan.sql`
-- Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 387
+- Dernière migration incluse : `20260920192000_batch_template_version_invariants.sql`
+- Tables : 57 · Policies RLS : 64 · Triggers : 92 · Fonctions : 392
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1015,7 +1015,8 @@ Policies :
 Triggers :
 - `trg_00_contains_any_lock` — BEFORE INSERT/UPDATE → `lock_contains_any_configuration()`
 - `trg_contains_any_revalidate` — AFTER UPDATE → `revalidate_contains_any_rules()`
-- `trg_repeatable_field` — AFTER INSERT/UPDATE → `guard_repeatable_field()`
+- `trg_repeatable_field_insert` — AFTER INSERT → `guard_repeatable_fields_insert_statement()`
+- `trg_repeatable_field_update` — AFTER UPDATE → `guard_repeatable_fields_update_statement()`
 - `trg_template_field_allowed_options` — BEFORE INSERT/UPDATE → `enforce_template_field_allowed_options()`
 - `trg_template_field_default_value` — BEFORE INSERT/UPDATE → `enforce_template_field_default_value()`
 - `trg_template_field_formula` — BEFORE INSERT/UPDATE → `enforce_template_field_formula()`
@@ -1024,7 +1025,9 @@ Triggers :
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
-- `trg_template_version_invariants_field` — AFTER INSERT/UPDATE/DELETE → `run_template_version_invariants()`
+- `trg_template_version_invariants_field_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
+- `trg_template_version_invariants_field_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
+- `trg_template_version_invariants_field_update` — AFTER UPDATE → `run_template_version_invariants_update_statement()`
 - `trg_tf_delete` — BEFORE DELETE → `guard_template_field_delete()`
 - `trg_tf_locked_insert` — BEFORE INSERT → `guard_template_field_locked_insert()`
 - `trg_tf_update` — BEFORE UPDATE → `guard_template_field_update()`
@@ -1063,7 +1066,9 @@ Policies :
 
 Triggers :
 - `trg_template_section_write` — BEFORE INSERT/UPDATE/DELETE → `guard_template_section_write()`
-- `trg_template_version_invariants_section` — AFTER INSERT/UPDATE/DELETE → `run_template_version_invariants()`
+- `trg_template_version_invariants_section_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
+- `trg_template_version_invariants_section_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
+- `trg_template_version_invariants_section_update` — AFTER UPDATE → `run_template_version_invariants_update_statement()`
 
 ### template_version · RLS activée
 
@@ -1191,7 +1196,9 @@ Policies :
 
 Triggers :
 - `trg_00_contains_any_lock` — BEFORE INSERT/UPDATE → `lock_contains_any_configuration()`
-- `trg_template_version_invariants_rule` — AFTER INSERT/UPDATE/DELETE → `run_template_version_invariants()`
+- `trg_template_version_invariants_rule_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
+- `trg_template_version_invariants_rule_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
+- `trg_template_version_invariants_rule_update` — AFTER UPDATE → `run_template_version_invariants_update_statement()`
 - `trg_vr_inuse` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_inuse()`
 - `trg_vr_locked` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_locked()`
 - `trg_vr_structure` — BEFORE INSERT/UPDATE → `guard_validation_rule_structure()`
@@ -1423,6 +1430,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_profile_role | — | DEFINER | plpgsql |
 | guard_repeatable_encounter | — | INVOKER | plpgsql |
 | guard_repeatable_field | — | INVOKER | plpgsql |
+| guard_repeatable_fields_insert_statement | — | INVOKER | plpgsql |
+| guard_repeatable_fields_update_statement | — | INVOKER | plpgsql |
 | guard_storage_path_scope | — | DEFINER | plpgsql |
 | guard_structural_immutable | — | INVOKER | plpgsql |
 | guard_template_field_delete | — | DEFINER | plpgsql |
@@ -1560,6 +1569,9 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
 | rule_value_present | v jsonb | INVOKER | sql |
 | run_template_version_invariants | — | DEFINER | plpgsql |
+| run_template_version_invariants_delete_statement | — | DEFINER | plpgsql |
+| run_template_version_invariants_insert_statement | — | DEFINER | plpgsql |
+| run_template_version_invariants_update_statement | — | DEFINER | plpgsql |
 | save_curation_draft | p_draft_id uuid, p_patient_data jsonb, p_encounters jsonb, p_expected_revision bigint | DEFINER | plpgsql |
 | save_form_preparation | p_preparation_id uuid, p_base_id uuid, p_expected_preparation_revision bigint, p_expected_source_revision bigint, p_expected_source_fingerprint text, p_operation_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | save_work_draft | p_id uuid, p_base_id uuid, p_kind text, p_target_id uuid, p_template_version_id uuid, p_entity_revision text, p_expected_revision bigint, p_operation_id uuid, p_payload jsonb | DEFINER | plpgsql |
