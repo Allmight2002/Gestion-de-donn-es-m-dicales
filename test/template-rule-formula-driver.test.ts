@@ -202,14 +202,14 @@ describe('une regle deja enregistree avant le garde-fou', () => {
     // ou rien ne la refusait. Les deux gardes sont ecartes uniquement pour cette fixture historique.
     await db.admin.query('alter table public.validation_rule disable trigger trg_vr_structure');
     try {
-      await db.admin.query('alter table public.validation_rule disable trigger trg_template_version_invariants_rule');
+      await db.admin.query('alter table public.validation_rule disable trigger trg_template_version_invariants_rule_insert');
       try {
         await addRule(legacy, {
           if: { field: 'rapport_pt', operator: 'less_than', value: 18 },
           then: { field: 'bloc_malnutrition', operator: 'visible' },
         });
       } finally {
-        await db.admin.query('alter table public.validation_rule enable trigger trg_template_version_invariants_rule');
+        await db.admin.query('alter table public.validation_rule enable trigger trg_template_version_invariants_rule_insert');
       }
     } finally {
       await db.admin.query('alter table public.validation_rule enable trigger trg_vr_structure');
