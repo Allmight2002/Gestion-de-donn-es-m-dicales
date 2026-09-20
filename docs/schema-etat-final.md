@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260920090000_repeatable_groups_offline_replay.sql`
+- Dernière migration incluse : `20260920170000_template_editor_in_use_scan.sql`
 - Tables : 57 · Policies RLS : 64 · Triggers : 85 · Fonctions : 387
 
 ## Tables (colonnes, RLS, policies, triggers)

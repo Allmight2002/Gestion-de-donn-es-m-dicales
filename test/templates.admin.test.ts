@@ -426,6 +426,69 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     expect((await db.admin.query('select field_key from public.template_field where id=$1', [fid])).rows[0].field_key).toBe('usee');
   });
 
+  // Le releve des variables deja renseignees est rejoue a CHAQUE rechargement de l'editeur,
+  // donc apres chaque deplacement de variable ou de section. Reecrit en un seul parcours
+  // (20260920170000) pour ne plus dependre du volume du registre, il doit designer exactement
+  // les memes variables qu'avant : portee respectee, fiches supprimees et autres versions exclues.
+  test('variables deja renseignees : portee, fiches supprimees et autres versions', async () => {
+    const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
+    const add = async (versionId: string, key: string, scope: 'patient' | 'encounter') => (await db.admin.query(
+      `insert into public.template_field(template_version_id, field_key, label, scope, section, type)
+       values($1,$2,$3,$4,'clinique','text') returning id`,
+      [versionId, key, key, scope],
+    )).rows[0].id;
+    const remplie = await add(aliceVersionId, 'usage_patient', 'patient');
+    const remplieRencontre = await add(aliceVersionId, 'usage_rencontre', 'encounter');
+    const jamais = await add(aliceVersionId, 'usage_jamais', 'patient');
+    const effacee = await add(aliceVersionId, 'usage_effacee', 'patient');
+    const ailleurs = await add(aliceVersionId, 'usage_ailleurs', 'patient');
+
+    const patientId = (await db.admin.query(
+      `insert into public.patient(base_id, patient_code, template_version_id, data)
+       values($1,$2,$3,$4) returning id`,
+      [baseId, 'P-USE-' + Date.now(), aliceVersionId, JSON.stringify({ usage_patient: 'x' })],
+    )).rows[0].id;
+    await db.admin.query(
+      `insert into public.encounter(patient_id, template_version_id, encounter_type, encounter_date, data)
+       values($1,$2,'consultation', current_date, $3)`,
+      [patientId, aliceVersionId, JSON.stringify({ usage_rencontre: 'x' })],
+    );
+    // Fiche supprimee : sa saisie ne rend plus la variable modifiable-interdite.
+    await db.admin.query(
+      `insert into public.patient(base_id, patient_code, template_version_id, data, deleted_at)
+       values($1,$2,$3,$4, now())`,
+      [baseId, 'P-DEL-' + Date.now(), aliceVersionId, JSON.stringify({ usage_effacee: 'x' })],
+    );
+    // Meme cle, mais saisie sous une AUTRE version : elle ne concerne pas celle qu'on edite.
+    const autreVersion = (await db.admin.query(
+      `with t as (insert into public.template(name, specialty) values('Autre','neuro') returning id)
+       insert into public.template_version(template_id, version_number, status, created_by)
+       select t.id, 1, 'draft', $1 from t returning id`,
+      [memberId],
+    )).rows[0].id;
+    await add(autreVersion, 'usage_ailleurs', 'patient');
+    await db.admin.query(
+      `insert into public.patient(base_id, patient_code, template_version_id, data)
+       values($1,$2,$3,$4)`,
+      [baseId, 'P-AUTRE-' + Date.now(), autreVersion, JSON.stringify({ usage_ailleurs: 'x' })],
+    );
+
+    const releve = new Set(
+      (await rowsAs(memberId, 'select t as id from public.template_version_fields_in_use($1) t', [aliceVersionId]))
+        .map((row) => row.id),
+    );
+    expect(releve.has(remplie)).toBe(true);
+    expect(releve.has(remplieRencontre)).toBe(true);
+    expect(releve.has(jamais)).toBe(false);
+    expect(releve.has(effacee)).toBe(false);
+    expect(releve.has(ailleurs)).toBe(false);
+    // Le releve et la garde qui fait autorite disent la meme chose.
+    for (const id of [remplie, remplieRencontre, jamais, effacee, ailleurs]) {
+      expect((await db.asUser(memberId, (c) => c.query('select public.template_field_in_use($1) as u', [id]))).rows[0].u)
+        .toBe(releve.has(id));
+    }
+  });
+
   test('variable UTILISEE : la consigne de saisie reste modifiable', async () => {
     const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
     const fid = (await db.asUser(memberId, (c) =>
