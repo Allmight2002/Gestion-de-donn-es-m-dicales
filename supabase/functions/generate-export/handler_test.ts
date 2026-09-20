@@ -607,7 +607,7 @@ Deno.test('generate-export: les colonnes de code de terminologie comptent dans l
   assertEquals(responseBody.code, 'EXPORT_LIMIT_EXCEEDED');
   assertEquals(responseBody.resource, 'columns');
   assertEquals(responseBody.limit, EXPORT_LIMITS.csvColumns);
-  assertEquals(responseBody.observed, 6 + terminologyFields.length * 2);
+  assertEquals(responseBody.observed, 7 + terminologyFields.length * 2);
 });
 
 Deno.test('generate-export: les cellules des feuilles multivaluees depassent proprement le plafond', () => {
@@ -2007,6 +2007,7 @@ Deno.test('L53 : les gardes de sortie voient le jeu FILTRE, meta comprise', asyn
     'encounter_type',
     'age_value',
     'age_unit',
+    'group_section_key',
     'encounter__age',
     'encounter__poids',
   ]);
@@ -2332,4 +2333,175 @@ Deno.test('E6 : une base dont le formulaire n a pas evolue garde son fichier d a
   const dict = (XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire'], { header: 1 })[0] ?? []) as string[];
   assertEquals(dict.includes('in_current_form'), false);
   assertEquals(wb.SheetNames.includes('Provenance'), false);
+});
+
+// ---------------------------------------------------------------------------------------
+// L70 — les groupes repetables traversent le HANDLER, pas seulement le contrat.
+//
+// Les fonctions de construction sont testees a part (`repeatableGroups_test.ts`). Ces
+// tests-ci gardent le chemin de production de bout en bout : la lecture PostgREST doit
+// DEMANDER `group_section_key` sur la rencontre et `is_repeatable` sur la section, puis le
+// fichier doit en porter la consequence. La doublure PostgREST sert la ligne entiere quelle
+// que soit la liste de colonnes : le `select` est donc verifie explicitement, sinon le
+// retirer laisserait toute la suite au vert et produirait en production un fichier ou les
+// occurrences seraient indiscernables — ou pire, agregees au hasard.
+// ---------------------------------------------------------------------------------------
+
+/** Bloc repetable « lesions » ajoute aux sections a deux niveaux deja utilisees par L53. */
+const GROUP_SECTIONS = [
+  ...BLOCK_SECTIONS,
+  {
+    id: 'sb4',
+    template_version_id: TV,
+    section_key: 'lesions',
+    label: 'Lésions',
+    parent_section_id: null,
+    is_repeatable: true,
+    display_order: 3,
+  },
+];
+const GROUP_FIELDS = [...BLOCK_FIELDS, blockField('bf5', 'niveau', 'lesions', 5)];
+/** Occurrences telles que la base les stocke : non datees, de type `autre`, sans age. */
+const OCCURRENCE_ROWS = [
+  {
+    ...BLOCK_ENCOUNTER,
+    id: 'e2',
+    encounter_date: null,
+    encounter_type: 'autre',
+    group_section_key: 'lesions',
+    age_value: null,
+    age_unit: null,
+    data: { niveau: 11 },
+  },
+  {
+    ...BLOCK_ENCOUNTER,
+    id: 'e3',
+    encounter_date: null,
+    encounter_type: 'autre',
+    group_section_key: 'lesions',
+    age_value: null,
+    age_unit: null,
+    data: { niveau: 12 },
+  },
+];
+
+Deno.test('L70 : le handler restitue le discriminant de groupe et laisse vides date et age', async () => {
+  let uploaded: Blob | null = null;
+  const d = blocDeps({
+    fields: GROUP_FIELDS,
+    sections: GROUP_SECTIONS,
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }, { encounter_id: 'e3' }],
+    encounterRows: [BLOCK_ENCOUNTER, ...OCCURRENCE_ROWS],
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body('csv') }), d),
+  );
+  assertEquals(status, 200);
+  const result = uploaded as Blob | null;
+  assert(result !== null);
+  const csv = await result.text();
+  const lignes = csv.trim().split('\n');
+  const entete = lignes[0].split(',');
+  const valeurs = (id: string) => {
+    const ligne = lignes.slice(1).find((l) => l.split(',')[1] === id)?.split(',') ?? [];
+    return Object.fromEntries(entete.map((colonne, index) => [colonne, ligne[index]]));
+  };
+
+  assertEquals(entete.includes('group_section_key'), true);
+  assertEquals(valeurs('e2').group_section_key, 'lesions');
+  assertEquals(valeurs('e1').group_section_key, '');
+  // §14.3 point 24 : rien d'invente la ou la base ne dit rien.
+  assertEquals(valeurs('e2').encounter_date, '');
+  assertEquals(valeurs('e2').age_value, '');
+  assertEquals(valeurs('e2').age_unit, '');
+  assertEquals(valeurs('e1').encounter_date, '2020-01-01');
+  assertEquals(csv.includes('1970-01-01'), false);
+});
+
+Deno.test('L70 : en une ligne par patient, le handler compte les occurrences au lieu de les agreger', async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const d = blocDeps({
+    fields: GROUP_FIELDS,
+    sections: GROUP_SECTIONS,
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }, { encounter_id: 'e3' }],
+    encounterRows: [BLOCK_ENCOUNTER, ...OCCURRENCE_ROWS],
+    onStorage: captureUpload(capture),
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { ...body('xlsx'), options: { mode: 'patient' } } }),
+      d,
+    ),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  const donnees = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  assertEquals(donnees.length, 1);
+  // Deux occurrences comptees, et aucune de leurs variables promue au rang de valeur du patient.
+  assertEquals(donnees[0]['nb__lesions'], 2);
+  assertEquals('encounter__niveau' in donnees[0], false);
+  assertEquals(donnees[0]['encounter__poids'], 9);
+
+  // Le dictionnaire l'ENONCE : sans cette ligne, `nb__lesions` passerait pour une variable.
+  const dictionnaire = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const comptage = dictionnaire.find((r) => r.column_id === 'nb__lesions');
+  assert(comptage !== undefined);
+  assertEquals(comptage.type, 'computed_group_count');
+  assertStringIncludes(String(comptage.description), "ne s'agrègent");
+});
+
+Deno.test("L70 : une ligne par occurrence n'annonce aucune colonne de comptage", async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const d = blocDeps({
+    fields: GROUP_FIELDS,
+    sections: GROUP_SECTIONS,
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+    encounterRows: [BLOCK_ENCOUNTER, OCCURRENCE_ROWS[0]],
+    onStorage: captureUpload(capture),
+  });
+  const { status } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: body('xlsx') }), d),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  const entete = (XLSX.utils.sheet_to_json(wb.Sheets['Données'], { header: 1 })[0] ?? []) as string[];
+  // Les variables du bloc SONT la : c'est la forme longue, il n'y a rien a compter.
+  assertEquals(entete.includes('encounter__niveau'), true);
+  assertEquals(entete.some((c) => String(c).startsWith('nb__lesions')), false);
+  const dictionnaire = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  assertEquals(dictionnaire.some((r) => r.column_id === 'nb__lesions'), false);
+});
+
+Deno.test('L70 : la lecture serveur demande explicitement le groupe et le caractere repetable', async () => {
+  // Garde de `select` : la doublure PostgREST sert la ligne entiere quelle que soit la liste
+  // de colonnes demandee. C'est donc ici — et nulle part ailleurs — qu'un retrait se verrait.
+  // Les tables du gabarit sont servies sur place, car `blocDeps` les intercepte avant ce
+  // niveau : le `select` de `template_section` n'y parviendrait jamais.
+  const selects = new Map<string, string[]>();
+  const d = deps({
+    encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }],
+    encounterRows: [BLOCK_ENCOUNTER, OCCURRENCE_ROWS[0]],
+    fromResponder: (call: FromCall) => {
+      const select = call.ops.find((op) => op.m === 'select');
+      if (select && typeof select.a[0] === 'string') {
+        selects.set(call.table, String(select.a[0]).split(',').map((column) => column.trim()));
+      }
+      if (call.table === 'template_field') {
+        return queriedRows(call, GROUP_FIELDS as Array<Record<string, unknown>>, 'id');
+      }
+      if (call.table === 'template_section') {
+        return queriedRows(call, GROUP_SECTIONS as Array<Record<string, unknown>>, 'id');
+      }
+      return undefined;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('csv') }), d));
+  assertEquals(status, 200);
+  assertEquals(selects.get('encounter')?.includes('group_section_key'), true);
+  assertEquals(selects.get('template_section')?.includes('is_repeatable'), true);
 });

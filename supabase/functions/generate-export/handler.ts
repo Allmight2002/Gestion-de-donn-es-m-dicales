@@ -30,6 +30,7 @@ import {
   projectFields,
   type ProvenanceEntry,
   referencedTemplateVersions,
+  repeatableBlocksOf,
   stateColumnsFor,
   toCsv,
   withExcelDateSerials,
@@ -378,8 +379,11 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       id: string;
       patient_id: string;
       template_version_id?: string;
-      encounter_date: string;
+      /** L66 : nullable SOUS GARDE — seule une occurrence de groupe peut ne pas etre datee. */
+      encounter_date: string | null;
       encounter_type: string;
+      /** L66/L70 : code du bloc repetable dont la ligne est une occurrence. `null` = rencontre. */
+      group_section_key?: string | null;
       age_value?: unknown;
       age_unit?: string | null;
       data?: Record<string, unknown>;
@@ -434,6 +438,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       label: string;
       /** L54 : nul = BLOC racine ; non nul = sous-section, dont le parent est le bloc. */
       parent_section_id: string | null;
+      /** L66 : bloc REPETABLE. Toujours une racine (contrainte de la migration). */
+      is_repeatable?: boolean | null;
     }
 
     /** UX-16 : rubrique commune, lue PAR VERSION comme les sections -- meme code, deux libelles. */
@@ -545,7 +551,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         fetchPage: async (chunk, from, to) => {
           const result = await admin.from('encounter')
             .select(
-              'id, patient_id, template_version_id, encounter_date, encounter_type, age_value, age_unit, data, patient!inner(base_id)',
+              'id, patient_id, template_version_id, encounter_date, encounter_type, group_section_key, age_value, age_unit, data, patient!inner(base_id)',
               { count: 'exact' },
             )
             .in('id', chunk)
@@ -577,7 +583,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         fetchPage: async (chunk, from, to) => {
           const result = await admin.from('encounter')
             .select(
-              'id, patient_id, template_version_id, encounter_date, encounter_type, age_value, age_unit, data, patient!inner(base_id)',
+              'id, patient_id, template_version_id, encounter_date, encounter_type, group_section_key, age_value, age_unit, data, patient!inner(base_id)',
               { count: 'exact' },
             )
             .in('patient_id', chunk)
@@ -656,6 +662,9 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         patientCode: idToCode.get(encounter.patient_id) ?? '',
         encounterDate: encounter.encounter_date,
         encounterType: encounter.encounter_type,
+        // L70 : le discriminant de groupe traverse le handler INTACT. C'est lui, et non
+        // `encounter_type`, qui separe une lesion d'une intervention dans le fichier.
+        groupSectionKey: encounter.group_section_key ?? null,
         templateVersionId: encounter.template_version_id,
         ageValue: encounter.age_value,
         ageUnit: encounter.age_unit,
@@ -701,7 +710,9 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       keyOf: (row) => row.id,
       fetchPage: async (chunk, from, to) => {
         const result = await admin.from('template_section')
-          .select('id, template_version_id, section_key, label, parent_section_id', { count: 'exact' })
+          .select('id, template_version_id, section_key, label, parent_section_id, is_repeatable', {
+            count: 'exact',
+          })
           .in('template_version_id', chunk)
           .order('template_version_id', { ascending: true })
           .order('display_order', { ascending: true })
@@ -752,11 +763,26 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
      */
     const levelsOf = (f: TemplateFieldRow) => {
       const own = f.section === null ? undefined : sectionByVersionKey.get(`${f.template_version_id} ${f.section}`);
-      if (!own) return { sectionLabel: null, blockKey: null, blockLabel: null };
+      if (!own) return { sectionLabel: null, blockKey: null, blockLabel: null, blockIsRepeatable: false };
       const parentKey = own.parent_section_id ? keyById.get(own.parent_section_id) ?? null : null;
-      if (!parentKey) return { sectionLabel: own.label, blockKey: own.section_key, blockLabel: own.label };
+      if (!parentKey) {
+        return {
+          sectionLabel: own.label,
+          blockKey: own.section_key,
+          blockLabel: own.label,
+          blockIsRepeatable: Boolean(own.is_repeatable),
+        };
+      }
       const parent = sectionByVersionKey.get(`${f.template_version_id} ${parentKey}`);
-      return { sectionLabel: own.label, blockKey: parentKey, blockLabel: parent?.label ?? null };
+      // L70 : le caractere repetable est celui du BLOC RACINE, lu sur le parent. Un bloc
+      // repetable n'a pas de sous-section (§12), donc cette branche repond normalement `false` ;
+      // on le LIT quand meme plutot que de le supposer.
+      return {
+        sectionLabel: own.label,
+        blockKey: parentKey,
+        blockLabel: parent?.label ?? null,
+        blockIsRepeatable: Boolean(parent?.is_repeatable),
+      };
     };
 
     const versionedFields: ExportField[] = rawFields.map((f) => {
@@ -772,6 +798,8 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         // descendante est acquise par construction ; nul au tronc commun.
         blockKey: levels.blockKey,
         blockLabel: levels.blockLabel,
+        // L70 : dit a l'export qu'une ligne par patient ne peut pas agreger ce bloc.
+        blockIsRepeatable: levels.blockIsRepeatable,
         // UX-16 : rubrique de PRESENTATION, a cote du bloc et jamais a sa place. Une variable
         // de bloc n'en a pas ; une rubrique introuvable laisse la variable commune telle
         // quelle, exportee comme avant.
@@ -931,6 +959,10 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       // UX-16 : deux colonnes de plus SEULEMENT si une version exportee declare des rubriques.
       // Sans rubrique, le classeur garde exactement la structure d'avant le lot.
       commonGroupColumns: hasCommonGroupFields(allFields),
+      // L70 : SEULE la ligne par patient porte des colonnes de comptage ; en une ligne par
+      // occurrence, les variables du bloc sont la, et il n'y a rien a compter. Le jeu PROJETE
+      // est le meme que celui des colonnes : la projection par bloc se combine sans rien de plus.
+      repeatableCountBlocks: options.mode === 'patient' ? repeatableBlocksOf(mergeExportFields(fields)) : [],
       // E6 : depuis quelle revision la variable existe, si le formulaire courant la porte
       // encore, et quelle colonne dit l'etat de ses cases.
       revisions: mixedRevisions && activeRevision

@@ -19,8 +19,19 @@ export interface ExportPatient {
 export interface ExportEncounter {
   id: string;
   patientCode: string;
-  encounterDate: string;
+  /**
+   * L66 a rendu la colonne nullable SOUS GARDE : seule une occurrence de groupe peut ne pas
+   * etre datee (une lesion n'a pas de date, une intervention si). `null` sort en case VIDE,
+   * jamais en date inventee — et l'age, qui s'en deduit, reste vide avec elle.
+   */
+  encounterDate: string | null;
   encounterType: string;
+  /**
+   * L70 : CODE du bloc repetable dont cette ligne est une occurrence. `null` = rencontre
+   * ordinaire. C'est le discriminant JUSTE de l'analyse : `encounter_type` dirait `autre`
+   * pour toutes les occurrences, quel que soit le bloc qui les porte.
+   */
+  groupSectionKey?: string | null;
   data: Record<string, unknown>;
   templateVersionId?: string;
   ageValue?: unknown;
@@ -48,6 +59,13 @@ export interface ExportField {
   blockKey?: string | null;
   /** Libelle du bloc racine. `null` quand `blockKey` est nul. */
   blockLabel?: string | null;
+  /**
+   * L70 : le bloc racine est un GROUPE REPETABLE (`template_section.is_repeatable`, L66). Ses
+   * variables ne vivent que sur des occurrences ; en une ligne par patient elles ne
+   * s'agregent donc pas, et le bloc rend a leur place une colonne de comptage. Absent/`false`
+   * = bloc ordinaire, exporte exactement comme avant le lot.
+   */
+  blockIsRepeatable?: boolean | null;
   /**
    * UX-16 : CODE de la rubrique commune, une metadonnee de PRESENTATION. Elle n'est jamais un
    * bloc clinique : une variable qui en porte une garde `section` et `blockKey` nuls, reste
@@ -184,6 +202,30 @@ export const codeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => 
 
 /** Colonne du NOMBRE d'elements d'une variable multivaluee (L22/L36). */
 export const nbColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `nb__${columnId(field)}`;
+
+/**
+ * L70 : colonne du NOMBRE d'occurrences d'un bloc repetable, en une ligne par patient. Meme
+ * prefixe que le comptage d'une variable multivaluee, et pour la meme raison : c'est un
+ * denombrement, pas une valeur saisie. Le suffixe est le CODE du bloc, jamais son libelle,
+ * qui peut etre corrige d'une revision a l'autre. Aucune collision possible avec
+ * `nbColumnId`, dont le suffixe porte toujours le prefixe de portee `patient__`/`encounter__`.
+ */
+export const groupCountColumnId = (blockKey: string) => `nb__${blockKey}`;
+
+/**
+ * Blocs repetables rendus par un jeu de variables, tries par code. Derive des VARIABLES et
+ * non des donnees : un bloc declare mais sans aucune occurrence garde sa colonne, a zero. Le
+ * jeu passe ici est deja PROJETE, donc la projection par bloc (L53) se combine sans rien
+ * ajouter — selectionner « lesions » ne laisse que `nb__lesions`.
+ */
+export function repeatableBlocksOf(fields: readonly ExportField[]): { key: string; label: string }[] {
+  const blocks = new Map<string, string>();
+  for (const field of fields) {
+    if (!field.blockIsRepeatable || field.blockKey == null) continue;
+    if (!blocks.has(field.blockKey)) blocks.set(field.blockKey, field.blockLabel ?? field.blockKey);
+  }
+  return [...blocks.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }));
+}
 
 /**
  * Colonne du CODE d'une liste controlee (L30) — meme convention que la terminologie, et
@@ -890,6 +932,10 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // ce cas-la est de toute facon refuse par `findAmbiguousBlockFields` quand il compte.
       if (previous.blockKey != null && previous.blockKey === field.blockKey) {
         previous.blockLabel = previous.blockLabel ?? field.blockLabel;
+        // L70 : meme precaution pour le caractere repetable. Une seule version qui declare le
+        // bloc repetable suffit : des occurrences ont pu etre saisies sous elle, et la colonne
+        // de comptage doit les compter meme si une revision ulterieure a ferme le groupe.
+        previous.blockIsRepeatable = Boolean(previous.blockIsRepeatable || field.blockIsRepeatable);
       }
       // L35 : la formule NE SE FUSIONNE PAS. Chaque version garde la sienne, sinon une
       // fiche v1 se verrait appliquer la formule corrigee en v2 — exactement ce que la
@@ -900,6 +946,7 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       merged.set(key, {
         ...field,
         isMultiple: Boolean(field.isMultiple),
+        blockIsRepeatable: Boolean(field.blockIsRepeatable),
         encounterTypes: Array.isArray(field.encounterTypes) && field.encounterTypes.length > 0
           ? [...new Set(field.encounterTypes)].sort()
           : null,
@@ -1377,7 +1424,29 @@ function assignIndicators(
   }
 }
 
-const ENCOUNTER_META = ['patient_code', 'encounter_id', 'encounter_date', 'encounter_type', 'age_value', 'age_unit'];
+/**
+ * L70 : `group_section_key` REJOINT la meta de rencontre, a la fin pour ne deplacer aucune
+ * colonne existante. C'est elle qui rend les lignes separables en analyse — une ligne par
+ * lesion, une ligne par intervention — la ou `encounter_type` dirait `autre` pour toutes les
+ * occurrences. Elle est presente toujours, comme `encounter_type` : une base sans bloc
+ * repetable la rend simplement vide partout, et le fichier garde la meme forme d'un export
+ * a l'autre.
+ */
+const ENCOUNTER_META = [
+  'patient_code',
+  'encounter_id',
+  'encounter_date',
+  'encounter_type',
+  'age_value',
+  'age_unit',
+  'group_section_key',
+];
+
+/**
+ * Tri stable malgre une date nulle (L66 §4.3) : une occurrence non datee se range avant les
+ * rencontres datees, et l'identifiant tranche ensuite. `localeCompare` sur `null` leverait.
+ */
+const dateKeyOf = (encounter: Pick<ExportEncounter, 'encounterDate'>) => encounter.encounterDate ?? '';
 export function buildEncounterExport(
   encounters: ExportEncounter[],
   fields: ExportField[],
@@ -1412,16 +1481,21 @@ export function buildEncounterExport(
   ];
 
   const rows = [...encounters].sort((a, b) =>
-    a.patientCode.localeCompare(b.patientCode) || a.encounterDate.localeCompare(b.encounterDate) ||
+    a.patientCode.localeCompare(b.patientCode) || dateKeyOf(a).localeCompare(dateKeyOf(b)) ||
     a.id.localeCompare(b.id)
   ).map((e) => {
+    // L70 : sans date, il n'y a pas d'age a l'occurrence — et surtout rien a inventer. Les
+    // trois cases sortent VIDES ensemble ; un repli sur `age_at_encounter` ecrirait ici un
+    // age qu'aucune date ne soutient.
+    const dated = Boolean(e.encounterDate);
     const row: Record<string, unknown> = {
       patient_code: e.patientCode,
       encounter_id: e.id,
-      encounter_date: e.encounterDate,
+      encounter_date: e.encounterDate ?? '',
       encounter_type: e.encounterType,
-      age_value: formatAgeValue(e.ageValue ?? e.data.age_at_encounter),
-      age_unit: e.ageUnit ?? '',
+      age_value: dated ? formatAgeValue(e.ageValue ?? e.data.age_at_encounter) : '',
+      age_unit: dated ? (e.ageUnit ?? '') : '',
+      group_section_key: e.groupSectionKey ?? '',
     };
     for (const f of encFields) {
       assignField(row, e.data, e.templateVersionId, f, encPeers, profile, context, e.encounterType);
@@ -1441,9 +1515,7 @@ export function buildEncounterExport(
 }
 
 const pickEncounter = (encounters: ExportEncounter[], rule: AggregationRule) => {
-  const sorted = [...encounters].sort((a, b) =>
-    a.encounterDate.localeCompare(b.encounterDate) || a.id.localeCompare(b.id)
-  );
+  const sorted = [...encounters].sort((a, b) => dateKeyOf(a).localeCompare(dateKeyOf(b)) || a.id.localeCompare(b.id));
   return sorted.length ? (rule === 'first' ? sorted[0] : sorted[sorted.length - 1]) : null;
 };
 export function buildPatientExport(
@@ -1459,11 +1531,24 @@ export function buildPatientExport(
 ): ExportTable {
   const all = mergeExportFields(fields);
   const patientFields = all.filter((f) => f.scope === 'patient');
-  const encounterFields = all.filter((f) => f.scope === 'encounter');
+  // L70 : `first`/`last` n'a AUCUN sens sur un groupe repetable — la regle choisirait une
+  // lesion au hasard et la presenterait comme LA lesion du patient. Les variables d'un bloc
+  // repetable quittent donc la ligne patient, et le bloc rend a leur place le seul resultat
+  // qu'une agregation puisse honnetement produire : le nombre de ses occurrences.
+  const encounterFields = all.filter((f) => f.scope === 'encounter' && !f.blockIsRepeatable);
+  const repeatableBlocks = repeatableBlocksOf(all);
   const operands = operandFields ? mergeExportFields(operandFields) : all;
 
+  /** Ce qui alimente REELLEMENT une ligne patient : les rencontres, jamais les occurrences. */
+  const isOccurrence = (e: ExportEncounter) => e.groupSectionKey != null && e.groupSectionKey !== '';
+  const agregables = encounters.filter((e) => !isOccurrence(e));
+
   const { indicatorsByField: patIndicators } = extractMultivalueCodes(patientFields, patients);
-  const { indicatorsByField: encIndicators } = extractMultivalueCodes(encounterFields, encounters);
+  // Les modalites sont relevees sur les SEULES fiches rendues. Une modalite vue uniquement sur
+  // une occurrence donnerait sinon une indicatrice a `0` pour tout le monde — le fichier
+  // affirmerait « jamais selectionnee » d'une modalite qui l'a bel et bien ete. Sans bloc
+  // repetable, cette liste est celle d'avant le lot, a l'identique.
+  const { indicatorsByField: encIndicators } = extractMultivalueCodes(encounterFields, agregables);
   // L35 : un index d'operandes PAR PORTEE. Une variable calculee permanente ne lit que des
   // donnees permanentes, une variable de rencontre que des donnees de rencontre.
   const patPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'patient'));
@@ -1481,16 +1566,40 @@ export function buildPatientExport(
     return [...base, ...stateOf(f), ...inds];
   });
 
+  // FAIL-CLOSED. Un code de bloc est libre dans `^[a-z][a-z0-9_]{0,62}$` : un bloc nomme
+  // `encounter__poids` produirait `nb__encounter__poids`, le nom que porte deja le compteur
+  // d'une variable multivaluee `poids`. Deux colonnes homonymes, c'est un nombre ecrase par
+  // un autre, sans trace — on refuse plutot que de rendre un fichier faux.
+  const occupees = new Set(['patient_code', 'age_value', 'age_unit', ...patientCols, ...encounterCols]);
+  for (const block of repeatableBlocks) {
+    const identifiant = groupCountColumnId(block.key);
+    if (occupees.has(identifiant)) {
+      throw new Error(`Collision de colonne de comptage de groupe: ${identifiant}`);
+    }
+  }
+
   const columns = [
     'patient_code',
     ...patientCols,
     'age_value',
     'age_unit',
     ...encounterCols,
+    // A LA FIN, pour ne deplacer aucune colonne existante.
+    ...repeatableBlocks.map((b) => groupCountColumnId(b.key)),
   ];
 
   const byPatient = new Map<string, ExportEncounter[]>();
-  for (const e of encounters) byPatient.set(e.patientCode, [...(byPatient.get(e.patientCode) ?? []), e]);
+  for (const e of agregables) byPatient.set(e.patientCode, [...(byPatient.get(e.patientCode) ?? []), e]);
+  // L70 : les occurrences sont comptees sur la liste COMPLETE — c'est le seul usage qu'en fait
+  // ce mode, et le seul qui ne choisisse rien au hasard.
+  const countsByPatient = new Map<string, Map<string, number>>();
+  for (const e of encounters) {
+    const block = e.groupSectionKey;
+    if (!isOccurrence(e) || block == null) continue;
+    const counts = countsByPatient.get(e.patientCode) ?? new Map<string, number>();
+    counts.set(block, (counts.get(block) ?? 0) + 1);
+    countsByPatient.set(e.patientCode, counts);
+  }
   const rows = [...patients].sort((a, b) => a.code.localeCompare(b.code)).map((p) => {
     const row: Record<string, unknown> = { patient_code: p.code };
     for (const f of patientFields) {
@@ -1520,6 +1629,10 @@ export function buildPatientExport(
         context,
       );
     }
+    // L70 : Y COMPRIS A ZERO. Une case vide se lirait « on ne sait pas » ; `0` dit « aucune
+    // occurrence », ce qui est une observation, et c'est bien ce que la base affirme.
+    const counts = countsByPatient.get(p.code);
+    for (const block of repeatableBlocks) row[groupCountColumnId(block.key)] = counts?.get(block.key) ?? 0;
     return row;
   });
   return { columns, rows };
@@ -1554,7 +1667,7 @@ export function buildMultivalueTable(
     }
   } else {
     const sortedEncounters = [...encounters].sort((a, b) =>
-      a.patientCode.localeCompare(b.patientCode) || a.encounterDate.localeCompare(b.encounterDate) ||
+      a.patientCode.localeCompare(b.patientCode) || dateKeyOf(a).localeCompare(dateKeyOf(b)) ||
       a.id.localeCompare(b.id)
     );
     for (const e of sortedEncounters) {
@@ -1677,6 +1790,13 @@ export interface DictionaryOptions {
    * plusieurs revisions ; sinon le dictionnaire garde exactement les colonnes d avant le lot.
    */
   revisions?: DictionaryRevisions;
+  /**
+   * L70 : blocs repetables dont la ligne par patient porte une colonne de comptage. A passer
+   * UNIQUEMENT en mode patient — en une ligne par occurrence ces colonnes n'existent pas, et
+   * le dictionnaire ne doit pas annoncer une colonne absente du fichier. `repeatableBlocksOf`
+   * en est la source, sur le meme jeu PROJETE que les colonnes.
+   */
+  repeatableCountBlocks?: readonly { key: string; label: string }[];
 }
 
 /**
@@ -1799,129 +1919,164 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
   const withCommon = commonGroupColumns ? withCommonGroupColumns(withBlocks) : withBlocks;
   const revisions = options?.revisions;
   const columns = revisions ? [...withCommon, ...REVISION_DICTIONARY_COLUMNS] : withCommon;
-  return {
-    columns,
-    rows: mergeExportFields(fields).flatMap((f) => {
-      const optionsList = isOptionList(f) ? optionsOf(f) : [];
-      const common = {
-        description: f.description ?? '',
-        // L54 : une variable du TRONC COMMUN n'a pas de section ; la case reste vide, jamais
-        // le mot `null`, qui se lirait comme un code de section.
-        section: f.section ?? '',
-        section_label: f.sectionLabel ?? '',
-        ...(blockColumns ? { block: f.blockKey ?? '', block_label: f.blockLabel ?? '' } : {}),
-        // UX-16 : la case reste vide pour une variable de bloc. Une rubrique commune ne
-        // remplit jamais `section` ni `block` : elle dit ou la variable est MONTREE, pas a
-        // quel regroupement clinique elle appartient.
-        ...(commonGroupColumns
-          ? { common_group: f.commonGroup ?? '', common_group_label: f.commonGroupLabel ?? '' }
-          : {}),
-        unit: f.unit ?? '',
-        allowed_values: isOptionList(f)
-          ? optionsList.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
-          : Array.isArray(f.allowedValues)
-          ? f.allowedValues.join('; ')
-          : '',
-        missing_reasons: (f.missingReasons ?? []).join('; '),
-        // E6 : les colonnes de revision decrivent LA VARIABLE ; elles se repetent donc sur ses
-        // colonnes derivees (code, nombre, indicatrices), qui parlent de la meme variable.
-        ...(revisions
-          ? (() => {
-            const introduced = introducedRevision(f, revisions);
-            const label = introduced ? revisions.labels[introduced] : undefined;
-            return {
-              // Une variable RETIREE du formulaire courant reste ici, lisible, et cette case
-              // dit qu elle ne revient pas en saisie.
-              in_current_form: (f.templateVersionIds ?? []).includes(revisions.activeRevision) ? 'true' : 'false',
-              introduced_in_revision: label ? String(label.versionNumber) : '',
-              introduced_at: label?.at ?? '',
-              encounter_types: (f.encounterTypes ?? []).join('; '),
-              state_column: '',
-            };
-          })()
-          : {}),
-        ...(isAnalysis ? {} : {
-          field_key: f.fieldKey,
-          scope: f.scope,
-          is_multiple: f.isMultiple ? 'true' : 'false',
-          template_versions: (f.templateVersionIds ?? []).join('; '),
-        }),
-        // Les colonnes derivees (code, nombre, indicatrices) ne sont pas calculees par une
-        // formule d'utilisateur : la case reste vide chez elles.
-        formula: '',
-      };
-      const valueRow = {
-        column_id: columnId(f),
-        label: f.label,
-        type: f.type,
-        ...common,
-        formula: formulaLabel(f),
-        // Seule la colonne de VALEUR porte un etat : les colonnes derivees se lisent avec elle.
-        ...(revisions ? { state_column: revisions.stateColumns.has(columnId(f)) ? stateColumnId(f) : '' } : {}),
-      };
-      const derivedRows: Record<string, unknown>[] = [];
-      if (isMultivalueField(f)) {
-        // L47/L49 : en Analyse, le multiselect n'a NI colonne `option_code` NI colonne `nb` :
-        // seule l'indicatrice existe, et c'est elle seule que le dictionnaire documente ici.
-        const hasCountColumn = !(isAnalysis && f.type === 'multiselect');
-        if (hasCountColumn) {
-          derivedRows.push({
-            ...common,
-            column_id: nbColumnId(f),
-            label: `${f.label} — nombre`,
-            type: 'computed_count',
-            formula: '',
-          });
-        }
+  /**
+   * L70 : le dictionnaire ENONCE la regle, il ne laisse pas le lecteur la deviner. Sans cette
+   * ligne, `nb__lesions` passerait pour une variable saisie, et surtout rien ne dirait que les
+   * variables du bloc sont absentes de ce fichier PARCE QU'elles ne s'agregent pas — un
+   * lecteur conclurait qu'elles n'ont pas ete renseignees.
+   */
+  const countRows = (options?.repeatableCountBlocks ?? []).map((block) => ({
+    column_id: groupCountColumnId(block.key),
+    label: `${block.label} — nombre d'occurrences`,
+    description: `Nombre d'occurrences du bloc répétable « ${block.label} » pour ce patient. ` +
+      `0 signifie aucune occurrence, jamais une information manquante. Les variables de ce bloc ` +
+      `appartiennent à chaque occurrence et ne figurent pas dans ce fichier : elles ne s'agrègent ` +
+      `pas sur une ligne par patient. Une ligne par occurrence les restitue toutes, ` +
+      `distinguées par la colonne group_section_key.`,
+    section: block.key,
+    section_label: block.label,
+    type: 'computed_group_count',
+    unit: '',
+    formula: '',
+    allowed_values: '',
+    missing_reasons: '',
+    ...(blockColumns ? { block: block.key, block_label: block.label } : {}),
+    ...(commonGroupColumns ? { common_group: '', common_group_label: '' } : {}),
+    ...(revisions
+      ? { in_current_form: '', introduced_in_revision: '', introduced_at: '', encounter_types: '', state_column: '' }
+      : {}),
+    ...(isAnalysis ? {} : {
+      // Un denombrement n'est pas une variable du gabarit : il n'a ni cle de champ ni version.
+      // La portee dit ou la colonne SE LIT — la ligne patient — pas ou vivent les occurrences.
+      field_key: '',
+      scope: 'patient',
+      is_multiple: 'false',
+      template_versions: '',
+    }),
+  }));
+  const fieldRows: Record<string, unknown>[] = mergeExportFields(fields).flatMap((f) => {
+    const optionsList = isOptionList(f) ? optionsOf(f) : [];
+    const common = {
+      description: f.description ?? '',
+      // L54 : une variable du TRONC COMMUN n'a pas de section ; la case reste vide, jamais
+      // le mot `null`, qui se lirait comme un code de section.
+      section: f.section ?? '',
+      section_label: f.sectionLabel ?? '',
+      ...(blockColumns ? { block: f.blockKey ?? '', block_label: f.blockLabel ?? '' } : {}),
+      // UX-16 : la case reste vide pour une variable de bloc. Une rubrique commune ne
+      // remplit jamais `section` ni `block` : elle dit ou la variable est MONTREE, pas a
+      // quel regroupement clinique elle appartient.
+      ...(commonGroupColumns
+        ? { common_group: f.commonGroup ?? '', common_group_label: f.commonGroupLabel ?? '' }
+        : {}),
+      unit: f.unit ?? '',
+      allowed_values: isOptionList(f)
+        ? optionsList.map((o) => (o.isActive ? o.label : `${o.label} (inactif)`)).join('; ')
+        : Array.isArray(f.allowedValues)
+        ? f.allowedValues.join('; ')
+        : '',
+      missing_reasons: (f.missingReasons ?? []).join('; '),
+      // E6 : les colonnes de revision decrivent LA VARIABLE ; elles se repetent donc sur ses
+      // colonnes derivees (code, nombre, indicatrices), qui parlent de la meme variable.
+      ...(revisions
+        ? (() => {
+          const introduced = introducedRevision(f, revisions);
+          const label = introduced ? revisions.labels[introduced] : undefined;
+          return {
+            // Une variable RETIREE du formulaire courant reste ici, lisible, et cette case
+            // dit qu elle ne revient pas en saisie.
+            in_current_form: (f.templateVersionIds ?? []).includes(revisions.activeRevision) ? 'true' : 'false',
+            introduced_in_revision: label ? String(label.versionNumber) : '',
+            introduced_at: label?.at ?? '',
+            encounter_types: (f.encounterTypes ?? []).join('; '),
+            state_column: '',
+          };
+        })()
+        : {}),
+      ...(isAnalysis ? {} : {
+        field_key: f.fieldKey,
+        scope: f.scope,
+        is_multiple: f.isMultiple ? 'true' : 'false',
+        template_versions: (f.templateVersionIds ?? []).join('; '),
+      }),
+      // Les colonnes derivees (code, nombre, indicatrices) ne sont pas calculees par une
+      // formule d'utilisateur : la case reste vide chez elles.
+      formula: '',
+    };
+    const valueRow = {
+      column_id: columnId(f),
+      label: f.label,
+      type: f.type,
+      ...common,
+      formula: formulaLabel(f),
+      // Seule la colonne de VALEUR porte un etat : les colonnes derivees se lisent avec elle.
+      ...(revisions ? { state_column: revisions.stateColumns.has(columnId(f)) ? stateColumnId(f) : '' } : {}),
+    };
+    const derivedRows: Record<string, unknown>[] = [];
+    if (isMultivalueField(f)) {
+      // L47/L49 : en Analyse, le multiselect n'a NI colonne `option_code` NI colonne `nb` :
+      // seule l'indicatrice existe, et c'est elle seule que le dictionnaire documente ici.
+      const hasCountColumn = !(isAnalysis && f.type === 'multiselect');
+      if (hasCountColumn) {
+        derivedRows.push({
+          ...common,
+          column_id: nbColumnId(f),
+          label: `${f.label} — nombre`,
+          type: 'computed_count',
+          formula: '',
+        });
+      }
 
-        const indicators = options?.indicatorsByField?.get(f.fieldKey) ?? [];
-        for (const ind of indicators) {
-          derivedRows.push({
-            ...common,
-            column_id: ind.columnId,
-            label: `${f.label} — ${ind.label}`,
-            type: 'computed_indicator',
-            allowed_values: ind.code,
-          });
-        }
-        if (options?.omittedFieldKeys?.has(f.fieldKey)) {
-          derivedRows.push({
-            ...common,
-            column_id: `has__${columnId(f)}`,
-            label: `${f.label} — indicateurs (>100 codes, voir feuille dédiée)`,
-            type: 'computed_indicator_omitted',
-          });
-        }
+      const indicators = options?.indicatorsByField?.get(f.fieldKey) ?? [];
+      for (const ind of indicators) {
+        derivedRows.push({
+          ...common,
+          column_id: ind.columnId,
+          label: `${f.label} — ${ind.label}`,
+          type: 'computed_indicator',
+          allowed_values: ind.code,
+        });
       }
-      if (isOptionList(f)) {
-        return [
-          valueRow,
-          // L49 : en `analysis`, la colonne principale du select/multiselect porte deja le
-          // code stable et le libelle vit dans `Modalités` — pas de colonne `option_code__`.
-          ...(isAnalysis ? [] : [{
-            ...common,
-            column_id: optionCodeColumnId(f),
-            label: `${f.label} — code`,
-            type: `${f.type}_code`,
-            allowed_values: optionsList.map((o) => o.key).join('; '),
-          }]),
-          ...derivedRows,
-        ];
+      if (options?.omittedFieldKeys?.has(f.fieldKey)) {
+        derivedRows.push({
+          ...common,
+          column_id: `has__${columnId(f)}`,
+          label: `${f.label} — indicateurs (>100 codes, voir feuille dédiée)`,
+          type: 'computed_indicator_omitted',
+        });
       }
-      if (f.type !== 'terminology') return [valueRow];
+    }
+    if (isOptionList(f)) {
       return [
         valueRow,
-        {
+        // L49 : en `analysis`, la colonne principale du select/multiselect porte deja le
+        // code stable et le libelle vit dans `Modalités` — pas de colonne `option_code__`.
+        ...(isAnalysis ? [] : [{
           ...common,
-          column_id: codeColumnId(f),
+          column_id: optionCodeColumnId(f),
           label: `${f.label} — code`,
-          type: 'terminology_code',
-          allowed_values: '',
-        },
+          type: `${f.type}_code`,
+          allowed_values: optionsList.map((o) => o.key).join('; '),
+        }]),
         ...derivedRows,
       ];
-    }),
-  };
+    }
+    if (f.type !== 'terminology') return [valueRow];
+    return [
+      valueRow,
+      {
+        ...common,
+        column_id: codeColumnId(f),
+        label: `${f.label} — code`,
+        type: 'terminology_code',
+        allowed_values: '',
+      },
+      ...derivedRows,
+    ];
+  });
+  // Les lignes de comptage ferment le dictionnaire : elles ne decrivent pas une variable du
+  // gabarit et ne doivent pas s'intercaler dans l'ordre du formulaire.
+  return { columns, rows: [...fieldRows, ...countRows] };
 }
 
 export interface MetadataInput {
