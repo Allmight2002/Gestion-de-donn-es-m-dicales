@@ -15,10 +15,14 @@ const loaded = new Map<Language, MessageDictionary>();
 const pending = new Map<Language, Promise<MessageDictionary>>();
 
 export function initialLanguage(): Language {
-  if (typeof localStorage !== 'undefined') {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && (LANGUAGES as readonly string[]).includes(stored)) return stored as Language;
-  }
+  // Lecture faite PENDANT le rendu (initialiseur de useState) : un stockage refuse
+  // (navigation privee, politique) ne doit pas faire echouer le montage de l'application.
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored && (LANGUAGES as readonly string[]).includes(stored)) return stored as Language;
+    }
+  } catch { /* stockage indisponible : langue par defaut */ }
   return 'fr';
 }
 
@@ -46,5 +50,9 @@ export function loadMessages(language: Language): Promise<MessageDictionary> {
 }
 
 export function storeLanguage(language: Language): void {
-  if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, language);
+  // Appelee depuis un effet a CHAQUE montage : un stockage refuse (navigation privee,
+  // quota) ferait echouer toute l'application, pas seulement la preference de langue.
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, language);
+  } catch { /* stockage indisponible : la langue vaut pour la session courante */ }
 }
