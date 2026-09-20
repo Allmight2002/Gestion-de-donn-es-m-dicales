@@ -122,11 +122,11 @@ describe('PatientDetail hors-ligne', () => {
     await offlineCache.remove('b-old-cache');
   });
 
-  test('une rencontre groupée récente reste sans valeurs en lecture hors-ligne', async () => {
+  test('L71 : une occurrence affiche les valeurs de SON groupe en lecture hors-ligne', async () => {
     await offlineCache.save(buildSnapshot(
       { id: 'b-grouped-cache', name: 'Cache groupé', templateVersionId: 'v1' },
       [{ id: 'p-grouped-cache', code: 'P-GROUP', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
-      { 'p-grouped-cache': [{ id: 'e-grouped-cache', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 88, group_marker: 'GROUP-VALUE' }, groupSectionKey: 'group_a' }] },
+      { 'p-grouped-cache': [{ id: 'e-grouped-cache', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { glasgow_score: 88, group_marker: 'GROUP-VALUE' }, groupSectionKey: 'group_a', templateVersionId: 'v1' }] },
       offlineFields,
       Date.now(),
       { v1: offlineFields },
@@ -135,10 +135,31 @@ describe('PatientDetail hors-ligne', () => {
       { v1: offlineSections },
     ));
     renderAt('/bases/b-grouped-cache/patients/p-grouped-cache', <PatientDetail />, '/bases/:id/patients/:patientId');
-    expect(await screen.findByText(/Les valeurs des occurrences répétables ne sont pas disponibles hors ligne/)).toBeInTheDocument();
+    expect(await screen.findByText('GROUP-VALUE')).toBeInTheDocument();
+    expect(screen.queryByText(/ne sont pas disponibles hors ligne/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).not.toBeInTheDocument();
+    // §5 : une variable du bloc ordinaire ne s'applique pas à une occurrence.
     expect(screen.queryByText('88')).not.toBeInTheDocument();
-    expect(screen.queryByText('GROUP-VALUE')).not.toBeInTheDocument();
     await offlineCache.remove('b-grouped-cache');
+  });
+
+  test('une occurrence dont la copie ne prouve pas la portée reste sans valeurs', async () => {
+    await offlineCache.save(buildSnapshot(
+      { id: 'b-grouped-unknown', name: 'Cache groupé sans version', templateVersionId: 'v1' },
+      [{ id: 'p-grouped-unknown', code: 'P-GROUP-UNK', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
+      // Sans templateVersionId sur la rencontre, rien ne dit quel dictionnaire classe ses valeurs.
+      { 'p-grouped-unknown': [{ id: 'e-grouped-unknown', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { group_marker: 'UNKNOWN-SENTINEL' }, groupSectionKey: 'group_a' }] },
+      offlineFields,
+      Date.now(),
+      { v1: offlineFields },
+      {},
+      offlineSections,
+      { v1: offlineSections },
+    ));
+    renderAt('/bases/b-grouped-unknown/patients/p-grouped-unknown', <PatientDetail />, '/bases/:id/patients/:patientId');
+    expect(await screen.findByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
+    expect(screen.queryByText('UNKNOWN-SENTINEL')).not.toBeInTheDocument();
+    await offlineCache.remove('b-grouped-unknown');
   });
 });
 
@@ -236,7 +257,7 @@ describe('EditEncounter hors-ligne (Phase 2)', () => {
     await outbox.remove(entry.id);
   });
 
-  test('bloque une rencontre groupée avant d afficher ses valeurs ou le formulaire', async () => {
+  test('L71 : une occurrence se corrige hors-ligne, avec les champs de SON groupe', async () => {
     await offlineCache.save(buildSnapshot(
       { id: 'b-group-edit', name: 'Cache groupé', templateVersionId: 'v1' },
       [{ id: 'p-group-edit', code: 'P-GROUP', templateVersionId: 'v1', data: {}, validationStatus: 'curated' }],
@@ -249,10 +270,17 @@ describe('EditEncounter hors-ligne (Phase 2)', () => {
       { v1: offlineSections },
     ));
     renderAt('/bases/b-group-edit/patients/p-group-edit/encounters/e-group-edit/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Reconnectez-vous pour la modifier en ligne');
+    expect(await screen.findByLabelText('Valeur de groupe')).toHaveValue('GROUP-SENTINEL');
+    // §5 : le bloc ordinaire n'appartient pas à la portée de cette ligne.
     expect(screen.queryByLabelText('Glasgow')).not.toBeInTheDocument();
-    expect(screen.queryByText('GROUP-SENTINEL')).not.toBeInTheDocument();
-    expect(await outbox.count('b-group-edit')).toBe(0);
+
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'corr occurrence' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(async () => expect(await outbox.count('b-group-edit')).toBe(1));
+    const queued = (await outbox.list('b-group-edit'))[0];
+    expect(queued.groupSectionKey).toBe('group_a');
+    expect(queued.data).toEqual({ group_marker: 'GROUP-SENTINEL' });
+    await outbox.remove(queued.id);
     await offlineCache.remove('b-group-edit');
   });
 

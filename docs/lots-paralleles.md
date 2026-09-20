@@ -231,7 +231,7 @@ analytique explicite la justifie.
 | **L68** | Groupes répétables : le groupe en tableau dans une fiche existante | `RepeatableGroup.tsx` (nouveau), `SectionedFields.tsx`, `PatientDetail.tsx`, `EditPatient.tsx`, i18n | **après L67** ; jamais avec un autre lot ouvrant la fiche patient. **Jalon utilisable du chantier** |
 | **L69** | Groupes répétables : création de patient, occurrences tamponnées et rejeu ordonné | `NewPatient.tsx`, `patients.ts`, tests web | **après L68** ; **jamais avec L41 ni L42** (même `useCallback` de `NewPatient.tsx`) |
 | **L70** | Groupes répétables : export, métadonnée de groupe et colonnes de comptage | `exportContract.ts`, Edge `generate-export`, `ExportPanel.tsx` | **après L66** ; jamais avec L50 (différé) ni L53 |
-| **L71** | Groupes répétables : instantané et rejeu hors-ligne | `offlineIntake.ts`, RPC d’instantané et `replay_encounter_create` | **après L66** ; jamais avec O6 ni O7 |
+| ~~L71~~ | ~~Groupes répétables : instantané et rejeu hors-ligne~~ | **Implémenté localement, non déployé** ; migration `20260920090000_repeatable_groups_offline_replay.sql`, preuves ci-dessous | Lève la restriction hors-ligne posée par L68 ; O6/O7 restent ouverts |
 | **E0** | Évolution du formulaire : contrats, compatibilité et classification des changements | `docs/spec-evolution-formulaire.md`, contrats de version, données et export | **contrat documenté le 2026-09-16 ; avant E1** ; aucune migration ni implémentation |
 | **E1** | Évolution du formulaire : préparations persistantes, droits et audit | migration additive, RPC/repository de préparation, RLS/ACL, tests DB | **après E0** ; propriétaire unique des contrats serveur |
 | **E2** | Évolution du formulaire : application atomique dans la même base | migration/RPC d’application, copie des sections/champs/règles, idempotence | **après E1** ; jamais avec une autre copie de version |
@@ -1175,7 +1175,7 @@ L54 ; L59 touche `TemplateVersionEditor.tsx`, l’un des fichiers de **L41**.
 
 ## Groupes répétables — L66 à L71
 
-**Spécifiés le 2026-09-12, aucun implémenté.** [Contrat détaillé](spec-groupes-repetables.md).
+**Spécifiés le 2026-09-12 ; état par lot ci-dessous.** [Contrat détaillé](spec-groupes-repetables.md).
 Ces six lots répondent à un besoin relevé sur le terrain — plusieurs interventions, plusieurs
 lésions vertébrales à grader, plusieurs hématomes à caractériser — que la variable multivaluée
 ne couvre pas : **deux attributs propres ou plus par occurrence**.
@@ -1232,6 +1232,54 @@ et vitest marque la suite `FAIL` bien que tous les tests passent. Le défaut est
 n'a eu lieu. Le comportement sous Supabase (PostgREST, rechargement de schéma, RLS réelle) reste
 à constater. Le choix `longitudinal` ou `event_registry` de la base, préalable non logiciel,
 reste à décider avant la première fiche.
+
+### L71 — état au 2026-09-20 : implémenté localement, non déployé
+
+Migration `20260920090000_repeatable_groups_offline_replay.sql`, additive, aucune migration déjà
+appliquée modifiée, aucune donnée clinique réécrite. Deux changements serveur seulement :
+
+- `replay_encounter_create` gagne `p_group_section_key` en dernière position, comme
+  `create_encounter` (L66). L'empreinte d'idempotence reste **recalculée côté serveur** à partir
+  des seuls paramètres reçus ; la clé n'entre dans la charge canonique que lorsqu'elle existe,
+  donc un accusé émis avant ce lot garde son empreinte et reste rejouable. La date reste
+  obligatoire hors groupe et facultative dans une occurrence (§4.3).
+- `replay_encounter_update` ne refuse plus une occurrence : la fusion de conflits la traite comme
+  une rencontre, motif inchangé. C'était la restriction hors-ligne posée tant que L71 n'était pas
+  livré ; elle tombe aussi côté écrans — lecture du tableau d'occurrences dans la fiche, correction
+  et résolution de conflit. Ce qui reste bloqué est **seulement** une copie locale antérieure au
+  marqueur de groupe, dont rien ne prouve la portée.
+
+L'instantané transportait déjà `isRepeatable` par section et `group_section_key` par rencontre
+(`download_base_snapshot`) : ce lot le **vérifie** au lieu de le réécrire. L'ordre de rejeu
+patient → rencontres est inchangé, conformément au §10.3.
+
+**Vérifié localement**, sur PostgreSQL embarqué, jsdom et données fictives :
+
+- `test/repeatable-groups-offline.test.ts` — **12 tests passés** : instantané, trois occurrences
+  rejouées dans l'ordre sans doublon et idempotentes, empreinte liée au groupe, rejouabilité d'un
+  accusé antérieur au lot, date nulle acceptée avec groupe et refusée sans, bloc non répétable et
+  compte sans accès refusés **sans accusé résiduel**, conflit sur une occurrence sans écriture
+  partielle puis reprise avec motif journalisé, occurrences voisines indépendantes, privilèges.
+- `test/form-compatible-records.test.ts`, `test/offline-intake-rpc.test.ts` et
+  `test/security-definer-acl.test.ts` — **44 tests passés**. L'appel à huit arguments reste
+  valide ; l'accès et la portée restent refusés avant toute écriture et tout accusé.
+- `test/offline.test.ts` et `test/offline-intake.test.ts` — **58 tests passés**, dont trois
+  occurrences de groupe qui partent après le patient, dans l'ordre de la file, sans second envoi.
+- `OfflineRead.test.tsx`, `SyncCenter.test.tsx`, `RepeatableGroup.test.tsx`,
+  `PatientRepeatableGroups.test.tsx`, `NewPatientRepeatableGroups.test.tsx`,
+  `patients.repeatable.test.tsx`, `offline.test.tsx` — **52 tests passés**.
+- `npm run schema` puis `npm run schema:check` : *Snapshot de schéma à jour*. `npm run typecheck`
+  et `eslint` sur les fichiers du lot : sans erreur.
+
+**Périmètre non ouvert.** Le mode hors-ligne reste éteint par défaut et gardé par
+`VITE_OFFLINE_MODE` / `VITE_OFFLINE_ADMIN_ACK` / `VITE_OFFLINE_INTAKE` : aucune garde
+d'activation n'a été touchée, **O6 et O7 restent ouverts**. Rien de nouveau n'est stocké
+localement : la clé de section et le drapeau `is_repeatable` sont des métadonnées de gabarit,
+et une occurrence ne conserve désormais que les valeurs de sa propre portée — strictement moins
+qu'avant.
+
+**Non vérifié sur la cible.** Aucune migration appliquée à distance, aucun déploiement, aucune
+preuve navigateur (PWA installée, coupure réseau franche, rejeu à la reconnexion).
 
 ## Ordre suggéré — état de source au 2026-09-16
 

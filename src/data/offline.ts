@@ -108,7 +108,7 @@ export interface OfflineSnapshot {
   key?: string;
 }
 
-/** Clé d'erreur stable pour une correction hors-ligne groupée ou dont le groupe est inconnu. */
+/** Clé d'erreur stable : le cache ne prouve pas à quelle portée appartient la rencontre. */
 export const OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE = 'OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE';
 
 /** Données JSON brutes de l'RPC : le cache TS utilise ensuite `groupSectionKey`. */
@@ -176,11 +176,14 @@ export function fieldsForOfflineVersion(snap: OfflineSnapshot, versionId: string
   return null;
 }
 
-/** Champs de rencontre appartenant à un groupe répétable de cette version. */
-export function repeatableEncounterFieldKeys(
-  fields: readonly { fieldKey: string; scope: string; section?: string | null; parentSectionKey?: string | null }[],
+/** Champ de rencontre tel que l'instantané le décrit (dictionnaire complet ou minimal). */
+type OfflineFieldScope = { fieldKey: string; scope: string; section?: string | null; parentSectionKey?: string | null };
+
+/** Bloc répétable RACINE de chaque champ de rencontre qui en dépend ; clé absente = hors groupe. */
+function repeatableRootByFieldKey(
+  fields: readonly OfflineFieldScope[],
   sections: readonly TemplateSection[],
-): Set<string> {
+): Map<string, string> {
   const byKey = new Map(sections.map((section) => [section.sectionKey, section]));
   const repeatableRootFor = (sectionKey: string | null | undefined): string | null => {
     let current = typeof sectionKey === 'string' ? byKey.get(sectionKey) : undefined;
@@ -190,9 +193,32 @@ export function repeatableEncounterFieldKeys(
     }
     return null;
   };
+  const roots = new Map<string, string>();
+  for (const field of fields) {
+    if (field.scope !== 'encounter') continue;
+    const root = repeatableRootFor(field.section) ?? repeatableRootFor(field.parentSectionKey);
+    if (root !== null) roots.set(field.fieldKey, root);
+  }
+  return roots;
+}
+
+/** Champs de rencontre appartenant à un groupe répétable de cette version. */
+export function repeatableEncounterFieldKeys(
+  fields: readonly OfflineFieldScope[],
+  sections: readonly TemplateSection[],
+): Set<string> {
+  return new Set(repeatableRootByFieldKey(fields, sections).keys());
+}
+
+/** §5 : champs qu'une rencontre peut porter — ceux de SON groupe, ou ceux d'aucun groupe. */
+export function encounterScopeFieldKeys(
+  fields: readonly OfflineFieldScope[],
+  sections: readonly TemplateSection[],
+  groupSectionKey: string | null,
+): Set<string> {
+  const roots = repeatableRootByFieldKey(fields, sections);
   return new Set(fields
-    .filter((field) => field.scope === 'encounter'
-      && (repeatableRootFor(field.section) !== null || repeatableRootFor(field.parentSectionKey) !== null))
+    .filter((field) => field.scope === 'encounter' && (roots.get(field.fieldKey) ?? null) === groupSectionKey)
     .map((field) => field.fieldKey));
 }
 
@@ -218,30 +244,21 @@ export function offlineEncounterFieldScopesKnown(
   });
 }
 
-/** Supprime les valeurs des autres groupes; une rencontre ordinaire garde zéro valeur de groupe. */
-export function withoutOtherRepeatableEncounterValues(
+/** §5 : ne garde que les valeurs applicables à CETTE rencontre — celles de son groupe pour une
+ * occurrence, celles d'aucun groupe pour une rencontre ordinaire. Une clé absente du dictionnaire
+ * est conservée telle quelle : le serveur reste seul juge des clés qu'il ne connaît pas. */
+export function withinEncounterGroupScope(
   data: Record<string, unknown>,
-  fields: readonly { fieldKey: string; scope: string; section?: string | null; parentSectionKey?: string | null }[],
+  fields: readonly OfflineFieldScope[],
   sections: readonly TemplateSection[],
-  groupSectionKey: string | null | undefined,
+  groupSectionKey: string | null,
 ): Record<string, unknown> {
-  const byKey = new Map(sections.map((section) => [section.sectionKey, section]));
-  const repeatableRootFor = (sectionKey: string | null | undefined): string | null => {
-    let current = typeof sectionKey === 'string' ? byKey.get(sectionKey) : undefined;
-    while (current) {
-      if (current.isRepeatable === true) return current.sectionKey;
-      current = current.parentSectionKey ? byKey.get(current.parentSectionKey) : undefined;
-    }
-    return null;
-  };
-  const groupByFieldKey = new Map(fields
-    .filter((field) => field.scope === 'encounter'
-      && (repeatableRootFor(field.section) !== null || repeatableRootFor(field.parentSectionKey) !== null))
-    .map((field) => [field.fieldKey, repeatableRootFor(field.section) ?? repeatableRootFor(field.parentSectionKey)!]));
+  const roots = repeatableRootByFieldKey(fields, sections);
+  const known = new Set(fields.filter((field) => field.scope === 'encounter').map((field) => field.fieldKey));
   return Object.fromEntries(Object.entries(data).filter(([key]) => {
-    const sectionKey = groupByFieldKey.get(key);
-    if (sectionKey === undefined) return true;
-    return typeof groupSectionKey === 'string' && sectionKey === groupSectionKey;
+    const root = roots.get(key);
+    if (root !== undefined) return root === groupSectionKey;
+    return groupSectionKey === null || !known.has(key);
   }));
 }
 
@@ -363,7 +380,7 @@ export function buildSnapshot(
           const sectionsForVersion = versionSections(versionId);
           const fieldsForVersion = versionFields(versionId);
           return sectionsForVersion && fieldsForVersion && offlineEncounterFieldScopesKnown(fieldsForVersion, sectionsForVersion)
-            ? withoutOtherRepeatableEncounterValues(e.data, fieldsForVersion, sectionsForVersion, e.groupSectionKey)
+            ? withinEncounterGroupScope(e.data, fieldsForVersion, sectionsForVersion, e.groupSectionKey ?? null)
             : e.data;
         })(),
         updatedAt: e.updatedAt ?? null, templateVersionId: e.templateVersionId,
@@ -534,7 +551,7 @@ export interface OutboxEntry {
   reason: string;                    // motif de correction (requis)
   validationStatus: string;          // statut cible de la rencontre
   baseUpdatedAt: string | null;      // jeton optimiste = version vue hors-ligne
-  /** Preuve de snapshot: null pour une occurrence ordinaire; absent = ancienne entrée inconnue. */
+  /** Preuve de snapshot : null pour une rencontre ordinaire ; absent = ancienne entrée inconnue. */
   groupSectionKey?: string | null;
   createdAt: number;
   expiresAt: number;
@@ -575,10 +592,13 @@ export interface PatientCreatePayload {
 /** Charge d'une creation rencontre, DEPENDANTE d'un patient (local ou serveur). */
 export interface EncounterCreatePayload {
   encounterType: string;
-  encounterDate: string;
+  /** Null dans une occurrence de groupe seulement : une vraie rencontre reste datee (§4.3). */
+  encounterDate: string | null;
   validationStatus: string;
   ageUnit: string;
   data: Record<string, unknown>;
+  /** L71 : bloc repetable de l'occurrence ; absent ou null pour une rencontre ordinaire. */
+  groupSectionKey?: string | null;
 }
 
 interface IntakeEntryBase {
@@ -678,11 +698,13 @@ export async function enqueueEncounterUpdate(input: {
   const encounter = snapshot?.patients.flatMap((patient) => patient.encounters).find((row) => row.id === input.encounterId);
   const sections = snapshot && encounter ? sectionsForOfflineVersion(snapshot, encounter.templateVersionId) : null;
   const fields = snapshot && encounter ? fieldsForOfflineVersion(snapshot, encounter.templateVersionId) : null;
-  if (!encounter || encounter.groupSectionKey !== null || sections === null || fields === null
+  // Seule une portee PROUVEE autorise la file : un cache anterieur au marqueur ne dit pas si
+  // la ligne est une occurrence, et une correction posee a l'aveugle serait irrecuperable.
+  if (!encounter || encounter.groupSectionKey === undefined || sections === null || fields === null
     || !offlineEncounterFieldScopesKnown(fields, sections)) {
     throw new Error(OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE);
   }
-  const safeData = withoutOtherRepeatableEncounterValues(input.data, fields, sections, null);
+  const safeData = withinEncounterGroupScope(input.data, fields, sections, encounter.groupSectionKey);
   const createdAt = Date.now();
   const entry: OutboxEntry = {
     id: newId(), dataType: 'analytic_outbox', createdAt, expiresAt: createdAt + OUTBOX_TTL_MS,
@@ -734,16 +756,10 @@ function syncErrorText(error: unknown): string {
   return values.join(' ');
 }
 
-function isRepeatableGroupScopeError(error: unknown): boolean {
-  const text = syncErrorText(error);
-  return /FORM_SCOPE_INCOMPATIBLE/i.test(text) && /repeatable_group/i.test(text);
-}
-
-/** True when an outbox entry lacks a safe ordinary-encounter marker or was rejected as grouped. */
+/** True quand l'entree ne prouve pas sa portee : ancienne entree, sans marqueur de groupe. */
 export function outboxEntryRequiresOnline(entry: Pick<OutboxEntry, 'groupSectionKey' | 'lastError'>): boolean {
-  return entry.groupSectionKey !== null
-    || entry.lastError === OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE
-    || isRepeatableGroupScopeError(entry.lastError);
+  return entry.groupSectionKey === undefined
+    || entry.lastError === OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE;
 }
 
 const activeSyncIds = new Set<string>();
@@ -807,7 +823,7 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
       await patchCachedEncounter(e.baseId, e.encounterId, (c) => ({ ...c, pending: false, updatedAt: fresh?.updatedAt ?? c.updatedAt }));
       rep.synced++;
     } catch (err) {
-      const m = isRepeatableGroupScopeError(err) ? OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE : syncErrorText(err);
+      const m = syncErrorText(err);
       const kind = classifySyncError(err);
       if (kind === 'conflict') {
         const server = await deps.getEncounter(e.encounterId).catch(() => null);
