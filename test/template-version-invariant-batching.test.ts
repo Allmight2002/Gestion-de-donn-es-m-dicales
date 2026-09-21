@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { startTestDb, type TestDb } from './harness/db.js';
 
 const MIGRATION_FILE = '20260920192000_batch_template_version_invariants.sql';
+const RULE_BATCH_MIGRATION_FILE = '20260921213429_rule_batch_single_insert.sql';
 const LARGE_FIELD_COUNT = 265;
 const LARGE_RULE_COUNT = 53;
 
@@ -13,7 +14,7 @@ type FieldSeed = {
   field_key: string;
   label: string;
   scope: 'patient' | 'encounter';
-  section: 'clinique' | 'biologie' | 'paraclinique';
+  section: string;
   type: 'text';
   display_order: number;
 };
@@ -28,6 +29,7 @@ let db: TestDb;
 let ownerId: string;
 let outsiderId: string;
 let largeVersionId: string;
+let scaleVersionId: string;
 let moveFromVersionId: string;
 let moveToVersionId: string;
 let moveFieldId: string;
@@ -109,6 +111,30 @@ function largeFields(): FieldSeed[] {
 
 function largeRules(): RuleSeed[] {
   return Array.from({ length: LARGE_RULE_COUNT }, (_, i) => visibilityRule(`driver_${i}`, `target_${i}`));
+}
+
+function scaleFieldKey(index: number): string {
+  return index <= 155 ? `scale_node_${index}` : `scale_extra_${index}`;
+}
+
+function scaleFields(): FieldSeed[] {
+  return Array.from({ length: 328 }, (_, index) => {
+    const sectionIndex = index <= 155
+      ? 25 + (index % 26)
+      : (index - 156) % 51;
+    return simpleField(scaleFieldKey(index), index, { section: `scale_section_${sectionIndex}` });
+  });
+}
+
+function scaleRules(): RuleSeed[] {
+  return Array.from({ length: 180 }, (_, index): RuleSeed => ({
+    rule: {
+      if: { field: scaleFieldKey(0), operator: 'equals', value: 'oui' },
+      then: { field: scaleFieldKey(index + 1), operator: 'visible' },
+    },
+    message: 'Regle fictive de test',
+    severity: 'block',
+  }));
 }
 
 async function clearCalls(): Promise<void> {
@@ -194,8 +220,44 @@ beforeAll(async () => {
     [moveFromVersionId, 'moving_field'],
   )).rows[0].id as string;
 
+  // Fixture synthétique de l'échelle signalée : 328 variables, 51 sections,
+  // 180 règles ordinaires sur des champs répartis entre les sections.
+  const scaleTemplateId = await createTemplate('Timeout batching — gabarit fictif 328');
+  scaleVersionId = await createVersion(scaleTemplateId);
+  const sections = Array.from({ length: 51 }, (_, index) => ({
+    section_key: `scale_section_${index}`,
+    label: `Section fictive ${index}`,
+    display_order: index,
+  }));
+  // Cette grosse fixture est chargée avant le remplacement des triggers par instruction.
+  // Les anciens triggers de validation complète sont désactivés pendant le chargement;
+  // la migration puis le validateur final restent les seules preuves de cohérence.
+  await db.admin.query(`
+    alter table public.template_field disable trigger trg_template_version_invariants_field;
+    alter table public.template_section disable trigger trg_template_version_invariants_section;
+    alter table public.validation_rule disable trigger trg_template_version_invariants_rule;
+    alter table public.validation_rule disable trigger trg_vr_structure;`);
+  await db.admin.query(
+    `insert into public.template_section (template_version_id, section_key, label, display_order)
+     select $1, s.section_key, s.label, s.display_order
+       from jsonb_to_recordset($2::jsonb) as s(section_key text, label text, display_order integer)`,
+    [scaleVersionId, JSON.stringify(sections)],
+  );
+  await insertFields(scaleVersionId, scaleFields());
+  await insertRules(scaleVersionId, scaleRules());
+  await db.admin.query(`
+    alter table public.template_field enable trigger trg_template_version_invariants_field;
+    alter table public.template_section enable trigger trg_template_version_invariants_section;
+    alter table public.validation_rule enable trigger trg_template_version_invariants_rule;
+    alter table public.validation_rule enable trigger trg_vr_structure;`);
+
   const migrationSql = readFileSync(new URL(`../supabase/migrations/${MIGRATION_FILE}`, import.meta.url), 'utf8');
   await db.admin.query(migrationSql);
+  const ruleBatchMigrationSql = readFileSync(
+    new URL(`../supabase/migrations/${RULE_BATCH_MIGRATION_FILE}`, import.meta.url),
+    'utf8',
+  );
+  await db.admin.query(ruleBatchMigrationSql);
   await instrumentValidator();
 }, 600_000);
 
@@ -286,6 +348,49 @@ describe('validation des invariants par instruction', () => {
     );
     expect(await callsByVersion()).toEqual({ [moveFromVersionId]: 1, [moveToVersionId]: 1 });
   });
+
+  test('la création de 5 règles reste une seule validation sur 328 variables, 51 sections et 180 règles', async () => {
+    await clearCalls();
+    const initialCounts = (await db.admin.query(`
+      select
+        (select count(*)::integer from public.template_field where template_version_id = $1) as fields,
+        (select count(*)::integer from public.template_section where template_version_id = $1) as sections,
+        (select count(*)::integer from public.validation_rule where template_version_id = $1) as rules`,
+    [scaleVersionId])).rows[0];
+    expect(initialCounts).toEqual({ fields: 328, sections: 51, rules: 180 });
+
+    const targets = Array.from({ length: 5 }, (_, index) => `scale_extra_${300 + index}`);
+    const payload = JSON.stringify({
+      condition: { field: scaleFieldKey(0), operator: 'equals', value: 'oui' },
+      effect: 'visible',
+      targets,
+    });
+    const plannedQuery = await db.asUser(ownerId, async (client) => (
+      client.query('select public.preview_rule_batch($1, $2::jsonb) as result', [scaleVersionId, payload])
+    ));
+    const planned = plannedQuery.rows[0].result as {
+      fingerprint: string;
+      create: Array<{ target: string }>;
+      invalid: unknown[];
+    };
+    expect(planned.create.map((item) => item.target)).toEqual(targets);
+    expect(planned.invalid).toEqual([]);
+
+    const started = performance.now();
+    const receipt = await db.asUser(ownerId, async (client) => {
+      await client.query("set local statement_timeout = '8s'");
+      return (await client.query(
+        'select public.create_rule_batch($1, $2, $3::jsonb, $4) as result',
+        [scaleVersionId, '40000000-0000-0000-0000-000000000001', payload, planned.fingerprint],
+      )).rows[0].result;
+    });
+    const elapsedMs = performance.now() - started;
+
+    expect(receipt.created).toHaveLength(5);
+    expect(receipt.created.map((item: { target: string }) => item.target)).toEqual(targets);
+    expect(elapsedMs).toBeLessThan(8_000);
+    expect(await callsByVersion()).toEqual({ [scaleVersionId]: 1 });
+  }, 30_000);
 
   test('un lot de règles invalide est entièrement annulé', async () => {
     const templateId = await createTemplate('Timeout batching — rollback fictif');

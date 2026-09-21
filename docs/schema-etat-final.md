@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260920192000_batch_template_version_invariants.sql`
+- Dernière migration incluse : `20260921213429_rule_batch_single_insert.sql`
 - Tables : 57 · Policies RLS : 64 · Triggers : 92 · Fonctions : 392
 
 ## Tables (colonnes, RLS, policies, triggers)
