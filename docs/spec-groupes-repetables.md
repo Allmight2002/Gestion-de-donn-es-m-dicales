@@ -497,6 +497,11 @@ gel des versions publiées.
 ## 12. Hors périmètre
 
 - Sous-sections à l'intérieur d'un bloc répétable.
+- Un bloc répétable **enfant** d'un bloc, en revanche, n'est pas tranché ici : ce silence a rendu
+  le cas invisible jusqu'au 2026-09-20. Il est cadré à part, et la grande correction a été retenue
+  le 2026-09-22 — voir [l72-groupe-repetable-sous-section.md](l72-groupe-repetable-sous-section.md).
+  La visibilité conditionnelle d'un groupe y passe par l'**héritage** de son bloc racine, jamais
+  par une règle qui le ciblerait : le point ci-dessous reste donc hors périmètre.
 - Règle de visibilité ciblant un bloc répétable (§6.5).
 - `required` au niveau du groupe (« au moins une occurrence »).
 - Enregistrement transactionnel unique de la fiche et de ses occurrences.

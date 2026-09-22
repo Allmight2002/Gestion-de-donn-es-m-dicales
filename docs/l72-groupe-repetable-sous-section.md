@@ -1,6 +1,6 @@
 # L72 — Groupe répétable en sous-section
 
-- Statut : 📋 **cadré le 20 septembre 2026, non implémenté**
+- Statut : 📋 **cadré le 20 septembre 2026, arbitré le 22, non implémenté**
 - Prérequis : **L66 à L71 fusionnés** — L71 par la PR #326, présente sur `origin/develop`
 - Surface serveur visée : `template_section` (contrainte), `guard_template_section_write`,
   `template_section_field_keys`, `assert_rule_structure`, `create_encounter`,
@@ -14,6 +14,18 @@ ce cas : il exclut les sous-sections **à l'intérieur** d'un bloc répétable, 
 répétable **enfant** d'un bloc. Le §4.1 pose la contrainte racine sans la motiver.
 
 ---
+
+> **Arbitrage du porteur du besoin, 22 septembre 2026.** La **grande correction** est retenue :
+> le groupe devient une sous-section et hérite du rang **et** de la visibilité de son bloc. La voie
+> courte du §3 option 1 — autoriser une règle à cibler un groupe resté racine — est écartée, bien
+> qu’elle règle le défaut le plus douloureux pour un coût moindre.
+>
+> **Ce que cet arbitrage corrige dans la hiérarchie des besoins du §1 :** l’ordre de lecture y est
+> présenté en premier, mais c’est la **visibilité** qui fait mal. Un groupe qui s’affiche chez tous
+> les patients n’a **aucun contournement** — la seule échappatoire est de renoncer au groupe et de
+> revenir aux variables numérotées, c’est-à-dire de perdre l’occurrence comme unité d’analyse.
+> L’ordre, lui, a un contournement coûteux (§12). Prioriser en conséquence à l’intérieur du lot :
+> **L72c porte la valeur**.
 
 ## 1. Besoin
 
