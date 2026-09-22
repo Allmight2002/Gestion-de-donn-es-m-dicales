@@ -99,7 +99,8 @@ export interface AddRawDocumentInput {
 }
 
 export interface CreatePatientCurationInput {
-  code: string;
+  /** Code legacy explicite; la soumission en ligne demande une allocation serveur. */
+  code?: string;
   fullName: string;
   dateOfBirth: string;
   phone: string | null;
@@ -337,7 +338,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
 
     async createPatientCuration(baseId, input) {
       const { data, error } = await client.rpc('create_patient_curation_submission', {
-        p_base_id: baseId, p_patient_code: input.code, p_full_name: input.fullName,
+        p_base_id: baseId, p_patient_code: input.code?.trim() || null, p_full_name: input.fullName,
         p_date_of_birth: input.dateOfBirth, p_phone: input.phone, p_address: input.address,
         p_external_identifier: input.externalIdentifier, p_idempotency_key: input.idempotencyKey,
       });

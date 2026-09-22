@@ -110,6 +110,7 @@ describe('NewPatient', () => {
       address: 'Adresse fictive',
       externalIdentifier: 'EXT-FICTIF-1',
     });
+    expect(createPatient.mock.calls[0][1]).not.toHaveProperty('code');
   });
 
   test('masque toute la zone identite sans option et envoie des valeurs nominatives nulles', async () => {
