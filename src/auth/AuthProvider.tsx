@@ -203,8 +203,16 @@ export function AuthProvider({ children, backend = supabaseBackend, initializeOf
       setStatus('unconfigured');
       return;
     }
-    void backend.getSession().then(applyUser);
-    const unsubscribe = backend.onAuthChange((u) => void applyUser(u));
+    const failClosed = () => {
+      if (!mounted.current) return;
+      setUser(null);
+      setProfile(null);
+      setStatus('signed_out');
+    };
+    void backend.getSession().then(applyUser).catch(failClosed);
+    const unsubscribe = backend.onAuthChange((u) => {
+      void applyUser(u).catch(failClosed);
+    });
     return () => {
       mounted.current = false;
       unsubscribe();

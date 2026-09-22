@@ -14,6 +14,7 @@ import type { AuthBackend } from './backend';
 import type { Profile, SessionUser } from './types';
 import {
   buildSnapshot, getOfflineUser, initializeOfflineForUser, offlineCache, outbox, purgeAllOfflineData, setOfflineUser,
+  type OfflineInitializationReport,
 } from '../data/offline';
 import {
   enqueuePatientCreate, intakeContextCache, intakeQueue,
@@ -101,15 +102,18 @@ function AuthProbe() {
   );
 }
 
-function renderAuthProbe(backend: AuthBackend) {
+function renderAuthProbe(
+  backend: AuthBackend,
+  initializeOffline: (userId: string) => Promise<OfflineInitializationReport> = async (userId) => {
+    setOfflineUser(userId);
+    return { previousOwner: userId, ownerChanged: false, recoveredSyncing: 0, errors: [] };
+  },
+) {
   return render(
     <I18nProvider>
       <AuthProvider
         backend={backend}
-        initializeOffline={async (userId) => {
-          setOfflineUser(userId);
-          return { previousOwner: userId, ownerChanged: false, recoveredSyncing: 0, errors: [] };
-        }}
+        initializeOffline={initializeOffline}
       >
         <AuthProbe />
       </AuthProvider>
@@ -121,6 +125,79 @@ describe('gating par role', () => {
   test('non connecte -> ecran de connexion', async () => {
     renderApp(fakeBackend({ user: null, profile: null }));
     expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument();
+  });
+
+  test('echec de getSession -> etat deconnecte sans rejet non gere', async () => {
+    let rejectSession: ((reason?: unknown) => void) | null = null;
+    const session = new Promise<SessionUser | null>((_, reject) => {
+      rejectSession = reject;
+    });
+    const backend = fakeBackend({ user: null, profile: null });
+    backend.getSession = () => session;
+    const unhandled: unknown[] = [];
+    const onProcessUnhandled = (reason: unknown) => unhandled.push(reason);
+    const onWindowUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+      event.preventDefault();
+    };
+    process.on('unhandledRejection', onProcessUnhandled);
+    window.addEventListener('unhandledrejection', onWindowUnhandled);
+
+    try {
+      renderAuthProbe(backend);
+      await act(async () => {
+        rejectSession?.(new Error('session unavailable'));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onProcessUnhandled);
+      window.removeEventListener('unhandledrejection', onWindowUnhandled);
+    }
+  });
+
+  test('echec du callback onAuthChange -> etat deconnecte sans rejet non gere', async () => {
+    let notify: ((user: SessionUser | null) => void) | null = null;
+    const backend = fakeBackend({ user: null, profile: null });
+    backend.onAuthChange = (callback) => {
+      notify = callback;
+      return () => {};
+    };
+    const initializeOffline = vi.fn(async () => {
+      throw new Error('offline initialization unavailable');
+    });
+    const unhandled: unknown[] = [];
+    const onProcessUnhandled = (reason: unknown) => unhandled.push(reason);
+    const onWindowUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+      event.preventDefault();
+    };
+    process.on('unhandledRejection', onProcessUnhandled);
+    window.addEventListener('unhandledrejection', onWindowUnhandled);
+
+    try {
+      renderAuthProbe(backend, initializeOffline);
+      await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none'));
+      await act(async () => {
+        notify?.({ id: 'callback-user', email: 'callback@demo.test' });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(initializeOffline).toHaveBeenCalledWith('callback-user'));
+      await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_out:none'));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onProcessUnhandled);
+      window.removeEventListener('unhandledrejection', onWindowUnhandled);
+    }
+  });
+
+  test('getSession reussi -> session et profil restaures', async () => {
+    renderAuthProbe(fakeBackend({ user: { id: 'm', email: 'm@demo.test' }, profile: memberProfile }));
+    await waitFor(() => expect(screen.getByTestId('auth-state')).toHaveTextContent('signed_in:m'));
+    expect(screen.getByTestId('profile-state')).toHaveTextContent('medecin:Medecin');
   });
 
   // UI-1 : le libelle apparait aussi dans la barre laterale -> on vise le TITRE de page (heading).
