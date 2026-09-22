@@ -1122,6 +1122,72 @@ Ne committe, ne pousse, ne fusionne, ne déploie et n'applique aucune migration 
 
 ---
 
+## L72a — Groupe répétable en sous-section : socle serveur
+
+```text
+Tu prends le lot L72a uniquement, dans le dépôt MedData. L66 à L71 doivent être fusionnés. Lis
+d’abord docs/l72-groupe-repetable-sous-section.md en entier — son §2.2 est la raison d’être du
+lot — puis sa fiche dans docs/lots-paralleles.md. Préserve toutes les modifications locales
+étrangères au lot.
+
+OBJECTIF.
+Rendre un bloc répétable déclarable en SOUS-SECTION d’un bloc racine, pour qu’il hérite du rang
+et de la visibilité de ce bloc. Une migration horodatée, additive, qui ne réécrit aucune donnée
+clinique.
+
+CE LOT N’EST PAS « RETIRER UNE CONTRAINTE ».
+Les quatre gardes du §2.1 se lèvent en quelques lignes. Le lot, ce sont les TROIS RUPTURES du
+§2.2, dont aucune ne lève d’erreur : elles rendent un verdict ou un fichier faux, en silence. Si
+tu ne traites que les gardes, tu livres un produit qui ment.
+1. template_section_field_keys ne résout que les racines (son CTE root porte « and
+   parent_section_id is null »). Or c’est l’unique implémentation du §5 de
+   spec-groupes-repetables.md. La voie recommandée est de lever ce filtre : une racine continue
+   de rendre racine + enfants, une sous-section rend ses propres variables, et un groupe n’a pas
+   d’enfants par construction. Aucun appelant ne passe aujourd’hui une clé de sous-section : à
+   ÉTABLIR PAR TEST, pas par lecture.
+2. Le contrôle de portée d’une règle de bloc parcourt le sous-arbre de la racine. Dès qu’un
+   groupe devient enfant, l’ensemble mélange portée patient et portée rencontre, et la règle du
+   bloc de diagnostic devient INCRÉABLE — la fonctionnalité casserait le montage qu’elle sert.
+   Exclure les descendants répétables de ce contrôle, et le justifier en commentaire.
+3. create_encounter et create_encounter_idempotent exigent un bloc RACINE : la garde devient
+   « bloc répétable de cette version », à quelque profondeur.
+
+CE QUI N’EST PAS À CHANGER, ET QU’IL FAUT VÉRIFIER PLUTÔT QUE MODIFIER.
+Le code du §5 itère déjà « where s.is_repeatable » sans filtre racine : une fois la rupture 1
+corrigée, ses deux branches marchent à toute profondeur. Idem hors-ligne :
+repeatableRootByFieldKey remonte déjà la hiérarchie. Si tu te retrouves à modifier
+src/data/offline.ts, arrête-toi et signale-le : c’est le signe que le diagnostic du cadrage est
+faux quelque part.
+
+GARDES QUI RESTENT.
+Pas de groupe répétable sous un groupe répétable. Pas de sous-section DANS un groupe. Un groupe
+n’est jamais la cible d’une règle — il hérite. Aucun message ne nomme une valeur clinique.
+
+PÉRIMÈTRE STRICT.
+- Tu n’ouvres ni écran, ni composant, ni fichier d’export : ce sont L72b, L72c et L72d.
+- Tu ne traites pas le retrait du diagnostic : c’est L72e, et sa décision n’est pas prise.
+- Tu ne touches à aucune migration déjà appliquée.
+- N’utilise pas npm.ps1 sous Windows : emploie npm.cmd. Aucun test contre un cloud ou des
+  données réelles.
+
+PREUVES ATTENDUES.
+1. Les tests §9.1 du cadrage, en commençant par le test 1 : sur une version dont le groupe est
+   RACINE, les quatre fonctions de complétude rendent exactement les mêmes résultats qu’avant.
+   C’est la preuve principale — la rupture 1 ne se voit pas autrement.
+2. Le test 5 : la règle d’affichage du bloc racine reste créable alors qu’il porte un groupe
+   enfant.
+3. npm run schema, inspection du snapshot, puis npm run schema:check.
+4. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié sur la cible.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n’applique aucune migration distante.
+```
+
+> Les prompts de **L72b à L72e** ne sont pas rédigés : leur périmètre dépend de deux décisions
+> encore ouvertes (§4 R4 et §5 du cadrage). Les écrire avant de les avoir tranchées reviendrait à
+> les trancher en douce.
+
+---
+
 ## ~~L45 — Contrat des profils Export Analyse / Export complet~~ — **livré le 2026-08-28 ; choix du profil dans l’interface le 2026-09-01**
 
 ```
