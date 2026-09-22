@@ -77,7 +77,8 @@ describe('UX-2 brouillons analytiques privés et transactions', () => {
     const identity = { fullName: 'Identité fictive UX', dateOfBirth: '1980-01-01' };
     const result = await commit(id, 1, op, identity);
     expect(await commit(id, 1, op, identity)).toEqual(result);
-    expect((await db.admin.query("select id from public.patient where base_id=$1 and patient_code='UX-COMMITTED'", [base])).rows).toHaveLength(1);
+    expect((await db.admin.query("select id from public.patient where base_id=$1 and patient_code='P-0001'", [base])).rows).toHaveLength(1);
+    expect((await db.admin.query("select id from public.patient where base_id=$1 and patient_code='UX-COMMITTED'", [base])).rows).toHaveLength(0);
     const draft = (await db.admin.query('select state,payload from public.work_draft where id=$1', [id])).rows[0];
     expect(draft).toEqual({ state: 'consumed', payload: {} });
     expect(JSON.stringify((await db.admin.query('select * from public.work_draft_operation where draft_id=$1', [id])).rows)).not.toContain('Identité fictive UX');

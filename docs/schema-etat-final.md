@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260921213429_rule_batch_single_insert.sql`
-- Tables : 57 · Policies RLS : 64 · Triggers : 92 · Fonctions : 392
+- Dernière migration incluse : `20260922010919_patient_code_allocation.sql`
+- Tables : 58 · Policies RLS : 64 · Triggers : 92 · Fonctions : 393
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -700,6 +700,15 @@ Triggers :
 - `trg_patient_structural_immutable` — BEFORE UPDATE → `guard_structural_immutable()`
 - `trg_patient_updated` — BEFORE UPDATE → `set_updated_at()`
 
+### patient_code_allocator · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| base_id | uuid | non |  |
+| next_number | bigint | non |  |
+
+Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
 ### patient_curation_idempotency · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -1243,6 +1252,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | accept_invitation | p_token text | DEFINER | plpgsql |
 | activity_public_metadata | p_action text, p_metadata jsonb, p_is_owner boolean | DEFINER | sql |
 | add_template_section | p_version_id uuid, p_key text, p_label text, p_parent_key text | DEFINER | plpgsql |
+| allocate_patient_code | p_base_id uuid | DEFINER | plpgsql |
 | answer_clarification | p_clarification_id uuid, p_answer text | DEFINER | plpgsql |
 | apply_form_preparation | p_preparation_id uuid, p_expected_preparation_revision bigint, p_expected_source_revision bigint, p_expected_source_fingerprint text, p_operation_id uuid | DEFINER | plpgsql |
 | archive_template_version | p_version_id uuid | DEFINER | plpgsql |

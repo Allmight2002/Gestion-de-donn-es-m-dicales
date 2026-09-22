@@ -196,7 +196,7 @@ describe('L69 — occurrences tamponnees a la creation', () => {
       occurrences: [] as Array<{ id: string; patientId: string; input: NewEncounterInput }>,
     };
     const createPatient = vi.fn(async (_baseId: string, input: Parameters<PatientRepository['createPatient']>[1]) => {
-      const patient = { id: 'p1', code: input.code };
+      const patient = { id: 'p1', code: input.code ?? 'P-0001' };
       persisted.patients.push(patient);
       return patient;
     });
