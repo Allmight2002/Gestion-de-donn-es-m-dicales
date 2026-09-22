@@ -76,7 +76,7 @@ describe('nouveau patient : plus de page de choix', () => {
   test('un compte de mission ne se voit pas proposer la voie curation', async () => {
     auth.role = 'saisisseur';
     renderAt('/bases/b1/patients/new/manual', { patients: emptyPatients() });
-    await screen.findByLabelText(/code patient/i);
+    await screen.findByText(/attribué automatiquement par le serveur/i);
     expect(screen.queryByRole('button', { name: submitAction })).toBeNull();
   });
 });
@@ -97,6 +97,7 @@ describe('NewPatient mode submit', () => {
 
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
     expect(createPatientCuration).toHaveBeenCalledWith('b1', expect.objectContaining({ fullName: 'Marie Test', dateOfBirth: '1990-01-01', idempotencyKey: expect.any(String) }));
+    expect((createPatientCuration.mock.calls[0] as unknown as [string, Record<string, unknown>])[1]).not.toHaveProperty('code');
     expect(createPatient).not.toHaveBeenCalled();
     expect(createSubmission).not.toHaveBeenCalled();
   });
@@ -140,7 +141,7 @@ describe('NewPatient mode submit', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
     await waitFor(() => expect(createPatientCuration).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByLabelText(/code patient/i), { target: { value: 'P-0099' } });
+    fireEvent.change(screen.getByLabelText(/nom complet/i), { target: { value: 'Marie Retry modifiée' } });
     await userEvent.click(screen.getByRole('button', { name: 'Continuer vers les documents' }));
 
     await waitFor(() => expect(screen.getAllByText(/cochez la confirmation pour cr.er quand m.me/i).length).toBeGreaterThan(1));

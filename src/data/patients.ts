@@ -64,7 +64,8 @@ export interface PatientListItem {
 }
 
 export interface NewPatientInput {
-  code: string;
+  /** Code legacy explicite (replay hors-ligne); les parcours en ligne le laissent vide. */
+  code?: string;
   fullName: string | null;
   dateOfBirth: string | null;
   phone: string | null;
@@ -586,7 +587,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
     async createPatient(baseId, input) {
       const { data, error } = await client.rpc('create_patient', {
         p_base_id: baseId,
-        p_patient_code: input.code,
+        p_patient_code: input.code?.trim() || null,
         p_full_name: input.fullName,
         p_date_of_birth: input.dateOfBirth,
         p_phone: input.phone,

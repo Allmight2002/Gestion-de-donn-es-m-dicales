@@ -13,6 +13,7 @@ import type { TemplateRepository } from '../../data/templates';
 import { escapeLikePattern } from '../../data/patients';
 import type { PatientRepository, PatientListItem, PatientListQuery, NewPatientInput } from '../../data/patients';
 import type { TemplateField } from '../../data/types';
+import type { ViewPreferenceRepository } from '../../data/viewPreferences';
 import { offlineCache, type OfflineSnapshot } from '../../data/offline';
 import { setBirthDate } from '../../../test/helpers/date-picker';
 
@@ -110,6 +111,7 @@ describe('NewPatient', () => {
       address: 'Adresse fictive',
       externalIdentifier: 'EXT-FICTIF-1',
     });
+    expect(createPatient.mock.calls[0][1]).not.toHaveProperty('code');
   });
 
   test('masque toute la zone identite sans option et envoie des valeurs nominatives nulles', async () => {
@@ -515,10 +517,14 @@ describe('BaseHome (liste patients)', () => {
     validationStatus: 'curated', identity: null,
   });
 
-  function renderList(patients: PatientRepository, bases: BaseRepository = baseRepo) {
+  function renderList(
+    patients: PatientRepository,
+    bases: BaseRepository = baseRepo,
+    viewPreferences?: ViewPreferenceRepository,
+  ) {
     return render(
       <I18nProvider>
-        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients} viewPreferences={viewPreferences}>
           <MemoryRouter initialEntries={['/bases/b1']}>
             <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
           </MemoryRouter>
@@ -683,6 +689,64 @@ describe('BaseHome (liste patients)', () => {
     // Rien n a ete persiste : le repli vit en memoire, il ne contourne pas le refus du navigateur.
     expect(localStorage.getItem('meddata:columns:u:b1')).toBeNull();
     setItem.mockRestore();
+  });
+
+  test('P01 — la préférence serveur suit le compte entre deux appareils et conserve un choix vide', async () => {
+    let serverKeys: string[] | null = ['birth_year'];
+    const getVisiblePatientFieldKeys = vi.fn(async () => serverKeys);
+    const saveVisiblePatientFieldKeys = vi.fn(async (_baseId: string, keys: string[]) => {
+      serverKeys = [...keys];
+    });
+    const viewPreferences: ViewPreferenceRepository = {
+      getVisiblePatientFieldKeys,
+      saveVisiblePatientFieldKeys,
+    };
+    const patients = { async listPatientsPage() { return { rows: [listRow(1)], total: 1 }; } } as unknown as PatientRepository;
+    const firstDevice = renderList(patients, baseRepo, viewPreferences);
+
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Annee de naissance' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Sexe' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Colonnes affichées' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Annee de naissance' }));
+    await waitFor(() => expect(saveVisiblePatientFieldKeys).toHaveBeenCalledWith('b1', []));
+
+    // Un nouveau montage représente un autre appareil : aucune mémoire locale n'est utilisée
+    // ici, seule la préférence serveur est relue.
+    firstDevice.unmount();
+    const secondDevice = renderList(patients, baseRepo, viewPreferences);
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Sexe' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Annee de naissance' })).not.toBeInTheDocument();
+    expect(getVisiblePatientFieldKeys).toHaveBeenCalledWith('b1');
+    secondDevice.unmount();
+  });
+
+  test('P01 — les changements successifs sont enregistrés dans leur ordre', async () => {
+    const saved: string[][] = [];
+    const releases: (() => void)[] = [];
+    const viewPreferences: ViewPreferenceRepository = {
+      async getVisiblePatientFieldKeys() { return ['sexe']; },
+      saveVisiblePatientFieldKeys: vi.fn(async (_baseId: string, keys: string[]) => {
+        saved.push([...keys]);
+        await new Promise<void>((resolve) => releases.push(resolve));
+      }),
+    };
+    const patients = { async listPatientsPage() { return { rows: [listRow(1)], total: 1 }; } } as unknown as PatientRepository;
+    const vue = renderList(patients, baseRepo, viewPreferences);
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Colonnes affichées' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Sexe' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Annee de naissance' }));
+    await waitFor(() => expect(saved).toEqual([[]]));
+    expect(releases).toHaveLength(1);
+
+    releases.shift()!();
+    await waitFor(() => expect(saved).toEqual([[], ['birth_year']]));
+    releases.shift()!();
+    vue.unmount();
   });
 
   test('un motif de recherche ne devient jamais un joker involontaire', () => {

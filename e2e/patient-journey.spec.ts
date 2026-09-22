@@ -33,8 +33,8 @@ test.describe('@critical parcours patient critique (medecin)', () => {
 
   test('cree, verifie, modifie, persiste puis supprime logiquement un patient', async ({ page }) => {
     const baseId = seedBaseId()!;
-    const code = uniquePatientCode();
-    const fullName = `Fictif ${code}`;
+    const fixtureLabel = uniquePatientCode();
+    const fullName = `Fictif ${fixtureLabel}`;
 
     // 1) connexion
     await signIn(page, 'MEDECIN');
@@ -46,11 +46,7 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     // 3) creation d'un patient fictif — via l'UI reelle : « Nouveau patient » ouvre
     //    directement le formulaire (la page de choix intercalaire a ete retiree).
     await page.getByRole('button', { name: /Nouveau patient|New patient/i }).click();
-    //    Le formulaire est charge paresseusement : sans attendre son titre, getByLabel peut
-    //    capter le tri de la liste encore montee via le texte de son option "Code patient".
-    //    Les locators sont donc ancres sur le role, qu'un <select> ne peut pas satisfaire.
     await expect(page.getByRole('heading', { name: /Nouveau patient|New patient/i })).toBeVisible();
-    await page.getByRole('textbox', { name: /Code patient|Patient code/i }).fill(code);
     await page.getByRole('textbox', { name: /Nom complet|Full name/i }).fill(fullName);
     await page.getByRole('button', { name: /Date de naissance|Date of birth/i }).click();
     const datePicker = page.getByRole('dialog', { name: /Sélecteur de date|Date picker/i });
@@ -64,6 +60,10 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     await expect(page).toHaveURL(/\/bases\/[^/]+\/patients\/[0-9a-f-]{36}$/i);
     patientId = page.url().match(/\/patients\/([0-9a-f-]{36})/i)?.[1] ?? null;
     expect(patientId).not.toBeNull();
+    // En ligne, le code est alloue dans la transaction serveur et apparait seulement apres
+    // la creation. Le test ne fabrique donc jamais une valeur de code côté navigateur.
+    const code = (await page.locator('header .eyebrow').first().innerText()).trim();
+    expect(code).toMatch(/^P-[0-9]{4,}$/);
 
     // 4) verification de sa presence dans la liste de la base
     await page.goto(`/bases/${baseId}`);
