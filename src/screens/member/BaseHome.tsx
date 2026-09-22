@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router';
 import { ArrowDownUp, Columns3, Download, Plus, Search, Upload, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
-import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
+import { useBaseRepository, usePatientRepository, useTemplateRepository, useViewPreferenceRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
 import type { PatientListItem, PatientSortField } from '../../data/patients';
 import { displayFieldValue } from '../../data/types';
@@ -35,8 +35,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 type SortChoice = { field: PatientSortField; direction: 'asc' | 'desc' };
 const DEFAULT_SORT: SortChoice = { field: 'created_at', direction: 'asc' };
 
-// Preference de presentation : par UTILISATEUR et par base, jamais partagee entre comptes
-// d'un meme poste. Elle ne contient que des cles de colonnes, aucune valeur clinique.
+// Cache local de secours : la source de verite en ligne est la preference serveur par
+// UTILISATEUR et par base. Le cache ne contient que des cles de colonnes, aucune valeur clinique.
 const columnsStorageKey = (userId: string | undefined, baseId: string | undefined) =>
   userId && baseId ? `meddata:columns:${userId}:${baseId}` : null;
 
@@ -88,6 +88,7 @@ export function BaseHome() {
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
+  const viewPreferences = useViewPreferenceRepository();
 
   const [listing, setListing] = useState<BaseListing | null>(null);
   const [baseName, setBaseName] = useState('');
@@ -111,6 +112,7 @@ export function BaseHome() {
   // Copie hors-ligne (controles disponibles en ligne).
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
   const [saving, setSaving] = useState(false);
+  const [columnsSyncError, setColumnsSyncError] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false); // UI-2 : modale §5.8 (grosse base)
   // Saisie hors-ligne (intake-only) : contexte prepare + file locale de CE compte.
   const intakeEnabled = isOfflineIntakeEnabled();
@@ -140,11 +142,22 @@ export function BaseHome() {
   }, [search, appliedSearch]);
 
   const columnsKey = columnsStorageKey(profile?.id, id);
-  // Repli de SESSION quand le navigateur refuse d'ecrire (mode prive, quota) : le choix de
-  // colonnes tient alors jusqu'a la fermeture de l'onglet, comme annonce plus haut. Il reste
-  // attache a la paire compte/base qui l'a produit, et n'est jamais repris sans cle : deux
-  // bases lues sans profil charge partageraient sinon la meme preference.
+  // Repli de session quand le navigateur refuse d'ecrire (mode prive, quota). En ligne, ce
+  // meme etat evite qu'une pagination ecrase une modification dont l'enregistrement serveur
+  // est encore en vol. Il reste attache a la paire compte/base et inutilisable sans cle de compte.
   const sessionColumns = useRef<{ key: string; keys: string[] } | null>(null);
+  const columnsWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const queueColumnSave = useCallback((keys: string[]) => {
+    if (!id || !online || offlineView) return;
+    const write = columnsWriteQueue.current.then(() => viewPreferences.saveVisiblePatientFieldKeys(id, keys));
+    // Une écriture en échec ne doit pas bloquer les suivantes ; elle reste signalée sans
+    // exposer le message SQL ou une information interne au frontend.
+    columnsWriteQueue.current = write.catch(() => {});
+    void write.then(
+      () => setColumnsSyncError(false),
+      () => setColumnsSyncError(true),
+    );
+  }, [id, online, offlineView, viewPreferences]);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -184,7 +197,14 @@ export function BaseHome() {
         recordRecentBase(id, snap.baseName); // UI-1 : navigation laterale « bases recentes »
         const available = snap.fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn);
         setFields(available);
-        setVisibleFieldKeys(available.slice(0, 5).map((field) => field.fieldKey));
+        const stored = readStoredColumns(columnsKey)
+          ?? (columnsKey && sessionColumns.current?.key === columnsKey ? sessionColumns.current.keys : null);
+        const retained = stored?.filter((key) => available.some((field) => field.fieldKey === key)) ?? [];
+        setVisibleFieldKeys(stored === null
+          ? available.slice(0, 5).map((field) => field.fieldKey)
+          : stored.length === 0
+            ? []
+            : retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey));
         setRows(snap.patients.map(offlineItem));
         setTotal(snap.patients.length);
         setCachedMeta(snapshotMeta(snap));
@@ -242,19 +262,43 @@ export function BaseHome() {
         if (isCancelled()) return;
         const available = fields.filter((f) => f.scope === 'patient').sort(sortByOrder).map(toColumn);
         setFields(available);
-        // La preference enregistree est relue ici, puis PURGEE des cles devenues inexistantes
-        // dans la version courante (variable supprimee, droit retire) avant d'etre reecrite.
-        const stored = readStoredColumns(columnsKey)
-          ?? (columnsKey && sessionColumns.current?.key === columnsKey ? sessionColumns.current.keys : null);
-        setVisibleFieldKeys((current) => {
-          const source = stored ?? current;
-          const retained = source.filter((key) => available.some((field) => field.fieldKey === key));
-          const next = retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey);
-          if (stored && (stored.length !== next.length || stored.some((key, index) => key !== next[index]))) {
-            writeStoredColumns(columnsKey, next);
+        // En ligne, le serveur est la source de verite et suit le compte entre appareils.
+        // Le cache local ne sert qu'au demarrage sans ligne serveur ou en cas d'indisponibilite.
+        // `[]` est un choix explicite (aucune colonne) et ne doit jamais redevenir le defaut.
+        const sessionStored = columnsKey && sessionColumns.current?.key === columnsKey
+          ? sessionColumns.current.keys : null;
+        let serverStored: string[] | null = null;
+        let serverRead = false;
+        if (sessionStored === null) {
+          try {
+            serverStored = await viewPreferences.getVisiblePatientFieldKeys(id);
+            serverRead = true;
+          } catch {
+            // La liste reste utilisable ; le cache local ou le defaut prend le relais.
+            setColumnsSyncError(true);
           }
-          return next;
-        });
+        }
+        if (isCancelled()) return;
+        const localStored = readStoredColumns(columnsKey);
+        const stored = sessionStored ?? serverStored ?? localStored;
+        const retained = stored?.filter((key) => available.some((field) => field.fieldKey === key)) ?? [];
+        const next = stored === null
+          ? available.slice(0, 5).map((field) => field.fieldKey)
+          : stored.length === 0
+            ? []
+            : retained.length > 0 ? retained : available.slice(0, 5).map((field) => field.fieldKey);
+        setVisibleFieldKeys(next);
+        if (columnsKey) sessionColumns.current = { key: columnsKey, keys: next };
+        writeStoredColumns(columnsKey, next);
+        if (serverRead && serverStored === null && localStored !== null) {
+          // Migration douce de l'ancien stockage local : elle ne remplace jamais une ligne
+          // serveur existante et ne transporte que des cles de colonnes.
+          queueColumnSave(next);
+        } else if (serverRead && serverStored !== null
+          && (serverStored.length !== next.length || serverStored.some((key, index) => key !== next[index]))) {
+          // Purge serveur des variables supprimees ou devenues invisibles dans la version active.
+          queueColumnSave(next);
+        }
       }
       void offlineCache.get(id)
         .then((s) => { if (!isCancelled()) setCachedMeta(s ? snapshotMeta(s) : null); })
@@ -266,7 +310,7 @@ export function BaseHome() {
       if (!isCancelled()) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, page, online, bases, templates, patients, appliedSearch, searchMode, sort.field, sort.direction, columnsKey]);
+  }, [id, page, online, bases, templates, patients, viewPreferences, queueColumnSave, appliedSearch, searchMode, sort.field, sort.direction, columnsKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,6 +445,7 @@ export function BaseHome() {
     setVisibleFieldKeys(next);
     if (columnsKey) sessionColumns.current = { key: columnsKey, keys: next };
     writeStoredColumns(columnsKey, next);
+    queueColumnSave(next);
   };
   const changeSort = (next: SortChoice) => { setSort(next); setPage(0); };
   // Deux acces a la pagination, deux informations differentes : en tete, la position dans
@@ -546,6 +591,9 @@ export function BaseHome() {
               </Menu>
             )}
           </div>
+          {columnsSyncError && (
+            <p role="status" className="text-xs text-amber-700">{t('patient.columns_sync_error')}</p>
+          )}
           {/* UX-12(b) : recherche et tri sont resolus par le SERVEUR avant la pagination ;
               la liste reste presentee par code et variables analytiques (RG-9). */}
           {!offlineView && (
