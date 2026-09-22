@@ -5,7 +5,7 @@
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
 - Dernière migration incluse : `20260922010919_patient_code_allocation.sql`
-- Tables : 58 · Policies RLS : 64 · Triggers : 92 · Fonctions : 393
+- Tables : 59 · Policies RLS : 68 · Triggers : 94 · Fonctions : 395
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -173,6 +173,25 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | completed_at | timestamp with time zone | oui |  |
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
+
+### base_view_preference · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| base_id | uuid | non |  |
+| user_id | uuid | non |  |
+| visible_patient_field_keys | ARRAY | non | `'{}'::text[]` |
+| updated_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `base_view_preference_delete` (DELETE) — USING ((user_id = auth.uid()) AND is_base_active(base_id) AND has_base_access(base_id))
+- `base_view_preference_insert` (INSERT) — WITH CHECK ((user_id = auth.uid()) AND is_base_active(base_id) AND has_base_access(base_id))
+- `base_view_preference_select` (SELECT) — USING ((user_id = auth.uid()) AND is_base_active(base_id) AND has_base_access(base_id))
+- `base_view_preference_update` (UPDATE) — USING ((user_id = auth.uid()) AND is_base_active(base_id) AND has_base_access(base_id)) · WITH CHECK ((user_id = auth.uid()) AND is_base_active(base_id) AND has_base_access(base_id))
+
+Triggers :
+- `trg_base_view_preference_keys` — BEFORE INSERT/UPDATE → `guard_base_view_preference_keys()`
+- `trg_base_view_preference_updated_at` — BEFORE INSERT/UPDATE → `touch_base_view_preference_updated_at()`
 
 ### client_error_log · RLS activée
 
@@ -1422,6 +1441,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_base_inclusion_target_revision | — | INVOKER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
+| guard_base_view_preference_keys | — | DEFINER | plpgsql |
 | guard_cohort_base_immutable | — | DEFINER | plpgsql |
 | guard_cohort_encounter_membership | — | DEFINER | plpgsql |
 | guard_cohort_patient_membership | — | DEFINER | plpgsql |
@@ -1613,6 +1633,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | template_version_locked | p_version_id uuid | DEFINER | sql |
 | template_version_rule_fingerprint | p_version_id uuid | DEFINER | plpgsql |
 | terminology_normalize | p_text text | INVOKER | sql |
+| touch_base_view_preference_updated_at | — | INVOKER | plpgsql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |
 | trg_audit_export_fn | — | DEFINER | plpgsql |
 | trg_audit_invitation_fn | — | DEFINER | plpgsql |

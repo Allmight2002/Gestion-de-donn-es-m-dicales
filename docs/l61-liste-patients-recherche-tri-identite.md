@@ -12,7 +12,7 @@ socle est déjà présente ; elle ne doit donc pas être recréée sous un autre
 
 | Besoin | État observé dans le checkout courant | Ce qui reste à faire |
 |---|---|---|
-| Colonnes analytiques choisies par l'utilisateur | `BaseHome` mémorise les seules clés de colonnes dans `localStorage`, par utilisateur et par base ; les clés supprimées sont purgées | Prouver le comportement sur un navigateur et corriger seulement un écart constaté |
+| Colonnes analytiques choisies par l'utilisateur | `BaseHome` les persiste dans `base_view_preference` par utilisateur et par base ; le cache `localStorage` ne sert que de repli/migration et les clés supprimées sont purgées | Prouver le comportement sur un navigateur et sur la cible |
 | Recherche dans la base | Recherche par **code patient**, côté serveur avant pagination, séparée de `Ctrl/Cmd+K` | Recherche nominative contrôlée dans L64 |
 | Tri | Ordre serveur par `created_at` ou `patient_code`, avec départage par `id` | Tri par une variable clinique autorisée dans L62/L63 |
 | Nom complet dans la liste | Les lignes restent pseudonymisées. Une recherche nominative contrôlée existe localement et ne renvoie que des identifiants ; la colonne « Nom complet » n'est pas livrée | Décider et réaliser séparément l'affichage éventuel, sans élargir la fuite d'identité |
@@ -31,9 +31,10 @@ parcours navigateur, ni une cible déployée ; consulter
 
 1. La recherche est un contrôle de la **liste d'une base**, pas une extension de la palette
    `Ctrl/Cmd+K`. Elle reste indisponible hors connexion, notamment en mode *intake-only*.
-2. La préférence de colonnes est locale au navigateur, indexée par utilisateur et base. Elle ne
-   contient que des clés techniques, jamais une valeur clinique, un nom, un terme de recherche ou
-   une réponse serveur. La synchronisation entre appareils n'est pas introduite ici.
+2. La préférence de colonnes est persistée côté serveur, indexée par utilisateur et base, afin de
+   suivre le compte entre appareils. Le cache local ne sert qu'à la migration douce et au repli
+   sans réseau ; la préférence ne contient que des clés techniques, jamais une valeur clinique,
+   un nom, un terme de recherche ou une réponse serveur.
 3. Le tri par variable ne concerne que des champs analytiques de portée patient que le serveur
    reconnaît dans la version active de la base. Le client ne transmet jamais un identifiant SQL,
    n'invente pas de conversion JSON et ne peut pas demander un champ identité.
@@ -74,8 +75,9 @@ tests, l'attente de CI et toute validation ou promotion cloud.
 
 ### L61 — Stabiliser et prouver le socle actuel
 
-- **Périmètre :** persistance locale par utilisateur/base, purge des clés obsolètes, réinitialisation
-  de contexte, recherche par code, pagination et tri technique existant.
+- **Périmètre :** persistance serveur par utilisateur/base, repli local, purge des clés obsolètes,
+  conservation d'un choix vide, réinitialisation de contexte, recherche par code, pagination et
+  tri technique existant.
 - **Sortie :** les scénarios web ciblés passent avec une sortie de processus saine ; les limites
   explicites sont consignées : pas de tri clinique générique, pas de nom, pas de recherche
   nominative, pas d'accès hors ligne.
@@ -108,6 +110,12 @@ sans rien persister de plus. Regression couverte par un test dedie.
 (`Dashboard`, `OfflineIntake`, `OfflineRead`) : 24 tests passes, code de sortie 0.
 `npm run typecheck` et ESLint sur les deux fichiers touches : code de sortie 0.
 L’execution du 2026-09-11 terminee en `-1073741819` **ne se reproduit pas** sur ce checkout.
+
+**Mise a jour du 2026-09-22.** La migration additive `20260922002545_base_view_preferences.sql`,
+le repository Supabase et la relecture/ecriture dans `BaseHome` sont implementes localement. Le
+test PostgreSQL dedie couvre le proprietaire, le collaborateur, l'utilisateur sans acces et la
+revocation ; le test web couvre la relecture sur un second montage et le choix vide. La migration
+distante et le parcours navigateur restent a verifier sur une cible autorisee.
 
 **Limite d’environnement, non contournee.** Aucune preuve navigateur n’a ete produite : ce poste
 n’a pas Docker, donc pas de Supabase local, et la seule cible de developpement configuree

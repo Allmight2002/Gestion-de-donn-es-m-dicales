@@ -883,6 +883,7 @@ export const messages = {
     'patient.columns': 'Displayed columns',
     'patient.columns_count': '{visible} of {total}',
     'patient.columns_hint': 'Choose the information useful in the list. All data remains available in the patient record.',
+    'patient.columns_sync_error': 'The column preference could not be synchronized. Your choice remains visible on this device; try again later.',
     'patient.new': 'New patient',
     'patient.submit_title': 'Submit a patient to the staff',
     'patient.submit_hint': 'Enter the patient identity; you will then upload the (de-identified) documents. The staff will enter the data.',

@@ -888,6 +888,7 @@ export const messages = {
     'patient.columns': 'Colonnes affichées',
     'patient.columns_count': '{visible} sur {total}',
     'patient.columns_hint': 'Choisissez les informations utiles dans la liste. Toutes les données restent accessibles dans le dossier patient.',
+    'patient.columns_sync_error': 'La préférence de colonnes n’a pas pu être synchronisée. Le choix reste visible sur cet appareil ; réessayez plus tard.',
     'patient.new': 'Nouveau patient',
     'patient.submit_title': 'Confier un patient au staff',
     'patient.submit_hint': "Saisissez l'identité du patient ; vous déposerez ensuite les documents (déidentifiés). Le staff saisira les données.",

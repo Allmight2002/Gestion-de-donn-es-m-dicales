@@ -429,7 +429,7 @@ ce qui en repart, et quand.
 | `intake_context` (IndexedDB) | nom de base, variables, règles et permissions résolues | par compte | 24 h | **nouveau** : balayage au démarrage, en plus de la lecture et de la purge globale |
 | `snapshots` (IndexedDB) | instantané analytique d'une base autorisée | par compte | 24 h | balayage au démarrage, purge globale |
 | `upload-operation:<empreinte>` (localStorage) | identifiant d'une opération d'envoi | clé **opaque** depuis ce lot | jusqu'à la purge | purge globale |
-| `meddata:offline-profile:<compte>`, `meddata:offline-cache-owner`, `meddata:theme`, `meddata:columns:…`, `meddata:recent-bases:…` | marqueur de rôle borné, marqueur de propriétaire, préférences de présentation | selon la clé | marqueur de rôle borné ; préférences permanentes | purge globale |
+| `meddata:offline-profile:<compte>`, `meddata:offline-cache-owner`, `meddata:theme`, `meddata:columns:…`, `meddata:recent-bases:…` | marqueur de rôle borné, marqueur de propriétaire, cache/repli de préférences de présentation | selon la clé | marqueur de rôle borné ; cache/repli permanent | purge globale |
 | `registre.lang` | langue de l'interface | aucun | permanente | **non effacée** — exception assumée, déjà fixée par un test |
 
 Ce qui n'entre dans aucun de ces enregistrements : nom, date de naissance exacte, image,
