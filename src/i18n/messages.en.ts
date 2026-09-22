@@ -892,6 +892,7 @@ export const messages = {
     'create.submit': 'Submit documents to the staff',
     'patient.code': 'Patient code',
     'patient.code_hint': 'Unique identifier within this registry',
+    'patient.code_server_hint': 'The patient code is assigned automatically by the server when the record is created.',
     'patient.no_patients': 'No patient. Click "New patient".',
     'patient.no_patients_readonly': 'No patient in this database.',
     'patient.name_hidden': '(identity hidden)',
@@ -916,7 +917,7 @@ export const messages = {
     'patient.duplicate_add_encounter': 'Add an encounter',
     'patient.duplicate_ack': 'I confirm this is a different patient.',
     'patient.duplicate_confirm_required': 'A record with the same identity already exists. Open it, or tick the confirmation to create anyway.',
-    'patient.code_taken': 'This patient code is already used in this base. Choose another code.',
+    'patient.code_taken': 'The assigned patient code is already used in this base. Please try again.',
     'mytemplates.deleted': 'Variable set deleted',
     'patient.save': 'Save patient',
     'patient.identity_note':

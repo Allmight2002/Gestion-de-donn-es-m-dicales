@@ -8,7 +8,7 @@ import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isMultipleTerminology, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
-import type { IdentityMatch, PatientRepository } from '../../data/patients';
+import type { IdentityMatch } from '../../data/patients';
 import { newOfflineId, useOnline } from '../../data/offline';
 import {
   enqueuePatientCreate, intakeContextCache, isOfflineIntakeEnabled, offlinePatientCode,
@@ -65,7 +65,6 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   const intakeAttempt = useRef<{ fingerprint: string; operationKey: string } | null>(null);
   const loadedFor = useRef<string | null>(null);
   const defaultsApplied = useRef(false); // L28 : les propositions ne s'appliquent qu'au premier chargement
-  const initialCode = useRef('');
   const { toast } = useToast();
   const { profile } = useAuth();
   // Confier au pool de curation releve de la curation, fermee aux comptes de mission
@@ -188,14 +187,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         setError(null);
         return;
       }
-      const maybePatients = patients as Partial<PatientRepository>;
-      const countPatients = maybePatients.listPatientsPage
-        ? maybePatients.listPatientsPage(baseId, 1, 0).then((r) => r.total)
-        : patients.listPatients(baseId).then((rows) => rows.length);
-      const [base, existing] = await Promise.all([
-        bases.getBase(baseId),
-        countPatients,
-      ]);
+      const base = await bases.getBase(baseId);
       if (!base?.base.currentTemplateVersionId) {
         setError(t('common.error'));
         return;
@@ -228,8 +220,6 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         setPermanent(proposed.values);
         setPrefilled(proposed.prefilled);
       }
-      setCode((prev) => prev || `P-${String(existing + 1).padStart(4, '0')}`);
-      initialCode.current = `P-${String(existing + 1).padStart(4, '0')}`;
       setError(null);
       loadedFor.current = baseId;
     } catch (e) {
@@ -329,8 +319,8 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     if (work.locked) { await persistPatient(); return; }
     // En hors-ligne intake-only, un code vide est ACCEPTED : il est genere depuis la cle
     // d'operation (stable, improbable a collision) a la mise en file. En ligne, le code
-    // reste obligatoire (prefilled P-XXXX ou saisi).
-    if (!baseId || (!code.trim() && !offlineIntakeActive)) return;
+    // est attribue par la base dans la transaction de creation.
+    if (!baseId) return;
     // Mode "confier au staff" : nom complet + date de naissance OBLIGATOIRES.
     if (mode === 'submit' && (!fullName.trim() || !dob)) {
       setError(t('patient.identity_required'));
@@ -362,7 +352,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     // restantes. Repasser par la creation produirait une seconde fiche pour le meme patient.
     if (createdPatient) { await resumeOccurrences(); return; }
     const patientCurationInput = mode === 'submit' ? {
-      code: code.trim(), fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
+      fullName: fullName.trim(), dateOfBirth: dob, phone: phone || null,
       address: address || null, externalIdentifier: externalId.trim() || null,
     } : null;
     const submitFingerprint = patientCurationInput ? JSON.stringify(patientCurationInput) : null;
@@ -397,7 +387,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
           ...patientCurationInput,
           idempotencyKey: submitAttempt.current!.idempotencyKey,
         });
-        toast(t('toast.patient_saved'));
+        toast(`${t('toast.patient_saved')} (${t('patient.code')}: ${created.patientCode})`);
         navigation.markClean();
         navigate(`/curation/${created.taskId}`);
         return;
@@ -439,14 +429,14 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         address: canViewIdentity ? (address || null) : null,
         externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
       };
-      const created = work.enabled ? await work.commit(identity) : await patients.createPatient(baseId, { ...identity, code: code.trim(), permanentData });
+      const created = work.enabled ? await work.commit(identity) : await patients.createPatient(baseId, { ...identity, permanentData });
       // La fiche EXISTE des cet instant. Elle est retenue avant tout rejeu : si une occurrence
       // echoue, la reprise doit partir de cette fiche-la et n'en creer aucune autre.
       setCreatedPatient({ id: created.id, code: created.code ?? null });
       // L69 — rejeu ORDONNE des occurrences tamponnees. Tant qu'une ligne manque, l'ecran ne se
       // declare ni propre ni termine : il reste ouvert sur l'etat reel.
       if (!await replayOccurrences(created.id, pending)) return;
-      toast(t('toast.patient_saved')); // UI-2
+      toast(`${t('toast.patient_saved')} (${t('patient.code')}: ${created.code ?? '—'})`); // UI-2
       navigation.markClean();
       navigate(`/bases/${baseId}/patients/${created.id}`);
     } catch (e) {
@@ -468,7 +458,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   function resetEntry() {
     const proposed = initialValuesFromDefaults(fields);
     setPermanent(proposed.values); permanentRef.current = proposed.values; setPrefilled(proposed.prefilled);
-    setCode(initialCode.current); setFullName(''); setExternalId(''); setDob(''); setPhone(''); setAddress('');
+    setCode(''); setFullName(''); setExternalId(''); setDob(''); setPhone(''); setAddress('');
     setMatches([]); setAckDuplicate(false); setError(null); setConfirmationOpen(false);
     submitAttempt.current = null; intakeAttempt.current = null;
     navigation.resetBaseline();
@@ -520,10 +510,15 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   const identification = <div className="space-y-4">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">{t('patient.code')}</span>
-          {/* En hors-ligne intake-only, un code vide est genere a la mise en file :
-              le champ n'est donc pas `required` dans ce mode. */}
-          <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} required={!offlineIntakeActive} />
-          <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
+          {offlineIntakeActive ? (
+            <>
+              {/* Hors-ligne : aucun RPC n'est disponible, le code reste local jusqu'au rejeu. */}
+              <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} />
+              <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-slate-500">{t('patient.code_server_hint')}</p>
+          )}
         </label>
 
         {/* Le cloisonnement se voit : les champs nominatifs gardent leur cadre et leur

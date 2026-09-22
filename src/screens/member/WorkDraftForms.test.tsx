@@ -51,9 +51,9 @@ describe('clinical form server draft integration', () => {
     fireEvent.change(screen.getByLabelText('Nom complet'), { target: { value: 'Personne Fictive' } });
     await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
     fireEvent.change(screen.getByLabelText('Score'), { target: { value: '8' } });
-    await waitFor(() => expect(repo.save.mock.calls.at(-1)?.[4]).toEqual({ values: { score: 8 }, code: 'P-0001' }), { timeout: 3000 });
+    await waitFor(() => expect(repo.save.mock.calls.at(-1)?.[4]).toEqual({ values: { score: 8 }, code: '' }), { timeout: 3000 });
     const saved = repo.save.mock.calls.at(-1)!;
-    expect(saved[4]).toEqual({ values: { score: 8 }, code: 'P-0001' });
+    expect(saved[4]).toEqual({ values: { score: 8 }, code: '' });
     expect(JSON.stringify(saved)).not.toContain('Personne Fictive');
     repo.commit.mockRejectedValueOnce(new WorkDraftError('DRAFT_UNAVAILABLE'));
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer le patient' }));
@@ -108,7 +108,8 @@ describe('clinical form server draft integration', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reprendre' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Score')).toHaveValue(19);
-    expect(screen.getByLabelText(/Code patient/)).toHaveValue('P-OLD');
+    expect(screen.getByText(/attribué automatiquement par le serveur/i)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('P-OLD')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Nom complet')).toHaveValue('');
     expect(repo.discard).not.toHaveBeenCalled();
   });
@@ -133,7 +134,7 @@ describe('clinical form server draft integration', () => {
     expect(screen.getByLabelText('Nom complet')).toHaveValue('');
     expect(screen.getByLabelText('Nom complet')).toBeEnabled();
     expect(screen.getByLabelText('Score')).toHaveValue(null);
-    expect(screen.getByLabelText(/Code patient/)).toHaveValue('P-0001');
+    expect(screen.getByText(/attribué automatiquement par le serveur/i)).toBeInTheDocument();
     expect(repo.commit).not.toHaveBeenCalled();
     expect(screen.queryByText('Modifications non sauvegardées')).not.toBeInTheDocument();
   });

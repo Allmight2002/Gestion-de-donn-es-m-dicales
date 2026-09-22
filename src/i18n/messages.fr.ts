@@ -897,6 +897,7 @@ export const messages = {
     'create.submit': 'Confier les documents au staff',
     'patient.code': 'Code patient',
     'patient.code_hint': 'Identifiant unique dans cette base',
+    'patient.code_server_hint': 'Le code patient sera attribué automatiquement par le serveur au moment de la création.',
     'patient.no_patients': 'Aucun patient. Cliquez sur « Nouveau patient ».',
     'patient.no_patients_readonly': 'Aucun patient dans cette base.',
     'patient.name_hidden': '(identité masquée)',
@@ -921,7 +922,7 @@ export const messages = {
     'patient.duplicate_add_encounter': 'Ajouter une rencontre',
     'patient.duplicate_ack': 'Je confirme qu’il s’agit bien d’un patient différent.',
     'patient.duplicate_confirm_required': 'Un dossier à la même identité existe déjà. Ouvrez sa fiche, ou cochez la confirmation pour créer quand même.',
-    'patient.code_taken': 'Ce code patient est déjà utilisé dans cette base. Choisissez un autre code.',
+    'patient.code_taken': 'Le code patient attribué est déjà utilisé dans cette base. Réessayez.',
     'mytemplates.deleted': 'Jeu de variables supprimé',
     'patient.save': 'Enregistrer le patient',
     'patient.identity_note':

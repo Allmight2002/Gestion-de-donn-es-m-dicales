@@ -113,6 +113,7 @@
         "save_work_draft(p_id uuid, p_base_id uuid, p_kind text, p_target_id uuid, p_template_version_id uuid, p_entity_revision text, p_expected_revision bigint, p_operation_id uuid, p_payload jsonb)",
         "delete_work_draft(p_id uuid, p_expected_revision bigint, p_operation_id uuid)",
         "commit_work_draft(p_id uuid, p_expected_revision bigint, p_operation_id uuid, p_identity jsonb)",
+        "allocate_patient_code(p_base_id uuid)",
         "answer_clarification(p_clarification_id uuid, p_answer text)",
         "claim_curation_task(p_task_id uuid)",
         "create_curation_submission(p_base_id uuid, p_target_patient_id uuid, p_external_ref text, p_scope text)",
