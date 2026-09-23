@@ -119,9 +119,9 @@ describe('Trash (corbeille des bases)', () => {
     await user.click(screen.getByRole('button', { name: 'Supprimer définitivement' }));
     expect(screen.getByRole('dialog', { name: 'Supprimer définitivement cette base ?' })).toBeInTheDocument();
     const dialog = screen.getByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
-    expect(within(dialog).getByText(/contient 2 patient\(s\)/)).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Code de confirmation à recopier')).toHaveTextContent('K7M3R');
-    const input = within(dialog).getByLabelText('Saisissez le code de confirmation à cinq caractères pour la base « Registre clos » :');
+    expect(within(dialog).getByText('Attention : cette base contient 2 patients.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Code à recopier')).toHaveTextContent('K7M3R');
+    const input = within(dialog).getByLabelText('Saisissez le code affiché');
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
     expect(confirm).toBeDisabled();
     await user.type(input, 'k7m3r');
@@ -152,7 +152,7 @@ describe('Trash (corbeille des bases)', () => {
     await screen.findByText('Registre clos');
     await user.click(screen.getByRole('button', { name: 'Supprimer définitivement' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
-    const input = within(dialog).getByLabelText('Saisissez le code de confirmation à cinq caractères pour la base « Registre clos » :');
+    const input = within(dialog).getByLabelText('Saisissez le code affiché');
     await user.type(input, 'WRONG');
     await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Le code ne correspond pas');
@@ -186,12 +186,12 @@ describe('Trash (corbeille des bases)', () => {
     await screen.findByText('Registre clos');
     await user.click(screen.getByRole('button', { name: 'Supprimer définitivement' }));
     const firstDialog = await screen.findByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
-    expect(within(firstDialog).getByLabelText('Code de confirmation à recopier')).toHaveTextContent('K7M3R');
+    expect(within(firstDialog).getByLabelText('Code à recopier')).toHaveTextContent('K7M3R');
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Supprimer définitivement cette base ?' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Supprimer définitivement' }));
     const secondDialog = await screen.findByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
-    expect(within(secondDialog).getByLabelText('Code de confirmation à recopier')).toHaveTextContent('Q8T2V');
+    expect(within(secondDialog).getByLabelText('Code à recopier')).toHaveTextContent('Q8T2V');
     expect(issuePurgeChallenge).toHaveBeenCalledTimes(2);
   });
 
@@ -214,7 +214,7 @@ describe('Trash (corbeille des bases)', () => {
     await screen.findByText('Registre clos');
     await user.click(screen.getByRole('button', { name: 'Reprendre la suppression définitive' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
-    await user.type(within(dialog).getByLabelText(/Saisissez le code de confirmation/), 'K7M3R');
+    await user.type(within(dialog).getByLabelText('Saisissez le code affiché'), 'K7M3R');
     await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('La purge definitive n a pas ete confirmee');
 
@@ -246,7 +246,7 @@ describe('Trash (corbeille des bases)', () => {
     await screen.findByText('Registre clos');
     await user.click(screen.getByRole('button', { name: 'Supprimer définitivement' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer définitivement cette base ?' });
-    await user.type(within(dialog).getByLabelText(/Saisissez le code de confirmation/), 'K7M3R');
+    await user.type(within(dialog).getByLabelText('Saisissez le code affiché'), 'K7M3R');
     await user.dblClick(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(await screen.findByText('Aucune base supprimée.')).toBeInTheDocument();
     expect(confirmPurgeChallenge).toHaveBeenCalledTimes(1);

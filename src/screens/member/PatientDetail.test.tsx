@@ -471,17 +471,14 @@ describe('EditEncounter (correction)', () => {
     expect(getVersion).not.toHaveBeenCalledWith('v1');
   });
 
-  // E5 §4.5 : ce compte est PROPRIETAIRE de la base fictive, et le serveur accepte alors un
-  // motif absent (`form_justification_status` -> `owner_exempt`). L'ecran ne le reclame donc
-  // plus ici ; l'exigence conservee pour les autres roles est couverte par
-  // `OwnerJustification.test.tsx`.
+  // Le motif est facultatif pour tous (`OptionalJustification.test.tsx`) ; saisi, il est transmis.
   test('le motif reste transmis quand il est saisi ; historique affiche', async () => {
     const updateEncounter = vi.fn(async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }));
     renderAt('/bases/b1/patients/p1/encounters/e1/edit', makePatients({ updateEncounter }));
 
     // Historique des corrections affiche.
     expect(await screen.findByText(/correction saisie/)).toBeInTheDocument();
-    expect(screen.getByText('Facultatif pour le propriétaire de la base')).toBeInTheDocument();
+    expect(screen.getByText('Facultatif')).toBeInTheDocument();
 
     // Avec motif -> enregistre, et le texte saisi est transmis tel quel.
     fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'erreur de frappe' } });

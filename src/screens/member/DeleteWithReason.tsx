@@ -4,14 +4,13 @@ import { errorMessage } from '../../lib/errorMessage';
 
 const MAX_REASON_LENGTH = 1_000;
 
-// Suppression logique avec MOTIF obligatoire (cahier critere 12). Reutilise pour
+// Suppression logique avec motif facultatif, journalisee par le serveur. Reutilise pour
 // patient / rencontre / image.
 export function DeleteWithReason({
   label,
   onConfirm,
   onSuccess,
   verifyDeletedAfterError,
-  reasonOptional = false,
 }: {
   label?: string;
   /** Must resolve only once the server has acknowledged the deletion. */
@@ -19,12 +18,6 @@ export function DeleteWithReason({
   onSuccess?: () => void | Promise<void>;
   /** Reconciles an ambiguous transport error without ever retrying the mutation. */
   verifyDeletedAfterError?: () => Promise<boolean>;
-  /**
-   * §4.5 — le serveur accepte un motif absent pour le propriétaire réel de la base. Seule
-   * l'exigence de texte disparaît : la confirmation, le droit de supprimer, la concurrence et
-   * l'audit restent les mêmes, et aucun motif fabriqué n'est envoyé à la place de l'utilisateur.
-   */
-  reasonOptional?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -42,10 +35,6 @@ export function DeleteWithReason({
   const confirm = async () => {
     const trimmedReason = reason.trim();
     if (busy) return;
-    if (!trimmedReason && !reasonOptional) {
-      setError('Le motif de la suppression est requis.');
-      return;
-    }
     if (trimmedReason.length > MAX_REASON_LENGTH || [...trimmedReason].some((char) => {
       const code = char.charCodeAt(0);
       return code <= 31 || code === 127;
@@ -92,7 +81,6 @@ export function DeleteWithReason({
     <span className="inline-flex items-center gap-1">
       <input
         aria-label={t('del.reason')}
-        title={reasonOptional ? t('justification.owner_optional') : undefined}
         placeholder={t('del.reason')}
         className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30"
         value={reason}
@@ -101,7 +89,7 @@ export function DeleteWithReason({
         onChange={(e) => { setReason(e.target.value); setError(null); }}
       />
       <button
-        disabled={busy || (!reason.trim() && !reasonOptional)}
+        disabled={busy}
         onClick={() => { void confirm(); }}
         className="rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
       >
