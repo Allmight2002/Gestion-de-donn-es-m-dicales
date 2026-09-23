@@ -695,6 +695,11 @@ export const messages = {
     'form.repeatable_discard': 'Unsaved changes for this occurrence will be discarded. Other occurrences are kept.',
     'form.repeatable_offline': 'Repeatable blocks are unavailable offline: an occurrence entered here could not be synchronised. Reconnect to record it.',
     'form.repeatable_requires_saved_record': 'This block becomes fillable once the record is saved.',
+    // L72c D10 — group whose parent block is hidden: a count, never a clinical value.
+    'form.repeatable_masked': 'This group’s block is hidden for this record. {n} occurrence(s) remain saved in it: they can no longer be entered here, and each one can be deleted.',
+    'form.repeatable_masked_readonly': 'This group’s block is hidden for this record. {n} occurrence(s) remain saved in it.',
+    'form.repeatable_masked_pending': 'This group’s block is hidden by the record being entered. {n} pending occurrence(s) will be saved with the record unless you remove them.',
+    'form.repeatable_masked_draft': 'An occurrence being entered is kept; it becomes editable again if the block reappears.',
     'form.pending_banner': 'Unconfirmed occurrences',
     'form.pending_hint': 'Occurrences entered here are kept, then written in order right after the record.',
     'form.pending_unsaved': 'Not saved',

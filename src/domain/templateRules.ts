@@ -229,6 +229,12 @@ export function visibilityRulesOf(rules: readonly unknown[]): VisibilityRule[] {
  * antérieur à L54), une cible `then.section` reste volontairement indéterminée et n'ajoute
  * aucune variable cachée : le vieux client continue donc à montrer le bloc, tandis que le
  * serveur reste la barrière de compatibilité au moment de l'enregistrement.
+ *
+ * L72 — un groupe répétable enfant est exclu de l'expansion, comme dans
+ * `template_section_field_keys` : ses variables décrivent une occurrence, jamais la fiche
+ * évaluée. Il hérite de la visibilité de son bloc par sa SECTION
+ * (`maskedRepeatableSectionKeys`), pas par des clés de variables. Le repli sans dictionnaire
+ * ne retient que les variables propres de la racine : il n'y inclut donc aucun groupe.
  */
 export function visibilityTargetFieldKeys(
   rule: unknown,
@@ -245,7 +251,7 @@ export function visibilityTargetFieldKeys(
     const root = sections.find((section) => section.sectionKey === target);
     if (!root || root.parentSectionKey) return [];
     for (const section of sections) {
-      if (section.parentSectionKey === target) sectionKeys.add(section.sectionKey);
+      if (section.parentSectionKey === target && section.isRepeatable !== true) sectionKeys.add(section.sectionKey);
     }
   } else {
     // Repli pour les lectures qui ne portent que les métadonnées jointes aux variables.

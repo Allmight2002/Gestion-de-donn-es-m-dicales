@@ -699,6 +699,11 @@ export const messages = {
     'form.repeatable_discard': 'Les saisies non enregistrées de cette occurrence seront abandonnées. Les autres occurrences sont conservées.',
     'form.repeatable_offline': 'Les blocs répétables ne sont pas disponibles hors ligne : une occurrence saisie ici ne pourrait pas être synchronisée. Reconnectez-vous pour la saisir.',
     'form.repeatable_requires_saved_record': 'Ce bloc devient saisissable une fois la fiche enregistrée.',
+    // L72c D10 — groupe dont le bloc parent est masqué : un compte, jamais une valeur clinique.
+    'form.repeatable_masked': 'Le bloc de ce groupe est masqué pour cette fiche. {n} occurrence(s) y restent enregistrée(s) : elles ne se saisissent plus ici, et chacune peut être supprimée.',
+    'form.repeatable_masked_readonly': 'Le bloc de ce groupe est masqué pour cette fiche. {n} occurrence(s) y restent enregistrée(s).',
+    'form.repeatable_masked_pending': 'Le bloc de ce groupe est masqué par la fiche en cours. {n} occurrence(s) en attente seront enregistrées avec la fiche si vous ne les retirez pas.',
+    'form.repeatable_masked_draft': 'Une occurrence en cours de saisie est conservée ; elle redevient modifiable si le bloc réapparaît.',
     'form.pending_banner': 'Occurrences non confirmées',
     'form.pending_hint': 'Les occurrences saisies ici sont conservées puis enregistrées, dans l’ordre, juste après la fiche.',
     'form.pending_unsaved': 'Non enregistrée',

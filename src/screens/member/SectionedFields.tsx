@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
-import { groupFieldsBySection, sectionLabel, withRepeatableSteps, type SectionGroup } from '../../domain/templateSections';
+import { groupFieldsBySection, maskedRepeatableSectionKeys, sectionLabel, withRepeatableSteps, type SectionGroup } from '../../domain/templateSections';
 import { calculateFormProgress } from '../../domain/formProgress';
 import { useI18n } from '../../i18n/useI18n';
 import { ValidationSummary } from '../../components/ValidationSummary';
@@ -44,7 +44,8 @@ function FieldFrame({ id, fieldKey, message, children }: { id: string; fieldKey:
 /** The visible groups never own answers. Collapsing or single-block presentation keeps
  * controls mounted; applicability is provided by the existing engine in the caller. */
 export function SectionedFields({ fields, renderField, sections, values, allFields, rules = NO_RULES,
-  hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout, leadingBlock, toFillKeys = NO_TO_FILL, repeatableGroup }: {
+  hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout, leadingBlock, toFillKeys = NO_TO_FILL, repeatableGroup,
+  visibilityRules, maskedRepeatableGroup }: {
   fields: TemplateField[];
   renderField: (field: TemplateField) => ReactNode;
   sections?: readonly TemplateSection[] | null;
@@ -67,6 +68,18 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
    * le formulaire garde exactement le comportement qu'il avait.
    */
   repeatableGroup?: (section: TemplateSection) => ReactNode;
+  /**
+   * L72 — regles qui ont calcule `hiddenKeys`, quand elles different de `rules` (une fiche
+   * historique valide avec les regles de sa version mais s'affiche avec les regles actives).
+   * Elles decident si le bloc parent d'un groupe est masque ; par defaut, `rules`.
+   */
+  visibilityRules?: readonly { rule: unknown }[];
+  /**
+   * L72 D10 — contenu d'un groupe dont le bloc est masque. `null` retire l'etape ; sans ce
+   * rendu, un groupe masque disparait avec son bloc. L'etape n'est jamais un lieu de saisie :
+   * elle annonce des occurrences deja enregistrees, que l'ecran laisse supprimer une a une.
+   */
+  maskedRepeatableGroup?: (section: TemplateSection) => ReactNode;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -100,9 +113,18 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   }, [groups]);
   // Les blocs repetables reprennent leur place parmi les autres blocs (§8.1). Ils ne portent
   // aucune variable saisissable sur la fiche, donc `groupFieldsBySection` ne les voit pas.
+  // L72 — un groupe enfant herite de la visibilite de son bloc : decidee ici, sur la section,
+  // pour que chaque ecran qui confie ses groupes a ce composant en herite sans calcul propre.
+  const rulesForVisibility = visibilityRules ?? rules;
+  const masked = useMemo(
+    () => (repeatableGroup
+      ? maskedRepeatableSectionKeys(sections, rulesForVisibility, values ?? NO_VALUES, hiddenKeys)
+      : new Set<string>()),
+    [repeatableGroup, sections, rulesForVisibility, values, hiddenKeys],
+  );
   const formSteps = useMemo(
-    () => withRepeatableSteps(formGroups, repeatableGroup ? sections : null),
-    [formGroups, sections, repeatableGroup],
+    () => withRepeatableSteps(formGroups, repeatableGroup ? sections : null, masked, commonLayout),
+    [formGroups, sections, repeatableGroup, masked, commonLayout],
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
@@ -115,11 +137,16 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const previousGroups = useRef<string[] | null>(null);
   const currentField = useRef<string | null>(null);
   const leadingKey = `${id}-leading`;
-  const contentSteps = formSteps.map((step) => step.kind === 'repeatable'
-    ? { key: step.section.sectionKey, group: null, repeatable: step.section }
-    : { key: step.group.key, group: step.group, repeatable: null });
-  const steps: { key: string; group: SectionGroup<TemplateField> | null; repeatable: TemplateSection | null }[] =
-    leadingBlock ? [{ key: leadingKey, group: null, repeatable: null }, ...contentSteps] : contentSteps;
+  type Step = { key: string; group: SectionGroup<TemplateField> | null; repeatable: TemplateSection | null; maskedContent?: ReactNode };
+  // D10 — un groupe masque ne reste une etape que si l'ecran a quelque chose de reel a en dire.
+  const contentSteps: Step[] = formSteps.flatMap((step): Step[] => {
+    if (step.kind === 'fields') return [{ key: step.group.key, group: step.group, repeatable: null }];
+    if (!step.masked) return [{ key: step.section.sectionKey, group: null, repeatable: step.section }];
+    const maskedContent = maskedRepeatableGroup?.(step.section);
+    return maskedContent === null || maskedContent === undefined || maskedContent === false ? []
+      : [{ key: step.section.sectionKey, group: null, repeatable: step.section, maskedContent }];
+  });
+  const steps: Step[] = leadingBlock ? [{ key: leadingKey, group: null, repeatable: null }, ...contentSteps] : contentSteps;
   const active = steps.some((root) => root.key === current) ? current : steps[0]?.key ?? null;
   const revealingInvalid = useRef(false);
   const focusFrame = useRef<number | null>(null);
@@ -160,7 +187,8 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   };
   const goToField = (key: string) => { const step = stepFor(key); if (step) reveal(step, key); };
 
-  const groupKeys = contentSteps.map((step) => step.key).join('|');
+  // Un groupe masque n'est pas « disponible » : il n'annonce que ce qui y reste enregistre.
+  const groupKeys = contentSteps.filter((step) => step.maskedContent === undefined).map((step) => step.key).join('|');
   useEffect(() => {
     const next = groupKeys ? groupKeys.split('|') : [];
     if (previousGroups.current) {
@@ -288,12 +316,13 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
             </legend>
             <div id={`${groupId(root.key)}-body`} hidden={!expanded} className="@container space-y-5">
               {root.key === leadingKey && leadingBlock?.content}
-              {root.repeatable && repeatableGroup?.(root.repeatable)}
-              {group?.parentSectionKey && (
+              {/* Un groupe enfant se lit comme une sous-section : le libelle de son bloc au-dessus (D9). */}
+              {(group?.parentSectionKey ?? root.repeatable?.parentSectionKey) && (
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {label(group.parentSectionKey)}
+                  {label((group?.parentSectionKey ?? root.repeatable?.parentSectionKey)!)}
                 </p>
               )}
+              {root.repeatable && (root.maskedContent ?? repeatableGroup?.(root.repeatable))}
               {group?.fields.map((field) => <FieldFrame key={field.id} id={fieldId(field.fieldKey)} fieldKey={field.fieldKey} message={issueByKey.get(field.fieldKey)}>{renderField(field)}</FieldFrame>)}
             </div>
           </fieldset>;

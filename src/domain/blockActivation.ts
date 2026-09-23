@@ -115,11 +115,15 @@ function citedCodes(value: unknown): string[] {
   return items.filter((item): item is string => typeof item === 'string' && item !== '');
 }
 
-/** Cles de section du bloc : la racine et ses enfants directs, comme `template_section_field_keys`. */
+/**
+ * Cles de section du bloc : la racine et ses enfants directs NON repetables, comme
+ * `template_section_field_keys` depuis L72a. Un groupe enfant ne se saisit pas sur la fiche :
+ * ses variables de rencontre ne rendent pas le bloc « a demi evalue ».
+ */
 function blockSectionKeys(sectionKey: string, sections: readonly TemplateSection[]): Set<string> {
   const keys = new Set([sectionKey]);
   for (const section of sections) {
-    if (section.parentSectionKey === sectionKey) keys.add(section.sectionKey);
+    if (section.parentSectionKey === sectionKey && section.isRepeatable !== true) keys.add(section.sectionKey);
   }
   return keys;
 }
