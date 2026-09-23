@@ -34,7 +34,9 @@ import { DiagnosisCoverageNotice, diagnosisCoverageOrNull } from './DiagnosisCov
 import { RecordCompletionNotice } from './RecordCompletion';
 import { EmptyState } from '../../components/EmptyState';
 import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
-import { groupFieldsBySection, sectionLabel, withRepeatableSteps } from '../../domain/templateSections';
+import {
+  groupFieldsBySection, maskedRepeatableSectionKeys, repeatableGroupFields, sectionLabel, withRepeatableSteps,
+} from '../../domain/templateSections';
 import { RepeatableGroupTable } from './RepeatableGroup';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
@@ -442,10 +444,28 @@ export function PatientDetail() {
   // Les occurrences suivent la version COURANTE de la base : c'est celle que create_encounter
   // retient, donc celle dont le dictionnaire nomme leurs colonnes.
   const groupVersion = versions[currentVersionId ?? ''] ?? patientVersion;
-  const groupColumnsOf = (sectionKey: string) => (groupVersion?.fields ?? [])
-    .filter((field) => field.scope === 'encounter' && field.section === sectionKey)
+  const groupFields = repeatableGroupFields(groupVersion?.fields ?? [], groupVersion?.sections);
+  const groupColumnsOf = (sectionKey: string) => groupFields
+    .filter((field) => field.section === sectionKey)
     .sort((a, b) => a.displayOrder - b.displayOrder);
   const occurrencesOf = (sectionKey: string) => encounters.filter((encounter) => encounter.groupSectionKey === sectionKey);
+  // L72 R4 — un groupe enfant se masque avec son bloc, selon les regles de la version qui
+  // porte le groupe. D10 : masque mais porteur d'occurrences, il reste annonce, jamais cache.
+  const groupHidden = !groupVersion || groupVersion === patientVersion
+    ? patientHidden
+    : hiddenFieldKeys(
+      groupVersion.rules,
+      patient.data,
+      groupVersion.ruleFields.filter((field) => field.scope === 'patient'),
+      groupVersion.sections,
+    );
+  const maskedGroups = maskedRepeatableSectionKeys(groupVersion?.sections, groupVersion?.rules ?? [], patient.data, groupHidden);
+  const patientSteps = withRepeatableSteps(
+    groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout),
+    groupVersion?.sections,
+    maskedGroups,
+    patientVersion?.commonLayout,
+  ).filter((step) => step.kind !== 'repeatable' || !step.masked || occurrencesOf(step.section.sectionKey).length > 0);
 
   return (
     <section className="max-w-4xl space-y-5 sm:space-y-6">
@@ -559,18 +579,21 @@ export function PatientDetail() {
             </button>
           ) : undefined}
         />
-        {withRepeatableSteps(
-          groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout),
-          groupVersion?.sections,
-        ).map((step) => step.kind === 'repeatable' ? (
+        {patientSteps.map((step) => step.kind === 'repeatable' ? (
           <fieldset key={step.section.sectionKey} className="min-w-0 rounded-xl border border-slate-100 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">
               {step.section.label?.trim() || step.section.sectionKey}
             </legend>
             {/* Lecture seule : le tableau est rendu, aucune action d'ecriture ne l'est (§8.4). */}
-            <p className="mb-2 text-sm font-medium text-slate-600">
-              {t('form.repeatable_count').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
-            </p>
+            {step.masked ? (
+              <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {t('form.repeatable_masked_readonly').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
+              </p>
+            ) : (
+              <p className="mb-2 text-sm font-medium text-slate-600">
+                {t('form.repeatable_count').replace('{n}', String(occurrencesOf(step.section.sectionKey).length))}
+              </p>
+            )}
             {/* L71 : une occurrence est lisible hors-ligne. Seule une copie antérieure au
                 marqueur de groupe reste masquée, parce que rien n'y prouve la portée des valeurs. */}
             {offlineView && occurrencesOf(step.section.sectionKey)

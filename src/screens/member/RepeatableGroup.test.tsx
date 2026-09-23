@@ -437,3 +437,73 @@ describe('RepeatableGroup — actions et permissions', () => {
     expect(screen.queryByRole('button', { name: 'Modifier l’occurrence 2 de Lésions' })).not.toBeInTheDocument();
   });
 });
+
+// L72c, tests 16 et 18 du cadrage : un groupe ENFANT d'un bloc se comporte exactement comme un
+// groupe racine. Le composant ne lit jamais la profondeur ; ces tests l'etablissent.
+describe('RepeatableGroup — groupe en sous-section (L72c)', () => {
+  const child: TemplateSection = { ...groupSection, parentSectionKey: 'trauma', displayOrder: 2 };
+
+  test('borne, ligne curée, lecture seule et bascule carte inchangées', () => {
+    const rows = Array.from({ length: 50 }, (_, index) => occurrence(
+      'occ-' + (index + 1), { niveau: 'N' + (index + 1) }, '2026-09-18T10:00:00.000Z', index === 0 ? 'curated' : 'complete',
+    ));
+    const { unmount } = renderGroup({ section: child, rows });
+    expect(screen.getByRole('button', { name: 'Ajouter une occurrence' })).toBeDisabled();
+    expect(screen.getByText(/Nombre maximal d’occurrences atteint.*\(50\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Modifier l’occurrence 1 de Lésions' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modifier l’occurrence 2 de Lésions' })).toBeInTheDocument();
+    unmount();
+
+    renderGroup({ section: child, rows: [occurrence('occ-1')], canWrite: false });
+    expect(screen.queryByRole('button', { name: /Supprimer l’occurrence/ })).not.toBeInTheDocument();
+  });
+
+  test('passe aux cartes au-delà de six colonnes', () => {
+    mockMatchMedia(false);
+    renderGroup({ section: child, fields: columns(7), rows: [occurrence('occ-1', {})], canWrite: false });
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  test('un conflit reste porté par sa ligne et conserve la saisie locale', async () => {
+    const row1 = occurrence('occ-1', { niveau: 'C5' }, '2026-09-18T10:01:00.000Z');
+    const row2 = occurrence('occ-2', { niveau: 'T3' }, '2026-09-18T10:02:00.000Z');
+    const updateEncounter = vi.fn<PatientRepository['updateEncounter']>(async () => { throw new Error('CONFLIT_VERSION'); });
+    renderGroup({ section: child, rows: [row1, row2], patients: makePatients({ updateEncounter }) });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Modifier l’occurrence 1 de Lésions' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Niveau' }));
+    await user.type(screen.getByRole('textbox', { name: 'Niveau' }), 'Saisie locale');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer l’occurrence' }));
+
+    expect(await screen.findByText(/Cette occurrence a été modifiée entre-temps/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Niveau' })).toHaveValue('Saisie locale');
+    expect(screen.getByRole('button', { name: 'Modifier l’occurrence 2 de Lésions' })).toBeEnabled();
+  });
+
+  // D10 : bloc masqué, deux occurrences vivantes → avertissement, aucune étape de saisie.
+  test('bloc masqué : avertissement chiffré, suppression une à une, aucune saisie', async () => {
+    const softDeleteEncounter = vi.fn<PatientRepository['softDeleteEncounter']>(async () => {});
+    render(
+      <I18nProvider>
+        <RepositoryProvider patients={makePatients({ softDeleteEncounter })}>
+          <RepeatableGroup masked section={child} fields={[field({ fieldKey: 'niveau', label: 'Niveau', type: 'text' })]}
+            occurrences={[occurrence('occ-1', { niveau: 'C5' }), occurrence('occ-2', { niveau: 'T3' })]}
+            patientId="patient-1" canWrite online onChanged={vi.fn()} />
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    const user = userEvent.setup();
+
+    expect(screen.getByText(/masqué pour cette fiche\. 2 occurrence\(s\) y restent enregistrée\(s\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ajouter une occurrence' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Modifier l’occurrence/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Supprimer l’occurrence 2 de Lésions' }));
+    await user.type(screen.getByLabelText('Motif de la suppression'), 'bloc retiré');
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+    await waitFor(() => expect(softDeleteEncounter).toHaveBeenCalledWith('occ-2', 'bloc retiré'));
+  });
+});

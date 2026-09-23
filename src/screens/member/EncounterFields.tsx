@@ -197,6 +197,8 @@ export function EncounterFields({
   requireComplete,
   toFillKeys,
   repeatableGroup,
+  visibilityRules,
+  maskedRepeatableGroup,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -216,6 +218,9 @@ export function EncounterFields({
   toFillKeys?: ReadonlySet<string>;
   /** L68 — rendu d'un bloc repetable, delegue par `SectionedFields`. */
   repeatableGroup?: (section: TemplateSection) => ReactNode;
+  /** L72 — voir `SectionedFields` : regles de visibilite et groupe dont le bloc est masque. */
+  visibilityRules?: readonly { rule: unknown }[];
+  maskedRepeatableGroup?: (section: TemplateSection) => ReactNode;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -238,6 +243,8 @@ export function EncounterFields({
       requireComplete={requireComplete}
       toFillKeys={toFillKeys}
       repeatableGroup={repeatableGroup}
+      visibilityRules={visibilityRules}
+      maskedRepeatableGroup={maskedRepeatableGroup}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (

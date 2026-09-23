@@ -28,7 +28,7 @@ import { DatePickerInput } from '../../components/DatePickerInput';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
-import { repeatableFieldKeys, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
+import { repeatableFieldKeys, repeatableGroupFields, sectionKeyOf } from '../../domain/templateSections';
 import {
   hasUnsavedOccurrences, replayPendingOccurrences, unsavedOccurrences, type PendingOccurrence,
 } from '../../domain/pendingOccurrences';
@@ -207,10 +207,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       setFields(patientFields);
       // L69 — variables des blocs REPETABLES. Elles decrivent une occurrence, pas la fiche :
       // elles ne rejoignent jamais `fields`, et leur saisie passe par le tableau du bloc.
-      const groupKeys = new Set(repeatableSectionsOf(version.sections ?? []).map((s) => s.sectionKey));
-      setGroupFields(groupKeys.size === 0
-        ? []
-        : fields.filter((f) => f.scope === 'encounter' && f.section !== null && groupKeys.has(sectionKeyOf(f))));
+      setGroupFields(repeatableGroupFields(fields, version.sections));
       // Preremplissage : CREATION seulement, cote client uniquement, et UNE SEULE FOIS -- un
       // rechargement ne doit pas faire reapparaitre une proposition que la personne a effacee.
       // Le serveur, lui, n'ecrit jamais ces valeurs de lui-meme.
@@ -479,9 +476,10 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
 
   // L69 — le bloc repetable est rendu A SA PLACE dans le formulaire (§8.1), avec le tableau de
   // L68. Ses lignes restent tamponnees : rien ne part au serveur avant que la fiche existe.
-  const renderRepeatableGroup = (section: TemplateSection) => (
+  const renderRepeatableGroup = (section: TemplateSection, masked = false) => (
     <PendingRepeatableGroup
       key={`${baseId ?? ''}:${mode}:${section.sectionKey}`}
+      masked={masked}
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={rules}
@@ -506,6 +504,12 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       })}
     />
   );
+  // L72 D10 — des lignes tamponnees dans un groupe dont le bloc vient d'etre masque restent
+  // annoncees : cachees, elles partiraient quand meme avec la fiche sans que rien ne le dise.
+  const renderMaskedGroup = (section: TemplateSection) =>
+    pending.some((row) => row.sectionKey === section.sectionKey) || pendingEditorSections.has(section.sectionKey)
+      ? renderRepeatableGroup(section, true)
+      : null;
 
   const identification = <div className="space-y-4">
         <label className="block text-sm">
@@ -686,6 +690,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
               rules={rules}
               requireComplete={isMissionAccount(profile)}
               repeatableGroup={renderRepeatableGroup}
+              maskedRepeatableGroup={renderMaskedGroup}
               renderField={(field) => {
                 const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
                 return (

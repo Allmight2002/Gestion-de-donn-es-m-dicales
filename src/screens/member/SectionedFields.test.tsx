@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
-import type { TemplateField, ValidationRule } from '../../data/types';
+import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { hiddenFieldKeys, makeMissing } from '../../domain/validation';
 import { calculateFormProgress } from '../../domain/formProgress';
@@ -234,5 +234,88 @@ describe('long form sections and progress', () => {
     expect(calculateFormProgress(fields, values, [visibility], hidden).requiredKeys.size).toBe(1);
     expect(hiddenFieldKeys([visibility], { ...values, a: 1 }, fields).has('b')).toBe(false);
     expect(values.b).toBe(8);
+  });
+});
+
+// L72c — un groupe declare sous le bloc A est une ETAPE a part, a son rang dans la grappe de A,
+// et disparait avec A. Donnees fictives.
+describe('L72c — groupe répétable en sous-section', () => {
+  const hierarchy: TemplateSection[] = [
+    { id: 'a', sectionKey: 'trauma', label: 'Traumatisme', displayOrder: 0, parentSectionKey: null },
+    { id: 'a1', sectionKey: 'trauma_a1', label: 'Mécanisme', displayOrder: 1, parentSectionKey: 'trauma' },
+    { id: 'g1', sectionKey: 'lesions', label: 'Lésions vertébrales', displayOrder: 2, parentSectionKey: 'trauma', isRepeatable: true },
+    { id: 'a2', sectionKey: 'trauma_a2', label: 'Imagerie', displayOrder: 3, parentSectionKey: 'trauma' },
+    { id: 'b', sectionKey: 'suivi', label: 'Suivi', displayOrder: 4, parentSectionKey: null },
+  ];
+  const own = (key: string, section: string | null, label: string, order: number): TemplateField =>
+    ({ ...field(key, section), scope: 'patient', type: 'text', label, displayOrder: order, minValue: null, maxValue: null });
+  const patientFields = [
+    own('diag', null, 'Diagnostic', 0), own('a1_meca', 'trauma_a1', 'Mécanisme lésionnel', 1),
+    own('a2_irm', 'trauma_a2', 'IRM', 3), own('b_note', 'suivi', 'Note de suivi', 4),
+  ];
+  const allFields = [...patientFields, { ...own('niveau', 'lesions', 'Niveau', 5), scope: 'encounter' as const }];
+  const blockRule: ValidationRule = { id: 'r-a', severity: 'block', message: null,
+    rule: { if: { field: 'diag', operator: 'equals', value: 'trauma' }, then: { section: 'trauma', operator: 'visible' } } };
+
+  function Form({ initial, withOccurrences = false }: { initial: string; withOccurrences?: boolean }) {
+    const [values, setValues] = useState<Record<string, unknown>>({ diag: initial });
+    const hidden = hiddenFieldKeys([blockRule], values, allFields, hierarchy);
+    return <SectionedFields fields={patientFields.filter((item) => !hidden.has(item.fieldKey))} allFields={patientFields}
+      sections={hierarchy} values={values} rules={[blockRule]} hiddenKeys={hidden}
+      repeatableGroup={(section) => <p>TABLEAU {section.label}</p>}
+      maskedRepeatableGroup={(section) => withOccurrences ? <p>AVERTISSEMENT {section.label} : 2 occurrence(s)</p> : null}
+      renderField={(item) => item.fieldKey === 'diag'
+        ? <label>Diagnostic<input aria-label="Diagnostic" value={String(values.diag ?? '')}
+          onChange={(event) => setValues((current) => ({ ...current, diag: event.target.value }))} /></label>
+        : <label>{item.label}<input aria-label={item.label} /></label>} />;
+  }
+  const contents = () => within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' }))
+    .getAllByRole('button').map((button) => button.textContent);
+
+  // Test 13 du cadrage — bloquant.
+  test('13 : bloc affiché, l’étape du groupe est entre A1 et A2 avec sa propre entrée au sommaire ; bloc masqué, elle disparaît', async () => {
+    const user = userEvent.setup();
+    render(<I18nProvider><Form initial="trauma" /></I18nProvider>);
+
+    expect(contents()).toEqual(['Tronc commun', 'Mécanisme', 'Lésions vertébrales', 'Imagerie', 'Suivi']);
+    // Mode « un bloc à la fois » : suivant et précédent passent par l'étape du groupe.
+    await user.click(within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' })).getByRole('button', { name: 'Mécanisme' }));
+    expect(within(screen.getByRole('group', { name: 'Mécanisme' })).queryByText(/TABLEAU/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    // Son propre cadre, avec le libellé du bloc au-dessus, jamais fondu dans les champs de A.
+    const step = screen.getByRole('group', { name: 'Lésions vertébrales' });
+    expect(within(step).getByText('Traumatisme')).toBeInTheDocument();
+    expect(within(step).getByText('TABLEAU Lésions vertébrales')).toBeInTheDocument();
+    expect(within(step).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Lésions vertébrales' })).toBeVisible();
+    expect(screen.getByText('3 / 5')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    expect(screen.getByRole('group', { name: 'Imagerie' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Bloc précédent' }));
+    expect(screen.getByRole('group', { name: 'Lésions vertébrales' })).toBeVisible();
+
+    // Le diagnostic change : A se masque, et le groupe avec lui.
+    await user.click(within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' })).getByRole('button', { name: 'Tronc commun' }));
+    await user.clear(screen.getByLabelText('Diagnostic'));
+    await user.type(screen.getByLabelText('Diagnostic'), 'autre');
+    expect(contents()).toEqual(['Tronc commun', 'Suivi']);
+    expect(screen.queryByText(/TABLEAU/)).not.toBeInTheDocument();
+
+    // Et il revient à son rang quand A redevient visible.
+    await user.clear(screen.getByLabelText('Diagnostic'));
+    await user.type(screen.getByLabelText('Diagnostic'), 'trauma');
+    expect(contents()).toEqual(['Tronc commun', 'Mécanisme', 'Lésions vertébrales', 'Imagerie', 'Suivi']);
+  });
+
+  test('D10 : bloc masqué avec des occurrences, l’étape devient un avertissement, jamais une saisie', async () => {
+    render(<I18nProvider><Form initial="autre" withOccurrences /></I18nProvider>);
+
+    expect(contents()).toEqual(['Tronc commun', 'Lésions vertébrales', 'Suivi']);
+    await userEvent.click(within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' })).getByRole('button', { name: 'Lésions vertébrales' }));
+    const step = screen.getByRole('group', { name: 'Lésions vertébrales' });
+    expect(within(step).getByText('AVERTISSEMENT Lésions vertébrales : 2 occurrence(s)')).toBeInTheDocument();
+    expect(screen.queryByText(/TABLEAU/)).not.toBeInTheDocument();
+    // Un groupe masqué n'est pas annoncé comme un bloc « disponible ».
+    expect(screen.queryByText(/Bloc disponible/)).not.toBeInTheDocument();
   });
 });

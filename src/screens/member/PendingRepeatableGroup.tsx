@@ -24,7 +24,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
  */
 export function PendingRepeatableGroup({
   section, fields, rules, requireComplete = false, rows, online = true,
-  onAdd, onEdit, onRemove, onDraftDirtyChange, busy = false,
+  onAdd, onEdit, onRemove, onDraftDirtyChange, busy = false, masked = false,
 }: {
   section: TemplateSection;
   /** Variables du bloc, dans l'ordre d'affichage de l'editeur. */
@@ -45,6 +45,12 @@ export function PendingRepeatableGroup({
    * depuis le bandeau de l'ecran, HORS de ce formulaire.
    */
   busy?: boolean;
+  /**
+   * L72 D10 — le bloc parent est masque par la fiche en cours de saisie. Les lignes deja
+   * tamponnees restent annoncees et peuvent etre retirees une a une ; aucune ne s'ajoute ni ne
+   * se corrige. Une ligne en cours d'edition est conservee, sans etre montree.
+   */
+  masked?: boolean;
 }) {
   const { t } = useI18n();
   const formId = useId();
@@ -177,7 +183,7 @@ export function PendingRepeatableGroup({
     const rank = rankOf(row.id);
     return (
       <>
-        <button
+        {!masked && <button
           type="button"
           className="text-xs font-medium text-teal-700 hover:underline"
           aria-label={t('form.repeatable_edit_occurrence').replace('{n}', String(rank)).replace('{group}', groupLabel)}
@@ -185,12 +191,12 @@ export function PendingRepeatableGroup({
           onClick={() => open(pending)}
         >
           {t('encounter.edit')}
-        </button>
+        </button>}
         <button
           type="button"
           className="text-xs font-medium text-red-700 hover:underline"
           aria-label={t('form.repeatable_delete_occurrence').replace('{n}', String(rank)).replace('{group}', groupLabel)}
-          disabled={busy || editing !== null}
+          disabled={busy || (!masked && editing !== null)}
           onClick={() => {
             onRemove(row.id);
             if (editing?.localId === row.id) close();
@@ -212,7 +218,13 @@ export function PendingRepeatableGroup({
           n'annonce que ce qui CHANGE, jamais l'etat initial de la page. */}
       <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
 
-      {!online
+      {masked && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {t('form.repeatable_masked_pending').replace('{n}', String(rows.length))}
+        </p>
+      )}
+
+      {masked ? null : !online
         ? <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('form.repeatable_offline')}</p>
         : <p className="text-sm text-slate-500 dark:text-slate-400">{t('form.pending_hint')}</p>}
 
@@ -224,13 +236,21 @@ export function PendingRepeatableGroup({
         rowNotice={rowNotice}
       />
 
-      {editing && (
+      {editing && !masked && (
         <p role="status" className="text-sm text-slate-600 dark:text-slate-300">
           {t('form.pending_finish_editor_before_other')}
         </p>
       )}
+      {/* Une saisie commencee avant le masquage n'est ni perdue ni montree : elle retient
+          l'enregistrement du patient, donc la personne doit pouvoir l'abandonner d'ici. */}
+      {editing && masked && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <p role="status">{t('form.repeatable_masked_draft')}</p>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={() => setDiscarding(true)}>{t('common.cancel')}</button>
+        </div>
+      )}
 
-      {online && (
+      {online && !masked && (
         <div className="space-y-1">
           <button type="button" className="btn-secondary" disabled={limitReached || busy || editing !== null} onClick={() => open(null)}>
             <Plus size={16} aria-hidden /> {t('form.repeatable_add')}
@@ -243,7 +263,7 @@ export function PendingRepeatableGroup({
         </div>
       )}
 
-      {online && editing && (
+      {online && !masked && editing && (
         // Pas un `form` : le bloc est rendu DANS le formulaire de la fiche. Entree ne doit
         // jamais soumettre la fiche autour, ni enregistrer un patient a la place d'une ligne.
         <fieldset

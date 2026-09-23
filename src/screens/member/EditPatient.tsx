@@ -15,7 +15,7 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { RepeatableGroup } from './RepeatableGroup';
-import { repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
+import { maskedRepeatableSectionKeys, repeatableGroupFields, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -169,13 +169,10 @@ export function EditPatient() {
         // Une occurrence est ecrite dans la version COURANTE de la base : c'est celle que
         // create_encounter retient. Le formulaire d'occurrence suit donc la version active, pas
         // la version historique de la fiche.
-        const groupKeys = new Set(repeatableSectionsOf(active.sections ?? []).map((section) => section.sectionKey));
-        setGroupFields(groupKeys.size === 0
-          ? []
-          : active.fields.filter((field) => field.scope === 'encounter'
-            && field.section !== null && groupKeys.has(sectionKeyOf(field))));
+        const hasGroups = repeatableSectionsOf(active.sections).length > 0;
+        setGroupFields(repeatableGroupFields(active.fields, active.sections));
         setGroupRules(active.rules);
-        if (groupKeys.size === 0) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
+        if (!hasGroups) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
       } else {
         setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
         setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
@@ -315,8 +312,10 @@ export function EditPatient() {
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   const repeatableSections = repeatableSectionsOf(sections);
-  const renderRepeatableGroup = (section: TemplateSection) => (
+  const maskedGroups = fields.length === 0 ? maskedRepeatableSectionKeys(sections, rules, values, hidden) : new Set<string>();
+  const renderRepeatableGroup = (section: TemplateSection, masked = false) => (
     <RepeatableGroup
+      masked={masked}
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={groupRules}
@@ -332,6 +331,15 @@ export function EditPatient() {
       online={online}
     />
   );
+  // L72 D10 — un groupe dont le bloc est masque n'est pas cache en silence : il reste une etape
+  // tant qu'il porte une occurrence enregistree, une saisie en cours, ou qu'on ne peut prouver
+  // qu'il n'en porte aucune (lecture echouee). Pendant le chargement, rien n'est affirme.
+  const renderMaskedGroup = (section: TemplateSection) => {
+    const count = (occurrences ?? []).filter((row) => row.groupSectionKey === section.sectionKey).length;
+    return (occurrences !== null && count > 0) || occurrencesError || groupDirty[section.sectionKey]
+      ? renderRepeatableGroup(section, true)
+      : null;
+  };
 
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
@@ -365,14 +373,19 @@ export function EditPatient() {
         {fields.length === 0 ? (
           <>
             <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
-            {repeatableSections.map((section) => (
-              <fieldset key={section.sectionKey} className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
-                <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  {section.label?.trim() || section.sectionKey}
-                </legend>
-                {renderRepeatableGroup(section)}
-              </fieldset>
-            ))}
+            {/* Sans variable de fiche, `SectionedFields` n'est pas rendu : le meme verdict de
+                masquage s'applique ici, par le meme calcul. */}
+            {repeatableSections.map((section) => {
+              const content = maskedGroups.has(section.sectionKey) ? renderMaskedGroup(section) : renderRepeatableGroup(section);
+              return content && (
+                <fieldset key={section.sectionKey} className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
+                  <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    {section.label?.trim() || section.sectionKey}
+                  </legend>
+                  {content}
+                </fieldset>
+              );
+            })}
           </>
         ) : (
           <EncounterFields
@@ -387,6 +400,8 @@ export function EditPatient() {
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
             repeatableGroup={renderRepeatableGroup}
+            visibilityRules={rules}
+            maskedRepeatableGroup={renderMaskedGroup}
           />
         )}
 
