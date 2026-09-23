@@ -228,7 +228,12 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
           </button>
         </div>}
         {children.length > 0 && <div className="mt-4 flex flex-wrap gap-2" aria-label={t('editor.subsections')}>
-          {children.map((child) => <button key={child.key} type="button" className="btn-secondary" onClick={() => onSelect(child.key)}>{child.label} <span className="text-xs">({fieldCountByKey.get(child.key) ?? child.fields.length})</span></button>)}
+          {/* L72b — un groupe enfant se distingue ici aussi de ses sous-sections voisines,
+              et le marqueur fait partie de son nom accessible. */}
+          {children.map((child) => <button key={child.key} type="button" className="btn-secondary" onClick={() => onSelect(child.key)}
+            aria-label={child.repeatable ? `${child.label} · ${t('section.repeatable_badge')} · ${t('admin.variable_count').replace('{n}', String(fieldCountByKey.get(child.key) ?? child.fields.length))}` : undefined}>
+            {child.label}{child.repeatable && <span aria-hidden className="ml-1 rounded bg-violet-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:bg-violet-900/50 dark:text-violet-100">{t('section.repeatable_badge')}</span>} <span className="text-xs">({fieldCountByKey.get(child.key) ?? child.fields.length})</span>
+          </button>)}
         </div>}
       </div>
       <div role="table" aria-label={t('admin.variables')} className="divide-y divide-slate-200 border-y border-slate-200">

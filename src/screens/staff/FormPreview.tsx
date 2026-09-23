@@ -214,6 +214,54 @@ export function FormPreview({
     setChecked({ blocking, warnings: ruleEval.warnings });
   }
 
+  /**
+   * L67 — un bloc repetable ne se saisit pas champ par champ mais ligne par ligne : l'apercu
+   * montre CETTE forme-la, en-tete de tableau et une ligne d'exemple vide. L'apercu ne cree
+   * rien, le bouton d'ajout reste inactif.
+   *
+   * L72b — ce rendu passe par `repeatableGroup`, comme a la saisie : chaque groupe devient une
+   * etape a son rang declare, racine ou sous-section, au lieu d'etre empile en pied de
+   * formulaire. Le libelle vient de la legende de l'etape ; la legende du tableau le repete
+   * pour les technologies d'assistance.
+   */
+  const renderRepeatableGroup = (section: TemplateSection) => {
+    const columns = fields.filter((field) => field.section === section.sectionKey);
+    return (
+      <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-800 dark:bg-violet-950/30">
+        <p className="text-xs text-violet-800 dark:text-violet-200">{t('preview.repeatable_note')}</p>
+        {columns.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">{t('section.repeatable_empty')}</p>
+        ) : (
+          <>
+            <div className="mt-2 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <caption className="sr-only">{sectionLabel(t, section)}</caption>
+                <thead>
+                  <tr>
+                    {columns.map((field) => (
+                      <th key={field.id} scope="col" className="whitespace-nowrap px-2 py-1 text-left font-medium text-slate-700 dark:text-slate-200">
+                        {field.label}{field.required && <span className="text-red-500"> *</span>}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {columns.map((field) => <td key={field.id} className="px-2 py-1 text-slate-400">—</td>)}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">{t('preview.repeatable_example_row')}</p>
+          </>
+        )}
+        <button type="button" disabled className="btn-secondary mt-2 cursor-not-allowed opacity-60">
+          {t('preview.repeatable_add')}
+        </button>
+      </div>
+    );
+  };
+
   const tabButton = (value: PreviewTab, label: string, count: number) => (
     <button
       type="button"
@@ -314,13 +362,15 @@ export function FormPreview({
           <div className="@container/preview space-y-5">
             {tab === 'patient' ? (
               <>
-                {patientVisible.length === 0 ? (
+                {patientVisible.length === 0 && (
                   <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
-                ) : (
+                )}
+                {(patientVisible.length > 0 || repeatableSections.length > 0) && (
                   // Rendu identique a NewPatient.tsx pour la portee `patient` : les donnees
                   // permanentes n'offrent pas les codes de valeur manquante, elles passent
                   // donc par FieldInput et non par ValueInput. Toute evolution du rendu de
-                  // NewPatient doit etre reportee ici.
+                  // NewPatient doit etre reportee ici. Les groupes repetables passent par la
+                  // meme prop que la saisie (L72b) : SectionedFields les place a leur rang.
                   <SectionedFields
                     fields={patientVisible}
                     sections={sections}
@@ -329,6 +379,7 @@ export function FormPreview({
                     values={patientValues}
                     rules={rules}
                     hiddenKeys={patientHidden}
+                    repeatableGroup={renderRepeatableGroup}
                     renderField={(field) => {
                       const proposal = isProposalSource(field) ? findProposalField(patientFields, field) : undefined;
                       const renderedUnit = previewUnit(field, patientFields, t);
@@ -366,47 +417,6 @@ export function FormPreview({
                   />
                 )}
 
-                {/* L67 — un bloc repetable ne se saisit pas champ par champ mais ligne par
-                    ligne : l'apercu montre CETTE forme-la, en-tete de tableau et une ligne
-                    d'exemple vide. L'apercu ne cree rien, le bouton d'ajout reste inactif. */}
-                {repeatableSections.map((section) => {
-                  const columns = fields.filter((field) => field.section === section.sectionKey);
-                  return (
-                    <section key={section.id} className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-800 dark:bg-violet-950/30">
-                      <h4 className="text-sm font-semibold text-violet-900 dark:text-violet-100">{sectionLabel(t, section)}</h4>
-                      <p className="mt-1 text-xs text-violet-800 dark:text-violet-200">{t('preview.repeatable_note')}</p>
-                      {columns.length === 0 ? (
-                        <p className="mt-2 text-sm text-slate-500">{t('section.repeatable_empty')}</p>
-                      ) : (
-                        <>
-                          <div className="mt-2 overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                              <caption className="sr-only">{sectionLabel(t, section)}</caption>
-                              <thead>
-                                <tr>
-                                  {columns.map((field) => (
-                                    <th key={field.id} scope="col" className="whitespace-nowrap px-2 py-1 text-left font-medium text-slate-700 dark:text-slate-200">
-                                      {field.label}{field.required && <span className="text-red-500"> *</span>}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  {columns.map((field) => <td key={field.id} className="px-2 py-1 text-slate-400">—</td>)}
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">{t('preview.repeatable_example_row')}</p>
-                        </>
-                      )}
-                      <button type="button" disabled className="btn-secondary mt-2 cursor-not-allowed opacity-60">
-                        {t('preview.repeatable_add')}
-                      </button>
-                    </section>
-                  );
-                })}
               </>
             ) : (
               <>

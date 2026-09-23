@@ -1352,6 +1352,10 @@ export const messages = {
     'section.repeatable_confirm': 'Déclarer répétable',
     'section.repeatable_badge': 'Répétable',
     'section.repeatable_outline_hint': 'Saisie en tableau, une ligne par occurrence.',
+    // L72b — groupe répétable en sous-section : verrou de la case et refus d'import de bloc.
+    'section.repeatable_locked_children': 'Ce bloc porte des sous-sections : un groupe répétable n’en accepte pas, et un groupe ne se place pas sous un autre groupe.',
+    'blockimport.error.source_has_repeatable_group':
+      'Ce bloc contient un groupe répétable en sous-section : son import n’est pas encore pris en charge. Créez ce bloc directement dans cette version.',
     'section.common': 'Tronc commun',
     'section.parent': 'Bloc parent',
     'section.root': 'Bloc racine',
