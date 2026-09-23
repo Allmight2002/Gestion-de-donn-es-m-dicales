@@ -381,22 +381,29 @@ describe('identite nominative : retournement delibere du 2026-08-10', () => {
     );
   });
 
-  test('la correction exige un motif et la version courante', async () => {
+  test('la correction accepte un motif vide mais exige la version courante', async () => {
     await resetMission(true, 'Inclusion directe sans support papier stable');
     const patient = (
       await rowsAs(studentId, CREATE_PATIENT, [
         baseId, 'MIS-024', 'Version Fictive', '1991-01-01', null, null, null, '{"sexe":"F","birth_year":1991}',
       ])
     )[0];
-    await expect(
-      rowsAs(studentId, UPDATE_IDENTITY, [
-        patient.id, 'Sans Motif Fictif', '1991-01-01', null, null, null, '   ', patient.row_version,
-      ]),
-    ).rejects.toThrow(/Motif de correction requis/i);
+    await rowsAs(studentId, UPDATE_IDENTITY, [
+      patient.id, 'Sans Motif Fictif', '1991-01-01', null, null, null, '   ', patient.row_version,
+    ]);
+    const audit = (
+      await db.admin.query(
+        "select metadata from public.audit_log where action='patient_identity_corrected' and entity_id=$1 order by created_at desc limit 1",
+        [patient.id],
+      )
+    ).rows[0];
+    expect(audit.metadata.justification_status).toBe('not_provided');
+    expect(audit.metadata).not.toHaveProperty('reason');
+    // La version lue avant la correction est desormais perimee.
     await expect(
       rowsAs(studentId, UPDATE_IDENTITY, [
         patient.id, 'Version Obsolete Fictive', '1991-01-01', null, null, null,
-        'Tentative avec version obsolete', Number(patient.row_version) + 1,
+        'Tentative avec version obsolete', patient.row_version,
       ]),
     ).rejects.toThrow(/CONFLIT_VERSION/i);
   });

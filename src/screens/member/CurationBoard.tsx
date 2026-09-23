@@ -185,7 +185,7 @@ function DeleteRequestMenu({
     <span className="inline-flex flex-wrap items-center justify-end gap-1">
       <input
         aria-label={t('del.reason')}
-        title={t('justification.owner_optional')}
+        title={t('justification.optional')}
         placeholder={t('del.reason')}
         className="rounded border border-slate-300 px-2 py-0.5 text-xs"
         value={reason}

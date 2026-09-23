@@ -98,19 +98,19 @@ describe('DeleteWithReason — validation locale du motif', () => {
     return user;
   }
 
-  test('motif vide : bouton confirmer désactivé, aucun appel serveur', async () => {
+  test('motif vide : la suppression part sans motif', async () => {
     const onConfirm = renderDelete();
-    await open();
-    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled();
-    expect(onConfirm).not.toHaveBeenCalled();
+    const user = await open();
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(''));
   });
 
-  test('motif uniquement composé d’espaces : bouton désactivé, aucun appel serveur', async () => {
+  test('motif uniquement composé d’espaces : envoyé vide, jamais tel quel', async () => {
     const onConfirm = renderDelete();
     const user = await open();
     await user.type(screen.getByLabelText('Motif de la suppression'), '     ');
-    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled();
-    expect(onConfirm).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(''));
   });
 
   test('motif > 1000 caractères : message clair, aucun appel serveur', async () => {

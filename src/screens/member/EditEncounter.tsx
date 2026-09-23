@@ -6,12 +6,10 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { BaseListing } from '../../data/bases';
 import type { FieldChange, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
-import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import {
   encounterScopeFieldKeys, enqueueEncounterUpdate, fieldsForOfflineVersion, isOfflineEnabled, offlineCache,
@@ -55,7 +53,7 @@ function excludedEncounterFieldKeys(context: RecordFormContext | null): Set<stri
     .map((field) => field.field_key));
 }
 
-// Edition / correction d'une rencontre (cahier §10, critere 12). Le motif est requis ;
+// Edition / correction d'une rencontre (cahier §10, critere 12). Le motif est facultatif ;
 // chaque champ modifie est journalise (field_change_log) cote serveur.
 export function EditEncounter() {
   const { id: baseId, patientId, encounterId } = useParams();
@@ -84,7 +82,6 @@ export function EditEncounter() {
   const [reason, setReason] = useState('');
   const [history, setHistory] = useState<FieldChange[]>([]);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
-  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION de la rencontre (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
@@ -146,7 +143,6 @@ export function EditEncounter() {
   // §4.5 : dispense serveur du proprietaire reel. Hors connexion, la file conserve son motif :
   // la propriete ne peut pas etre reverifiee et une operation sans motif resterait bloquee au
   // retour du reseau. Aucun droit hors connexion n'est ouvert ni retire par ce lot.
-  const reasonOptional = online && ownerJustificationExempt(baseListing, profile);
   const pendingRequiredKeys = useMemo(
     () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
     [completion, values, hidden],
@@ -178,7 +174,6 @@ export function EditEncounter() {
         const enc = snap?.patients.flatMap((p) => p.encounters).find((e) => e.id === encounterId) ?? null;
         setHistory([]);
         setRecordContext(null);
-        setBaseListing(null);
         if (!enc) {
           setOfflineEditAllowed(false);
           setOfflineEditBlocked(true);
@@ -270,7 +265,6 @@ export function EditEncounter() {
         setEncounterType(enc.encounterType);
         setBaseUpdatedAt(enc.updatedAt ?? null);
       }
-      setBaseListing(base ?? null);
       setHistory(hist);
       // §7.4 : une rencontre HISTORIQUE s'edite avec SA version de gabarit (libelles, champs et
       // regles de l'epoque = memes controles que le serveur). La version courante de la base ne
@@ -383,7 +377,6 @@ export function EditEncounter() {
         .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ...(requireComplete ? ruleEval.blocking : []),
     ];
-    if (!reason.trim() && !reasonOptional) block.unshift(t('encounter.reason_required'));
     setBlocking(block);
     if (block.length > 0) return;
 
@@ -525,7 +518,7 @@ export function EditEncounter() {
           />
         )}
 
-        <JustificationField value={reason} onChange={setReason} optional={reasonOptional} />
+        <JustificationField value={reason} onChange={setReason} />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

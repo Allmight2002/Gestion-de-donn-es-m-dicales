@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260922010919_patient_code_allocation.sql`
+- Dernière migration incluse : `20260922193000_optional_reasons.sql`
 - Tables : 59 · Policies RLS : 68 · Triggers : 94 · Fonctions : 395
 
 ## Tables (colonnes, RLS, policies, triggers)

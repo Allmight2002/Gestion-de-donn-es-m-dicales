@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
-// E5, extension propriétaire (spécification §4.5 et §7.4).
-//
-// Le serveur seul accorde la dispense : `form_justification_status` n'accepte un motif absent
-// qu'après avoir vérifié le propriétaire réel de la base et son rôle de médecin. Ces tests
-// vérifient que l'écran REFLÈTE ce contrat — il cesse d'exiger un texte pour le propriétaire,
-// garde l'exigence pour tout le monde d'autre, et n'envoie jamais de motif fabriqué.
+// Motif facultatif pour tous (migration 20260922193000_optional_reasons) : le serveur accepte
+// un motif absent pour toute opération déjà autorisée et le journalise comme tel. L'écran ne
+// réclame donc de texte à personne et n'envoie jamais de motif fabriqué.
 // Données entièrement fictives.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,7 +14,6 @@ import type { PatientListItem, PatientRepository } from '../../data/patients';
 import type { TemplateRepository } from '../../data/templates';
 import type { Profile } from '../../auth/types';
 import type { TemplateField } from '../../data/types';
-import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import { EditPatient } from './EditPatient';
 import { EditPatientIdentity } from './EditPatientIdentity';
 
@@ -91,26 +87,13 @@ function renderEditPatient(
 
 const save = () => userEvent.click(screen.getByRole('button', { name: /enregistrer la rencontre/i }));
 
-describe('dispense de justification du propriétaire', () => {
-  test('le contrat n’est reflété que pour un propriétaire médecin', () => {
-    expect(ownerJustificationExempt(listing('owner'), medecin)).toBe(true);
-    expect(ownerJustificationExempt(listing('editor'), medecin)).toBe(false);
-    expect(ownerJustificationExempt(listing('viewer'), medecin)).toBe(false);
-    // Un compte de mission propriétaire n'existe pas côté serveur (`is_medecin`) : l'écran ne
-    // doit pas lui promettre une dispense que la RPC refuserait.
-    expect(ownerJustificationExempt(listing('owner'), { globalRole: 'saisisseur' })).toBe(false);
-    expect(ownerJustificationExempt(listing('owner'), { globalRole: 'curateur' })).toBe(false);
-    expect(ownerJustificationExempt(null, medecin)).toBe(false);
-    expect(ownerJustificationExempt(listing('owner'), null)).toBe(false);
-  });
-
+describe('motif facultatif', () => {
   test('le propriétaire enregistre une correction sans motif et rien n’est fabriqué', async () => {
     currentProfile = medecin;
     const update = renderEditPatient(listing('owner'));
 
     fireEvent.change(await screen.findByLabelText(/valeur historique/i), { target: { value: 'corrigé' } });
-    expect(screen.getByText('Facultatif pour le propriétaire de la base')).toBeInTheDocument();
-    expect(screen.getByText(/restent journalisés/)).toBeInTheDocument();
+    expect(screen.getByText('Facultatif')).toBeInTheDocument();
     await save();
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
@@ -118,27 +101,27 @@ describe('dispense de justification du propriétaire', () => {
     expect(update.mock.calls[0]).toEqual(['p1', { historique: 'corrigé' }, 'draft', '', 3]);
   });
 
-  test('un collaborateur garde l’exigence de motif et n’envoie rien sans texte', async () => {
+  test('un collaborateur enregistre aussi sans motif', async () => {
     currentProfile = medecin;
     const update = renderEditPatient(listing('editor'));
 
     fireEvent.change(await screen.findByLabelText(/valeur historique/i), { target: { value: 'corrigé' } });
-    expect(screen.queryByText('Facultatif pour le propriétaire de la base')).not.toBeInTheDocument();
+    expect(screen.getByText('Facultatif')).toBeInTheDocument();
     await save();
 
-    expect(await screen.findByText(/motif de la correction est requis|motif est requis/i)).toBeInTheDocument();
-    expect(update).not.toHaveBeenCalled();
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][3]).toBe('');
   });
 
-  test('un compte de mission propriétaire garde l’exigence de motif', async () => {
+  test('un compte de mission enregistre aussi sans motif', async () => {
     currentProfile = { ...medecin, globalRole: 'saisisseur' };
-    const update = renderEditPatient(listing('owner'));
+    const update = renderEditPatient(listing('editor'));
 
     fireEvent.change(await screen.findByLabelText(/valeur historique/i), { target: { value: 'corrigé' } });
     await save();
 
-    expect(await screen.findByText(/motif de la correction est requis|motif est requis/i)).toBeInTheDocument();
-    expect(update).not.toHaveBeenCalled();
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][3]).toBe('');
     currentProfile = medecin;
   });
 
@@ -154,7 +137,7 @@ describe('dispense de justification du propriétaire', () => {
     expect(screen.getByLabelText(/valeur historique/i)).toHaveValue('corrigé');
   });
 
-  test('la correction d’identité suit la même dispense, sans élargir le droit d’identité', async () => {
+  test('la correction d’identité accepte aussi un motif vide', async () => {
     currentProfile = medecin;
     const updateIdentity = vi.fn<PatientRepository['updatePatientIdentity']>(async () => ({ version: 4, updatedAt: null }));
     const bases = { async getBase() { return listing('owner'); } } as unknown as BaseRepository;
@@ -176,7 +159,7 @@ describe('dispense de justification du propriétaire', () => {
       </I18nProvider>,
     );
 
-    expect(await screen.findByText('Facultatif pour le propriétaire de la base')).toBeInTheDocument();
+    expect(await screen.findByText('Facultatif')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /enregistrer la correction/i }));
 
     await waitFor(() => expect(updateIdentity).toHaveBeenCalledTimes(1));

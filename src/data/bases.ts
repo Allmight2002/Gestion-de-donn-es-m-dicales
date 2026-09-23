@@ -321,14 +321,14 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       const { data, error } = await client.rpc('list_deleted_bases');
       if (error) throw error;
       return ((data ?? []) as {
-        id: string; name: string; deleted_at: string; deletion_reason: string; purge_eligible_at: string;
+        id: string; name: string; deleted_at: string; deletion_reason: string | null; purge_eligible_at: string;
         patient_count: number; encounter_count: number; document_count: number; attachment_count: number;
         export_count: number; purge_pending: boolean; purge_operation_id: string | null;
       }[]).map((row) => ({
         id: row.id,
         name: row.name,
         deletedAt: row.deleted_at,
-        deletionReason: row.deletion_reason,
+        deletionReason: row.deletion_reason ?? '',
         purgeEligibleAt: row.purge_eligible_at ?? row.deleted_at,
         patientCount: row.patient_count ?? 0,
         encounterCount: row.encounter_count ?? 0,

@@ -228,10 +228,29 @@ describe('E1 dispense de motif et purge', () => {
     expect((await db.admin.query("select metadata from public.audit_log where action='curation_request_deleted' and entity_id=$1 order by created_at desc limit 1", [curation.id])).rows[0].metadata.justification_status).toBe('owner_exempt');
 
     await db.admin.query('update public.base_access set revoked_at=null where base_id=$1 and user_id=$2', [baseId, editorId]);
-    await expect(rowsAs(editorId, 'select public.update_patient($1,$2::jsonb,$3,$4,$5)', [patient.id, JSON.stringify(nextData), 'curated', null, Number(patient.row_version) + 1])).rejects.toThrow('JUSTIFICATION_REQUIRED');
-    await expect(rowsAs(editorId, 'select public.update_patient_identity($1,$2,$3,$4,$5,$6,$7,$8)', [identity.id, identity.full_name, identity.date_of_birth, identity.phone, identity.address, identity.external_identifier, null, identity.row_version])).rejects.toThrow('JUSTIFICATION_REQUIRED');
-    await expect(rowsAs(annaId, 'select public.update_patient_identity($1,$2,$3,$4,$5,$6,$7,$8)', [identity.id, identity.full_name, identity.date_of_birth, identity.phone, identity.address, identity.external_identifier, null, identity.row_version])).rejects.toThrow('Acces refuse');
-    await expect(rowsAs(aliceId, 'select public.soft_delete_base($1,$2)', [baseId, null])).rejects.toThrow('Motif de suppression requis');
+    // Motif facultatif pour tous (20260922193000) : un collaborateur autorisé enregistre sans
+    // texte, l'audit le trace `not_provided`, et un compte sans droit reste refusé.
+    const revertedData = { ...nextData, blood_group: patient.data.blood_group };
+    await rowsAs(editorId, 'select public.update_patient($1,$2::jsonb,$3,$4,$5)', [patient.id, JSON.stringify(revertedData), 'curated', '   ', Number(patient.row_version) + 1]);
+    const editorAudit = (await db.admin.query('select justification_status,reason,changed_by from public.field_change_log where entity=$1 and entity_id=$2 order by changed_at desc limit 1', ['patient', patient.id])).rows[0];
+    expect(editorAudit).toEqual({ justification_status: 'not_provided', reason: null, changed_by: editorId });
+    const identityVersion = (await db.admin.query('select row_version from public.patient where id=$1', [identity.id])).rows[0].row_version;
+    await expect(rowsAs(annaId, 'select public.update_patient_identity($1,$2,$3,$4,$5,$6,$7,$8)', [identity.id, identity.full_name, identity.date_of_birth, identity.phone, identity.address, identity.external_identifier, null, identityVersion])).rejects.toThrow('Acces refuse');
+    await rowsAs(editorId, 'select public.update_patient_identity($1,$2,$3,$4,$5,$6,$7,$8)', [identity.id, identity.full_name, identity.date_of_birth, identity.phone, identity.address, identity.external_identifier, null, identityVersion]);
+    const editorIdentityAudit = (await db.admin.query("select user_id,metadata from public.audit_log where action='patient_identity_corrected' and entity_id=$1 order by created_at desc limit 1", [identity.id])).rows[0];
+    expect(editorIdentityAudit.user_id).toBe(editorId);
+    expect(editorIdentityAudit.metadata.justification_status).toBe('not_provided');
+    expect(editorIdentityAudit.metadata).not.toHaveProperty('reason');
+
+    const baseWithoutReason = randomUUID();
+    await db.admin.query('insert into public.base(id,name,specialty,owner_user_id,current_template_version_id) values($1,$2,$3,$4,$5)', [baseWithoutReason, 'Base E1 sans motif', 'test', aliceId, templateVersionId]);
+    await expect(rowsAs(editorId, 'select public.soft_delete_base($1,$2)', [baseWithoutReason, null])).rejects.toThrow('Reserve au proprietaire de la base');
+    await rowsAs(aliceId, 'select public.soft_delete_base($1,$2)', [baseWithoutReason, null]);
+    const deletedBase = (await db.admin.query('select deleted_at,deletion_reason from public.base where id=$1', [baseWithoutReason])).rows[0];
+    expect(deletedBase.deleted_at).not.toBeNull();
+    expect(deletedBase.deletion_reason).toBeNull();
+    const baseAudit = (await db.admin.query("select metadata from public.audit_log where action='base_deleted' and entity_id=$1 order by created_at desc limit 1", [baseWithoutReason])).rows[0];
+    expect(baseAudit.metadata).not.toHaveProperty('reason');
   });
 
   test('le challenge purge est aléatoire, distinct du nom et consommable une fois', async () => {

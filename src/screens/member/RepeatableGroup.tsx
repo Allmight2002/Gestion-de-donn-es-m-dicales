@@ -9,6 +9,7 @@ import {
 import { evaluateRules, hiddenFieldKeys, isMissing, missingCodeOf, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
 import { DeleteWithReason } from './DeleteWithReason';
+import { JustificationField } from './JustificationField';
 import { EncounterFields } from './EncounterFields';
 import { HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { initialValuesFromDefaults, forgetPrefilled, isClearedValue } from '../../domain/fieldDefaults';
@@ -316,7 +317,6 @@ export function RepeatableGroup({
       ...validateValues(formFields, data, strict, hidden).map((issue) => `${labelOf(issue.fieldKey)} : ${issue.message}`),
       ...ruleErrors,
     ];
-    if (draft.row && !draft.reason.trim()) blocking.unshift(t('encounter.reason_required'));
     setProblems(blocking);
     if (blocking.length > 0) return;
     if (draft.row && !draft.row.updatedAt) {
@@ -488,13 +488,8 @@ export function RepeatableGroup({
             onConfirm={() => void save(true)} onCancel={() => setHiddenConfirmation(false)} />}
 
           {draft.row && (
-            <label className="flex flex-col text-sm">
-              <span className="font-medium text-slate-700 dark:text-slate-200">
-                {t('encounter.reason')} <span className="text-red-500">*</span>
-              </span>
-              <input className="input mt-1" value={draft.reason}
-                onChange={(event) => setDraft((current) => current && { ...current, reason: event.target.value })} />
-            </label>
+            <JustificationField value={draft.reason}
+              onChange={(reason) => setDraft((current) => current && { ...current, reason })} />
           )}
 
           {problems.length > 0 && (

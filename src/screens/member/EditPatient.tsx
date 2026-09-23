@@ -5,12 +5,10 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { BaseListing } from '../../data/bases';
 import type { Encounter, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
-import { ownerJustificationExempt } from '../../domain/ownerJustification';
 import type { DiagnosisContext, TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
@@ -30,7 +28,7 @@ import { WorkDraftPanel } from './WorkDraftPanel';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
-// Correction / completion des DONNEES PERMANENTES d'un patient. Le motif est requis ;
+// Correction / completion des DONNEES PERMANENTES d'un patient. Le motif est facultatif ;
 // chaque champ modifie est journalise cote serveur (update_patient). En brouillon, on peut
 // enregistrer des donnees INCOMPLETES (completion ulterieure) ; la completude n'est exigee
 // qu'en visant 'curated'.
@@ -58,7 +56,6 @@ export function EditPatient() {
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<string>('draft');
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
-  const [baseListing, setBaseListing] = useState<BaseListing | null>(null);
   const [recordContext, setRecordContext] = useState<RecordFormContext | null>(null);
   // L55/L56 : contrat diagnostique de LA VERSION du dossier (absent = collecte historique).
   const [diagnosisVersionId, setDiagnosisVersionId] = useState<string | null>(null);
@@ -139,7 +136,6 @@ export function EditPatient() {
       valuesRef.current = loadedValues;
       setInitialValues(loadedValues);
       setRecordContext(context);
-      setBaseListing(base ?? null);
       if (p) { setStatus(p.validationStatus); setInitialStatus(p.validationStatus); setBaseVersion(p.version ?? null); }
       // §7.4 (audit v12, etendu) : un patient HISTORIQUE s'edite avec SA version de gabarit — memes
       // libelles/champs/regles que le serveur. La version courante de la base n'est qu'un repli.
@@ -218,7 +214,6 @@ export function EditPatient() {
   );
   // §4.5 : le serveur accepte l'absence de motif pour le proprietaire reel de la base. L'ecran
   // se contente de ne plus l'exiger ; un autre compte garde l'obligation actuelle.
-  const reasonOptional = ownerJustificationExempt(baseListing, profile);
   const pendingRequiredKeys = useMemo(
     () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
     [completion, values, hidden],
@@ -256,7 +251,6 @@ export function EditPatient() {
         hidden,
       ).blocking : []),
     ];
-    if (!reason.trim() && !reasonOptional) block.unshift(t('encounter.reason_required'));
     setBlocking(block);
     if (block.length > 0) return;
 
@@ -411,7 +405,7 @@ export function EditPatient() {
           />
         )}
 
-        <JustificationField value={reason} onChange={setReason} optional={reasonOptional} />
+        <JustificationField value={reason} onChange={setReason} />
 
         {blocking.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
