@@ -45,24 +45,31 @@ function renderSettings(bases: BaseRepository, patients: PatientRepository = emp
 }
 
 describe('BaseSettings', () => {
-  test('exige un motif et le nom de la base avant la suppression proprietaire', async () => {
+  test('exige seulement le code affiche avant la suppression proprietaire', async () => {
     const user = userEvent.setup();
     const softDeleteBase = vi.fn(async () => undefined);
     const removeOffline = vi.spyOn(offlineCache, 'remove').mockResolvedValue();
     const bases = { async getBase() { return ownerListing; }, softDeleteBase } as unknown as BaseRepository;
+    const withPatients = { async listPatientsPage() { return { rows: [], total: 3 }; } } as unknown as PatientRepository;
 
-    renderSettings(bases);
+    renderSettings(bases, withPatients);
 
     await user.click(await screen.findByRole('button', { name: 'Supprimer la base' }));
     const dialog = screen.getByRole('dialog', { name: 'Supprimer cette base ?' });
+    expect(within(dialog).getByText('Attention : cette base contient 3 patients.')).toBeInTheDocument();
+    const code = within(dialog).getByLabelText('Code à recopier').textContent ?? '';
+    expect(code).toMatch(/^[A-HJKMNP-Z2-9]{5}$/);
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer la base' });
     expect(confirm).toBeDisabled();
-    await user.type(within(dialog).getByLabelText('Motif de la suppression'), 'Création par erreur');
-    await user.type(within(dialog).getByLabelText('Saisissez le nom de la base pour confirmer'), 'Registre Neuro');
+    const codeInput = within(dialog).getByLabelText('Saisissez le code affiché');
+    await user.type(codeInput, code === 'AAAAA' ? 'BBBBB' : 'AAAAA');
+    expect(confirm).toBeDisabled();
+    await user.clear(codeInput);
+    await user.type(codeInput, code.toLowerCase());
     expect(confirm).toBeEnabled();
     await user.click(confirm);
 
-    expect(softDeleteBase).toHaveBeenCalledWith('b1', 'Création par erreur');
+    expect(softDeleteBase).toHaveBeenCalledWith('b1', '');
     expect(await screen.findByText('TABLEAU DE BORD')).toBeInTheDocument();
     removeOffline.mockRestore();
   });

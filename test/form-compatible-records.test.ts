@@ -541,6 +541,8 @@ let noGroupPatientContextBeforeMigration: Context;
 const REPEATABLE_CONTEXT_MIGRATION = '20260919103000_form_compatible_group_context.sql';
 const GROUP_WRITE_GUARDS_MIGRATION = '20260919110000_form_compatible_group_write_guards.sql';
 const OFFLINE_REPLAY_MIGRATION = '20260920090000_repeatable_groups_offline_replay.sql';
+// L72a redefinit l'applicabilite de groupe E3 : ce fichier en rejoue la non-regression.
+const REPEATABLE_SUBSECTION_MIGRATION = '20260923120000_repeatable_group_subsection.sql';
 
 beforeAll(async () => {
   db = await startTestDb({ seed: true, beforeMigration: REPEATABLE_CONTEXT_MIGRATION });
@@ -559,6 +561,7 @@ beforeAll(async () => {
   await db.admin.query(readFileSync(`supabase/migrations/${REPEATABLE_CONTEXT_MIGRATION}`, 'utf8'));
   await db.admin.query(readFileSync(`supabase/migrations/${GROUP_WRITE_GUARDS_MIGRATION}`, 'utf8'));
   await db.admin.query(readFileSync(`supabase/migrations/${OFFLINE_REPLAY_MIGRATION}`, 'utf8'));
+  await db.admin.query(readFileSync(`supabase/migrations/${REPEATABLE_SUBSECTION_MIGRATION}`, 'utf8'));
   repeatableFixture = await createFixture({ repeatableGroups: true });
 }, 240_000);
 

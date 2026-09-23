@@ -7,6 +7,7 @@ import { useBaseRepository, usePatientRepository, useTemplateRepository } from '
 import type { BaseListing, ObservationModel } from '../../data/bases';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ConfirmationCode, normalizeConfirmationCode, randomConfirmationCode } from '../../components/ConfirmationCode';
 import { SectionCard } from '../../components/SectionCard';
 import { OptionKeyRepairPanel } from './OptionKeyRepairPanel';
 import { SkeletonList } from '../../components/Skeleton';
@@ -39,8 +40,8 @@ export function BaseSettings() {
   const [saving, setSaving] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deletionReason, setDeletionReason] = useState('');
-  const [deletionName, setDeletionName] = useState('');
+  const [deletionCode, setDeletionCode] = useState<string | null>(null);
+  const [deletionCodeInput, setDeletionCodeInput] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [changingObservationModel, setChangingObservationModel] = useState(false);
   // La coquille ne se verifie que la ou une disponibilite hors-ligne est annoncee.
@@ -120,10 +121,11 @@ export function BaseSettings() {
 
   const deleteBase = useCallback(async () => {
     if (!id || !listing || listing.role !== 'owner') return;
-    if (!deletionReason.trim() || deletionName.trim() !== listing.base.name) return;
+    if (!deletionCode || normalizeConfirmationCode(deletionCodeInput) !== deletionCode) return;
     setDeleting(true);
     try {
-      await bases.softDeleteBase(id, deletionReason.trim());
+      // Le code affiche suffit a confirmer : aucun motif n'est demande pour la mise en corbeille.
+      await bases.softDeleteBase(id, '');
       // Une base supprimee ne doit jamais rester consultable dans le cache local.
       await offlineCache.remove(id);
       navigate('/');
@@ -132,7 +134,14 @@ export function BaseSettings() {
     } finally {
       setDeleting(false);
     }
-  }, [id, listing, deletionReason, deletionName, bases, navigate, t]);
+  }, [id, listing, deletionCode, deletionCodeInput, bases, navigate, t]);
+
+  // Un nouveau code a chaque ouverture : on ne recopie pas machinalement celui de la fois d'avant.
+  const openDelete = () => {
+    setDeletionCode(randomConfirmationCode());
+    setDeletionCodeInput('');
+    setConfirmDelete(true);
+  };
 
   const observationModel: ObservationModel = listing?.base.observationModel ?? 'longitudinal';
   const changeObservationModel = useCallback(async (next: ObservationModel) => {
@@ -168,37 +177,35 @@ export function BaseSettings() {
       <ConfirmDialog
         open={confirmDelete}
         title={t('base.delete_title')}
-        body={t('base.delete_body')}
+        body={(
+          <>
+            <p>{t('base.delete_restorable')}</p>
+            {total > 0 && (
+              <p className="mt-2 font-medium text-slate-700">
+                {total === 1 ? t('base.patients_warning_one') : t('base.patients_warning_other').replace('{count}', String(total))}
+              </p>
+            )}
+          </>
+        )}
         confirmLabel={t('base.delete_confirm')}
-        confirmDisabled={!deletionReason.trim() || deletionName.trim() !== listing.base.name}
+        confirmDisabled={!deletionCode || normalizeConfirmationCode(deletionCodeInput) !== deletionCode}
         danger
         busy={deleting}
         onCancel={() => {
           setConfirmDelete(false);
-          setDeletionReason('');
-          setDeletionName('');
+          setDeletionCode(null);
+          setDeletionCodeInput('');
         }}
         onConfirm={() => void deleteBase()}
       >
-        <div className="space-y-3 pt-1">
-          <label className="form-label">
-            {t('base.delete_reason')}
-            <textarea
-              className="input mt-1 min-h-20"
-              value={deletionReason}
-              maxLength={500}
-              onChange={(event) => setDeletionReason(event.target.value)}
-            />
-          </label>
-          <label className="form-label">
-            {t('base.delete_name_confirm')}
-            <input
-              className="input mt-1"
-              value={deletionName}
-              placeholder={t('base.delete_name_hint').replace('{name}', listing.base.name)}
-              onChange={(event) => setDeletionName(event.target.value)}
-            />
-          </label>
+        <div className="pt-1">
+          <ConfirmationCode
+            id="delete-confirmation-code"
+            code={deletionCode}
+            value={deletionCodeInput}
+            disabled={deleting}
+            onChange={setDeletionCodeInput}
+          />
         </div>
       </ConfirmDialog>
 
@@ -269,7 +276,7 @@ export function BaseSettings() {
         <SectionCard title={t('base.settings_danger')} description={t('base.delete_body')} icon={Trash2}>
           <button
             type="button"
-            onClick={() => setConfirmDelete(true)}
+            onClick={openDelete}
             className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
           >
             {t('base.delete')}

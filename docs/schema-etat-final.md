@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260922010919_patient_code_allocation.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 94 · Fonctions : 395
+- Dernière migration incluse : `20260923120000_repeatable_group_subsection.sql`
+- Tables : 59 · Policies RLS : 68 · Triggers : 94 · Fonctions : 396
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1287,6 +1287,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | assert_diagnosis_client | — | INVOKER | plpgsql |
 | assert_diagnosis_configuration | p_version uuid, p_config jsonb | INVOKER | plpgsql |
 | assert_export_columns_safe | p_template_version_id uuid, p_columns text[] | INVOKER | plpgsql |
+| assert_import_source_without_repeatable_child | p_source_version_id uuid, p_source_section_key text | INVOKER | plpgsql |
 | assert_no_hidden_values | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_no_unknown_fields | p_version uuid, p_scope text, p_data jsonb | INVOKER | plpgsql |
 | assert_required_complete | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |

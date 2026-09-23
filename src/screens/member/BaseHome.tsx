@@ -147,8 +147,11 @@ export function BaseHome() {
   // est encore en vol. Il reste attache a la paire compte/base et inutilisable sans cle de compte.
   const sessionColumns = useRef<{ key: string; keys: string[] } | null>(null);
   const columnsWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  // Ne depend ni de `online` ni de `offlineView` : `load` en depend, et chaque bascule de la
+  // vue hors-ligne relancerait un chargement complet (squelette puis re-rendu). Les appelants
+  // portent la garde : le chemin en ligne de `load` et `applyColumns`.
   const queueColumnSave = useCallback((keys: string[]) => {
-    if (!id || !online || offlineView) return;
+    if (!id) return;
     const write = columnsWriteQueue.current.then(() => viewPreferences.saveVisiblePatientFieldKeys(id, keys));
     // Une écriture en échec ne doit pas bloquer les suivantes ; elle reste signalée sans
     // exposer le message SQL ou une information interne au frontend.
@@ -157,7 +160,7 @@ export function BaseHome() {
       () => setColumnsSyncError(false),
       () => setColumnsSyncError(true),
     );
-  }, [id, online, offlineView, viewPreferences]);
+  }, [id, viewPreferences]);
 
   const load = useCallback(async (isCancelled: () => boolean) => {
     if (!id) return;
@@ -445,7 +448,7 @@ export function BaseHome() {
     setVisibleFieldKeys(next);
     if (columnsKey) sessionColumns.current = { key: columnsKey, keys: next };
     writeStoredColumns(columnsKey, next);
-    queueColumnSave(next);
+    if (online && !offlineView) queueColumnSave(next);
   };
   const changeSort = (next: SortChoice) => { setSort(next); setPage(0); };
   // Deux acces a la pagination, deux informations differentes : en tete, la position dans

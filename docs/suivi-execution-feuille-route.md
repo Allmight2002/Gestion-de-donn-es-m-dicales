@@ -31,6 +31,17 @@ répétables L66 à L71. Aucune preuve d’implémentation produit, d’impressi
 déploiement n’est attribuée à ce chantier : PAP-0 n’a produit que des cas fictifs, un banc de
 mesure et une fiche. Son suivi détaillé reste dans le plan PAP.
 
+**Chantier cadré le 2026-09-20 : groupe répétable en sous-section, L72a à L72e.**
+Le [cadrage](l72-groupe-repetable-sous-section.md) et son [découpage](lots-paralleles.md) sont
+rédigés ; **rien n'est implémenté**. Il répond à un défaut sans contournement : un groupe
+répétable s'affiche chez tous les patients, faute de pouvoir dépendre d'un diagnostic. Le
+porteur du besoin a retenu la **grande correction** le 2026-09-22 — le groupe devient une
+sous-section et hérite du rang et de la visibilité de son bloc — contre la voie courte, qui
+aurait réglé la visibilité seule. Deux décisions restent ouvertes : le refus serveur d'une
+occurrence dont le bloc parent est masqué, et le sort des occurrences déjà saisies au retrait du
+diagnostic. Aucune preuve d'implémentation, de navigateur ou de déploiement n'est attribuée à ce
+chantier.
+
 | Ordre | Lot | Statut | Branche / SHA | PR et CI | Staging | Limites restantes |
 |---|---|---|---|---|---|---|
 | D0 | Intégration du cadre documentaire | Terminé | `main` `70798f65017cbcea6b6f348cc9a24f90d0299dd7` ; `develop` `5468141a33ad6c7c1596e83e753881cb03ff874f` | PR #46 et #47 ; CI verte | Non requis | Production exclue |

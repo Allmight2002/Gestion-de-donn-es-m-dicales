@@ -232,6 +232,11 @@ analytique explicite la justifie.
 | **L69** | Groupes répétables : création de patient, occurrences tamponnées et rejeu ordonné | `NewPatient.tsx`, `patients.ts`, tests web | **après L68** ; **jamais avec L41 ni L42** (même `useCallback` de `NewPatient.tsx`) |
 | **L70** | Groupes répétables : export, métadonnée de groupe et colonnes de comptage | `exportContract.ts`, Edge `generate-export`, `ExportPanel.tsx` | **après L66** ; jamais avec L50 (différé) ni L53 |
 | ~~L71~~ | ~~Groupes répétables : instantané et rejeu hors-ligne~~ | **Implémenté localement, non déployé** ; migration `20260920090000_repeatable_groups_offline_replay.sql`, preuves ci-dessous | Lève la restriction hors-ligne posée par L68 ; O6/O7 restent ouverts |
+| **L72a** | Groupe répétable **en sous-section** : socle serveur (contrainte racine levée, résolution des variables d’un groupe enfant, contrôle de portée des règles) | migration additive, `template_section_field_keys`, `assert_rule_structure`, `create_encounter`, tests DB | **après L66 à L71** ; propriétaire unique des contrats serveur ; jamais avec un lot rouvrant les fonctions de L66 |
+| **L72b** | Groupe répétable en sous-section : déclaration dans l’éditeur | `SectionsEditor.tsx`, `EditorStructure.tsx`, `FormPreview.tsx`, i18n | **après L72a** ; mêmes collisions d’éditeur que L67 |
+| **L72c** | Groupe répétable en sous-section : place dans la grappe du bloc et **héritage de la visibilité** | `templateSections.ts`, `SectionedFields.tsx`, `EditPatient.tsx`, `NewPatient.tsx`, `PatientDetail.tsx` | **après L72a** ; **c’est le lot qui livre la valeur** ; jamais avec un lot ouvrant la fiche patient |
+| **L72d** | Groupe répétable en sous-section : export, clé de groupe distincte du bloc de projection | `generate-export/handler.ts`, `exportContract.ts`, tests Edge | **après L72a** ; **obligatoire avant tout export « 1 ligne / patient »** ; jamais avec L53 |
+| **L72e** | Groupe répétable en sous-section : retrait du diagnostic et sort des occurrences déjà saisies | RPC de retrait, `soft_delete_encounter`, tests DB | **après L72c** ; porte le risque du chantier, à estimer en premier |
 | **E0** | Évolution du formulaire : contrats, compatibilité et classification des changements | `docs/spec-evolution-formulaire.md`, contrats de version, données et export | **contrat documenté le 2026-09-16 ; avant E1** ; aucune migration ni implémentation |
 | **E1** | Évolution du formulaire : préparations persistantes, droits et audit | migration additive, RPC/repository de préparation, RLS/ACL, tests DB | **après E0** ; propriétaire unique des contrats serveur |
 | **E2** | Évolution du formulaire : application atomique dans la même base | migration/RPC d’application, copie des sections/champs/règles, idempotence | **après E1** ; jamais avec une autre copie de version |
@@ -1280,6 +1285,38 @@ qu'avant.
 
 **Non vérifié sur la cible.** Aucune migration appliquée à distance, aucun déploiement, aucune
 preuve navigateur (PWA installée, coupure réseau franche, rejeu à la reconnexion).
+
+## Groupe répétable en sous-section — L72
+
+**Cadré le 2026-09-20.** [Cadrage détaillé](l72-groupe-repetable-sous-section.md).
+**L72a implémenté localement le 2026-09-23** (migration `20260923120000`, non appliquée à
+distance) ; état et écarts au §13 du cadrage. L72b à L72e non implémentés ; tant que L72d manque,
+ne pas exporter en « 1 ligne / patient » une base portant un groupe en sous-section.
+
+**Arbitrage du porteur du besoin, 2026-09-22 :** la **grande correction** est retenue. La voie
+courte — autoriser une règle à cibler un bloc répétable resté racine — règle la visibilité mais
+laisse le groupe en tête ou en pied de formulaire ; elle est écartée.
+
+Le besoin vient du terrain : un bloc de diagnostic `A` avec ses sous-sections, et un groupe
+répétable qui doit se lire **à l’intérieur** de ce bloc et **n’apparaître que pour ce
+diagnostic**. Aujourd’hui impossible deux fois — un groupe est forcément un bloc racine, et
+`normalize_template_section_order` regroupe les sections par racine ; et un groupe ne peut pas
+être la cible d’une règle d’affichage, donc il s’affiche chez **tous** les patients. Ce second
+défaut **n’a aucun contournement** : la seule échappatoire est de renoncer au groupe et de
+revenir aux variables numérotées.
+
+**Ce lot n’est pas « retirer une contrainte ».** Le cadrage inventorie trois ruptures qui ne
+lèvent aucune erreur et rendraient un verdict ou un fichier faux si on s’en contentait :
+`template_section_field_keys` ne résout que les racines — or c’est l’unique implémentation du
+§5 ; le sous-arbre d’une racine inclut ses enfants, ce qui rendrait **incréable** la règle du
+bloc de diagnostic ; et `blockKey` suit la racine à l’export, ce qui remettrait les occurrences
+sur la ligne patient pour y être agrégées au hasard.
+
+**Ordre : L72a bloquant ; L72b, L72c et L72d se parallélisent ensuite ; L72e après L72c.**
+Le jalon utilisable est **L72c**. Deux décisions restent ouvertes et appartiennent au
+propriétaire : le refus serveur d’une occurrence dont le bloc parent est masqué, et le sort des
+occurrences déjà saisies quand le diagnostic est retiré — ce sont des **lignes**, pas des
+valeurs, et la confirmation de retrait de L52 ne les voit pas.
 
 ## Ordre suggéré — état de source au 2026-09-16
 
