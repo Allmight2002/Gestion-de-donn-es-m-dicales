@@ -1,0 +1,176 @@
+{
+  "plate/encounter/analysis": {
+    "Données": [
+      ["patient_code","encounter_id","encounter_date","encounter_type","age_value","age_unit","group_section_key","encounter__sbp","encounter__danger","encounter__miss"],
+      ["P001","e1",43831,"visit",3,"y","",-5,"'=SUM(A1)","inconnu"]
+    ],
+    "Dictionnaire": [
+      ["column_id","label","description","section","section_label","type","unit","formula","allowed_values","missing_reasons"],
+      ["encounter__sbp","SBP","Mesure assise apres cinq minutes de repos","vitals","Constantes","number","mmHg","","",""],
+      ["encounter__danger","D","","x","Divers","text","","","",""],
+      ["encounter__miss","M","","x","Divers","text","","","",""]
+    ],
+    "Modalités": [
+      ["variable","code","label","order","is_active"]
+    ],
+    "Métadonnées": [
+      ["attribute","value"],
+      ["export_profile","analysis"],
+      ["generated_at","2026-07-12T00:00:00.000Z"],
+      ["base_name","Urgences pediatriques"],
+      ["cohort_name","Traumatismes craniens"],
+      ["export_mode","encounter"],
+      ["selection_rule","last"],
+      ["template_versions","323e4567-e89b-42d3-a456-426614174000"],
+      ["row_count",1],
+      ["excluded_patients_incomplete",0],
+      ["excluded_encounters_incomplete",0]
+    ]
+  },
+  "plate/encounter/complete": {
+    "Export": [
+      ["patient_code","encounter_id","encounter_date","encounter_type","age_value","age_unit","group_section_key","encounter__sbp","encounter__danger","encounter__miss"],
+      ["P001","e1",43831,"visit",3,"y","",-5,"'=SUM(A1)","inconnu"]
+    ],
+    "Dictionnaire": [
+      ["column_id","field_key","label","description","scope","section","section_label","type","formula","is_multiple","unit","allowed_values","missing_reasons","template_versions"],
+      ["encounter__sbp","sbp","SBP","Mesure assise apres cinq minutes de repos","encounter","vitals","Constantes","number","","false","mmHg","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__danger","danger","D","","encounter","x","Divers","text","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__miss","miss","M","","encounter","x","Divers","text","","false","","","","323e4567-e89b-42d3-a456-426614174000"]
+    ]
+  },
+  "plate/patient/analysis": {
+    "Données": [
+      ["patient_code","age_value","age_unit","encounter__sbp","encounter__danger","encounter__miss"],
+      ["P001",3,"y",-5,"'=SUM(A1)","inconnu"]
+    ],
+    "Dictionnaire": [
+      ["column_id","label","description","section","section_label","type","unit","formula","allowed_values","missing_reasons"],
+      ["encounter__sbp","SBP","Mesure assise apres cinq minutes de repos","vitals","Constantes","number","mmHg","","",""],
+      ["encounter__danger","D","","x","Divers","text","","","",""],
+      ["encounter__miss","M","","x","Divers","text","","","",""]
+    ],
+    "Modalités": [
+      ["variable","code","label","order","is_active"]
+    ],
+    "Métadonnées": [
+      ["attribute","value"],
+      ["export_profile","analysis"],
+      ["generated_at","2026-07-12T00:00:00.000Z"],
+      ["base_name","Urgences pediatriques"],
+      ["cohort_name","Traumatismes craniens"],
+      ["export_mode","patient"],
+      ["selection_rule","last"],
+      ["template_versions","323e4567-e89b-42d3-a456-426614174000"],
+      ["row_count",1],
+      ["excluded_patients_incomplete",0],
+      ["excluded_encounters_incomplete",0]
+    ]
+  },
+  "plate/patient/complete": {
+    "Export": [
+      ["patient_code","age_value","age_unit","encounter__sbp","encounter__danger","encounter__miss"],
+      ["P001",3,"y",-5,"'=SUM(A1)","inconnu"]
+    ],
+    "Dictionnaire": [
+      ["column_id","field_key","label","description","scope","section","section_label","type","formula","is_multiple","unit","allowed_values","missing_reasons","template_versions"],
+      ["encounter__sbp","sbp","SBP","Mesure assise apres cinq minutes de repos","encounter","vitals","Constantes","number","","false","mmHg","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__danger","danger","D","","encounter","x","Divers","text","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__miss","miss","M","","encounter","x","Divers","text","","false","","","","323e4567-e89b-42d3-a456-426614174000"]
+    ]
+  },
+  "groupe_racine/encounter/analysis": {
+    "Données": [
+      ["patient_code","encounter_id","encounter_date","encounter_type","age_value","age_unit","group_section_key","encounter__age","encounter__tb_statut","encounter__tb_crp","encounter__poids","encounter__niveau"],
+      ["P001","e2","","autre","","","lesions","","","","",11],
+      ["P001","e3","","autre","","","lesions","","","","",12],
+      ["P001","e1",43831,"visit",3,"y","",7,1,12,9,""]
+    ],
+    "Dictionnaire": [
+      ["column_id","label","description","section","section_label","block","block_label","type","unit","formula","allowed_values","missing_reasons"],
+      ["encounter__age","age","","","","","","number","","","",""],
+      ["encounter__tb_statut","tb_statut","","tuberculose","Tuberculose","tuberculose","Tuberculose","number","","","",""],
+      ["encounter__tb_crp","tb_crp","","tb_biologie","Biologie","tuberculose","Tuberculose","number","","","",""],
+      ["encounter__poids","poids","","malnutrition","Malnutrition","malnutrition","Malnutrition","number","","","",""],
+      ["encounter__niveau","niveau","","lesions","Lésions","lesions","Lésions","number","","","",""]
+    ],
+    "Modalités": [
+      ["variable","code","label","order","is_active"]
+    ],
+    "Métadonnées": [
+      ["attribute","value"],
+      ["export_profile","analysis"],
+      ["generated_at","2026-07-12T00:00:00.000Z"],
+      ["base_name","Urgences pediatriques"],
+      ["cohort_name","Traumatismes craniens"],
+      ["export_mode","encounter"],
+      ["selection_rule","last"],
+      ["template_versions","323e4567-e89b-42d3-a456-426614174000"],
+      ["row_count",3],
+      ["excluded_patients_incomplete",0],
+      ["excluded_encounters_incomplete",0]
+    ]
+  },
+  "groupe_racine/encounter/complete": {
+    "Export": [
+      ["patient_code","encounter_id","encounter_date","encounter_type","age_value","age_unit","group_section_key","encounter__age","encounter__tb_statut","encounter__tb_crp","encounter__poids","encounter__niveau"],
+      ["P001","e2","","autre","","","lesions","","","","",11],
+      ["P001","e3","","autre","","","lesions","","","","",12],
+      ["P001","e1",43831,"visit",3,"y","",7,1,12,9,""]
+    ],
+    "Dictionnaire": [
+      ["column_id","field_key","label","description","scope","section","section_label","block","block_label","type","formula","is_multiple","unit","allowed_values","missing_reasons","template_versions"],
+      ["encounter__age","age","age","","encounter","","","","","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__tb_statut","tb_statut","tb_statut","","encounter","tuberculose","Tuberculose","tuberculose","Tuberculose","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__tb_crp","tb_crp","tb_crp","","encounter","tb_biologie","Biologie","tuberculose","Tuberculose","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__poids","poids","poids","","encounter","malnutrition","Malnutrition","malnutrition","Malnutrition","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__niveau","niveau","niveau","","encounter","lesions","Lésions","lesions","Lésions","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"]
+    ]
+  },
+  "groupe_racine/patient/analysis": {
+    "Données": [
+      ["patient_code","age_value","age_unit","encounter__age","encounter__tb_statut","encounter__tb_crp","encounter__poids","nb__lesions"],
+      ["P001",3,"y",7,1,12,9,2]
+    ],
+    "Dictionnaire": [
+      ["column_id","label","description","section","section_label","block","block_label","type","unit","formula","allowed_values","missing_reasons"],
+      ["encounter__age","age","","","","","","number","","","",""],
+      ["encounter__tb_statut","tb_statut","","tuberculose","Tuberculose","tuberculose","Tuberculose","number","","","",""],
+      ["encounter__tb_crp","tb_crp","","tb_biologie","Biologie","tuberculose","Tuberculose","number","","","",""],
+      ["encounter__poids","poids","","malnutrition","Malnutrition","malnutrition","Malnutrition","number","","","",""],
+      ["encounter__niveau","niveau","","lesions","Lésions","lesions","Lésions","number","","","",""],
+      ["nb__lesions","Lésions — nombre d'occurrences","Nombre d'occurrences du bloc répétable « Lésions » pour ce patient. 0 signifie aucune occurrence, jamais une information manquante. Les variables de ce bloc appartiennent à chaque occurrence et ne figurent pas dans ce fichier : elles ne s'agrègent pas sur une ligne par patient. Une ligne par occurrence les restitue toutes, distinguées par la colonne group_section_key.","lesions","Lésions","lesions","Lésions","computed_group_count","","","",""]
+    ],
+    "Modalités": [
+      ["variable","code","label","order","is_active"]
+    ],
+    "Métadonnées": [
+      ["attribute","value"],
+      ["export_profile","analysis"],
+      ["generated_at","2026-07-12T00:00:00.000Z"],
+      ["base_name","Urgences pediatriques"],
+      ["cohort_name","Traumatismes craniens"],
+      ["export_mode","patient"],
+      ["selection_rule","last"],
+      ["template_versions","323e4567-e89b-42d3-a456-426614174000"],
+      ["row_count",1],
+      ["excluded_patients_incomplete",0],
+      ["excluded_encounters_incomplete",0]
+    ]
+  },
+  "groupe_racine/patient/complete": {
+    "Export": [
+      ["patient_code","age_value","age_unit","encounter__age","encounter__tb_statut","encounter__tb_crp","encounter__poids","nb__lesions"],
+      ["P001",3,"y",7,1,12,9,2]
+    ],
+    "Dictionnaire": [
+      ["column_id","field_key","label","description","scope","section","section_label","block","block_label","type","formula","is_multiple","unit","allowed_values","missing_reasons","template_versions"],
+      ["encounter__age","age","age","","encounter","","","","","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__tb_statut","tb_statut","tb_statut","","encounter","tuberculose","Tuberculose","tuberculose","Tuberculose","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__tb_crp","tb_crp","tb_crp","","encounter","tb_biologie","Biologie","tuberculose","Tuberculose","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__poids","poids","poids","","encounter","malnutrition","Malnutrition","malnutrition","Malnutrition","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["encounter__niveau","niveau","niveau","","encounter","lesions","Lésions","lesions","Lésions","number","","false","","","","323e4567-e89b-42d3-a456-426614174000"],
+      ["nb__lesions","","Lésions — nombre d'occurrences","Nombre d'occurrences du bloc répétable « Lésions » pour ce patient. 0 signifie aucune occurrence, jamais une information manquante. Les variables de ce bloc appartiennent à chaque occurrence et ne figurent pas dans ce fichier : elles ne s'agrègent pas sur une ligne par patient. Une ligne par occurrence les restitue toutes, distinguées par la colonne group_section_key.","patient","lesions","Lésions","lesions","Lésions","computed_group_count","","false","","","",""]
+    ]
+  }
+}
