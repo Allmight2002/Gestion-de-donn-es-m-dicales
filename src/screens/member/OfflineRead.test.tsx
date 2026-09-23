@@ -91,6 +91,21 @@ describe('BaseHome hors-ligne', () => {
     expect(screen.queryByText('Nom complet')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nouveau patient/)).not.toBeInTheDocument();
   });
+
+  test('la bascule en vue hors-ligne ne relance pas le chargement (pas de squelette apres rendu)', async () => {
+    const get = vi.spyOn(offlineCache, 'get');
+    try {
+      renderAt('/bases/b1', <BaseHome />, '/bases/:id');
+      const title = await screen.findByText('Base hors-ligne');
+      // Laisser passer les effets differes : un second chargement remplacerait le rendu
+      // par le squelette et detacherait ce titre (flake CI du run 219).
+      for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(title.isConnected).toBe(true);
+      expect(get.mock.calls.filter(([baseId]) => baseId === 'b1')).toHaveLength(1);
+    } finally {
+      get.mockRestore();
+    }
+  });
 });
 
 describe('PatientDetail hors-ligne', () => {
