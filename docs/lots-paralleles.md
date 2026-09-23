@@ -1288,7 +1288,10 @@ preuve navigateur (PWA installée, coupure réseau franche, rejeu à la reconnex
 
 ## Groupe répétable en sous-section — L72
 
-**Cadré le 2026-09-20, non implémenté.** [Cadrage détaillé](l72-groupe-repetable-sous-section.md).
+**Cadré le 2026-09-20.** [Cadrage détaillé](l72-groupe-repetable-sous-section.md).
+**L72a implémenté localement le 2026-09-23** (migration `20260923120000`, non appliquée à
+distance) ; état et écarts au §13 du cadrage. L72b à L72e non implémentés ; tant que L72d manque,
+ne pas exporter en « 1 ligne / patient » une base portant un groupe en sous-section.
 
 **Arbitrage du porteur du besoin, 2026-09-22 :** la **grande correction** est retenue. La voie
 courte — autoriser une règle à cibler un bloc répétable resté racine — règle la visibilité mais

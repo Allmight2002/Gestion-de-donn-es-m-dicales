@@ -235,7 +235,8 @@ export interface TemplateSection {
   /**
    * L67 — bloc répétable : ses variables décrivent une occurrence, pas le patient.
    * True = répétable, false = ordinaire; undefined = état inconnu dans un ancien instantané.
-   * Ne vaut que sur un bloc racine : la base le garantit.
+   * Bloc racine, ou depuis L72a sous-section d'un bloc racine ; jamais parent d'une section :
+   * la base le garantit.
    */
   isRepeatable?: boolean;
 }
