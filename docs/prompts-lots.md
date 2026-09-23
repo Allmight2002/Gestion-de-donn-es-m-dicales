@@ -1182,9 +1182,267 @@ PREUVES ATTENDUES.
 Ne committe, ne pousse, ne fusionne, ne déploie et n’applique aucune migration distante.
 ```
 
-> Les prompts de **L72b à L72e** ne sont pas rédigés : leur périmètre dépend de deux décisions
-> encore ouvertes (§4 R4 et §5 du cadrage). Les écrire avant de les avoir tranchées reviendrait à
-> les trancher en douce.
+### Décisions préalables à L72b–L72e — tranchées le 2026-09-23
+
+Les prompts ci-dessous en dépendent. Ils ne les rediscutent pas ; un exécutant qui en trouve une
+intenable s’arrête et le signale.
+
+| # | Question | Décision |
+|---|---|---|
+| D1 | R4 : écrire une occurrence dont le bloc parent est masqué | **Refusé par le serveur.** Une condition non vérifiable vaut « masqué » : l’occurrence est refusée tant que le pilote n’est pas saisi. Vaut pour la création **et** la correction ; la suppression reste permise |
+| D2 | Sort des occurrences au retrait (§5) | **Suppression douce motivée, atomique avec l’enregistrement de la fiche.** Repli, si l’estimation de L72e déborde : refuser le retrait tant que des occurrences existent |
+| D3 | Qui porte R4 | **L72e**, pas L72a : le même test « le bloc parent est-il visible pour ce patient ? » sert R4 et le retrait. L72a, implémenté localement le 2026-09-23, l’a laissé ouvert (§13 du cadrage) |
+| D4 | Périmètre du retrait | **Toute perte de visibilité** du bloc parent d’un groupe : règle de bloc sur n’importe quel pilote, cascade comprise, pas seulement l’association diagnostic → bloc de L55. Le motif engendré nomme le **bloc** (libellé de structure), jamais le diagnostic ni la valeur pilote |
+| D5 | Où tient la garantie | **Dans toute écriture de la fiche.** Un enregistrement qui masquerait un bloc portant des occurrences vivantes est refusé, sauf s’il déclare ces occurrences (identifiant et version attendue) : fiche et suppressions douces sont alors faites dans la même transaction. Une déclaration qui ne correspond plus à l’état réel donne un conflit structuré, sans aucune écriture |
+| D6 | Restauration | **Correction du cadrage :** il n’existe **aucune** restauration par occurrence ; la corbeille ne restaure que des bases entières (`restore_deleted_base`), et seulement les lignes supprimées **avec** la base : une occurrence supprimée avant, seule ou par un retrait, ne revient pas. L72e n’en crée pas — **confirmé par le porteur du besoin le 2026-09-23**. Le retrait s’annonce comme une suppression d’occurrences sans retour possible depuis l’écran, comparable à la suppression individuelle d’aujourd’hui. Ressaisir le diagnostic ne restaure rien. Le test 11 du §9.1 s’arrête donc à « lignes supprimées, motif journalisé » |
+| D7 | Hors ligne | La fiche ne se modifie pas hors ligne (la file ne porte que les créations et les corrections d’occurrences) : le retrait se fait **en ligne**. Un rejeu qui heurte R4 ou une occurrence supprimée devient un **conflit structuré** ; la saisie locale est préservée |
+| D8 | Éditeur | Sur une version **brouillon non utilisée**, un groupe racine existant **peut** être déplacé à la main sous un bloc. Le §8 n’interdit que la conversion automatique |
+| D9 | Affichage au remplissage | Le groupe est une **étape à part** : son propre cadre, sa propre entrée au sommaire, placée à son rang dans la grappe de son bloc (entre `A1` et `A2`), avec le libellé du bloc au-dessus, comme les sous-sections. Il n’est **jamais** fondu dans les champs de `A`. Il disparaît avec son bloc |
+| D10 | Groupe masqué qui porte déjà des occurrences | L’état affiché est l’état réel : pas de masquage silencieux. L’étape est remplacée par un avertissement en lecture seule annonçant le nombre d’occurrences enregistrées dans un bloc masqué ; la suppression individuelle reste possible |
+| D11 | Mise en page commune (UX-16) | Le groupe suit la rubrique de son bloc parent |
+| D12 | Dictionnaire d’export | Pas de nouvelle colonne. La ligne de comptage porte `section` = groupe, et `block`/`block_label` = racine lorsque les colonnes de bloc sont déjà actives. Aucun filtre de visibilité à l’export : D1 et D5 l’assurent en amont |
+| D13 | Ordre | L72b, L72c et L72d partent sans attendre l’estimation de L72e, puisque D2 est tranché. L72e commence par cette estimation et bascule sur le repli si elle déborde |
+
+**Aperçu de l’éditeur, défaut actuel.** `FormPreview` rend tous les groupes **après** la fiche
+([FormPreview.tsx:372](../src/screens/staff/FormPreview.tsx)) au lieu de les confier à
+`SectionedFields`, qui sait déjà les placer à leur rang (`repeatableGroup`). Défaut présent dès
+aujourd’hui avec les groupes racines ; corrigé par L72b.
+
+---
+
+## L72b — Groupe répétable en sous-section : éditeur et aperçu
+
+```text
+Tu prends le lot L72b uniquement, dans le dépôt MedData. L72a doit être fusionné sur
+origin/develop : vérifie-le après git fetch, le checkout est partagé et souvent en retard. Lis
+docs/l72-groupe-repetable-sous-section.md (§4, §8, §13), le bloc « Décisions préalables à
+L72b–L72e » de docs/prompts-lots.md (D8, D9, D11), puis la fiche L72b de
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot.
+
+OBJECTIF.
+Permettre de déclarer un groupe répétable sous un bloc racine depuis l’éditeur, et montrer dans
+l’aperçu chaque groupe à sa place réelle.
+
+1. SectionsEditor : la case « Groupe répétable » est offerte sur une sous-section (aujourd’hui
+   réservée aux racines). Elle ne l’est pas sur une section qui a des sous-sections, ni sur une
+   racine qui porte déjà un groupe enfant (pas de groupe sous un groupe), ni sur un modèle
+   transversal (verrou existant). La confirmation annonce exactement les mêmes conséquences
+   qu’à la racine : conversion de portée, types de rencontre, variables bloquantes.
+2. Déplacement (D8) : sur une version brouillon non utilisée, un groupe racine peut être placé
+   sous un bloc. Mêmes gardes que tout changement de parent ; le serveur reste l’autorité.
+3. EditorStructure : le marqueur de groupe apparaît sur un groupe enfant, dans l’arbre de son
+   bloc.
+4. APERÇU — défaut actuel à corriger, groupes racines compris. FormPreview rend tous les groupes
+   dans une boucle placée APRÈS SectionedFields. Supprime cette boucle et passe le rendu inerte
+   du tableau (en-tête, ligne d’exemple vide, bouton d’ajout inactif) par la prop
+   repeatableGroup de SectionedFields. Chaque groupe devient alors une étape à son rang, comme
+   au remplissage (D9). Ne modifie pas SectionedFields : le masquage d’un groupe avec son bloc
+   est livré par L72c, dans SectionedFields ; l’aperçu en héritera sans retouche.
+5. Libellé web du refus IMPORT_SOURCE_HAS_REPEATABLE_GROUP (import de bloc, §13), sans valeur
+   clinique.
+
+PÉRIMÈTRE STRICT.
+- Fichiers : SectionsEditor.tsx, EditorStructure.tsx, FormPreview.tsx, leurs tests, i18n.
+- Tu n’ouvres ni src/domain, ni SectionedFields, ni les écrans patient : c’est L72c. Ni
+  l’export (L72d), ni le serveur (L72a est fusionné, L72e porte le reste). Si une garde serveur
+  te manque, arrête-toi et signale-le.
+- i18n : ajoute tes clés dans un bloc contigu ; L72c écrit dans le même fichier.
+- Ne jamais lancer en même temps que L59 ou un correctif UX de ces trois fichiers.
+- npm.cmd, pas npm.ps1. Données fictives uniquement.
+
+PREUVES ATTENDUES.
+1. Test 19 du cadrage : la case est offerte sur une sous-section, refusée dans les cas du point
+   1, et la confirmation annonce les mêmes conséquences qu’à la racine.
+2. Aperçu : avec A (A1, G1, A2), G1 est rendu comme une étape entre A1 et A2 ; un groupe racine
+   est rendu à son rang déclaré, et non plus en pied de formulaire.
+3. Lint, typecheck et tests ciblés des fichiers touchés, une seule fois.
+4. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n’applique aucune migration distante.
+```
+
+## L72c — Groupe répétable en sous-section : rang et héritage de la visibilité
+
+```text
+Tu prends le lot L72c uniquement, dans le dépôt MedData. C’est le lot qui livre la valeur du
+chantier. L72a doit être fusionné sur origin/develop : vérifie-le après git fetch. Lis
+docs/l72-groupe-repetable-sous-section.md (§1, §4 R4, §9.2, §13), le bloc « Décisions
+préalables à L72b–L72e » de docs/prompts-lots.md (D9, D10, D11), puis la fiche L72c de
+docs/lots-paralleles.md. Préserve toutes les modifications locales étrangères au lot.
+
+OBJECTIF.
+Au remplissage, un groupe déclaré sous le bloc A se lit comme une ÉTAPE À PART : son propre
+cadre, sa propre entrée au sommaire, placée à son rang dans la grappe de A (entre A1 et A2),
+avec le libellé de A au-dessus comme pour une sous-section. Jamais fondu dans les champs de A.
+Il disparaît quand A est masqué.
+
+À FAIRE.
+1. templateSections.ts : repeatableSectionsOf ne filtre plus les racines ; retire les
+   commentaires qui citent la contrainte racine supprimée par L72a. withRepeatableSteps place
+   un groupe enfant par son displayOrder, qui est global et déjà normalisé.
+2. Miroirs web de l’expansion d’un bloc (§13) : les cibles d’une règle de bloc dans
+   templateRules.ts, y compris son repli par parentSectionKey, et blockSectionKeys dans
+   blockActivation.ts excluent les enfants répétables, comme template_section_field_keys côté
+   serveur. Sinon l’écran masque des variables que le serveur ne masque plus.
+3. Héritage de la visibilité : le masquage se décide sur la SECTION, pas sur des clés de
+   variables — les variables d’un groupe ne sont jamais dans la fiche, et un bloc peut ne
+   porter aucune variable propre. Évalue la règle qui cible la racine du groupe (cascade
+   comprise), et place ce calcul dans SectionedFields ou dans le domaine qu’il appelle, pas
+   dans chaque écran. L’aperçu de l’éditeur (L72b) en héritera ainsi sans retouche.
+   PatientDetail, qui appelle withRepeatableSteps directement, applique le même calcul.
+4. D10 : un groupe masqué qui porte déjà des occurrences vivantes n’est pas caché en silence.
+   Son étape est remplacée par un avertissement en lecture seule qui donne le nombre
+   d’occurrences ; la suppression individuelle reste possible. Aucune valeur clinique dans le
+   message.
+5. D11 : avec une mise en page commune (UX-16), le groupe suit la rubrique de son bloc parent ;
+   une rubrique ne le déplace jamais ailleurs.
+6. EditPatient, NewPatient et PatientDetail : les ensembles de clés de groupe qu’ils calculent
+   eux-mêmes passent par le même helper.
+
+CE QUI NE CHANGE PAS, À PROUVER PLUTÔT QU’À MODIFIER.
+Rendu d’un groupe racine (L68), bascule tableau → carte, lecture seule, conflit par ligne,
+borne à 50, création de patient avec occurrences tamponnées (L69), hors-ligne (L71). Si tu dois
+modifier src/data/offline.ts, arrête-toi et signale-le.
+
+PÉRIMÈTRE STRICT.
+- Fichiers : templateSections.ts, templateRules.ts, blockActivation.ts, SectionedFields.tsx,
+  EditPatient.tsx, NewPatient.tsx, PatientDetail.tsx, leurs tests, i18n (bloc de clés contigu).
+- Tu n’ouvres ni l’éditeur ni l’aperçu (L72b), ni l’export (L72d), ni le serveur. Tu ne
+  traites pas le retrait du diagnostic : c’est L72e, qui s’appuiera sur ton affichage.
+- Ne jamais lancer en même temps qu’un lot ouvrant la fiche patient.
+- npm.cmd, pas npm.ps1. Données fictives uniquement.
+
+PREUVES ATTENDUES.
+1. Tests 13 à 18 et 19 bis du cadrage. Le test 13 est bloquant : A masqué → aucune étape de
+   groupe ; A affiché → l’étape est rendue entre A1 et A2, avec sa propre entrée au sommaire.
+2. Test 14 sur trois sous-sections et deux groupes, dont un racine.
+3. Un bloc dont la seule variable est un pilote, et une cascade à deux règles.
+4. D10 : bloc masqué avec deux occurrences → avertissement, et aucune étape de saisie.
+5. Vérification dans le navigateur de l’enchaînement bloc suivant/précédent en mode « un bloc à
+   la fois » (voir la mémoire du dépôt pour lancer Vite depuis un worktree).
+6. Lint, typecheck, tests ciblés une seule fois. Rapport final distinguant spécifié,
+   implémenté, validé localement et non vérifié.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n’applique aucune migration distante.
+```
+
+## L72d — Groupe répétable en sous-section : export
+
+```text
+Tu prends le lot L72d uniquement, dans le dépôt MedData. L72a doit être fusionné sur
+origin/develop : vérifie-le après git fetch. Lis docs/l72-groupe-repetable-sous-section.md
+(§2.2 rupture 3, §4 R5, §9.3), le bloc « Décisions préalables à L72b–L72e » de
+docs/prompts-lots.md (D12), puis la fiche L72d de docs/lots-paralleles.md. Préserve toutes les
+modifications locales étrangères au lot.
+
+POURQUOI CE LOT EST OBLIGATOIRE.
+Sans lui, dès qu’un groupe est enfant d’un bloc, la ligne patient réintègre ses variables et
+les agrège par first/last : une lésion choisie au hasard, présentée comme LA lésion du patient.
+Aucune erreur n’est levée. C’est la violation du critère 7 de spec-groupes-repetables.md.
+
+OBJECTIF (R5).
+Distinguer le BLOC DE PROJECTION (blockKey, toujours la racine, qui fait fonctionner la
+projection de L53) du GROUPE (clé de la section répétable de la variable, racine ou
+sous-section).
+1. handler.ts (résolution des niveaux, vers la ligne 766) : expose la clé et le libellé du
+   groupe d’une variable en plus de blockKey. blockIsRepeatable ne suit plus la racine.
+2. repeatableBlocksOf et groupCountColumnId se basent sur la clé du groupe : la colonne est
+   nb__g1, jamais nb__a, et le comptage suit group_section_key.
+3. L’exclusion de la ligne patient teste le drapeau du groupe.
+4. mergeExportFields ne propage plus le drapeau par blockKey : le groupe ne doit pas
+   contaminer A.
+5. Projection par bloc sur A : rend A, ses sous-sections et nb__g1.
+6. Dictionnaire (D12) : aucune colonne nouvelle. La ligne de comptage porte section = groupe et,
+   lorsque les colonnes de bloc sont actives, block/block_label = racine.
+7. Aucun filtre de visibilité à l’export : R4 et le retrait (L72e) l’assurent en amont.
+
+PÉRIMÈTRE STRICT.
+- Fichiers : supabase/functions/generate-export/handler.ts, exportContract.ts, leurs tests.
+- Le garde-fou anti-collision de nb__ reste tel quel.
+- Ni migration, ni écran. Ne jamais lancer avec L53, ni avec L70 s’il est rouvert.
+- npm.cmd, pas npm.ps1. Aucun test contre un cloud ou des données réelles.
+
+PREUVES ATTENDUES.
+1. Tests 20 à 25 du cadrage. Le 22 est bloquant : sur la ligne patient, aucune variable du
+   groupe enfant, aucune agrégation first/last d’une occurrence.
+2. Test 25 en non-régression stricte : une base sans groupe en sous-section produit un fichier
+   identique à avant, dictionnaire compris, pour les deux profils.
+3. npm run edge:test, lint, typecheck.
+4. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié sur la
+   cible. Tant que ce lot n’est pas déployé, aucun export « 1 ligne / patient » d’une base
+   portant un groupe enfant : écris-le dans le rapport.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n’applique aucune migration distante.
+```
+
+## L72e — Groupe répétable en sous-section : visibilité serveur et retrait
+
+```text
+Tu prends le lot L72e uniquement, dans le dépôt MedData. Il porte le risque du chantier. L72a
+et L72c doivent être fusionnés sur origin/develop : vérifie-le après git fetch. Lis
+docs/l72-groupe-repetable-sous-section.md (§4 R4, §5, §9.1 tests 10 à 12, §13), le bloc
+« Décisions préalables à L72b–L72e » de docs/prompts-lots.md (D1 à D7, en entier), puis le
+skill meddata-db-safety. Préserve toutes les modifications locales étrangères au lot.
+
+ÉTAPE 0 — ESTIMER AVANT D’ÉCRIRE.
+Recense TOUS les chemins serveur qui écrivent patient.data et peuvent donc masquer un bloc :
+update_patient, update_patient_compatible, l’application des préparations (E2), l’import, et
+tout autre chemin trouvé. Recense aussi ceux qui créent ou corrigent une occurrence :
+create_encounter, update_encounter, les rejeux hors ligne. Rends un bref inventaire. Si la
+suppression douce atomique (D2, D5) exige de toucher plus que ces fonctions et l’écran
+d’édition de la fiche, ARRÊTE-TOI et rends l’inventaire : le repli (refuser le retrait tant que
+des occurrences existent) est alors à confirmer par le porteur du besoin.
+
+OBJECTIF.
+1. Un prédicat unique, en SQL : « la section racine de ce groupe est-elle visible pour cette
+   fiche ? ». Il évalue la règle de bloc sur la SECTION, cascade comprise, et non par
+   intersection de clés de variables : un bloc peut ne porter aucune variable propre. Une
+   condition non vérifiable vaut « masqué ». R4 et le retrait l’utilisent tous les deux.
+2. R4 (D1) : création et correction d’une occurrence refusées quand le bloc parent est masqué.
+   La suppression reste permise. Code d’erreur structuré, sans valeur clinique.
+3. Retrait (D2, D4, D5) : toute écriture de la fiche qui ferait passer la racine d’un groupe de
+   visible à masqué alors qu’il porte des occurrences vivantes est REFUSÉE, avec un refus
+   structuré qui donne, par groupe, la clé de section, le nombre, les identifiants et les
+   versions. Aucune valeur clinique. Le même enregistrement, s’il déclare ces occurrences,
+   écrit la fiche et les supprime en douceur dans UNE transaction, avec un motif engendré qui
+   nomme le bloc. Si la déclaration ne correspond plus (occurrence ajoutée, modifiée ou déjà
+   supprimée), rien n’est écrit et un conflit structuré est renvoyé. Choisis la forme la plus
+   simple qui reste additive, par exemple un paramètre optionnel ou une RPC dédiée, et
+   justifie-la.
+4. Écran : la confirmation existante de retrait de valeurs masquées (EditPatient) annonce en
+   plus, par bloc, le nombre d’occurrences qui seront supprimées, et précise qu’elles ne
+   pourront pas être restaurées depuis l’écran (D6). Sur conflit : les saisies sont préservées
+   et un rechargement explicite est proposé.
+5. Hors ligne (D7) : un rejeu de création ou de correction qui heurte R4 ou une occurrence
+   supprimée devient un conflit structuré, avec la saisie locale préservée. Si cela exige de
+   modifier src/data/offline.ts au-delà de la classification d’un nouveau code d’erreur,
+   signale-le.
+
+PÉRIMÈTRE STRICT.
+- Une migration horodatée additive ; aucune migration appliquée n’est modifiée ; aucune donnée
+  clinique réécrite hors de la suppression douce explicitement déclarée.
+- Pas de restauration par occurrence (D6) : ne la crée pas.
+- Ni éditeur, ni export. EditPatient est à toi seulement après la fusion de L72c.
+- Ne jamais lancer en même temps qu’un lot touchant la corbeille, la curation ou les fonctions
+  de L66/L72a.
+- npm.cmd, pas npm.ps1. Vérifie la cible locale avant tout test qui écrit. Aucun cloud.
+
+PREUVES ATTENDUES.
+1. Tests 10, 11 (sans le volet restauration, D6) et 12 du cadrage.
+2. Un bloc sans variable propre, masqué : R4 refuse.
+3. Retrait par une cascade de deux règles ; retrait par une règle qui n’est pas une association
+   diagnostic → bloc.
+4. Déclaration périmée (occurrence ajoutée entre la lecture et l’enregistrement) : conflit,
+   aucune écriture, ni sur la fiche ni sur les occurrences.
+5. Chacun des chemins d’écriture de l’inventaire de l’étape 0 refuse un masquage non déclaré.
+6. Rejeu hors ligne d’une occurrence dont le bloc est devenu masqué : conflit, saisie
+   préservée.
+7. npm run schema, inspection du snapshot, npm run schema:check ; tests ciblés une seule fois.
+8. Rapport final distinguant spécifié, implémenté, validé localement et non vérifié sur la
+   cible, avec l’inventaire de l’étape 0.
+
+Ne committe, ne pousse, ne fusionne, ne déploie et n’applique aucune migration distante.
+```
 
 ---
 
