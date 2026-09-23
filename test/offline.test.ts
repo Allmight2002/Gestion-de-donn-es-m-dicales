@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 import {
   buildSnapshot, clearOfflineSnapshots, downloadBaseSnapshot, enqueueEncounterUpdate, flushOutbox,
   fieldsForOfflineVersion, isExpired, offlineCache, OFFLINE_TTL_MS, OUTBOX_TTL_MS, outbox, purgeExpiredOutbox, purgeExpiredSnapshots,
-  recoverAbandonedSyncing, repeatableEncounterFieldKeys, offlineEncounterFieldScopesKnown,
+  recoverAbandonedSyncing, repeatableEncounterFieldKeys, offlineEncounterFieldScopesKnown, encounterScopeFieldKeys,
   sectionsForOfflineVersion,
   resolveKeepMine, resolveKeepBoth, retryOutboxEntry,
   OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
@@ -590,6 +590,28 @@ describe('outbox — conflits (Phase 3)', () => {
 });
 
 describe('scope des entrées hors-ligne', () => {
+  // L72a, test 19 bis du cadrage : le groupe d'une variable se résout en REMONTANT depuis sa
+  // section. Un groupe enfant est donc reconnu tel quel, et une variable d'une sous-section
+  // sœur ne lui est jamais attribuée — sans modification de `offline.ts`.
+  test('L72a : un groupe répétable en sous-section a la même portée qu un groupe racine', () => {
+    const sections = [
+      { id: 's1', sectionKey: 'trauma', label: 'A', displayOrder: 0, parentSectionKey: null, isRepeatable: false },
+      { id: 's2', sectionKey: 'trauma_a1', label: 'A1', displayOrder: 1, parentSectionKey: 'trauma', isRepeatable: false },
+      { id: 's3', sectionKey: 'lesions_g1', label: 'G1', displayOrder: 2, parentSectionKey: 'trauma', isRepeatable: true },
+      { id: 's4', sectionKey: 'consult', label: 'C', displayOrder: 3, parentSectionKey: null, isRepeatable: false },
+    ];
+    const fields = [
+      { fieldKey: 'trauma_type', scope: 'patient', section: 'trauma', parentSectionKey: null },
+      { fieldKey: 'a1_note', scope: 'encounter', section: 'trauma_a1', parentSectionKey: 'trauma' },
+      { fieldKey: 'g1_niveau', scope: 'encounter', section: 'lesions_g1', parentSectionKey: 'trauma' },
+      { fieldKey: 'consult_motif', scope: 'encounter', section: 'consult', parentSectionKey: null },
+    ];
+    expect(offlineEncounterFieldScopesKnown(fields, sections)).toBe(true);
+    expect([...repeatableEncounterFieldKeys(fields, sections)]).toEqual(['g1_niveau']);
+    expect([...encounterScopeFieldKeys(fields, sections, 'lesions_g1')]).toEqual(['g1_niveau']);
+    expect([...encounterScopeFieldKeys(fields, sections, null)].sort()).toEqual(['a1_note', 'consult_motif']);
+  });
+
   test('le snapshot courant avec zéro section reste éditable si la map par-version omet la clé vide', async () => {
     const baseId = 'b-current-empty-sections';
     await seedBase(baseId, '2024-01-01T00:00:00.000Z');

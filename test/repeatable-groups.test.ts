@@ -312,8 +312,10 @@ describe('gardes serveur L66', () => {
       .rejects.toThrow(/Groupe inconnu pour cette version/i);
     await expect(createEncounter(aliceId, patientId, { [ordinaryFieldKey]: 'x' }, { group: 'bloc_ordinaire' }))
       .rejects.toThrow(/Ce bloc n'est pas un groupe répétable/i);
+    // L72a : une sous-section peut être un groupe ; `sous_bloc` est refusé parce qu'il
+    // n'est pas répétable, plus parce qu'il n'est pas racine.
     await expect(createEncounter(aliceId, patientId, { [groupFieldKey]: 'x' }, { group: 'sous_bloc' }))
-      .rejects.toThrow(/groupe répétable est un bloc racine/i);
+      .rejects.toThrow(/Ce bloc n'est pas un groupe répétable/i);
   });
 
   test('§14.1.5 : une variable patient ne peut entrer dans un groupe répétable, à l insertion ou au déplacement', async () => {

@@ -1,6 +1,7 @@
 # L72 — Groupe répétable en sous-section
 
-- Statut : 📋 **cadré le 20 septembre 2026, arbitré le 22, non implémenté**
+- Statut : 📋 **cadré le 20 septembre 2026, arbitré le 22** · **L72a implémenté localement le
+  23 septembre 2026** (voir « État de L72a » en fin de document) · L72b à L72e non implémentés
 - Prérequis : **L66 à L71 fusionnés** — L71 par la PR #326, présente sur `origin/develop`
 - Surface serveur visée : `template_section` (contrainte), `guard_template_section_write`,
   `template_section_field_keys`, `assert_rule_structure`, `create_encounter`,
@@ -392,3 +393,45 @@ déjà utilisée : changement de parent, création de règle, bascule `is_repeat
 
 Donne l'ordre de lecture voulu, sans code. Coûte le regroupement à deux niveaux, quatre
 associations à maintenir, et un tableau permanent chez les patients sans ce diagnostic.
+
+## 13. État de L72a — 23 septembre 2026
+
+Migration [`20260923120000_repeatable_group_subsection.sql`](../supabase/migrations/20260923120000_repeatable_group_subsection.sql),
+tests [`repeatable-group-subsection.test.ts`](../test/repeatable-group-subsection.test.ts).
+Validé localement sur PostgreSQL embarqué ; **rien n'est appliqué à distance**.
+
+**Écart assumé avec R1/R3 : l'exclusion des descendants répétables est posée dans
+`template_section_field_keys`, pas dans le seul contrôle de règle.** La même expansion
+alimente `visibility_hidden_fields` et `assert_block_hidden_values`. Évaluées sur les données
+d'une occurrence, où le pilote patient du bloc est absent, elles auraient masqué toutes les
+variables du groupe : rien de requis dans l'occurrence, et **toute valeur saisie refusée** comme
+« valeur d'un bloc masqué », chez tous les patients. Une racine rend donc désormais racine +
+enfants **non répétables** ; une racine sans groupe enfant — toute version antérieure — rend
+exactement le même ensemble (test 1).
+
+**Sites non inventoriés au §2, traités :**
+
+- `form_record_field_group_applicable` (E3) portait son propre filtre racine, dans ses deux
+  branches : une occurrence de groupe enfant aurait été refusée à la correction
+  (`FORM_SCOPE_INCOMPATIBLE`), et ses variables admises sur une rencontre ordinaire ;
+- le déclencheur `guard_repeatable_encounter` portait la même garde racine que
+  `create_encounter` ;
+- l'import de bloc (L58) copie les sous-sections **sans** `is_repeatable`, et les variables par
+  l'expansion ci-dessus : un groupe enfant serait arrivé vide. Il est désormais **refusé**
+  (`IMPORT_SOURCE_HAS_REPEATABLE_GROUP`), sous le verrou du plan, dans le même ordre que lui.
+  Le code n'a pas encore de libellé côté web (L72b).
+
+`create_encounter_idempotent` et `replay_encounter_create` délèguent à `create_encounter` :
+non redéfinies. `src/data/offline.ts` n'a pas été modifié ; le test hors-ligne du groupe enfant
+passe tel quel.
+
+**Non traité, décision ouverte :** R4 côté serveur (refus d'une occurrence dont le bloc parent
+est masqué). Aujourd'hui une occurrence s'écrit quelle que soit la visibilité de sa racine.
+
+**Pour L72b/L72c :** les miroirs web de l'expansion d'un bloc — cibles d'une règle de bloc dans
+`templateRules.ts` (y compris son repli par `parentSectionKey`), `blockSectionKeys` dans
+`blockActivation.ts` — doivent exclure à leur tour les enfants répétables, sans quoi l'écran
+masquera des variables que le serveur ne masque plus ; `templateSections.ts` cite encore la
+contrainte racine supprimée. Un bloc dont le seul contenu est un groupe est refusé par la
+configuration diagnostique (`DIAGNOSIS_BLOCK_EMPTY`) : le bloc doit porter au moins une
+variable de la portée du diagnostic.
