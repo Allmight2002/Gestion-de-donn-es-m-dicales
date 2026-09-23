@@ -60,12 +60,25 @@ export interface ExportField {
   /** Libelle du bloc racine. `null` quand `blockKey` est nul. */
   blockLabel?: string | null;
   /**
-   * L70 : le bloc racine est un GROUPE REPETABLE (`template_section.is_repeatable`, L66). Ses
-   * variables ne vivent que sur des occurrences ; en une ligne par patient elles ne
-   * s'agregent donc pas, et le bloc rend a leur place une colonne de comptage. Absent/`false`
-   * = bloc ordinaire, exporte exactement comme avant le lot.
+   * L70 : la variable appartient a un GROUPE REPETABLE (`template_section.is_repeatable`, L66).
+   * Ses valeurs ne vivent que sur des occurrences ; en une ligne par patient elles ne
+   * s'agregent donc pas, et le groupe rend a leur place une colonne de comptage. Absent/`false`
+   * = variable ordinaire, exportee exactement comme avant le lot.
+   *
+   * L72d : c'est le drapeau du GROUPE, plus celui du bloc racine. Un groupe peut etre une
+   * sous-section : `blockKey` designe alors la racine `A`, qui n'est pas repetable, et c'est
+   * `groupKey` qui designe le groupe.
    */
   blockIsRepeatable?: boolean | null;
+  /**
+   * L72d : CODE de la section repetable de la variable — la racine elle-meme pour un groupe
+   * racine (L70), la sous-section pour un groupe enfant. Distinct de `blockKey`, qui reste le
+   * bloc de PROJECTION (L53). Absent sur une variable repetable = groupe racine, dont le code
+   * est `blockKey` : c'est le contrat de L70, qui ne connaissait que ce cas.
+   */
+  groupKey?: string | null;
+  /** L72d : libelle du groupe. Absent = celui du bloc, pour la meme raison. */
+  groupLabel?: string | null;
   /**
    * UX-16 : CODE de la rubrique commune, une metadonnee de PRESENTATION. Elle n'est jamais un
    * bloc clinique : une variable qui en porte une garde `section` et `blockKey` nuls, reste
@@ -209,22 +222,38 @@ export const nbColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `n
  * denombrement, pas une valeur saisie. Le suffixe est le CODE du bloc, jamais son libelle,
  * qui peut etre corrige d'une revision a l'autre. Aucune collision possible avec
  * `nbColumnId`, dont le suffixe porte toujours le prefixe de portee `patient__`/`encounter__`.
+ *
+ * L72d : le suffixe est le code du GROUPE — `nb__g1` pour un groupe enfant de `a`, jamais
+ * `nb__a` — c'est-a-dire la valeur meme que porte `group_section_key` sur ses occurrences.
  */
-export const groupCountColumnId = (blockKey: string) => `nb__${blockKey}`;
+export const groupCountColumnId = (groupKey: string) => `nb__${groupKey}`;
 
 /**
- * Blocs repetables rendus par un jeu de variables, tries par code. Derive des VARIABLES et
- * non des donnees : un bloc declare mais sans aucune occurrence garde sa colonne, a zero. Le
+ * L72d : groupe repetable d'une variable, ou `null`. Le code est `groupKey` ; a defaut, celui
+ * du bloc (groupe racine, contrat de L70). Le drapeau reste la seule entree : une variable
+ * non repetable n'a jamais de groupe, quel que soit le reste.
+ */
+export function repeatableGroupOf(field: ExportField): { key: string; label: string } | null {
+  if (!field.blockIsRepeatable) return null;
+  if (field.groupKey != null) return { key: field.groupKey, label: field.groupLabel ?? field.groupKey };
+  if (field.blockKey == null) return null;
+  return { key: field.blockKey, label: field.blockLabel ?? field.blockKey };
+}
+
+/**
+ * Groupes repetables rendus par un jeu de variables, tries par code. Derive des VARIABLES et
+ * non des donnees : un groupe declare mais sans aucune occurrence garde sa colonne, a zero. Le
  * jeu passe ici est deja PROJETE, donc la projection par bloc (L53) se combine sans rien
- * ajouter — selectionner « lesions » ne laisse que `nb__lesions`.
+ * ajouter — selectionner « lesions » ne laisse que `nb__lesions`, et selectionner le bloc `a`
+ * rend le comptage de son groupe enfant `g1`.
  */
 export function repeatableBlocksOf(fields: readonly ExportField[]): { key: string; label: string }[] {
-  const blocks = new Map<string, string>();
+  const groups = new Map<string, string>();
   for (const field of fields) {
-    if (!field.blockIsRepeatable || field.blockKey == null) continue;
-    if (!blocks.has(field.blockKey)) blocks.set(field.blockKey, field.blockLabel ?? field.blockKey);
+    const group = repeatableGroupOf(field);
+    if (group && !groups.has(group.key)) groups.set(group.key, group.label);
   }
-  return [...blocks.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }));
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }));
 }
 
 /**
@@ -886,6 +915,38 @@ function mergeEncounterTypes(
   return [...new Set([...a, ...b])].sort();
 }
 
+/**
+ * L70 : une seule version qui declare le groupe repetable suffit — des occurrences ont pu etre
+ * saisies sous elle, et la colonne de comptage doit les compter meme si une revision ulterieure
+ * a ferme le groupe. Encore faut-il que l'autre version parle du MEME groupe.
+ *
+ * L72d : ce « meme groupe » se juge sur le GROUPE, plus sur le bloc. Pour un groupe racine, le
+ * groupe EST le bloc : la comparaison de L70 est conservee a l'identique. Pour un groupe enfant
+ * de `a`, comparer le bloc ferait d'une variable ordinaire de `a` une variable du groupe, et la
+ * retirerait de la ligne patient ; on compare donc la section.
+ */
+function mergeRepeatableGroup(previous: ExportField, field: ExportField): void {
+  const before = repeatableGroupOf(previous);
+  const incoming = repeatableGroupOf(field);
+  if (before && incoming) {
+    if (before.key === incoming.key && previous.groupLabel == null && field.groupLabel != null) {
+      previous.groupLabel = field.groupLabel;
+    }
+    return;
+  }
+  // Deja repetable, ou aucune des deux : rien a propager.
+  if (before || !incoming) return;
+  if (field.blockKey === incoming.key) {
+    // Groupe racine : exactement L70, libelle du bloc compris.
+    if (previous.blockKey === incoming.key) previous.blockIsRepeatable = true;
+    return;
+  }
+  if (previous.section !== incoming.key) return;
+  previous.blockIsRepeatable = true;
+  previous.groupKey = incoming.key;
+  previous.groupLabel = incoming.label;
+}
+
 /** Unionne scope+field_key : une cle reste une variable malgre un renommage. */
 export function mergeExportFields(input: ExportField[]): ExportField[] {
   // D13 : préserver l'ordre du formulaire (scope -> display_order -> fieldKey)
@@ -932,11 +993,8 @@ export function mergeExportFields(input: ExportField[]): ExportField[] {
       // ce cas-la est de toute facon refuse par `findAmbiguousBlockFields` quand il compte.
       if (previous.blockKey != null && previous.blockKey === field.blockKey) {
         previous.blockLabel = previous.blockLabel ?? field.blockLabel;
-        // L70 : meme precaution pour le caractere repetable. Une seule version qui declare le
-        // bloc repetable suffit : des occurrences ont pu etre saisies sous elle, et la colonne
-        // de comptage doit les compter meme si une revision ulterieure a ferme le groupe.
-        previous.blockIsRepeatable = Boolean(previous.blockIsRepeatable || field.blockIsRepeatable);
       }
+      mergeRepeatableGroup(previous, field);
       // L35 : la formule NE SE FUSIONNE PAS. Chaque version garde la sienne, sinon une
       // fiche v1 se verrait appliquer la formule corrigee en v2 — exactement ce que la
       // decision « la formule appartient a la version » interdit.
@@ -1535,6 +1593,10 @@ export function buildPatientExport(
   // lesion au hasard et la presenterait comme LA lesion du patient. Les variables d'un bloc
   // repetable quittent donc la ligne patient, et le bloc rend a leur place le seul resultat
   // qu'une agregation puisse honnetement produire : le nombre de ses occurrences.
+  // L72d : le drapeau est celui du GROUPE de la variable, a quelque profondeur qu'il soit —
+  // jamais celui de son bloc racine, qui n'est pas repetable quand le groupe en est une
+  // sous-section. Le drapeau seul suffit a exclure : une variable repetable sans code de
+  // groupe perd sa colonne plutot que d'etre agregee.
   const encounterFields = all.filter((f) => f.scope === 'encounter' && !f.blockIsRepeatable);
   const repeatableBlocks = repeatableBlocksOf(all);
   const operands = operandFields ? mergeExportFields(operandFields) : all;
@@ -1919,6 +1981,17 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
   const withCommon = commonGroupColumns ? withCommonGroupColumns(withBlocks) : withBlocks;
   const revisions = options?.revisions;
   const columns = revisions ? [...withCommon, ...REVISION_DICTIONARY_COLUMNS] : withCommon;
+  const merged = mergeExportFields(fields);
+  // L72d (D12) : le bloc de RATTACHEMENT d'un groupe, lu sur ses variables. Pour un groupe
+  // racine c'est lui-meme, comme avant ; pour un groupe enfant, sa racine. Aucune colonne
+  // nouvelle : `section` nomme le groupe, `block` la racine.
+  const rootOfGroup = new Map<string, { key: string; label: string }>();
+  for (const f of merged) {
+    const group = repeatableGroupOf(f);
+    if (group && f.blockKey != null && !rootOfGroup.has(group.key)) {
+      rootOfGroup.set(group.key, { key: f.blockKey, label: f.blockLabel ?? f.blockKey });
+    }
+  }
   /**
    * L70 : le dictionnaire ENONCE la regle, il ne laisse pas le lecteur la deviner. Sans cette
    * ligne, `nb__lesions` passerait pour une variable saisie, et surtout rien ne dirait que les
@@ -1940,7 +2013,12 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
     formula: '',
     allowed_values: '',
     missing_reasons: '',
-    ...(blockColumns ? { block: block.key, block_label: block.label } : {}),
+    ...(blockColumns
+      ? {
+        block: rootOfGroup.get(block.key)?.key ?? block.key,
+        block_label: rootOfGroup.get(block.key)?.label ?? block.label,
+      }
+      : {}),
     ...(commonGroupColumns ? { common_group: '', common_group_label: '' } : {}),
     ...(revisions
       ? { in_current_form: '', introduced_in_revision: '', introduced_at: '', encounter_types: '', state_column: '' }
@@ -1954,7 +2032,7 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
       template_versions: '',
     }),
   }));
-  const fieldRows: Record<string, unknown>[] = mergeExportFields(fields).flatMap((f) => {
+  const fieldRows: Record<string, unknown>[] = merged.flatMap((f) => {
     const optionsList = isOptionList(f) ? optionsOf(f) : [];
     const common = {
       description: f.description ?? '',
