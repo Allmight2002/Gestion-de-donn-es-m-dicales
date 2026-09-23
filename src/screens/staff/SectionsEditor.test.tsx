@@ -30,6 +30,7 @@ function renderEditor(options: {
   sections?: TemplateSection[];
   fields?: TemplateField[];
   observationModel?: ObservationModel;
+  onMove?: (id: string, parentKey: string | null) => void;
 } = {}) {
   const onRepeatableChange = vi.fn();
   render(
@@ -39,6 +40,7 @@ function renderEditor(options: {
         fields={options.fields ?? []}
         observationModel={options.observationModel ?? 'longitudinal'}
         onRepeatableChange={onRepeatableChange}
+        onMove={options.onMove}
         onAdd={vi.fn()}
         onRename={vi.fn()}
         onDelete={vi.fn()}
@@ -132,13 +134,6 @@ describe('SectionsEditor — declarer un groupe repetable (L67)', () => {
     expect(screen.getByText(/le modèle d’observation s’est verrouillé à sa première fiche/i)).toBeInTheDocument();
   });
 
-  test('une sous-section ne recoit pas la case : un groupe repetable est un bloc racine', () => {
-    renderEditor({
-      sections: [lesions, section({ id: 's2', sectionKey: 'detail', label: 'Détail', parentSectionKey: 'lesions' })],
-    });
-    expect(screen.getAllByRole('checkbox', { name: /Groupe répétable/ })).toHaveLength(1);
-  });
-
   test('retirer le caractere repetable ne passe par aucune confirmation', async () => {
     const user = userEvent.setup();
     const onRepeatableChange = renderEditor({ sections: [{ ...lesions, isRepeatable: true }] });
@@ -148,5 +143,110 @@ describe('SectionsEditor — declarer un groupe repetable (L67)', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onRepeatableChange).toHaveBeenCalledWith('s1', false, []);
+  });
+});
+
+// L72b — un groupe repetable peut etre une sous-section d'un bloc racine (cadrage L72, §4).
+// Test 19 du §9.2 : la case est offerte sur une sous-section, refusee la ou la base refuserait,
+// et la confirmation annonce les MEMES consequences qu'a la racine.
+describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
+  const trauma = section({ id: 's10', sectionKey: 'trauma', label: 'Traumatisme', displayOrder: 0 });
+  const detail = section({ id: 's11', sectionKey: 'detail', label: 'Détail', parentSectionKey: 'trauma', displayOrder: 1 });
+  const rowOf = (label: string) => screen.getByText(label, { selector: 'li span.font-medium' }).closest('li') as HTMLElement;
+  const boxIn = (label: string) => within(rowOf(label)).getByRole('checkbox', { name: /Groupe répétable/ });
+
+  test('la case est offerte sur une sous-section, et la confirmation annonce les trois consequences', async () => {
+    const user = userEvent.setup();
+    const onRepeatableChange = renderEditor({
+      sections: [trauma, detail],
+      fields: [
+        field({ id: 'f1', fieldKey: 'niveau', label: 'Niveau', section: 'detail', scope: 'patient' }),
+        field({ id: 'f2', fieldKey: 'morpho', label: 'Morphologie', section: 'detail', encounterTypes: ['suivi'] }),
+      ],
+    });
+
+    expect(boxIn('Détail')).toBeEnabled();
+    expect(within(rowOf('Détail')).getByText(
+      'À cocher quand l’analyse comptera les occurrences elles-mêmes, et non les patients.',
+    )).toBeInTheDocument();
+
+    await user.click(boxIn('Détail'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Déclarer « Détail » répétable ?')).toBeInTheDocument();
+    // Conversion de portee et types de rencontre : memes textes qu'a la racine.
+    expect(within(dialog).getByText('Ces variables passeront en portée rencontre')).toBeInTheDocument();
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('Niveau');
+    expect(within(dialog).getByText(/types de rencontre concernés/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Déclarer répétable' }));
+    const [sectionId, isRepeatable, toNormalize] = onRepeatableChange.mock.calls[0];
+    expect(sectionId).toBe('s11');
+    expect(isRepeatable).toBe(true);
+    expect(toNormalize.map((f: TemplateField) => f.fieldKey)).toEqual(['niveau', 'morpho']);
+  });
+
+  test('variables bloquantes : meme refus nomme qu a la racine', async () => {
+    const user = userEvent.setup();
+    const onRepeatableChange = renderEditor({
+      sections: [trauma, detail],
+      fields: [field({ id: 'f1', fieldKey: 'niveau', label: 'Niveau', section: 'detail', inUse: true })],
+    });
+
+    await user.click(boxIn('Détail'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Refusé : ces variables portent déjà des données')).toBeInTheDocument();
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('Niveau');
+    expect(within(dialog).getByRole('button', { name: 'Déclarer répétable' })).toBeDisabled();
+    expect(onRepeatableChange).not.toHaveBeenCalled();
+  });
+
+  test('refusee sur un bloc qui porte des sous-sections, un groupe enfant compris', async () => {
+    const user = userEvent.setup();
+    const groupChild = section({
+      id: 's12', sectionKey: 'lesions', label: 'Lésions', parentSectionKey: 'trauma', displayOrder: 2, isRepeatable: true,
+    });
+    const onRepeatableChange = renderEditor({ sections: [trauma, groupChild] });
+
+    // Le bloc racine porte un groupe : le cocher mettrait un groupe sous un groupe.
+    expect(boxIn('Traumatisme')).toBeDisabled();
+    expect(within(rowOf('Traumatisme')).getByText(/un groupe ne se place pas sous un autre groupe/)).toBeInTheDocument();
+    await user.click(boxIn('Traumatisme'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onRepeatableChange).not.toHaveBeenCalled();
+    // Le groupe enfant, lui, reste coche et se decoche.
+    expect(boxIn('Lésions')).toBeChecked();
+    expect(boxIn('Lésions')).toBeEnabled();
+  });
+
+  test('refusee sur un bloc qui porte une sous-section ordinaire', () => {
+    renderEditor({ sections: [trauma, detail] });
+    expect(boxIn('Traumatisme')).toBeDisabled();
+    expect(boxIn('Détail')).toBeEnabled();
+  });
+
+  test('base transversale : la sous-section herite du verrou existant', () => {
+    renderEditor({ sections: [trauma, detail], observationModel: 'cross_sectional' });
+    expect(boxIn('Détail')).toBeDisabled();
+    expect(within(rowOf('Détail')).getByText(/le modèle d’observation s’est verrouillé/i)).toBeInTheDocument();
+  });
+
+  test('D8 : un groupe racine se place sous un bloc ; un groupe n est jamais propose comme parent', async () => {
+    const user = userEvent.setup();
+    const onMove = vi.fn();
+    const rootGroup = { ...lesions, displayOrder: 1, isRepeatable: true };
+    renderEditor({ sections: [trauma, rootGroup], onMove });
+
+    const moveSelect = within(rowOf('Lésions')).getByRole('combobox', { name: 'Bloc parent' });
+    expect(moveSelect).toBeEnabled();
+    await user.selectOptions(moveSelect, 'trauma');
+    expect(onMove).toHaveBeenCalledWith('s1', 'trauma');
+
+    // Ni au deplacement d'un autre bloc, ni a la creation : un groupe n'accepte pas d'enfant.
+    const traumaMove = within(rowOf('Traumatisme')).getByRole('combobox', { name: 'Bloc parent' });
+    expect(within(traumaMove).queryByRole('option', { name: 'Lésions' })).toBeNull();
+    const addParent = screen.getAllByRole('combobox', { name: /Bloc parent/ })
+      .find((select) => !select.closest('li')) as HTMLElement;
+    expect(within(addParent).getByRole('option', { name: 'Traumatisme' })).toBeInTheDocument();
+    expect(within(addParent).queryByRole('option', { name: 'Lésions' })).toBeNull();
   });
 });

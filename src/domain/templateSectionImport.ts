@@ -6,7 +6,7 @@
 // aucun refus ; il se contente de rendre lisible ce que le serveur a repondu.
 //
 // D'ou trois responsabilites seulement, toutes pures :
-//   * traduire les douze codes de refus (§4.4) en cles de message ;
+//   * traduire les codes de refus (§4.4, plus celui de L72a) en cles de message ;
 //   * classer les conflits en « resolvable par reutilisation » et « a corriger d'abord »,
 //     selon le seul drapeau `reusable` POSE PAR LE SERVEUR ;
 //   * dire quelles variables `required` deviendraient obligatoires pour tous les patients
@@ -24,7 +24,7 @@ import type {
 } from '../data/types';
 
 /**
- * Les douze refus de L58, chacun avec sa cle de message. La table est exhaustive et
+ * Les douze refus de L58 et celui de L72a, chacun avec sa cle de message. La table est exhaustive et
  * `satisfies Record<SectionImportRefusalCode, MessageKey>` la garde exhaustive : ajouter un
  * code cote base sans son message ne compilerait plus.
  */
@@ -32,6 +32,8 @@ export const IMPORT_REFUSAL_MESSAGE_KEY = {
   IMPORT_SOURCE_FORBIDDEN: 'blockimport.error.source_forbidden',
   IMPORT_TARGET_FORBIDDEN: 'blockimport.error.target_forbidden',
   IMPORT_SOURCE_NOT_A_BLOCK: 'blockimport.error.not_a_block',
+  // L72a : un bloc portant un groupe repetable en sous-section n'est pas importable.
+  IMPORT_SOURCE_HAS_REPEATABLE_GROUP: 'blockimport.error.source_has_repeatable_group',
   IMPORT_TARGET_LOCKED: 'blockimport.error.target_locked',
   IMPORT_TARGET_IN_USE: 'blockimport.error.target_in_use',
   IMPORT_SECTION_EXISTS: 'blockimport.error.section_exists',

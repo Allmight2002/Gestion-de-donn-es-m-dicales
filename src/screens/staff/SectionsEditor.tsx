@@ -62,8 +62,8 @@ export function SectionsEditor({
    *  encore lister les blocs importables : la commande ne se rend alors pas du tout. */
   onImportBlock?: () => void;
   /**
-   * L67 : declare un bloc racine repetable. `fieldsToConvert` porte les variables que
-   * l'ecran doit basculer en portee rencontre AVANT d'ecrire l'indicateur — la base refuse
+   * L67 : declare un bloc repetable — racine, ou sous-section depuis L72b. `fieldsToConvert`
+   * porte les variables que l'ecran doit basculer en portee rencontre AVANT d'ecrire l'indicateur — la base refuse
    * un groupe repetable qui contient encore une variable de portee patient.
    * Absente quand le serveur ne sait pas encore ecrire l'indicateur : la case ne se rend pas.
    */
@@ -95,6 +95,10 @@ export function SectionsEditor({
   // Le modele se verrouille a la premiere fiche : c'est un fait acquis, pas un reglage a
   // contourner, et l'ecran le presente comme tel.
   const isCrossSectional = observationModel === 'cross_sectional';
+  // L72b — un groupe n'accepte pas de sous-section : un bloc repetable n'est donc jamais
+  // propose comme parent, ni a la creation ni au deplacement. La base refuse de toute facon.
+  const parentOptions = (excludedId?: string) =>
+    sections.filter((s) => !s.parentSectionKey && !s.isRepeatable && s.id !== excludedId);
   const [pendingRepeatable, setPendingRepeatable] = useState<TemplateSection | null>(null);
   const repeatableFields = pendingRepeatable ? fieldsIn(pendingRepeatable.sectionKey) : [];
   // Le sens des lignes deja ecrites changerait : c'est ce qui bloque, avant toute conversion.
@@ -220,7 +224,7 @@ export function SectionsEditor({
         <label className="form-label">{t('section.parent')}
           <select className="input" value={parentKey} onChange={(e) => setParentKey(e.target.value)}>
             <option value="">{t('section.root')}</option>
-            {sections.filter((s) => !s.parentSectionKey).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
+            {parentOptions().map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
           </select>
         </label>
         <button type="submit" className="btn-secondary" disabled={busy || newLabel.trim() === ''}>
@@ -325,7 +329,9 @@ export function SectionsEditor({
                     {onMove && <select aria-label={t('section.parent')} className="input w-auto max-w-full sm:max-w-[12rem]" value={section.parentSectionKey ?? ''}
                       disabled={busy || hasChildren} onChange={(e) => onMove(section.id, e.target.value || null)}>
                       <option value="">{t('section.root')}</option>
-                      {sections.filter((s) => !s.parentSectionKey && s.id !== section.id).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
+                      {/* L72b (D8) — un groupe racine se place sous un bloc comme toute autre
+                          section ; le gel et la version utilisee restent tranches par la base. */}
+                      {parentOptions(section.id).map((s) => <option key={s.id} value={s.sectionKey}>{sectionLabel(t, s)}</option>)}
                     </select>}
                     {used > 0 || hasChildren ? (
                       // Supprimer une section peuplee ferait basculer ses variables sur
@@ -352,16 +358,21 @@ export function SectionsEditor({
                 </>
               )}
 
-              {/* L67 — un bloc racine peut devenir un GROUPE REPETABLE. La case porte la regle
-                  de decision du §3.3 en libelle secondaire : elle se tranche sur l'unite
-                  d'analyse, pas sur la forme du formulaire. */}
-              {!section.parentSectionKey && onRepeatableChange && (
+              {/* L67 — un bloc peut devenir un GROUPE REPETABLE ; L72b l'offre aussi a une
+                  sous-section, qui herite alors du rang et de la visibilite de son bloc. La case
+                  porte la regle de decision du §3.3 en libelle secondaire : elle se tranche sur
+                  l'unite d'analyse, pas sur la forme du formulaire. Un bloc qui porte des
+                  sous-sections — un groupe enfant compris — ne peut pas devenir un groupe : la
+                  case le dit au lieu de laisser la base refuser. */}
+              {onRepeatableChange && (
                 <div className="basis-full border-t border-slate-100 pt-2 dark:border-slate-700">
                   <Checkbox
                     label={t('section.repeatable')}
-                    description={isCrossSectional ? t('section.repeatable_locked_model') : t('section.repeatable_hint')}
+                    description={isCrossSectional ? t('section.repeatable_locked_model')
+                      : hasChildren && !section.isRepeatable ? t('section.repeatable_locked_children')
+                        : t('section.repeatable_hint')}
                     checked={section.isRepeatable === true}
-                    disabled={busy || isCrossSectional}
+                    disabled={busy || isCrossSectional || (hasChildren && !section.isRepeatable)}
                     onChange={(event) => {
                       if (event.target.checked) setPendingRepeatable(section);
                       else void onRepeatableChange(section.id, false, []);

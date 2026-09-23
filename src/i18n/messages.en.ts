@@ -1346,6 +1346,10 @@ export const messages = {
     'section.repeatable_confirm': 'Declare repeatable',
     'section.repeatable_badge': 'Repeatable',
     'section.repeatable_outline_hint': 'Table entry, one row per occurrence.',
+    // L72b — repeatable group as a sub-section: checkbox lock and block import refusal.
+    'section.repeatable_locked_children': 'This block has sub-sections: a repeatable group accepts none, and a group cannot sit under another group.',
+    'blockimport.error.source_has_repeatable_group':
+      'This block contains a repeatable group as a sub-section: importing it is not supported yet. Create this block directly in this version.',
     'section.common': 'Common core',
     'section.parent': 'Parent block',
     'section.root': 'Root block',
