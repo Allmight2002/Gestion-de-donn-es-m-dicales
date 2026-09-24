@@ -137,6 +137,8 @@ export interface Encounter {
   templateVersionId?: string | null;
   /** Section répétable persistée. Undefined dans une réponse/cache ancien sans ce marqueur. */
   groupSectionKey?: string | null;
+  /** L72e — révision serveur de la ligne ; sert à déclarer un retrait d'occurrences. */
+  recordRevision?: number | null;
 }
 
 /** Etats d'une valeur dans le contexte serveur d'une fiche E3. */
@@ -210,6 +212,16 @@ export interface RecordFormContext {
   context_fingerprint: string;
 }
 
+/**
+ * L72e — occurrences qu'un enregistrement de la fiche supprime parce qu'il masque le bloc de
+ * leur groupe. Le serveur exige cette déclaration exacte (identifiant et révision) ; une
+ * divergence donne un conflit sans aucune écriture.
+ */
+export type GroupWithdrawalDeclaration = {
+  sectionKey: string;
+  occurrences: { id: string; recordRevision: number }[];
+}[];
+
 export interface CompatiblePatientUpdateInput {
   baseId: string;
   patientId: string;
@@ -220,6 +232,8 @@ export interface CompatiblePatientUpdateInput {
   recordDefinitionRevision: string;
   operationId: string;
   contextFingerprint: string;
+  /** Absent ou vide : l'ancienne signature, sans retrait. */
+  withdrawnOccurrences?: GroupWithdrawalDeclaration;
 }
 
 export interface CompatibleEncounterUpdateInput {
@@ -357,7 +371,7 @@ export interface PatientRepository {
   /** Finalise les donnees permanentes d'un patient (draft -> curated). Echoue si incompletes. */
   finalizePatient(patientId: string): Promise<void>;
   /** Corrige / complete les donnees PERMANENTES d'un patient (journalise, re-validees). */
-  updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string, expectedVersion: number | null): Promise<{ version: number | null; updatedAt: string | null }>;
+  updatePatientData(patientId: string, data: Record<string, unknown>, status: string, reason: string, expectedVersion: number | null, withdrawnOccurrences?: GroupWithdrawalDeclaration): Promise<{ version: number | null; updatedAt: string | null }>;
   /** E3 : complément fusionné côté serveur avec révision et empreinte de contexte. */
   updatePatientCompatible?(input: CompatiblePatientUpdateInput): Promise<CompatibleRecordUpdateReceipt>;
   /** E3 : complément fusionné côté serveur avec révision et empreinte de contexte. */
@@ -436,7 +450,7 @@ type IdentityMatchRow = {
 type EncounterRow = {
   id: string; encounter_type: string; encounter_date: string | null; validation_status: string;
   age_value: number | null; age_unit: string | null; data: Record<string, unknown>; updated_at?: string | null;
-  template_version_id?: string | null; group_section_key?: string | null;
+  template_version_id?: string | null; group_section_key?: string | null; record_revision?: number | null;
 };
 type FieldChangeRow = {
   field_key: string; old_value: unknown; new_value: unknown; reason: string | null; changed_at: string;
@@ -473,6 +487,7 @@ const mapEncounter = (r: EncounterRow): Encounter => ({
   updatedAt: r.updated_at ?? null,
   templateVersionId: r.template_version_id ?? null,
   ...(Object.prototype.hasOwnProperty.call(r, 'group_section_key') ? { groupSectionKey: r.group_section_key ?? null } : {}),
+  ...(r.record_revision !== undefined && r.record_revision !== null ? { recordRevision: Number(r.record_revision) } : {}),
 });
 
 const NOT_CONFIGURED = 'Backend Supabase non configure';
@@ -707,7 +722,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         .order('encounter_date', { ascending: true })
         .order('created_at', { ascending: true })
         .order('id', { ascending: true });
-      const current = await query('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key');
+      const current = await query('id, encounter_type, encounter_date, validation_status, age_value, age_unit, data, updated_at, template_version_id, group_section_key, record_revision');
       if (!current.error) return ((current.data ?? []) as unknown as EncounterRow[]).map(mapEncounter);
       if (!isMissingEncounterGroupSectionKey(current.error)) throw current.error;
       // Une réponse sans la colonne reste lisible en ligne, mais n'affirme pas que la rencontre
@@ -791,10 +806,12 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (error) throw error;
     },
 
-    async updatePatientData(patientId, data, status, reason, expectedVersion) {
+    async updatePatientData(patientId, data, status, reason, expectedVersion, withdrawnOccurrences) {
+      // Sans déclaration, l'argument est omis : PostgREST résout alors l'ancienne signature.
       const { data: row, error } = await client.rpc('update_patient', {
         p_patient_id: patientId, p_data: data, p_validation_status: status, p_reason: reason,
         p_expected_version: expectedVersion,
+        ...(withdrawnOccurrences?.length ? { p_withdrawn_occurrences: withdrawnOccurrences } : {}),
       });
       if (error) throw error;
       const r = (Array.isArray(row) ? row[0] : row) as PatientRow;
@@ -812,6 +829,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
         p_record_definition_revision: input.recordDefinitionRevision,
         p_operation_id: input.operationId,
         p_context_fingerprint: input.contextFingerprint,
+        ...(input.withdrawnOccurrences?.length ? { p_withdrawn_occurrences: input.withdrawnOccurrences } : {}),
       });
       if (error) throw error;
       return data as CompatibleRecordUpdateReceipt;

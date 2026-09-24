@@ -1,4 +1,4 @@
-import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
+import { errorMessage, isRefreshRequiredError, structuredErrorCode } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
@@ -16,6 +16,7 @@ import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { RepeatableGroup } from './RepeatableGroup';
 import { maskedRepeatableSectionKeys, repeatableGroupFields, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
+import { pendingGroupWithdrawals } from '../../domain/groupWithdrawal';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -197,6 +198,14 @@ export function EditPatient() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
 
+  // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe : la
+  // confirmation les annonce par bloc, et l'enregistrement les déclare au serveur, qui refuse
+  // tout écart (conflit, rien n'est écrit).
+  const groupWithdrawal = useMemo(
+    () => pendingGroupWithdrawals(sections, rules, fields, initialValues, values, occurrences),
+    [sections, rules, fields, initialValues, values, occurrences],
+  );
+
   // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
   // Le formulaire est donc RENDU avec la meme liste que la validation locale : sans cela,
   // l'ecran afficherait une erreur bloquante pour une variable que l'enregistrement accepte.
@@ -251,7 +260,7 @@ export function EditPatient() {
     setBlocking(block);
     if (block.length > 0) return;
 
-    if (removed.length > 0 && !confirmationOpen) {
+    if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0) && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -271,7 +280,8 @@ export function EditPatient() {
           hidden,
           fields.map((field) => field.fieldKey),
         );
-        const requestKey = JSON.stringify([recordContext.context_fingerprint, patch, status, reason.trim()]);
+        const withdrawnOccurrences = groupWithdrawal.declaration ?? undefined;
+        const requestKey = JSON.stringify([recordContext.context_fingerprint, patch, status, reason.trim(), withdrawnOccurrences ?? null]);
         if (compatibleAttempt.current?.requestKey !== requestKey) {
           compatibleAttempt.current = { requestKey, operationId: crypto.randomUUID() };
         }
@@ -285,15 +295,24 @@ export function EditPatient() {
           recordDefinitionRevision: recordContext.record_definition_revision,
           operationId: compatibleAttempt.current.operationId,
           contextFingerprint: recordContext.context_fingerprint,
+          ...(withdrawnOccurrences ? { withdrawnOccurrences } : {}),
         });
       } else if (work.enabled) await work.commit();
-      else await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
+      else if (groupWithdrawal.declaration) {
+        await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion, groupWithdrawal.declaration);
+      } else await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
       navigation.markClean();
       toast(t('toast.patient_saved')); // UI-2
       back();
     } catch (e) {
       const detail = e as { message?: string };
-      if (/CONFLIT_VERSION/i.test(detail?.message ?? '')) {
+      const code = structuredErrorCode(e);
+      if (code === 'GROUP_WITHDRAWAL_CONFLICT' || code === 'GROUP_WITHDRAWAL_REQUIRED') {
+        // Les occurrences ont changé depuis la lecture, ou l'écran n'a pas pu toutes les
+        // déclarer : rien n'est écrit, les saisies restent dans `values`.
+        setReloadRequired(true);
+        setError(t('form.group_withdrawal_conflict'));
+      } else if (/CONFLIT_VERSION/i.test(detail?.message ?? '')) {
         setReloadRequired(true);
         // Conserver le libellé historique attendu par les corrections et les tests ; les
         // valeurs locales restent dans `values` et ne sont jamais remplacées par l'erreur.
@@ -414,6 +433,7 @@ export function EditPatient() {
         {confirmationOpen && (
           <HiddenValuesConfirmation
             removedKeys={removed}
+            withdrawals={groupWithdrawal.withdrawals}
             fields={fields}
             onConfirm={() => void persistPatient()}
             onCancel={() => setConfirmationOpen(false)}

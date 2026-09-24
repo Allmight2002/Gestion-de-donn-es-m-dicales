@@ -731,11 +731,14 @@ export interface FlushDeps {
 export interface FlushReport { synced: number; conflicts: number; failed: number; errors: string[]; }
 
 type SyncErrorKind = 'conflict' | 'rejected' | 'transient';
-const classifySyncError = (error: unknown): SyncErrorKind => {
+export const classifySyncError = (error: unknown, groupSectionKey?: string | null): SyncErrorKind => {
   const e = error as { message?: string; code?: string; status?: number; statusCode?: number } | null;
   const message = syncErrorText(error);
   const status = e?.status ?? e?.statusCode;
-  if (/CONFLIT_VERSION/i.test(message)) return 'conflict';
+  // L72e (D7) : un bloc devenu masqué (R4) ou une occurrence supprimée par un retrait sont des
+  // conflits : la saisie locale reste dans l'entrée, a résoudre explicitement.
+  if (/CONFLIT_VERSION|GROUP_BLOCK_HIDDEN/i.test(message)) return 'conflict';
+  if (groupSectionKey && /RESOURCE_NOT_FOUND/.test(message)) return 'conflict';
   if (status === 401 || status === 403 || e?.code === '42501' || /permission denied|not authorized|unauthorized|forbidden/i.test(message)) return 'rejected';
   if (
     status === 400 || status === 404 || status === 409 || status === 422
@@ -824,7 +827,7 @@ export async function flushOutbox(deps: FlushDeps, baseId?: string): Promise<Flu
       rep.synced++;
     } catch (err) {
       const m = syncErrorText(err);
-      const kind = classifySyncError(err);
+      const kind = classifySyncError(err, e.groupSectionKey);
       if (kind === 'conflict') {
         const server = await deps.getEncounter(e.encounterId).catch(() => null);
         await outbox.put({ ...e, state: 'conflict', attemptCount, lastAttemptAt, syncingStartedAt: undefined, lastError: m, serverData: server?.data });

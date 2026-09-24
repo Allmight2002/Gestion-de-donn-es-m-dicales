@@ -652,6 +652,11 @@ export const messages = {
     'form.diagnostic_withdrawal_confirm': 'Confirmer le retrait et enregistrer',
     'form.diagnostic_withdrawal_cancel': 'Annuler et conserver la saisie',
     'form.refresh_required': 'La fiche a été modifiée entre-temps ou sa visibilité a changé. Vos saisies locales sont conservées ; rechargez les données avant de recommencer.',
+    // L72e : occurrences d'un groupe supprimées avec l'enregistrement de la fiche.
+    'form.group_withdrawal_body': 'Des blocs qui portent des occurrences enregistrées seront masqués. Leurs occurrences seront supprimées avec l’enregistrement de la fiche :',
+    'form.group_withdrawal_item': '{block} : {n} occurrence(s) supprimée(s)',
+    'form.group_withdrawal_irreversible': 'Ces occurrences ne pourront pas être restaurées depuis l’écran. Ressaisir la valeur qui affiche le bloc ne les fera pas revenir.',
+    'form.group_withdrawal_conflict': 'Les occurrences du bloc masqué ont changé depuis l’ouverture de la fiche (ajout, correction ou suppression). Rien n’a été enregistré ; vos saisies sont conservées. Rechargez les données avant de recommencer.',
     // UX-1/5/6/13 : textes de la saisie protegee, des blocs repliables et du resume d'erreurs.
     'form.errors_title': 'Erreurs à corriger',
     'form.section_required_none': 'Aucun champ requis dans cette partie',

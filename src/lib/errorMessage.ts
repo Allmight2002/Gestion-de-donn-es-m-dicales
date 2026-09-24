@@ -111,6 +111,19 @@ export function errorMessage(e: unknown, fallback: string): string {
   if (code === 'FORM_VALUE_CONVERSION_REQUIRED') {
     return "Cette modification nécessite une conversion explicite du formulaire. Vos saisies n'ont pas été enregistrées.";
   }
+  // L72e — visibilité d'un groupe répétable en sous-section et retrait de ses occurrences.
+  if (code === 'GROUP_BLOCK_HIDDEN') {
+    return "Le bloc de ce groupe est masqué pour ce patient : l'occurrence ne peut être ni créée ni corrigée. Vos saisies sont conservées ; rechargez la fiche pour voir son état actuel.";
+  }
+  if (code === 'GROUP_WITHDRAWAL_CONFLICT' || code === 'GROUP_WITHDRAWAL_REQUIRED') {
+    return "Les occurrences d'un bloc masqué par cet enregistrement ont changé entre-temps. Rien n'a été enregistré ; vos saisies sont conservées : rechargez les données avant de recommencer.";
+  }
+  if (code === 'GROUP_WITHDRAWAL_FORBIDDEN') {
+    return "Cet enregistrement masque un bloc qui porte des occurrences, et vous n'avez pas le droit de les supprimer. Rien n'a été enregistré.";
+  }
+  if (code === 'GROUP_WITHDRAWAL_VERSION_REFUSED') {
+    return 'Cette version du formulaire masquerait des blocs qui portent des occurrences enregistrées. Elle n’a pas été appliquée.';
+  }
   if (code === 'FORM_RECORD_FORBIDDEN') {
     return "L'accès à cette fiche ou la permission de la modifier a changé. Vos saisies n'ont pas été enregistrées.";
   }
