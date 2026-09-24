@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { ImportRow, ImportReport } from '../domain/import';
 import type { RawSnapshotData } from './offline';
+import type { FieldType, TemplateField } from './types';
 
 /** Options d'un import (statut cible, mode de conflit, empreinte fichier, version vue a l'apercu). */
 export interface ImportOptions {
@@ -399,10 +400,54 @@ type PatientRow = {
 /** UX-12(b) : tri de liste. Seules des colonnes ANALYTIQUES sont triables ; le depart
  * d'egalite est toujours explicite, sinon deux pages successives peuvent repeter une ligne. */
 export type PatientSortField = 'created_at' | 'patient_code';
+export type PatientSortDirection = 'asc' | 'desc';
+/**
+ * L62 : tri par une variable ANALYTIQUE de portée patient, désignée par sa clé. Le serveur
+ * (`list_patients_by_field`) résout la clé contre la version active de la base, refuse tout
+ * type sans ordre défini, place les absents en fin dans les deux sens et départage par id.
+ */
+export interface PatientVariableSort { variable: string; field?: never; direction: PatientSortDirection }
+/** `variable?: never` garde `sort.field` lisible par les appelants du tri technique. */
+export type PatientListSort =
+  | { field: PatientSortField; variable?: never; direction: PatientSortDirection }
+  | PatientVariableSort;
+
+const isVariableSort = (sort: PatientListSort): sort is PatientVariableSort => typeof sort.variable === 'string';
+
+/** Types que le serveur sait ordonner (miroir de `list_patients_by_field`, qui fait foi). */
+export const PATIENT_SORTABLE_FIELD_TYPES: readonly FieldType[] = ['number', 'integer', 'date', 'boolean', 'select', 'text'];
+
+/** Une variable proposable au tri : portée patient, type scalaire à ordre défini. */
+export function isPatientSortableField(field: Pick<TemplateField, 'scope' | 'type' | 'isMultiple'>): boolean {
+  return field.scope === 'patient' && !field.isMultiple && PATIENT_SORTABLE_FIELD_TYPES.includes(field.type);
+}
+
+/**
+ * Le serveur refuse ce tri : clé inconnue, retirée, d'une autre base, hors portée ou de type
+ * non ordonnable, base sans accès, ou serveur antérieur à L62. Le message ne reprend jamais la
+ * clé : l'écran revient à un tri technique.
+ */
+export class PatientSortUnavailableError extends Error {
+  readonly code = 'PATIENT_SORT_UNAVAILABLE';
+  constructor() {
+    super('Ce tri est indisponible pour cette base.');
+    this.name = 'PatientSortUnavailableError';
+  }
+}
+
+function isPatientSortUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
+  if (candidate.code === 'P0001') return message.startsWith('PATIENT_SORT_UNAVAILABLE');
+  return (candidate.code === 'PGRST202' || candidate.code === '42883')
+    && /list_patients_by_field/i.test(message);
+}
+
 export interface PatientListQuery {
   /** Recherche par code patient, appliquee par le serveur AVANT la pagination. */
   codeQuery?: string | null;
-  sort?: { field: PatientSortField; direction: 'asc' | 'desc' };
+  sort?: PatientListSort;
   /**
    * UX-12(c) : restreint la page à ces identifiants, déjà résolus par la recherche nominative
    * auditée. La ligne reste lue par le chemin analytique habituel, sous la RLS : l'identité
@@ -530,7 +575,27 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       // pagination — un filtre limite aux 20 lignes deja chargees ne trouverait pas un patient
       // situe plus loin. RG-9 : seul le code, donnee analytique, est interroge ici.
       const needle = options?.codeQuery?.trim();
-      const sort = options?.sort ?? { field: 'created_at' as PatientSortField, direction: 'asc' as const };
+      const requested = options?.sort;
+      if (requested && isVariableSort(requested)) {
+        // L62 : filtre, ordre, total puis page sont resolus par la RPC, sous la RLS de
+        // l'appelant. Le client ne transmet que la cle ; il ne construit aucun ordre JSON.
+        const { data, error } = await client.rpc('list_patients_by_field', {
+          p_base_id: baseId,
+          p_field_key: requested.variable,
+          p_direction: requested.direction,
+          p_limit: limit,
+          p_offset: offset,
+          p_code_query: needle || null,
+          p_ids: options?.ids ? [...options.ids] : null,
+        });
+        if (error) {
+          if (isPatientSortUnavailable(error)) throw new PatientSortUnavailableError();
+          throw error;
+        }
+        const page = (data ?? { total: 0, rows: [] }) as { total: number | string; rows: PatientRow[] | null };
+        return { rows: (page.rows ?? []).map(toListItem), total: Number(page.total ?? 0) };
+      }
+      const sort = requested ?? { field: 'created_at' as PatientSortField, direction: 'asc' as const };
       const query = (columns: string) => {
         let request = client
           .from('patient')
