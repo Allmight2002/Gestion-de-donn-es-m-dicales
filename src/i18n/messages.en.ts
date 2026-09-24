@@ -651,6 +651,11 @@ export const messages = {
     'form.diagnostic_withdrawal_confirm': 'Confirm removal and save',
     'form.diagnostic_withdrawal_cancel': 'Cancel and keep the entry',
     'form.refresh_required': 'The record or its visibility changed in the meantime. Your local entries are preserved; reload the data before trying again.',
+    // L72e: occurrences of a group deleted with the record save.
+    'form.group_withdrawal_body': 'Blocks that hold saved occurrences will be hidden. Their occurrences will be deleted when the record is saved:',
+    'form.group_withdrawal_item': '{block}: {n} occurrence(s) deleted',
+    'form.group_withdrawal_irreversible': 'These occurrences cannot be restored from the screen. Entering again the value that shows the block will not bring them back.',
+    'form.group_withdrawal_conflict': 'The occurrences of the hidden block changed since the record was opened (added, corrected or deleted). Nothing was saved; your entries are preserved. Reload the data before trying again.',
     'form.errors_title': 'Errors to fix',
     'form.section_required_none': 'No required fields in this part',
     'form.section_required_count': '{done} of {total} required fields answered',
@@ -695,6 +700,11 @@ export const messages = {
     'form.repeatable_discard': 'Unsaved changes for this occurrence will be discarded. Other occurrences are kept.',
     'form.repeatable_offline': 'Repeatable blocks are unavailable offline: an occurrence entered here could not be synchronised. Reconnect to record it.',
     'form.repeatable_requires_saved_record': 'This block becomes fillable once the record is saved.',
+    // L72c D10 — group whose parent block is hidden: a count, never a clinical value.
+    'form.repeatable_masked': 'This group’s block is hidden for this record. {n} occurrence(s) remain saved in it: they can no longer be entered here, and each one can be deleted.',
+    'form.repeatable_masked_readonly': 'This group’s block is hidden for this record. {n} occurrence(s) remain saved in it.',
+    'form.repeatable_masked_pending': 'This group’s block is hidden by the record being entered. {n} pending occurrence(s) will be saved with the record unless you remove them.',
+    'form.repeatable_masked_draft': 'An occurrence being entered is kept; it becomes editable again if the block reappears.',
     'form.pending_banner': 'Unconfirmed occurrences',
     'form.pending_hint': 'Occurrences entered here are kept, then written in order right after the record.',
     'form.pending_unsaved': 'Not saved',
@@ -1346,6 +1356,10 @@ export const messages = {
     'section.repeatable_confirm': 'Declare repeatable',
     'section.repeatable_badge': 'Repeatable',
     'section.repeatable_outline_hint': 'Table entry, one row per occurrence.',
+    // L72b — repeatable group as a sub-section: checkbox lock and block import refusal.
+    'section.repeatable_locked_children': 'This block has sub-sections: a repeatable group accepts none, and a group cannot sit under another group.',
+    'blockimport.error.source_has_repeatable_group':
+      'This block contains a repeatable group as a sub-section: importing it is not supported yet. Create this block directly in this version.',
     'section.common': 'Common core',
     'section.parent': 'Parent block',
     'section.root': 'Root block',

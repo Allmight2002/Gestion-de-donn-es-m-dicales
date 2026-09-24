@@ -193,3 +193,66 @@ describe('FormPreview — bloc répétable (L67)', () => {
     expect(screen.getByRole('button', { name: 'Ajouter une occurrence' })).toBeDisabled();
   });
 });
+
+// L72b — l'apercu confiait les groupes a une boucle placee APRES le formulaire : un groupe se
+// lisait toujours en pied de fiche, quel que soit son rang. Il passe desormais par la meme prop
+// que la saisie (`repeatableGroup`) et devient une etape a son rang (decision D9).
+describe('FormPreview — rang des groupes répétables (L72b)', () => {
+  const stepsOf = () => within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' }))
+    .getAllByRole('button').map((button) => button.textContent);
+
+  const renderWith = async (sections: TemplateSection[], sectionFields: TemplateField[]) => {
+    render(
+      <I18nProvider>
+        <FormPreview version={version} fields={sectionFields} rules={[]} sections={sections} onClose={() => undefined} />
+      </I18nProvider>,
+    );
+    await userEvent.click(screen.getByRole('tab', { name: /Fiche patient/ }));
+  };
+
+  test('un groupe racine est rendu a son rang declare, et non plus en pied de formulaire', async () => {
+    await renderWith([
+      { id: 's1', sectionKey: 'examen', label: 'Examen', displayOrder: 0, parentSectionKey: null },
+      { id: 's2', sectionKey: 'lesions', label: 'Lésions', displayOrder: 1, parentSectionKey: null, isRepeatable: true },
+      { id: 's3', sectionKey: 'suites', label: 'Suites', displayOrder: 2, parentSectionKey: null },
+    ], [
+      field({ id: 'f1', fieldKey: 'conscience', label: 'Conscience', scope: 'patient', section: 'examen', displayOrder: 1 }),
+      field({ id: 'f2', fieldKey: 'niveau', label: 'Niveau', section: 'lesions', displayOrder: 2 }),
+      field({ id: 'f3', fieldKey: 'sequelles', label: 'Séquelles', scope: 'patient', section: 'suites', displayOrder: 3 }),
+    ]);
+
+    expect(stepsOf()).toEqual(['Examen', 'Lésions', 'Suites']);
+    // Le tableau inerte est DANS l'etape du groupe, pas apres le formulaire.
+    await userEvent.click(screen.getByRole('button', { name: 'Bloc suivant' }));
+    const table = screen.getByRole('table', { name: 'Lésions' });
+    expect(table.closest('fieldset')).toHaveAccessibleName('Lésions');
+    expect(within(table.closest('fieldset') as HTMLElement).getByRole('button', { name: 'Ajouter une occurrence' })).toBeDisabled();
+  });
+
+  test('sans aucune variable permanente, le groupe reste montre', async () => {
+    await renderWith([
+      { id: 's2', sectionKey: 'lesions', label: 'Lésions', displayOrder: 0, parentSectionKey: null, isRepeatable: true },
+    ], [field({ id: 'f2', fieldKey: 'niveau', label: 'Niveau', section: 'lesions' })]);
+
+    expect(screen.getByText('Aucune variable permanente dans ce jeu de variables.')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Lésions' })).toBeInTheDocument();
+  });
+
+  // A (A1, G1, A2) : le groupe enfant est une etape entre A1 et A2. FormPreview le confie a
+  // SectionedFields ; le placer est le travail de `repeatableSectionsOf` et
+  // `withRepeatableSteps`, dont L72c (#350) leve le filtre racine.
+  test('A (A1, G1, A2) : G1 est une etape entre A1 et A2', async () => {
+    await renderWith([
+      { id: 'a', sectionKey: 'trauma', label: 'Traumatisme', displayOrder: 0, parentSectionKey: null },
+      { id: 'a1', sectionKey: 'bilan', label: 'Bilan', displayOrder: 1, parentSectionKey: 'trauma' },
+      { id: 'g1', sectionKey: 'lesions', label: 'Lésions', displayOrder: 2, parentSectionKey: 'trauma', isRepeatable: true },
+      { id: 'a2', sectionKey: 'suites', label: 'Suites', displayOrder: 3, parentSectionKey: 'trauma' },
+    ], [
+      field({ id: 'f1', fieldKey: 'mecanisme', label: 'Mécanisme', scope: 'patient', section: 'bilan', displayOrder: 1 }),
+      field({ id: 'f2', fieldKey: 'niveau', label: 'Niveau', section: 'lesions', displayOrder: 2 }),
+      field({ id: 'f3', fieldKey: 'sequelles', label: 'Séquelles', scope: 'patient', section: 'suites', displayOrder: 3 }),
+    ]);
+
+    expect(stepsOf()).toEqual(['Bilan', 'Lésions', 'Suites']);
+  });
+});

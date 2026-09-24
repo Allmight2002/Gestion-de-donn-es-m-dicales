@@ -429,7 +429,8 @@ export const classifyIntakeSyncError = (error: unknown): SyncErrorKind => {
   const e = error as { message?: string; code?: string; status?: number; statusCode?: number } | null;
   const message = e?.message ?? String(error);
   const status = e?.status ?? e?.statusCode;
-  if (/CONFLIT_VERSION/i.test(message)) return 'conflict';
+  // L72e (D7) : un bloc parent devenu masqué refuse l'occurrence ; la saisie reste en file.
+  if (/CONFLIT_VERSION|GROUP_BLOCK_HIDDEN/i.test(message)) return 'conflict';
   if (
     status === 401 || status === 403 || e?.code === '23505' || e?.code === '42501'
     || /permission denied|not authorized|unauthorized|forbidden/i.test(message)

@@ -201,7 +201,7 @@ export function RepeatableGroupTable({
 export function RepeatableGroup({
   section, fields, rules, requireComplete = false,
   patientId, occurrences, occurrencesError = null, onChanged, canWrite, online = true, onDirtyChange,
-  occurrenceTemplateVersionId, canCreate = true, totalOccurrenceCount,
+  occurrenceTemplateVersionId, canCreate = true, totalOccurrenceCount, masked = false,
 }: {
   section: TemplateSection;
   /** Variables du bloc, dans l'ordre d'affichage de l'editeur. */
@@ -225,6 +225,13 @@ export function RepeatableGroup({
   canCreate?: boolean;
   /** The server cap applies across every version of this group. */
   totalOccurrenceCount?: number;
+  /**
+   * L72 D10 — le bloc parent du groupe est masque pour cette fiche. Les occurrences deja
+   * enregistrees restent visibles et supprimables une a une ; rien ne s'y ajoute ni ne s'y
+   * corrige. Une occurrence en cours de saisie est conservee, sans etre montree, jusqu'a ce
+   * que le bloc redevienne visible.
+   */
+  masked?: boolean;
 }) {
   const { t } = useI18n();
   const patients = usePatientRepository();
@@ -363,7 +370,7 @@ export function RepeatableGroup({
   const rowActions = writable
     ? (row: Encounter, index: number) => row.validationStatus === 'curated' ? null : (
       <>
-        <button
+        {!masked && <button
           type="button"
           className="text-xs font-medium text-teal-700 hover:underline"
           aria-label={t('form.repeatable_edit_occurrence').replace('{n}', String(index + 1)).replace('{group}', groupLabel)}
@@ -371,7 +378,7 @@ export function RepeatableGroup({
           onClick={() => open(row)}
         >
           {t('encounter.edit')}
-        </button>
+        </button>}
         <DeleteWithReason
           label={t('form.repeatable_delete_occurrence').replace('{n}', String(index + 1)).replace('{group}', groupLabel)}
           onConfirm={async (reason) => {
@@ -408,6 +415,11 @@ export function RepeatableGroup({
       {/* Annonce du compte a l'ajout et au retrait (§8.6). Vide au montage : une region vivante
           n'annonce que ce qui CHANGE, jamais l'etat initial de la page. */}
       <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
+      {masked && !loading && !occurrencesError && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {t('form.repeatable_masked').replace('{n}', String(rows.length))}
+        </p>
+      )}
       {error && !draft && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
 
       {!online && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('form.repeatable_offline')}</p>}
@@ -426,7 +438,7 @@ export function RepeatableGroup({
           />
         )}
 
-      {writable && canCreate && !loading && !occurrencesError && (
+      {writable && canCreate && !masked && !loading && !occurrencesError && (
         <div className="space-y-1">
           <button type="button" className="btn-secondary" disabled={limitReached || busy}
             onClick={() => open(null)}>
@@ -440,7 +452,14 @@ export function RepeatableGroup({
         </div>
       )}
 
-      {writable && !activeReadOnly && draft && (
+      {masked && draft && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <p role="status">{t('form.repeatable_masked_draft')}</p>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={() => setConfirmation('cancel')}>{t('common.cancel')}</button>
+        </div>
+      )}
+
+      {writable && !masked && !activeReadOnly && draft && (
         // Pas un `form` : le bloc est rendu DANS le formulaire de la fiche, et une occurrence
         // s'enregistre seule. Entree ne doit donc jamais soumettre la fiche autour.
         <fieldset

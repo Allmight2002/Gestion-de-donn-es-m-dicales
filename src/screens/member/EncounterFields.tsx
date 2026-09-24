@@ -165,17 +165,36 @@ export function HiddenValuesConfirmation({
   fields,
   onConfirm,
   onCancel,
+  withdrawals = [],
 }: {
   removedKeys: readonly string[];
   fields: TemplateField[];
   onConfirm: () => void;
   onCancel: () => void;
+  /** L72e — occurrences supprimées avec l'enregistrement, par bloc masqué. */
+  withdrawals?: readonly { sectionKey: string; blockLabel: string; count: number }[];
 }) {
   const { t } = useI18n();
-  if (removedKeys.length === 0) return null;
+  if (removedKeys.length === 0 && withdrawals.length === 0) return null;
   const labels = removedKeys.map((key) => fields.find((f) => f.fieldKey === key)?.label ?? key);
   return <ConfirmDialog open title={t('form.diagnostic_withdrawal_title')}
-    body={<><p>{t('form.diagnostic_withdrawal_body').replace('{n}', String(removedKeys.length))}</p><p className="mt-2">{labels.join(', ')}</p></>}
+    body={<>
+      {removedKeys.length > 0 && <>
+        <p>{t('form.diagnostic_withdrawal_body').replace('{n}', String(removedKeys.length))}</p>
+        <p className="mt-2">{labels.join(', ')}</p>
+      </>}
+      {withdrawals.length > 0 && <div className={removedKeys.length > 0 ? 'mt-3' : undefined}>
+        <p>{t('form.group_withdrawal_body')}</p>
+        <ul className="mt-2 list-disc pl-5">
+          {withdrawals.map((item) => (
+            <li key={item.sectionKey}>
+              {t('form.group_withdrawal_item').replace('{block}', item.blockLabel).replace('{n}', String(item.count))}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 font-medium">{t('form.group_withdrawal_irreversible')}</p>
+      </div>}
+    </>}
     confirmLabel={t('form.diagnostic_withdrawal_confirm')} cancelLabel={t('form.diagnostic_withdrawal_cancel')}
     onConfirm={onConfirm} onCancel={onCancel} />;
 }
@@ -197,6 +216,8 @@ export function EncounterFields({
   requireComplete,
   toFillKeys,
   repeatableGroup,
+  visibilityRules,
+  maskedRepeatableGroup,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -216,6 +237,9 @@ export function EncounterFields({
   toFillKeys?: ReadonlySet<string>;
   /** L68 — rendu d'un bloc repetable, delegue par `SectionedFields`. */
   repeatableGroup?: (section: TemplateSection) => ReactNode;
+  /** L72 — voir `SectionedFields` : regles de visibilite et groupe dont le bloc est masque. */
+  visibilityRules?: readonly { rule: unknown }[];
+  maskedRepeatableGroup?: (section: TemplateSection) => ReactNode;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -238,6 +262,8 @@ export function EncounterFields({
       requireComplete={requireComplete}
       toFillKeys={toFillKeys}
       repeatableGroup={repeatableGroup}
+      visibilityRules={visibilityRules}
+      maskedRepeatableGroup={maskedRepeatableGroup}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (

@@ -1,4 +1,4 @@
-import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
+import { errorMessage, isRefreshRequiredError, structuredErrorCode } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
@@ -15,7 +15,8 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { RepeatableGroup } from './RepeatableGroup';
-import { repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
+import { maskedRepeatableSectionKeys, repeatableGroupFields, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
+import { pendingGroupWithdrawals } from '../../domain/groupWithdrawal';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -169,13 +170,10 @@ export function EditPatient() {
         // Une occurrence est ecrite dans la version COURANTE de la base : c'est celle que
         // create_encounter retient. Le formulaire d'occurrence suit donc la version active, pas
         // la version historique de la fiche.
-        const groupKeys = new Set(repeatableSectionsOf(active.sections ?? []).map((section) => section.sectionKey));
-        setGroupFields(groupKeys.size === 0
-          ? []
-          : active.fields.filter((field) => field.scope === 'encounter'
-            && field.section !== null && groupKeys.has(sectionKeyOf(field))));
+        const hasGroups = repeatableSectionsOf(active.sections).length > 0;
+        setGroupFields(repeatableGroupFields(active.fields, active.sections));
         setGroupRules(active.rules);
-        if (groupKeys.size === 0) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
+        if (!hasGroups) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
       } else {
         setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
         setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
@@ -199,6 +197,14 @@ export function EditPatient() {
     const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
+
+  // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe : la
+  // confirmation les annonce par bloc, et l'enregistrement les déclare au serveur, qui refuse
+  // tout écart (conflit, rien n'est écrit).
+  const groupWithdrawal = useMemo(
+    () => pendingGroupWithdrawals(sections, rules, fields, initialValues, values, occurrences),
+    [sections, rules, fields, initialValues, values, occurrences],
+  );
 
   // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
   // Le formulaire est donc RENDU avec la meme liste que la validation locale : sans cela,
@@ -254,7 +260,7 @@ export function EditPatient() {
     setBlocking(block);
     if (block.length > 0) return;
 
-    if (removed.length > 0 && !confirmationOpen) {
+    if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0) && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -274,7 +280,8 @@ export function EditPatient() {
           hidden,
           fields.map((field) => field.fieldKey),
         );
-        const requestKey = JSON.stringify([recordContext.context_fingerprint, patch, status, reason.trim()]);
+        const withdrawnOccurrences = groupWithdrawal.declaration ?? undefined;
+        const requestKey = JSON.stringify([recordContext.context_fingerprint, patch, status, reason.trim(), withdrawnOccurrences ?? null]);
         if (compatibleAttempt.current?.requestKey !== requestKey) {
           compatibleAttempt.current = { requestKey, operationId: crypto.randomUUID() };
         }
@@ -288,15 +295,24 @@ export function EditPatient() {
           recordDefinitionRevision: recordContext.record_definition_revision,
           operationId: compatibleAttempt.current.operationId,
           contextFingerprint: recordContext.context_fingerprint,
+          ...(withdrawnOccurrences ? { withdrawnOccurrences } : {}),
         });
       } else if (work.enabled) await work.commit();
-      else await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
+      else if (groupWithdrawal.declaration) {
+        await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion, groupWithdrawal.declaration);
+      } else await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
       navigation.markClean();
       toast(t('toast.patient_saved')); // UI-2
       back();
     } catch (e) {
       const detail = e as { message?: string };
-      if (/CONFLIT_VERSION/i.test(detail?.message ?? '')) {
+      const code = structuredErrorCode(e);
+      if (code === 'GROUP_WITHDRAWAL_CONFLICT' || code === 'GROUP_WITHDRAWAL_REQUIRED') {
+        // Les occurrences ont changé depuis la lecture, ou l'écran n'a pas pu toutes les
+        // déclarer : rien n'est écrit, les saisies restent dans `values`.
+        setReloadRequired(true);
+        setError(t('form.group_withdrawal_conflict'));
+      } else if (/CONFLIT_VERSION/i.test(detail?.message ?? '')) {
         setReloadRequired(true);
         // Conserver le libellé historique attendu par les corrections et les tests ; les
         // valeurs locales restent dans `values` et ne sont jamais remplacées par l'erreur.
@@ -315,8 +331,10 @@ export function EditPatient() {
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   const repeatableSections = repeatableSectionsOf(sections);
-  const renderRepeatableGroup = (section: TemplateSection) => (
+  const maskedGroups = fields.length === 0 ? maskedRepeatableSectionKeys(sections, rules, values, hidden) : new Set<string>();
+  const renderRepeatableGroup = (section: TemplateSection, masked = false) => (
     <RepeatableGroup
+      masked={masked}
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={groupRules}
@@ -332,6 +350,15 @@ export function EditPatient() {
       online={online}
     />
   );
+  // L72 D10 — un groupe dont le bloc est masque n'est pas cache en silence : il reste une etape
+  // tant qu'il porte une occurrence enregistree, une saisie en cours, ou qu'on ne peut prouver
+  // qu'il n'en porte aucune (lecture echouee). Pendant le chargement, rien n'est affirme.
+  const renderMaskedGroup = (section: TemplateSection) => {
+    const count = (occurrences ?? []).filter((row) => row.groupSectionKey === section.sectionKey).length;
+    return (occurrences !== null && count > 0) || occurrencesError || groupDirty[section.sectionKey]
+      ? renderRepeatableGroup(section, true)
+      : null;
+  };
 
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
@@ -365,14 +392,19 @@ export function EditPatient() {
         {fields.length === 0 ? (
           <>
             <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
-            {repeatableSections.map((section) => (
-              <fieldset key={section.sectionKey} className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
-                <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  {section.label?.trim() || section.sectionKey}
-                </legend>
-                {renderRepeatableGroup(section)}
-              </fieldset>
-            ))}
+            {/* Sans variable de fiche, `SectionedFields` n'est pas rendu : le meme verdict de
+                masquage s'applique ici, par le meme calcul. */}
+            {repeatableSections.map((section) => {
+              const content = maskedGroups.has(section.sectionKey) ? renderMaskedGroup(section) : renderRepeatableGroup(section);
+              return content && (
+                <fieldset key={section.sectionKey} className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
+                  <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    {section.label?.trim() || section.sectionKey}
+                  </legend>
+                  {content}
+                </fieldset>
+              );
+            })}
           </>
         ) : (
           <EncounterFields
@@ -387,6 +419,8 @@ export function EditPatient() {
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
             repeatableGroup={renderRepeatableGroup}
+            visibilityRules={rules}
+            maskedRepeatableGroup={renderMaskedGroup}
           />
         )}
 
@@ -399,6 +433,7 @@ export function EditPatient() {
         {confirmationOpen && (
           <HiddenValuesConfirmation
             removedKeys={removed}
+            withdrawals={groupWithdrawal.withdrawals}
             fields={fields}
             onConfirm={() => void persistPatient()}
             onCancel={() => setConfirmationOpen(false)}

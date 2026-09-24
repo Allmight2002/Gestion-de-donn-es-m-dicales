@@ -763,25 +763,31 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
      */
     const levelsOf = (f: TemplateFieldRow) => {
       const own = f.section === null ? undefined : sectionByVersionKey.get(`${f.template_version_id} ${f.section}`);
-      if (!own) return { sectionLabel: null, blockKey: null, blockLabel: null, blockIsRepeatable: false };
-      const parentKey = own.parent_section_id ? keyById.get(own.parent_section_id) ?? null : null;
-      if (!parentKey) {
+      if (!own) {
         return {
-          sectionLabel: own.label,
-          blockKey: own.section_key,
-          blockLabel: own.label,
-          blockIsRepeatable: Boolean(own.is_repeatable),
+          sectionLabel: null,
+          blockKey: null,
+          blockLabel: null,
+          blockIsRepeatable: false,
+          groupKey: null,
+          groupLabel: null,
         };
       }
-      const parent = sectionByVersionKey.get(`${f.template_version_id} ${parentKey}`);
-      // L70 : le caractere repetable est celui du BLOC RACINE, lu sur le parent. Un bloc
-      // repetable n'a pas de sous-section (§12), donc cette branche repond normalement `false` ;
-      // on le LIT quand meme plutot que de le supposer.
+      const parentKey = own.parent_section_id ? keyById.get(own.parent_section_id) ?? null : null;
+      const parent = parentKey ? sectionByVersionKey.get(`${f.template_version_id} ${parentKey}`) : undefined;
+      // L72d : le GROUPE est la section repetable de la variable — elle-meme, racine (L70) ou
+      // sous-section (L72a). Un groupe n'a pas de sous-section (§12) : le parent n'est donc
+      // normalement jamais repetable, mais on le LIT plutot que de le supposer, comme L70.
+      const group = own.is_repeatable ? own : parent?.is_repeatable ? parent : null;
       return {
         sectionLabel: own.label,
-        blockKey: parentKey,
-        blockLabel: parent?.label ?? null,
-        blockIsRepeatable: Boolean(parent?.is_repeatable),
+        // L53 : le bloc de PROJECTION reste la racine, meme quand la variable vit dans un groupe
+        // enfant — selectionner `a` doit rendre aussi le comptage de son groupe.
+        blockKey: parentKey ?? own.section_key,
+        blockLabel: parentKey ? parent?.label ?? null : own.label,
+        blockIsRepeatable: group !== null,
+        groupKey: group?.section_key ?? null,
+        groupLabel: group?.label ?? null,
       };
     };
 
@@ -798,8 +804,11 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         // descendante est acquise par construction ; nul au tronc commun.
         blockKey: levels.blockKey,
         blockLabel: levels.blockLabel,
-        // L70 : dit a l'export qu'une ligne par patient ne peut pas agreger ce bloc.
+        // L70 : dit a l'export qu'une ligne par patient ne peut pas agreger ce groupe.
         blockIsRepeatable: levels.blockIsRepeatable,
+        // L72d : le groupe, distinct du bloc de projection. C'est lui qui nomme `nb__<groupe>`.
+        groupKey: levels.groupKey,
+        groupLabel: levels.groupLabel,
         // UX-16 : rubrique de PRESENTATION, a cote du bloc et jamais a sa place. Une variable
         // de bloc n'en a pas ; une rubrique introuvable laisse la variable commune telle
         // quelle, exportee comme avant.

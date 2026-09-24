@@ -300,11 +300,12 @@ export interface ImportableBlock {
   fieldCount: number;
 }
 
-/** Les douze refus typés de L58 (§4.4 de spec-blocs-reutilisables.md). */
+/** Les douze refus typés de L58 (§4.4 de spec-blocs-reutilisables.md), plus celui de L72a. */
 export type SectionImportRefusalCode =
   | 'IMPORT_SOURCE_FORBIDDEN'
   | 'IMPORT_TARGET_FORBIDDEN'
   | 'IMPORT_SOURCE_NOT_A_BLOCK'
+  | 'IMPORT_SOURCE_HAS_REPEATABLE_GROUP'
   | 'IMPORT_TARGET_LOCKED'
   | 'IMPORT_TARGET_IN_USE'
   | 'IMPORT_SECTION_EXISTS'

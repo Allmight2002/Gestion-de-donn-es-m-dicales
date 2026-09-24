@@ -652,6 +652,11 @@ export const messages = {
     'form.diagnostic_withdrawal_confirm': 'Confirmer le retrait et enregistrer',
     'form.diagnostic_withdrawal_cancel': 'Annuler et conserver la saisie',
     'form.refresh_required': 'La fiche a été modifiée entre-temps ou sa visibilité a changé. Vos saisies locales sont conservées ; rechargez les données avant de recommencer.',
+    // L72e : occurrences d'un groupe supprimées avec l'enregistrement de la fiche.
+    'form.group_withdrawal_body': 'Des blocs qui portent des occurrences enregistrées seront masqués. Leurs occurrences seront supprimées avec l’enregistrement de la fiche :',
+    'form.group_withdrawal_item': '{block} : {n} occurrence(s) supprimée(s)',
+    'form.group_withdrawal_irreversible': 'Ces occurrences ne pourront pas être restaurées depuis l’écran. Ressaisir la valeur qui affiche le bloc ne les fera pas revenir.',
+    'form.group_withdrawal_conflict': 'Les occurrences du bloc masqué ont changé depuis l’ouverture de la fiche (ajout, correction ou suppression). Rien n’a été enregistré ; vos saisies sont conservées. Rechargez les données avant de recommencer.',
     // UX-1/5/6/13 : textes de la saisie protegee, des blocs repliables et du resume d'erreurs.
     'form.errors_title': 'Erreurs à corriger',
     'form.section_required_none': 'Aucun champ requis dans cette partie',
@@ -699,6 +704,11 @@ export const messages = {
     'form.repeatable_discard': 'Les saisies non enregistrées de cette occurrence seront abandonnées. Les autres occurrences sont conservées.',
     'form.repeatable_offline': 'Les blocs répétables ne sont pas disponibles hors ligne : une occurrence saisie ici ne pourrait pas être synchronisée. Reconnectez-vous pour la saisir.',
     'form.repeatable_requires_saved_record': 'Ce bloc devient saisissable une fois la fiche enregistrée.',
+    // L72c D10 — groupe dont le bloc parent est masqué : un compte, jamais une valeur clinique.
+    'form.repeatable_masked': 'Le bloc de ce groupe est masqué pour cette fiche. {n} occurrence(s) y restent enregistrée(s) : elles ne se saisissent plus ici, et chacune peut être supprimée.',
+    'form.repeatable_masked_readonly': 'Le bloc de ce groupe est masqué pour cette fiche. {n} occurrence(s) y restent enregistrée(s).',
+    'form.repeatable_masked_pending': 'Le bloc de ce groupe est masqué par la fiche en cours. {n} occurrence(s) en attente seront enregistrées avec la fiche si vous ne les retirez pas.',
+    'form.repeatable_masked_draft': 'Une occurrence en cours de saisie est conservée ; elle redevient modifiable si le bloc réapparaît.',
     'form.pending_banner': 'Occurrences non confirmées',
     'form.pending_hint': 'Les occurrences saisies ici sont conservées puis enregistrées, dans l’ordre, juste après la fiche.',
     'form.pending_unsaved': 'Non enregistrée',
@@ -1352,6 +1362,10 @@ export const messages = {
     'section.repeatable_confirm': 'Déclarer répétable',
     'section.repeatable_badge': 'Répétable',
     'section.repeatable_outline_hint': 'Saisie en tableau, une ligne par occurrence.',
+    // L72b — groupe répétable en sous-section : verrou de la case et refus d'import de bloc.
+    'section.repeatable_locked_children': 'Ce bloc porte des sous-sections : un groupe répétable n’en accepte pas, et un groupe ne se place pas sous un autre groupe.',
+    'blockimport.error.source_has_repeatable_group':
+      'Ce bloc contient un groupe répétable en sous-section : son import n’est pas encore pris en charge. Créez ce bloc directement dans cette version.',
     'section.common': 'Tronc commun',
     'section.parent': 'Bloc parent',
     'section.root': 'Bloc racine',

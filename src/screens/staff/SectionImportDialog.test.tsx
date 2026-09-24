@@ -297,9 +297,10 @@ describe('SectionImportDialog', () => {
     });
   });
 
-  test('les douze refus de L58 ont chacun leur message', async () => {
+  test('les douze refus de L58 et celui de L72a ont chacun leur message', async () => {
     const codes = Object.keys(IMPORT_REFUSAL_MESSAGE_KEY) as SectionImportRefusalCode[];
-    expect(codes).toHaveLength(12);
+    expect(codes).toHaveLength(13);
+    expect(codes).toContain('IMPORT_SOURCE_HAS_REPEATABLE_GROUP');
 
     for (const code of codes) {
       const user = userEvent.setup();

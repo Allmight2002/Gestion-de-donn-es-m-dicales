@@ -18,6 +18,8 @@ import {
   readResponse,
   type Responder,
 } from '../_shared/testing.ts';
+import { assertNoIdentity } from './exportContract.ts';
+import L72D_BASELINE from './l72dBaseline.json' with { type: 'json' };
 
 const COHORT = '123e4567-e89b-42d3-a456-426614174000';
 const BASE = '223e4567-e89b-42d3-a456-426614174000';
@@ -2504,4 +2506,291 @@ Deno.test('L70 : la lecture serveur demande explicitement le groupe et le caract
   assertEquals(status, 200);
   assertEquals(selects.get('encounter')?.includes('group_section_key'), true);
   assertEquals(selects.get('template_section')?.includes('is_repeatable'), true);
+});
+
+// ---------------------------------------------------------------------------------------
+// L72d — groupe repetable en SOUS-SECTION (cadrage L72 §9.3, tests 20 a 25).
+// ---------------------------------------------------------------------------------------
+
+/** Toutes les feuilles du classeur, cellule par cellule : c'est ce que lit un analyste. */
+async function classeur(
+  d: GenerateExportDeps,
+  capture: Capture,
+  options: Record<string, unknown>,
+): Promise<Record<string, unknown[][]>> {
+  const { status } = await readResponse(
+    await handleGenerateExport(makeRequest({ body: { ...body('xlsx'), options } }), d),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  return Object.fromEntries(
+    wb.SheetNames.map((
+      name: string,
+    ) => [name, XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1 }) as unknown[][]]),
+  );
+}
+
+/**
+ * Test 25, non-regression STRICTE. `l72dBaseline.json` a ete produit par ce meme code de
+ * capture AVANT toute modification de L72d, sur `origin/develop` (aab4ec4) : ce n'est pas une
+ * attente redigee, c'est le fichier que sortait l'export. Deux bases sans groupe en
+ * sous-section — une base plate, et la base a deux niveaux de L53 portant le groupe RACINE de
+ * L70 — sous les deux formes et les deux profils, toutes feuilles comprises, dictionnaire et
+ * metadonnees inclus.
+ */
+Deno.test('L72d test 25 : une base sans groupe en sous-section produit le meme classeur, cellule pour cellule', async () => {
+  const sortie: Record<string, Record<string, unknown[][]>> = {};
+  for (const scenario of ['plate', 'groupe_racine']) {
+    for (const mode of ['encounter', 'patient']) {
+      for (const profile of ['analysis', 'complete']) {
+        const capture: Capture = { bytes: null, done: null };
+        const d = scenario === 'plate' ? deps({ onStorage: captureUpload(capture) }) : blocDeps({
+          fields: GROUP_FIELDS,
+          sections: GROUP_SECTIONS,
+          encounterMemberRows: [{ encounter_id: 'e1' }, { encounter_id: 'e2' }, { encounter_id: 'e3' }],
+          encounterRows: [BLOCK_ENCOUNTER, ...OCCURRENCE_ROWS],
+          onStorage: captureUpload(capture),
+        });
+        sortie[`${scenario}/${mode}/${profile}`] = await classeur(d, capture, { mode, profile });
+      }
+    }
+  }
+  assertEquals(Object.keys(sortie), Object.keys(L72D_BASELINE));
+  for (const [cas, feuilles] of Object.entries(sortie)) {
+    assertEquals(feuilles, (L72D_BASELINE as Record<string, unknown>)[cas], `classeur modifie : ${cas}`);
+  }
+});
+
+/**
+ * Le montage du besoin (§1) : un bloc racine `a` porte `a1`, le GROUPE `g1` et `a2`, dans cet
+ * ordre. `malnutrition` est un second bloc, la pour que la projection ait quelque chose a ecarter.
+ */
+const CHILD_GROUP_SECTIONS = [
+  { id: 'sa', template_version_id: TV, section_key: 'a', label: 'Bloc A', parent_section_id: null, display_order: 0 },
+  { id: 'sa1', template_version_id: TV, section_key: 'a1', label: 'A1', parent_section_id: 'sa', display_order: 1 },
+  {
+    id: 'sg1',
+    template_version_id: TV,
+    section_key: 'g1',
+    label: 'Lésions vertébrales',
+    parent_section_id: 'sa',
+    is_repeatable: true,
+    display_order: 2,
+  },
+  { id: 'sa2', template_version_id: TV, section_key: 'a2', label: 'A2', parent_section_id: 'sa', display_order: 3 },
+  {
+    id: 'sm',
+    template_version_id: TV,
+    section_key: 'malnutrition',
+    label: 'Malnutrition',
+    parent_section_id: null,
+    display_order: 4,
+  },
+];
+const CHILD_GROUP_FIELDS = [
+  blockField('cf1', 'age', null, 1),
+  blockField('cf2', 'a_statut', 'a', 2),
+  blockField('cf3', 'a1_mesure', 'a1', 3),
+  blockField('cf4', 'niveau', 'g1', 4),
+  blockField('cf5', 'grade', 'g1', 5),
+  blockField('cf6', 'a2_mesure', 'a2', 6),
+  blockField('cf7', 'poids', 'malnutrition', 7),
+];
+/**
+ * P001 : une consultation et deux lesions. P002 : une consultation, aucune lesion — c'est lui
+ * qui prouve le zero. Les valeurs des lesions (101, 102, 201, 202, age 99) n'existent nulle
+ * part ailleurs : si l'une d'elles apparait sur une ligne patient, c'est une occurrence agregee.
+ */
+const CHILD_GROUP_ENCOUNTERS = [
+  { ...ENCOUNTER, id: 'e1', data: { age: 7, a_statut: 1, a1_mesure: 2, a2_mesure: 3, poids: 9 } },
+  {
+    ...ENCOUNTER,
+    id: 'e2',
+    encounter_date: null,
+    encounter_type: 'autre',
+    group_section_key: 'g1',
+    age_value: null,
+    age_unit: null,
+    data: { niveau: 101, grade: 201, age: 99 },
+  },
+  {
+    ...ENCOUNTER,
+    id: 'e3',
+    encounter_date: null,
+    encounter_type: 'autre',
+    group_section_key: 'g1',
+    age_value: null,
+    age_unit: null,
+    data: { niveau: 102, grade: 202, age: 99 },
+  },
+  { ...ENCOUNTER, id: 'e4', patient_id: 'p2', data: { age: 5, a_statut: 0, a1_mesure: 4, a2_mesure: 6, poids: 8 } },
+];
+
+const childGroupDeps = (capture: Capture) =>
+  blocDeps({
+    fields: CHILD_GROUP_FIELDS,
+    sections: CHILD_GROUP_SECTIONS,
+    memberRows: [{ patient_id: 'p1' }, { patient_id: 'p2' }],
+    patientRows: [
+      { id: 'p1', patient_code: 'P001', template_version_id: TV, data: {} },
+      { id: 'p2', patient_code: 'P002', template_version_id: TV, data: {} },
+    ],
+    encounterMemberRows: CHILD_GROUP_ENCOUNTERS.map((e) => ({ encounter_id: e.id })),
+    encounterRows: CHILD_GROUP_ENCOUNTERS,
+    onStorage: captureUpload(capture),
+  });
+
+/** Feuille de donnees en objets, quel que soit le profil (`Données` en Analyse, `Export` en Complet). */
+const donneesDe = (feuilles: Record<string, unknown[][]>) => {
+  const [entete, ...rangees] = feuilles['Données'] ?? feuilles['Export'];
+  return {
+    entete: entete as string[],
+    lignes: rangees.map((r) => Object.fromEntries((entete as string[]).map((c, i) => [c, r[i]]))),
+  };
+};
+const dictionnaireDe = (feuilles: Record<string, unknown[][]>) => {
+  const [entete, ...rangees] = feuilles['Dictionnaire'];
+  return rangees.map((r) => Object.fromEntries((entete as string[]).map((c, i) => [c, r[i] ?? ''])));
+};
+
+Deno.test('L72d test 20 : une occurrence de groupe enfant porte la cle de la SOUS-SECTION', async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const { entete, lignes } = donneesDe(await classeur(childGroupDeps(capture), capture, { profile: 'complete' }));
+  const ligne = (id: string) => lignes.find((l) => l.encounter_id === id) ?? {};
+  assertEquals(ligne('e2').group_section_key, 'g1');
+  assertEquals(ligne('e3').group_section_key, 'g1');
+  // Jamais la racine : `a` n'est pas un groupe, et une rencontre ordinaire n'en a aucun.
+  assertEquals(lignes.some((l) => l.group_section_key === 'a'), false);
+  assertEquals(ligne('e1').group_section_key ?? '', '');
+  // La forme longue garde les variables du groupe, sur la ligne de leur occurrence.
+  assertEquals(entete.includes('encounter__niveau'), true);
+  assertEquals(ligne('e2')['encounter__niveau'], 101);
+  assertEquals(entete.some((c) => c.startsWith('nb__')), false);
+});
+
+/** Ligne par patient du montage, pour chaque profil et chaque regle d'agregation. */
+async function lignesParPatient() {
+  const sorties = [];
+  for (const profile of ['analysis', 'complete']) {
+    for (const rule of ['first', 'last']) {
+      const capture: Capture = { bytes: null, done: null };
+      const { entete, lignes } = donneesDe(
+        await classeur(childGroupDeps(capture), capture, { mode: 'patient', profile, rule }),
+      );
+      sorties.push({
+        cas: `${profile}/${rule}`,
+        entete,
+        lignes,
+        p1: lignes.find((l) => l.patient_code === 'P001') ?? {},
+        p2: lignes.find((l) => l.patient_code === 'P002') ?? {},
+      });
+    }
+  }
+  return sorties;
+}
+
+Deno.test('L72d test 21 : une ligne par patient compte `nb__g1`, exact et a zero, jamais `nb__a`', async () => {
+  for (const { cas, entete, p1, p2 } of await lignesParPatient()) {
+    assertEquals(p1['nb__g1'], 2, cas);
+    assertEquals(p2['nb__g1'], 0, cas);
+    assertEquals(entete.includes('nb__a'), false, cas);
+    assertEquals(entete.filter((c) => c.startsWith('nb__')), ['nb__g1'], cas);
+  }
+});
+
+Deno.test("L72d test 22 (BLOQUANT) : la ligne patient ne reprend AUCUNE variable ni valeur d'occurrence", async () => {
+  for (const { cas, entete, lignes, p1 } of await lignesParPatient()) {
+    // Aucune variable du groupe sur la ligne patient : une colonne `niveau`, meme vide, se lirait
+    // « non renseigne » pour un patient qui porte deux lesions...
+    assertEquals(entete.some((c) => c.includes('niveau') || c.includes('grade')), false, cas);
+    // ... et aucune valeur d'occurrence nulle part, pas meme l'age d'une lesion.
+    const valeurs = lignes.flatMap((l) => Object.values(l));
+    for (const valeurOccurrence of [101, 102, 201, 202, 99]) {
+      assertEquals(valeurs.includes(valeurOccurrence), false, `${cas} : ${valeurOccurrence}`);
+    }
+    // Le reste du bloc `a` N'EST PAS contamine par son groupe : il s'agrege comme avant, depuis
+    // la consultation, la seule rencontre ordinaire du patient.
+    assertEquals(p1['encounter__a_statut'], 1, cas);
+    assertEquals(p1['encounter__a1_mesure'], 2, cas);
+    assertEquals(p1['encounter__a2_mesure'], 3, cas);
+    assertEquals(p1['encounter__age'], 7, cas);
+    assertEquals(p1.age_value, 3, cas);
+  }
+});
+
+Deno.test('L72d test 23 : projeter `a` rend `a`, ses sous-sections et le comptage de son groupe', async () => {
+  for (const profile of ['analysis', 'complete']) {
+    const capture: Capture = { bytes: null, done: null };
+    const feuilles = await classeur(childGroupDeps(capture), capture, {
+      mode: 'patient',
+      profile,
+      sectionProjection: { mode: 'selected', blockKeys: ['a'] },
+    });
+    const { entete, lignes } = donneesDe(feuilles);
+    for (const colonne of ['encounter__age', 'encounter__a_statut', 'encounter__a1_mesure', 'encounter__a2_mesure']) {
+      assertEquals(entete.includes(colonne), true, `${profile} : ${colonne}`);
+    }
+    assertEquals(entete.includes('nb__g1'), true, profile);
+    assertEquals(lignes.find((l) => l.patient_code === 'P001')?.['nb__g1'], 2, profile);
+    // L'autre bloc est ecarte, et le groupe ne se fond toujours pas dans la ligne patient.
+    assertEquals(entete.includes('encounter__poids'), false, profile);
+    assertEquals(entete.includes('encounter__niveau'), false, profile);
+    // Aucune fuite d'identite, ni dans les donnees ni dans le dictionnaire.
+    assertNoIdentity(entete);
+    assertNoIdentity(feuilles['Dictionnaire'][0] as string[]);
+  }
+  // Et sans groupe dans la projection, pas de comptage : `malnutrition` seul ne rend pas `nb__g1`.
+  const capture: Capture = { bytes: null, done: null };
+  const { entete } = donneesDe(
+    await classeur(childGroupDeps(capture), capture, {
+      mode: 'patient',
+      sectionProjection: { mode: 'selected', blockKeys: ['malnutrition'] },
+    }),
+  );
+  assertEquals(entete.some((c) => c.startsWith('nb__')), false);
+});
+
+Deno.test("L72d test 23 : le groupe enfant n'est pas un bloc de projection", async () => {
+  const capture: Capture = { bytes: null, done: null };
+  const { status, body: b } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({
+        body: { ...body('xlsx'), options: { sectionProjection: { mode: 'selected', blockKeys: ['g1'] } } },
+      }),
+      childGroupDeps(capture),
+    ),
+  );
+  assertEquals(status, 400);
+  assertEquals(b.code, 'EXPORT_PROJECTION_NOT_A_BLOCK');
+});
+
+Deno.test('L72d test 24 : la ligne de comptage nomme le GROUPE, et la racine comme bloc (D12)', async () => {
+  for (const profile of ['analysis', 'complete']) {
+    const capture: Capture = { bytes: null, done: null };
+    const feuilles = await classeur(childGroupDeps(capture), capture, { mode: 'patient', profile });
+    const dictionnaire = dictionnaireDe(feuilles);
+    const comptage = dictionnaire.find((r) => r.column_id === 'nb__g1');
+    assert(comptage !== undefined, profile);
+    assertEquals(comptage.type, 'computed_group_count', profile);
+    assertEquals(comptage.label, "Lésions vertébrales — nombre d'occurrences", profile);
+    assertEquals(comptage.section, 'g1', profile);
+    assertEquals(comptage.section_label, 'Lésions vertébrales', profile);
+    // Un groupe enfant fait exister une sous-section : les colonnes de bloc sont actives.
+    assertEquals(comptage.block, 'a', profile);
+    assertEquals(comptage.block_label, 'Bloc A', profile);
+    // D12 : aucune colonne nouvelle au dictionnaire, et aucune ligne `nb__a`.
+    assertEquals((feuilles['Dictionnaire'][0] as string[]).some((c) => c.startsWith('group')), false, profile);
+    assertEquals(dictionnaire.some((r) => r.column_id === 'nb__a'), false, profile);
+    // Les variables du groupe gardent leurs deux niveaux : la feuille est le groupe, le bloc `a`.
+    const niveau = dictionnaire.find((r) => r.column_id === 'encounter__niveau');
+    assertEquals(niveau?.section, 'g1', profile);
+    assertEquals(niveau?.block, 'a', profile);
+    // Chaque colonne du fichier a sa ligne au dictionnaire, le comptage compris.
+    const decrites = new Set(dictionnaire.map((r) => r.column_id));
+    for (const colonne of donneesDe(feuilles).entete) {
+      if (['patient_code', 'age_value', 'age_unit'].includes(colonne)) continue;
+      assertEquals(decrites.has(colonne), true, `${profile} : colonne non documentee ${colonne}`);
+    }
+  }
 });
