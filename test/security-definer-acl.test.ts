@@ -62,9 +62,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // +4 E3 : lectures de contexte et compléments atomiques patient/rencontre. Le serveur
     // calcule l'applicabilité, protège l'empreinte et contrôle portée, révision et provenance.
     // +1 L69 : creation d occurrence rejouable par cle serveur, avec controle des droits a chaque rejeu.
-    expect(signatures).toHaveLength(148);
+    // +2 L72e : surcharges declaratives de update_patient et update_patient_compatible. Elles
+    // controlent la permission de suppression avant tout verrou et deleguent l'ecriture de la
+    // fiche aux fonctions existantes ; le predicat et les helpers de retrait restent fermes.
+    expect(signatures).toHaveLength(150);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(160);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(162);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

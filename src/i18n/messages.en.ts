@@ -651,6 +651,11 @@ export const messages = {
     'form.diagnostic_withdrawal_confirm': 'Confirm removal and save',
     'form.diagnostic_withdrawal_cancel': 'Cancel and keep the entry',
     'form.refresh_required': 'The record or its visibility changed in the meantime. Your local entries are preserved; reload the data before trying again.',
+    // L72e: occurrences of a group deleted with the record save.
+    'form.group_withdrawal_body': 'Blocks that hold saved occurrences will be hidden. Their occurrences will be deleted when the record is saved:',
+    'form.group_withdrawal_item': '{block}: {n} occurrence(s) deleted',
+    'form.group_withdrawal_irreversible': 'These occurrences cannot be restored from the screen. Entering again the value that shows the block will not bring them back.',
+    'form.group_withdrawal_conflict': 'The occurrences of the hidden block changed since the record was opened (added, corrected or deleted). Nothing was saved; your entries are preserved. Reload the data before trying again.',
     'form.errors_title': 'Errors to fix',
     'form.section_required_none': 'No required fields in this part',
     'form.section_required_count': '{done} of {total} required fields answered',

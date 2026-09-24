@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260923120000_repeatable_group_subsection.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 94 · Fonctions : 396
+- Dernière migration incluse : `20260924090000_group_block_visibility_withdrawal.sql`
+- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 408
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -68,6 +68,7 @@ Triggers :
 - `trg_base_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_base()`
 - `trg_base_owner_immutable` — BEFORE UPDATE → `guard_base_owner_immutable()`
 - `trg_base_template_version` — BEFORE UPDATE → `guard_base_template_version()`
+- `trg_base_version_group_withdrawal` — BEFORE UPDATE → `guard_base_version_group_withdrawal()`
 - `trg_guard_base_inclusion_target_revision` — BEFORE UPDATE → `guard_base_inclusion_target_revision()`
 
 ### base_access · RLS activée
@@ -429,6 +430,7 @@ Triggers :
 - `trg_diagnosis_client` — BEFORE INSERT/UPDATE → `guard_diagnosis_submission()`
 - `trg_encounter_cross_sectional_rejected` — BEFORE INSERT → `reject_cross_sectional_encounter()`
 - `trg_encounter_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
+- `trg_encounter_group_block_visible` — BEFORE INSERT/UPDATE → `guard_group_occurrence_block_visible()`
 - `trg_encounter_no_downgrade` — BEFORE UPDATE → `guard_no_curated_downgrade()`
 - `trg_encounter_recompute_age` — BEFORE UPDATE → `recompute_encounter_age()`
 - `trg_encounter_record_revision` — BEFORE UPDATE → `bump_encounter_record_revision()`
@@ -714,6 +716,7 @@ Policies :
 Triggers :
 - `trg_diagnosis_client` — BEFORE INSERT/UPDATE → `guard_diagnosis_submission()`
 - `trg_patient_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
+- `trg_patient_group_withdrawal` — BEFORE UPDATE → `guard_patient_group_withdrawal()`
 - `trg_patient_no_downgrade` — BEFORE UPDATE → `guard_no_curated_downgrade()`
 - `trg_patient_row_version` — BEFORE UPDATE → `bump_patient_row_version()`
 - `trg_patient_structural_immutable` — BEFORE UPDATE → `guard_structural_immutable()`
@@ -1437,11 +1440,13 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | get_diagnosis_context | p_version_id uuid | INVOKER | sql |
 | get_import_batch_state | p_batch_id uuid | DEFINER | plpgsql |
 | get_patient_identity | p_patient_id uuid | DEFINER | plpgsql |
+| group_withdrawal_error | p_code text, p_details jsonb | INVOKER | plpgsql |
 | guard_access_escalation | — | INVOKER | plpgsql |
 | guard_base_access_medecin | — | DEFINER | plpgsql |
 | guard_base_inclusion_target_revision | — | INVOKER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
+| guard_base_version_group_withdrawal | — | DEFINER | plpgsql |
 | guard_base_view_preference_keys | — | DEFINER | plpgsql |
 | guard_cohort_base_immutable | — | DEFINER | plpgsql |
 | guard_cohort_encounter_membership | — | DEFINER | plpgsql |
@@ -1456,8 +1461,10 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_export_generation_mode | — | DEFINER | plpgsql |
 | guard_finalized_draft | — | INVOKER | plpgsql |
 | guard_form_preparation_terminal_state | — | DEFINER | plpgsql |
+| guard_group_occurrence_block_visible | — | DEFINER | plpgsql |
 | guard_inspection_status | — | INVOKER | plpgsql |
 | guard_no_curated_downgrade | — | INVOKER | plpgsql |
+| guard_patient_group_withdrawal | — | DEFINER | plpgsql |
 | guard_profile_role | — | DEFINER | plpgsql |
 | guard_repeatable_encounter | — | INVOKER | plpgsql |
 | guard_repeatable_field | — | INVOKER | plpgsql |
@@ -1529,6 +1536,10 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | owns_base_with_member | p_user uuid | DEFINER | sql |
 | owns_template | p_template uuid | DEFINER | sql |
 | patient_age_at | p_patient_id uuid, p_at date, p_unit text | DEFINER | plpgsql |
+| patient_group_occurrences | p_patient_id uuid, p_group_section_key text | INVOKER | sql |
+| patient_group_withdrawal_commit | p_patient_id uuid, p_old_data jsonb, p_declared jsonb | DEFINER | plpgsql |
+| patient_group_withdrawal_prepare | p_patient_id uuid, p_declared jsonb | DEFINER | plpgsql |
+| patient_group_withdrawals | p_patient_id uuid, p_old_version_id uuid, p_old_data jsonb, p_new_version_id uuid, p_new_data jsonb | INVOKER | plpgsql |
 | pgp_armor_headers | text, OUT key text, OUT value text | INVOKER | c |
 | pgp_key_id | bytea | INVOKER | c |
 | pgp_pub_decrypt | bytea, bytea | INVOKER | c |
@@ -1576,6 +1587,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | reorder_template_section_siblings | p_version_id uuid, p_parent_key text, p_section_ids uuid[] | DEFINER | plpgsql |
 | reorder_template_sections | p_version_id uuid, p_section_ids uuid[] | DEFINER | plpgsql |
 | repair_option_keys | p_base_id uuid, p_confirm boolean | DEFINER | plpgsql |
+| repeatable_group_block_key | p_version_id uuid, p_group_section_key text | INVOKER | sql |
+| repeatable_group_root_visible | p_version_id uuid, p_group_section_key text, p_data jsonb | INVOKER | plpgsql |
 | replay_encounter_create | p_operation_id text, p_parent_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
 | replay_encounter_update | p_operation_id text, p_encounter_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_updated_at timestamp with time zone | DEFINER | plpgsql |
 | replay_patient_create | p_operation_id text, p_base_id uuid, p_patient_code text, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_permanent_data jsonb | DEFINER | plpgsql |
@@ -1645,7 +1658,9 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | update_encounter_compatible | p_base_id uuid, p_encounter_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text | DEFINER | plpgsql |
 | update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
+| update_patient | p_patient_id uuid, p_data jsonb, p_validation_status text, p_reason text, p_expected_version bigint, p_withdrawn_occurrences jsonb | DEFINER | plpgsql |
 | update_patient_compatible | p_base_id uuid, p_patient_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text | DEFINER | plpgsql |
+| update_patient_compatible | p_base_id uuid, p_patient_id uuid, p_patch jsonb, p_validation_status text, p_reason text, p_expected_record_revision bigint, p_record_definition_revision uuid, p_operation_id uuid, p_context_fingerprint text, p_withdrawn_occurrences jsonb | DEFINER | plpgsql |
 | update_patient_identity | p_patient_id uuid, p_full_name text, p_date_of_birth date, p_phone text, p_address text, p_external_identifier text, p_reason text, p_expected_version bigint | DEFINER | plpgsql |
 | update_quarantine_move | p_move_id uuid, p_status text, p_last_error text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |

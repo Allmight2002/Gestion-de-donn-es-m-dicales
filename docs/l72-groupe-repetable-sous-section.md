@@ -435,3 +435,52 @@ masquera des variables que le serveur ne masque plus ; `templateSections.ts` cit
 contrainte racine supprimée. Un bloc dont le seul contenu est un groupe est refusé par la
 configuration diagnostique (`DIAGNOSIS_BLOCK_EMPTY`) : le bloc doit porter au moins une
 variable de la portée du diagnostic.
+
+## 14. État de L72e — 24 septembre 2026
+
+Migration [`20260924090000_group_block_visibility_withdrawal.sql`](../supabase/migrations/20260924090000_group_block_visibility_withdrawal.sql),
+tests [`group-block-withdrawal.test.ts`](../test/group-block-withdrawal.test.ts),
+[`offline-group-block.test.ts`](../test/offline-group-block.test.ts) et
+[`GroupWithdrawal.test.tsx`](../src/screens/member/GroupWithdrawal.test.tsx).
+Validé localement sur PostgreSQL embarqué ; **rien n'est appliqué à distance**.
+
+**Prédicat unique.** `repeatable_group_root_visible(version, groupe, données)` évalue les règles
+d'affichage qui ciblent la **section** du groupe ou ses ancêtres, sur le point fixe de
+`visibility_hidden_fields` (cascade : un pilote masqué vaut absent). Un bloc sans variable propre
+est donc jugé. Condition non vérifiable, version ou clé inconnue : masqué. Un groupe racine n'est
+jamais masqué (aucune règle ne peut le cibler).
+
+**R4 (D1).** Déclencheur `trg_encounter_group_block_visible` : création et correction d'une
+occurrence refusées (`GROUP_BLOCK_HIDDEN`) quand le bloc parent est masqué ; suppression douce et
+restauration d'une base passent. Il couvre create_encounter et ses délégués, update_encounter,
+update_encounter_compatible, les rejeux et commit_work_draft sans les redéfinir.
+
+**Retrait (D2, D4, D5).** Déclencheur `trg_patient_group_withdrawal` sur `patient.data` : toute
+écriture qui fait passer une racine de visible à masquée alors que le groupe porte des occurrences
+vivantes est refusée (`GROUP_WITHDRAWAL_REQUIRED`, par groupe : clé, bloc, nombre, identifiants,
+révisions ; aucune valeur clinique). Il couvre update_patient, update_patient_compatible,
+l'import, la curation, la réparation des clés et le brouillon de travail. Le changement de version
+d'une base (E2, `set_base_template_version`) est refusé de même
+(`GROUP_WITHDRAWAL_VERSION_REFUSED`, comptes seulement) : il ne se déclare pas fiche par fiche.
+
+**Forme retenue : deux surcharges** `update_patient(…, p_withdrawn_occurrences)` et
+`update_patient_compatible(…, p_withdrawn_occurrences)`, paramètre obligatoire (PostgREST
+choisit par noms d'arguments : un appel sans déclaration résout l'ancienne signature). Elles
+verrouillent fiche et occurrences, délèguent l'écriture aux fonctions existantes inchangées, puis
+exigent que la déclaration décrive **exactement** les groupes masqués et leurs occurrences ;
+sinon `GROUP_WITHDRAWAL_CONFLICT` et rien n'est écrit. Les occurrences sont supprimées en douceur
+avec un motif engendré qui nomme le bloc, journalisé par occurrence. Une RPC dédiée aurait dû
+recopier les deux corps ; un paramètre optionnel aurait rendu les appels à cinq et neuf
+arguments ambigus pour PostgREST.
+
+**Écarts et limites.**
+
+- Chaque suppression d'occurrence fait avancer `patient.row_version`
+  (`trg_refresh_patient_inclusion_date`, préexistant) : la ligne et le reçu E3 rendus sont relus
+  après les suppressions, et le reçu rangé est mis à jour pour qu'un rejeu rende le même.
+- `commit_work_draft` rend toute erreur étrangère sous `DRAFT_VALIDATION` : sur ce chemin, le
+  refus tient mais son code se perd. Il ne sert que sans contexte E3.
+- Hors ligne : `GROUP_BLOCK_HIDDEN` est classé en conflit dans les deux files ;
+  `RESOURCE_NOT_FOUND` sur la correction d'une **occurrence** aussi (ce n'est plus un rejet).
+  C'est une classification dépendant de l'entrée, un peu au-delà d'un nouveau code.
+- Pas de restauration par occurrence (D6) ; l'écran l'annonce.
