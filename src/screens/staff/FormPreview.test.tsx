@@ -240,10 +240,8 @@ describe('FormPreview — rang des groupes répétables (L72b)', () => {
 
   // A (A1, G1, A2) : le groupe enfant est une etape entre A1 et A2. FormPreview le confie a
   // SectionedFields ; le placer est le travail de `repeatableSectionsOf` et
-  // `withRepeatableSteps`, dont L72c leve le filtre racine. Sans L72c, G1 n'est pas rendu :
-  // `.fails` le constate. Des que L72c est fusionne, ce test « reussit a tort » et casse —
-  // retirer alors `.fails` (verifie passant sur l'arbre combine L72b + L72c).
-  test.fails('A (A1, G1, A2) : G1 est une etape entre A1 et A2 — attend L72c', async () => {
+  // `withRepeatableSteps`, dont L72c (#350) leve le filtre racine.
+  test('A (A1, G1, A2) : G1 est une etape entre A1 et A2', async () => {
     await renderWith([
       { id: 'a', sectionKey: 'trauma', label: 'Traumatisme', displayOrder: 0, parentSectionKey: null },
       { id: 'a1', sectionKey: 'bilan', label: 'Bilan', displayOrder: 1, parentSectionKey: 'trauma' },
