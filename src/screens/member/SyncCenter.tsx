@@ -15,6 +15,7 @@ import {
 } from '../../data/offlineIntake';
 import { mergeKeepBoth } from '../../domain/conflictMerge';
 import { recentClientErrors } from '../../lib/reportError';
+import { HelpDetails } from '../../components/HelpTip';
 
 function conflictValue(value: unknown, field: TemplateField | undefined, unreadable: string): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -363,7 +364,7 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
       {!scopeUnknown && <p className="mb-2 text-xs text-red-700">{t('sync.conflict_explain')}</p>}
       {/* La version du gabarit n'accompagne pas le conflit : on l'annonce au lieu de laisser
           croire que les libelles affiches viennent de la bonne version. */}
-      {!scopeUnknown && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')}</p>}
+      {!scopeUnknown && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')} <HelpDetails>{t('sync.conflict_version_notice_details')}</HelpDetails></p>}
       {!scopeUnknown && (
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-full text-left text-xs" aria-label={t('sync.conflict_table')}>

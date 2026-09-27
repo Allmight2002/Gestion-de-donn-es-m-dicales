@@ -362,7 +362,7 @@ describe('ExportPanel', () => {
       const enCours = await screen.findByRole('button', { name: 'Génération en cours…' });
       expect(enCours).toBeDisabled();
       expect(enCours).toHaveAttribute('aria-busy', 'true');
-      expect(screen.getByRole('status')).toHaveTextContent(/Aucune progression chiffrée/);
+      expect(screen.getByRole('status')).toHaveTextContent(/sans progression chiffrée/);
       expect(screen.queryByText('%')).not.toBeInTheDocument();
 
       finish!({ id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'abc', storedFilePath: null });

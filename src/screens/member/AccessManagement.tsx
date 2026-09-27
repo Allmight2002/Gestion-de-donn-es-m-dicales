@@ -131,7 +131,7 @@ export function AccessManagement() {
         <p className="text-slate-500">{t('access.owner_only')}</p>
       ) : (
         <>
-          <SectionCard title={t('access.invite')} description={t(`access.preset_desc.${presetOf(perms) ?? 'custom'}` as MessageKey)}>
+          <SectionCard title={t('access.invite')} description={t(`access.preset_desc.${presetOf(perms) ?? 'custom'}` as MessageKey)} keepDescription>
           <form onSubmit={invite} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
               <label className="flex flex-col text-xs text-slate-600">

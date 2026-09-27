@@ -541,7 +541,7 @@ describe('EditPatientIdentity (correction nominative)', () => {
     await setBirthDate('1990-01-01');
     fireEvent.change(screen.getByLabelText(/Motif de la correction/), { target: { value: 'Correction doublon contrôlée' } });
     await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/autre dossier porte déjà/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Nom et date de naissance déjà enregistrés/i);
     expect(updatePatientIdentity).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole('checkbox', { name: /patient différent/i }));

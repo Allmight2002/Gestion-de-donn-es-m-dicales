@@ -92,7 +92,7 @@ describe('Trash (corbeille des bases)', () => {
     await screen.findByText('Registre clos');
     await user.click(screen.getByRole('button', { name: 'Restaurer' }));
     expect(screen.getByRole('dialog', { name: 'Restaurer cette base ?' })).toBeInTheDocument();
-    expect(screen.getByText(/Les personnes précédemment invitées devront être invitées à nouveau/)).toBeInTheDocument();
+    expect(screen.getByText(/réinvitez ensuite vos collaborateurs/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Restaurer la base' }));
     expect(restoreDeletedBase).toHaveBeenCalledWith('deleted-1');
     expect(await screen.findByText('Aucune base supprimée.')).toBeInTheDocument();

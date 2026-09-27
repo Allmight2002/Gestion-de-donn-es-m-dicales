@@ -303,7 +303,7 @@ fonctionnel.
 | D-4 | Ajouter `tuberculose_pulmonaire` (déjà associé à un bloc) dans les *codes pour lesquels le socle suffit* | Refusé — `DIAGNOSIS_COMMON_BLOCK_OVERLAP` : un code qui cible un bloc ne peut pas être déclaré « socle suffit » |
 | D-5 | Mettre un code absent des options (ex. `ZZZ`) dans les codes socle | Refusé — `DIAGNOSIS_CODE_UNKNOWN` |
 | D-6 | Associer le **`Bloc vide`** à un code | Refusé — `DIAGNOSIS_BLOCK_EMPTY` : un bloc sans variable saisissable de la bonne portée ne couvre rien |
-| D-7 | Poser à la main une règle d'affichage quelconque sur `Bloc générique`, puis tenter de l'associer à un diagnostic | L'écran affiche « Ce bloc porte déjà une autre condition d'affichage… » et le bouton reste **désactivé** |
+| D-7 | Poser à la main une règle d'affichage quelconque sur `Bloc générique`, puis tenter de l'associer à un diagnostic | L'écran affiche « Bloc déjà conditionné : choisissez-en un autre, ou retirez sa condition dans Règles. » et le bouton reste **désactivé** |
 | D-8 | Créer une rencontre utilisant la version, puis revenir à l'éditeur | Le bloc de configuration devient **non modifiable** (version en usage). Côté serveur : `DIAGNOSIS_VERSION_FROZEN` |
 | D-9 | Cliquer **« Créer la version suivante »** | Nouvelle version brouillon **portant la configuration recopiée par valeur** : pilote, codes socle et associations identiques |
 | D-10 | Dupliquer le gabarit, ou créer une base à partir de lui | La configuration suit la copie ; aucune référence croisée vers la version d'origine |

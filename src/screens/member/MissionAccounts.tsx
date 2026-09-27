@@ -228,7 +228,7 @@ export function MissionAccounts() {
         <p className="text-slate-500">{t('mission.owner_only')}</p>
       ) : (
         <>
-          <SectionCard title={t('mission.create')} description={t('mission.max_hint')} icon={UserPlus}>
+          <SectionCard title={t('mission.create')} description={t('mission.max_hint')} keepDescription icon={UserPlus}>
             <form onSubmit={create} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 {globalView && (

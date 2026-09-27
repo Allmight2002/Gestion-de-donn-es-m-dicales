@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import type { TemplateField, TemplateSection } from '../../data/types';
@@ -383,7 +383,7 @@ describe('RuleForm — regle d\'affichage (L32)', () => {
     await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
     // Une regle d'affichage ne bloque ni n'avertit : lui demander une gravite serait faux.
     expect(screen.queryByLabelText('Sévérité')).toBeNull();
-    expect(screen.getByText(/retirée à l’enregistrement/)).toBeInTheDocument();
+    expect(screen.getByText(/masquée, ses valeurs saisies sont retirées/)).toBeInTheDocument();
   });
 
   test('refuse un cycle en nommant les variables, avant tout envoi', async () => {
@@ -497,7 +497,10 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     }
     // Absente sans un mot, elle serait cherchee puis supposee perdue.
     expect(screen.getByRole('status')).toHaveTextContent('Durée de séjour');
-    expect(screen.getByRole('status')).toHaveTextContent(/jamais se déclencher/);
+    expect(screen.getByRole('status')).toHaveTextContent(/exclues des conditions, obligations et comparaisons/);
+    // Lot 3 : le pourquoi s'ouvre derriere ⓘ.
+    fireEvent.click(within(screen.getByRole('status')).getByRole('button', { name: 'En savoir plus' }));
+    expect(screen.getByRole('dialog', { name: 'En savoir plus' })).toHaveTextContent(/jamais se déclencher/);
   });
 
   test('absente de la condition et de l\'obligation d\'une regle conditionnelle', async () => {
@@ -537,7 +540,7 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent('Durée de séjour');
-    expect(screen.getByRole('alert')).toHaveTextContent(/masquée pour toujours/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/impossible à piloter par une variable calculée/);
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer la règle' }));
     expect(onSubmit).not.toHaveBeenCalled();
@@ -559,6 +562,6 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     );
 
     expect(screen.getByText(/Compte rendu opératoire est affichée/)).toBeInTheDocument();
-    expect(screen.getByText(/masquée pour toujours/)).toBeInTheDocument();
+    expect(screen.getByText(/impossible à piloter par une variable calculée/)).toBeInTheDocument();
   });
 });

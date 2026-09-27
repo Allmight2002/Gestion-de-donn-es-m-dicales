@@ -267,7 +267,7 @@ describe('CohortBuilder — variables multivaluees (L23)', () => {
 
     expect(screen.queryByLabelText('Comparaison')).toBeNull();
     expect(screen.queryByRole('button', { name: /ajouter ce critère/i })).toBeNull();
-    expect(screen.getByText(/pas filtrable/i)).toBeInTheDocument();
+    expect(screen.getByText(/non filtrable/i)).toBeInTheDocument();
   });
 
   test('les autres types gardent exactement leurs comparaisons', async () => {
@@ -306,13 +306,16 @@ describe('CohortBuilder — variables calculees (L35)', () => {
       DUREE,
     ]));
     await screen.findByRole('heading', { name: 'Cohortes' });
-    const notice = await screen.findByText(/Les variables calculées ne peuvent pas servir de filtre/);
+    const notice = await screen.findByText(/Variables calculées exclues des filtres/);
     expect(notice).toHaveTextContent('Durée de séjour');
+    // Lot 3 : le pourquoi et le geste utile s'ouvrent derriere ⓘ.
+    await userEvent.click(within(notice).getByRole('button', { name: 'En savoir plus' }));
+    expect(screen.getByRole('dialog', { name: 'En savoir plus' })).toHaveTextContent(/Filtrez plutôt sur les variables qui servent à leur calcul/);
   });
 
   test('sans variable calculee, aucune explication n’encombre l’ecran', async () => {
     renderBuilder(makeCohorts());
     await screen.findByRole('heading', { name: 'Cohortes' });
-    expect(screen.queryByText(/Les variables calculées ne peuvent pas servir de filtre/)).toBeNull();
+    expect(screen.queryByText(/Variables calculées exclues des filtres/)).toBeNull();
   });
 });

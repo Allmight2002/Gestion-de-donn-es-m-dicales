@@ -20,6 +20,7 @@ import { calculatedOperandConflict, isCalculatedField } from '../../domain/field
 import { Checkbox } from '../../components/Checkbox';
 import { FieldSelect } from './FieldSelect';
 import { errorMessage } from '../../lib/errorMessage';
+import { HelpDetails } from '../../components/HelpTip';
 
 type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
 type Translate = (key: MessageKey) => string;
@@ -560,7 +561,7 @@ export function RuleForm({
 
           {isVisibility && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              {t('rule.visibility_hint')}
+              {t('rule.visibility_hint')} <HelpDetails>{t('rule.visibility_hint_details')}</HelpDetails>
             </p>
           )}
 
@@ -663,7 +664,8 @@ export function RuleForm({
               seraient cherchees, puis supposees perdues. */}
           {calculatedLabels.length > 0 && (
             <p role="status" className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              {t('rule.calculated_excluded')} <span className="font-medium">{calculatedLabels.join(', ')}</span>
+              {t('rule.calculated_excluded')} <span className="font-medium">{calculatedLabels.join(', ')}</span>{' '}
+            <HelpDetails>{t('rule.calculated_excluded_details')}</HelpDetails>
             </p>
           )}
 

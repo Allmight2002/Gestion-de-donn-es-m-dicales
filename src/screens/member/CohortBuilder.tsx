@@ -30,6 +30,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { WorkflowSteps } from '../../components/WorkflowSteps';
 import { Checkbox } from '../../components/Checkbox';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { HelpDetails } from '../../components/HelpTip';
 
 const ALL_OPS: FilterOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'between'];
 const SIMPLE_OPS: FilterOp[] = ['eq', 'neq'];
@@ -400,7 +401,7 @@ export function CohortBuilder() {
             ]}
           />
 
-          <SectionCard title={t('cohort.conditions')} description={t('cohort.conditions_hint')} icon={Filter}>
+          <SectionCard title={t('cohort.conditions')} description={t('cohort.conditions_hint')} keepDescription icon={Filter}>
             <div className="space-y-5">
               <div className="surface-muted p-2">
                 <Checkbox
@@ -487,7 +488,8 @@ export function CohortBuilder() {
                   elles seraient cherchees, puis supposees perdues. */}
               {calculatedFields.length > 0 && (
                 <p role="status" className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  {t('cohort.calculated_excluded')} <span className="font-medium">{calculatedFields.join(', ')}</span>
+                  {t('cohort.calculated_excluded')} <span className="font-medium">{calculatedFields.join(', ')}</span>{' '}
+                  <HelpDetails>{t('cohort.calculated_excluded_details')}</HelpDetails>
                 </p>
               )}
             </div>
@@ -495,7 +497,7 @@ export function CohortBuilder() {
 
           <SectionCard
             title={t('cohort.preview_title')}
-            description={counts ? t('cohort.preview_hint') : t('cohort.preview_empty')}
+            description={counts ? t('cohort.preview_hint') : t('cohort.preview_empty')} keepDescription
             icon={Users}
             actions={(
               <button type="button" onClick={() => void onPreview()} disabled={busy} className={counts ? 'btn-secondary' : 'btn-primary'}>
@@ -520,7 +522,7 @@ export function CohortBuilder() {
           </SectionCard>
 
           {counts && (
-            <SectionCard title={t('cohort.step_save')} description={t('cohort.type')} icon={Snowflake}>
+            <SectionCard title={t('cohort.step_save')} description={t('cohort.type')} keepDescription icon={Snowflake}>
               <div className="space-y-5">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className={`cursor-pointer rounded-xl border p-4 transition ${cohortType === 'snapshot' ? 'border-teal-400 bg-teal-50/70 ring-2 ring-teal-500/15' : 'border-slate-200 hover:border-slate-300'}`}>

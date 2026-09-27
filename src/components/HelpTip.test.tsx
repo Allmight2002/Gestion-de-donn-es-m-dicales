@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test } from 'vitest';
 import { I18nProvider } from '../i18n/I18nProvider';
-import { HelpTip } from './HelpTip';
+import { HelpDetails, HelpTip } from './HelpTip';
 
 function renderTip() {
   return render(
@@ -57,5 +57,21 @@ describe('HelpTip', () => {
     const backdrop = screen.getByRole('dialog').firstElementChild as HTMLElement;
     await userEvent.click(backdrop);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+// Audit UI mobile, lot 3 (T3-A) : la phrase courte reste visible, son explication attend derrière ⓘ.
+describe('HelpDetails', () => {
+  test('garde la phrase visible et ouvre l’explication à la demande', async () => {
+    render(
+      <I18nProvider>
+        <p>Jamais enregistré : recalculé à chaque affichage. <HelpDetails>Corriger un élément corrige le résultat.</HelpDetails></p>
+      </I18nProvider>,
+    );
+    expect(screen.getByText(/Jamais enregistré/)).toBeInTheDocument();
+    expect(screen.queryByText('Corriger un élément corrige le résultat.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'En savoir plus' }));
+    expect(within(screen.getByRole('dialog', { name: 'En savoir plus' })).getByText('Corriger un élément corrige le résultat.'))
+      .toBeInTheDocument();
   });
 });

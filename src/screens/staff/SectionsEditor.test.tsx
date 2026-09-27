@@ -134,7 +134,7 @@ describe('SectionsEditor — declarer un groupe repetable (L67)', () => {
   test('base transversale : la case est verrouillee et l ecran dit d ou vient le verrou', () => {
     renderEditor({ observationModel: 'cross_sectional' });
     expect(repeatableBox()).toBeDisabled();
-    expect(screen.getByText(/le modèle d’observation s’est verrouillé à sa première fiche/i)).toBeInTheDocument();
+    expect(screen.getByText(/Réservé au suivi répété et aux registres d’événements ; modèle verrouillé/)).toBeInTheDocument();
   });
 
   test('retirer le caractere repetable ne passe par aucune confirmation', async () => {
@@ -212,7 +212,7 @@ describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
 
     // Le bloc racine porte un groupe : le cocher mettrait un groupe sous un groupe.
     expect(boxIn('Traumatisme')).toBeDisabled();
-    expect(within(rowOf('Traumatisme')).getByText(/un groupe ne se place pas sous un autre groupe/)).toBeInTheDocument();
+    expect(within(rowOf('Traumatisme')).getByText(/qu’un groupe répétable n’accepte pas/)).toBeInTheDocument();
     await user.click(boxIn('Traumatisme'));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onRepeatableChange).not.toHaveBeenCalled();
@@ -230,8 +230,8 @@ describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
   test('base transversale : la sous-section herite du verrou existant', () => {
     renderEditor({ sections: [trauma, detail], observationModel: 'cross_sectional' });
     expect(boxIn('Détail')).toBeDisabled();
-    expect(boxIn('Détail')).toHaveAccessibleDescription(/le modèle d’observation s’est verrouillé/i);
-    expect(screen.getAllByText(/le modèle d’observation s’est verrouillé/i)).toHaveLength(1);
+    expect(boxIn('Détail')).toHaveAccessibleDescription(/modèle verrouillé ici/i);
+    expect(screen.getAllByText(/modèle verrouillé ici/i)).toHaveLength(1);
   });
 
   test('D8 : un groupe racine se place sous un bloc ; un groupe n est jamais propose comme parent', async () => {

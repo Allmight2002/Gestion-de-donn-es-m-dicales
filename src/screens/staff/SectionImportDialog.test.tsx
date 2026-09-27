@@ -142,7 +142,7 @@ describe('SectionImportDialog', () => {
 
   test('catalogue vide : un etat explicite, pas un ecran blanc', async () => {
     renderDialog(makeRepo({}, []));
-    expect(await screen.findByText(/Aucun bloc à importer pour l’instant/)).toBeInTheDocument();
+    expect(await screen.findByText(/Aucun bloc à importer : créez-en un/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Bloc à importer/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Importer ce bloc' })).toBeDisabled();
   });
@@ -161,7 +161,7 @@ describe('SectionImportDialog', () => {
     expect(screen.getByText(/Sous-sections : clinique, biologie/)).toBeInTheDocument();
     expect(screen.getByText(/3 règle\(s\) interne\(s\)/)).toBeInTheDocument();
     // D7 : la règle d'activation est décrite, jamais copiée — et l'écran le dit avant l'écriture.
-    expect(screen.getByText(/n’est PAS copiée/)).toBeInTheDocument();
+    expect(screen.getByText(/non copiée : le bloc arrivera sans condition/)).toBeInTheDocument();
     expect(screen.getByText(/« Diagnostic »/)).toBeInTheDocument();
     expect(repo.importSection).not.toHaveBeenCalled();
   });
@@ -215,7 +215,7 @@ describe('SectionImportDialog', () => {
     expect(panel.getByText(/Variable existante : tronc commun/)).toBeInTheDocument();
     expect(panel.getByText('toux')).toBeInTheDocument();
     expect(panel.getByText(/Variable existante : bloc « cardio »/)).toBeInTheDocument();
-    expect(panel.getByText(/appartient à un autre bloc/)).toBeInTheDocument();
+    expect(panel.getByText(/réutilisée dans un autre bloc/)).toBeInTheDocument();
     // Jamais de renommage automatique : c'est dit, et rien ne le propose.
     expect(panel.getByText(/Aucun code n’est renommé automatiquement/)).toBeInTheDocument();
 
@@ -280,10 +280,10 @@ describe('SectionImportDialog', () => {
     await chooseFirstBlock(user);
     await user.click(screen.getByRole('button', { name: 'Importer ce bloc' }));
 
-    const summary = await screen.findByText(/« tuberculose » a été ajouté en fin de version/);
-    expect(summary).toHaveTextContent('2 variable(s) créée(s)');
+    const summary = await screen.findByText(/« tuberculose » ajouté en fin de version/);
+    expect(summary).toHaveTextContent('2 créée(s)');
     expect(summary).toHaveTextContent('1 réutilisée(s)');
-    expect(summary).toHaveTextContent('3 règle(s) interne(s)');
+    expect(summary).toHaveTextContent('3 règle(s)');
     expect(summary).toHaveTextContent('2 sous-section(s)');
     expect(onImported).toHaveBeenCalledTimes(1);
 

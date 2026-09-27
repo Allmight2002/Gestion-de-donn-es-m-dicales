@@ -4,6 +4,7 @@ import type { TemplateRepository } from '../../data/templates';
 import { findProposalField } from '../../domain/proposalField';
 import { visibilityRuleOf } from '../../domain/templateRules';
 import { useI18n } from '../../i18n/useI18n';
+import { HelpDetails } from '../../components/HelpTip';
 
 /** Le responsable associe des codes ; la seule écriture d'association reste une règle L52. */
 export function DiagnosisConfigurationEditor({ version, fields, rules, sections, repo, busy, run, onDirtyChange, onOpenField, onOpenRule }: {
@@ -96,7 +97,7 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
           {candidates.map((f) => <option key={f.id} value={f.fieldKey}>{f.label} ({f.fieldKey})</option>)}
         </select>
       </label>
-      <p className="text-sm text-slate-600">{t('diagnosis.driver_help')}</p>
+      <p className="text-sm text-slate-600">{t('diagnosis.driver_help')} <HelpDetails>{t('diagnosis.driver_help_details')}</HelpDetails></p>
       {selected?.type === 'terminology' && <label className="block">{t('diagnosis.release')}
         <input className="input" value={config.terminologyReleaseId ?? ''} onChange={(e) => setDraft({...config,terminologyReleaseId:e.target.value})} />
       </label>}
@@ -128,7 +129,8 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
       </ul>
     </details>}
     {compatibleInBlocks > 0 && <p className="text-sm text-slate-600">
-      {t('diagnosis.ineligible_blocks').replace('{n}', String(compatibleInBlocks))}
+      {t('diagnosis.ineligible_blocks').replace('{n}', String(compatibleInBlocks))}{' '}
+        <HelpDetails>{t('diagnosis.ineligible_blocks_details')}</HelpDetails>
     </p>}
     {saved && <div className="space-y-3 border-t pt-3">
       <h4 className="font-medium">{t('diagnosis.associations')}</h4>

@@ -155,7 +155,7 @@ describe('L72e — confirmation et enregistrement du retrait', () => {
     const dialog = await withdrawDiagnosis(user);
     expect(within(dialog).getByText('Traumatisme : 2 occurrence(s) supprimée(s)')).toBeInTheDocument();
     expect(within(dialog).getByText('Suite : 1 occurrence(s) supprimée(s)')).toBeInTheDocument();
-    expect(within(dialog).getByText(/ne pourront pas être restaurées depuis l’écran/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Irréversible ici : réafficher le bloc ne fera pas revenir ces occurrences/)).toBeInTheDocument();
     // Aucune valeur clinique d'occurrence dans l'annonce.
     expect(dialog.textContent).not.toMatch(/C5/);
     expect(updatePatientData).not.toHaveBeenCalled();
@@ -178,7 +178,7 @@ describe('L72e — confirmation et enregistrement du retrait', () => {
 
     const dialog = await withdrawDiagnosis(user);
     await user.click(within(dialog).getByRole('button', { name: 'Confirmer le retrait et enregistrer' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/occurrences du bloc masqué ont changé/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Bloc masqué modifié entre-temps\. Rien n’est enregistré, vos saisies sont conservées/);
     expect(screen.getByRole('button', { name: 'Recharger les données' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Diagnostic/ })).toHaveValue('autre');
   });

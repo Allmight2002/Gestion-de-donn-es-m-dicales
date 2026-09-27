@@ -79,3 +79,12 @@ export function HelpTip({ label, children, className = '' }: { label: string; ch
     </>
   );
 }
+
+/**
+ * Audit UI mobile, lot 3 (T3-A) — la phrase utile reste visible ; son explication (cle
+ * `*_details`) s'ouvre derriere ce ⓘ, place en fin de phrase sans agrandir la ligne.
+ */
+export function HelpDetails({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
+  return <HelpTip label={t('help.more')} className="-my-3 -mr-2 align-middle">{children}</HelpTip>;
+}

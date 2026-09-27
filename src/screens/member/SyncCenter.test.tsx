@@ -148,7 +148,7 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
 
     renderSync();
 
-    expect(await screen.findByText(/n’a pas été synchronisée; reconnectez-vous/i)).toBeInTheDocument();
+    expect(await screen.findByText(/non synchronisée : reconnectez-vous/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder ma version' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder les deux' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder la version serveur' })).not.toBeInTheDocument();
@@ -170,7 +170,7 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
 
     expect(await screen.findByRole('button', { name: 'Garder ma version' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Garder la version serveur' })).toBeInTheDocument();
-    expect(screen.queryByText(/n’a pas été synchronisée; reconnectez-vous/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/non synchronisée : reconnectez-vous/i)).not.toBeInTheDocument();
     await purgeAllOfflineData();
     setOfflineUser(null);
   });

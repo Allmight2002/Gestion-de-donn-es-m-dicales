@@ -165,7 +165,7 @@ describe('TemplateVersionEditor', () => {
     await user.click(command);
     const dialog = await screen.findByRole('dialog', { name: 'Importer un bloc réutilisable' });
     // Catalogue vide : etat explicite, jamais un ecran blanc.
-    expect(await within(dialog).findByText(/Aucun bloc à importer pour l’instant/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Aucun bloc à importer : créez-en un/)).toBeInTheDocument();
     expect(listImportableSections).toHaveBeenCalledTimes(1);
   });
 
@@ -327,7 +327,7 @@ describe('TemplateVersionEditor', () => {
       renderEditor(repo);
       await importerPuisConditionner(user);
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(/ne déclare pas cette variable comme pilote diagnostique/);
+      expect(await screen.findByRole('alert')).toHaveTextContent(/non déclarée comme pilote : édition et codes invérifiables/);
       expect(screen.queryByRole('button', { name: /Créer cette règle/ })).not.toBeInTheDocument();
       // Le bloc reste visible sans condition, et l'ecran continue de le dire.
       expect(screen.getByText(/Le bloc est visible sans condition/)).toBeInTheDocument();
@@ -519,7 +519,7 @@ describe('TemplateVersionEditor — 216 variables / 24 regles (UX-14)', () => {
     await screen.findByRole('heading', { name: 'Registre fictif' });
     filterSection('bloc_0');
     fireEvent.change(screen.getByRole('combobox', { name: 'Trier l’affichage' }), { target: { value: 'label' } });
-    expect(screen.getByText(/l’ordre du formulaire est inchangé/)).toBeInTheDocument();
+    expect(screen.getByText(/Tri d’affichage seulement ; déplacement des variables suspendu/)).toBeInTheDocument();
     expect(reorderFields).not.toHaveBeenCalled();
 
     const row = structure().getByText('Variable 1').closest('[role="row"]') as HTMLElement;

@@ -1,8 +1,16 @@
 import type { ElementType, ReactNode } from 'react';
+import { useI18n } from '../i18n/useI18n';
+import { HelpTip } from './HelpTip';
 
 interface SectionCardProps {
   title?: ReactNode;
   description?: ReactNode;
+  /**
+   * Audit UI mobile, lot 3 : sur telephone, la description passe derriere un ⓘ, comme celle
+   * des en-tetes de page. Un avis (etat, confidentialite, consequence d'une suppression) doit
+   * rester lisible sans geste : il garde alors sa place sous le titre.
+   */
+  keepDescription?: boolean;
   actions?: ReactNode;
   icon?: ElementType;
   children: ReactNode;
@@ -13,13 +21,16 @@ interface SectionCardProps {
 export function SectionCard({
   title,
   description,
+  keepDescription = false,
   actions,
   icon: Icon,
   children,
   className = '',
   bodyClassName = '',
 }: SectionCardProps) {
+  const { t } = useI18n();
   const hasHeader = title || description || actions || Icon;
+  const tip = !!description && !keepDescription;
   return (
     <section className={`card overflow-hidden ${className}`}>
       {hasHeader && (
@@ -33,8 +44,13 @@ export function SectionCard({
               </span>
             )}
             <div className="min-w-0">
-              {title && <h2 className="section-title">{title}</h2>}
-              {description && <p className="section-description">{description}</p>}
+              {(title || tip) && (
+                <div className="flex items-center gap-x-1">
+                  {title && <h2 className="section-title">{title}</h2>}
+                  {tip && <HelpTip label={t('help.section')} className="-my-2.5 sm:hidden">{description}</HelpTip>}
+                </div>
+              )}
+              {description && <p className={`section-description${tip ? ' hidden sm:block' : ''}`}>{description}</p>}
             </div>
           </div>
           {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
