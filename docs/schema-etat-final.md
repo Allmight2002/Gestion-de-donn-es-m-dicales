@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260927121847_batch_visibility_graph_validation.sql`
+- Dernière migration incluse : `20260927180000_activity_log_actor_is_self.sql`
 - Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 409
 
 ## Tables (colonnes, RLS, policies, triggers)

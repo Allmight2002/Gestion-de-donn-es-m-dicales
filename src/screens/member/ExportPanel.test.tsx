@@ -106,9 +106,15 @@ describe('ExportPanel', () => {
 
   test('une seule saisie par participant : la forme est annoncee, plus demandee', async () => {
     const recordExport = await exportWithModel('cross_sectional');
-    await screen.findByText('Une ligne par participant');
+    // Audit UI mobile, lot 4 (5.8-A) : une phrase, pas un champ ; son aide derriere un ⓘ.
+    const shape = (await screen.findByText('Une ligne par participant')).closest('p');
+    expect(shape).toHaveTextContent('Forme du fichier : Une ligne par participant');
     expect(screen.queryByRole('combobox', { name: /type d'export/i })).toBeNull();
     expect(screen.queryByRole('combobox', { name: /agrégation/i })).toBeNull();
+    await userEvent.click(within(shape as HTMLElement).getByRole('button', { name: 'À propos de « Forme du fichier »' }));
+    expect(screen.getByRole('dialog', { name: 'À propos de « Forme du fichier »' }))
+      .toHaveTextContent('Déterminée par le modèle d’observation de la base.');
+    await userEvent.click(screen.getByRole('button', { name: 'Fermer' }));
 
     await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
     await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
@@ -129,6 +135,15 @@ describe('ExportPanel', () => {
     await exportWithModel('longitudinal');
     expect(screen.getByRole('combobox', { name: /type d'export/i })).toBeTruthy();
     expect(screen.queryByText('Une ligne par participant')).toBeNull();
+  });
+
+  test('l aide du profil passe derriere un ⓘ et decrit toujours le champ', async () => {
+    await exportWithModel('longitudinal');
+    const profile = screen.getByRole('combobox', { name: 'Profil de données' });
+    expect(profile).toHaveAccessibleDescription(/Analyse est le profil par défaut/);
+    await userEvent.click(screen.getByRole('button', { name: 'À propos de « Profil de données »' }));
+    expect(screen.getByRole('dialog', { name: 'À propos de « Profil de données »' }))
+      .toHaveTextContent(/Complet conserve la structure historique/);
   });
 
   test('permet de choisir le profil complet et le format XLSX', async () => {
@@ -409,6 +424,8 @@ describe('ExportPanel', () => {
 
       const ligne = (await screen.findByText(/3 patient\(s\)/)).closest('li') as HTMLLIElement;
       expect(within(ligne).getByText(/Une ligne par rencontre/)).toBeInTheDocument();
+      // Audit UI mobile, lot 4 : l'empreinte revient a la ligne au lieu d'elargir la page.
+      expect(within(ligne).getByText('deadbeef')).toHaveClass('break-all');
       // Un bloc disparu de la version courante garde sa cle, sans libelle invente.
       expect(within(ligne).getByText(/Blocs choisis : Tuberculose, bloc_disparu/)).toBeInTheDocument();
       expect(within(ligne).getByText(/2 patient\(s\) et 1 rencontre\(s\) écartés/)).toBeInTheDocument();

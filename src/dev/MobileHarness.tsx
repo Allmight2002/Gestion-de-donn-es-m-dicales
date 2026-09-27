@@ -22,7 +22,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ToastProvider } from '../components/Toast';
 import { AppRoutes } from '../routes/AppRoutes';
 import type { BaseListing, BaseRepository } from '../data/bases';
-import type { TemplateRepository } from '../data/templates';
+import { withSections, type TemplateRepository } from '../data/templates';
 import type { CompletionItem, Encounter, PatientListItem, PatientRepository } from '../data/patients';
 import type { ActivityEvent, AuditRepository } from '../data/audit';
 import type { AccessItem, AccessRepository } from '../data/access';
@@ -130,18 +130,22 @@ const encounters: Encounter[] = [
 
 // --- Analyse et gestion : journal, cohortes, exports, missions, file a completer ---------
 const at = (day: number, hour = 9) => `2026-09-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00Z`;
+// `actorIsSelf` vient du serveur (lot 4) : « Vous » pour la personne connectee, le nom sinon.
 const activity: ActivityEvent[] = [
-  { id: 'a1', at: at(26, 16), action: 'export_created', actorName: profile.fullName, metadata: { format: 'csv' } },
-  { id: 'a2', at: at(25, 11), action: 'access_granted', actorName: profile.fullName, metadata: null },
-  { id: 'a3', at: at(24, 10), action: 'patient_deleted', actorName: profile.fullName, metadata: { reason: 'Doublon fictif' } },
-  { id: 'a4', at: at(22, 15), action: 'data_imported', actorName: profile.fullName, metadata: null },
-  { id: 'a5', at: at(20, 9), action: 'template_published', actorName: profile.fullName, metadata: null },
+  { id: 'a1', at: at(26, 16), action: 'export_created', actorName: profile.fullName, actorIsSelf: true, metadata: { format: 'csv' } },
+  { id: 'a6', at: at(26, 10), action: 'patient_deleted', actorName: 'Dr Collègue (fictive)', actorIsSelf: false, metadata: { reason: 'Doublon fictif' } },
+  { id: 'a2', at: at(25, 11), action: 'access_granted', actorName: profile.fullName, actorIsSelf: true, metadata: null },
+  { id: 'a3', at: at(24, 10), action: 'patient_deleted', actorName: profile.fullName, actorIsSelf: true, metadata: { reason: 'Doublon fictif' } },
+  { id: 'a4', at: at(22, 15), action: 'data_imported', actorName: profile.fullName, actorIsSelf: true, metadata: null },
+  { id: 'a5', at: at(20, 9), action: 'template_published', actorName: profile.fullName, actorIsSelf: true, metadata: null },
 ];
 const cohorts: CohortSummary[] = [
   { id: 'c1', name: 'Glasgow ≤ 12 (fictive)', cohortType: 'snapshot', snapshotAt: at(18), memberCount: 1,
     filterDefinition: { conditions: [] }, validatedOnly: true },
   { id: 'c2', name: 'Enfants de moins de 15 ans (fictive)', cohortType: 'snapshot', snapshotAt: at(12), memberCount: 2,
     filterDefinition: { conditions: [] }, validatedOnly: true },
+  { id: 'c3', name: 'Suivi des Glasgow ≤ 8 (fictive)', cohortType: 'dynamic', snapshotAt: null, memberCount: 0,
+    filterDefinition: { conditions: [{ scope: 'encounter', field: 'glasgow', op: 'lte', value: 8 }] }, validatedOnly: false },
 ];
 const exportLog: ExportLogItem[] = [1, 2, 3, 4].map((n) => ({
   id: `x${n}`, format: n % 2 ? 'csv' : 'xlsx', exportedAt: at(20 + n, 14), patientCount: 3, encounterCount: 2,
@@ -181,7 +185,8 @@ const bases = strict<BaseRepository>('bases', {
   },
 });
 const templates = strict<TemplateRepository>('templates', {
-  async getVersion() { return { version, fields, rules: [], sections }; },
+  // Comme le vrai depot : chaque variable porte le libelle et le rang de sa section.
+  async getVersion() { return { version, fields: withSections(fields, sections), rules: [], sections }; },
   async getSections() { return sections; },
   async listTemplates() {
     return [{ id: 't1', name: 'Neurotraumatologie (fictif)', specialty: 'Neurochirurgie', ownerUserId: profile.id, versions: [version] }];
@@ -221,7 +226,10 @@ function Harness() {
             templates={templates}
             patients={patients}
             attachments={strict('attachments', { async listAttachments() { return []; } })}
-            cohorts={strict<CohortRepository>('cohorts', { async listCohorts() { return cohorts; } })}
+            cohorts={strict<CohortRepository>('cohorts', {
+              async listCohorts() { return cohorts; },
+              async preview() { return { patientCount: 1, encounterCount: 2 }; },
+            })}
             exports={strict<ExportRepository>('exports', { async listBaseExports() { return exportLog; } })}
             access={strict<AccessRepository>('access', {
               async listInvitations() {

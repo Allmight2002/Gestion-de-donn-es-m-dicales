@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuditRepository, useBaseRepository, useCohortRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -9,6 +9,7 @@ import type { TemplateSection } from '../../data/types';
 import { formatDateTime } from '../../lib/formatDate';
 import { sectionLabel } from '../../domain/templateSections';
 import type { AggregationRule, SectionProjectionMode } from '../../domain/export';
+import { HelpTip } from '../../components/HelpTip';
 
 function downloadUrl(url: string, filename: string) {
   try {
@@ -32,6 +33,19 @@ function downloadUrl(url: string, filename: string) {
 // figeage) : l'export les prend telles quelles au lieu de redemander une portee.
 const ENCOUNTER_SCOPE: EncounterScopeOption = 'matching';
 
+/**
+ * Audit UI mobile, lot 4 (5.8-A) : l'aide d'un reglage passe derriere un ⓘ sur telephone ;
+ * sur ordinateur, elle reste lisible sous le champ (`FieldHint`), qui la decrit aussi.
+ */
+function FieldHelp({ label, children }: { label: string; children: ReactNode }) {
+  const { t } = useI18n();
+  return <HelpTip label={t('help.field').replace('{label}', label)} className="-my-2.5 sm:hidden">{children}</HelpTip>;
+}
+
+function FieldHint({ id, children }: { id: string; children: ReactNode }) {
+  return <span id={id} className="mt-0.5 hidden text-xs text-slate-500 sm:block">{children}</span>;
+}
+
 /** Forme des lignes imposee par le modele d'observation ; `null` = la question reste posee. */
 function rowShapeOf(model: ObservationModel): 'patient' | 'encounter' | null {
   if (model === 'cross_sectional') return 'patient';
@@ -48,6 +62,7 @@ export function ExportPanel() {
   const cohorts = useCohortRepository();
   const audit = useAuditRepository();
   const templates = useTemplateRepository();
+  const uid = useId();
 
   const [tvId, setTvId] = useState<string | null>(null);
   const [history, setHistory] = useState<ExportLogItem[]>([]);
@@ -232,13 +247,19 @@ export function ExportPanel() {
         {imposedShape ? (
           // Le modele d'observation est verrouille des la premiere saisie : la forme des
           // lignes en decoule. On l'ANNONCE au lieu de la redemander -- l'utilisateur doit
-          // savoir ce qu'il va recevoir, sans avoir a le choisir.
-          <div className="flex flex-col">
-            <span className="text-slate-700">{t('export.shape')}</span>
-            <p className="mt-1 font-medium text-slate-800">
-              {imposedShape === 'patient' ? t('export.shape_cross_sectional') : t('export.shape_event_registry')}
+          // savoir ce qu'il va recevoir, sans avoir a le choisir. Audit UI mobile, lot 4
+          // (5.8-A) : une phrase, pas un champ, puisque ce n'est pas un choix.
+          <div className="sm:col-span-2">
+            <p className="flex items-center gap-1 text-slate-700">
+              <span>
+                {t('export.shape')} :{' '}
+                <span className="font-medium text-slate-900">
+                  {imposedShape === 'patient' ? t('export.shape_cross_sectional') : t('export.shape_event_registry')}
+                </span>
+              </span>
+              <FieldHelp label={t('export.shape')}>{t('export.shape_hint')}</FieldHelp>
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">{t('export.shape_hint')}</p>
+            <FieldHint id={`${uid}-shape-hint`}>{t('export.shape_hint')}</FieldHint>
           </div>
         ) : (
           <label className="flex flex-col">
@@ -269,23 +290,33 @@ export function ExportPanel() {
             <option value="xlsx">XLSX</option>
           </select>
         </label>
-        <label className="flex flex-col">
-          <span className="text-slate-700">{t('export.profile')}</span>
-          <select className="input mt-1" value={profile} onChange={(e) => setProfile(e.target.value as ExportProfile)}>
+        {/* Le ⓘ est un bouton : il se place a cote du libelle, jamais dans le <label>. */}
+        <div className="flex flex-col">
+          <span className="flex items-center gap-1">
+            <label htmlFor={`${uid}-profile`} className="text-slate-700">{t('export.profile')}</label>
+            <FieldHelp label={t('export.profile')}>{t('export.profile_hint')}</FieldHelp>
+          </span>
+          <select id={`${uid}-profile`} aria-describedby={`${uid}-profile-hint`} className="input mt-1" value={profile}
+            onChange={(e) => setProfile(e.target.value as ExportProfile)}>
             <option value="analysis">{t('export.profile_analysis')}</option>
             <option value="complete">{t('export.profile_complete')}</option>
           </select>
-          <span className="mt-0.5 text-xs text-slate-500">{t('export.profile_hint')}</span>
-        </label>
+          <FieldHint id={`${uid}-profile-hint`}>{t('export.profile_hint')}</FieldHint>
+        </div>
       </div>
 
       {/* L53 : projection de COLONNES. Elle ne touche jamais la population, et les variables
           du tronc commun restent presentes dans toutes les projections. */}
       {blocks.length > 0 && (
         <div className="card space-y-3 p-4 text-sm">
-          <label className="flex flex-col">
-            <span className="text-slate-700">{t('export.projection')}</span>
+          <div className="flex flex-col">
+            <span className="flex items-center gap-1">
+              <label htmlFor={`${uid}-projection`} className="text-slate-700">{t('export.projection')}</label>
+              <FieldHelp label={t('export.projection')}>{t('export.projection_hint')}</FieldHelp>
+            </span>
             <select
+              id={`${uid}-projection`}
+              aria-describedby={`${uid}-projection-hint`}
               className="input mt-1"
               value={projectionMode}
               onChange={(e) => setProjectionMode(e.target.value as SectionProjectionMode)}
@@ -293,8 +324,8 @@ export function ExportPanel() {
               <option value="all">{t('export.projection_all')}</option>
               <option value="selected">{t('export.projection_selected')}</option>
             </select>
-            <span className="mt-0.5 text-xs text-slate-500">{t('export.projection_hint')}</span>
-          </label>
+            <FieldHint id={`${uid}-projection-hint`}>{t('export.projection_hint')}</FieldHint>
+          </div>
           {projectionMode === 'selected' && (
             <fieldset className="space-y-2">
               <legend className="sr-only">{t('export.projection')}</legend>
@@ -397,11 +428,13 @@ export function ExportPanel() {
                     {t('export.download_failed').replace('{reason}', downloadError.message)}
                   </p>
                 )}
-                {/* Details techniques : accessibles, mais jamais au premier plan. */}
-                <details className="text-slate-400">
+                {/* Details techniques : accessibles, mais jamais au premier plan. Audit UI mobile,
+                    lot 4 : l'empreinte (64 caracteres sans espace) revient a la ligne au lieu
+                    d'elargir la page. */}
+                <details className="min-w-0 text-slate-400">
                   <summary className="cursor-pointer">{t('export.history_details')}</summary>
-                  <p className="mt-1">{t('export.history_hash')} : <span className="font-mono">{h.fileHash ?? '—'}</span></p>
-                  <p>{t('export.history_id')} : <span className="font-mono">{h.id}</span></p>
+                  <p className="mt-1">{t('export.history_hash')} : <span className="break-all font-mono">{h.fileHash ?? '—'}</span></p>
+                  <p>{t('export.history_id')} : <span className="break-all font-mono">{h.id}</span></p>
                 </details>
               </li>
             ))}

@@ -75,6 +75,9 @@ en tactile :
   recherche compris ;
 - jamais plus d'un bouton plein visible à la fois, l'écran défilant de haut en bas.
 
+Le contenu ouvert à la demande ne déborde pas non plus (lot 4) : « Détails techniques » d'un export
+(empreinte SHA-256), menu « ⋯ » d'une cohorte, liste complète de la complétude.
+
 ```bash
 npx playwright install chromium   # une fois
 npm run e2e:mobile                # démarre Vite sur 127.0.0.1:5173 si besoin

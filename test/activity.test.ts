@@ -189,4 +189,28 @@ describe('C3 base_activity_log (journal d activite lisible)', () => {
     expect(nextPage[0].id).not.toBe(firstPage[0].id);
     expect(new Date(nextPage[0].at).toISOString()).toBe('2026-07-04T13:00:00.000Z');
   });
+
+  // Audit UI mobile, lot 4 (decision 8) : « Vous » vient du serveur, jamais d'une comparaison de
+  // noms cote client (deux homonymes seraient confondus). Le nom affiche des autres ne change pas.
+  test('actorIsSelf dit si l action est celle de l appelant ; une action systeme ne l est jamais', async () => {
+    await seedEvent('self_probe');
+    await db.admin.query(
+      "insert into public.audit_log(user_id, action, entity, entity_id, base_id, metadata) values(null,'system_probe','base',$1,$1,'{}'::jsonb)",
+      [baseId],
+    );
+    type Row = { action: string; actorName: string; actorIsSelf: boolean };
+    const read = async (uid: string, action: string) => ((await rowsAs(
+      uid, 'select public.base_activity_log($1, null, 10, $2) as a', [baseId, action],
+    ))[0].a as Row[])[0];
+
+    const own = await read(aliceId, 'self_probe');
+    expect(own.actorIsSelf).toBe(true);
+    const seenByEditor = await read(editorId, 'self_probe');
+    expect(seenByEditor.actorIsSelf).toBe(false);
+    expect(seenByEditor.actorName).toBe(own.actorName);
+
+    const system = await read(aliceId, 'system_probe');
+    expect(system.actorIsSelf).toBe(false);
+    expect(system.actorName).toBe('Systeme');
+  });
 });
