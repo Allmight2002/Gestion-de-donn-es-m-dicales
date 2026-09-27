@@ -11,7 +11,7 @@ import { I18nProvider } from '../i18n/I18nProvider';
 import { AuthProvider } from '../auth/AuthProvider';
 import { RepositoryProvider } from '../data/RepositoryProvider';
 import { AppShell } from './AppShell';
-import { useTopBar, type TopBarConfig } from './TopBar';
+import { useTopBar, useTopBarActions, type TopBarAction, type TopBarConfig } from './TopBar';
 import { outbox, purgeAllOfflineData, setOfflineUser } from '../data/offline';
 import { recordRecentBase } from '../lib/recentBases';
 import type { AuthBackend } from '../auth/backend';
@@ -252,8 +252,9 @@ describe('AppShell (UI-1, barre laterale)', () => {
 
 // Audit UI mobile, lot 1 (T1-B) : un ecran inscrit son contexte dans la barre haute mobile
 // (retour ou fermeture + ce qu'on consulte) a la place du logo, et le retire en partant.
-function ContextPage({ config }: { config: TopBarConfig }) {
+function ContextPage({ config, actions = null }: { config: TopBarConfig; actions?: TopBarAction[] | null }) {
   useTopBar(config);
+  useTopBarActions(actions);
   return <p>PAGE</p>;
 }
 
@@ -293,6 +294,27 @@ describe('AppShell — barre haute contextuelle (T1-B)', () => {
     expect(within(header).getByText('Nouveau patient')).toBeInTheDocument();
   });
 
+  // Lot 2 : les actions secondaires d'un ecran se rangent dans « ⋯ », a cote du menu.
+  test('les actions secondaires se rangent dans ⋯ et s’y déclenchent', async () => {
+    const importer = vi.fn();
+    setOfflineUser('u-actions');
+    renderShell({ id: 'u-actions', fullName: 'Dr Actions', globalRole: 'medecin', language: 'fr' }, undefined, '/bases/b1',
+      <ContextPage
+        config={{ title: 'Gliomes 2026', backTo: '/' }}
+        actions={[{ label: 'Importer', onSelect: importer }, { label: 'Préparer la saisie hors-ligne', onSelect: vi.fn(), disabled: true }]}
+      />);
+    await screen.findByText('Dr Actions');
+
+    const header = within(document.querySelector('header')!);
+    const more = header.getByRole('button', { name: 'Plus d’actions' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(more);
+    expect(header.getByRole('button', { name: 'Préparer la saisie hors-ligne' })).toBeDisabled();
+    await userEvent.click(header.getByRole('button', { name: 'Importer' }));
+    expect(importer).toHaveBeenCalledTimes(1);
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+  });
+
   test('sans écran inscrit, la barre garde le logo', async () => {
     setOfflineUser('u-logo');
     renderShell({ id: 'u-logo', fullName: 'Dr Logo', globalRole: 'medecin', language: 'fr' });
@@ -300,5 +322,6 @@ describe('AppShell — barre haute contextuelle (T1-B)', () => {
     const header = within(document.querySelector('header')!);
     expect(header.getByRole('link', { name: 'Registre clinique' })).toHaveAttribute('href', '/');
     expect(header.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+    expect(header.queryByRole('button', { name: 'Plus d’actions' })).not.toBeInTheDocument();
   });
 });

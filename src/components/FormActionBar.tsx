@@ -34,7 +34,11 @@ export function FormActionBar({ children, onCancel, extra, notice }: {
     <div className="sticky bottom-0 z-10 -mx-4 border-t border-slate-200 bg-white/95 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:bottom-2 sm:mx-0 sm:rounded-xl sm:border sm:p-3 sm:shadow-sm dark:border-slate-800 dark:bg-slate-900/95">
       {notice && <p role="status" className="mb-2 text-sm text-amber-700">{notice}</p>}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Lot 2 (5.6-B) : emplacements ou le formulaire range sa navigation de blocs (‹ et ›),
+            de part et d'autre de l'action principale. */}
+        <span data-form-nav="prev" className="contents" />
         {children}
+        <span data-form-nav="next" className="contents" />
         {onCancel && (
           <button type="button" onClick={onCancel} className="btn-secondary max-lg:hidden">
             {t('common.cancel')}

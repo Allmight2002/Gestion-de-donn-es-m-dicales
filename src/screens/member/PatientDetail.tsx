@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, FileText, Image as ImageIcon, Plus } from 'lucide-react';
+import { CalendarDays, ChevronRight, FileText, Image as ImageIcon, Lock, Plus } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -39,6 +39,7 @@ import {
   groupFieldsBySection, maskedRepeatableSectionKeys, repeatableGroupFields, sectionLabel, withRepeatableSteps,
 } from '../../domain/templateSections';
 import { RepeatableGroupTable } from './RepeatableGroup';
+import { useTopBar, useTopBarActions } from '../../components/TopBar';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
 // L30 : `type` et les options voyagent avec la colonne pour que la fiche affiche le
@@ -377,6 +378,35 @@ export function PatientDetail() {
     }
   }
 
+  async function finalize() {
+    setBusy(true);
+    try { await patients.finalizePatient(patientId!); await load(); setError(null); }
+    catch (e) { setError(errorMessage(e, t('common.error'))); }
+    finally { setBusy(false); }
+  }
+
+  // Audit UI mobile, lot 2 (5.5-B) : sur telephone, la barre haute porte le code du patient et
+  // le retour a la liste ; « Finaliser », action secondaire, passe dans « ⋯ ».
+  useTopBar({
+    title: patient?.code ?? t('patient.detail'),
+    backTo: `/bases/${baseId}`,
+    backLabel: t('nav.back_to').replace('{label}', t('base.tab_patients')),
+  });
+  const mayFinalize = !offlineView && canEdit && !!patient && patient.validationStatus !== 'curated';
+  useTopBarActions(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : null);
+  // Decision 3 : les valeurs vides sont masquees par defaut, un bouton les montre toutes.
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
+  // D1 : l'identite est repliee en une ligne. Elle reste chargee (et journalisee) a l'ouverture
+  // de la fiche, exactement comme avant : seul l'affichage change.
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [openEncounters, setOpenEncounters] = useState<ReadonlySet<string>>(new Set());
+  const toggleIn = (set: ReadonlySet<string>, key: string) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  };
+
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
   // Dossier LOCAL en attente : vue dediee, jamais melangee a une fiche serveur.
   if (localPending && baseId) return <LocalPendingDetail baseId={baseId} entry={localPending} />;
@@ -469,59 +499,61 @@ export function PatientDetail() {
     patientVersion?.commonLayout,
   ).filter((step) => step.kind !== 'repeatable' || !step.masked || occurrencesOf(step.section.sectionKey).length > 0);
 
+  // Decision 3 (T8) : une valeur vide n'occupe plus une ligne. Le compte reste annonce, et le
+  // bouton les remet toutes. Un code de donnee manquante n'est pas vide : il est affiche.
+  const emptyPermanentCount = patientSteps.reduce((count, step) => count + (step.kind === 'repeatable' ? 0
+    : step.group.fields.filter((f) => fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) === '—').length), 0);
+  // 5.5 : la rencontre la plus recente en premier (la liste arrive par date croissante).
+  const encountersNewestFirst = [...realEncounters].reverse();
+
   return (
-    <section className="max-w-4xl space-y-5 sm:space-y-6">
-      <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+    <section className="max-w-4xl space-y-5 max-lg:pb-20 sm:space-y-6">
+      <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700 max-lg:hidden">
         ← {t('admin.back')}
       </button>
 
+      {/* Lot 2 (5.5-A) : le code du patient est le titre ; « Fiche patient » le situe. */}
       <PageHeader
-        title={t('patient.detail')}
-        eyebrow={<span className="font-mono">{patient.code}</span>}
+        title={<span className="font-mono">{patient.code}</span>}
+        titleInTopBar={!offlineView}
+        eyebrow={t('patient.detail')}
         badge={offlineView ? <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span> : undefined}
-        actions={!offlineView ? (
-          <>
-            {canEdit && (
-              <DeleteWithReason
-                label={t('del.patient')}
-                
-                onConfirm={async (reason) => {
-                  if (!patientId) return;
-                  await patients.softDeletePatient(patientId, reason);
-                }}
-                onSuccess={() => navigate(`/bases/${baseId}`)}
-                verifyDeletedAfterError={async () => !!baseId && !!patientId && (await patients.getPatient(baseId, patientId)) === null}
-              />
-            )}
-            {!isCrossSectional && (
-              <button
-                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
-                className="btn-primary"
-              >
-                <Plus size={16} aria-hidden /> {t('encounter.add')}
-              </button>
-            )}
-          </>
+        actions={!offlineView && !isCrossSectional ? (
+          <button
+            onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
+            className="btn-primary"
+          >
+            <Plus size={16} aria-hidden /> {t('encounter.add')}
+          </button>
         ) : undefined}
       />
 
       {patient.identity && (
-        <fieldset className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm shadow-sm">
-          <legend className="px-1 text-sm font-semibold text-amber-800">{t('patient.identity_section')}</legend>
-          <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patient.identity.fullName ?? '—'}</div>
-          <div><span className="text-slate-500">{t('patient.dob')} :</span> {patient.identity.dateOfBirth ?? '—'}</div>
-          <div><span className="text-slate-500">{t('patient.phone')} :</span> {patient.identity.phone ?? '—'}</div>
-          <div><span className="text-slate-500">{t('patient.address')} :</span> {patient.identity.address ?? '—'}</div>
-          <div><span className="text-slate-500">{t('patient.external_id')} :</span> {patient.identity.externalIdentifier ?? '—'}</div>
-          {canCorrectIdentity && (
-            <button
-              type="button"
-              onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/identity/edit`)}
-              className="mt-3 text-xs font-medium text-teal-700 hover:underline"
-            >
-              {t('patient.edit_identity')}
-            </button>
-          )}
+        <fieldset className="rounded-2xl border border-amber-200 bg-amber-50/50 px-4 text-sm shadow-sm">
+          <legend className="sr-only">{t('patient.identity_section')}</legend>
+          <button type="button" aria-expanded={identityOpen} aria-controls="patient-identity"
+            onClick={() => setIdentityOpen((open) => !open)}
+            className="flex min-h-11 w-full items-center gap-2 text-left text-sm font-semibold text-amber-800 dark:text-amber-200">
+            <Lock size={15} aria-hidden />
+            <span className="flex-1">{t('patient.identity_section')}</span>
+            <ChevronRight size={16} aria-hidden className={`shrink-0 transition motion-reduce:transition-none ${identityOpen ? 'rotate-90' : ''}`} />
+          </button>
+          <div id="patient-identity" hidden={!identityOpen} className="space-y-1 pb-4">
+            <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patient.identity.fullName ?? '—'}</div>
+            <div><span className="text-slate-500">{t('patient.dob')} :</span> {patient.identity.dateOfBirth ?? '—'}</div>
+            <div><span className="text-slate-500">{t('patient.phone')} :</span> {patient.identity.phone ?? '—'}</div>
+            <div><span className="text-slate-500">{t('patient.address')} :</span> {patient.identity.address ?? '—'}</div>
+            <div><span className="text-slate-500">{t('patient.external_id')} :</span> {patient.identity.externalIdentifier ?? '—'}</div>
+            {canCorrectIdentity && (
+              <button
+                type="button"
+                onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/identity/edit`)}
+                className="mt-3 text-xs font-medium text-teal-700 hover:underline"
+              >
+                {t('patient.edit_identity')}
+              </button>
+            )}
+          </div>
         </fieldset>
       )}
 
@@ -534,32 +566,31 @@ export function PatientDetail() {
         actions={(
           <span className="flex flex-wrap items-center gap-2">
             <StatusBadge status={patient.validationStatus} />
+            {/* Sous lg, « Finaliser » est dans « ⋯ » de la barre haute (T9). */}
+            {canEdit && patient.validationStatus !== 'curated' && (
+              <button disabled={busy} onClick={() => void finalize()} className="btn-ghost max-lg:hidden">
+                {t('patient.finalize')}
+              </button>
+            )}
             {canEdit && (
               <button
                 onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
-                className="text-xs font-medium text-teal-700 hover:underline"
+                aria-label={t('patient.edit_permanent')}
+                className="btn-primary"
               >
-                {t('patient.edit_permanent')}
-              </button>
-            )}
-            {canEdit && patient.validationStatus !== 'curated' && (
-              <button
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try { await patients.finalizePatient(patientId!); await load(); setError(null); }
-                  catch (e) { setError(errorMessage(e, t('common.error'))); }
-                  finally { setBusy(false); }
-                }}
-                className="text-xs font-medium text-teal-700 hover:underline"
-              >
-                {t('patient.finalize')}
+                {t('encounter.edit')}
               </button>
             )}
           </span>
         )}
       >
         <div className="space-y-4">
+        {emptyPermanentCount > 0 && (
+          <button type="button" aria-pressed={showEmpty} onClick={() => setShowEmpty((shown) => !shown)}
+            className="text-xs font-medium text-teal-700 hover:underline dark:text-teal-300">
+            {showEmpty ? t('patient.hide_empty') : t('patient.show_empty').replace('{n}', String(emptyPermanentCount))}
+          </button>
+        )}
         {/* L56 : meme information NON BLOQUANTE qu'a la saisie, calculee dans LA VERSION
             du dossier. Elle ne dit rien de sa completude et n'invite a rien changer. */}
         <DiagnosisCoverageNotice
@@ -610,26 +641,45 @@ export function PatientDetail() {
               rows={occurrencesOf(step.section.sectionKey)}
             />
           </fieldset>
-        ) : (
-          <fieldset key={step.group.key} className="rounded-xl border border-slate-100 p-3">
-            <legend className="px-1 text-sm font-semibold text-slate-700">
-              {sectionLabel(t, { sectionKey: step.group.key, label: step.group.label })}
-            </legend>
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              {step.group.fields.map((f) => {
-                const renderedUnit = unitOf(f, visiblePatientFields, t);
-                return (
-                  <div key={f.id} className="rounded-lg bg-slate-50/70 px-3 py-2">
-                    <dt className="text-xs text-slate-500">
-                      {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
-                    </dt>
-                    <dd className="mt-0.5 text-slate-900">{fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields)}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          </fieldset>
-        ))}
+        ) : (() => {
+          // Lot 2 (5.5-B) : une section sans cadre, repliable, qui annonce combien de valeurs
+          // elle porte ; chaque variable sur une ligne, libelle a gauche et valeur a droite.
+          const rows = step.group.fields.map((f) => ({ f, text: fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) }));
+          const filled = rows.filter((row) => row.text !== '—').length;
+          const collapsed = collapsedSections.has(step.group.key);
+          const bodyId = `patient-section-${step.group.key}`;
+          return (
+            <section key={step.group.key} aria-labelledby={`${bodyId}-title`}>
+              <h3 className="m-0">
+                <button type="button" aria-expanded={!collapsed} aria-controls={bodyId}
+                  onClick={() => setCollapsedSections((current) => toggleIn(current, step.group.key))}
+                  className="flex min-h-11 w-full items-center justify-between gap-3 text-left">
+                  <span id={`${bodyId}-title`} className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {sectionLabel(t, { sectionKey: step.group.key, label: step.group.label })}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-xs text-slate-500">
+                    <span aria-hidden="true">{filled}/{rows.length}</span>
+                    <span className="sr-only">{t('patient.section_filled').replace('{filled}', String(filled)).replace('{total}', String(rows.length))}</span>
+                    <ChevronRight size={14} aria-hidden className={`transition motion-reduce:transition-none ${collapsed ? '' : 'rotate-90'}`} />
+                  </span>
+                </button>
+              </h3>
+              <dl id={bodyId} hidden={collapsed} className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+                {rows.map(({ f, text }) => {
+                  const renderedUnit = unitOf(f, visiblePatientFields, t);
+                  return (
+                    <div key={f.id} hidden={text === '—' && !showEmpty} className="flex items-baseline justify-between gap-4 py-2">
+                      <dt className="min-w-0 text-slate-500 dark:text-slate-400">
+                        {f.label}{renderedUnit && <span className="text-slate-400"> ({renderedUnit})</span>}
+                      </dt>
+                      <dd className="text-right text-slate-900 dark:text-slate-100">{text}</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </section>
+          );
+        })())}
         </div>
       </SectionCard>
 
@@ -642,7 +692,7 @@ export function PatientDetail() {
           <EmptyState icon={CalendarDays} title={t('patient.no_encounters')} compact />
         ) : (
           <ul className="space-y-3">
-            {realEncounters.map((e) => {
+            {encountersNewestFirst.map((e) => {
               const encounterVersion = versionFor(e.templateVersionId);
               const encounterScopeKnown = !offlineView || offlineEncounterScopeKnown[e.id] === true;
               // §5 : hors-ligne, la portée de la ligne décide — les champs de son groupe pour une
@@ -665,21 +715,29 @@ export function PatientDetail() {
                 ? additionsFor('encounter', encounterVersion, e.data, e.encounterType)
                   .filter((field) => !offlineView || scopeFields.has(field.fieldKey))
                 : [];
+              const encounterOpen = openEncounters.has(e.id);
               return (
               <li key={e.id} className="card p-4 text-sm">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="font-medium">
-                    {t(`encountertype.${e.encounterType}` as MessageKey)}{e.encounterDate ? ` · ${formatDate(e.encounterDate, lang)}` : ''}
-                    <span className="ml-2"><StatusBadge status={e.validationStatus} /></span>
-                    {(e as { pending?: boolean }).pending && (
-                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t('offline.pending_badge')}</span>
-                    )}
-                    {e.ageValue != null && (
-                      <span className="ml-2 text-xs text-slate-500">
-                        {t('encounter.age')} : {e.ageValue} {e.ageUnit ? t(`ageunit.${e.ageUnit}` as MessageKey) : ''}
-                      </span>
-                    )}
-                  </span>
+                {/* Lot 2 (5.5) : repliee, la rencontre tient en une ligne ; on la deplie une a une. */}
+                <div className="flex items-center justify-between gap-2">
+                  <button type="button" aria-expanded={encounterOpen} aria-controls={`encounter-${e.id}`}
+                    onClick={() => setOpenEncounters((current) => toggleIn(current, e.id))}
+                    className="flex min-h-11 min-w-0 flex-1 items-start gap-2 py-1 text-left font-medium">
+                    <ChevronRight size={16} aria-hidden className={`mt-0.5 shrink-0 text-slate-400 transition motion-reduce:transition-none ${encounterOpen ? 'rotate-90' : ''}`} />
+                    {/* Le chevron reste a gauche du texte ; seuls titre et pastilles passent a la ligne. */}
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>{t(`encountertype.${e.encounterType}` as MessageKey)}{e.encounterDate ? ` · ${formatDate(e.encounterDate, lang)}` : ''}</span>
+                      <StatusBadge status={e.validationStatus} />
+                      {(e as { pending?: boolean }).pending && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t('offline.pending_badge')}</span>
+                      )}
+                      {e.ageValue != null && (
+                        <span className="text-xs font-normal text-slate-500">
+                          {t('encounter.age')} : {e.ageValue} {e.ageUnit ? t(`ageunit.${e.ageUnit}` as MessageKey) : ''}
+                        </span>
+                      )}
+                    </span>
+                  </button>
                   {!offlineView && (
                     <span className="flex items-center gap-3">
                       <button
@@ -697,7 +755,7 @@ export function PatientDetail() {
                     </span>
                   )}
                 </div>
-                <div className="space-y-3">
+                <div id={`encounter-${e.id}`} hidden={!encounterOpen} className="mt-2 space-y-3">
                   {offlineView && !encounterScopeKnown ? (
                     <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       {t('offline.group_data_refresh_required')}
@@ -808,6 +866,29 @@ export function PatientDetail() {
       )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+
+      {/* T9 : une action destructive ne se place jamais au premier niveau, sous le titre. */}
+      {!offlineView && canEdit && (
+        <div className="border-t border-slate-200 pt-4 dark:border-slate-800">
+          <DeleteWithReason
+            label={t('del.patient')}
+            onConfirm={async (reason) => {
+              if (!patientId) return;
+              await patients.softDeletePatient(patientId, reason);
+            }}
+            onSuccess={() => navigate(`/bases/${baseId}`)}
+            verifyDeletedAfterError={async () => !!baseId && !!patientId && (await patients.getPatient(baseId, patientId)) === null}
+          />
+        </div>
+      )}
+
+      {/* Lot 2 : sous lg, l'action du quotidien reste sous le pouce. */}
+      {!offlineView && !isCrossSectional && (
+        <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
+          className="btn-primary fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-20 rounded-full px-5 shadow-lg lg:hidden">
+          <Plus size={18} aria-hidden /> {t('encounter.add')}
+        </button>
+      )}
     </section>
   );
 }

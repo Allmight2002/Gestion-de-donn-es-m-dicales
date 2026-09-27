@@ -78,11 +78,12 @@ function renderForm(patientRepo: PatientRepository) {
 
 // Audit UI mobile, lot 1 : sonde qui montre ce que le formulaire inscrit dans la barre haute.
 function TopBarProbe({ children }: { children: ReactNode }) {
-  const { active, registry } = useTopBarRegistry();
+  const { active, actions, registry } = useTopBarRegistry();
   return (
     <TopBarRegistryProvider registry={registry}>
       {children}
       <p data-testid="barre-haute">{active ? `${active.title}${active.scrolls ? ' · défile' : ''}` : 'vide'}</p>
+      <p data-testid="barre-actions">{actions.map((action) => action.label).join(' | ') || 'aucune action'}</p>
       {active?.onClose && <button type="button" onClick={active.onClose}>✕ barre haute</button>}
     </TopBarRegistryProvider>
   );
@@ -402,6 +403,9 @@ describe('EncounterForm — barre haute et barre d’action (lot 1)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Nouvelle rencontre' })).toHaveClass('max-lg:sr-only');
     expect(screen.getByRole('button', { name: 'Annuler' })).toHaveClass('max-lg:hidden');
     expect(screen.getByRole('button', { name: 'Enregistrer la rencontre' })).toHaveClass('max-sm:flex-1');
+    // Lot 2 (5.6-B) : confier au staff, sortie de secours, passe dans « ⋯ » sous lg.
+    expect(screen.getByTestId('barre-actions')).toHaveTextContent('Confier les documents au staff');
+    expect(screen.getByRole('button', { name: /Confier les documents au staff/ })).toHaveClass('max-lg:hidden');
 
     await userEvent.click(screen.getByRole('button', { name: '✕ barre haute' }));
     expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();

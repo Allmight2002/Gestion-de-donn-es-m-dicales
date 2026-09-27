@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import {
-  ChevronLeft, Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
+  ChevronLeft, Database, Ellipsis, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { canCreateBase } from '../auth/logic';
@@ -15,6 +15,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
 import { TopBarRegistryProvider, useTopBarRegistry } from './TopBar';
+import { Menu as ActionMenu, MenuItem } from './Menu';
 import { errorMessage } from '../lib/errorMessage';
 import { requestPageLeave } from '../lib/useUnsavedChanges';
 
@@ -72,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const reopenSidebarRef = useRef<HTMLButtonElement>(null);
-  const { active: context, registry: topBarRegistry } = useTopBarRegistry();
+  const { active: context, actions: topBarActions, registry: topBarRegistry } = useTopBarRegistry();
 
   const editorRoute = isVariableEditorRoute(pathname);
   const hideSidebarLabel = t('nav.hide_sidebar');
@@ -350,6 +351,19 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link to="/sync" className={`rounded-full px-2 py-0.5 text-xs font-semibold ${conflictCount + rejectedCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
                 {syncBadge}
               </Link>
+            )}
+            {/* Lot 2 : les actions secondaires de l'ecran, rangees hors de la page sur telephone. */}
+            {topBarActions.length > 0 && (
+              <ActionMenu
+                triggerLabel={t('nav.more_actions')}
+                triggerClassName="icon-button -my-1.5"
+                triggerContent={<Ellipsis size={18} aria-hidden />}
+                panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] space-y-1 p-2 shadow-lg"
+              >
+                {topBarActions.map((action) => (
+                  <MenuItem key={action.label} onSelect={action.onSelect} disabled={action.disabled}>{action.label}</MenuItem>
+                ))}
+              </ActionMenu>
             )}
             <button onClick={() => setDrawerOpen(true)} aria-label={t('nav.open_menu')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100">
               <Menu size={18} aria-hidden />

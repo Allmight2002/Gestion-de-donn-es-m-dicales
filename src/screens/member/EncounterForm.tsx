@@ -20,7 +20,7 @@ import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, encounte
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
 import { FormActionBar } from '../../components/FormActionBar';
-import { useTopBar } from '../../components/TopBar';
+import { useTopBar, useTopBarActions } from '../../components/TopBar';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
@@ -403,6 +403,9 @@ export function EncounterForm() {
 
   // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
   // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
+  // Lot 2 (5.6-B) : confier au staff reste une sortie de secours ; sous lg, elle passe dans « ⋯ ».
+  useTopBarActions(maySubmitToCuration && !offlineIntakeMode
+    ? [{ label: t('create.submit'), onSelect: () => navigation.protect(submitToStaff), disabled: busy || work.locked }] : null);
   useTopBar({
     title: t('encounter.new'),
     onClose: () => navigate(offlineIntakeMode ? `/bases/${baseId}` : `/bases/${baseId}/patients/${patientId}`),
@@ -421,7 +424,7 @@ export function EncounterForm() {
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="page-title max-lg:sr-only">{t('encounter.new')}</h1>
           {maySubmitToCuration && !offlineIntakeMode && (
-            <button type="button" onClick={() => navigation.protect(submitToStaff)} disabled={busy || work.locked} className="btn-secondary">
+            <button type="button" onClick={() => navigation.protect(submitToStaff)} disabled={busy || work.locked} className="btn-secondary max-lg:hidden">
               <Send size={16} aria-hidden /> {t('create.submit')}
             </button>
           )}

@@ -25,7 +25,7 @@ import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../.
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
 import { FormActionBar } from '../../components/FormActionBar';
-import { useTopBar } from '../../components/TopBar';
+import { useTopBar, useTopBarActions } from '../../components/TopBar';
 import { DatePickerInput } from '../../components/DatePickerInput';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -466,6 +466,9 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
   // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
   useTopBar({ title: mode === 'submit' ? t('patient.submit_title') : t('patient.new'), onClose: () => navigate(`/bases/${baseId}`), scrolls: true });
+  // Lot 2 (5.6-B) : confier au staff reste une sortie de secours ; sous lg, elle passe dans « ⋯ ».
+  useTopBarActions(mode === 'manual' && maySubmitToCuration
+    ? [{ label: t('create.submit'), onSelect: () => navigate(`/bases/${baseId}/patients/new/submit`) }] : null);
 
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
@@ -518,18 +521,17 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       : null;
 
   const identification = <div className="space-y-4">
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700">{t('patient.code')}</span>
-          {offlineIntakeActive ? (
-            <>
-              {/* Hors-ligne : aucun RPC n'est disponible, le code reste local jusqu'au rejeu. */}
-              <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} />
-              <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-slate-500">{t('patient.code_server_hint')}</p>
-          )}
-        </label>
+        {offlineIntakeActive ? (
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">{t('patient.code')}</span>
+            {/* Hors-ligne : aucun RPC n'est disponible, le code reste local jusqu'au rejeu. */}
+            <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} />
+            <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
+          </label>
+        ) : (
+          // Lot 2 (5.6-A) : rien a saisir ici ; une ligne suffit a dire d'ou viendra le code.
+          <p className="text-xs text-slate-500">{t('patient.code_server_hint')}</p>
+        )}
 
         {/* Le cloisonnement se voit : les champs nominatifs gardent leur cadre et leur
             avertissement, meme depuis que l'identite ouvre le formulaire comme premier bloc. */}
@@ -606,7 +608,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
             <button
               type="button"
               onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
-              className="btn-secondary"
+              className="btn-secondary max-lg:hidden"
             >
               <Send size={16} aria-hidden /> {t('create.submit')}
             </button>
@@ -670,7 +672,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       )}
 
       <PatientDraftDialog draft={work} onCancel={() => navigate(`/bases/${baseId}`)} onNew={resetEntry} />
-      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} />
+      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} identityInForm={canViewIdentity} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
         {/* La fiche enregistree ne se ressaisit plus ici : le formulaire gele pour que l'etat

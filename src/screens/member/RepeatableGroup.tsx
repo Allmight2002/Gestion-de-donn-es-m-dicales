@@ -8,6 +8,7 @@ import {
 } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, isMissing, missingCodeOf, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
+import { useNarrowViewport } from '../../lib/useNarrowViewport';
 import { DeleteWithReason } from './DeleteWithReason';
 import { JustificationField } from './JustificationField';
 import { EncounterFields } from './EncounterFields';
@@ -44,26 +45,6 @@ export type OccurrenceColumn = {
   allowedValues?: unknown;
   allowedOptions?: unknown;
 };
-
-/**
- * Bascule en cartes sous 768 px (§8.1). Sans `matchMedia` — jsdom, rendu serveur — on reste sur
- * le tableau : c'est la forme complete, et aucune information n'y est perdue.
- */
-function useNarrowViewport(): boolean {
-  const query = '(max-width: 767px)';
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(query).matches,
-  );
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const media = window.matchMedia(query);
-    const sync = () => setNarrow(media.matches);
-    sync();
-    media.addEventListener?.('change', sync);
-    return () => media.removeEventListener?.('change', sync);
-  }, []);
-  return narrow;
-}
 
 /**
  * Rendu d'une valeur d'occurrence, comme partout ailleurs hors saisie (§8.1) : le libelle d'une

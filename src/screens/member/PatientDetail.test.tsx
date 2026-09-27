@@ -17,6 +17,8 @@ import type { AttachmentRepository } from '../../data/attachments';
 import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
 import { setBirthDate } from '../../../test/helpers/date-picker';
+import { TopBarRegistryProvider, useTopBarRegistry } from '../../components/TopBar';
+import type { ReactNode } from 'react';
 
 // EditPatient / EditEncounter lisent le role global (profil de medecin par defaut
 // pour ces tests de correction).
@@ -104,6 +106,18 @@ function renderAt(
   );
 }
 
+// Audit UI mobile, lot 2 : l'identite (D1) et les rencontres sont repliees par defaut. On les
+// deplie avant toute verification de leur contenu, positive OU negative : chercher un bouton
+// dans un bloc replie ne prouverait rien.
+async function openIdentity() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Identité (zone restreinte)' }));
+}
+async function openEncounters() {
+  for (const toggle of document.querySelectorAll<HTMLElement>('button[aria-controls^="encounter-"][aria-expanded="false"]')) {
+    await userEvent.click(toggle);
+  }
+}
+
 describe('PatientDetail (fiche)', () => {
   test('affiche identite (si autorisee), donnees permanentes et rencontres', async () => {
     renderAt('/bases/b1/patients/p1', makePatients());
@@ -113,6 +127,7 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByText('Paludisme')).toBeInTheDocument(); // libelle lisible de la terminologie
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
+    await openIdentity();
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
@@ -283,8 +298,11 @@ describe('PatientDetail (fiche)', () => {
 
     renderAt('/bases/b1/patients/p1', patients, undefined, sectionsTemplateRepo);
 
-    const identification = await screen.findByRole('group', { name: 'Identification' });
-    const circonstances = screen.getByRole('group', { name: 'Circonstances' });
+    // Lot 2 : les sections permanentes sont des regions titrees ; celles de la rencontre
+    // restent des groupes, dans la rencontre depliee.
+    const identification = await screen.findByRole('region', { name: 'Identification' });
+    const circonstances = screen.getByRole('region', { name: 'Circonstances' });
+    await openEncounters();
     const examen = screen.getByRole('group', { name: 'Examen initial' });
     expect(within(identification).getByText('Sexe')).toBeInTheDocument();
     expect(within(circonstances).getByText('Mécanisme')).toBeInTheDocument();
@@ -403,7 +421,8 @@ describe('PatientDetail (fiche)', () => {
       stubAttachments,
       missionRepo,
     );
-    expect(await screen.findByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
+    await openIdentity();
+    expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
     first.unmount();
 
     const submitted = renderAt(
@@ -415,6 +434,7 @@ describe('PatientDetail (fiche)', () => {
       missionRepo,
     );
     await screen.findByText('Jean Test');
+    await openIdentity();
     expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
     submitted.unmount();
 
@@ -427,6 +447,7 @@ describe('PatientDetail (fiche)', () => {
       missionRepo,
     );
     await screen.findByText('Jean Test');
+    await openIdentity();
     expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
   });
 });
@@ -677,5 +698,106 @@ describe('EditPatient (verrou optimiste)', () => {
 
     expect(await screen.findByRole('button', { name: 'Enregistrer les modifications' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Enregistrer la rencontre' })).not.toBeInTheDocument();
+  });
+});
+
+// Audit UI mobile, lot 2 (5.5-B et D1) : une fiche qui se lit d'un coup d'oeil — code en titre,
+// valeurs vides masquees mais comptees, identite repliee (toujours chargee), rencontres
+// repliees de la plus recente a la plus ancienne, actions secondaires hors du premier niveau.
+describe('PatientDetail — fiche allégée (audit UI mobile, lot 2)', () => {
+  const threeFields = {
+    async getVersion() {
+      return {
+        version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+        fields: [
+          field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'], displayOrder: 0 }),
+          field({ fieldKey: 'poids', label: 'Poids', scope: 'patient', type: 'number', displayOrder: 1 }),
+          field({ fieldKey: 'taille', label: 'Taille', scope: 'patient', type: 'number', displayOrder: 2 }),
+          field({ fieldKey: 'glasgow_score', label: 'Glasgow', scope: 'encounter', type: 'integer', displayOrder: 3 }),
+        ],
+        rules: [],
+      };
+    },
+  } as unknown as TemplateRepository;
+
+  function TopBarProbe({ children }: { children: ReactNode }) {
+    const { active, actions, registry } = useTopBarRegistry();
+    return (
+      <TopBarRegistryProvider registry={registry}>
+        {children}
+        <p data-testid="barre">{active ? `${active.title} | ${active.backTo}` : 'vide'} || {actions.map((action) => action.label).join(', ') || 'aucune action'}</p>
+      </TopBarRegistryProvider>
+    );
+  }
+
+  test('les valeurs vides sont masquées, comptées, et rendues sur demande', async () => {
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, threeFields);
+    const toggle = await screen.findByRole('button', { name: 'Afficher les champs vides (2)' });
+    expect(screen.getByText('Sexe')).toBeVisible();
+    expect(screen.getByText('Poids')).not.toBeVisible();
+    expect(screen.getByText('1 renseignée(s) sur 3')).toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(screen.getByText('Poids')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Masquer les champs vides' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('une section se replie et garde son compte', async () => {
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, threeFields);
+    const section = await screen.findByRole('button', { name: /1 renseignée\(s\) sur 3/ });
+    expect(section).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(section);
+    expect(section).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Sexe')).not.toBeVisible();
+  });
+
+  test('D1 : l’identité est chargée à l’ouverture de la fiche, mais repliée', async () => {
+    const getPatient = vi.fn(async () => patientView);
+    renderAt('/bases/b1/patients/p1', makePatients({ getPatient }));
+    const toggle = await screen.findByRole('button', { name: 'Identité (zone restreinte)' });
+    // Lecture — donc journal serveur — inchangée : seul l'affichage est replié.
+    expect(getPatient).toHaveBeenCalledTimes(1);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Jean Test')).not.toBeVisible();
+    await userEvent.click(toggle);
+    expect(screen.getByText('Jean Test')).toBeVisible();
+  });
+
+  test('les rencontres sont repliées, la plus récente en premier', async () => {
+    const older: Encounter = { ...encounter, id: 'e-old', encounterDate: '2024-01-10', data: { glasgow_score: 9 } };
+    const newer: Encounter = { ...encounter, id: 'e-new', encounterDate: '2024-06-01', data: { glasgow_score: 14 } };
+    renderAt('/bases/b1/patients/p1', makePatients({ listEncounters: async () => [older, newer] }), undefined, threeFields);
+    await screen.findByText('Sexe');
+    const toggles = [...document.querySelectorAll<HTMLElement>('button[aria-controls^="encounter-"]')];
+    expect(toggles.map((toggle) => toggle.getAttribute('aria-controls'))).toEqual(['encounter-e-new', 'encounter-e-old']);
+    expect(toggles.every((toggle) => toggle.getAttribute('aria-expanded') === 'false')).toBe(true);
+    expect(screen.getByText('14')).not.toBeVisible();
+
+    await userEvent.click(toggles[0]);
+    expect(screen.getByText('14')).toBeVisible();
+    expect(screen.getByText('9')).not.toBeVisible();
+  });
+
+  test('le code est le titre ; Finaliser passe dans ⋯ ; Supprimer quitte l’en-tête', async () => {
+    const draft = { ...patientView, validationStatus: 'draft' as const };
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={makePatients({ getPatient: async () => draft })} attachments={stubAttachments}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/p1']}>
+            <TopBarProbe>
+              <Routes><Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} /></Routes>
+            </TopBarProbe>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    expect(await screen.findByRole('heading', { level: 1, name: 'P-0001' })).toHaveClass('max-lg:sr-only');
+    expect(screen.getByTestId('barre')).toHaveTextContent('P-0001 | /bases/b1 || Finaliser');
+    // A partir de lg, « Finaliser » reste dans la carte, a cote de « Modifier ».
+    expect(screen.getByRole('button', { name: 'Finaliser' })).toHaveClass('max-lg:hidden');
+    const remove = screen.getByRole('button', { name: 'Supprimer ce patient' });
+    expect(remove.closest('header')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Ajouter une rencontre' }).find((button) => button.classList.contains('fixed')))
+      .toHaveClass('lg:hidden');
   });
 });

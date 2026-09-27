@@ -1,8 +1,8 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { recordRecentBase } from '../../lib/recentBases';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowDownUp, Columns3, Download, Plus, Search, Upload, Users } from 'lucide-react';
+import { ArrowDownUp, ChevronRight, Columns3, Download, Plus, Search, Upload, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { Language } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
@@ -18,6 +18,8 @@ import { PageHeader } from '../../components/PageHeader';
 import { OfflineReadinessNotice, useAppShellReadiness } from '../../components/OfflineReadiness';
 import { EmptyState } from '../../components/EmptyState';
 import { Checkbox } from '../../components/Checkbox';
+import { useTopBarActions, type TopBarAction } from '../../components/TopBar';
+import { useNarrowViewport } from '../../lib/useNarrowViewport';
 import {
   downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
@@ -401,6 +403,29 @@ export function BaseHome() {
   // si la base porte des rencontres (colonne « ajouter une rencontre »).
   const observationModel: ObservationModel = listing?.base.observationModel ?? 'longitudinal';
   const isCrossSectional = observationModel === 'cross_sectional';
+  const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
+  const canCreate = !offlineView && !!listing && (
+    listing.role === 'owner' || listing.canCreateStructuredData === true || listing.permissions.canEditStructuredData
+  );
+  // Un acces a echeance (compte de mission) ne pose pas de copie locale et n'importe pas de
+  // fichier : la base refuse les deux, l'ecran ne doit donc pas les promettre.
+  const isMissionAccess = !!listing && listing.expiresAt != null;
+  const narrow = useNarrowViewport();
+  // Audit UI mobile, lot 2 (5.4-B) : sur telephone, ce qui alimente la liste (import, saisie
+  // hors-ligne) passe dans « ⋯ » de la barre haute ; les memes actions restent dans la page
+  // a partir de `lg`. L'action du quotidien, « Nouveau patient », devient un bouton flottant.
+  const topBarActions: TopBarAction[] = [];
+  if (canEdit && !isMissionAccess) {
+    topBarActions.push({ label: t('base.tab_import'), onSelect: () => navigate(`/bases/${id}/import`) });
+  }
+  if (intakeEnabled && listing && canCreate && !isMissionAccess) {
+    topBarActions.push({
+      label: saving ? t('intake.preparing') : intakeMeta ? t('intake.update') : t('intake.prepare'),
+      onSelect: () => void doPrepareIntake(),
+      disabled: saving,
+    });
+  }
+  useTopBarActions(loading || intakeOfflineView ? null : topBarActions);
 
   if (loading) return <SkeletonList rows={6} />;
   // MODE INTAKE-ONLY hors-ligne : panneau dedie — ni liste serveur, ni instantane.
@@ -423,13 +448,6 @@ export function BaseHome() {
       </div>
     ) : <p className="text-slate-500">{t('notfound.title')}</p>;
   }
-  const canEdit = !offlineView && !!listing && (listing.role === 'owner' || listing.permissions.canEditStructuredData);
-  const canCreate = !offlineView && !!listing && (
-    listing.role === 'owner' || listing.canCreateStructuredData === true || listing.permissions.canEditStructuredData
-  );
-  // Un acces a echeance (compte de mission) ne pose pas de copie locale et n'importe pas de
-  // fichier : la base refuse les deux, l'ecran ne doit donc pas les promettre.
-  const isMissionAccess = !!listing && listing.expiresAt != null;
   const canManageOffline = !offlineView && !!listing && !isMissionAccess;
   const visibleFields = fields.filter((field) => visibleFieldKeys.includes(field.fieldKey));
   const searching = appliedSearch !== '';
@@ -495,6 +513,9 @@ export function BaseHome() {
           dans l'onglet Parametres. Ici : titre, role et actions de saisie. */}
       <PageHeader
         title={baseName}
+        // Sous lg, la barre haute porte le nom de la base (lot 2) ; hors-ligne, l'en-tete reste
+        // entier, parce que son badge et sa description disent l'etat de la copie.
+        titleInTopBar={!offlineView}
         description={!offlineView
           ? (listing?.templateName ? `${listing.templateName} · v${listing.versionNumber}` : undefined)
           : t('offline.identity_unavailable')}
@@ -550,38 +571,81 @@ export function BaseHome() {
 
       {/* Saisie hors-ligne (intake-only) : preparation du CONTEXTE en ligne uniquement. */}
       {intakeEnabled && !offlineView && listing && canCreate && !isMissionAccess && (
-        <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+        // Sous lg, l'action passe dans « ⋯ » (lot 2) ; l'etat « prete » reste affiche.
+        <div className={`inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs${intakeMeta ? '' : ' max-lg:hidden'}`}>
           {/* Audit UI mobile, lot 0 — non prepare, l'etat repetait mot pour mot le bouton
               (« Préparer la saisie hors-ligne » deux fois) : seul l'etat « prete » est annonce. */}
           {intakeMeta && <span className="text-slate-500">{t('intake.prepared')}</span>}
-          <button onClick={() => void doPrepareIntake()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
+          <button onClick={() => void doPrepareIntake()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50 max-lg:hidden">
             {saving ? t('intake.preparing') : intakeMeta ? t('offline.update') : t('intake.prepare')}
           </button>
         </div>
       )}
 
       {!(offlineView && !cachedMeta) && (
-        <div className="@container/list space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="section-title">{t('patient.list_title')}</h2>
-              <p className="mt-0.5 text-sm text-slate-500">{t('patient.list_count').replace('{n}', String(total))}</p>
-            </div>
-            {fields.length > 0 && (
+        // Lot 2 (5.4-B) : sur telephone, la liste arrive sous les onglets — recherche, tri et
+        // colonnes sur une ligne, le decompte, puis les patients (cartes sous 768 px).
+        <div className="@container/list space-y-3 max-lg:pb-20">
+          <h2 className="sr-only">{t('patient.list_title')}</h2>
+          <div className="flex items-center gap-2">
+            {/* UX-12(b) : recherche et tri sont resolus par le SERVEUR avant la pagination ;
+                la liste reste presentee par code et variables analytiques (RG-9). */}
+            {!offlineView && (
+              <div className="relative min-w-0 flex-1">
+                <label className="sr-only" htmlFor="patient-search">{t('patient.search')}</label>
+                <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input id="patient-search" type="search" className="input pl-9" value={search} autoComplete="off"
+                  placeholder={t(searchMode === 'name' ? 'patient.search_name_placeholder' : 'patient.search_placeholder')}
+                  onChange={(event) => setSearch(event.target.value)} />
+              </div>
+            )}
+            {!offlineView && search !== '' && (
+              <button type="button" className="btn-ghost min-h-11 shrink-0 px-2" onClick={() => setSearch('')}>
+                {t('patient.search_clear')}
+              </button>
+            )}
+            {!offlineView && (
               <Menu
-                triggerLabel={t('patient.columns')}
-                triggerClassName="btn-secondary cursor-pointer"
-                triggerContent={
-                  <>
-                    <Columns3 size={16} aria-hidden />
-                    {t('patient.columns')}
-                    <span className="text-xs text-slate-400">
-                      {t('patient.columns_count').replace('{visible}', String(visibleFields.length)).replace('{total}', String(fields.length))}
-                    </span>
-                  </>
-                }
-                panelClassName="card absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] p-4 shadow-lg"
+                triggerLabel={t('patient.sort_menu')}
+                triggerClassName="btn-secondary shrink-0 px-3"
+                triggerContent={<ArrowDownUp size={16} aria-hidden />}
+                panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] space-y-3 p-4 shadow-lg"
               >
+                {/* En recherche nominative, l'ordre est celui du code, decide par le serveur :
+                    laisser le tri actif afficherait un controle sans effet. getByLabel de
+                    Playwright inclut le texte des options du label enveloppant : un libelle
+                    explicite evite de confondre ce tri avec le champ Code patient. */}
+                <label className="form-label" htmlFor="patient-sort">{t('patient.sort')}
+                  <select id="patient-sort" className="input" aria-label={t('patient.sort')}
+                    value={sort.field} disabled={searchMode === 'name' && searching}
+                    onChange={(event) => changeSort({ ...sort, field: event.target.value as PatientSortField })}>
+                    <option value="created_at">{t('patient.sort_created')}</option>
+                    <option value="patient_code">{t('patient.sort_code')}</option>
+                  </select>
+                </label>
+                <button type="button" className="btn-secondary w-full"
+                  onClick={() => changeSort({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' })}>
+                  <ArrowDownUp size={16} aria-hidden />
+                  {sort.direction === 'asc' ? t('patient.sort_asc') : t('patient.sort_desc')}
+                </button>
+              </Menu>
+            )}
+            {fields.length > 0 && (
+              <div className={offlineView ? 'ml-auto' : 'shrink-0'}>
+                <Menu
+                  triggerLabel={t('patient.columns')}
+                  triggerClassName="btn-secondary cursor-pointer px-3"
+                  triggerContent={
+                    <>
+                      <Columns3 size={16} aria-hidden />
+                      <span className="max-sm:sr-only">{t('patient.columns')}</span>
+                      <span className="text-xs text-slate-400 max-sm:sr-only">
+                        {t('patient.columns_count').replace('{visible}', String(visibleFields.length)).replace('{total}', String(fields.length))}
+                      </span>
+                    </>
+                  }
+                  panelClassName="card absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] p-4 shadow-lg"
+                >
                 <p className="helper-text mb-3">{t('patient.columns_hint')}</p>
                 <div className="max-h-64 space-y-1 overflow-y-auto">
                   {fields.map((field) => (
@@ -596,73 +660,44 @@ export function BaseHome() {
                     />
                   ))}
                 </div>
-              </Menu>
+                </Menu>
+              </div>
             )}
           </div>
+          {/* UX-12(c) : le mode nominatif n'est proposé qu'à un médecin disposant du droit
+              d'identité sur CETTE base, et seulement si le serveur sait le traiter. Ce contrôle
+              est un confort d'écran : l'autorisation est revérifiée par l'opération serveur,
+              qui ne rend que des identifiants. Lot 2 (décision 5) : deux pastilles à la place
+              du sélecteur ; même opération, mêmes droits, même journal. */}
+          {identitySearchAvailable && (
+            <fieldset className="inline-flex rounded-xl border border-slate-200 p-0.5 dark:border-slate-700">
+              <legend className="sr-only">{t('patient.search_by')}</legend>
+              {(['code', 'name'] as const).map((mode) => (
+                <label key={mode}
+                  className="flex min-h-11 cursor-pointer items-center rounded-lg px-3 text-sm text-slate-600 has-[:checked]:bg-teal-50 has-[:checked]:font-medium has-[:checked]:text-teal-800 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-teal-700 dark:text-slate-300 dark:has-[:checked]:bg-teal-900/40 dark:has-[:checked]:text-teal-200">
+                  <input type="radio" name="patient-search-mode" value={mode} className="sr-only"
+                    checked={searchMode === mode} onChange={() => { setSearchMode(mode); setPage(0); }} />
+                  {t(mode === 'code' ? 'patient.search_mode_code' : 'patient.search_mode_identity')}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          {!offlineView && (searchMode === 'name' ? (
+            <p className="helper-text">{t('patient.search_mode_name_note')}</p>
+          ) : !identitySearchAvailable && (
+            <p className="helper-text">{t('patient.search_identity_unavailable')}</p>
+          ))}
+          {!offlineView && searchMode === 'name' && search.trim() !== '' && search.trim().length < 2 && (
+            <p role="status" className="helper-text text-amber-800">{t('patient.search_name_too_short')}</p>
+          )}
+          <p className="text-xs text-slate-500">
+            {t('patient.list_count').replace('{n}', String(total))}
+            {!offlineView && !(searchMode === 'name' && searching) && ` · ${t('patient.sort_summary')
+              .replace('{field}', t(sort.field === 'patient_code' ? 'patient.sort_code' : 'patient.sort_created'))
+              .replace('{direction}', t(sort.direction === 'asc' ? 'patient.sort_asc' : 'patient.sort_desc').toLocaleLowerCase())}`}
+          </p>
           {columnsSyncError && (
             <p role="status" className="text-xs text-amber-700">{t('patient.columns_sync_error')}</p>
-          )}
-          {/* UX-12(b) : recherche et tri sont resolus par le SERVEUR avant la pagination ;
-              la liste reste presentee par code et variables analytiques (RG-9). */}
-          {!offlineView && (
-            <div className="flex flex-col gap-3 @min-[40rem]/list:flex-row @min-[40rem]/list:items-end">
-              <div className="min-w-0 flex-1">
-                <label className="form-label" htmlFor="patient-search">{t('patient.search')}</label>
-                <div className="flex items-center gap-2">
-                  <Search size={16} aria-hidden className="shrink-0 text-slate-400" />
-                  {/* UX-12(c) : le mode nominatif n'est proposé qu'à un médecin disposant du
-                      droit d'identité sur CETTE base, et seulement si le serveur sait le
-                      traiter. Ce contrôle est un confort d'écran : l'autorisation, elle, est
-                      revérifiée par l'opération serveur, qui ne rend que des identifiants. */}
-                  {identitySearchAvailable && (
-                    <label className="sr-only" htmlFor="patient-search-mode">{t('patient.search_by')}</label>
-                  )}
-                  {identitySearchAvailable && (
-                    <select id="patient-search-mode" className="input w-auto shrink-0" value={searchMode}
-                      aria-label={t('patient.search_by')}
-                      onChange={(event) => { setSearchMode(event.target.value as 'code' | 'name'); setPage(0); }}>
-                      <option value="code">{t('patient.search_mode_code')}</option>
-                      <option value="name">{t('patient.search_mode_identity')}</option>
-                    </select>
-                  )}
-                  <input id="patient-search" type="search" className="input" value={search} autoComplete="off"
-                    placeholder={t(searchMode === 'name' ? 'patient.search_name_placeholder' : 'patient.search_placeholder')}
-                    onChange={(event) => setSearch(event.target.value)} />
-                  {search !== '' && (
-                    <button type="button" className="btn-ghost min-h-11 shrink-0 px-2" onClick={() => setSearch('')}>
-                      {t('patient.search_clear')}
-                    </button>
-                  )}
-                </div>
-                <p className="helper-text">
-                  {searchMode === 'name'
-                    ? t('patient.search_mode_name_note')
-                    : `${t('patient.search_mode_code')}${identitySearchAvailable ? '' : ` · ${t('patient.search_identity_unavailable')}`}`}
-                </p>
-                {searchMode === 'name' && search.trim() !== '' && search.trim().length < 2 && (
-                  <p role="status" className="helper-text text-amber-800">{t('patient.search_name_too_short')}</p>
-                )}
-              </div>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="form-label" htmlFor="patient-sort">{t('patient.sort')}
-                  {/* En recherche nominative, l'ordre est celui du code, decide par le
-                      serveur : laisser le tri actif afficherait un controle sans effet. */}
-                  {/* getByLabel de Playwright inclut le texte des options du label enveloppant.
-                      Un libelle explicite evite de confondre ce tri avec le champ Code patient. */}
-                  <select id="patient-sort" className="input" aria-label={t('patient.sort')}
-                    value={sort.field} disabled={searchMode === 'name' && searching}
-                    onChange={(event) => changeSort({ ...sort, field: event.target.value as PatientSortField })}>
-                    <option value="created_at">{t('patient.sort_created')}</option>
-                    <option value="patient_code">{t('patient.sort_code')}</option>
-                  </select>
-                </label>
-                <button type="button" className="btn-secondary"
-                  onClick={() => changeSort({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' })}>
-                  <ArrowDownUp size={16} aria-hidden />
-                  {sort.direction === 'asc' ? t('patient.sort_asc') : t('patient.sort_desc')}
-                </button>
-              </div>
-            </div>
           )}
           {!offlineView && total > PAGE_SIZE && pager('top')}
           {rows.length === 0 ? (
@@ -675,6 +710,44 @@ export function BaseHome() {
                 </button>
               ) : undefined}
             />
+          ) : narrow ? (
+            // Lot 2 (T4) : une carte par patient sous 768 px — le code, trois valeurs choisies
+            // dans « Colonnes affichées », et l'ouverture de la fiche en un geste.
+            <ul className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-800">
+              {rows.map((p) => {
+                const shown = visibleFields.slice(0, 3)
+                  .map((f) => ({ field: f, text: formatCell(p.data[f.fieldKey], f, lang) }))
+                  .filter((cell) => cell.text !== '—');
+                return (
+                  <li key={p.id} className="flex items-stretch">
+                    <button type="button" onClick={() => navigate(`/bases/${id}/patients/${p.id}`)}
+                      className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-mono text-sm font-semibold text-teal-800 dark:text-teal-300">{p.code}</span>
+                        {shown.length > 0 && (
+                          <span className="block truncate text-sm text-slate-600 dark:text-slate-300">
+                            {shown.map((cell, index) => (
+                              <Fragment key={cell.field.id}>
+                                {index > 0 && ' · '}
+                                <span className="sr-only">{cell.field.label} : </span>{cell.text}
+                              </Fragment>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                      {!(canEdit && !isCrossSectional) && <ChevronRight size={18} aria-hidden className="shrink-0 text-slate-400" />}
+                    </button>
+                    {canEdit && !isCrossSectional && (
+                      <button type="button" onClick={() => navigate(`/bases/${id}/patients/${p.id}/encounters/new`)}
+                        aria-label={`${t('encounter.add')} — ${p.code}`} title={t('encounter.add')}
+                        className="icon-button my-auto mr-2 shrink-0 text-teal-700">
+                        <Plus size={18} aria-hidden />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           ) : (
             <div className="data-table-shell">
               <table className="data-table">
@@ -717,6 +790,14 @@ export function BaseHome() {
 
           {!offlineView && total > PAGE_SIZE && pager('bottom')}
         </div>
+      )}
+      {/* Lot 2 (5.4-B) : l'action du quotidien reste sous le pouce. Liste vide : l'etat vide
+          porte deja ce bouton, et deux boutons identiques se feraient concurrence. */}
+      {canCreate && rows.length > 0 && (
+        <button type="button" onClick={() => navigate(`/bases/${id}/patients/new/manual`)}
+          className="btn-primary fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-20 rounded-full px-5 shadow-lg lg:hidden">
+          <Plus size={18} aria-hidden /> {t('patient.new')}
+        </button>
       )}
     </section>
   );

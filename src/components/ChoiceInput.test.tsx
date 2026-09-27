@@ -22,3 +22,24 @@ test('search filters options without moving or dropping selections, including hi
   expect(screen.getByRole('checkbox', { name: 'Historique' })).not.toBeChecked();
   expect(screen.getAllByRole('checkbox').map((control) => control.getAttribute('aria-label'))).toEqual(options.map((option) => option.label));
 });
+
+// Audit UI mobile, lot 2 (T3-B) : la forme du controle dit deja « une seule » ou « plusieurs »
+// reponses ; la consigne ne reste que pour les lecteurs d'ecran. Le bouton d'effacement garde
+// la question dans son nom accessible, sans la recopier a l'ecran.
+test('consignes réservées aux lecteurs d’écran et effacement court à l’écran', async () => {
+  const options = [{ valueKey: 'm', label: 'Masculin', isActive: true }, { valueKey: 'f', label: 'Féminin', isActive: true }];
+  function Example() {
+    const [value, setValue] = useState<string | null>('m');
+    return <>
+      <ChoiceInput label="Sexe" options={options} value={value} presentation="radios" onChange={(next) => setValue(next as string | null)} />
+      <ChoiceInput label="Signes" options={options} value={[]} presentation="grid" onChange={() => {}} />
+    </>;
+  }
+  render(<I18nProvider><Example /></I18nProvider>);
+  expect(screen.getByText('Une seule réponse')).toHaveClass('sr-only');
+  expect(screen.getByText('Plusieurs réponses possibles')).toHaveClass('sr-only');
+  const clear = screen.getByRole('button', { name: 'Effacer la réponse à Sexe' });
+  expect(clear).toHaveTextContent(/^Effacer la réponse$/);
+  await userEvent.click(clear);
+  expect(screen.getByRole('radio', { name: 'Masculin' })).not.toBeChecked();
+});
