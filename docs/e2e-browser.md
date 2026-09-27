@@ -39,6 +39,7 @@ incident réseau transitoire d'une régression, sans masquer une erreur locale a
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 | **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
 | **LOT13 dédié** | révocation dynamique, indisponibilité/reconnexion Supabase, idempotence après réponse perdue, import, retry d'upload, hors-ligne historique et suppression | scénarios présents dans `e2e/lot13-complete.spec.ts`, exécutés seulement par le job staging dédié ; leur présence ne vaut pas preuve actuelle d'un run réussi |
+| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 18 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
@@ -61,6 +62,39 @@ sont des couvertures **complémentaires et distinctes**, pas un substitut au par
   fixtures staging ; sa présence dans le dépôt ne vaut pas preuve d'exécution.
 - Révocation dynamique de permissions et changement de compte : scénario LOT13 dédié.
 - API indisponible / dégradée côté navigateur : scénario LOT13 dédié.
+
+## Garde-fou d'affichage sur téléphone (audit UI mobile, lot 7)
+
+`e2e/mobile-360.spec.ts` contrôle les budgets de
+[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 18 écrans, à 360 × 800 px
+en tactile :
+
+- aucun débordement horizontal ;
+- le premier contenu utile (première base, premier patient, premier champ…) commence avant 400 px ;
+- aucune aide clavier visible au doigt (`kbd`, `.keyboard-hint`, « Ctrl … »), tiroir et palette de
+  recherche compris ;
+- jamais plus d'un bouton plein visible à la fois, l'écran défilant de haut en bas.
+
+```bash
+npx playwright install chromium   # une fois
+npm run e2e:mobile                # démarre Vite sur 127.0.0.1:5173 si besoin
+```
+
+Ni compte, ni Supabase : le banc local `mobile-harness.html` (`src/dev/MobileHarness.tsx`) monte les
+vraies routes, la vraie coquille et les vrais écrans sur des dépôts en mémoire à données fictives. Un
+dépôt appelé pour une méthode non simulée échoue en la nommant ; toute requête hors de `127.0.0.1` est
+bloquée et fait échouer le test. Contre une URL externe (`E2E_BASE_URL`), le fichier est ignoré.
+
+- **Dettes connues.** Un budget qu'un écran ne tient pas encore est déclaré dans `pending`, avec le
+  lot qui le traitera (aujourd'hui : « la liste avant le formulaire de création », lot 5, pour Accès,
+  Comptes de mission et Mes jeux de variables). Il reste mesuré et signalé ; dès qu'il est tenu, le
+  test échoue pour qu'on retire la mention.
+- **Nouvel écran.** L'ajouter à `SCREENS` avec son premier contenu utile, et ses données au banc.
+  L'éditeur des jeux de variables (lot 6) n'y figure pas encore.
+- **Polices.** Sous Linux, le texte est rendu en DejaVu Sans, l'une des polices courantes les plus
+  larges : Windows et Android donnent des écrans plus courts. La mesure Linux fait référence.
+- **Hors CI de PR** (voir « Intégration continue ») : à lancer avant de pousser une modification
+  d'écran.
 
 ## Stratégie de fixtures et nettoyage (`e2e/fixtures.ts`)
 

@@ -55,6 +55,7 @@
     "e2e:staging": "node scripts/e2e-staging.mjs",
     "e2e:browser": "playwright test",
     "e2e:browser:critical": "playwright test e2e/auth-roles.spec.ts e2e/export-journey.spec.ts e2e/patient-journey.spec.ts --grep @critical",
+    "e2e:mobile": "playwright test e2e/mobile-360.spec.ts",
     "paper:baseline": "node scripts/paper-baseline.mjs"
   },
   "dependencies": {

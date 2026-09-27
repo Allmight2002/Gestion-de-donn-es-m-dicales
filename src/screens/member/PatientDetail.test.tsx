@@ -234,6 +234,25 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByText('Paludisme')).toBeInTheDocument();
   });
 
+  // Audit UI mobile, lot 7 — le garde-fou 360 px a trouve deux boutons pleins sur la fiche.
+  test('un seul bouton plein : « Ajouter une rencontre » en base longitudinale, « Modifier » sinon', async () => {
+    const { unmount } = renderAt('/bases/b1/patients/p1', makePatients());
+    expect(await screen.findByRole('button', { name: 'Modifier les données permanentes' })).toHaveClass('btn-secondary');
+    const add = screen.getAllByRole('button', { name: 'Ajouter une rencontre' });
+    expect(add.length).toBeGreaterThan(0);
+    for (const button of add) expect(button).toHaveClass('btn-primary');
+    unmount();
+
+    const crossBase = {
+      async getBase() {
+        return { ...baseListing, base: { ...baseListing.base, observationModel: 'cross_sectional' as const } };
+      },
+    } as unknown as BaseRepository;
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, templateRepo, stubAttachments, crossBase);
+    expect(await screen.findByRole('button', { name: 'Modifier les données permanentes' })).toHaveClass('btn-primary');
+    expect(screen.queryByRole('button', { name: 'Ajouter une rencontre' })).not.toBeInTheDocument();
+  });
+
   test('une base longitudinale sans rencontre garde le bloc Rencontres', async () => {
     renderAt('/bases/b1/patients/p1', makePatients({ async listEncounters() { return []; } }));
     expect(await screen.findByRole('heading', { name: 'Rencontres' })).toBeInTheDocument();

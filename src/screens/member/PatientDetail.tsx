@@ -505,6 +505,10 @@ export function PatientDetail() {
     : step.group.fields.filter((f) => fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) === '—').length), 0);
   // 5.5 : la rencontre la plus recente en premier (la liste arrive par date croissante).
   const encountersNewestFirst = [...realEncounters].reverse();
+  // Un seul bouton plein par ecran (budget de l'audit, garde-fou e2e/mobile-360.spec.ts) :
+  // en base longitudinale, l'action du quotidien est « Ajouter une rencontre » et « Modifier »
+  // passe en secondaire ; en base transversale, « Modifier » reste l'action principale.
+  const addsEncounters = !offlineView && !isCrossSectional;
 
   return (
     <section className="max-w-4xl space-y-5 max-lg:pb-20 sm:space-y-6">
@@ -518,7 +522,7 @@ export function PatientDetail() {
         titleInTopBar={!offlineView}
         eyebrow={t('patient.detail')}
         badge={offlineView ? <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span> : undefined}
-        actions={!offlineView && !isCrossSectional ? (
+        actions={addsEncounters ? (
           <button
             onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
             className="btn-primary"
@@ -576,7 +580,7 @@ export function PatientDetail() {
               <button
                 onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
                 aria-label={t('patient.edit_permanent')}
-                className="btn-primary"
+                className={addsEncounters ? 'btn-secondary' : 'btn-primary'}
               >
                 {t('encounter.edit')}
               </button>
@@ -883,7 +887,7 @@ export function PatientDetail() {
       )}
 
       {/* Lot 2 : sous lg, l'action du quotidien reste sous le pouce. */}
-      {!offlineView && !isCrossSectional && (
+      {addsEncounters && (
         <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/encounters/new`)}
           className="btn-primary fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-20 rounded-full px-5 shadow-lg lg:hidden">
           <Plus size={18} aria-hidden /> {t('encounter.add')}
