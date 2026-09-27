@@ -7,6 +7,8 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { EncounterForm } from './EncounterForm';
+import { TopBarRegistryProvider, useTopBarRegistry } from '../../components/TopBar';
+import type { ReactNode } from 'react';
 import { saveDraft, loadDraft } from '../../data/drafts';
 import { setOfflineUser } from '../../data/offline';
 import type { BaseRepository, BaseListing } from '../../data/bases';
@@ -71,6 +73,19 @@ function renderForm(patientRepo: PatientRepository) {
         </MemoryRouter>
       </RepositoryProvider>
     </I18nProvider>,
+  );
+}
+
+// Audit UI mobile, lot 1 : sonde qui montre ce que le formulaire inscrit dans la barre haute.
+function TopBarProbe({ children }: { children: ReactNode }) {
+  const { active, actions, registry } = useTopBarRegistry();
+  return (
+    <TopBarRegistryProvider registry={registry}>
+      {children}
+      <p data-testid="barre-haute">{active ? `${active.title}${active.scrolls ? ' · défile' : ''}` : 'vide'}</p>
+      <p data-testid="barre-actions">{actions.map((action) => action.label).join(' | ') || 'aucune action'}</p>
+      {active?.onClose && <button type="button" onClick={active.onClose}>✕ barre haute</button>}
+    </TopBarRegistryProvider>
   );
 }
 
@@ -174,6 +189,8 @@ describe('EncounterForm', () => {
     fireEvent.change(screen.getByLabelText('Date de la rencontre'), { target: { value: '2024-06-01' } });
     fireEvent.change(screen.getByLabelText('Glasgow'), { target: { value: '10' } });
     // Ctrl+Entrée depuis le formulaire (sans cliquer le bouton) déclenche le même enregistrement.
+    // Audit UI mobile, lot 0 : le raccourci reste actif, mais son aide est masquee au doigt.
+    expect(screen.getByText('Ctrl + Entrée pour enregistrer')).toHaveClass('keyboard-hint');
     fireEvent.keyDown(container.querySelector('form')!, { key: 'Enter', ctrlKey: true });
     expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
     expect(createEncounter).toHaveBeenCalledTimes(1);
@@ -357,5 +374,41 @@ describe('EncounterForm — liste à soupape (F5)', () => {
     await userEvent.click(screen.getByLabelText('Paludisme grave'));
     expect(screen.getByLabelText('Tuberculose pulmonaire')).toBeChecked();
     expect(screen.getByLabelText('Paludisme grave')).toBeChecked();
+  });
+});
+
+// Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, ✕ et le titre passent dans la barre haute ;
+// « Retour », le titre de page et « Annuler » n'y sont plus repetes, et la barre d'action tient
+// sur une ligne. Le titre reste un vrai titre pour les lecteurs d'ecran.
+describe('EncounterForm — barre haute et barre d’action (lot 1)', () => {
+  test('✕ ramène à la fiche, comme Retour et Annuler', async () => {
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={makePatientRepo(vi.fn())}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/p1/encounters/new']}>
+            <TopBarProbe>
+              <Routes>
+                <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterForm />} />
+                <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+              </Routes>
+            </TopBarProbe>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    await screen.findByText('Glasgow');
+
+    expect(screen.getByTestId('barre-haute')).toHaveTextContent('Nouvelle rencontre · défile');
+    expect(screen.getByRole('button', { name: /Retour/ })).toHaveClass('max-lg:hidden');
+    expect(screen.getByRole('heading', { level: 1, name: 'Nouvelle rencontre' })).toHaveClass('max-lg:sr-only');
+    expect(screen.getByRole('button', { name: 'Annuler' })).toHaveClass('max-lg:hidden');
+    expect(screen.getByRole('button', { name: 'Enregistrer la rencontre' })).toHaveClass('max-sm:flex-1');
+    // Lot 2 (5.6-B) : confier au staff, sortie de secours, passe dans « ⋯ » sous lg.
+    expect(screen.getByTestId('barre-actions')).toHaveTextContent('Confier les documents au staff');
+    expect(screen.getByRole('button', { name: /Confier les documents au staff/ })).toHaveClass('max-lg:hidden');
+
+    await userEvent.click(screen.getByRole('button', { name: '✕ barre haute' }));
+    expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
+    expect(screen.getByTestId('barre-haute')).toHaveTextContent('vide');
   });
 });

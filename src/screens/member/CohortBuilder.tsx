@@ -575,9 +575,12 @@ export function CohortBuilder() {
             action={!builderOpen ? <button type="button" className="btn-primary" onClick={openBuilder}><Plus size={16} aria-hidden /> {t('cohort.new')}</button> : undefined}
           />
         ) : (
-          <ul className="grid gap-3 md:grid-cols-2">
+          // Colonnes `minmax(0, 1fr)` et `min-w-0` : sans elles, le titre `truncate` (non
+          // secable) imposait sa largeur a la colonne implicite et la page debordait sur
+          // telephone, ce qui forcait le navigateur a la dezoomer en entier.
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {list.map((cohort) => (
-              <li key={cohort.id} className="card flex flex-col gap-4 p-5">
+              <li key={cohort.id} className="card flex min-w-0 flex-col gap-4 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="truncate font-semibold text-slate-900">{cohort.name}</h3>

@@ -7,7 +7,7 @@
 // Le CODE INTERNE ne se modifie jamais (lecon de L30) : il est propose a la creation, puis
 // affiche en lecture seule. Seul le libelle se corrige.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { Checkbox } from '../../components/Checkbox';
@@ -76,6 +76,7 @@ export function SectionsEditor({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useI18n();
+  const repeatableHintId = useId();
   const [parentKey, setParentKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -239,6 +240,16 @@ export function SectionsEditor({
         )}
       </form>
 
+      {/* Audit UI mobile, lot 0 — la regle du groupe repetable est la meme pour toutes les
+          sections : elle est dite une fois ici au lieu d'etre repetee sous chacune (55 fois sur
+          un jeu de 62 sections). Chaque case y renvoie par `aria-describedby`. */}
+      {onRepeatableChange && sections.length > 0 && (
+        <p id={repeatableHintId} className="helper-text mt-3">
+          <span className="font-medium">{t('section.repeatable')}</span>
+          {' : '}{isCrossSectional ? t('section.repeatable_locked_model') : t('section.repeatable_hint')}
+        </p>
+      )}
+
       <ul className="mt-3 space-y-2 text-sm">
         {sections.map((section) => {
           const siblings = sections.filter((s) => (s.parentSectionKey ?? null) === (section.parentSectionKey ?? null));
@@ -368,9 +379,10 @@ export function SectionsEditor({
                 <div className="basis-full border-t border-slate-100 pt-2 dark:border-slate-700">
                   <Checkbox
                     label={t('section.repeatable')}
-                    description={isCrossSectional ? t('section.repeatable_locked_model')
-                      : hasChildren && !section.isRepeatable ? t('section.repeatable_locked_children')
-                        : t('section.repeatable_hint')}
+                    aria-describedby={repeatableHintId}
+                    // Seul un motif PROPRE a cette section reste sous sa case.
+                    description={!isCrossSectional && hasChildren && !section.isRepeatable
+                      ? t('section.repeatable_locked_children') : undefined}
                     checked={section.isRepeatable === true}
                     disabled={busy || isCrossSectional || (hasChildren && !section.isRepeatable)}
                     onChange={(event) => {

@@ -161,6 +161,25 @@
   .helper-text {
     @apply text-xs leading-5 text-slate-500 dark:text-slate-400;
   }
+  /* Audit UI mobile, lot 0 — une aide clavier (« Ctrl + Entrée », « Ctrl K », « ↑↓ … »)
+     n'a pas de sens au doigt : masquee sur les ecrans tactiles, les raccourcis restent actifs. */
+  .keyboard-hint {
+    @apply pointer-coarse:hidden;
+  }
+  /* Audit UI mobile, lot 1 (T1-B) — une rangee d'onglets qui deborde s'estompe du cote ou il
+     reste des onglets : ce qui est hors ecran se devine, sans fleche ni bouton de plus. */
+  .scroll-fade-end {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
+  .scroll-fade-start {
+    -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to left, #000 calc(100% - 2rem), transparent);
+  }
+  .scroll-fade-both {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 2rem, #000 calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 2rem, #000 calc(100% - 2rem), transparent);
+  }
   .surface-muted {
     @apply rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-950/40;
   }

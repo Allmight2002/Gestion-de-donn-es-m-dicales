@@ -75,7 +75,8 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     await page.getByRole('button', { name: /Modifier les donn.es permanentes|Edit permanent data/i }).click();
     await page.getByLabel(/Statut du dossier|Record status/i).selectOption('complete');
     await page.getByLabel(/Motif de la correction|Reason for the correction/i).fill(`Passage complete ${code}`);
-    await page.getByRole('button', { name: /Enregistrer la rencontre|Save encounter/i }).click();
+    // Audit UI mobile, lot 0 : l'ecran des donnees permanentes n'annonce plus « Enregistrer la rencontre ».
+    await page.getByRole('button', { name: /Enregistrer les modifications|Save changes/i }).click();
     await expect(page).toHaveURL(new RegExp(`/patients/${patientId}$`, 'i'));
 
     // 6) rafraichissement du navigateur

@@ -23,10 +23,12 @@ export function SectionCard({
   return (
     <section className={`card overflow-hidden ${className}`}>
       {hasHeader && (
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 gap-3">
+        // Audit UI mobile, lot 1 (T2-A) : sur telephone, l'icone decorative disparait, les marges
+        // se resserrent et les actions restent sur la ligne du titre quand elles y tiennent.
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex min-w-0 flex-1 basis-48 gap-3">
             {Icon && (
-              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-600/15">
+              <span className="mt-0.5 hidden h-9 w-9 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-600/15 sm:grid">
                 <Icon size={17} aria-hidden />
               </span>
             )}
@@ -38,7 +40,7 @@ export function SectionCard({
           {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
         </div>
       )}
-      <div className={bodyClassName || 'p-5'}>{children}</div>
+      <div className={bodyClassName || 'p-4 sm:p-5'}>{children}</div>
     </section>
   );
 }

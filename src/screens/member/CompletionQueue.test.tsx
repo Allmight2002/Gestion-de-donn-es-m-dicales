@@ -46,6 +46,21 @@ describe('CompletionQueue (B2)', () => {
     expect(await screen.findByText('EDIT ENCOUNTER')).toBeInTheDocument();
   });
 
+  // Audit UI mobile, lot 0 — une seule page n'affiche plus « 1-2 sur 2 · Précédent · Suivant ».
+  test('une seule page : pas de pagination ; plusieurs pages : pagination', async () => {
+    const onePage = vi.fn(async () => ({ items, total: items.length, limit: 50, offset: 0, hasMore: false }));
+    const { unmount } = renderQueue({ getCompletionQueuePage: onePage } as unknown as PatientRepository);
+    expect(await screen.findByText('Données permanentes')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Précédent' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Suivant' })).not.toBeInTheDocument();
+    unmount();
+
+    const manyPages = vi.fn(async () => ({ items, total: 120, limit: 50, offset: 0, hasMore: true }));
+    renderQueue({ getCompletionQueuePage: manyPages } as unknown as PatientRepository);
+    expect(await screen.findByRole('button', { name: 'Suivant' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Précédent' })).toBeDisabled();
+  });
+
   test('file vide : message de felicitation', async () => {
     renderQueue({ getCompletionQueuePage: vi.fn(async () => ({ items: [], total: 0, limit: 50, offset: 0, hasMore: false })) } as unknown as PatientRepository);
     expect(await screen.findByText(/Rien à compléter/)).toBeInTheDocument();

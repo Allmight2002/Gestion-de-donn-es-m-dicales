@@ -101,6 +101,31 @@ describe('DiagnosisFollowup (L56)', () => {
     ));
   });
 
+  // Audit UI mobile, lot 0 — file vide sans filtre : ni filtres ni pagination au-dessus de
+  // l'etat vide. Un filtre actif sans resultat reste, lui, retirable.
+  test('file vide : pas de filtres ni de pagination ; filtre actif sans resultat : filtres gardes', async () => {
+    const empty = { ...page, items: [], total: 0, unclassifiedRecords: 0, byCode: [] };
+    const getDiagnosisFollowupPage = vi.fn(async (_baseId: string, filters: { scope: string | null }) => (
+      filters.scope === 'encounter' ? empty : page
+    ));
+    const emptyBases = {
+      async getBase() { return listing; },
+      async getDiagnosisFollowupPage() { return empty; },
+    } as unknown as BaseRepository;
+    const { unmount } = renderScreen(emptyBases);
+    expect(await screen.findByText('Aucun cas non couvert dans cette base.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fiche concernée')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Suivant' })).not.toBeInTheDocument();
+    unmount();
+
+    renderScreen({ async getBase() { return listing; }, getDiagnosisFollowupPage } as unknown as BaseRepository);
+    await screen.findByText('P-001');
+    expect(screen.queryByRole('button', { name: 'Suivant' })).not.toBeInTheDocument(); // une seule page
+    await userEvent.selectOptions(screen.getByLabelText('Fiche concernée'), 'encounter');
+    expect(await screen.findByText('Aucun cas non couvert dans cette base.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fiche concernée')).toHaveValue('encounter');
+  });
+
   test('ne charge rien pour un membre qui n est pas proprietaire', async () => {
     const getDiagnosisFollowupPage = vi.fn();
     const bases = {

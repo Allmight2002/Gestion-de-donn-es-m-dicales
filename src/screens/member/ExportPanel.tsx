@@ -226,7 +226,9 @@ export function ExportPanel() {
         </div>
       )}
 
-      <div className="card grid grid-cols-2 gap-4 p-4 text-sm">
+      {/* Audit UI mobile, lot 0 — une colonne sur telephone : a deux colonnes sur 360 px, le
+          profil etait tronque (« Analyse — pr »). Deux colonnes des `sm`, comme avant. */}
+      <div className="card grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2">
         {imposedShape ? (
           // Le modele d'observation est verrouille des la premiere saisie : la forme des
           // lignes en decoule. On l'ANNONCE au lieu de la redemander -- l'utilisateur doit

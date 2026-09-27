@@ -9,6 +9,7 @@ import { calculateFormProgress } from '../../domain/formProgress';
 import { groupFieldsBySection } from '../../domain/templateSections';
 import { EncounterFields } from './EncounterFields';
 import { SectionedFields } from './SectionedFields';
+import { FormActionBar } from '../../components/FormActionBar';
 
 const field = (key: string, section: string | null, required = false): TemplateField => ({ id: key, fieldKey: key, label: key,
   scope: 'encounter', section, type: 'integer', unit: null, allowedValues: null, required, minValue: 0, maxValue: 10,
@@ -317,5 +318,64 @@ describe('L72c — groupe répétable en sous-section', () => {
     expect(screen.queryByText(/TABLEAU/)).not.toBeInTheDocument();
     // Un groupe masqué n'est pas annoncé comme un bloc « disponible ».
     expect(screen.queryByText(/Bloc disponible/)).not.toBeInTheDocument();
+  });
+});
+
+// Audit UI mobile, lot 2 (5.6-B) : avant le premier champ, une seule ligne ; le sommaire
+// s'ouvre en panneau bas ; la navigation de blocs rejoint la barre d'action du formulaire.
+describe('SectionedFields — formulaire compact (audit UI mobile, lot 2)', () => {
+  function WithActionBar() {
+    const [values, setValues] = useState<Record<string, unknown>>({});
+    return <form onSubmit={(event) => event.preventDefault()}>
+      <EncounterFields fields={fields} values={values} requireComplete
+        onChange={(key, value) => setValues((previous) => ({ ...previous, [key]: value }))}
+        onRemove={(key) => setValues((previous) => { const next = { ...previous }; delete next[key]; return next; })} />
+      <FormActionBar><button type="submit">Enregistrer</button></FormActionBar>
+    </form>;
+  }
+
+  test('une seule ligne : bloc courant, avancement court, prochain champ manquant', () => {
+    render(<I18nProvider><Example /></I18nProvider>);
+    expect(screen.getByRole('button', { name: /^Sommaire du formulaire : 1\/2 · / })).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(screen.getByText('0/2 requis')).toBeInTheDocument();
+    // La phrase complete (spec UX §5.1) reste celle que lit un lecteur d'ecran.
+    expect(screen.getByText('0 champs requis renseignés sur 2')).toHaveClass('sr-only');
+    expect(screen.getByRole('button', { name: 'Prochain champ obligatoire manquant' })).toBeInTheDocument();
+  });
+
+  test('le sommaire s’ouvre en panneau bas ; choisir un bloc le ferme et y conduit', async () => {
+    render(<I18nProvider><Example /></I18nProvider>);
+    await userEvent.click(screen.getByRole('button', { name: /^Sommaire du formulaire : 1\/2/ }));
+    const sheet = screen.getByRole('dialog', { name: 'Sommaire du formulaire' });
+    const blocks = within(sheet).getAllByRole('listitem').map((item) => within(item).getByRole('button'));
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1]).toHaveTextContent('1 requis restant(s)');
+    expect(within(sheet).getByLabelText('Un bloc à la fois')).toBeChecked();
+
+    await userEvent.click(blocks[1]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('b')).toBeVisible());
+    expect(screen.getByRole('button', { name: /^Sommaire du formulaire : 2\/2/ })).toBeInTheDocument();
+  });
+
+  test('un bloc à la fois : le titre du bloc n’est plus un bouton qui replierait le seul bloc affiché', async () => {
+    render(<I18nProvider><Example /></I18nProvider>);
+    expect(document.querySelectorAll('legend button')).toHaveLength(0);
+    await userEvent.click(screen.getByLabelText('Un bloc à la fois'));
+    expect(document.querySelectorAll('legend button[aria-expanded]')).toHaveLength(2);
+  });
+
+  test('avec une barre d’action, ‹ et › se rangent de part et d’autre de l’enregistrement', async () => {
+    render(<I18nProvider><WithActionBar /></I18nProvider>);
+    const bar = screen.getByRole('button', { name: 'Enregistrer' }).parentElement!;
+    const names = within(bar).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent);
+    expect(names).toEqual(['Bloc précédent', 'Enregistrer', 'Bloc suivant']);
+    expect(within(bar).getByRole('button', { name: 'Bloc précédent' })).toBeDisabled();
+    // Plus de rangee de navigation sous le bloc : elle ferait double emploi.
+    expect(screen.queryByText('1 / 2')).not.toBeInTheDocument();
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Bloc suivant' }));
+    await waitFor(() => expect(screen.getByLabelText('b')).toBeVisible());
+    expect(within(bar).getByRole('button', { name: 'Bloc suivant' })).toBeDisabled();
   });
 });

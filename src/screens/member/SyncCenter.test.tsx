@@ -35,9 +35,14 @@ function renderSync() {
 describe('SyncCenter — état du système (E3)', () => {
   test('affiche connexion, version (injectée), bases hors-ligne et la section anomalies', async () => {
     renderSync();
-    expect(await screen.findByRole('heading', { level: 1, name: 'État du système' })).toBeInTheDocument();
+    // Audit UI mobile, lot 0 : la page porte le nom de son entree de menu, et les informations
+    // de build (support) sont repliees dans « Détails techniques » au lieu d'occuper l'ecran.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Synchronisation' })).toBeInTheDocument();
     expect(screen.getByText('Connexion')).toBeInTheDocument();
     expect(screen.getByText('En ligne')).toBeInTheDocument(); // navigator.onLine = true par défaut (jsdom)
+    const technical = screen.getByText('Détails techniques').closest('details')!;
+    expect(technical).not.toHaveAttribute('open');
+    expect(technical).toContainElement(screen.getByText('test-commit'));
     expect(screen.getByText('Version')).toBeInTheDocument();
     expect(screen.getByText('Commit')).toBeInTheDocument();
     expect(screen.getByText('test-commit')).toBeInTheDocument();

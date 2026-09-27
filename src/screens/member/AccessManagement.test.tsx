@@ -60,7 +60,9 @@ describe('AccessManagement', () => {
     const { container, unmount } = renderAccess(pendingRepo, makeAccess());
 
     expect(screen.getByRole('status', { name: /Chargement/ })).toBeInTheDocument();
-    expect(container.querySelectorAll('[aria-hidden="true"]')).toHaveLength(5);
+    // Les cinq lignes du squelette ; l'icone ⓘ de l'en-tete (audit UI mobile, lot 1) est
+    // decorative elle aussi, mais ne fait pas partie de la structure de chargement.
+    expect(container.querySelectorAll('div[aria-hidden="true"]')).toHaveLength(5);
     unmount();
   });
 

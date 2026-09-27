@@ -116,7 +116,7 @@ async function withdrawDiagnosis(user: ReturnType<typeof userEvent.setup>) {
   const input = await screen.findByRole('textbox', { name: /Diagnostic/ });
   await user.clear(input);
   await user.type(input, 'autre');
-  await user.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+  await user.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
   return screen.findByRole('dialog');
 }
 

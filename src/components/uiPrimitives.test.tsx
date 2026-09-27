@@ -2,7 +2,7 @@
 // UI-2 : primitives du langage visuel — pastilles de statut, dates lisibles, modale de
 // confirmation, toasts.
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { StatusBadge } from './StatusBadge';
@@ -71,5 +71,23 @@ describe('primitives de structure', () => {
     expect(screen.getByRole('list', { name: 'Progression' })).toBeInTheDocument();
     expect(screen.getByText('Vérifier').closest('li')).toHaveAttribute('aria-current', 'step');
     expect(screen.getByRole('button', { name: 'Commencer' })).toBeInTheDocument();
+  });
+
+  // Audit UI mobile, lot 1 (decision 2) : sur telephone, la description d'une page passe
+  // derriere un ⓘ ; un avertissement ou un etat reste lisible sans geste.
+  test('la description se consulte par ⓘ sur téléphone, sauf quand elle porte un état', async () => {
+    const { unmount } = wrap(<PageHeader title="Journal" description="Consultez les actions récentes." />);
+    const paragraph = screen.getByText('Consultez les actions récentes.');
+    expect(paragraph).toHaveClass('hidden', 'sm:block');
+    const tip = screen.getByRole('button', { name: 'À propos de cette page' });
+    expect(tip).toHaveClass('sm:hidden');
+    await userEvent.click(tip);
+    expect(within(screen.getByRole('dialog', { name: 'À propos de cette page' })).getByText('Consultez les actions récentes.'))
+      .toBeInTheDocument();
+    unmount();
+
+    wrap(<PageHeader title="Patients" description="Hors-ligne : identité indisponible." keepDescription />);
+    expect(screen.getByText('Hors-ligne : identité indisponible.')).not.toHaveClass('hidden');
+    expect(screen.queryByRole('button', { name: 'À propos de cette page' })).not.toBeInTheDocument();
   });
 });

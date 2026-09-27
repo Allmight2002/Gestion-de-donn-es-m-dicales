@@ -270,7 +270,9 @@ export function ChoiceInput({
   if (presentation === 'radios') {
     return (
       <fieldset className="space-y-1" aria-label={label}>
-        <p className="text-xs text-slate-500 dark:text-slate-400">{single}</p>
+        {/* Audit UI mobile, lot 2 (T3-B) : la forme du controle (boutons radio) le dit deja a
+            l'oeil ; la consigne reste pour les lecteurs d'ecran. */}
+        <p className="sr-only">{single}</p>
         <div className="grid grid-cols-1 gap-2 @min-[28rem]:grid-cols-2 @min-[44rem]:grid-cols-3">
           {options.map((option) => (
             <label key={option.valueKey} className={`flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-sm leading-5 text-slate-700 hover:bg-slate-100/80 focus-within:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800/70 dark:focus-within:bg-slate-800/70 ${singleValue(value) === option.valueKey ? 'bg-teal-50 dark:bg-teal-950' : ''}`}>
@@ -287,8 +289,10 @@ export function ChoiceInput({
           ))}
         </div>
         {singleValue(value) !== '' && (
-          <button type="button" className="btn-ghost min-h-11 px-2 text-xs" onClick={() => onChange(null)}>
-            {clearSelectionLabel ?? t('choice.clear_answer_to').replace('{label}', label)}
+          <button type="button" className="btn-ghost min-h-11 px-2 text-xs" onClick={() => onChange(null)}
+            aria-label={clearSelectionLabel ?? t('choice.clear_answer_to').replace('{label}', label)}>
+            {/* Le libelle complet de la question reste dans le nom accessible, pas a l'ecran. */}
+            {clearSelectionLabel ?? t('choice.clear_answer')}
           </button>
         )}
       </fieldset>
@@ -298,7 +302,7 @@ export function ChoiceInput({
   if (presentation === 'grid') {
     return (
       <fieldset className="space-y-1" aria-label={label}>
-        <p className="text-xs text-slate-500 dark:text-slate-400">{many}</p>
+        <p className="sr-only">{many}</p>
         <div className="grid grid-cols-1 gap-2 @min-[28rem]:grid-cols-2 @min-[44rem]:grid-cols-3">
           {options.map((option) => (
             <Checkbox
