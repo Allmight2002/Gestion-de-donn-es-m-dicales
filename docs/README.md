@@ -143,6 +143,7 @@
 | [decision-blocs-pathologies-2026-09-03.md](decision-blocs-pathologies-2026-09-03.md) | 2026-09-03, amendée le 2026-09-05 | Parcours de décision issu d'un problème observé sur le terrain : base bornée par la gouvernance, blocs cliniques conditionnels, options écartées, dix décisions retenues et critères de réévaluation — non implémentée |
 | [decision-recherche-patient-2026-08-20.md](decision-recherche-patient-2026-08-20.md) | 2026-08-20 | Décision datée sur la recherche patient dans une base ; consulter [L61 à L65](l61-liste-patients-recherche-tri-identite.md) pour l'état courant et le prolongement tri clinique/nom contrôlé |
 | [decision-notifications-v1-2026-08-20.md](decision-notifications-v1-2026-08-20.md) | 2026-08-20 | Décision sur le périmètre v1 des notifications in-app (clarification de curation seulement, médecin + curateur, in-app, table dédiée) — non implémentée |
+| [correction-timeout-graphe-visibilite.md](correction-timeout-graphe-visibilite.md) | 2026-09-27 | Délais dépassés dans l'éditeur (402 variables, 62 sections, 238 règles) : causes relevées en production, correction L73 et mesures locales — non déployée |
 
 ## 8. Cadre juridique
 

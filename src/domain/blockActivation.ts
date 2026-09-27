@@ -228,6 +228,6 @@ export function activationProposal(input: ActivationInput): ActivationProposal |
   // que des aretes « variable du bloc depend du pilote » ; un cycle exigerait donc que le
   // pilote depende lui-meme d'une variable du bloc, c'est-a-dire qu'il soit la cible d'une
   // regle d'affichage — ce que `driver_hidden` a deja refuse plus haut, avec un motif bien
-  // plus parlant. `assert_visibility_acyclic` reste la garantie a l'ecriture.
+  // plus parlant. `validate_template_version_invariants` reste la garantie a l'ecriture.
   return { ok: true, rule };
 }
