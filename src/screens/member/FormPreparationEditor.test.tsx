@@ -171,6 +171,12 @@ async function openLocalEditor(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Modifier la variable' })).toBeNull());
 }
 
+// Audit UI mobile, lot 5 (5.9 Formulaire B) : Fermer et Abandonner vivent dans « ⋯ ».
+async function closeFromMenu(user: ReturnType<typeof userEvent.setup>, session: HTMLElement) {
+  await user.click(within(session).getByRole('button', { name: 'Plus d’actions' }));
+  await user.click(within(session).getByRole('button', { name: 'Fermer' }));
+}
+
 describe('FormPreparationEditor — session E4', () => {
   test('ouvre le candidat local, le sauvegarde, vérifie son impact puis applique une seule fois', async () => {
     const user = userEvent.setup();
@@ -181,6 +187,9 @@ describe('FormPreparationEditor — session E4', () => {
 
     expect(screen.getByTestId('formprep-state')).toHaveTextContent('Modifications locales non enregistrées');
     const session = screen.getByTestId('form-preparation-session');
+    // Audit UI mobile, lot 5 (5.9 Formulaire B) : un seul bouton principal, celui de l'etape suivante.
+    const actions = () => within(screen.getByTestId('formprep-actions')).getAllByRole('button').map((button) => button.textContent);
+    expect(actions()).toEqual(['Enregistrer la préparation']);
     await user.click(within(session).getByRole('button', { name: 'Enregistrer la préparation' }));
     await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
     expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -189,12 +198,14 @@ describe('FormPreparationEditor — session E4', () => {
       payload: expect.not.objectContaining({ values: expect.anything() }),
     }));
     expect(screen.getByTestId('formprep-state')).toHaveTextContent('Préparation enregistrée');
+    expect(actions()).toEqual(['Voir l’impact']);
 
     await user.click(within(screen.getByTestId('form-preparation-session')).getByRole('button', { name: 'Voir l’impact' }));
     await waitFor(() => expect(repository.preview).toHaveBeenCalledTimes(1));
     expect(await screen.findByTestId('formprep-impact')).toHaveTextContent('2 patient(s) potentiellement concerné(s)');
     expect(screen.getByTestId('formprep-impact')).toHaveTextContent('Aucune écriture de patient');
     expect(screen.getByTestId('formprep-impact')).toHaveTextContent('Nature du changement : ajout compatible');
+    expect(actions()).toEqual(['Appliquer les modifications']);
 
     await user.click(within(screen.getByTestId('form-preparation-session')).getByRole('button', { name: 'Appliquer les modifications' }));
     const confirmation = await screen.findByRole('dialog', { name: 'Appliquer les modifications ?' });
@@ -217,13 +228,13 @@ describe('FormPreparationEditor — session E4', () => {
     expect(await within(session).findByRole('alert')).toHaveTextContent('La définition source ou la préparation a changé');
     expect(screen.getByTestId('formprep-state')).toHaveTextContent('Modifications locales non enregistrées');
 
-    await user.click(within(session).getByRole('button', { name: 'Fermer' }));
+    await closeFromMenu(user, session);
     await screen.findByRole('dialog', { name: 'Quitter cette préparation ?' });
     await user.keyboard('{Escape}');
     expect(screen.getByRole('heading', { name: 'Registre fictif' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modifier la variable · Poids corrigé' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Quitter cette préparation ?' })).toBeNull();
-    await user.click(within(session).getByRole('button', { name: 'Fermer' }));
+    await closeFromMenu(user, session);
     await user.click(within(await screen.findByRole('dialog', { name: 'Quitter cette préparation ?' })).getByRole('button', { name: 'Quitter sans enregistrer' }));
     expect(await screen.findByTestId('form-preparation-landing')).toBeInTheDocument();
   });
@@ -278,6 +289,35 @@ describe('FormPreparationEditor — session E4', () => {
     // Le retour à la structure conserve la saisie locale.
     await user.click(screen.getByRole('tab', { name: /^Structure du formulaire/ }));
     expect(screen.getByRole('button', { name: 'Modifier la variable · Poids corrigé' })).toBeInTheDocument();
+  });
+
+  test('l’accueil tient en une ligne et un bouton ; les détails techniques se lisent à la demande', async () => {
+    const user = userEvent.setup();
+    const onEditingChange = vi.fn();
+    render(
+      <I18nProvider>
+        <RepositoryProvider templates={{ getVersion: vi.fn(async () => source) } as unknown as TemplateRepository}
+          formPreparations={makePreparationRepository()}>
+          <FormPreparationEditor baseId="base-1" listing={listing} onBack={() => undefined} onEditingChange={onEditingChange} />
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    const landing = await screen.findByTestId('form-preparation-landing');
+    expect(within(landing).getByText('Formulaire : Registre fictif (v4)')).toBeInTheDocument();
+    expect(within(landing).getAllByRole('button').map((button) => button.textContent)).toEqual(['Modifier le formulaire']);
+    const details = within(landing).getByText('Détails techniques').closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    expect(within(details).getByText('Révision de la base')).toBeInTheDocument();
+    expect(within(details).getByText(/Le numéro technique reste secondaire/)).toBeInTheDocument();
+    expect(onEditingChange).toHaveBeenLastCalledWith(false);
+
+    // L'edition passe l'ecran parent en plein ecran ; la fermeture l'en fait sortir.
+    await user.click(within(landing).getByRole('button', { name: 'Modifier le formulaire' }));
+    const session = await screen.findByTestId('form-preparation-session');
+    expect(onEditingChange).toHaveBeenLastCalledWith(true);
+    await closeFromMenu(user, session);
+    expect(await screen.findByTestId('form-preparation-landing')).toBeInTheDocument();
+    expect(onEditingChange).toHaveBeenLastCalledWith(false);
   });
 
   test('n’ouvre pas de préparation quand le serveur refuse les droits', async () => {

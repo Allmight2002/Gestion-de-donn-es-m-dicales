@@ -209,14 +209,16 @@ describe('TemplateVersionEditor', () => {
       </I18nProvider>,
     );
 
-    const nextVersion = await screen.findByRole('button', { name: 'Créer la version suivante' });
-    expect(nextVersion).toBeInTheDocument();
+    // Audit UI mobile, lot 6 : la commande est rangee dans « ⋯ », a cote d'« Ajouter une variable ».
+    await user.click(await screen.findByRole('button', { name: 'Plus d’actions' }));
+    const nextVersion = screen.getByRole('button', { name: /^Créer la version suivante/ });
     await user.click(nextVersion);
     await waitFor(() => expect(createNextVersion).toHaveBeenCalledWith('template-1'));
     expect(onNewVersion).toHaveBeenCalledWith('version-4');
   });
 
   test('editeur personnel rend la creation de copie visible meme pour un brouillon vierge', async () => {
+    const user = userEvent.setup();
     const { repo } = makeRepository();
     Object.assign(repo, { createNextVersion: vi.fn(async () => ({
       id: 'version-4', templateId: 'template-1', versionNumber: 4, status: 'draft' as const,
@@ -229,8 +231,9 @@ describe('TemplateVersionEditor', () => {
       </I18nProvider>,
     );
 
-    const nextVersion = await screen.findByRole('button', { name: 'Créer la version suivante' });
-    expect(nextVersion).toHaveAttribute('title', expect.stringContaining('brouillon'));
+    await user.click(await screen.findByRole('button', { name: 'Plus d’actions' }));
+    // L'explication, autrefois reservee au survol (`title`), se lit sous la commande.
+    expect(screen.getByRole('button', { name: /^Créer la version suivante/ })).toHaveTextContent('brouillon');
   });
 
   test('serveur sans catalogue : la commande ne se rend pas du tout', async () => {

@@ -1,9 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MoveVertical, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, Ellipsis, ListTree, MoveVertical, Trash2 } from 'lucide-react';
 import type { TemplateCommonLayout, TemplateField, TemplateSection } from '../../data/types';
 import { groupFieldsBySection, sectionLabel } from '../../domain/templateSections';
 import { fieldTypeLabel } from '../../domain/templateLabels';
 import { useI18n } from '../../i18n/useI18n';
+import { BottomSheet } from '../../components/BottomSheet';
+import { Menu, MenuItem } from '../../components/Menu';
+import { overflowFadeClass, useOverflowEdges } from '../../lib/useOverflowEdges';
 
 /** Lignes construites d'un coup. Au-dela, l'ecran propose d'en afficher davantage. */
 const PAGE_SIZE = 60;
@@ -67,7 +70,7 @@ export function editorGroups(
 }
 
 export function EditorStructure({ groups, activeKey, onSelect, displayedFields, allFields, editable, busy,
-  canReorder, onOpen, onMove, onStep, onDelete, onDrop, onRules, ruleCount, context,
+  canReorder, onOpen, onMove, onStep, onDelete, onDrop, onRules, ruleCount, context, narrow = false,
 }: {
   groups: EditorGroup[]; activeKey: string; onSelect: (key: string) => void;
   displayedFields: TemplateField[]; allFields: TemplateField[]; editable: boolean; busy: boolean;
@@ -76,6 +79,9 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   onDrop: (fromId: string, toId: string) => void;
   onRules: (field?: TemplateField) => void; ruleCount: (field: TemplateField) => number;
   context: ReactNode;
+  /** Audit UI mobile, lot 6 (5.13-A) : sous 768 px, sommaire en panneau bas, actions de ligne
+   *  dans « ⋯ » et fleches reservees au mode « Réorganiser ». */
+  narrow?: boolean;
 }) {
   const { t } = useI18n();
   // A largeur etroite, le sommaire passe AU-DESSUS de la liste : le laisser deroule imposerait
@@ -85,6 +91,9 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
     () => typeof window === 'undefined' || !window.matchMedia
       || window.matchMedia('(min-width: 1024px)').matches,
   );
+  const [outlineSheet, setOutlineSheet] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  const [childScroller, childEdges] = useOverflowEdges<HTMLDivElement>();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragId, setDragId] = useState<string | null>(null);
   const active = groups.find((group) => group.key === activeKey);
@@ -150,7 +159,7 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   const [window_, setWindow] = useState({ key: listKey, count: PAGE_SIZE });
   const shown = window_.key === listKey ? window_.count : PAGE_SIZE;
   const visibleFields = displayedFields.length > shown ? displayedFields.slice(0, shown) : displayedFields;
-  const renderClinicalNode = (group: EditorGroup, depth = 0, visited = new Set<string>()): ReactNode => {
+  const renderClinicalNode = (group: EditorGroup, select: (key: string) => void, depth = 0, visited = new Set<string>()): ReactNode => {
     if (visited.has(group.key)) return null;
     const nextVisited = new Set(visited).add(group.key);
     const descendants = childrenByParent.get(group.key) ?? [];
@@ -165,52 +174,89 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
         <button type="button" aria-current={activeKey === group.key ? 'page' : undefined}
           aria-label={`${group.label} · ${t('admin.variable_count').replace('{n}', String(count))}${group.repeatable ? ` · ${t('section.repeatable_badge')}` : ''}`}
           className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === group.key ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
-          onClick={() => onSelect(group.key)}>
+          onClick={() => select(group.key)}>
           {/* Le marqueur est DANS le nom accessible ci-dessus : un groupe repetable ne se
               distingue pas que par la couleur. */}
           <span className="break-words">{group.label}{group.repeatable && <span aria-hidden className="ml-1 rounded bg-violet-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:bg-violet-900/50 dark:text-violet-100">{t('section.repeatable_badge')}</span>}</span><span className="shrink-0 text-xs text-slate-500">{count}</span>
         </button>
       </div>
-      {expanded && descendants.map((child) => renderClinicalNode(child, depth + 1, nextVisited))}
+      {expanded && descendants.map((child) => renderClinicalNode(child, select, depth + 1, nextVisited))}
     </div>;
   };
+  const outlineNav = (select: (key: string) => void) => (
+    <nav aria-label={t('editor.outline')} className="space-y-1">
+      <button type="button" className={`min-h-11 w-full rounded px-2 text-left text-sm ${activeKey === '' ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
+        aria-current={activeKey === '' ? 'page' : undefined} onClick={() => select('')}>
+        {t('editor.all_variables')} <span className="text-xs">({allFields.length})</span>
+      </button>
+      {clinicalRoots.length > 0 && commonGroups.length > 0 && (
+        <p className="mt-3 border-t border-slate-200 px-2 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          {t('admin.sections')}
+        </p>
+      )}
+      {clinicalRoots.map((root) => renderClinicalNode(root, select))}
+      {commonGroups.length > 0 && (
+        <div className="mt-3 border-t border-slate-200 pt-2">
+          <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+            {t('commonlayout.title')}
+          </p>
+          {commonGroups.map((root) => (
+            <button key={root.key} type="button" aria-current={activeKey === root.key ? 'page' : undefined}
+              aria-label={`${t('commonlayout.title')} · ${root.label} · ${t('admin.variable_count').replace('{n}', String(root.fields.length))}`}
+              className={`flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === root.key ? 'bg-sky-100 font-semibold text-sky-900 dark:bg-sky-900/40 dark:text-sky-100' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              onClick={() => select(root.key)}>
+              <span className="min-w-0 break-words">{root.label}</span><span className="shrink-0 text-xs text-slate-500">{root.fields.length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </nav>
+  );
+  // Sous 768 px, une ligne tient sur la largeur : libelle et type, nombre de regles, « ⋯ ».
+  // Les fleches n'apparaissent qu'en mode « Réorganiser », ou la ligne ne porte qu'elles.
+  const reorderMode = narrow && editable && reordering;
+  const rowGrid = !narrow ? 'grid-cols-[minmax(0,1fr)_4rem_2.5rem_auto] sm:grid-cols-[minmax(0,1fr)_6rem_5rem_auto]'
+    : reorderMode ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_2.75rem_2.75rem]';
+  const stepButtons = (field: TemplateField, index: number) => <>
+    <button type="button" className="icon-button" disabled={busy || !canReorder || index === 0} aria-label={`${t('admin.move_up')} · ${field.label}`} onClick={() => onStep(field.id, -1)}><ArrowUp size={16} aria-hidden /></button>
+    <button type="button" className="icon-button" disabled={busy || !canReorder || index === allFields.length - 1} aria-label={`${t('admin.move_down')} · ${field.label}`} onClick={() => onStep(field.id, 1)}><ArrowDown size={16} aria-hidden /></button>
+    <button type="button" className="icon-button" disabled={busy || !canReorder} onClick={() => onMove(field)} aria-label={`${t('admin.move_variable')} · ${field.label}`}><MoveVertical size={16} aria-hidden /></button>
+  </>;
   return <div className="grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
+    {narrow ? outlineSheet && (
+      <BottomSheet title={t('admin.section_index')} onClose={() => setOutlineSheet(false)}>
+        {outlineNav((key) => { setOutlineSheet(false); onSelect(key); })}
+      </BottomSheet>
+    ) : (
     <details open={outlineOpen} onToggle={(event) => setOutlineOpen((event.currentTarget as HTMLDetailsElement).open)}
       className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:bg-slate-900">
       <summary className="min-h-11 cursor-pointer px-2 py-3 text-sm font-semibold">{t('admin.section_index')}</summary>
-      <nav aria-label={t('editor.outline')} className="space-y-1">
-        <button type="button" className={`min-h-11 w-full rounded px-2 text-left text-sm ${activeKey === '' ? 'bg-teal-100 font-semibold text-teal-900' : 'hover:bg-slate-100'}`}
-          aria-current={activeKey === '' ? 'page' : undefined} onClick={() => onSelect('')}>
-          {t('editor.all_variables')} <span className="text-xs">({allFields.length})</span>
-        </button>
-        {clinicalRoots.length > 0 && commonGroups.length > 0 && (
-          <p className="mt-3 border-t border-slate-200 px-2 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            {t('admin.sections')}
-          </p>
-        )}
-        {clinicalRoots.map((root) => renderClinicalNode(root))}
-        {commonGroups.length > 0 && (
-          <div className="mt-3 border-t border-slate-200 pt-2">
-            <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-              {t('commonlayout.title')}
-            </p>
-            {commonGroups.map((root) => (
-              <button key={root.key} type="button" aria-current={activeKey === root.key ? 'page' : undefined}
-                aria-label={`${t('commonlayout.title')} · ${root.label} · ${t('admin.variable_count').replace('{n}', String(root.fields.length))}`}
-                className={`flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded px-2 text-left text-sm ${activeKey === root.key ? 'bg-sky-100 font-semibold text-sky-900 dark:bg-sky-900/40 dark:text-sky-100' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                onClick={() => onSelect(root.key)}>
-                <span className="min-w-0 break-words">{root.label}</span><span className="shrink-0 text-xs text-slate-500">{root.fields.length}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </nav>
+      {outlineNav(onSelect)}
     </details>
+    )}
     <div className="min-w-0">
       <div className="mb-4 border-b border-slate-200 pb-4">
-        {active && <p className="mb-1 text-xs text-slate-500">{pathOf(active)}</p>}
-        <h3 id="editor-structure-heading" tabIndex={-1} className="text-lg font-semibold">{active?.label ?? t(activeKey ? 'editor.selection_unavailable' : 'editor.all_variables')}</h3>
-        <p className="mt-1 text-sm text-slate-500">{t('admin.variable_count').replace('{n}', String(displayedFields.length))}</p>
+        {/* Sur telephone, le chemin n'est rappele que s'il dit plus que le titre. */}
+        {active && (!narrow || pathOf(active) !== active.label) && <p className="mb-1 text-xs text-slate-500">{pathOf(active)}</p>}
+        <div className="flex items-start justify-between gap-2">
+          <h3 id="editor-structure-heading" tabIndex={-1} className="min-w-0 text-lg font-semibold">{active?.label ?? t(activeKey ? 'editor.selection_unavailable' : 'editor.all_variables')}</h3>
+          {/* Sous 768 px, l'index des sections s'ouvre en panneau bas depuis le titre du bloc :
+              il ne repousse plus la premiere variable. */}
+          {narrow && (
+            <button type="button" className="btn-secondary -my-1 shrink-0 px-3" aria-haspopup="dialog" onClick={() => setOutlineSheet(true)}>
+              <ListTree size={16} aria-hidden /> {t('admin.section_index')}
+            </button>
+          )}
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="text-sm text-slate-500">{t('admin.variable_count').replace('{n}', String(displayedFields.length))}</p>
+          {/* 5.13-A : les fleches ne s'affichent qu'en mode « Réorganiser ». */}
+          {narrow && editable && displayedFields.length > 0 && (
+            <button type="button" className="btn-ghost -my-1 shrink-0 px-3" aria-pressed={reordering} onClick={() => setReordering((current) => !current)}>
+              {reordering ? <><Check size={16} aria-hidden /> {t('editor.reorder_done')}</> : <><ArrowUpDown size={16} aria-hidden /> {t('editor.reorder')}</>}
+            </button>
+          )}
+        </div>
         {active?.repeatable && (
           <p className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-2 py-1 text-xs font-medium text-violet-900 dark:bg-violet-900/40 dark:text-violet-100">
             <span className="rounded bg-violet-200 px-1 uppercase tracking-wide dark:bg-violet-800">{t('section.repeatable_badge')}</span>
@@ -227,18 +273,21 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
             {active.common ? t('admin.rules_open_space') : t('editor.section_rules')}
           </button>
         </div>}
-        {children.length > 0 && <div className="mt-4 flex flex-wrap gap-2" aria-label={t('editor.subsections')}>
+        {/* Sur telephone, les sous-sections tiennent sur une rangee qui defile. */}
+        {children.length > 0 && <div ref={childScroller} className={narrow ? `-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 ${overflowFadeClass(childEdges)}` : 'mt-4 flex flex-wrap gap-2'} aria-label={t('editor.subsections')}>
           {/* L72b — un groupe enfant se distingue ici aussi de ses sous-sections voisines,
               et le marqueur fait partie de son nom accessible. */}
-          {children.map((child) => <button key={child.key} type="button" className="btn-secondary" onClick={() => onSelect(child.key)}
+          {children.map((child) => <button key={child.key} type="button" className={`btn-secondary${narrow ? ' shrink-0 whitespace-nowrap' : ''}`} onClick={() => onSelect(child.key)}
             aria-label={child.repeatable ? `${child.label} · ${t('section.repeatable_badge')} · ${t('admin.variable_count').replace('{n}', String(fieldCountByKey.get(child.key) ?? child.fields.length))}` : undefined}>
             {child.label}{child.repeatable && <span aria-hidden className="ml-1 rounded bg-violet-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:bg-violet-900/50 dark:text-violet-100">{t('section.repeatable_badge')}</span>} <span className="text-xs">({fieldCountByKey.get(child.key) ?? child.fields.length})</span>
           </button>)}
         </div>}
       </div>
       <div role="table" aria-label={t('admin.variables')} className="divide-y divide-slate-200 border-y border-slate-200">
-        <div role="row" className="grid grid-cols-[minmax(0,1fr)_4rem_2.5rem_auto] items-center gap-2 py-2 text-xs text-slate-500 sm:grid-cols-[minmax(0,1fr)_6rem_5rem_auto]">
-          <span role="columnheader">{t('admin.label')}</span><span role="columnheader">{t('admin.type')}</span><span role="columnheader">{t('admin.rules')}</span>
+        <div role="row" className={`grid ${rowGrid} items-center gap-2 py-2 text-xs text-slate-500${narrow ? ' sr-only' : ''}`}>
+          <span role="columnheader">{t('admin.label')}</span>
+          {!narrow && <span role="columnheader">{t('admin.type')}</span>}
+          {!reorderMode && <span role="columnheader">{t('admin.rules')}</span>}
           <span role="columnheader" className={editable ? undefined : 'sr-only'}>{t('common.actions')}</span>
         </div>
         <div role="rowgroup" className="divide-y divide-slate-100">
@@ -250,24 +299,40 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
               onDragOver={editable && canReorder && !busy ? (event) => event.preventDefault() : undefined}
               onDrop={() => { if (dragId && editable && canReorder && !busy) onDrop(dragId, field.id); setDragId(null); }}
               className="py-2">
-              <div className="grid grid-cols-[minmax(0,1fr)_4rem_2.5rem_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_5rem_auto]">
+              <div className={`grid ${rowGrid} items-center gap-2`}>
                 <div role="cell" className="min-w-0">
                   <button type="button" className="min-h-11 w-full break-words text-left text-sm font-medium text-slate-900 hover:text-teal-700 dark:text-slate-100"
                     aria-label={`${t(editable ? 'admin.edit_variable' : 'editor.view_variable')} · ${field.label}`} onClick={() => onOpen(field)}>{field.label}</button>
                   {!activeKey && group && <p className="text-xs text-slate-500">{pathOf(group)}</p>}
+                  {narrow && <p className="text-xs text-slate-500">{fieldTypeLabel(t, field.type)}</p>}
                 </div>
-                <span role="cell" className="break-words text-xs text-slate-500">{fieldTypeLabel(t, field.type)}</span>
-                <div role="cell"><button type="button" className="min-h-11 px-2 text-sm text-teal-700" aria-label={`${t('admin.rules')} · ${field.label}`} onClick={() => onRules(field)}>{ruleCount(field)}</button></div>
+                {!narrow && <span role="cell" className="break-words text-xs text-slate-500">{fieldTypeLabel(t, field.type)}</span>}
+                {!reorderMode && <div role="cell"><button type="button" className="min-h-11 px-2 text-sm text-teal-700" aria-label={`${t('admin.rules')} · ${field.label}`} onClick={() => onRules(field)}>{ruleCount(field)}</button></div>}
                 {/* Les actions restent DANS l'arbre d'accessibilite : repliees derriere un
                     <details> par ligne, monter/descendre/deplacer/supprimer deviennent
-                    invisibles au clavier et aux technologies d'assistance. */}
-                <div role="cell" className="flex max-w-[5.5rem] flex-wrap items-center gap-0.5 sm:max-w-none sm:flex-nowrap sm:gap-1">
-                  {editable && <>
-                    <button type="button" className="icon-button" disabled={busy || !canReorder || index === 0} aria-label={`${t('admin.move_up')} · ${field.label}`} onClick={() => onStep(field.id, -1)}><ArrowUp size={16} aria-hidden /></button>
-                    <button type="button" className="icon-button" disabled={busy || !canReorder || index === allFields.length - 1} aria-label={`${t('admin.move_down')} · ${field.label}`} onClick={() => onStep(field.id, 1)}><ArrowDown size={16} aria-hidden /></button>
-                    <button type="button" className="icon-button" disabled={busy || !canReorder} onClick={() => onMove(field)} aria-label={`${t('admin.move_variable')} · ${field.label}`}><MoveVertical size={16} aria-hidden /></button>
+                    invisibles au clavier et aux technologies d'assistance. Sur telephone, le menu
+                    « ⋯ » les rend a la demande, comme les autres listes (D9). */}
+                <div role="cell" className={narrow ? 'flex items-center justify-end gap-0.5' : 'flex max-w-[5.5rem] flex-wrap items-center gap-0.5 sm:max-w-none sm:flex-nowrap sm:gap-1'}>
+                  {editable && (!narrow ? <>
+                    {stepButtons(field, index)}
                     <button type="button" className="icon-button text-red-600" disabled={busy || field.inUse} aria-label={`${t('admin.delete')} · ${field.label}`} title={field.inUse ? t('admin.field_locked_hint') : t('admin.delete')} onClick={() => onDelete(field)}><Trash2 size={16} aria-hidden /></button>
-                  </>}
+                  </> : reorderMode ? stepButtons(field, index) : (
+                    <Menu
+                      triggerLabel={`${t('common.actions')} · ${field.label}`}
+                      triggerClassName="icon-button h-11 w-11"
+                      triggerContent={<Ellipsis size={18} aria-hidden />}
+                      panelClassName="card absolute right-0 z-10 mt-2 w-56 space-y-1 p-2 shadow-lg"
+                    >
+                      <MenuItem onSelect={() => onMove(field)} disabled={busy || !canReorder}>
+                        <MoveVertical size={16} aria-hidden /> {t('admin.move_variable')}
+                      </MenuItem>
+                      <MenuItem onSelect={() => onDelete(field)} disabled={busy || field.inUse}
+                        className="btn-ghost w-full justify-start text-red-600">
+                        <Trash2 size={16} aria-hidden /> {t('admin.delete')}
+                      </MenuItem>
+                      {field.inUse && <p className="px-3 pb-1 text-xs text-slate-500">{t('admin.field_locked_hint')}</p>}
+                    </Menu>
+                  ))}
                 </div>
               </div>
             </div>;

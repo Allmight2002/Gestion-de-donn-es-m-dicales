@@ -211,10 +211,13 @@ describe('Éditeur de registre — règles', () => {
     await renderEditor();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Collecte diagnostique' }));
-    const association = panneau('diagnosis').getByText('DX-AVC, DX-NEURO').closest('li') as HTMLElement;
+    // Audit UI mobile, lot 6 : un code par pastille ; sans libelle d'option (terminologie),
+    // la pastille garde le code.
+    const association = panneau('diagnosis').getByText('DX-AVC').closest('li') as HTMLElement;
+    expect(within(association).getByText('DX-NEURO')).toBeInTheDocument();
     expect(within(association).getByText('Bloc 01')).toBeInTheDocument();
 
-    fireEvent.click(within(association).getByRole('button', { name: 'Voir la règle d’activation' }));
+    fireEvent.click(within(association).getByRole('button', { name: 'Voir la règle d’activation · Bloc 01' }));
 
     expect(screen.getByRole('tab', { name: /^Règles/ })).toHaveAttribute('aria-selected', 'true');
     // Le renvoi mène à CETTE règle, identifiée par son id de version.

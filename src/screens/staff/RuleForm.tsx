@@ -85,6 +85,27 @@ function formatRuleValue(t: Translate, value: unknown, field: TemplateField | un
   return String(value);
 }
 
+type ConditionRule = Exclude<TemplateRule, { left_field: string }>;
+
+/** « Si Intervention réalisée est égal à « Oui » » : la condition seule, sans ponctuation. */
+function conditionPhrase(t: Translate, rule: ConditionRule, fields: TemplateField[]) {
+  const conditionField = fields.find((field) => field.fieldKey === rule.if.field);
+  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value, conditionField)}`;
+}
+
+/** « Bloc 01 est affichée » : l'effet seul. */
+function consequencePhrase(t: Translate, rule: ConditionRule, fields: TemplateField[], sections: readonly TemplateSection[]) {
+  const verb = rule.then.operator === 'visible' ? t('rule.visible') : t('rule.required');
+  const sectionKey = (rule.then as { section?: unknown }).section;
+  const target = typeof sectionKey === 'string'
+    ? sectionLabel(t, {
+      sectionKey,
+      label: sections.find((section) => section.sectionKey === sectionKey)?.label ?? sectionKey,
+    })
+    : fieldLabel(fields, (rule.then as { field: string }).field);
+  return `${target} ${verb}`;
+}
+
 function ruleSentence(
   t: Translate,
   rule: TemplateRule,
@@ -95,20 +116,37 @@ function ruleSentence(
     const left = fields.find((field) => field.fieldKey === rule.left_field);
     return `${fieldLabel(fields, rule.left_field)} ${operatorLabel(t, rule.operator, left)} ${fieldLabel(fields, rule.right_field)}.`;
   }
+  return `${conditionPhrase(t, rule, fields)}, ${t('rule.then')} ${consequencePhrase(t, rule, fields, sections)}.`;
+}
 
-  const conditionField = fields.find((field) => field.fieldKey === rule.if.field);
-  const verb = rule.then.operator === 'visible' ? t('rule.visible') : t('rule.required');
-  let target: string;
-  const sectionKey = (rule.then as { section?: unknown }).section;
-  if (typeof sectionKey === 'string') {
-    target = sectionLabel(t, {
-      sectionKey,
-      label: sections.find((section) => section.sectionKey === sectionKey)?.label ?? sectionKey,
-    });
-  } else {
-    target = fieldLabel(fields, (rule.then as { field: string }).field);
-  }
-  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value, conditionField)}, ${t('rule.then')} ${target} ${verb}.`;
+function conditionRuleOf(rule: unknown): ConditionRule | null {
+  const parsed = parseRule(serializeRule(rule));
+  return parsed.ok && parsed.value && !('operator' in parsed.value) ? parsed.value : null;
+}
+
+/**
+ * Audit UI mobile, lot 6 (5.13-B) — cle de regroupement D'AFFICHAGE : la condition telle
+ * qu'elle est stockee. Les valeurs d'une liste sont triees, l'ordre de saisie ne distinguant
+ * pas deux conditions. Une comparaison, ou une regle illisible, n'a pas de condition : `null`.
+ */
+export function ruleConditionKey(rule: unknown): string | null {
+  const condition = conditionRuleOf(rule);
+  if (!condition) return null;
+  const { field, operator, value, terminologyReleaseId } = condition.if;
+  const normalized = Array.isArray(value) ? [...value].map((item) => JSON.stringify(item)).sort() : JSON.stringify(value);
+  return JSON.stringify([field, operator, normalized, terminologyReleaseId ?? null]);
+}
+
+/** La condition d'une regle, en clair et avec les libelles d'options (en-tete d'un groupe). */
+export function ruleConditionText(t: Translate, rule: unknown, fields: TemplateField[]): string | null {
+  const condition = conditionRuleOf(rule);
+  return condition ? conditionPhrase(t, condition, fields) : null;
+}
+
+/** La phrase complete d'une regle, ou `null` si elle est illisible (nom d'une ligne). */
+export function ruleText(t: Translate, rule: unknown, fields: TemplateField[], sections: readonly TemplateSection[] = []): string | null {
+  const parsed = parseRule(serializeRule(rule));
+  return parsed.ok && parsed.value ? ruleSentence(t, parsed.value, fields, sections) : null;
 }
 
 /** Une regle d'affichage ne bloque ni n'avertit : afficher une severite la decrirait mal. */
@@ -203,7 +241,12 @@ function ruleDraftOf(rule: unknown): RuleDraft | null {
   };
 }
 
-export function RuleSummary({ rule, fields, sections = [] }: { rule: unknown; fields: TemplateField[]; sections?: readonly TemplateSection[] | null }) {
+export function RuleSummary({ rule, fields, sections = [], consequenceOnly = false }: {
+  rule: unknown; fields: TemplateField[]; sections?: readonly TemplateSection[] | null;
+  /** Lot 6 (5.13-B) : dans un groupe, la condition commune est ecrite une fois en tete ;
+   *  chaque regle n'y dit plus que son effet. */
+  consequenceOnly?: boolean;
+}) {
   const { t } = useI18n();
   const parsed = parseRule(serializeRule(rule));
   // L35 : une regle ENREGISTREE AVANT le garde-fou peut porter une variable calculee la ou
@@ -217,7 +260,11 @@ export function RuleSummary({ rule, fields, sections = [] }: { rule: unknown; fi
 
   return (
     <div className="min-w-0">
-      <p className="text-sm text-slate-700">{ruleSentence(t, parsed.value, fields, sections ?? [])}</p>
+      <p className="text-sm text-slate-700">
+        {consequenceOnly && !('operator' in parsed.value)
+          ? `→ ${consequencePhrase(t, parsed.value, fields, sections ?? [])}`
+          : ruleSentence(t, parsed.value, fields, sections ?? [])}
+      </p>
       {conflict && (
         <p className="mt-1 text-xs text-amber-700">
           {t(CALCULATED_PROBLEM_KEYS[conflict.problem])} — {conflict.field.label}

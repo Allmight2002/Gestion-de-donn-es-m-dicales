@@ -129,10 +129,55 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Diagnostic retenu/ }));
     expect(onOpenField).toHaveBeenCalledWith('dx');
 
-    const openRule = screen.getByRole('button', { name: 'Voir la règle d’activation' });
+    // Audit UI mobile, lot 6 : une icone par ligne, nommee avec son bloc.
+    const openRule = screen.getByRole('button', { name: /^Voir la règle d’activation · / });
     expect(openRule).not.toBeDisabled();
     fireEvent.click(openRule);
     expect(onOpenRule).toHaveBeenCalledWith('association');
     expect(screen.getByLabelText(/Codes alternatifs déclenchant ce bloc/)).toBeDisabled();
+  });
+
+  // Audit UI mobile, lot 6 (5.13) : codes en pastilles avec leurs libelles, explications
+  // derriere ⓘ, un seul bouton plein — celui du formulaire qui porte une modification.
+  test('codes en pastilles avec libellés, explications derrière ⓘ, bouton plein seulement si modifié', () => {
+    const configuredVersion: TemplateVersion = {
+      ...version,
+      diagnosisConfiguration: [{ scope: 'patient', diagnosisFieldKey: 'dx', terminologyReleaseId: null, commonOnlyCodes: [] }],
+    };
+    const labelled = fields.map((item) => item.fieldKey === 'dx' ? {
+      ...item, allowedValues: ['avc', 'tumeur'],
+      allowedOptions: [
+        { valueKey: 'avc', label: 'Accident vasculaire cérébral', isActive: true },
+        { valueKey: 'tumeur', label: 'Tumeur rachidienne', isActive: true },
+      ],
+    } : item);
+    renderEditor({
+      version: configuredVersion,
+      fields: labelled,
+      rules: [...rules, {
+        id: 'association', severity: 'block', message: null,
+        rule: { if: { field: 'dx', operator: 'contains_any', value: ['avc', 'tumeur'] }, then: { section: 'clinique', operator: 'visible' } },
+      }],
+      onOpenRule: () => {},
+    });
+
+    const pill = screen.getByText('Accident vasculaire cérébral');
+    expect(pill).toHaveAttribute('title', 'avc');
+    expect(within(pill.closest('li') as HTMLElement).getByText('Tumeur rachidienne')).toBeInTheDocument();
+    expect(screen.queryByText(/avc, tumeur/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voir la règle d’activation · Clinique' })).toHaveClass('icon-button');
+
+    // Les deux explications ne sont plus ecrites en toutes lettres.
+    expect(screen.queryByText(/Diagnostics sélectionnables même sans bloc/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Chaque association EST la règle/)).not.toBeInTheDocument();
+
+    const saveConfig = screen.getByRole('button', { name: 'Enregistrer la configuration' });
+    const saveAssociation = screen.getByRole('button', { name: 'Enregistrer cette association' });
+    expect(saveConfig).toHaveClass('btn-secondary');
+    expect(saveAssociation).toHaveClass('btn-secondary');
+    fireEvent.change(screen.getByLabelText('Bloc racine'), { target: { value: 'clinique' } });
+    fireEvent.change(screen.getByLabelText(/Codes alternatifs déclenchant ce bloc/), { target: { value: 'avc' } });
+    expect(saveAssociation).toHaveClass('btn-primary');
+    expect(saveConfig).toHaveClass('btn-secondary');
   });
 });

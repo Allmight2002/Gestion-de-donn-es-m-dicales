@@ -7,6 +7,7 @@ import type { BaseListing } from '../../data/bases';
 import { PageHeader } from '../../components/PageHeader';
 import { SkeletonList } from '../../components/Skeleton';
 import { FormPreparationEditor } from './FormPreparationEditor';
+import { useBaseFocus } from './baseFocus';
 
 // Edition LIBRE du gabarit d'une base par son medecin proprietaire (cahier v3.0) :
 // ajouter / modifier / supprimer des variables. Reutilise l'editeur de version (sans les
@@ -20,6 +21,10 @@ export function BaseTemplateEditor() {
   const [listing, setListing] = useState<BaseListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Audit UI mobile, lot 5 (5.9 Formulaire B) : pendant l'edition, l'editeur prend tout l'ecran
+  // (ni en-tete de page, ni onglets de la base) ; la page d'une base reprend ses onglets ensuite.
+  const [editing, setEditing] = useState(false);
+  useBaseFocus(editing);
 
   const load = useCallback(async () => {
     if (!baseId) return;
@@ -50,8 +55,8 @@ export function BaseTemplateEditor() {
 
   return (
     <section className="space-y-4">
-      <PageHeader title={t('formprep.page_title')} description={t('formprep.page_description')} />
-      <FormPreparationEditor baseId={baseId!} listing={listing} onBack={back} />
+      {!editing && <PageHeader title={t('formprep.page_title')} description={t('formprep.page_description')} />}
+      <FormPreparationEditor baseId={baseId!} listing={listing} onBack={back} onEditingChange={setEditing} />
     </section>
   );
 }

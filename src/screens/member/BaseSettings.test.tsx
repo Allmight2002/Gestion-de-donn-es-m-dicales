@@ -75,10 +75,33 @@ describe('BaseSettings', () => {
   });
 
   test('propose la copie hors-ligne et renvoie aux comptes de mission', async () => {
+    const user = userEvent.setup();
     const bases = { async getBase() { return ownerListing; } } as unknown as BaseRepository;
     renderSettings(bases);
-    expect(await screen.findByRole('button', { name: 'Rendre disponible hors-ligne' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Comptes de mission/ })).toBeInTheDocument();
+    // Audit UI mobile, lot 5 (5.9 Général A) : chaque reglage dit sa valeur ; le detail s'ouvre a la demande.
+    const offline = await screen.findByRole('button', { name: /^Hors-ligne/ });
+    expect(offline).toHaveTextContent('Non disponible');
+    expect(offline).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'Rendre disponible hors-ligne' })).toBeNull();
+    await user.click(offline);
+    expect(offline).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Rendre disponible hors-ligne' })).toBeInTheDocument();
+    expect(screen.getByText('Identité et images indisponibles hors-ligne.')).toBeVisible();
+    // Les comptes de mission : un simple lien, plus une carte.
+    expect(screen.getByRole('link', { name: 'Comptes de mission' })).toHaveAttribute('href', '/missions');
+  });
+
+  test('le modele d observation se lit sur sa ligne et se change a la demande tant que la base est vide', async () => {
+    const user = userEvent.setup();
+    const setObservationModel = vi.fn(async () => undefined);
+    const bases = { async getBase() { return ownerListing; }, setObservationModel } as unknown as BaseRepository;
+    renderSettings(bases);
+    const row = await screen.findByRole('button', { name: /^Modèle d’observation/ });
+    expect(row).toHaveTextContent('Suivi répété');
+    await user.click(row);
+    expect(screen.getByText(/Il sera verrouillé dès la première saisie/)).toBeVisible();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Modèle d’observation' }), 'event_registry');
+    expect(setObservationModel).toHaveBeenCalledWith('b1', 'event_registry');
   });
 
   test('un acces a echeance ne se voit ni proposer de copie locale ni les actions du proprietaire', async () => {
@@ -91,16 +114,22 @@ describe('BaseSettings', () => {
     const bases = { async getBase() { return expiring; } } as unknown as BaseRepository;
     renderSettings(bases);
     await screen.findByText('Paramètres');
+    await userEvent.click(screen.getByRole('button', { name: /^Hors-ligne/ }));
+    expect(screen.getByText('Aucune base enregistrée pour le hors-ligne.')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Rendre disponible hors-ligne' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Supprimer la base' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Modèle d’observation/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Modèle d’observation/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Comptes de mission' })).not.toBeInTheDocument();
   });
 
   test('le modele d observation se verrouille des qu un patient existe', async () => {
     const bases = { async getBase() { return ownerListing; } } as unknown as BaseRepository;
     const patients = { async listPatientsPage() { return { rows: [], total: 3 }; } } as unknown as PatientRepository;
     renderSettings(bases, patients);
-    expect(await screen.findByLabelText(/Modèle d’observation/)).toBeDisabled();
+    // Verrouille : la valeur se lit, sans champ desactive ni aide qui dirait le contraire.
+    expect(await screen.findByText(/Suivi répété · verrouillé depuis la première saisie/)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Modèle d’observation' })).toBeNull();
+    expect(screen.queryByText(/Vous pouvez encore modifier ce choix/)).toBeNull();
   });
 });
 
@@ -124,6 +153,9 @@ describe('BaseSettings — conversion des codes d options (L30)', () => {
   function repo(over: Partial<BaseRepository>) {
     return { async getBase() { return ownerListing; }, ...over } as unknown as BaseRepository;
   }
+  // Outil rare : range dans « Avancé », ouvert a la demande.
+  const openRepair = async (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(await screen.findByRole('button', { name: 'Codes des options de liste' }));
 
   test('analyser n appelle jamais la conversion et montre ce qui sera fait', async () => {
     const user = userEvent.setup();
@@ -131,6 +163,8 @@ describe('BaseSettings — conversion des codes d options (L30)', () => {
     const repairOptionKeys = vi.fn();
     renderSettings(repo({ previewOptionKeyRepair, repairOptionKeys }));
 
+    expect(await screen.findByRole('heading', { name: 'Avancé' })).toBeInTheDocument();
+    await openRepair(user);
     await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
 
     expect(previewOptionKeyRepair).toHaveBeenCalledWith('b1');
@@ -149,6 +183,7 @@ describe('BaseSettings — conversion des codes d options (L30)', () => {
     }));
     renderSettings(repo({ previewOptionKeyRepair, repairOptionKeys }));
 
+    await openRepair(user);
     expect(screen.queryByRole('button', { name: 'Convertir les fiches' })).toBeNull();
     await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
     await user.click(await screen.findByRole('button', { name: 'Convertir les fiches' }));
@@ -165,6 +200,7 @@ describe('BaseSettings — conversion des codes d options (L30)', () => {
     const previewOptionKeyRepair = vi.fn(async () => ({ records: { repairable: 0, blocked: 0 }, fields: [] }));
     renderSettings(repo({ previewOptionKeyRepair }));
 
+    await openRepair(user);
     await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
     expect(await screen.findByText(/Aucune fiche à convertir/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Convertir les fiches' })).toBeNull();

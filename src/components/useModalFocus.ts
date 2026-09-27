@@ -38,6 +38,11 @@ export function useModalFocus(
     initial.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Une liste recherchable ouverte (combobox ARIA) se referme d'abord, comme une liste
+        // native : Echap ne ferme la fenetre qu'au second appui.
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.getAttribute('role') === 'combobox' && target.getAttribute('aria-expanded') === 'true'
+          && dialog.contains(target)) return;
         event.preventDefault(); event.stopPropagation();
         if (!callbacks.current.blockEscape) callbacks.current.onEscape();
       }

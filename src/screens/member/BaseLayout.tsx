@@ -8,6 +8,7 @@ import { offlineCache, useOnline } from '../../data/offline';
 import type { BaseListing } from '../../data/bases';
 import { useTopBar } from '../../components/TopBar';
 import { overflowFadeClass, useOverflowEdges } from '../../lib/useOverflowEdges';
+import { BaseFocusContext } from './baseFocus';
 
 // La page d'une base tient en QUATRE destinations. Dix onglets de meme poids obligeaient a
 // faire defiler une barre pour atteindre ce qu'on ouvre deux fois par an, alors que la saisie
@@ -38,6 +39,8 @@ export function BaseLayout() {
   const tabBar = useRef<HTMLElement>(null);
   const [tabScroller, tabEdges] = useOverflowEdges<HTMLDivElement>();
   const [subTabScroller, subTabEdges] = useOverflowEdges<HTMLDivElement>();
+  // Plein ecran demande par un ecran de travail (`useBaseFocus`).
+  const [focused, setFocused] = useState(false);
 
   // UX-12 : le fil d'Ariane ne doit jamais garder le nom de la base precedente. L'etat est
   // remis a zero PENDANT le rendu, avant toute lecture, et non dans un effet.
@@ -149,81 +152,96 @@ export function BaseLayout() {
   // droits encore en chargement, decide de ce qui est un onglet.
   const displayName = name || (failed ? t('common.error') : t('common.loading'));
   const atTab = allTabs.some((tab) => tab.subs.some((sub) => sub.to === pathname));
+  // Decision 9 : un compte de mission ouvre directement son unique base ; depuis un onglet, il
+  // n'a pas d'accueil ou remonter (le tableau de bord le renverrait ici).
+  const backToDashboard = atTab && !isMission;
   useTopBar({
     title: displayName,
-    backTo: atTab ? '/' : base,
-    backLabel: t('nav.back_to').replace('{label}', atTab ? t('member.dashboard.title') : displayName),
+    backTo: atTab ? (backToDashboard ? '/' : undefined) : base,
+    backLabel: backToDashboard || !atTab
+      ? t('nav.back_to').replace('{label}', atTab ? t('member.dashboard.title') : displayName)
+      : undefined,
   });
 
   return (
     <section className="space-y-4">
-      <p className="hidden text-sm text-slate-400 lg:block">
-          <Link to="/" className="underline decoration-slate-300 underline-offset-4 hover:text-teal-700">{t('member.dashboard.title')}</Link>
-        <span aria-hidden> › </span>
-        {/* Ni le nom precedent, ni une affirmation d'existence : chargement, nom connu, ou echec. */}
-        <span className="text-slate-600">{displayName}</span>
-      </p>
-
-      {/* Bandeau permanent du compte de mission : l'echeance ne doit jamais surprendre. */}
-      {isMission && missionUntil && (
-        <p
-          className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
-            daysLeft !== null && daysLeft <= 14
-              ? 'bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200'
-              : 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200'
-          }`}
-        >
-          <Clock size={15} aria-hidden />
-          {daysLeft !== null && daysLeft <= 14
-            ? t('mission.banner_soon')
-                .replace('{d}', new Date(missionUntil).toLocaleDateString())
-                .replace('{n}', String(Math.max(daysLeft, 0)))
-            : t('mission.banner').replace('{d}', new Date(missionUntil).toLocaleDateString())}
+      {!focused && (
+        <>
+        <p className="hidden text-sm text-slate-400 lg:block">
+          {!isMission && (
+            <>
+              <Link to="/" className="underline decoration-slate-300 underline-offset-4 hover:text-teal-700">{t('member.dashboard.title')}</Link>
+              <span aria-hidden> › </span>
+            </>
+          )}
+          {/* Ni le nom precedent, ni une affirmation d'existence : chargement, nom connu, ou echec. */}
+          <span className="text-slate-600">{displayName}</span>
         </p>
-      )}
 
-      <div ref={tabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(tabEdges)}`}>
-        <nav ref={tabBar} aria-label={name || t('base.navigation')} className="flex min-w-max gap-1 border-b border-slate-200">
-          {tabs.map((tab) => (
-            // L'onglet parent mene a sa premiere entree disponible et reste allume pour toutes
-            // les autres : NavLink ne sait pas faire ca, l'etat actif est donc calcule ici.
-            <Link
-              key={tab.labelKey}
-              to={tab.subs[0]!.to}
-              aria-current={tab.active ? 'page' : undefined}
-              className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
-                tab.active ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <tab.Icon size={15} aria-hidden />
-              {t(tab.labelKey)}
-            </Link>
-          ))}
-        </nav>
-      </div>
+        {/* Bandeau permanent du compte de mission : l'echeance ne doit jamais surprendre. */}
+        {isMission && missionUntil && (
+          <p
+            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+              daysLeft !== null && daysLeft <= 14
+                ? 'bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200'
+                : 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200'
+            }`}
+          >
+            <Clock size={15} aria-hidden />
+            {daysLeft !== null && daysLeft <= 14
+              ? t('mission.banner_soon')
+                  .replace('{d}', new Date(missionUntil).toLocaleDateString())
+                  .replace('{n}', String(Math.max(daysLeft, 0)))
+              : t('mission.banner').replace('{d}', new Date(missionUntil).toLocaleDateString())}
+          </p>
+        )}
 
-      {subTabs.length > 1 && (
-        <div ref={subTabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(subTabEdges)}`}>
-          <nav aria-label={t(tabs.find((tab) => tab.active)!.labelKey)} className="flex min-w-max gap-1">
-            {subTabs.map((sub) => (
-              <NavLink
-                key={sub.to}
-                to={sub.to}
-                end
-                className={({ isActive }) =>
-                  `rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                    isActive ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                  }`
-                }
+        <div ref={tabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(tabEdges)}`}>
+          <nav ref={tabBar} aria-label={name || t('base.navigation')} className="flex min-w-max gap-1 border-b border-slate-200">
+            {tabs.map((tab) => (
+              // L'onglet parent mene a sa premiere entree disponible et reste allume pour toutes
+              // les autres : NavLink ne sait pas faire ca, l'etat actif est donc calcule ici.
+              <Link
+                key={tab.labelKey}
+                to={tab.subs[0]!.to}
+                aria-current={tab.active ? 'page' : undefined}
+                className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
+                  tab.active ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
               >
-                {t(sub.labelKey)}
-              </NavLink>
+                <tab.Icon size={15} aria-hidden />
+                {t(tab.labelKey)}
+              </Link>
             ))}
           </nav>
         </div>
+
+        {subTabs.length > 1 && (
+          <div ref={subTabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(subTabEdges)}`}>
+            <nav aria-label={t(tabs.find((tab) => tab.active)!.labelKey)} className="flex min-w-max gap-1">
+              {subTabs.map((sub) => (
+                <NavLink
+                  key={sub.to}
+                  to={sub.to}
+                  end
+                  className={({ isActive }) =>
+                    `rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                      isActive ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                    }`
+                  }
+                >
+                  {t(sub.labelKey)}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        )}
+        </>
       )}
 
-      <Outlet />
+      <BaseFocusContext.Provider value={setFocused}>
+        <Outlet />
+      </BaseFocusContext.Provider>
     </section>
   );
 }

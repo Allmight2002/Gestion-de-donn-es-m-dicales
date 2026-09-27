@@ -8,10 +8,12 @@
 // affiche en lecture seule. Seul le libelle se corrige.
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { Checkbox } from '../../components/Checkbox';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { HelpTip } from '../../components/HelpTip';
+import { Menu, MenuItem } from '../../components/Menu';
 import type { ObservationModel } from '../../data/bases';
 import type { TemplateField, TemplateSection } from '../../data/types';
 import { makeValueKey } from '../../domain/fieldOptions';
@@ -47,6 +49,7 @@ export function SectionsEditor({
   onRepeatableChange,
   observationModel,
   onDirtyChange,
+  narrow = false,
 }: {
   sections: TemplateSection[];
   /** Sert a dire, avant tout clic, combien de variables une section porte. */
@@ -74,12 +77,18 @@ export function SectionsEditor({
   observationModel?: ObservationModel;
   /** Notifie le parent de la saisie locale non accusee (ajout ou renommage). */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Audit UI mobile, lot 6 (5.13-A) : sous 768 px, une ligne « nom · N variables » par
+   *  section, ses commandes s'ouvrant a la demande. */
+  narrow?: boolean;
 }) {
   const { t } = useI18n();
   const repeatableHintId = useId();
   const [parentKey, setParentKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  // Lot 6 : sur telephone, la liste d'abord ; le formulaire d'ajout s'ouvre a la demande.
+  const [addOpen, setAddOpen] = useState(false);
   const [draftLabel, setDraftLabel] = useState('');
   const [pendingEditAction, setPendingEditAction] = useState<
     { kind: 'switch'; sectionId: string } | { kind: 'cancel' } | null
@@ -152,6 +161,7 @@ export function SectionsEditor({
     pendingAdd.current = null;
     setNewLabel('');
     setParentKey('');
+    setAddOpen(false);
   }
 
   // Les callbacks historiques etaient `void run(...)`. Avec un callback qui retourne la
@@ -171,6 +181,7 @@ export function SectionsEditor({
       pendingAdd.current = null;
       setNewLabel('');
       setParentKey('');
+      setAddOpen(false);
     }
   }, [sections]);
 
@@ -193,8 +204,30 @@ export function SectionsEditor({
     <div>
       <h3 className="mb-1 text-sm font-semibold text-slate-700">{t('admin.sections')}</h3>
 
+      {narrow && !addOpen && newLabel === '' && parentKey === '' ? (
+        // Creer ou importer : le meme geste, reuni dans un seul bouton sur telephone.
+        <div className="mt-3">
+          {onImportBlock ? (
+            <Menu
+              triggerLabel={t('editor.add_section_menu')}
+              triggerClassName="btn-secondary"
+              triggerContent={<><Plus size={16} aria-hidden /> {t('editor.add_section_menu')}</>}
+              panelClassName="card absolute left-0 z-10 mt-2 w-60 space-y-1 p-2 shadow-lg"
+            >
+              <MenuItem onSelect={() => setAddOpen(true)} disabled={busy}>{t('editor.new_section')}</MenuItem>
+              <MenuItem onSelect={onImportBlock} disabled={busy}>{t('blockimport.command')}</MenuItem>
+            </Menu>
+          ) : (
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => setAddOpen(true)}>
+              <Plus size={16} aria-hidden /> {t('editor.new_section')}
+            </button>
+          )}
+        </div>
+      ) : (
+      /* Une colonne sur telephone : cote a cote, la liste des parents prenait la largeur de
+         son plus long libelle et faisait deborder l'ecran. */
       <form
-        className="mt-3 flex flex-wrap items-end gap-2"
+        className="mt-3 grid gap-2 sm:flex sm:flex-wrap sm:items-end"
         onSubmit={(e) => {
           e.preventDefault();
           const label = newLabel.trim();
@@ -220,6 +253,7 @@ export function SectionsEditor({
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             placeholder={t('admin.section_placeholder')}
+            autoFocus={narrow && addOpen}
           />
         </label>
         <label className="form-label">{t('section.parent')}
@@ -238,13 +272,22 @@ export function SectionsEditor({
             {t('blockimport.command')}
           </button>
         )}
+        {narrow && (
+          <button type="button" className="btn-ghost" onClick={() => { setNewLabel(''); setParentKey(''); setAddOpen(false); }}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
+      )}
 
       {/* Audit UI mobile, lot 0 — la regle du groupe repetable est la meme pour toutes les
           sections : elle est dite une fois ici au lieu d'etre repetee sous chacune (55 fois sur
           un jeu de 62 sections). Chaque case y renvoie par `aria-describedby`. */}
+      {/* Lot 6 : sur telephone, l'explication s'ouvre derriere le ⓘ de la case, dans la seule
+          ligne depliee ; elle reste lue par les lecteurs d'ecran. L'avertissement du modele
+          verrouille, lui, reste visible. */}
       {onRepeatableChange && sections.length > 0 && (
-        <p id={repeatableHintId} className="helper-text mt-3">
+        <p id={repeatableHintId} className={narrow && !isCrossSectional ? 'sr-only' : 'helper-text mt-3'}>
           <span className="font-medium">{t('section.repeatable')}</span>
           {' : '}{isCrossSectional ? t('section.repeatable_locked_model') : t('section.repeatable_hint')}
         </p>
@@ -256,8 +299,8 @@ export function SectionsEditor({
           const index = siblings.findIndex((s) => s.id === section.id);
           const hasChildren = sections.some((s) => s.parentSectionKey === section.sectionKey);
           const used = countIn(section.sectionKey);
-          return (
-            <li key={section.id} className={`card flex min-w-0 flex-wrap items-start gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
+          const content = (
+            <>
               <span className="flex shrink-0 flex-col">
                 <button
                   type="button"
@@ -318,12 +361,13 @@ export function SectionsEditor({
                       il tombait a quelques pixels des que la liste deroulante des parents etait
                       large, et s'affichait alors une lettre par ligne. */}
                   <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
-                    <span className="break-words font-medium text-slate-900">{sectionLabel(t, section)}</span>
+                    {/* Sur telephone, le nom et le compte sont deja sur la ligne repliee. */}
+                    {!narrow && <span className="break-words font-medium text-slate-900">{sectionLabel(t, section)}</span>}
                     <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
                       {/* Le code interne est montre, jamais modifiable : c'est lui que portent
                           les fiches deja saisies et les instantanes hors-ligne. */}
                       <span className="break-all font-mono text-slate-400">{section.sectionKey}</span>
-                      <span className="text-slate-500">{t('admin.section_field_count').replace('{n}', String(used))}</span>
+                      {!narrow && <span className="text-slate-500">{t('admin.section_field_count').replace('{n}', String(used))}</span>}
                     </span>
                   </div>
                   <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
@@ -376,7 +420,7 @@ export function SectionsEditor({
                   sous-sections — un groupe enfant compris — ne peut pas devenir un groupe : la
                   case le dit au lieu de laisser la base refuser. */}
               {onRepeatableChange && (
-                <div className="basis-full border-t border-slate-100 pt-2 dark:border-slate-700">
+                <div className="flex basis-full items-start gap-1 border-t border-slate-100 pt-2 dark:border-slate-700">
                   <Checkbox
                     label={t('section.repeatable')}
                     aria-describedby={repeatableHintId}
@@ -390,8 +434,44 @@ export function SectionsEditor({
                       else void onRepeatableChange(section.id, false, []);
                     }}
                   />
+                  {narrow && !isCrossSectional && (
+                    <HelpTip label={t('section.repeatable')} className="-my-2">{t('section.repeatable_hint')}</HelpTip>
+                  )}
                 </div>
               )}
+            </>
+          );
+          if (!narrow) return (
+            <li key={section.id} className={`card flex min-w-0 flex-wrap items-start gap-2 px-3 py-2 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
+              {content}
+            </li>
+          );
+          // Une section en cours de renommage reste depliee : un brouillon ne se cache pas.
+          const open = openIds.has(section.id) || editingId === section.id;
+          const panelId = `section-panel-${section.id}`;
+          return (
+            <li key={section.id} className={`card min-w-0 ${section.parentSectionKey ? 'ml-6 border-l-4' : ''}`}>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={panelId}
+                className="flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                onClick={() => setOpenIds((current) => {
+                  const next = new Set(current);
+                  if (next.has(section.id)) next.delete(section.id); else next.add(section.id);
+                  return next;
+                })}
+              >
+                <span className="min-w-0 break-words">
+                  <span className="font-medium text-slate-900">{sectionLabel(t, section)}</span>
+                  <span className="text-xs text-slate-500"> · {t('admin.section_field_count').replace('{n}', String(used))}</span>
+                  {section.isRepeatable && <>{' '}<span className="ml-1 rounded bg-violet-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:bg-violet-900/50 dark:text-violet-100">{t('section.repeatable_badge')}</span></>}
+                </span>
+                {open ? <ChevronDown size={16} aria-hidden className="shrink-0 text-slate-500" /> : <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-500" />}
+              </button>
+              <div id={panelId} hidden={!open} className="flex min-w-0 flex-wrap items-start gap-2 border-t border-slate-100 px-3 py-2 dark:border-slate-700">
+                {content}
+              </div>
             </li>
           );
         })}

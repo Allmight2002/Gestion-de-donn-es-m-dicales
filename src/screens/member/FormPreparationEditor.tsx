@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MoreHorizontal } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useFormPreparationRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
@@ -13,6 +14,9 @@ import { errorMessage } from '../../lib/errorMessage';
 import type { MessageKey } from '../../i18n/messages';
 import { SkeletonList } from '../../components/Skeleton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { HelpTip } from '../../components/HelpTip';
+import { Menu, MenuItem } from '../../components/Menu';
+import { useTopBar } from '../../components/TopBar';
 import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 import {
   createPreparationTemplateRepository,
@@ -29,6 +33,8 @@ export interface FormPreparationEditorProps {
   baseId: string;
   listing: BaseListing;
   onBack: () => void;
+  /** Audit UI mobile, lot 5 : l'ecran parent passe en plein ecran pendant l'edition. */
+  onEditingChange?: (editing: boolean) => void;
 }
 
 type PreparationAction = 'save' | 'preview' | 'apply' | 'discard';
@@ -343,6 +349,15 @@ function PreparationCanvas({
   const canApply = preparation?.state === 'ready' && !dirty && !editorDirty && impact !== null && !inFlight.current;
   const busy = action !== null;
   const stateText = stateLabel(preparation, dirty || editorDirty, t);
+  // Audit UI mobile, lot 5 (5.9 Formulaire B) : un seul bouton principal, celui de l'etape
+  // suivante (Enregistrer, puis Voir l'impact, puis Appliquer). Rien apres une fin de preparation.
+  const step: 'save' | 'preview' | 'apply' | null = isTerminal(preparation) && !dirty && !editorDirty ? null
+    : dirty || editorDirty || !preparation ? 'save'
+      : impact !== null && preparation.state === 'ready' ? 'apply'
+        : 'preview';
+
+  // En plein ecran, la barre haute du telephone porte le titre et la fermeture de la preparation.
+  useTopBar({ title: t('formprep.title'), onClose: requestClose, closeLabel: t('formprep.close') });
   const serverCounts = objectOf(impact?.serverCounts);
   const clinicalWrites = objectOf(impact?.clinicalWrites);
   const patientCount = countOf(serverCounts?.patients);
@@ -397,68 +412,76 @@ function PreparationCanvas({
         onConfirm={() => void applyPreparation()}
       />
 
-      <section className="card space-y-4 p-4" data-testid="form-preparation-session">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-slate-900">{t('formprep.title')}</h2>
-            <p className="mt-1 text-sm text-slate-600">{t('formprep.description')}</p>
-            <p className="mt-2 text-xs text-slate-500">
-              {t('formprep.source')}: {templateName ?? source.version.templateId}
-              {' · '}{t('formprep.source_version')} {source.version.versionNumber}
-              {' · '}{t('formprep.source_revision')} {context.sourceRevision}
-            </p>
-            <p className="mt-1 break-all text-xs text-slate-400">
-              {t('formprep.source_fingerprint')}: {context.sourceFingerprint.slice(0, 18)}…
-            </p>
+      <section className="card space-y-3 p-4" data-testid="form-preparation-session">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-x-1">
+              <h2 className="text-lg font-semibold text-slate-900">{t('formprep.title')}</h2>
+              <HelpTip label={t('help.section')} className="-my-2.5">{t('formprep.description')}</HelpTip>
+            </div>
+            <span
+              data-testid="formprep-state"
+              className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-medium ${dirty || editorDirty || preparation?.state === 'conflict'
+                ? 'bg-amber-100 text-amber-900' : preparation?.state === 'ready' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700'}`}
+            >
+              {t('formprep.status')}: {stateText}
+            </span>
           </div>
-          <span
-            data-testid="formprep-state"
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${dirty || editorDirty || preparation?.state === 'conflict'
-              ? 'bg-amber-100 text-amber-900' : preparation?.state === 'ready' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700'}`}
+          {/* Fermer et Abandonner : des gestes rares, ranges dans « ⋯ ». */}
+          <Menu
+            triggerLabel={t('nav.more_actions')}
+            triggerClassName="icon-button h-11 w-11 shrink-0"
+            triggerContent={<MoreHorizontal size={20} aria-hidden />}
+            panelClassName="card absolute right-0 z-20 mt-2 w-56 space-y-1 p-2 shadow-lg"
           >
-            {t('formprep.status')}: {stateText}
-          </span>
+            <MenuItem onSelect={requestClose} disabled={busy}>{t('formprep.close')}</MenuItem>
+            <MenuItem
+              onSelect={() => setDiscardOpen(true)}
+              disabled={busy || (isTerminal(preparation) && !dirty)}
+              className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              {t('formprep.abandon')}
+            </MenuItem>
+          </Menu>
         </div>
-        <p className="text-xs text-slate-500">{t('formprep.technical_note')}</p>
-        <p className="text-xs text-slate-500">{t('formprep.no_justification')}</p>
 
-        <div className="flex flex-wrap gap-2" data-testid="formprep-actions">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => void savePreparation()}
-            disabled={!dirty || editorDirty || busy || preparation?.state === 'conflict' || isTerminal(preparation)}
-          >
-            {action === 'save' ? t('formprep.saving') : t('formprep.save')}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => void previewPreparation()}
-            disabled={!canPreview || busy}
-          >
-            {action === 'preview' ? t('formprep.saving') : t('formprep.impact')}
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setApplyOpen(true)}
-            disabled={!canApply || busy}
-          >
-            {t('formprep.apply')}
-          </button>
-          <button
-            type="button"
-            className="btn-danger"
-            onClick={() => setDiscardOpen(true)}
-            disabled={busy || (isTerminal(preparation) && !dirty)}
-          >
-            {t('formprep.abandon')}
-          </button>
-          <button type="button" className="btn-ghost" onClick={requestClose} disabled={busy}>
-            {t('formprep.close')}
-          </button>
-        </div>
+        {/* Le numero technique reste secondaire : il se lit a la demande. */}
+        <details className="text-xs text-slate-500">
+          <summary className="cursor-pointer select-none">{t('formprep.technical_details')}</summary>
+          <p className="mt-2">
+            {t('formprep.source')}: {templateName ?? source.version.templateId}
+            {' · '}{t('formprep.source_version')} {source.version.versionNumber}
+            {' · '}{t('formprep.source_revision')} {context.sourceRevision}
+          </p>
+          <p className="mt-1 break-all">{t('formprep.source_fingerprint')}: {context.sourceFingerprint.slice(0, 18)}…</p>
+          <p className="mt-1">{t('formprep.technical_note')}</p>
+          <p className="mt-1">{t('formprep.no_justification')}</p>
+        </details>
+
+        {step && (
+          <div data-testid="formprep-actions">
+            {step === 'save' && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void savePreparation()}
+                disabled={!dirty || editorDirty || busy || preparation?.state === 'conflict' || isTerminal(preparation)}
+              >
+                {action === 'save' ? t('formprep.saving') : t('formprep.save')}
+              </button>
+            )}
+            {step === 'preview' && (
+              <button type="button" className="btn-primary" onClick={() => void previewPreparation()} disabled={!canPreview || busy}>
+                {action === 'preview' ? t('formprep.saving') : t('formprep.impact')}
+              </button>
+            )}
+            {step === 'apply' && (
+              <button type="button" className="btn-primary" onClick={() => setApplyOpen(true)} disabled={!canApply || busy}>
+                {t('formprep.apply')}
+              </button>
+            )}
+          </div>
+        )}
 
         {preparation?.state === 'conflict' && (
           <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -517,7 +540,7 @@ function PreparationCanvas({
   );
 }
 
-export function FormPreparationEditor({ baseId, listing, onBack }: FormPreparationEditorProps) {
+export function FormPreparationEditor({ baseId, listing, onBack, onEditingChange }: FormPreparationEditorProps) {
   const { t } = useI18n();
   const repository = useFormPreparationRepository();
   const templates = useTemplateRepository();
@@ -552,6 +575,10 @@ export function FormPreparationEditor({ baseId, listing, onBack }: FormPreparati
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    onEditingChange?.(editing);
+  }, [editing, onEditingChange]);
 
   async function resumeConflict(): Promise<void> {
     const preparation = session?.opened.preparation;
@@ -631,29 +658,31 @@ export function FormPreparationEditor({ baseId, listing, onBack }: FormPreparati
   const conflict = preparation?.state === 'conflict';
   const actionLabel = conflict ? t('formprep.resume') : preparation ? t('formprep.continue') : t('formprep.start');
 
+  // Audit UI mobile, lot 5 (5.9 Formulaire A) : l'accueil tient en une ligne et un bouton ;
+  // version technique, revision, empreinte et note passent dans « Détails techniques ».
   return (
     <section className="space-y-4" data-testid="form-preparation-landing">
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <div className="card space-y-4 p-5">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">{t('formprep.title')}</h2>
-          <p className="mt-1 text-sm text-slate-600">{t('formprep.description')}</p>
-        </div>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div><dt className="text-xs text-slate-500">{t('formprep.source')}</dt><dd className="font-medium">{listing.templateName ?? session.source.version.templateId}</dd></div>
-          <div><dt className="text-xs text-slate-500">{t('formprep.source_version')}</dt><dd>{session.source.version.versionNumber}</dd></div>
-          <div><dt className="text-xs text-slate-500">{t('formprep.source_revision')}</dt><dd>{session.opened.context.sourceRevision}</dd></div>
-          <div><dt className="text-xs text-slate-500">{t('formprep.source_fingerprint')}</dt><dd className="break-all text-xs">{session.opened.context.sourceFingerprint.slice(0, 18)}…</dd></div>
-        </dl>
-        <p className="text-xs text-slate-500">{t('formprep.technical_note')}</p>
+      <div className="card space-y-4 p-4 sm:p-5">
+        <p className="text-sm text-slate-700 dark:text-slate-200">
+          {t('formprep.form_line')
+            .replace('{name}', listing.templateName ?? session.source.version.templateId)
+            .replace('{version}', String(session.source.version.versionNumber))}
+        </p>
         {preparation && <p data-testid="formprep-landing-state" className="text-sm text-slate-700">{t('formprep.status')}: {stateLabel(preparation, false, t)}</p>}
         {conflict && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('formprep.conflict_help')}</p>}
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn-primary" onClick={beginEditing} disabled={busy}>
-            {busy ? t('formprep.saving') : actionLabel}
-          </button>
-          <button type="button" className="btn-ghost" onClick={onBack} disabled={busy}>{t('formprep.back')}</button>
-        </div>
+        <button type="button" className="btn-primary" onClick={beginEditing} disabled={busy}>
+          {busy ? t('formprep.saving') : actionLabel}
+        </button>
+        <details className="text-sm">
+          <summary className="cursor-pointer select-none text-slate-500">{t('formprep.technical_details')}</summary>
+          <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div><dt className="text-xs text-slate-500">{t('formprep.source_version')}</dt><dd>{session.source.version.versionNumber}</dd></div>
+            <div><dt className="text-xs text-slate-500">{t('formprep.source_revision')}</dt><dd>{session.opened.context.sourceRevision}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-xs text-slate-500">{t('formprep.source_fingerprint')}</dt><dd className="break-all text-xs">{session.opened.context.sourceFingerprint.slice(0, 18)}…</dd></div>
+          </dl>
+          <p className="mt-2 text-xs text-slate-500">{t('formprep.technical_note')}</p>
+        </details>
       </div>
     </section>
   );
