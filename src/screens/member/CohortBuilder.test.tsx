@@ -152,8 +152,17 @@ describe('CohortBuilder', () => {
     }));
 
     expect(await screen.findByText((_, element) => element?.textContent === '7 patients · 9 rencontres')).toBeInTheDocument();
-    expect(screen.getByText(/figez-la avant de l’exporter/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Figer maintenant' }));
+    // Audit UI mobile, lot 4 (5.8-A) : deux lignes ; l'aide derriere un ⓘ, les actions dans « ⋯ ».
+    const card = screen.getByRole('heading', { name: 'Suivi F' }).closest('li') as HTMLLIElement;
+    expect(card).toHaveTextContent('Population mise à jour automatiquement · 7 patients · 9 rencontres');
+    expect(screen.queryByText(/figez-la avant de l’exporter/i)).toBeNull();
+    await userEvent.click(within(card).getByRole('button', { name: 'En savoir plus' }));
+    expect(screen.getByRole('dialog', { name: 'En savoir plus' })).toHaveTextContent(/figez-la avant de l’exporter/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Fermer' }));
+    await userEvent.click(within(card).getByRole('button', { name: 'Actions · Suivi F' }));
+    // Une cohorte dynamique ne s'exporte pas telle quelle : « ⋯ » propose de la figer.
+    expect(within(card).queryByRole('button', { name: 'Exporter' })).toBeNull();
+    await userEvent.click(within(card).getByRole('button', { name: 'Figer maintenant' }));
 
     const name = await screen.findByLabelText('Nom de la cohorte figée');
     expect((name as HTMLInputElement).value).toContain('Suivi F');
@@ -194,12 +203,49 @@ describe('CohortBuilder', () => {
     }));
 
     expect(await screen.findByText('Doublon')).toBeInTheDocument();
+    // Deux lignes : le nom, puis la date de figeage et l'effectif ; les actions dans « ⋯ ».
+    expect(screen.getByText('Doublon').closest('li')).toHaveTextContent(/Figée le .+ · 2 patients/);
+    expect(screen.queryByRole('button', { name: 'Supprimer' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Doublon' }));
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     expect(await screen.findByRole('dialog', { name: 'Supprimer cette cohorte ?' })).toHaveTextContent(/exports.*conserv/i);
     listed = false;
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer la cohorte' }));
     await waitFor(() => expect(deleteCohort).toHaveBeenCalledWith('snapshot-1'));
     expect(await screen.findByText('Aucune cohorte enregistrée')).toBeInTheDocument();
+  });
+
+  test('« ⋯ » d une cohorte figee ouvre son export', async () => {
+    const cohorts = makeCohorts({
+      async listCohorts() {
+        return [{ id: 'snapshot-1', name: 'Analyse', cohortType: 'snapshot', snapshotAt: '2026-08-13T00:00:00Z', memberCount: 1, filterDefinition: { conditions: [] }, validatedOnly: false }];
+      },
+    });
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} cohorts={cohorts} terminology={terminologyRepo}>
+          <MemoryRouter initialEntries={['/bases/b1/cohorts']}>
+            <Routes>
+              <Route path="/bases/:id/cohorts" element={<CohortBuilder />} />
+              <Route path="/bases/:id/cohorts/:cohortId/export" element={<p>Export de la cohorte</p>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions · Analyse' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }));
+    expect(await screen.findByText('Export de la cohorte')).toBeInTheDocument();
+  });
+
+  test('sur telephone, les etapes tiennent en une ligne', async () => {
+    renderBuilder(makeCohorts());
+    await screen.findByRole('heading', { name: 'Cohortes' });
+    // Liste vide : le constructeur est ouvert d'emblee, a l'etape 1.
+    expect(await screen.findByText('Étape 1/3')).toBeInTheDocument();
+    expect(screen.getByText('Étape 1/3').closest('p')).toHaveTextContent('Étape 1/3 · Définir la population');
+    expect(screen.getByText('Étape 1/3').closest('p')).toHaveClass('sm:hidden');
+    expect(screen.getByRole('list', { name: 'Progression' })).toHaveClass('max-sm:hidden');
   });
 });
 
@@ -267,7 +313,7 @@ describe('CohortBuilder — variables multivaluees (L23)', () => {
 
     expect(screen.queryByLabelText('Comparaison')).toBeNull();
     expect(screen.queryByRole('button', { name: /ajouter ce critère/i })).toBeNull();
-    expect(screen.getByText(/pas filtrable/i)).toBeInTheDocument();
+    expect(screen.getByText(/non filtrable/i)).toBeInTheDocument();
   });
 
   test('les autres types gardent exactement leurs comparaisons', async () => {
@@ -306,13 +352,16 @@ describe('CohortBuilder — variables calculees (L35)', () => {
       DUREE,
     ]));
     await screen.findByRole('heading', { name: 'Cohortes' });
-    const notice = await screen.findByText(/Les variables calculées ne peuvent pas servir de filtre/);
+    const notice = await screen.findByText(/Variables calculées exclues des filtres/);
     expect(notice).toHaveTextContent('Durée de séjour');
+    // Lot 3 : le pourquoi et le geste utile s'ouvrent derriere ⓘ.
+    await userEvent.click(within(notice).getByRole('button', { name: 'En savoir plus' }));
+    expect(screen.getByRole('dialog', { name: 'En savoir plus' })).toHaveTextContent(/Filtrez plutôt sur les variables qui servent à leur calcul/);
   });
 
   test('sans variable calculee, aucune explication n’encombre l’ecran', async () => {
     renderBuilder(makeCohorts());
     await screen.findByRole('heading', { name: 'Cohortes' });
-    expect(screen.queryByText(/Les variables calculées ne peuvent pas servir de filtre/)).toBeNull();
+    expect(screen.queryByText(/Variables calculées exclues des filtres/)).toBeNull();
   });
 });

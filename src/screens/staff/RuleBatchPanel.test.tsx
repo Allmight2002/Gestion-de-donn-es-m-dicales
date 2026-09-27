@@ -143,7 +143,7 @@ describe('RuleBatchPanel (UX-14(c))', () => {
     await user.click(screen.getByRole('checkbox', { name: /Technique opératoire/ }));
     await user.click(await screen.findByRole('button', { name: 'Créer les 1 règles' }));
 
-    expect(await screen.findByText(/La condition et les cibles sont conservées/)).toBeInTheDocument();
+    expect(await screen.findByText(/condition et cibles conservées, aperçu actualisé/)).toBeInTheDocument();
     expect(screen.getByText('1 variable(s) sélectionnée(s)')).toBeInTheDocument();
     await waitFor(() => expect(previewRuleBatch).toHaveBeenCalledTimes(2));
 

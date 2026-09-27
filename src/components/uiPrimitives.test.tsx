@@ -10,6 +10,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ToastProvider, useToast } from './Toast';
 import { formatDate, formatDateTime } from '../lib/formatDate';
 import { PageHeader } from './PageHeader';
+import { SectionCard } from './SectionCard';
 import { EmptyState } from './EmptyState';
 import { WorkflowSteps } from './WorkflowSteps';
 
@@ -89,5 +90,22 @@ describe('primitives de structure', () => {
     wrap(<PageHeader title="Patients" description="Hors-ligne : identité indisponible." keepDescription />);
     expect(screen.getByText('Hors-ligne : identité indisponible.')).not.toHaveClass('hidden');
     expect(screen.queryByRole('button', { name: 'À propos de cette page' })).not.toBeInTheDocument();
+  });
+
+  // Audit UI mobile, lot 3 : meme regle pour la description d'une carte de section.
+  test('la description d’une carte se consulte par ⓘ sur téléphone, sauf un avis', async () => {
+    const { unmount } = wrap(<SectionCard title="Objectif" description="Nombre de patients attendu.">corps</SectionCard>);
+    expect(screen.getByRole('heading', { level: 2, name: 'Objectif' })).toBeInTheDocument();
+    expect(screen.getByText('Nombre de patients attendu.')).toHaveClass('hidden', 'sm:block');
+    const tip = screen.getByRole('button', { name: 'À propos de cette section' });
+    expect(tip).toHaveClass('sm:hidden');
+    await userEvent.click(tip);
+    expect(within(screen.getByRole('dialog', { name: 'À propos de cette section' })).getByText('Nombre de patients attendu.'))
+      .toBeInTheDocument();
+    unmount();
+
+    wrap(<SectionCard title="Zone de danger" description="La base disparaîtra pour tous ses membres." keepDescription>corps</SectionCard>);
+    expect(screen.getByText('La base disparaîtra pour tous ses membres.')).not.toHaveClass('hidden');
+    expect(screen.queryByRole('button', { name: 'À propos de cette section' })).not.toBeInTheDocument();
   });
 });

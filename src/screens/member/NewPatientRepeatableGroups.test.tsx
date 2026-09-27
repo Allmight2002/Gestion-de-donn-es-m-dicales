@@ -286,7 +286,7 @@ describe('L69 — occurrences tamponnees a la creation', () => {
     const banner = await screen.findByRole('alert', { name: 'Occurrences non confirmées' });
     expect(banner).toHaveTextContent('confirmation incertaine');
     expect(within(banner).getByText('Lésions, occurrence 2')).toBeInTheDocument();
-    expect(within(banner).getByText(/La réponse du serveur a pu se perdre/)).toBeInTheDocument();
+    expect(within(banner).getByText(/Réponse peut-être perdue après écriture/)).toBeInTheDocument();
     const uncertainRow = within(banner).getByText('Lésions, occurrence 2').closest('li')!;
     expect(within(uncertainRow).queryByRole('button', { name: 'Abandonner cette ligne' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Confirmation incertaine')).toHaveLength(1);
@@ -385,7 +385,7 @@ describe('L69 — occurrences tamponnees a la creation', () => {
     const cancelButtons = screen.getAllByRole('button', { name: 'Annuler' });
     await user.click(cancelButtons.at(-1)!);
 
-    expect(await screen.findByRole('dialog')).toHaveTextContent('Les modifications les plus récentes');
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Les dernières modifications et l’identité saisie peuvent être perdues');
     expect(screen.queryByText('ACCUEIL BASE')).not.toBeInTheDocument();
   });
 

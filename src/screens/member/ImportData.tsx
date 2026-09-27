@@ -21,6 +21,7 @@ import { useToast } from '../../components/Toast';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { WorkflowSteps } from '../../components/WorkflowSteps';
+import { HelpDetails } from '../../components/HelpTip';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
@@ -487,7 +488,7 @@ export function ImportData() {
       </div>
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      <SectionCard title={t('import.file_title')} description={t('import.file_hint')} icon={FileSpreadsheet}>
+      <SectionCard title={t('import.file_title')} description={t('import.file_hint')} keepDescription icon={FileSpreadsheet}>
         <label className="block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-center transition hover:border-teal-400 hover:bg-teal-50/40">
           <Upload className="mx-auto mb-2 text-slate-400" size={24} aria-hidden />
           <span className="block text-sm font-semibold text-slate-800">{t('import.file')}</span>
@@ -576,7 +577,7 @@ export function ImportData() {
             {ignoredTerminology.length > 0 && (
               <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 <p className="font-medium">{t('import.terminology_title')}</p>
-                <p className="mt-1">{t('import.terminology_hint')}</p>
+                <p className="mt-1">{t('import.terminology_hint')} <HelpDetails>{t('import.terminology_hint_details')}</HelpDetails></p>
                 <ul className="mt-2 space-y-0.5">
                   {ignoredTerminology.map((column) => <li key={column.index}>{columnLabel(column)}</li>)}
                 </ul>
@@ -657,7 +658,7 @@ export function ImportData() {
                 <ul className="mt-1 space-y-0.5">
                   {ignoredTerminology.map((column) => <li key={column.index}>{columnLabel(column)}</li>)}
                 </ul>
-                <p className="mt-2">{t('import.terminology_hint')}</p>
+                <p className="mt-2">{t('import.terminology_hint')} <HelpDetails>{t('import.terminology_hint_details')}</HelpDetails></p>
               </div>
             )}
             {!committed && report.error_count === 0 && <p className="text-sm text-teal-700">{t('import.ready')}</p>}

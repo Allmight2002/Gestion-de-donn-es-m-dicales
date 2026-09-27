@@ -191,7 +191,7 @@ describe('Dashboard', () => {
     const empty = { ...mockBases(), async listMyBases() { return []; } } as unknown as BaseRepository;
     renderApp(empty);
     expect(await screen.findByText('Mission terminée')).toBeInTheDocument();
-    expect(screen.getByText(/Les données que vous avez saisies restent enregistrées/)).toBeInTheDocument();
+    expect(screen.getByText(/Vos saisies restent enregistrées/)).toBeInTheDocument();
   });
 
   test('un medecin sans base garde l invitation a en creer une', async () => {

@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository } from '../../data/RepositoryProvider';
 import { validateAttachmentFile, ALLOWED_ATTACHMENT_ACCEPT } from '../../domain/imageUpload';
 import { Checkbox } from '../../components/Checkbox';
+import { HelpDetails } from '../../components/HelpTip';
 
 // Ecran "Ajouter un document" (cahier §8.8, §14) : images (jpg/png/webp), PDF et Office.
 // Un fichier a la fois, LIBELLE obligatoire, case de deidentification OBLIGATOIRE. Les
@@ -88,7 +89,7 @@ export function AddImage() {
         <h1 className="page-title mt-2">{t('image.new_title')}</h1>
       </div>
 
-      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{t('image.note')}</p>
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{t('image.note')} <HelpDetails>{t('image.note_details')}</HelpDetails></p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <form onSubmit={submit} className="space-y-4">

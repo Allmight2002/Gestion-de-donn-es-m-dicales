@@ -59,8 +59,8 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
    Vérifier la barre de sous-onglets du groupe actif : **À compléter** (file d'attente, Curation),
    **Analyse** (Cohortes, Statistiques), **Paramètres** (Général, Variables, Accès, Journal).
    « Importer » est un bouton de l'en-tête de la liste des patients, plus un onglet.
-6. **Statistiques** : cartes (Patients inclus/Objectif/Progression) ; fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré » → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
-7. **Complétude par variable** : les barres s'affichent, les moins complètes en premier, couleurs (rouge/ambre/vert).
+6. **Statistiques** : indicateurs sur une ligne (Patients inclus/Objectif/Progression) ; ouvrir **Objectif de recrutement** (« Définir » ou « Modifier »), fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré », le réglage se referme → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
+7. **Complétude par variable** : pastilles de résumé (à 0 %, partielles, complètes), puis les 10 variables les moins complètes avec leurs barres (rouge/ambre/vert) ; « Voir les N variables » affiche toutes les variables par section, avec une recherche.
 8. **À compléter** : cliquer « Compléter » sur une rencontre → le formulaire d'édition s'ouvre avec les bons champs.
 
 ### 4.3 Saisie (A2, A4, B5, UI-2)

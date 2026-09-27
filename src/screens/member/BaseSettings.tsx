@@ -214,7 +214,7 @@ export function BaseSettings() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       {isOwner && (
-        <SectionCard title={t('observation.model_label')} description={t('observation.empty_only_hint')} icon={Settings}>
+        <SectionCard title={t('observation.model_label')} description={t('observation.empty_only_hint')} keepDescription icon={Settings}>
           <label className="form-label max-w-md">
             {t('observation.model_label')}
             <select
@@ -237,7 +237,7 @@ export function BaseSettings() {
         <OptionKeyRepairPanel baseId={id} />
       )}
 
-      <SectionCard title={t('offline.available')} description={t('offline.identity_unavailable')} icon={Download}>
+      <SectionCard title={t('offline.available')} description={t('offline.identity_unavailable')} keepDescription icon={Download}>
         {cachedMeta ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
             <span className="text-slate-500">
@@ -273,7 +273,7 @@ export function BaseSettings() {
       )}
 
       {isOwner && (
-        <SectionCard title={t('base.settings_danger')} description={t('base.delete_body')} icon={Trash2}>
+        <SectionCard title={t('base.settings_danger')} description={t('base.delete_body')} keepDescription icon={Trash2}>
           <button
             type="button"
             onClick={openDelete}

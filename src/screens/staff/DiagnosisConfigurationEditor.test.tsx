@@ -3,7 +3,7 @@
 // L'ecran proposait une liste filtree sans jamais dire pourquoi une variable n'y figurait pas :
 // le concepteur cherchait une variable absente sans savoir quoi corriger. Les criteres sont
 // desormais lisibles a cote de la liste, et lus par la MEME fonction que la liste elle-meme.
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import type { TemplateRepository } from '../../data/templates';
@@ -67,7 +67,7 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
     // Le titre ne designe plus une place dans le formulaire : la variable est deplacable.
     const select = screen.getByLabelText('Variable diagnostique');
     expect(select).toBeInTheDocument();
-    expect(screen.getByText(/Son emplacement dans le formulaire est libre/)).toBeInTheDocument();
+    expect(screen.getByText(/Relie les diagnostics saisis aux blocs spécialisés/)).toBeInTheDocument();
 
     // Seule la variable compatible est proposee.
     expect([...select.querySelectorAll('option')].map((option) => option.textContent))
@@ -83,7 +83,17 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
 
     // Une variable compatible rangee dans un bloc n'est pas proposee : le dire evite de la
     // chercher, et dit ce qui la rendrait eligible.
-    expect(screen.getByText(/1 variable\(s\) compatibles appartiennent à un bloc clinique/)).toBeInTheDocument();
+    const ineligible = screen.getByText(/1 variable\(s\) compatible\(s\) dans un bloc/);
+
+    // Lot 3 : l'explication s'ouvre derriere ⓘ, sans occuper l'ecran.
+    const detailOf = (paragraph: HTMLElement, text: RegExp) => {
+      fireEvent.click(within(paragraph).getByRole('button', { name: 'En savoir plus' }));
+      const dialog = screen.getByRole('dialog', { name: 'En savoir plus' });
+      expect(dialog).toHaveTextContent(text);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer' }));
+    };
+    detailOf(screen.getByText(/Relie les diagnostics saisis/), /Son emplacement dans le formulaire est libre/);
+    detailOf(ineligible, /Retirer leur bloc les rendrait éligibles/);
   });
 
   test('la version brouillon inutilisée laisse les options de configuration actionnables', () => {
@@ -112,7 +122,7 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
       onOpenRule,
     });
 
-    expect(screen.getByRole('status')).toHaveTextContent(/version est déjà utilisée/);
+    expect(screen.getByRole('status')).toHaveTextContent(/Version utilisée par des dossiers : collecte gelée/);
     expect(screen.getByLabelText('Fiche concernée')).not.toBeDisabled();
     expect(screen.getByLabelText('Variable diagnostique')).toBeDisabled();
     expect(screen.getByRole('button', { name: /Diagnostic retenu/ })).not.toBeDisabled();

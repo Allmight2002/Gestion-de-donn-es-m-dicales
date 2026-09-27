@@ -153,7 +153,7 @@ describe('L72c — correction de la fiche', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Lésions vertébrales' }));
     expect(await stepNames()).toEqual(['Tronc commun', 'Lésions vertébrales', 'Suivi']);
-    expect(await screen.findByText(/masqué pour cette fiche\. 2 occurrence\(s\) y restent enregistrée\(s\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/masqué pour cette fiche : 2 occurrence\(s\) conservée\(s\)/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajouter une occurrence' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Modifier l’occurrence/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Supprimer l’occurrence 1 de Lésions vertébrales' })).toBeInTheDocument();
@@ -253,7 +253,7 @@ describe('L72c — création de patient avec un groupe enfant (test 17)', () => 
     expect(await stepNames()).toEqual(['Identification du patient', 'Tronc commun', 'Lésions vertébrales', 'Suivi']);
 
     await openStep(user, 'Lésions vertébrales');
-    expect(screen.getByText(/masqué par la fiche en cours\. 1 occurrence\(s\) en attente/)).toBeInTheDocument();
+    expect(screen.getByText(/Bloc masqué : 1 occurrence\(s\) en attente/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajouter une occurrence' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Modifier l’occurrence/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Supprimer l’occurrence 1 de Lésions vertébrales' }));

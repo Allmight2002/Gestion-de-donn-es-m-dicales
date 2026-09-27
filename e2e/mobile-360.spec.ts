@@ -197,6 +197,34 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
     });
   }
 
+  // Audit UI mobile, lot 4 : ce qui s'ouvre a la demande (details, « ⋯ », liste complete)
+  // tient lui aussi dans l'ecran — l'empreinte SHA-256 depliee debordait.
+  const ON_DEMAND: { screen: string; open: (page: Page) => Promise<void> }[] = [
+    { screen: 'export', open: async (page) => {
+      await page.getByText('Détails techniques').first().click();
+      await expect(page.getByText(/^1{8}a{56}$/)).toBeVisible();
+    } },
+    { screen: 'cohortes', open: async (page) => {
+      await page.getByRole('button', { name: /^Actions · Glasgow ≤ 12/ }).click();
+      await expect(page.getByRole('button', { name: 'Exporter' })).toBeVisible();
+    } },
+    { screen: 'statistiques', open: async (page) => {
+      await page.getByRole('button', { name: /^Voir les \d+ variables$/ }).click();
+      await expect(page.getByRole('heading', { level: 3, name: 'Imagerie' })).toBeVisible();
+    } },
+  ];
+  for (const { screen: name, open } of ON_DEMAND) {
+    test(`${name} : contenu ouvert a la demande`, async ({ page }) => {
+      const screen = SCREENS.find((entry) => entry.name === name)!;
+      const incidents = await openScreen(page, screen.path);
+      await settledMeasures(page, screen);
+      await open(page);
+      const width = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(width, `${name} : document de ${width} px une fois ouvert, pour ${VIEWPORT.width} px`).toBeLessThanOrEqual(VIEWPORT.width);
+      expect(incidents, 'aucune erreur JavaScript, aucun depot non simule, aucune requete hors banc').toEqual([]);
+    });
+  }
+
   test('tiroir de navigation et palette de recherche', async ({ page }) => {
     const screen = SCREENS.find((entry) => entry.name === 'liste des patients')!;
     const incidents = await openScreen(page, screen.path);

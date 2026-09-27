@@ -5,6 +5,7 @@ import { useBaseRepository } from '../../data/RepositoryProvider';
 import type { OptionKeyRepairPreview, OptionKeyRepairResult } from '../../data/bases';
 import { errorMessage } from '../../lib/errorMessage';
 import { SectionCard } from '../../components/SectionCard';
+import { HelpDetails } from '../../components/HelpTip';
 
 /**
  * L30 — conversion des valeurs orphelines d'une liste controlee.
@@ -107,7 +108,7 @@ export function OptionKeyRepairPanel({ baseId }: { baseId: string }) {
                       <li key={b.value}>⚠️ « {b.value} » ({b.occurrences})</li>
                     ))}
                   </ul>
-                  <p className="helper-text mt-1">{t('options.repair_blocked_hint')}</p>
+                  <p className="helper-text mt-1">{t('options.repair_blocked_hint')} <HelpDetails>{t('options.repair_blocked_hint_details')}</HelpDetails></p>
                 </div>
               )}
             </div>
