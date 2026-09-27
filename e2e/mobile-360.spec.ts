@@ -46,8 +46,6 @@ interface Screen {
 
 // Le premier champ commence a son libelle.
 const FIRST_FIELD: Target = { selector: ':is(label, input:not([type=hidden]), select, textarea)' };
-// Lot 5 de l'audit (« Reglages et gestion ») : la liste avant le formulaire de creation.
-const LIST_FIRST = 'lot 5 : la liste avant le formulaire de création';
 
 const SCREENS: Screen[] = [
   { name: 'tableau de bord', path: '/', first: { text: 'Traumatismes crâniens CHU-R' } },
@@ -63,11 +61,15 @@ const SCREENS: Screen[] = [
   { name: 'cohortes', path: '/bases/b1/cohorts', first: { text: 'Glasgow ≤ 12' } },
   { name: 'statistiques', path: '/bases/b1/stats', first: { text: '^Patients inclus$' } },
   { name: 'export', path: '/bases/b1/export', first: FIRST_FIELD },
-  { name: 'parametres', path: '/bases/b1/parametres', first: FIRST_FIELD },
-  { name: 'acces', path: '/bases/b1/access', first: { text: 'Dr Collègue' }, pending: { firstContent: LIST_FIRST } },
-  { name: 'comptes de mission', path: '/missions', first: { text: 'Enquêteur 1' }, pending: { firstContent: LIST_FIRST } },
+  // Lot 5 : les reglages en lignes, et la liste avant le formulaire de creation.
+  { name: 'parametres', path: '/bases/b1/parametres', first: { text: '^Modèle d’observation$' } },
+  { name: 'formulaire', path: '/bases/b1/template', first: { text: '^Formulaire :' } },
+  { name: 'acces', path: '/bases/b1/access', first: { text: 'Dr Collègue' } },
+  { name: 'comptes de mission', path: '/missions', first: { text: 'Enquêteur 1' } },
   { name: 'synchronisation', path: '/sync', first: { text: '^Écritures en attente$' } },
-  { name: 'mes jeux de variables', path: '/templates', first: { text: 'Neurotraumatologie' }, pending: { firstContent: LIST_FIRST } },
+  { name: 'mes jeux de variables', path: '/templates', first: { text: 'Neurotraumatologie' } },
+  { name: 'bibliotheque', path: '/templates/library', first: { text: '^Registre neurologique$' } },
+  { name: 'jeu depuis un fichier', path: '/templates/from-file', first: FIRST_FIELD },
 ];
 
 interface Measures {
@@ -211,6 +213,29 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
     { screen: 'statistiques', open: async (page) => {
       await page.getByRole('button', { name: /^Voir les \d+ variables$/ }).click();
       await expect(page.getByRole('heading', { level: 3, name: 'Imagerie' })).toBeVisible();
+    } },
+    // Lot 5 : lignes de reglage, droits d'un membre, missions terminees et edition du formulaire.
+    { screen: 'parametres', open: async (page) => {
+      await page.getByRole('button', { name: /^Hors-ligne/ }).click();
+      await expect(page.getByRole('button', { name: 'Rendre disponible hors-ligne' })).toBeVisible();
+    } },
+    { screen: 'acces', open: async (page) => {
+      await page.getByRole('button', { name: 'Modifier les droits' }).first().click();
+      await expect(page.getByRole('checkbox', { name: 'Gestion des accès' })).toBeVisible();
+      await page.getByRole('button', { name: 'Inviter' }).click();
+      await expect(page.getByLabel('E-mail')).toBeVisible();
+    } },
+    { screen: 'comptes de mission', open: async (page) => {
+      await page.getByRole('button', { name: /^Terminées/ }).click();
+      await expect(page.getByText('Enquêteur 2 (fictif)')).toBeVisible();
+      await page.getByRole('button', { name: 'Actions · Enquêteur 1 (fictif)' }).click();
+      await expect(page.getByRole('button', { name: 'Régénérer le mot de passe' })).toBeVisible();
+    } },
+    { screen: 'formulaire', open: async (page) => {
+      await page.getByRole('button', { name: 'Modifier le formulaire' }).click();
+      await expect(page.getByTestId('form-preparation-session')).toBeVisible();
+      // Plein ecran : ni fil d'Ariane ni onglets de la base pendant l'edition.
+      await expect(page.getByRole('navigation', { name: 'Traumatismes crâniens CHU-R (fictif)' })).toHaveCount(0);
     } },
   ];
   for (const { screen: name, open } of ON_DEMAND) {

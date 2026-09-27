@@ -118,7 +118,8 @@ export function TemplateFromFile() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <div className="card space-y-3 p-4">
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        {/* Audit UI mobile, lot 5 (5.12) : une seule colonne sur telephone. */}
+        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <label className="flex flex-col">
             <span className="text-slate-700">{t('tfile.name')}</span>
             <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} />

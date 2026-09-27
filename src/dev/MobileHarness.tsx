@@ -252,7 +252,19 @@ function Harness() {
             missions={strict<MissionRepository>('missions', { async list() { return missions; } })}
             clientErrors={strict('clientErrors', {})}
             workDrafts={strict('workDrafts', { available: false })}
-            formPreparations={strict('formPreparations', {})}
+            formPreparations={strict('formPreparations', {
+              // Parametres › Formulaire (lot 5) : l'accueil et l'edition, sur une definition vide.
+              available: true,
+              async openOrResume(baseId: string) {
+                return {
+                  preparation: null, persisted: false,
+                  context: {
+                    baseId, sourceTemplateVersionId: 'v1', sourceRevision: 4, sourceFingerprint: `sha256:${'b'.repeat(64)}`,
+                    definition: { sections: [], commonGroups: [], fields: [], rules: [], diagnosisConfiguration: null },
+                  },
+                };
+              },
+            })}
             viewPreferences={strict('viewPreferences', {
               async getVisiblePatientFieldKeys() { return ['sexe', 'localite', 'mecanisme']; },
               async saveVisiblePatientFieldKeys() { /* memoire seule */ },

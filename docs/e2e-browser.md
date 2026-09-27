@@ -66,7 +66,7 @@ sont des couvertures **complémentaires et distinctes**, pas un substitut au par
 ## Garde-fou d'affichage sur téléphone (audit UI mobile, lot 7)
 
 `e2e/mobile-360.spec.ts` contrôle les budgets de
-[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 18 écrans, à 360 × 800 px
+[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 21 écrans, à 360 × 800 px
 en tactile :
 
 - aucun débordement horizontal ;
@@ -75,8 +75,10 @@ en tactile :
   recherche compris ;
 - jamais plus d'un bouton plein visible à la fois, l'écran défilant de haut en bas.
 
-Le contenu ouvert à la demande ne déborde pas non plus (lot 4) : « Détails techniques » d'un export
-(empreinte SHA-256), menu « ⋯ » d'une cohorte, liste complète de la complétude.
+Le contenu ouvert à la demande ne déborde pas non plus : « Détails techniques » d'un export
+(empreinte SHA-256), menu « ⋯ » d'une cohorte, liste complète de la complétude (lot 4) ; ligne de
+réglage, droits d'un membre et invitation, missions terminées et « ⋯ » d'une mission, édition du
+formulaire en plein écran, sans les onglets de la base (lot 5).
 
 ```bash
 npx playwright install chromium   # une fois
@@ -89,9 +91,9 @@ dépôt appelé pour une méthode non simulée échoue en la nommant ; toute req
 bloquée et fait échouer le test. Contre une URL externe (`E2E_BASE_URL`), le fichier est ignoré.
 
 - **Dettes connues.** Un budget qu'un écran ne tient pas encore est déclaré dans `pending`, avec le
-  lot qui le traitera (aujourd'hui : « la liste avant le formulaire de création », lot 5, pour Accès,
-  Comptes de mission et Mes jeux de variables). Il reste mesuré et signalé ; dès qu'il est tenu, le
-  test échoue pour qu'on retire la mention.
+  lot qui le traitera. Il reste mesuré et signalé ; dès qu'il est tenu, le test échoue pour qu'on
+  retire la mention. Aucune dette depuis le lot 5 (la liste passe avant le formulaire de création
+  pour Accès, Comptes de mission et Mes jeux de variables).
 - **Nouvel écran.** L'ajouter à `SCREENS` avec son premier contenu utile, et ses données au banc.
   L'éditeur des jeux de variables (lot 6) n'y figure pas encore.
 - **Polices.** Sous Linux, le texte est rendu en DejaVu Sans, l'une des polices courantes les plus

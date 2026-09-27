@@ -18,7 +18,11 @@ import { HelpDetails } from '../../components/HelpTip';
  * part qu'au second clic. Une valeur qui ne correspond a aucune option -- ou a plusieurs
  * -- bloque sa fiche et est affichee telle quelle : elle n'est jamais devinee.
  */
-export function OptionKeyRepairPanel({ baseId }: { baseId: string }) {
+/**
+ * `bare` (audit UI mobile, lot 5) : le contenu seul, sans sa carte, pour la ligne « Avancé »
+ * des parametres qui l'ouvre a la demande.
+ */
+export function OptionKeyRepairPanel({ baseId, bare = false }: { baseId: string; bare?: boolean }) {
   const { t } = useI18n();
   const bases = useBaseRepository();
   const [preview, setPreview] = useState<OptionKeyRepairPreview | null>(null);
@@ -57,8 +61,9 @@ export function OptionKeyRepairPanel({ baseId }: { baseId: string }) {
 
   const nothingToDo = preview !== null && preview.records.repairable === 0 && preview.records.blocked === 0;
 
-  return (
-    <SectionCard title={t('options.repair_title')} description={t('options.repair_intro')} icon={Wrench}>
+  const content = (
+    <>
+      {bare && <p className="helper-text mb-3">{t('options.repair_intro')}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn-secondary" disabled={busy} onClick={() => void analyse()}>
           {t('options.repair_preview')}
@@ -115,6 +120,12 @@ export function OptionKeyRepairPanel({ baseId }: { baseId: string }) {
           ))}
         </div>
       )}
+    </>
+  );
+
+  return bare ? content : (
+    <SectionCard title={t('options.repair_title')} description={t('options.repair_intro')} icon={Wrench}>
+      {content}
     </SectionCard>
   );
 }

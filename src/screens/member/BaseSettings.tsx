@@ -1,7 +1,7 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Download, Settings, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Lock, Trash2 } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
@@ -13,12 +13,38 @@ import { OptionKeyRepairPanel } from './OptionKeyRepairPanel';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { OfflineReadinessNotice, useAppShellReadiness } from '../../components/OfflineReadiness';
+import { formatDate } from '../../lib/formatDate';
 import {
   downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type SnapshotSource,
 } from '../../data/offline';
 
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString();
+const ROW = 'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left sm:px-5';
+
+/** Nom d'un reglage et sa valeur actuelle, sur deux lignes : a 360 px, cote a cote, l'un des deux serait coupe. */
+function RowText({ label, value }: { label: string; value?: ReactNode }) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">{label}</span>
+      {value && <span className="block text-sm text-slate-500 dark:text-slate-400">{value}</span>}
+    </span>
+  );
+}
+
+/** Un reglage : sa valeur se lit sans geste, son detail s'ouvre a la demande. */
+function SettingRow({ id, label, value, open, onToggle, children }: {
+  id: string; label: string; value?: ReactNode; open: boolean; onToggle: () => void; children: ReactNode;
+}) {
+  return (
+    <li>
+      <button type="button" aria-expanded={open} aria-controls={id} onClick={onToggle} className={ROW}>
+        <RowText label={label} value={value} />
+        <ChevronDown size={16} aria-hidden className={`shrink-0 text-slate-400 transition motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <div id={id} hidden={!open} className="space-y-3 px-4 pb-4 text-sm sm:px-5">{children}</div>
+    </li>
+  );
+}
 
 // Reglages d'une base : ce qu'on regle au demarrage puis presque plus jamais. Ces actions
 // vivaient dans le menu « … » de la liste des patients, ou elles disputaient la place a la
@@ -27,7 +53,7 @@ const fmtDate = (ms: number) => new Date(ms).toLocaleDateString();
 export function BaseSettings() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const bases = useBaseRepository();
   const patients = usePatientRepository();
   const templates = useTemplateRepository();
@@ -44,6 +70,8 @@ export function BaseSettings() {
   const [deletionCodeInput, setDeletionCodeInput] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [changingObservationModel, setChangingObservationModel] = useState(false);
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+  const toggleRow = (key: string) => setOpenRows((rows) => ({ ...rows, [key]: !rows[key] }));
   // La coquille ne se verifie que la ou une disponibilite hors-ligne est annoncee.
   const { readiness: shellReadiness, checking: shellChecking, check: shellCheck } = useAppShellReadiness(isOfflineEnabled() && cachedMeta !== null);
 
@@ -163,9 +191,13 @@ export function BaseSettings() {
   const isOwner = listing.role === 'owner';
   // Un acces a echeance (compte de mission) ne pose pas de copie locale de la base.
   const canManageOffline = listing.expiresAt == null;
+  const canRepairOptions = isOwner || listing.permissions.canEditStructuredData;
+  // Le modele se choisit tant que la base est vide ; ensuite, il se lit seulement.
+  const observationLocked = total > 0;
+  const observationLabel = t(`observation.${observationModel}`);
 
   return (
-    <section className="space-y-5">
+    <section className="max-w-3xl space-y-5">
       <ConfirmDialog
         open={confirmLarge}
         title={t('offline.make_available')}
@@ -213,63 +245,95 @@ export function BaseSettings() {
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
-      {isOwner && (
-        <SectionCard title={t('observation.model_label')} description={t('observation.empty_only_hint')} keepDescription icon={Settings}>
-          <label className="form-label max-w-md">
-            {t('observation.model_label')}
-            <select
-              className="input mt-1"
-              value={observationModel}
-              disabled={changingObservationModel || total > 0}
-              onChange={(event) => void changeObservationModel(event.target.value as ObservationModel)}
-            >
-              <option value="cross_sectional">{t('observation.cross_sectional')}</option>
-              <option value="longitudinal">{t('observation.longitudinal')}</option>
-              <option value="event_registry">{t('observation.event_registry')}</option>
-            </select>
-          </label>
-        </SectionCard>
-      )}
+      {/* Audit UI mobile, lot 5 (5.9 Général A) : une liste de reglages en lignes. Chaque ligne
+          dit la valeur actuelle ; le detail s'ouvre a la demande. */}
+      <ul className="card divide-y divide-slate-100 dark:divide-slate-800">
+        {isOwner && (observationLocked ? (
+          <li className={ROW}>
+            <RowText
+              label={t('observation.model_label')}
+              value={<>{observationLabel} · {t('settings.observation_locked')}</>}
+            />
+            <Lock size={15} aria-hidden className="shrink-0 text-slate-400" />
+          </li>
+        ) : (
+          <SettingRow id="setting-observation" label={t('observation.model_label')} value={observationLabel}
+            open={!!openRows.observation} onToggle={() => toggleRow('observation')}>
+            <p className="helper-text">{t('observation.empty_only_hint')}</p>
+            <label className="form-label max-w-md">
+              {t('observation.model_label')}
+              <select
+                className="input mt-1"
+                value={observationModel}
+                disabled={changingObservationModel}
+                onChange={(event) => void changeObservationModel(event.target.value as ObservationModel)}
+              >
+                <option value="cross_sectional">{t('observation.cross_sectional')}</option>
+                <option value="longitudinal">{t('observation.longitudinal')}</option>
+                <option value="event_registry">{t('observation.event_registry')}</option>
+              </select>
+            </label>
+          </SettingRow>
+        ))}
+
+        <SettingRow id="setting-offline" label={t('settings.offline')}
+          value={cachedMeta
+            ? t('settings.offline_on').replace('{date}', formatDate(cachedMeta.cachedAt, lang))
+            : t('settings.offline_off')}
+          open={!!openRows.offline} onToggle={() => toggleRow('offline')}>
+          {/* Avis : ce qui manque hors-ligne se lit avant de choisir. */}
+          <p className="text-slate-600 dark:text-slate-300">{t('offline.identity_unavailable')}</p>
+          {cachedMeta ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-slate-500">
+                {t('offline.cached_at')} {formatDate(cachedMeta.cachedAt, lang)} · {t('offline.expires_at')} {formatDate(cachedMeta.expiresAt, lang)}
+              </span>
+              {canManageOffline && (
+                <button type="button" onClick={() => void makeAvailableOffline()} disabled={saving} className="btn-secondary">
+                  {saving ? t('offline.saving') : t('offline.update')}
+                </button>
+              )}
+              <button type="button" onClick={() => void removeOffline()} className="text-sm font-medium text-slate-500 hover:text-red-600 hover:underline">
+                {t('offline.remove')}
+              </button>
+            </div>
+          ) : canManageOffline ? (
+            <button type="button" onClick={() => void makeAvailableOffline()} disabled={saving} className="btn-secondary">
+              <Download size={16} aria-hidden /> {saving ? t('offline.saving') : t('offline.make_available')}
+            </button>
+          ) : (
+            <p className="text-slate-500">{t('offline.no_bases')}</p>
+          )}
+          <OfflineReadinessNotice readiness={shellReadiness} checking={shellChecking} onRecheck={() => void shellCheck()} />
+        </SettingRow>
+
+        {/* Les comptes de mission se gerent depuis la barre laterale, pour toutes les bases a la
+            fois : ici, un simple lien, pour ne pas avoir a sortir de la base de tete. */}
+        {isOwner && (
+          <li>
+            <Link to="/missions" className={ROW}>
+              <RowText label={t('mission.global_title')} />
+              <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-400" />
+            </Link>
+          </li>
+        )}
+      </ul>
 
       {/* L30 : reserve a qui peut corriger les donnees de la base -- c'est une ecriture,
-          meme si elle ne change que le codage. Le serveur le verifie de toute facon. */}
-      {(isOwner || listing.permissions.canEditStructuredData) && id && (
-        <OptionKeyRepairPanel baseId={id} />
-      )}
-
-      <SectionCard title={t('offline.available')} description={t('offline.identity_unavailable')} keepDescription icon={Download}>
-        {cachedMeta ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-            <span className="text-slate-500">
-              {t('offline.cached_at')} {fmtDate(cachedMeta.cachedAt)} · {t('offline.expires_at')} {fmtDate(cachedMeta.expiresAt)}
-            </span>
-            {canManageOffline && (
-              <button type="button" onClick={() => void makeAvailableOffline()} disabled={saving} className="btn-secondary">
-                {saving ? t('offline.saving') : t('offline.update')}
-              </button>
-            )}
-            <button type="button" onClick={() => void removeOffline()} className="text-sm font-medium text-slate-500 hover:text-red-600 hover:underline">
-              {t('offline.remove')}
-            </button>
-          </div>
-        ) : canManageOffline ? (
-          <button type="button" onClick={() => void makeAvailableOffline()} disabled={saving} className="btn-secondary">
-            <Download size={16} aria-hidden /> {saving ? t('offline.saving') : t('offline.make_available')}
-          </button>
-        ) : (
-          <p className="text-sm text-slate-500">{t('offline.no_bases')}</p>
-        )}
-        <OfflineReadinessNotice readiness={shellReadiness} checking={shellChecking} onRecheck={() => void shellCheck()} />
-      </SectionCard>
-
-      {/* Les comptes de mission sont geres depuis la barre laterale, pour toutes les bases a la
-          fois : on garde le point d'entree ici pour ne pas avoir a sortir de la base de tete. */}
-      {isOwner && (
-        <SectionCard title={t('mission.tab')} description={t('mission.global_subtitle')} icon={UserPlus}>
-          <Link to="/missions" className="btn-secondary">
-            <UserPlus size={16} aria-hidden /> {t('mission.global_title')}
-          </Link>
-        </SectionCard>
+          meme si elle ne change que le codage. Le serveur le verifie de toute facon. Outil
+          rare : range dans « Avancé ». */}
+      {canRepairOptions && id && (
+        <section aria-labelledby="settings-advanced" className="space-y-2">
+          <h2 id="settings-advanced" className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t('settings.advanced')}
+          </h2>
+          <ul className="card">
+            <SettingRow id="setting-options" label={t('options.repair_title')}
+              open={!!openRows.options} onToggle={() => toggleRow('options')}>
+              <OptionKeyRepairPanel baseId={id} bare />
+            </SettingRow>
+          </ul>
+        </section>
       )}
 
       {isOwner && (

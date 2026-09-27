@@ -180,10 +180,50 @@ describe('Dashboard', () => {
   // l'echeance un ecran qui EXPLIQUE au lieu d'un tableau vide ou d'une erreur brute.
   test('un compte de mission ne voit pas la creation de base', async () => {
     auth.role = 'saisisseur';
-    renderApp(mockBases());
+    // Deux bases (cas hors specification) : le tableau de bord reste, sans creation.
+    const source = mockBases();
+    const [only] = await source.listMyBases();
+    const two = { ...source, async listMyBases() { return [only, { ...only, base: { ...only.base, id: 'b2', name: 'Registre bis' } }]; } } as unknown as BaseRepository;
+    renderApp(two);
     await screen.findByText('Registre Neuro');
     expect(screen.queryByRole('button', { name: 'Créer la base' })).toBeNull();
     expect(screen.queryByLabelText('Nom de la base')).toBeNull();
+  });
+
+  // Decision 9 (audit UI mobile, 5.2-D) : un compte de mission n'a qu'une base ; il l'ouvre
+  // directement, sans tableau de bord intercalaire.
+  test('un compte de mission a une seule base l ouvre directement', async () => {
+    auth.role = 'saisisseur';
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={mockBases()}>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/bases/:id" element={<div>BASE OUVERTE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    expect(await screen.findByText('BASE OUVERTE')).toBeInTheDocument();
+  });
+
+  test('un medecin avec une seule base garde son tableau de bord', async () => {
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={mockBases()}>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/bases/:id" element={<div>BASE OUVERTE</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    expect(await screen.findByText('Registre Neuro')).toBeInTheDocument();
+    expect(screen.queryByText('BASE OUVERTE')).toBeNull();
   });
 
   test('mission terminee : un ecran explicite remplace la liste vide', async () => {

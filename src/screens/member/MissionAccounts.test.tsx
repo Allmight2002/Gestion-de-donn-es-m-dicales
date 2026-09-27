@@ -90,6 +90,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Audit UI mobile, lot 5 (5.11 A) : la creation s'ouvre a la demande, les missions terminees
+// sont repliees, et regenerer ou revoquer passent par « ⋯ ».
+const openCreation = async () => userEvent.click(await screen.findByRole('button', { name: 'Nouveau compte de mission' }));
+const openEnded = async () => userEvent.click(await screen.findByRole('button', { name: /^Terminées/ }));
+const openActions = async (label: string) => userEvent.click(await screen.findByRole('button', { name: `Actions · ${label}` }));
+
 describe('logique de mission', () => {
   test('priorise revocation et echeance, puis l etat des justificatifs', () => {
     expect(missionStatus(mission({ revokedAt: inDays(-1) }))).toBe('revoked');
@@ -122,6 +128,7 @@ describe('propriete et vue generale', () => {
       '/missions',
     );
     expect(await screen.findByRole('heading', { name: /Comptes de mission/i })).toBeTruthy();
+    await openCreation();
     expect(screen.getByLabelText(/Base associée/i)).toHaveValue('b1');
     expect(screen.queryByRole('option', { name: 'Base lecture seule' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Base neurologie' })).toHaveAttribute('href', '/bases/b1');
@@ -136,6 +143,7 @@ describe('propriete et vue generale', () => {
 describe('motifs de validation cote navigateur', () => {
   test('le motif de l identifiant compile sous le drapeau v et applique la regle du serveur', async () => {
     renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo());
+    await openCreation();
     const source = (await screen.findByLabelText(/Identifiant de connexion/i)).getAttribute('pattern');
     expect(source).toBeTruthy();
     expect(() => new RegExp(`^(?:${source!})$`, 'v')).not.toThrow();
@@ -184,6 +192,7 @@ describe('creation et conservation chiffree', () => {
     const list = vi.fn(async () => [mission()]);
     renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo({ create, list }));
 
+    await openCreation();
     await userEvent.type(await screen.findByLabelText(/Nom du compte/i), 'Equipe matin');
     await userEvent.type(screen.getByLabelText(/Identifiant de connexion/i), 'Mission-Neuro-01');
     await userEvent.click(screen.getByLabelText(/peut voir les noms/i));
@@ -201,22 +210,43 @@ describe('creation et conservation chiffree', () => {
     expect(sent.email).toBeUndefined();
     expect(new Date(sent.expiresAt).getTime()).toBeGreaterThan(Date.now());
     expect(await screen.findByText(credential.password)).toBeTruthy();
+    // Cree : le formulaire se referme, le mot de passe reste lisible sur la carte du compte.
+    expect(screen.queryByLabelText(/Nom du compte/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Nouveau compte de mission' })).toHaveAttribute('aria-expanded', 'false');
   });
 
-  // Audit UI mobile, lot 0 — une mission revoquee affichait encore un champ mot de passe masque,
-  // sans aucune action possible. Son identifiant reste visible pour reconnaitre le compte.
-  test('une mission revoquee n affiche plus de champ mot de passe, seulement son identifiant', async () => {
+  // Audit UI mobile, lots 0 et 5 (5.11 A) — une mission revoquee n'a plus ni identifiant ni mot
+  // de passe utilisables : son nom suffit a la reconnaitre, dans « Terminées », repliee.
+  test('une mission revoquee se range dans Terminees, sans identifiant ni mot de passe', async () => {
     const revoked = mission({ accessId: '10000000-0000-4000-8000-000000000011', accountLabel: 'Ancienne saisie', loginIdentifier: 'mission-ancienne', revokedAt: inDays(-1) });
     renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo({}, [mission(), revoked]));
 
-    const revokedCard = (await screen.findByText('Ancienne saisie')).closest('li')!;
-    expect(within(revokedCard).getByText('mission-ancienne')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'En cours (1)' })).toBeInTheDocument();
+    const ended = screen.getByRole('button', { name: 'Terminées (1)' });
+    expect(ended).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Ancienne saisie')).not.toBeVisible();
+    await openEnded();
+    const revokedCard = screen.getByText('Ancienne saisie').closest('li')!;
+    expect(revokedCard).toBeVisible();
+    expect(within(revokedCard).queryByText('mission-ancienne')).toBeNull();
     expect(within(revokedCard).queryByText('Mot de passe')).toBeNull();
     expect(within(revokedCard).queryByText('••••••••••••')).toBeNull();
+    expect(within(revokedCard).queryByRole('button', { name: /Actions/ })).toBeNull();
 
     const activeCard = screen.getByText('Saisie cohorte A').closest('li')!;
+    expect(within(activeCard).getByText('mission-neuro-01')).toBeTruthy();
     expect(within(activeCard).getByText('••••••••••••')).toBeTruthy();
     expect(within(activeCard).getByRole('button', { name: /Afficher le mot de passe/i })).toBeTruthy();
+  });
+
+  test('la liste passe avant le formulaire de creation, ouvert a la demande', async () => {
+    renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo());
+    expect(await screen.findByText('Saisie cohorte A')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Nom du compte/i)).toBeNull();
+    await openCreation();
+    expect(screen.getByLabelText(/Nom du compte/i)).toBeInTheDocument();
+    // Un seul bouton plein : celui de l'en-tete devient « Annuler ».
+    expect(screen.getByRole('button', { name: 'Annuler' })).toHaveClass('btn-secondary');
   });
 
   test('le mot de passe reste masque jusqu a une revelation explicite', async () => {
@@ -255,9 +285,12 @@ describe('cycle de vie', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo({ regenerate }));
 
+    expect(screen.queryByRole('button', { name: /Régénérer le mot de passe/i })).toBeNull();
+    await openActions('Saisie cohorte A');
     await userEvent.click(await screen.findByRole('button', { name: /Régénérer le mot de passe/i }));
     expect(regenerate).not.toHaveBeenCalled();
     confirm.mockReturnValue(true);
+    await openActions('Saisie cohorte A');
     await userEvent.click(screen.getByRole('button', { name: /Régénérer le mot de passe/i }));
     await waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1));
     expect(regenerate.mock.calls[0][0]).toBe(mission().accessId);
@@ -271,6 +304,7 @@ describe('cycle de vie', () => {
     renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo({ revoke }));
     await userEvent.click(await screen.findByRole('button', { name: /Afficher le mot de passe/i }));
     expect(await screen.findByText(credential.password)).toBeTruthy();
+    await openActions('Saisie cohorte A');
     await userEvent.click(screen.getByRole('button', { name: /^Révoquer$/i }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(mission().accessId));
     expect(confirm).toHaveBeenCalled();
@@ -282,10 +316,15 @@ describe('cycle de vie', () => {
       baseRepo([listing('b1', 'Base neurologie')]),
       missionRepo({}, [mission({ expiresAt: inDays(-1) })]),
     );
-    expect(await screen.findByText(/Terminée/i)).toBeTruthy();
+    // Une mission expiree se range dans « Terminées », repliee, mais reste administrable.
+    expect(await screen.findByRole('heading', { name: 'En cours (0)' })).toBeInTheDocument();
+    expect(screen.getByText('Aucune mission en cours.')).toBeInTheDocument();
+    await openEnded();
+    expect(screen.getByText('Terminée')).toBeVisible();
     expect(screen.getByRole('button', { name: /Afficher le mot de passe/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Copier le mot de passe/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Prolonger$/i })).toBeTruthy();
+    await openActions('Saisie cohorte A');
     expect(screen.getByRole('button', { name: /Régénérer le mot de passe/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Révoquer$/i })).toBeTruthy();
   });

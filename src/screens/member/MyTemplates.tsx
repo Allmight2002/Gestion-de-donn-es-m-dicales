@@ -1,7 +1,7 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { FileText, MoreHorizontal } from 'lucide-react';
+import { FileText, MoreHorizontal, Plus } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
@@ -38,6 +38,9 @@ export function MyTemplates() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newSpec, setNewSpec] = useState('');
+  // Audit UI mobile, lot 5 (5.12 A) : la liste d'abord ; « Nouveau » propose un jeu vide, un
+  // fichier Excel ou la bibliotheque, et le formulaire du jeu vide s'ouvre a la demande.
+  const [createOpen, setCreateOpen] = useState(false);
   const createOperationKey = useRef<string | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
@@ -118,6 +121,7 @@ export function MyTemplates() {
       });
       setNewName('');
       setNewSpec('');
+      setCreateOpen(false);
       createOperationKey.current = null;
        setSelected({ versionId: result.versionId, templateName: newName.trim() });
     });
@@ -138,27 +142,42 @@ export function MyTemplates() {
 
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
-      <PageHeader title={t('mytemplates.title')} />
+      <PageHeader
+        title={t('mytemplates.title')}
+        actions={(
+          <Menu
+            triggerLabel={t('mytemplates.new')}
+            triggerClassName={createOpen ? 'btn-secondary' : 'btn-primary'}
+            triggerContent={<><Plus size={16} aria-hidden /> {t('mytemplates.new')}</>}
+            panelClassName="card absolute right-0 z-10 mt-2 w-64 space-y-1 p-2 shadow-lg"
+          >
+            <MenuItem onSelect={() => setCreateOpen(true)}>{t('mytemplates.new_empty')}</MenuItem>
+            <MenuItem onSelect={() => navigate('/templates/from-file')}>{t('mytemplates.from_file')}</MenuItem>
+            <MenuItem onSelect={() => navigate('/templates/library')}>{t('mytemplates.from_library')}</MenuItem>
+          </Menu>
+        )}
+      />
 
-      <SectionCard title={t('mytemplates.create')} icon={FileText}>
-        <form onSubmit={(e) => { e.preventDefault(); void createTemplate(); }} className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="form-label">
-              {t('admin.name')}
-              <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} required />
-            </label>
-            <label className="form-label">
-              {t('admin.specialty')}
-              <input className="input" value={newSpec} onChange={(e) => setNewSpec(e.target.value)} />
-            </label>
-          </div>
-          <div className="grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-3">
-            <button type="submit" disabled={busy || !newName.trim()} className="btn-primary w-full">{t('mytemplates.create')}</button>
-            <button type="button" onClick={() => navigate('/templates/from-file')} className="btn-secondary w-full">{t('mytemplates.from_file')}</button>
-            <button type="button" onClick={() => navigate('/templates/library')} className="btn-secondary w-full">{t('tlib.title')}</button>
-          </div>
-        </form>
-      </SectionCard>
+      {createOpen && (
+        <SectionCard title={t('mytemplates.create')} icon={FileText}>
+          <form onSubmit={(e) => { e.preventDefault(); void createTemplate(); }} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="form-label">
+                {t('admin.name')}
+                <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+              </label>
+              <label className="form-label">
+                {t('admin.specialty')}
+                <input className="input" value={newSpec} onChange={(e) => setNewSpec(e.target.value)} />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+              <button type="submit" disabled={busy || !newName.trim()} className="btn-primary">{t('mytemplates.create')}</button>
+              <button type="button" onClick={() => setCreateOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
+            </div>
+          </form>
+        </SectionCard>
+      )}
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading && <SkeletonList rows={3} label={t('common.loading')} />}
