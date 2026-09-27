@@ -14,6 +14,9 @@
 // traitera : il reste mesure et signale, sans faire echouer le test. Des qu'il est tenu, le test
 // echoue pour qu'on retire la mention : la liste des dettes ne peut que raccourcir.
 //
+// L'editeur des jeux de variables (lot 6) n'a pas d'adresse propre : il s'ouvre depuis « Mes
+// jeux de variables », et chacun de ses espaces est mesure comme un ecran.
+//
 // Usage : `npm run e2e:mobile` (Playwright demarre le serveur de developpement s'il ne tourne
 // pas). Le banc n'existe que sur ce serveur local : contre une URL externe, le fichier est ignore.
 import { expect, test, type Page } from '@playwright/test';
@@ -38,6 +41,8 @@ type Target = { text: string } | { selector: string };
 interface Screen {
   name: string;
   path: string;
+  /** Ecran sans adresse propre (editeur des jeux de variables) : le geste qui l'affiche. */
+  open?: (page: Page) => Promise<void>;
   /** Ce pour quoi on ouvre l'ecran : la premiere base, le premier patient, le premier champ… */
   first: Target;
   /** Budgets pas encore tenus, avec le lot de l'audit qui les traite. */
@@ -45,7 +50,16 @@ interface Screen {
 }
 
 // Le premier champ commence a son libelle.
-const FIRST_FIELD: Target = { selector: ':is(label, input:not([type=hidden]), select, textarea)' };
+const FIELD = ':is(label, input:not([type=hidden]), select, textarea)';
+const FIRST_FIELD: Target = { selector: FIELD };
+
+// Lot 6 : l'editeur s'ouvre depuis « Mes jeux de variables », sur un brouillon fictif de 216
+// variables, 24 sections et 38 regles ; chaque espace est un onglet.
+const openEditor = (tab?: string) => async (page: Page) => {
+  await page.getByRole('listitem').filter({ hasText: 'Registre multipathologies' })
+    .getByRole('button', { name: 'Ouvrir le jeu de variables' }).click();
+  if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+};
 
 const SCREENS: Screen[] = [
   { name: 'tableau de bord', path: '/', first: { text: 'Traumatismes crâniens CHU-R' } },
@@ -70,6 +84,13 @@ const SCREENS: Screen[] = [
   { name: 'mes jeux de variables', path: '/templates', first: { text: 'Neurotraumatologie' } },
   { name: 'bibliotheque', path: '/templates/library', first: { text: '^Registre neurologique$' } },
   { name: 'jeu depuis un fichier', path: '/templates/from-file', first: FIRST_FIELD },
+  // Lot 6 : en Structure, le titre du bloc affiche ; ses variables suivent sa condition.
+  { name: 'editeur — structure', path: '/templates', open: openEditor(), first: { selector: '#editor-structure-heading' } },
+  { name: 'editeur — sections', path: '/templates', open: openEditor('Sections'), first: { selector: '#editor-panel-sections li' } },
+  { name: 'editeur — regles', path: '/templates', open: openEditor('Règles'), first: { selector: '#editor-panel-rules li' } },
+  { name: 'editeur — collecte diagnostique', path: '/templates', open: openEditor('Collecte diagnostique'),
+    first: { text: '^Collecte diagnostique optionnelle$' } },
+  { name: 'editeur — apercu', path: '/templates', open: openEditor('Aperçu'), first: { selector: `#editor-panel-preview ${FIELD}` } },
 ];
 
 interface Measures {
@@ -184,6 +205,7 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
   for (const screen of SCREENS) {
     test(`${screen.name} (${screen.path})`, async ({ page }) => {
       const incidents = await openScreen(page, screen.path);
+      await screen.open?.(page);
       const measures = await settledMeasures(page, screen);
       test.info().annotations.push({ type: 'mesures', description: JSON.stringify(measures) });
 
@@ -237,11 +259,44 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       // Plein ecran : ni fil d'Ariane ni onglets de la base pendant l'edition.
       await expect(page.getByRole('navigation', { name: 'Traumatismes crâniens CHU-R (fictif)' })).toHaveCount(0);
     } },
+    // Lot 6 : panneaux bas, menus « ⋯ », mode Réorganiser, fiche d'une variable, sections
+    // depliees, groupe de regles, formulaire de regle et sa liste recherchable.
+    { screen: 'editeur — structure', open: async (page) => {
+      await page.getByRole('button', { name: 'Filtres' }).click();
+      await expect(page.getByRole('dialog', { name: 'Filtres et tri' }).getByLabel('Trier l’affichage')).toBeVisible();
+      await page.getByRole('dialog', { name: 'Filtres et tri' }).getByRole('button', { name: 'Fermer' }).click();
+      await page.getByRole('button', { name: 'Index des sections' }).click();
+      await page.getByRole('dialog', { name: 'Index des sections' }).getByRole('button', { name: /^Bloc 02 · \d+ variable/ }).click();
+      await expect(page.getByRole('heading', { level: 3, name: 'Bloc 02' })).toBeVisible();
+      await page.getByRole('button', { name: 'Actions · Bloc 02 · Variable directe 01' }).click();
+      await expect(page.getByRole('button', { name: 'Déplacer' })).toBeVisible();
+      await page.getByRole('button', { name: 'Réorganiser' }).click();
+      await expect(page.getByRole('button', { name: 'Monter · Bloc 02 · Variable directe 02' })).toBeVisible();
+      await page.getByRole('button', { name: 'Modifier la variable · Bloc 02 · Variable directe 01' }).click();
+      await expect(page.getByRole('button', { name: 'Variable suivante' })).toBeVisible();
+    } },
+    { screen: 'editeur — sections', open: async (page) => {
+      await page.getByRole('button', { name: /^Bloc 01 · 8 variable/ }).click();
+      await expect(page.getByRole('button', { name: 'Renommer' })).toBeVisible();
+      await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+      await page.getByRole('button', { name: 'Nouvelle section' }).click();
+      await expect(page.getByLabel('Nom de la section')).toBeVisible();
+    } },
+    { screen: 'editeur — regles', open: async (page) => {
+      await page.getByRole('button', { name: /^Si Bloc 01 · Variable directe 04 .* → affiche 12 variable/ }).click();
+      await expect(page.getByText('→ Bloc 02 · Sous-section A · Variable 01 est affichée')).toBeVisible();
+      await page.getByRole('button', { name: 'Filtres' }).click();
+      await page.getByRole('dialog', { name: 'Filtres' }).getByRole('button', { name: 'Fermer' }).click();
+      await page.getByRole('button', { name: 'Ajouter une règle' }).click();
+      await page.getByRole('combobox', { name: 'Variable à contrôler' }).click();
+      await expect(page.getByRole('listbox', { name: 'Variable à contrôler' })).toBeVisible();
+    } },
   ];
   for (const { screen: name, open } of ON_DEMAND) {
     test(`${name} : contenu ouvert a la demande`, async ({ page }) => {
       const screen = SCREENS.find((entry) => entry.name === name)!;
       const incidents = await openScreen(page, screen.path);
+      await screen.open?.(page);
       await settledMeasures(page, screen);
       await open(page);
       const width = await page.evaluate(() => document.documentElement.scrollWidth);

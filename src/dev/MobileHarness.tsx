@@ -30,6 +30,7 @@ import type { CohortRepository, CohortSummary } from '../data/cohorts';
 import type { ExportLogItem, ExportRepository } from '../data/exports';
 import type { MissionAccount, MissionRepository } from '../data/mission';
 import type { TemplateField, TemplateSection } from '../data/types';
+import { createEditorRegistryRepository, editorRegistryVersion } from '../test/fixtures/editorRegistry';
 import { initTheme } from '../lib/theme';
 import '../index.css';
 
@@ -184,12 +185,34 @@ const bases = strict<BaseRepository>('bases', {
     return fields.map((entry, index) => ({ fieldKey: entry.fieldKey, label: entry.label, scope: entry.scope, filled: index % 3, total: 3 }));
   },
 });
+// Lot 6 : l'editeur des jeux de variables s'ouvre depuis « Mes jeux de variables » sur un
+// brouillon charge — la fixture fictive de 216 variables, 24 sections et 26 regles.
+const registry = createEditorRegistryRepository();
+// 5.13-B : douze regles d'affichage reprennent la condition d'une regle existante, comme
+// « intervention chirurgicale réalisée = oui » dans l'audit. L'editeur les regroupe en une
+// ligne, des le premier ecran ; elles restent unitaires.
+for (const target of [
+  ...Array.from({ length: 9 }, (_, index) => `bloc_02_a_variable_0${index + 1}`),
+  'bloc_02_b_variable_01', 'bloc_02_b_variable_02', 'bloc_02_b_variable_03',
+]) {
+  void registry.addRule(editorRegistryVersion.id, {
+    if: { field: 'bloc_01_direct_04', operator: 'equals', value: 'oui' },
+    then: { field: target, operator: 'visible' },
+  }, '', 'block');
+}
 const templates = strict<TemplateRepository>('templates', {
   // Comme le vrai depot : chaque variable porte le libelle et le rang de sa section.
-  async getVersion() { return { version, fields: withSections(fields, sections), rules: [], sections }; },
+  async getVersion(id: string) {
+    if (id === editorRegistryVersion.id) return registry.getVersion(id);
+    return { version, fields: withSections(fields, sections), rules: [], sections };
+  },
   async getSections() { return sections; },
   async listTemplates() {
-    return [{ id: 't1', name: 'Neurotraumatologie (fictif)', specialty: 'Neurochirurgie', ownerUserId: profile.id, versions: [version] }];
+    return [
+      { id: 't1', name: 'Neurotraumatologie (fictif)', specialty: 'Neurochirurgie', ownerUserId: profile.id, versions: [version] },
+      { id: editorRegistryVersion.templateId, name: 'Registre multipathologies (fictif)', specialty: 'Neurologie',
+        ownerUserId: profile.id, versions: [editorRegistryVersion] },
+    ];
   },
   // Methodes facultatives du contrat : absentes, l'ecran prend son chemin de repli documente.
   getFields: undefined,

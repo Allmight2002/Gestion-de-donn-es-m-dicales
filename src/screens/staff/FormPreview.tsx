@@ -296,25 +296,28 @@ export function FormPreview({
   );
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-3 md:space-y-5">
+      {/* Audit UI mobile, lot 6 : sur telephone, l'apercu est deja a la largeur d'un telephone.
+          Le retour (les onglets de l'editeur sont juste au-dessus), la version (dans la ligne
+          d'etat) et le choix d'appareil s'effacent ; le titre reste pour les lecteurs d'ecran. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={onClose} className="btn-ghost min-h-11 px-2">
+          <button type="button" onClick={onClose} className="btn-ghost min-h-11 px-2 max-md:hidden">
             ← {t('preview.back')}
           </button>
-          <h2 className="text-xl font-semibold tracking-tight">{t('preview.title')}</h2>
-          <span className={preparationMode ? 'text-xs text-slate-500' : 'badge'}>
+          <h2 className="text-xl font-semibold tracking-tight max-md:sr-only">{t('preview.title')}</h2>
+          <span className={`${preparationMode ? 'text-xs text-slate-500' : 'badge'} max-md:hidden`}>
             {preparationMode ? `${t('formprep.source_version')} ${version.versionNumber}` : `${t('admin.version')} ${version.versionNumber}`}
           </span>
         </div>
-        <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+        <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 p-1 max-md:hidden dark:border-slate-700">
           {viewportButton('desktop', t('preview.desktop'), <Monitor size={16} aria-hidden />)}
           {viewportButton('mobile', t('preview.mobile'), <Smartphone size={16} aria-hidden />)}
         </div>
       </div>
 
       {/* Le message le plus important de l'ecran : ce qui est tape ici ne part nulle part. */}
-      <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
+      <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 max-md:px-3 max-md:py-2 max-md:text-xs dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
         {t('preview.no_write')}
       </p>
 

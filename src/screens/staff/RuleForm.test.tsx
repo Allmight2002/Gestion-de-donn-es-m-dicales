@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import type { TemplateField, TemplateSection } from '../../data/types';
-import { RuleForm, RuleSummary } from './RuleForm';
+import { RuleForm, RuleSummary, ruleConditionKey, ruleConditionText } from './RuleForm';
 
 const fields: TemplateField[] = [
   {
@@ -222,45 +222,60 @@ describe('RuleForm', () => {
       </I18nProvider>,
     );
 
-    const cible = screen.getByLabelText('Variable à contrôler');
-    expect(within(cible).getAllByRole('option')).toHaveLength(31); // 30 variables + « Choisir »
+    // Audit UI mobile, lot 6 : recherche et liste ne font plus qu'une liste recherchable.
+    const cible = screen.getByRole('combobox', { name: 'Variable à contrôler' });
+    expect(screen.queryByLabelText('Rechercher une variable — Variable à contrôler')).not.toBeInTheDocument();
+    await user.click(cible);
+    const liste = screen.getByRole('listbox', { name: 'Variable à contrôler' });
+    expect(within(liste).getAllByRole('option')).toHaveLength(31); // 30 variables + « Choisir »
 
-    const recherche = screen.getByLabelText('Rechercher une variable — Variable à contrôler');
-    await user.type(recherche, 'glasgow');
-    expect(within(cible).getAllByRole('option')).toHaveLength(2);
-    expect(within(cible).getByRole('option', { name: /Score de Glasgow/ })).toBeInTheDocument();
+    await user.type(cible, 'glasgow');
+    expect(within(liste).getAllByRole('option')).toHaveLength(2);
+    await user.click(within(liste).getByRole('option', { name: /Score de Glasgow/ }));
+    // Le choix referme la liste et se lit dans le champ.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect((cible as HTMLInputElement).value).toMatch(/^Score de Glasgow/);
 
     // La variable choisie reste proposee meme si la recherche ne la retient plus :
     // filtrer ne doit jamais effacer une reponse deja donnee.
-    await user.selectOptions(cible, 'variable_27');
-    await user.clear(recherche);
-    await user.type(recherche, 'Variable 3');
-    expect(within(cible).getByRole('option', { name: /Score de Glasgow/ })).toBeInTheDocument();
-    expect(cible).toHaveValue('variable_27');
+    await user.clear(cible);
+    await user.type(cible, 'Variable 3');
+    const filtree = screen.getByRole('listbox', { name: 'Variable à contrôler' });
+    expect(within(filtree).getByRole('option', { name: /Score de Glasgow/ })).toHaveAttribute('aria-selected', 'true');
+    // Echap referme la liste sans toucher au choix.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect((cible as HTMLInputElement).value).toMatch(/^Score de Glasgow/);
   });
   test('une recherche sans resultat le dit, et la valeur choisie reste proposee', async () => {
     const user = userEvent.setup();
+    const onSubmit = vi.fn();
     const many: TemplateField[] = Array.from({ length: 12 }, (_, index) => ({
       ...fields[0], id: `m-${index}`, fieldKey: `var_${index}`, label: `Variable ${index}`, displayOrder: index,
     }));
     render(
       <I18nProvider>
-        <RuleForm fields={many} onSubmit={() => {}} />
+        <RuleForm fields={many} onSubmit={onSubmit} />
       </I18nProvider>,
     );
 
-    const cible = screen.getByLabelText('Variable à contrôler');
-    const recherche = screen.getByLabelText('Rechercher une variable — Variable à contrôler');
+    const cible = screen.getByRole('combobox', { name: 'Variable à contrôler' });
     // Sans choix en cours, une recherche vide est annoncee comme telle.
-    await user.type(recherche, 'zzzz');
+    await user.type(cible, 'zzzz');
     expect(screen.getAllByText('Aucune variable ne correspond à cette recherche').length).toBeGreaterThan(0);
 
+    // Au clavier : les fleches parcourent la liste, Entree choisit sans soumettre la regle.
+    await user.clear(cible);
+    await user.type(cible, 'Variable 3');
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect((cible as HTMLInputElement).value).toMatch(/^Variable 3/);
+
     // Avec un choix en cours, la variable choisie reste proposee : filtrer n'efface pas une reponse.
-    await user.clear(recherche);
-    await user.selectOptions(cible, 'var_3');
-    await user.type(recherche, 'zzzz');
-    expect(cible).toHaveValue('var_3');
-    expect(within(cible).getByRole('option', { name: /Variable 3/ })).toBeInTheDocument();
+    await user.clear(cible);
+    await user.type(cible, 'zzzz');
+    const liste = screen.getByRole('listbox', { name: 'Variable à contrôler' });
+    expect(within(liste).getByRole('option', { name: /Variable 3/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByText('1 variable(s) sur 12').length).toBeGreaterThan(0);
   });
 });
@@ -565,3 +580,29 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     expect(screen.getByText(/impossible à piloter par une variable calculée/)).toBeInTheDocument();
   });
 });
+
+// Audit UI mobile, lot 6 (5.13-B) : le regroupement par condition n'est qu'un affichage.
+describe('regroupement des règles par condition', () => {
+  const liste = (value: unknown[], then: string) => ({ if: { field: 'dx', operator: 'in', value }, then: { field: then, operator: 'visible' } });
+
+  test('une même condition donne la même clé, quel que soit l’ordre des valeurs ; une comparaison n’en a pas', () => {
+    expect(ruleConditionKey(liste(['a', 'b'], 'x'))).toBe(ruleConditionKey(liste(['b', 'a'], 'y')));
+    expect(ruleConditionKey(liste(['a'], 'x'))).not.toBe(ruleConditionKey(liste(['a', 'b'], 'x')));
+    expect(ruleConditionKey({ operator: 'equals', left_field: 'a', right_field: 'b' })).toBeNull();
+    expect(ruleConditionKey('illisible')).toBeNull();
+  });
+
+  test('la condition se lit avec les libellés d’options, et une règle de groupe ne dit que son effet', () => {
+    const choix: TemplateField[] = [
+      { ...fields[0], fieldKey: 'chirurgie', label: 'Intervention chirurgicale réalisée', type: 'select', allowedValues: ['oui', 'non'],
+        allowedOptions: [{ valueKey: 'oui', label: 'Oui', isActive: true }, { valueKey: 'non', label: 'Non', isActive: true }] },
+      { ...fields[0], id: 'voie', fieldKey: 'voie', label: 'Voie d’abord', type: 'text' },
+    ];
+    const rule = { if: { field: 'chirurgie', operator: 'equals', value: 'oui' }, then: { field: 'voie', operator: 'visible' } };
+    expect(ruleConditionText((key) => ({ 'rule.if': 'Si', 'rule.operator.equals': 'est égal à' } as Record<string, string>)[key] ?? key, rule, choix))
+      .toBe('Si Intervention chirurgicale réalisée est égal à « Oui »');
+    render(<I18nProvider><RuleSummary rule={rule} fields={choix} consequenceOnly /></I18nProvider>);
+    expect(screen.getByText('→ Voie d’abord est affichée')).toBeInTheDocument();
+  });
+});
+

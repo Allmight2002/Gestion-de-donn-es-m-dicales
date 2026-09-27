@@ -350,6 +350,12 @@ export function FieldForm({
 
   return (
     <form onSubmit={(e) => void submit(e)} className="card grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Audit UI mobile, lot 6 : le libelle d'abord, c'est lui qu'on corrige ; la cle technique
+          suit, figee des qu'une fiche l'utilise. */}
+      <label className="form-label">
+        {t('admin.label')}
+        <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
+      </label>
       <label className="form-label">
         {t('admin.field_key')}
         <input
@@ -359,10 +365,6 @@ export function FieldForm({
           disabled={lockStructural}
           required
         />
-      </label>
-      <label className="form-label">
-        {t('admin.label')}
-        <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
       </label>
       <label htmlFor="field-description" className="form-label sm:col-span-2">
         {t('admin.field_description')}

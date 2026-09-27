@@ -39,7 +39,7 @@ incident réseau transitoire d'une régression, sans masquer une erreur locale a
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 | **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
 | **LOT13 dédié** | révocation dynamique, indisponibilité/reconnexion Supabase, idempotence après réponse perdue, import, retry d'upload, hors-ligne historique et suppression | scénarios présents dans `e2e/lot13-complete.spec.ts`, exécutés seulement par le job staging dédié ; leur présence ne vaut pas preuve actuelle d'un run réussi |
-| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 18 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
+| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 26 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
@@ -66,7 +66,7 @@ sont des couvertures **complémentaires et distinctes**, pas un substitut au par
 ## Garde-fou d'affichage sur téléphone (audit UI mobile, lot 7)
 
 `e2e/mobile-360.spec.ts` contrôle les budgets de
-[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 21 écrans, à 360 × 800 px
+[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 26 écrans, à 360 × 800 px
 en tactile :
 
 - aucun débordement horizontal ;
@@ -78,7 +78,10 @@ en tactile :
 Le contenu ouvert à la demande ne déborde pas non plus : « Détails techniques » d'un export
 (empreinte SHA-256), menu « ⋯ » d'une cohorte, liste complète de la complétude (lot 4) ; ligne de
 réglage, droits d'un membre et invitation, missions terminées et « ⋯ » d'une mission, édition du
-formulaire en plein écran, sans les onglets de la base (lot 5).
+formulaire en plein écran, sans les onglets de la base (lot 5) ; dans l'éditeur des jeux de
+variables, filtres et index en panneau bas, « ⋯ » d'une variable, mode « Réorganiser », fiche d'une
+variable, section dépliée et ajout d'une section, groupe de règles déplié et liste recherchable du
+formulaire de règle (lot 6).
 
 ```bash
 npx playwright install chromium   # une fois
@@ -95,7 +98,11 @@ bloquée et fait échouer le test. Contre une URL externe (`E2E_BASE_URL`), le f
   retire la mention. Aucune dette depuis le lot 5 (la liste passe avant le formulaire de création
   pour Accès, Comptes de mission et Mes jeux de variables).
 - **Nouvel écran.** L'ajouter à `SCREENS` avec son premier contenu utile, et ses données au banc.
-  L'éditeur des jeux de variables (lot 6) n'y figure pas encore.
+  Un écran sans adresse propre s'ouvre par un geste (`open`) : c'est le cas des cinq espaces de
+  l'éditeur des jeux de variables (lot 6), ouvert depuis « Mes jeux de variables » sur un brouillon
+  fictif de 216 variables et 38 règles, dont 13 partagent une condition. En Structure, le premier
+  contenu utile est le titre du bloc affiché : ses variables suivent sa condition et ses
+  sous-sections.
 - **Polices.** Sous Linux, le texte est rendu en DejaVu Sans, l'une des polices courantes les plus
   larges : Windows et Android donnent des écrans plus courts. La mesure Linux fait référence.
 - **Hors CI de PR** (voir « Intégration continue ») : à lancer avant de pousser une modification
