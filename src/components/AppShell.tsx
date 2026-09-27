@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import {
-  Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
+  ChevronLeft, Database, FileText, KeyRound, Inbox, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, ShieldAlert, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { canCreateBase } from '../auth/logic';
@@ -14,6 +14,7 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
+import { TopBarRegistryProvider, useTopBarRegistry } from './TopBar';
 import { errorMessage } from '../lib/errorMessage';
 import { requestPageLeave } from '../lib/useUnsavedChanges';
 
@@ -71,6 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const reopenSidebarRef = useRef<HTMLButtonElement>(null);
+  const { active: context, registry: topBarRegistry } = useTopBarRegistry();
 
   const editorRoute = isVariableEditorRoute(pathname);
   const hideSidebarLabel = t('nav.hide_sidebar');
@@ -278,6 +280,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
+    <TopBarRegistryProvider registry={topBarRegistry}>
     <div className="min-h-screen text-slate-900">
       <a
         href="#main-content"
@@ -308,14 +311,41 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       )}
 
-      {/* Barre haute mobile (< lg) + tiroir. */}
-      <header className={`${editorRoute ? 'relative' : 'sticky top-0'} z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md lg:hidden`}>
+      {/* Barre haute mobile (< lg) + tiroir. Un ecran peut y inscrire son contexte (T1-B) :
+          retour ou fermeture, puis ce qu'on consulte, a la place du logo. */}
+      <header className={`${editorRoute || context?.scrolls ? 'relative' : 'sticky top-0'} z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md lg:hidden`}>
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-          <Link to="/" className="flex items-center gap-2">
-            <Logo className="h-8 w-8" />
-            <span className="text-sm font-semibold tracking-tight text-slate-900">{t('app.title')}</span>
-          </Link>
-          <div className="flex items-center gap-2">
+          {context ? (
+            <div className="-ml-2 flex min-w-0 items-center gap-1">
+              {context.onClose ? (
+                <button
+                  type="button"
+                  onClick={context.onClose}
+                  aria-label={context.closeLabel ?? t('common.cancel')}
+                  title={context.closeLabel ?? t('common.cancel')}
+                  className="icon-button -my-1.5 shrink-0"
+                >
+                  <X size={18} aria-hidden />
+                </button>
+              ) : context.backTo ? (
+                <Link
+                  to={context.backTo}
+                  aria-label={context.backLabel ?? t('admin.back')}
+                  title={context.backLabel ?? t('admin.back')}
+                  className="icon-button -my-1.5 shrink-0"
+                >
+                  <ChevronLeft size={20} aria-hidden />
+                </Link>
+              ) : null}
+              <span className="truncate text-sm font-semibold tracking-tight text-slate-900">{context.title}</span>
+            </div>
+          ) : (
+            <Link to="/" className="flex items-center gap-2">
+              <Logo className="h-8 w-8" />
+              <span className="text-sm font-semibold tracking-tight text-slate-900">{t('app.title')}</span>
+            </Link>
+          )}
+          <div className="flex shrink-0 items-center gap-2">
             {syncBadge > 0 && (
               <Link to="/sync" className={`rounded-full px-2 py-0.5 text-xs font-semibold ${conflictCount + rejectedCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
                 {syncBadge}
@@ -376,5 +406,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
     </div>
+    </TopBarRegistryProvider>
   );
 }

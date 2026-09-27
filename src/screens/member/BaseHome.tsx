@@ -498,6 +498,8 @@ export function BaseHome() {
         description={!offlineView
           ? (listing?.templateName ? `${listing.templateName} · v${listing.versionNumber}` : undefined)
           : t('offline.identity_unavailable')}
+        // Hors-ligne, la description est un etat (identite indisponible) : elle reste lisible.
+        keepDescription={offlineView}
         badge={offlineView ? (
           <span className="badge bg-amber-100 text-amber-800">{t('offline.read_only')}</span>
         ) : (
@@ -752,6 +754,7 @@ function PendingIntakesPanel({ baseId, entries, onDiscard }: {
       <PageHeader
         title={t('intake.pending_title')}
         description={t('intake.blocked_read')}
+        keepDescription
         badge={<span className="badge bg-amber-100 text-amber-800">{t('offline.badge')}</span>}
         actions={(
           <button onClick={() => navigate(`/bases/${baseId}/patients/new/manual`)} className="btn-primary flex-1 sm:flex-none">

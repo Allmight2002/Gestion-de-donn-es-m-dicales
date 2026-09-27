@@ -4,13 +4,14 @@
 import 'fake-indexeddb/auto';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { AuthProvider } from '../auth/AuthProvider';
 import { RepositoryProvider } from '../data/RepositoryProvider';
 import { AppShell } from './AppShell';
+import { useTopBar, type TopBarConfig } from './TopBar';
 import { outbox, purgeAllOfflineData, setOfflineUser } from '../data/offline';
 import { recordRecentBase } from '../lib/recentBases';
 import type { AuthBackend } from '../auth/backend';
@@ -246,5 +247,58 @@ describe('AppShell (UI-1, barre laterale)', () => {
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(document.body.style.overflow).toBe(''));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+// Audit UI mobile, lot 1 (T1-B) : un ecran inscrit son contexte dans la barre haute mobile
+// (retour ou fermeture + ce qu'on consulte) a la place du logo, et le retire en partant.
+function ContextPage({ config }: { config: TopBarConfig }) {
+  useTopBar(config);
+  return <p>PAGE</p>;
+}
+
+describe('AppShell — barre haute contextuelle (T1-B)', () => {
+  afterEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    setOfflineUser(null);
+  });
+
+  test('un écran de base remplace le logo par le retour et son nom', async () => {
+    setOfflineUser('u-ctx');
+    renderShell({ id: 'u-ctx', fullName: 'Dr Contexte', globalRole: 'medecin', language: 'fr' }, undefined, '/bases/b1',
+      <ContextPage config={{ title: 'Gliomes 2026', backTo: '/', backLabel: 'Retour : Tableau de bord' }} />);
+    await screen.findByText('Dr Contexte');
+
+    const header = within(document.querySelector('header')!);
+    expect(header.getByRole('link', { name: 'Retour : Tableau de bord' })).toHaveAttribute('href', '/');
+    expect(header.getByText('Gliomes 2026')).toBeInTheDocument();
+    expect(header.queryByText('Registre clinique')).not.toBeInTheDocument();
+    expect(header.getByRole('button', { name: 'Ouvrir le menu' })).toBeInTheDocument();
+    expect(document.querySelector('header')).toHaveClass('sticky', 'top-0');
+  });
+
+  test('un formulaire affiche ✕, qui annule, et libère la hauteur en laissant la barre défiler', async () => {
+    const onClose = vi.fn();
+    setOfflineUser('u-form');
+    renderShell({ id: 'u-form', fullName: 'Dr Formulaire', globalRole: 'medecin', language: 'fr' }, undefined, '/bases/b1/patients/new',
+      <ContextPage config={{ title: 'Nouveau patient', onClose, scrolls: true }} />);
+    await screen.findByText('Dr Formulaire');
+
+    const header = document.querySelector('header')!;
+    expect(header).toHaveClass('relative');
+    expect(header).not.toHaveClass('sticky');
+    await userEvent.click(within(header).getByRole('button', { name: 'Annuler' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(within(header).getByText('Nouveau patient')).toBeInTheDocument();
+  });
+
+  test('sans écran inscrit, la barre garde le logo', async () => {
+    setOfflineUser('u-logo');
+    renderShell({ id: 'u-logo', fullName: 'Dr Logo', globalRole: 'medecin', language: 'fr' });
+    await screen.findByText('Dr Logo');
+    const header = within(document.querySelector('header')!);
+    expect(header.getByRole('link', { name: 'Registre clinique' })).toHaveAttribute('href', '/');
+    expect(header.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
   });
 });

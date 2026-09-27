@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
+import { FormActionBar } from '../../components/FormActionBar';
+import { useTopBar } from '../../components/TopBar';
 import { useToast } from '../../components/Toast';
 import type { IdentityMatch, PatientIdentityInfo, PatientListItem, PatientRepository } from '../../data/patients';
 import { useBaseRepository, usePatientRepository } from '../../data/RepositoryProvider';
@@ -134,6 +136,10 @@ export function EditPatientIdentity() {
     }
   }
 
+  // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
+  // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
+  useTopBar({ title: t('patient.edit_identity_title'), onClose: back, scrolls: true });
+
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
   const allowed = canCorrectPatientIdentity(base, patient);
 
@@ -141,10 +147,10 @@ export function EditPatientIdentity() {
     <section className="max-w-2xl space-y-5 sm:space-y-6">
       {navigation.guard}
       <div>
-        <button type="button" onClick={back} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        <button type="button" onClick={back} className="text-sm font-medium text-slate-500 hover:text-teal-700 max-lg:hidden">
           ← {t('admin.back')}
         </button>
-        <h1 className="page-title mt-2">{t('patient.edit_identity_title')}</h1>
+        <h1 className="page-title mt-2 max-lg:sr-only">{t('patient.edit_identity_title')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -207,11 +213,9 @@ export function EditPatientIdentity() {
 
           <JustificationField value={reason} onChange={setReason} />
 
-          <div className="flex items-center gap-2">
-            <button type="submit" disabled={busy} className="btn-primary">{t('patient.save_identity')}</button>
-            <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
-            <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
-          </div>
+          <FormActionBar onCancel={back}>
+            <button type="submit" disabled={busy} className="btn-primary max-sm:flex-1">{t('patient.save_identity')}</button>
+          </FormActionBar>
         </form>
       )}
     </section>

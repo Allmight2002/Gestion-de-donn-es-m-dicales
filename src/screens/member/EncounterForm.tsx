@@ -19,6 +19,8 @@ import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, encounterApplicableFields } from './EncounterFields';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { SkeletonList } from '../../components/Skeleton';
+import { FormActionBar } from '../../components/FormActionBar';
+import { useTopBar } from '../../components/TopBar';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
@@ -399,17 +401,25 @@ export function EncounterForm() {
     }
   }
 
+  // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
+  // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
+  useTopBar({
+    title: t('encounter.new'),
+    onClose: () => navigate(offlineIntakeMode ? `/bases/${baseId}` : `/bases/${baseId}/patients/${patientId}`),
+    scrolls: true,
+  });
+
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
       {navigation.guard}
       <div>
-        <button onClick={() => navigate(offlineIntakeMode ? `/bases/${baseId}` : `/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        <button onClick={() => navigate(offlineIntakeMode ? `/bases/${baseId}` : `/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700 max-lg:hidden">
           ← {t('admin.back')}
         </button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="page-title">{t('encounter.new')}</h1>
+          <h1 className="page-title max-lg:sr-only">{t('encounter.new')}</h1>
           {maySubmitToCuration && !offlineIntakeMode && (
             <button type="button" onClick={() => navigation.protect(submitToStaff)} disabled={busy || work.locked} className="btn-secondary">
               <Send size={16} aria-hidden /> {t('create.submit')}
@@ -533,15 +543,11 @@ export function EncounterForm() {
         )}
 
         </fieldset>
-        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          <button type="submit" disabled={busy} className="btn-primary">
+        <FormActionBar onCancel={() => navigate(`/bases/${baseId}/patients/${patientId}`)}>
+          <button type="submit" disabled={busy} className="btn-primary max-sm:flex-1">
             {t('encounter.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
-            {t('common.cancel')}
-          </button>
-          <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
-        </div>
+        </FormActionBar>
       </form>
     </section>
   );

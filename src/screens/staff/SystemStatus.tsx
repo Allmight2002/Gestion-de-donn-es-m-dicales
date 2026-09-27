@@ -23,7 +23,7 @@ export function SystemStatus() {
   const date = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 
   return <section className="space-y-5 sm:space-y-6">
-    <PageHeader title={t('system_status.title')} description={t('system_status.subtitle')} actions={<button className="btn-secondary" onClick={() => void load()}>{t('system_status.refresh')}</button>} />
+    <PageHeader title={t('system_status.title')} description={t('system_status.subtitle')} keepDescription actions={<button className="btn-secondary" onClick={() => void load()}>{t('system_status.refresh')}</button>} />
     <label className="form-label max-w-sm">{t('system_status.context')}
       <select className="input" value={context ?? ''} onChange={(event) => setContext((event.target.value || null) as ErrorContext | null)}>
         <option value="">{t('system_status.all_contexts')}</option>

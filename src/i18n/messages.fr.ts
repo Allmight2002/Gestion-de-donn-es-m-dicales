@@ -185,6 +185,10 @@ export const messages = {
     'base.settings_danger': 'Suppression de la base',
     'nav.open_menu': 'Ouvrir le menu',
     'nav.close_menu': 'Fermer le menu',
+    // Audit UI mobile, lot 1 — barre haute contextuelle et aide a la demande.
+    'nav.back_to': 'Retour : {label}',
+    'common.close': 'Fermer',
+    'help.page': 'À propos de cette page',
     'nav.hide_sidebar': 'Masquer la barre latérale',
     'nav.show_sidebar': 'Afficher la barre latérale',
     'theme.label': 'Thème',

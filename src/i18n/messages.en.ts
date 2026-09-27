@@ -187,6 +187,10 @@ export const messages = {
     'base.settings_danger': 'Delete this registry',
     'nav.open_menu': 'Open menu',
     'nav.close_menu': 'Close menu',
+    // Mobile UI audit, batch 1 — contextual top bar and on-demand help.
+    'nav.back_to': 'Back: {label}',
+    'common.close': 'Close',
+    'help.page': 'About this page',
     'nav.hide_sidebar': 'Hide the sidebar',
     'nav.show_sidebar': 'Show the sidebar',
     'theme.label': 'Theme',

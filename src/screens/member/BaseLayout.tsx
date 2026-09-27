@@ -6,6 +6,8 @@ import type { MessageKey } from '../../i18n/messages';
 import { useBaseRepository } from '../../data/RepositoryProvider';
 import { offlineCache, useOnline } from '../../data/offline';
 import type { BaseListing } from '../../data/bases';
+import { useTopBar } from '../../components/TopBar';
+import { overflowFadeClass, useOverflowEdges } from '../../lib/useOverflowEdges';
 
 // La page d'une base tient en QUATRE destinations. Dix onglets de meme poids obligeaient a
 // faire defiler une barre pour atteindre ce qu'on ouvre deux fois par an, alors que la saisie
@@ -34,6 +36,8 @@ export function BaseLayout() {
   const [name, setName] = useState('');
   const [failed, setFailed] = useState(false);
   const tabBar = useRef<HTMLElement>(null);
+  const [tabScroller, tabEdges] = useOverflowEdges<HTMLDivElement>();
+  const [subTabScroller, subTabEdges] = useOverflowEdges<HTMLDivElement>();
 
   // UX-12 : le fil d'Ariane ne doit jamais garder le nom de la base precedente. L'etat est
   // remis a zero PENDANT le rendu, avant toute lecture, et non dans un effet.
@@ -139,13 +143,25 @@ export function BaseLayout() {
 
   const subTabs = tabs.find((tab) => tab.active)?.subs ?? [];
 
+  // Audit UI mobile, lot 1 (T1-B) : sur telephone, la barre haute porte le nom de la base et le
+  // retour, a la place du fil d'Ariane. Depuis un onglet, on remonte au tableau de bord ; depuis
+  // une page interieure (import), a la liste de la base. La structure des onglets, et non les
+  // droits encore en chargement, decide de ce qui est un onglet.
+  const displayName = name || (failed ? t('common.error') : t('common.loading'));
+  const atTab = allTabs.some((tab) => tab.subs.some((sub) => sub.to === pathname));
+  useTopBar({
+    title: displayName,
+    backTo: atTab ? '/' : base,
+    backLabel: t('nav.back_to').replace('{label}', atTab ? t('member.dashboard.title') : displayName),
+  });
+
   return (
     <section className="space-y-4">
-      <p className="text-sm text-slate-400">
+      <p className="hidden text-sm text-slate-400 lg:block">
           <Link to="/" className="underline decoration-slate-300 underline-offset-4 hover:text-teal-700">{t('member.dashboard.title')}</Link>
         <span aria-hidden> › </span>
         {/* Ni le nom precedent, ni une affirmation d'existence : chargement, nom connu, ou echec. */}
-        <span className="text-slate-600">{name || (failed ? t('common.error') : t('common.loading'))}</span>
+        <span className="text-slate-600">{displayName}</span>
       </p>
 
       {/* Bandeau permanent du compte de mission : l'echeance ne doit jamais surprendre. */}
@@ -166,7 +182,7 @@ export function BaseLayout() {
         </p>
       )}
 
-      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <div ref={tabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(tabEdges)}`}>
         <nav ref={tabBar} aria-label={name || t('base.navigation')} className="flex min-w-max gap-1 border-b border-slate-200">
           {tabs.map((tab) => (
             // L'onglet parent mene a sa premiere entree disponible et reste allume pour toutes
@@ -187,7 +203,7 @@ export function BaseLayout() {
       </div>
 
       {subTabs.length > 1 && (
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div ref={subTabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(subTabEdges)}`}>
           <nav aria-label={t(tabs.find((tab) => tab.active)!.labelKey)} className="flex min-w-max gap-1">
             {subTabs.map((sub) => (
               <NavLink

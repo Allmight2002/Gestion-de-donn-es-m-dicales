@@ -23,6 +23,8 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice, encounterApplicableFields } from './EncounterFields';
 import { SkeletonList } from '../../components/Skeleton';
+import { FormActionBar } from '../../components/FormActionBar';
+import { useTopBar } from '../../components/TopBar';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 import { RecordCompletionNotice } from './RecordCompletion';
@@ -443,16 +445,20 @@ export function EditEncounter() {
     }
   }
 
+  // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
+  // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
+  useTopBar({ title: t('encounter.edit_title'), onClose: () => navigate(`/bases/${baseId}/patients/${patientId}`), scrolls: true });
+
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   return (
     <section className="max-w-5xl space-y-5 sm:space-y-6">
       {navigation.guard}
       <div>
-        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        <button onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700 max-lg:hidden">
           ← {t('admin.back')}
         </button>
-        <h1 className="page-title mt-2">{t('encounter.edit_title')}</h1>
+        <h1 className="page-title mt-2 max-lg:sr-only">{t('encounter.edit_title')}</h1>
       </div>
 
       {!online && offlineEditBlocked ? (
@@ -531,16 +537,14 @@ export function EditEncounter() {
         )}
 
         </fieldset>
-        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          <button type="submit" disabled={busy} className="btn-primary">
+        <FormActionBar
+          onCancel={() => navigate(`/bases/${baseId}/patients/${patientId}`)}
+          extra={reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
+        >
+          <button type="submit" disabled={busy} className="btn-primary max-sm:flex-1">
             {t('encounter.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}/patients/${patientId}`)} className="btn-secondary">
-            {t('common.cancel')}
-          </button>
-          {reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
-          <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
-        </div>
+        </FormActionBar>
       </form>
 
       <div className="card p-4">

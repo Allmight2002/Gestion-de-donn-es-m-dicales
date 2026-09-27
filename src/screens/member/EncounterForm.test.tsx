@@ -7,6 +7,8 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { EncounterForm } from './EncounterForm';
+import { TopBarRegistryProvider, useTopBarRegistry } from '../../components/TopBar';
+import type { ReactNode } from 'react';
 import { saveDraft, loadDraft } from '../../data/drafts';
 import { setOfflineUser } from '../../data/offline';
 import type { BaseRepository, BaseListing } from '../../data/bases';
@@ -71,6 +73,18 @@ function renderForm(patientRepo: PatientRepository) {
         </MemoryRouter>
       </RepositoryProvider>
     </I18nProvider>,
+  );
+}
+
+// Audit UI mobile, lot 1 : sonde qui montre ce que le formulaire inscrit dans la barre haute.
+function TopBarProbe({ children }: { children: ReactNode }) {
+  const { active, registry } = useTopBarRegistry();
+  return (
+    <TopBarRegistryProvider registry={registry}>
+      {children}
+      <p data-testid="barre-haute">{active ? `${active.title}${active.scrolls ? ' · défile' : ''}` : 'vide'}</p>
+      {active?.onClose && <button type="button" onClick={active.onClose}>✕ barre haute</button>}
+    </TopBarRegistryProvider>
   );
 }
 
@@ -359,5 +373,38 @@ describe('EncounterForm — liste à soupape (F5)', () => {
     await userEvent.click(screen.getByLabelText('Paludisme grave'));
     expect(screen.getByLabelText('Tuberculose pulmonaire')).toBeChecked();
     expect(screen.getByLabelText('Paludisme grave')).toBeChecked();
+  });
+});
+
+// Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, ✕ et le titre passent dans la barre haute ;
+// « Retour », le titre de page et « Annuler » n'y sont plus repetes, et la barre d'action tient
+// sur une ligne. Le titre reste un vrai titre pour les lecteurs d'ecran.
+describe('EncounterForm — barre haute et barre d’action (lot 1)', () => {
+  test('✕ ramène à la fiche, comme Retour et Annuler', async () => {
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={makePatientRepo(vi.fn())}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/p1/encounters/new']}>
+            <TopBarProbe>
+              <Routes>
+                <Route path="/bases/:id/patients/:patientId/encounters/new" element={<EncounterForm />} />
+                <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+              </Routes>
+            </TopBarProbe>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    await screen.findByText('Glasgow');
+
+    expect(screen.getByTestId('barre-haute')).toHaveTextContent('Nouvelle rencontre · défile');
+    expect(screen.getByRole('button', { name: /Retour/ })).toHaveClass('max-lg:hidden');
+    expect(screen.getByRole('heading', { level: 1, name: 'Nouvelle rencontre' })).toHaveClass('max-lg:sr-only');
+    expect(screen.getByRole('button', { name: 'Annuler' })).toHaveClass('max-lg:hidden');
+    expect(screen.getByRole('button', { name: 'Enregistrer la rencontre' })).toHaveClass('max-sm:flex-1');
+
+    await userEvent.click(screen.getByRole('button', { name: '✕ barre haute' }));
+    expect(await screen.findByText('FICHE PAGE')).toBeInTheDocument();
+    expect(screen.getByTestId('barre-haute')).toHaveTextContent('vide');
   });
 });
