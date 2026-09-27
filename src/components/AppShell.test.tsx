@@ -89,6 +89,8 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.getByRole('button', { name: 'Se déconnecter' })).toBeInTheDocument();
     expect(screen.getByText('CONTENU')).toBeInTheDocument();
     expect(screen.getByText('Ctrl K')).toHaveClass('text-slate-700');
+    // Audit UI mobile, lot 0 : l'aide clavier est masquee sur ecran tactile (pointer: coarse).
+    expect(screen.getByText('Ctrl K')).toHaveClass('keyboard-hint');
   });
 
   test('la navigation defile dans une zone distincte du profil et des reglages', async () => {

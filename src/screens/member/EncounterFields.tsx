@@ -10,6 +10,7 @@ import { ChoiceWithProposal } from './ChoiceWithProposal';
 import { ValueInput } from './ValueInput';
 import { SectionedFields } from './SectionedFields';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { formatCalculatedNumber } from '../../lib/formatValue';
 export { SectionedFields } from './SectionedFields';
 
 export function FieldLabel({ field, fields, prefilled = false, toFill = false }: {
@@ -92,7 +93,7 @@ export function CalculatedValue({
   values: Record<string, unknown>;
   fields: readonly TemplateField[];
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const result = calculatedValue(field, values, fields);
   return (
     <output
@@ -103,7 +104,7 @@ export function CalculatedValue({
       {result === null ? (
         <span className="italic text-slate-400">{t('form.calculated_absent')}</span>
       ) : (
-        <span className="font-medium tabular-nums">{result}</span>
+        <span className="font-medium tabular-nums">{formatCalculatedNumber(result, lang)}</span>
       )}
       <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
         {t('form.calculated')}

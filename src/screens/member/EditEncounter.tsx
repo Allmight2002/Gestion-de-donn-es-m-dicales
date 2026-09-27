@@ -539,7 +539,7 @@ export function EditEncounter() {
             {t('common.cancel')}
           </button>
           {reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
-          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
+          <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
 

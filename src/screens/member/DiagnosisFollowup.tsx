@@ -84,12 +84,16 @@ export function DiagnosisFollowup() {
 
   if (loading) return <SkeletonList rows={5} />;
   if (ownerOnly) return <p role="alert" className="text-sm text-red-600">{t('diagnosis.followup_owner_only')}</p>;
+  // Audit UI mobile, lot 0 — trois filtres au-dessus d'une file vide n'aidaient a rien. Ils
+  // restent visibles des qu'il y a un resultat, ou qu'un filtre actif doit pouvoir etre retire.
+  const filtersActive = scope !== '' || code !== '' || currentOnly;
 
   return (
     <section className="max-w-4xl space-y-5 sm:space-y-6">
       <PageHeader title={t('diagnosis.followup_title')} description={t('diagnosis.followup_subtitle')} />
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
+      {(total > 0 || filtersActive) && (
       <div className="flex flex-wrap items-end gap-3 text-sm">
         <label className="flex flex-col">
           <span className="text-slate-700">{t('diagnosis.followup_scope')}</span>
@@ -119,6 +123,7 @@ export function DiagnosisFollowup() {
           </select>
         </label>
       </div>
+      )}
 
       {/* Agregats : des codes et des comptes, rien qui puisse designer une personne. */}
       {(byCode.length > 0 || unclassified > 0) && (
@@ -136,7 +141,8 @@ export function DiagnosisFollowup() {
         </div>
       )}
 
-      {total > 0 && (
+      {/* Une seule page : pas de « 1-1 sur 1 · Précédent · Suivant » inactifs (lot 0). */}
+      {(total > PAGE_SIZE || page > 0) && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}

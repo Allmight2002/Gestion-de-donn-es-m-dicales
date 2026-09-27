@@ -46,6 +46,27 @@ describe('ActivityLog (C3)', () => {
     expect(within(list).getByText(/7 patients · 12 rencontres · 1 erreurs/)).toBeInTheDocument(); // detail (5+2)
   });
 
+  // Audit UI mobile, lot 0 — ces actions ecrites par les migrations s'affichaient en code brut
+  // (`mission_credentials_revealed`…), illisible et insecable sur telephone. Le filtre, lui,
+  // garde sa liste courte : traduire l'affichage n'ajoute aucune option.
+  test('traduit les actions de mission, de cohorte et d identite au lieu du code brut', async () => {
+    const audit = makeAudit(async () => [
+      { id: 'a1', at: '2026-08-21T10:00:00.000Z', action: 'cohort_deleted', actorName: 'Compte a798aa8b', metadata: {} },
+      { id: 'a2', at: '2026-08-20T10:00:00.000Z', action: 'mission_credentials_revealed', actorName: 'Compte a798aa8b', metadata: {} },
+      { id: 'a3', at: '2026-08-19T10:00:00.000Z', action: 'mission_credentials_creation_requested', actorName: 'Compte a798aa8b', metadata: {} },
+      { id: 'a4', at: '2026-08-18T10:00:00.000Z', action: 'patient_identity_corrected', actorName: 'Compte a798aa8b', metadata: {} },
+    ]);
+    renderActivity(audit);
+
+    const list = await screen.findByRole('list');
+    expect(within(list).getByText('Cohorte supprimée')).toBeInTheDocument();
+    expect(within(list).getByText('Mot de passe de mission affiché')).toBeInTheDocument();
+    expect(within(list).getByText('Identifiants de mission demandés')).toBeInTheDocument();
+    expect(within(list).getByText('Identité du patient corrigée')).toBeInTheDocument();
+    expect(within(list).queryByText(/_/)).toBeNull();
+    expect(within(screen.getByLabelText('Action')).getAllByRole('option')).toHaveLength(13);
+  });
+
   // E6 — apres une evolution du formulaire, l'historique doit repondre a « qui a change quoi,
   // quand, et vers quelle revision ». Le detail vient de l'INSTANTANE minimise par le serveur :
   // l'ecran ne relit aucune version de gabarit vivante.

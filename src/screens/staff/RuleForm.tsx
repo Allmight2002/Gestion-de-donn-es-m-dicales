@@ -15,7 +15,7 @@ import { sectionLabel } from '../../domain/templateSections';
 import { fieldTypeLabel } from '../../domain/templateLabels';
 import type { RuleSeverity, TemplateField, TemplateSection } from '../../data/types';
 // Alias : `fieldOptions` designe deja, dans cet ecran, la liste des VARIABLES proposees.
-import { fieldOptions as listOptionsOf } from '../../domain/fieldOptions';
+import { fieldOptions as listOptionsOf, optionLabel } from '../../domain/fieldOptions';
 import { calculatedOperandConflict, isCalculatedField } from '../../domain/fieldFormula';
 import { Checkbox } from '../../components/Checkbox';
 import { FieldSelect } from './FieldSelect';
@@ -72,11 +72,13 @@ function fieldLabel(fields: TemplateField[], fieldKey: string) {
   return fields.find((field) => field.fieldKey === fieldKey)?.label ?? fieldKey;
 }
 
-function formatRuleValue(t: Translate, value: unknown): string {
-  if (Array.isArray(value)) return value.map((item) => formatRuleValue(t, item)).join(', ');
+function formatRuleValue(t: Translate, value: unknown, field: TemplateField | undefined): string {
+  if (Array.isArray(value)) return value.map((item) => formatRuleValue(t, item, field)).join(', ');
   if (value === true) return t('rule.value_true');
   if (value === false) return t('rule.value_false');
-  if (typeof value === 'string') return `« ${value} »`;
+  // Audit UI mobile, lot 0 : la regle stocke le CODE de l'option ; la phrase montre son libelle,
+  // comme le formulaire qui l'a construite. Une valeur hors liste reste affichee telle quelle.
+  if (typeof value === 'string') return `« ${optionLabel(field, value)} »`;
   if (value === null) return 'null';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
@@ -105,7 +107,7 @@ function ruleSentence(
   } else {
     target = fieldLabel(fields, (rule.then as { field: string }).field);
   }
-  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value)}, ${t('rule.then')} ${target} ${verb}.`;
+  return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value, conditionField)}, ${t('rule.then')} ${target} ${verb}.`;
 }
 
 /** Une regle d'affichage ne bloque ni n'avertit : afficher une severite la decrirait mal. */

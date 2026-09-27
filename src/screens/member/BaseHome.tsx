@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowDownUp, Columns3, Download, Plus, Search, Upload, Users } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import type { Language } from '../../i18n/messages';
 import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, usePatientRepository, useTemplateRepository, useViewPreferenceRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
@@ -82,7 +83,7 @@ const fmtDate = (ms: number) => new Date(ms).toLocaleDateString();
 export function BaseHome() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const online = useOnline();
   const { profile } = useAuth();
   const bases = useBaseRepository();
@@ -548,7 +549,9 @@ export function BaseHome() {
       {/* Saisie hors-ligne (intake-only) : preparation du CONTEXTE en ligne uniquement. */}
       {intakeEnabled && !offlineView && listing && canCreate && !isMissionAccess && (
         <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-          <span className="text-slate-500">{intakeMeta ? t('intake.prepared') : t('intake.prepare')}</span>
+          {/* Audit UI mobile, lot 0 — non prepare, l'etat repetait mot pour mot le bouton
+              (« Préparer la saisie hors-ligne » deux fois) : seul l'etat « prete » est annonce. */}
+          {intakeMeta && <span className="text-slate-500">{t('intake.prepared')}</span>}
           <button onClick={() => void doPrepareIntake()} disabled={saving} className="font-medium text-teal-700 hover:underline disabled:opacity-50">
             {saving ? t('intake.preparing') : intakeMeta ? t('offline.update') : t('intake.prepare')}
           </button>
@@ -691,7 +694,7 @@ export function BaseHome() {
                         </button>
                       </td>
                       {visibleFields.map((f) => (
-                        <td key={f.id}>{formatCell(p.data[f.fieldKey], f)}</td>
+                        <td key={f.id}>{formatCell(p.data[f.fieldKey], f, lang)}</td>
                       ))}
                       <td className="text-right">
                         {canEdit && !isCrossSectional && (
@@ -717,9 +720,9 @@ export function BaseHome() {
   );
 }
 
-function formatCell(v: unknown, field?: Column): string {
+function formatCell(v: unknown, field: Column | undefined, lang: Language): string {
   if (typeof v === 'boolean') return v ? '✓' : '✗';
-  return displayFieldValue(v, '—', field);
+  return displayFieldValue(v, '—', field, lang);
 }
 
 // MODE INTAKE-ONLY (hors-ligne) : la SEULE chose visible est la file locale de CE compte.

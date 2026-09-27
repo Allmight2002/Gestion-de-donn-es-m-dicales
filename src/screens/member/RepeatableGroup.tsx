@@ -71,11 +71,11 @@ function useNarrowViewport(): boolean {
  * manquante codifiee plutot que son jeton technique.
  */
 function useCellText() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (value: unknown, column: OccurrenceColumn): string => {
     if (isMissing(value)) return t(`missing.${missingCodeOf(value)!}`);
     if (typeof value === 'boolean') return value ? '✓' : '✗';
-    return displayFieldValue(value, '—', column);
+    return displayFieldValue(value, '—', column, lang);
   };
 }
 

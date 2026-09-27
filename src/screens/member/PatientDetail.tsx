@@ -24,6 +24,7 @@ import { addedFieldsForRecord } from '../../domain/recordCompletion';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
+import { formatCalculatedNumber } from '../../lib/formatValue';
 import { SkeletonList } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { DeleteWithReason } from './DeleteWithReason';
@@ -200,14 +201,15 @@ export function PatientDetail() {
     (v: unknown, field?: Column, data?: Record<string, unknown>, fields: readonly Column[] = []): string => {
       if (field?.formula) {
         const result = evaluateFormulaText(field.formula, data, formulaFieldIndex(formulaFieldsOf(fields)), field.unit);
-        return result === null ? '—' : String(result);
+        // Affichage seulement : l'export garde la precision du calcul (« 0.286111 » -> « 0,29 »).
+        return result === null ? '—' : formatCalculatedNumber(result, lang);
       }
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
       if (typeof v === 'boolean') return v ? '✓' : '✗';
       // La variable est passee pour que le LIBELLE de l'option s'affiche, et non son code.
-      return displayFieldValue(v, '—', field);
+      return displayFieldValue(v, '—', field, lang);
     },
-    [t],
+    [t, lang],
   );
 
   const load = useCallback(async () => {
@@ -631,6 +633,9 @@ export function PatientDetail() {
         </div>
       </SectionCard>
 
+      {/* Audit UI mobile, lot 0 — une base transversale n'a pas de rencontre : le bloc vide
+          « Aucune rencontre » ne disait rien. Une rencontre existante reste toujours affichee. */}
+      {!(isCrossSectional && realEncounters.length === 0) && (
       <div>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('patient.encounters')}</h2>
         {realEncounters.length === 0 ? (
@@ -748,6 +753,7 @@ export function PatientDetail() {
           </ul>
         )}
       </div>
+      )}
 
       {patient.identity && (
         <div>
@@ -810,7 +816,7 @@ export function PatientDetail() {
 // Les donnees viennent exclusivement de l'operation cloisonnee de la file : aucun appel
 // Supabase, aucune fusion avec la liste serveur. Le serveur revalidera tout a la synchro.
 function LocalPendingDetail({ baseId, entry }: { baseId: string; entry: PatientCreateEntry }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const navigate = useNavigate();
   const online = useOnline();
   const [labels, setLabels] = useState<Record<string, { label: string; field?: Column }>>({});
@@ -868,7 +874,7 @@ function LocalPendingDetail({ baseId, entry }: { baseId: string; entry: PatientC
             {permanentEntries.map(([key, value]) => (
               <div key={key} className="min-w-0">
                 <dt className="truncate text-xs font-medium uppercase tracking-wide text-slate-400">{labels[key]?.label ?? key}</dt>
-                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field)}</dd>
+                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field, lang)}</dd>
               </div>
             ))}
           </dl>

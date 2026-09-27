@@ -200,6 +200,66 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByText('48')).toBeInTheDocument();
   });
 
+  // Audit UI mobile, lot 0 — une base transversale affichait un bloc « Aucune rencontre » vide.
+  test('une base transversale sans rencontre n affiche pas le bloc Rencontres ; une rencontre existante reste visible', async () => {
+    const crossBase = {
+      async getBase() {
+        return { ...baseListing, base: { ...baseListing.base, observationModel: 'cross_sectional' as const } };
+      },
+    } as unknown as BaseRepository;
+
+    const { unmount } = renderAt('/bases/b1/patients/p1', makePatients({ async listEncounters() { return []; } }), undefined, templateRepo, stubAttachments, crossBase);
+    expect(await screen.findByText('Jean Test')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Rencontres' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Aucune rencontre.')).not.toBeInTheDocument();
+    unmount();
+
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, templateRepo, stubAttachments, crossBase);
+    expect(await screen.findByRole('heading', { name: 'Rencontres' })).toBeInTheDocument();
+    expect(screen.getByText('Paludisme')).toBeInTheDocument();
+  });
+
+  test('une base longitudinale sans rencontre garde le bloc Rencontres', async () => {
+    renderAt('/bases/b1/patients/p1', makePatients({ async listEncounters() { return []; } }));
+    expect(await screen.findByRole('heading', { name: 'Rencontres' })).toBeInTheDocument();
+    expect(screen.getByText('Aucune rencontre.')).toBeInTheDocument();
+  });
+
+  // Audit UI mobile, lot 0 — la fiche affichait « 2026-08-21T14:00 » et « 0.286111 ».
+  test('affiche dates, dates-heures et resultats calcules lisibles, sans toucher aux valeurs', async () => {
+    const readableTemplateRepo = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'naissance', label: 'Date de naissance', scope: 'patient', type: 'date', displayOrder: 0 }),
+            field({ fieldKey: 'trauma', label: 'Traumatisme', scope: 'patient', type: 'datetime', displayOrder: 1 }),
+            field({ fieldKey: 'admission', label: 'Admission', scope: 'patient', type: 'datetime', displayOrder: 2 }),
+            field({
+              fieldKey: 'delai', label: 'Délai', scope: 'patient', type: 'number', unit: 'days', displayOrder: 3,
+              formula: 'admission - trauma',
+            }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const patients = makePatients({
+      async getPatient() {
+        return { ...patientView, data: { naissance: '2014-02-18', trauma: '2026-08-21T14:00', admission: '2026-08-21T20:52' } };
+      },
+    });
+
+    renderAt('/bases/b1/patients/p1', patients, undefined, readableTemplateRepo);
+
+    expect(await screen.findByText('18/02/2014')).toBeInTheDocument();
+    expect(screen.getByText('21/08/2026 14:00')).toBeInTheDocument();
+    expect(screen.getByText('21/08/2026 20:52')).toBeInTheDocument();
+    expect(screen.getByText('0,29')).toBeInTheDocument();
+    expect(screen.queryByText('2026-08-21T14:00')).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\.2861/)).not.toBeInTheDocument();
+  });
+
   test('organise les variables permanentes et de rencontre par section', async () => {
     const sectionsTemplateRepo = {
       async getVersion() {
@@ -609,5 +669,13 @@ describe('EditPatient (verrou optimiste)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Quitter la saisie' }));
     await waitFor(() => expect(getPatient).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('button', { name: /recharger les donnees/i })).not.toBeInTheDocument());
+  });
+
+  // Audit UI mobile, lot 0 — l'ecran reutilisait le libelle de la rencontre.
+  test('la modification des donnees permanentes propose « Enregistrer les modifications »', async () => {
+    renderAt('/bases/b1/patients/p1/edit', makePatients());
+
+    expect(await screen.findByRole('button', { name: 'Enregistrer les modifications' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enregistrer la rencontre' })).not.toBeInTheDocument();
   });
 });

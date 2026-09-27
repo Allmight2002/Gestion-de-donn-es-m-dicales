@@ -60,7 +60,9 @@ export function CompletionQueue() {
       <PageHeader title={t('queue.title')} description={t('queue.subtitle')} />
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      {total > 0 && (
+      {/* Audit UI mobile, lot 0 — une seule page : « 1-1 sur 1 · Précédent · Suivant » (boutons
+          inactifs) n'apportait que du bruit. La pagination reste si l'on n'est plus en page 1. */}
+      {(total > PAGE_SIZE || page > 0) && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, total)} {t('pager.of')} {total}

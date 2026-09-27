@@ -76,8 +76,8 @@ function patientScreen(patients: PatientRepository): ReactElement {
 const fillReason = (text: string) => fireEvent.change(
   screen.getByLabelText(/motif de la correction/i), { target: { value: text } },
 );
-// Les deux ecrans partagent le libelle historique du bouton d'enregistrement.
-const saveButton = () => screen.getByRole('button', { name: /enregistrer la rencontre/i });
+// Le patient a son propre libelle depuis le lot 0 de l'audit UI mobile ; la rencontre garde le sien.
+const saveButton = () => screen.getByRole('button', { name: /enregistrer les modifications/i });
 const stepLabels = () => within(screen.getByRole('navigation', { name: /sommaire du formulaire/i }))
   .getAllByRole('button').map((button) => button.textContent);
 

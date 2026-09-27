@@ -452,10 +452,10 @@ export function EditPatient() {
 
         </fieldset>
         <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          <button type="submit" disabled={busy} className="btn-primary">{t('encounter.save')}</button>
+          <button type="submit" disabled={busy} className="btn-primary">{t('patient.save_changes')}</button>
           <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
           {reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
-          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
+          <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
     </section>

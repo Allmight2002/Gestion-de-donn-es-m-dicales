@@ -22,7 +22,22 @@ const ACTION_OPTIONS = [
   // qu'on retrouve QUI l'a appliquee, QUAND, avec quel impact et vers quelle revision.
   'form_preparation_applied',
 ] as const;
-const KNOWN_ACTIONS = new Set<string>(ACTION_OPTIONS);
+// Toutes les actions qu'`audit_log` peut porter pour une base et que `base_activity_log`
+// renvoie. Le filtre garde sa liste courte ; l'affichage, lui, ne doit plus retomber sur le
+// code technique brut (`mission_credentials_revealed`…), illisible et insecable sur telephone.
+const LABELLED_ACTIONS = [
+  ...ACTION_OPTIONS,
+  'attachment_deleted', 'base_restored', 'base_purge_challenge_prepared', 'base_purge_challenge_confirmed',
+  'base_purged', 'cohort_deleted', 'curation_clarification_requested', 'curation_clarification_answered',
+  'curation_finalized', 'curation_request_deleted', 'form_preparation_saved', 'form_preparation_previewed',
+  'form_preparation_resumed', 'form_preparation_conflict', 'form_preparation_apply_refused',
+  'form_preparation_discarded', 'form_preparation_expired', 'identity_search', 'mission_granted',
+  'mission_extended', 'mission_revoked', 'mission_credentials_creation_requested',
+  'mission_credentials_created', 'mission_credentials_regeneration_requested',
+  'mission_credentials_regenerated', 'mission_credentials_revealed', 'option_keys_repaired',
+  'patient_identity_corrected',
+] as const;
+const KNOWN_ACTIONS = new Set<string>(LABELLED_ACTIONS);
 
 export function ActivityLog() {
   const { id: baseId } = useParams();
@@ -161,12 +176,14 @@ export function ActivityLog() {
             const detail = detailOf(e);
             return (
               <li key={`${e.at}-${e.action}-${i}`} className="card flex items-start justify-between gap-3 px-3 py-2">
-                <div>
+                {/* `min-w-0` + coupure des mots longs : un libelle ou un detail insecable ne doit
+                    plus elargir la ligne au-dela de l'ecran (debordement a 360 px). */}
+                <div className="min-w-0 flex-1 break-words">
                   <span className="font-medium text-slate-700">{labelOf(e.action)}</span>
                   <span className="text-slate-400"> — {e.actorName}</span>
                   {detail && <div className="text-xs text-slate-500">{detail}</div>}
                 </div>
-                <span className="whitespace-nowrap text-xs text-slate-400">{formatDateTime(e.at, lang)}</span>
+                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">{formatDateTime(e.at, lang)}</span>
               </li>
             );
           })}

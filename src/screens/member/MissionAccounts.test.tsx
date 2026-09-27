@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -201,6 +201,22 @@ describe('creation et conservation chiffree', () => {
     expect(sent.email).toBeUndefined();
     expect(new Date(sent.expiresAt).getTime()).toBeGreaterThan(Date.now());
     expect(await screen.findByText(credential.password)).toBeTruthy();
+  });
+
+  // Audit UI mobile, lot 0 — une mission revoquee affichait encore un champ mot de passe masque,
+  // sans aucune action possible. Son identifiant reste visible pour reconnaitre le compte.
+  test('une mission revoquee n affiche plus de champ mot de passe, seulement son identifiant', async () => {
+    const revoked = mission({ accessId: '10000000-0000-4000-8000-000000000011', accountLabel: 'Ancienne saisie', loginIdentifier: 'mission-ancienne', revokedAt: inDays(-1) });
+    renderScreen(baseRepo([listing('b1', 'Base neurologie')]), missionRepo({}, [mission(), revoked]));
+
+    const revokedCard = (await screen.findByText('Ancienne saisie')).closest('li')!;
+    expect(within(revokedCard).getByText('mission-ancienne')).toBeTruthy();
+    expect(within(revokedCard).queryByText('Mot de passe')).toBeNull();
+    expect(within(revokedCard).queryByText('••••••••••••')).toBeNull();
+
+    const activeCard = screen.getByText('Saisie cohorte A').closest('li')!;
+    expect(within(activeCard).getByText('••••••••••••')).toBeTruthy();
+    expect(within(activeCard).getByRole('button', { name: /Afficher le mot de passe/i })).toBeTruthy();
   });
 
   test('le mot de passe reste masque jusqu a une revelation explicite', async () => {

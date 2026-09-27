@@ -299,6 +299,33 @@ describe('BaseHome (liste patients)', () => {
     expect(screen.queryByRole('button', { name: 'Nouveau patient' })).not.toBeInTheDocument();
   });
 
+  // Audit UI mobile, lot 0 — l'encadre repetait « Préparer la saisie hors-ligne » deux fois :
+  // une fois comme etat, une fois comme bouton.
+  test('la saisie hors-ligne non preparee ne propose que son bouton, sans repeter le libelle', async () => {
+    vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
+    vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
+    vi.stubEnv('VITE_OFFLINE_INTAKE', 'demo');
+    try {
+      const bases = { async getBase() { return baseListing; } } as unknown as BaseRepository;
+      const patients = { async listPatientsPage() { return { rows: [], total: 0 }; } } as unknown as PatientRepository;
+
+      render(
+        <I18nProvider>
+          <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+            <MemoryRouter initialEntries={['/bases/b1']}>
+              <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+
+      expect(await screen.findByRole('button', { name: 'Préparer la saisie hors-ligne' })).toBeInTheDocument();
+      expect(screen.getAllByText('Préparer la saisie hors-ligne')).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('masque la creation et l actualisation hors-ligne pour un acces a echeance mais garde le retrait', async () => {
     const snapshot: OfflineSnapshot = {
       dataType: 'analytic_snapshot',

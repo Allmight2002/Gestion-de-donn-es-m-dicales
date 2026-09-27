@@ -210,7 +210,7 @@ export function EditPatientIdentity() {
           <div className="flex items-center gap-2">
             <button type="submit" disabled={busy} className="btn-primary">{t('patient.save_identity')}</button>
             <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
-            <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
+            <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
           </div>
         </form>
       )}

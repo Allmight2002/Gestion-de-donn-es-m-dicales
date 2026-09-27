@@ -224,7 +224,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="mb-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
         >
           <span className="flex items-center gap-1.5"><Search size={13} aria-hidden /> {t('search.button')}</span>
-          <kbd className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-700">Ctrl K</kbd>
+          <kbd className="keyboard-hint rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-700">Ctrl K</kbd>
         </button>
 
         <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">

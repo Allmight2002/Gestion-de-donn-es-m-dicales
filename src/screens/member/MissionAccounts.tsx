@@ -352,38 +352,39 @@ export function MissionAccounts() {
                             {mission.loginIdentifier ?? t('mission.legacy_disabled')}
                           </p>
                         </div>
+                        {/* Audit UI mobile, lot 0 — un compte revoque ou sans identifiants actifs
+                            n'a pas de mot de passe utilisable : le champ masque sans action n'y
+                            etait que du bruit. L'identifiant reste affiche pour reconnaitre le compte. */}
+                        {status !== 'revoked' && mission.credentialStatus === 'active' && (
                         <div>
                           <span className="text-xs font-medium text-slate-500">{t('mission.password')}</span>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <code className="min-w-36 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm">
                               {shown?.password ?? '••••••••••••'}
                             </code>
-                            {status !== 'revoked' && mission.credentialStatus === 'active' && (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => shown ? setRevealed(null) : void reveal(mission)}
-                                  className="icon-button"
-                                  title={shown ? t('mission.hide_password') : t('mission.show_password')}
-                                  aria-label={shown ? t('mission.hide_password') : t('mission.show_password')}
-                                >
-                                  {shown ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => void copyPassword(mission)}
-                                  className="icon-button"
-                                  title={t('mission.copy_password')}
-                                  aria-label={t('mission.copy_password')}
-                                >
-                                  <Copy size={16} aria-hidden />
-                                </button>
-                              </>
-                            )}
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => shown ? setRevealed(null) : void reveal(mission)}
+                              className="icon-button"
+                              title={shown ? t('mission.hide_password') : t('mission.show_password')}
+                              aria-label={shown ? t('mission.hide_password') : t('mission.show_password')}
+                            >
+                              {shown ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void copyPassword(mission)}
+                              className="icon-button"
+                              title={t('mission.copy_password')}
+                              aria-label={t('mission.copy_password')}
+                            >
+                              <Copy size={16} aria-hidden />
+                            </button>
                           </div>
                         </div>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">

@@ -767,7 +767,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
           <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary">
             {t('common.cancel')}
           </button>
-          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
+          <span className="keyboard-hint ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
         </div>
       </form>
     </section>

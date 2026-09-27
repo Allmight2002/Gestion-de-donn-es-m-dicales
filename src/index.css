@@ -161,6 +161,11 @@
   .helper-text {
     @apply text-xs leading-5 text-slate-500 dark:text-slate-400;
   }
+  /* Audit UI mobile, lot 0 — une aide clavier (« Ctrl + Entrée », « Ctrl K », « ↑↓ … »)
+     n'a pas de sens au doigt : masquee sur les ecrans tactiles, les raccourcis restent actifs. */
+  .keyboard-hint {
+    @apply pointer-coarse:hidden;
+  }
   .surface-muted {
     @apply rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-950/40;
   }

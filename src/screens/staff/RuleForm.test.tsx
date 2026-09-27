@@ -282,6 +282,73 @@ describe('RuleSummary', () => {
   });
 });
 
+// Audit UI mobile, lot 0 : la regle stocke le code de l'option (L30), mais la phrase se lit
+// avec son libelle, comme dans le formulaire qui l'a construite.
+describe('RuleSummary — libellés des options', () => {
+  const symptomes: TemplateField = {
+    ...fields[2],
+    id: 'f-symptomes',
+    fieldKey: 'symptomes',
+    label: 'Symptômes',
+    type: 'multiselect',
+    allowedValues: ['cephalees', 'hydrocephalie_trouble_du_lcr'],
+    allowedOptions: [
+      { value_key: 'cephalees', label: 'Céphalées', is_active: true },
+      { value_key: 'hydrocephalie_trouble_du_lcr', label: 'Hydrocéphalie / trouble du LCR', is_active: true },
+    ],
+  };
+  const withOptions = [...fields, symptomes];
+
+  test('une règle enregistrée affiche les libellés, et une valeur hors liste telle quelle', () => {
+    render(
+      <I18nProvider>
+        <RuleSummary
+          fields={withOptions}
+          rule={{
+            if: { field: 'symptomes', operator: 'contains_any', value: ['cephalees', 'hydrocephalie_trouble_du_lcr', 'valeur_retiree'] },
+            then: { field: 'operative_report', operator: 'visible' },
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(
+      'Si Symptômes contient au moins un de ces codes « Céphalées », « Hydrocéphalie / trouble du LCR », « valeur_retiree », alors Compte rendu opératoire est affichée.',
+    )).toBeInTheDocument();
+  });
+
+  test('l’aperçu du formulaire affiche le libellé, la règle garde le code', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm fields={withOptions} onSubmit={onSubmit} />
+      </I18nProvider>,
+    );
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'symptomes');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'Céphalées');
+    await user.selectOptions(screen.getByLabelText('Variable affichée sous condition'), 'operative_report');
+
+    expect(screen.getByText(
+      'Si Symptômes est égal à « Céphalées », alors Compte rendu opératoire est affichée.',
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/« cephalees »/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        if: { field: 'symptomes', operator: 'equals', value: 'cephalees' },
+        then: { field: 'operative_report', operator: 'visible' },
+      },
+      '',
+      'block',
+    );
+  });
+});
+
 describe('RuleForm — regle d\'affichage (L32)', () => {
   test('assemble une regle d\'affichage sans jamais montrer de JSON', async () => {
     const user = userEvent.setup();
