@@ -146,7 +146,8 @@ corrigé :
 4. les règles de `validation_rule` dont **toutes** les clés citées — `if.field`, `then.field`,
    `then.section` — appartiennent au bloc importé.
 
-`assert_visibility_acyclic` est rejouée sur la version cible avant le commit.
+L'acyclicité des règles de visibilité est revérifiée sur la version cible avant le commit
+(`validate_template_version_invariants`).
 
 ### 4.3 Ce qu'il ne copie jamais
 

@@ -14,7 +14,7 @@ socle est déjà présente ; elle ne doit donc pas être recréée sous un autre
 |---|---|---|
 | Colonnes analytiques choisies par l'utilisateur | `BaseHome` les persiste dans `base_view_preference` par utilisateur et par base ; le cache `localStorage` ne sert que de repli/migration et les clés supprimées sont purgées | Prouver le comportement sur un navigateur et sur la cible |
 | Recherche dans la base | Recherche par **code patient**, côté serveur avant pagination, séparée de `Ctrl/Cmd+K` | Recherche nominative contrôlée dans L64 |
-| Tri | Ordre serveur par `created_at` ou `patient_code`, avec départage par `id` | Tri par une variable clinique autorisée dans L62/L63 |
+| Tri | Ordre serveur par `created_at` ou `patient_code`, avec départage par `id` ; contrat serveur du tri par variable patient (L62) implémenté localement le 2026-09-24 | Commande d'interface L63 ; migration L62 sur la cible |
 | Nom complet dans la liste | Les lignes restent pseudonymisées. Une recherche nominative contrôlée existe localement et ne renvoie que des identifiants ; la colonne « Nom complet » n'est pas livrée | Décider et réaliser séparément l'affichage éventuel, sans élargir la fuite d'identité |
 
 Le rapport de suivi UX postérieur consigne une exécution locale saine de `Patients.test.tsx` et des
@@ -143,6 +143,72 @@ nominative demeurent hors de ce lot.
   régénéré, inspecté, puis `npm run schema:check` réussi.
 - **Risque :** trier après `range`, instabilité entre pages, fuite d'un champ ou coût non maîtrisé
   d'un tri JSONB.
+
+#### Contrat arrêté le 2026-09-24 (implémenté localement, hors cible)
+
+**Opération.** `list_patients_by_field(p_base_id, p_field_key, p_direction, p_limit, p_offset,
+p_code_query, p_ids) → jsonb {total, rows}` (migration `20260924120000_patient_list_field_sort.sql`),
+`SECURITY INVOKER`, `EXECUTE` pour `authenticated` seulement. La base, le gabarit et les patients
+sont lus sous la RLS de l'appelant (`base_select`, `tf_read`, `p_select`) : aucune élévation,
+aucune lecture de `patient_identity`. La clé n'est qu'un paramètre de `data -> clé`, jamais
+interpolée. Les tris techniques `created_at` / `patient_code` restent servis par la lecture
+PostgREST existante, inchangée. Côté client : `PatientListQuery.sort = { variable, direction }`,
+`isPatientSortableField` (miroir indicatif, le serveur fait foi) et `PatientSortUnavailableError`.
+
+**Résolution.** La clé est cherchée dans `base.current_template_version_id` de **cette** base,
+portée `patient`, non multiple. Base invisible ou supprimée, clé inconnue, retirée de la version
+active (même si des fiches historiques la portent), d'une autre base, de portée rencontre ou d'un
+type refusé : même erreur `PATIENT_SORT_UNAVAILABLE`, sans la clé ni détail interne. Sens, taille
+de page (1 à 200), décalage, longueur du code (≤ 200) ou nombre d'ids (≤ 1000) invalides :
+`PATIENT_SORT_INVALID_REQUEST`. Une RPC absente (serveur antérieur) devient aussi
+`PatientSortUnavailableError` côté client.
+
+| Type | Valeur JSON retenue | Ordre croissant |
+|---|---|---|
+| `number`, `integer` | nombre | numérique |
+| `date` | texte `AAAA-MM-JJ` | chronologique (largeur fixe) |
+| `boolean` | booléen | faux puis vrai |
+| `select` | clé d'option non vide | rang de l'option dans la version active (inactives comprises) ; clé absente de la version active ensuite, puis par clé |
+| `text` | texte non blanc | texte replié (minuscules, accents latins retirés), puis texte brut, en ordre d'octets : déterministe, non linguistique |
+| `multiselect`, `terminology` | — | **refusé** : liste ou objet sans sémantique d'ordre |
+| `datetime` | — | **refusé** : valeurs avec et sans décalage coexistent, aucun fuseau de référence spécifié |
+
+**Absents** : clé manquante, `null`, raison `__missing__`, texte vide, ou valeur dont le type JSON
+diffère du type actif (brouillon ou fiche d'une version antérieure) — jamais convertie. Ils
+viennent **après** les présents dans les deux sens. Égalités et absents : `id` croissant.
+**Ordre d'application** : filtre (base, non supprimé, code, ids) → ordre total → effectif →
+page, dans une seule requête d'une fonction `STABLE` (même instantané pour total et lignes).
+
+**Index : aucun.** Les patients d'une base sont déjà ciblés par `ix_patient_base_created_id`
+et `ix_patient_base` ; l'ordre dépend d'une clé choisie à l'exécution, qu'un index JSONB
+générique (`ix_patient_data_gin`) ne sert pas, et un index par expression devrait exister par
+clé et par type, avec un coût d'écriture sur chaque fiche. Mesure ci-dessous.
+
+**Mesure du 2026-09-24** (`L62_PERF=1 npx vitest run --project db test/patient-list-field-sort.test.ts -t mesure`,
+PostgreSQL embarqué, utilisateur authentifié sous RLS, page de 20, médiane de 5 exécutions sur une
+connexion déjà ouverte ; 10 % d'absents, nombreuses égalités) :
+
+| Base | score p1 | score dernière page | note p1 | grade p1 | dx_date p1 | tri technique `patient_code` p1 |
+|---|---|---|---|---|---|---|
+| 2 000 patients | 987 ms | 526 ms | 994 ms | 802 ms | 975 ms | 651 ms |
+| 20 000 patients | 3 964 ms | 5 717 ms | 5 855 ms | 3 440 ms | 3 715 ms | 2 575 ms |
+
+Lecture : le tri par variable coûte 1,2 à 2,3 fois le tri technique existant. Les valeurs
+absolues ne sont **pas** représentatives d'une cible : le poste de mesure (3,9 Go, ~140 Mo libres,
+mémoire en pagination) met 40 s à insérer 20 000 fiches, et le tri technique déjà livré y prend
+lui-même 0,65 à 2,6 s. Les deux chemins partagent le coût dominant : la policy `p_select`
+évalue `has_base_access` pour chaque fiche, et l'effectif exact impose de visiter toutes les
+fiches filtrées. Un index sur une clé ne supprimerait ni l'un ni l'autre ; il n'économiserait que
+le tri en mémoire de ≤ 20 000 lignes, pour un coût d'écriture sur chaque fiche. Une mesure sur la
+cible (L65) reste due avant de conclure sur les temps absolus.
+
+**Preuves locales.** `test/patient-list-field-sort.test.ts` (PostgreSQL embarqué réel, RLS
+appliquée) : ordre des six types dans les deux sens, absents, égalités, pages consécutives sans
+répétition ni oubli, filtre code/ids avant la page, périmètre identique au tri technique,
+collaborateur autorisé, médecin tiers, curateur, base inconnue, inter-base, clés forgées ou
+refusées, paramètres invalides, révocation et base supprimée, ACL. `test/patient-repository.test.ts` :
+appel RPC, erreurs typées, tris techniques inchangés. **Non vérifié** : migration sur la cible
+cloud, parcours navigateur (L63/L65).
 
 ### L63 — Commande de tri clinique accessible
 
