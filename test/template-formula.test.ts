@@ -316,6 +316,10 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       'form_record_field_compatible',
       'guard_template_field_update',
       'missing_required_fields',
+      // Audit UI mobile, lot 8 : compte, pour la page « A faire », les dossiers de la file
+      // « a completer ». Comme base_completion_queue_page, il lit formula seulement pour
+      // exclure les variables calculees des obligations -- il ne l'evalue jamais.
+      'my_todo_counts',
       // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
       // seule lecture de la colonne partagee par le refus a l'ecriture d'une regle et par le
       // diagnostic d'une version.
