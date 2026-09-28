@@ -29,6 +29,7 @@ import type { AccessItem, AccessRepository } from '../data/access';
 import type { CohortRepository, CohortSummary } from '../data/cohorts';
 import type { ExportLogItem, ExportRepository } from '../data/exports';
 import type { MissionAccount, MissionRepository } from '../data/mission';
+import type { WorkDraftSummary } from '../data/workDrafts';
 import type { TemplateField, TemplateSection } from '../data/types';
 import { createEditorRegistryRepository, editorRegistryVersion } from '../test/fixtures/editorRegistry';
 import { initTheme } from '../lib/theme';
@@ -152,9 +153,11 @@ const exportLog: ExportLogItem[] = [1, 2, 3, 4].map((n) => ({
   id: `x${n}`, format: n % 2 ? 'csv' : 'xlsx', exportedAt: at(20 + n, 14), patientCount: 3, encounterCount: 2,
   fileHash: `${String(n).repeat(8)}${'a'.repeat(56)}`, storedFilePath: null, generationMode: 'server', profile: 'analysis',
 }));
+// Lot 8 : la mission 1 arrive a echeance dans neuf jours, pour la page « A faire ».
+const soon = new Date(Date.now() + 9 * 86_400_000).toISOString();
 const mission = (n: number, revokedAt: string | null): MissionAccount => ({
   accessId: `m${n}`, baseId: 'b1', baseName: listing.base.name, userId: `u-mission-${n}`,
-  accountLabel: `Enquêteur ${n} (fictif)`, loginIdentifier: `enqueteur-${n}`, expiresAt: '2027-03-31T00:00:00Z',
+  accountLabel: `Enquêteur ${n} (fictif)`, loginIdentifier: `enqueteur-${n}`, expiresAt: n === 1 ? soon : '2027-03-31T00:00:00Z',
   revokedAt, createdAt: at(n), canViewIdentity: false, identityJustification: null,
   credentialStatus: revokedAt ? 'revoked' : 'active', credentialGeneration: 1, lastRotatedAt: null,
 });
@@ -167,6 +170,11 @@ const members: AccessItem[] = [
 const completion: CompletionItem[] = [
   { kind: 'patient', patientId: 'p1', code: 'P-0001', status: 'draft', missing: ['Profession', 'Amnésie post-traumatique'] },
   { kind: 'encounter', patientId: 'p1', encounterId: 'e2', code: 'P-0001', encounterType: 'consultation', encounterDate: '2026-09-12', status: 'draft', missing: ['Pupilles réactives'] },
+];
+// Lot 8 : brouillons serveur a reprendre (metadonnees seules, comme list_my_work_drafts).
+const serverDrafts: WorkDraftSummary[] = [
+  { id: 'd1', baseId: 'b1', kind: 'encounter_create', targetId: 'p1', patientId: 'p1', patientCode: 'P-0001', updatedAt: at(28, 8), expiresAt: at(29, 8) },
+  { id: 'd2', baseId: 'b1', kind: 'patient_create', targetId: null, patientId: null, patientCode: null, updatedAt: at(27, 17), expiresAt: at(28, 17) },
 ];
 
 // --- Depots en memoire ------------------------------------------------------------------
@@ -184,6 +192,7 @@ const bases = strict<BaseRepository>('bases', {
   async getCompletenessStats() {
     return fields.map((entry, index) => ({ fieldKey: entry.fieldKey, label: entry.label, scope: entry.scope, filled: index % 3, total: 3 }));
   },
+  async getTodoCounts() { return [{ baseId: listing.base.id, incomplete: completion.length, clarifications: 1 }]; },
 });
 // Lot 6 : l'editeur des jeux de variables s'ouvre depuis « Mes jeux de variables » sur un
 // brouillon charge — la fixture fictive de 216 variables, 24 sections et 26 regles.
@@ -221,7 +230,9 @@ const patients = strict<PatientRepository>('patients', {
   async listPatients() { return rows; },
   async listPatientsPage() { return { rows, total: rows.length }; },
   async searchPatientIdsByIdentity() { return { ids: [], total: 0 }; },
-  async getPatient(_baseId: string, id: string) { return id === patient.id ? patient : null; },
+  // Comme le vrai depot depuis le lot 8 : la fiche arrive sans identite, lue au toucher.
+  async getPatient(_baseId: string, id: string) { return id === patient.id ? { ...patient, identity: null } : null; },
+  async getPatientIdentity(id: string) { return id === patient.id ? patient.identity : null; },
   async listEncounters() { return encounters; },
   async getEncounter(id: string) { return encounters.find((entry) => entry.id === id) ?? null; },
   async computeAge() { return 12; },
@@ -274,7 +285,7 @@ function Harness() {
             terminology={strict('terminology', {})}
             missions={strict<MissionRepository>('missions', { async list() { return missions; } })}
             clientErrors={strict('clientErrors', {})}
-            workDrafts={strict('workDrafts', { available: false })}
+            workDrafts={strict('workDrafts', { available: false, async listMine() { return serverDrafts; } })}
             formPreparations={strict('formPreparations', {
               // Parametres › Formulaire (lot 5) : l'accueil et l'edition, sur une definition vide.
               available: true,

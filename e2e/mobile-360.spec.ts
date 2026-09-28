@@ -61,9 +61,19 @@ const openEditor = (tab?: string) => async (page: Page) => {
   if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
 };
 
+// Lot 8 : le mode Terrain s'active dans le menu, comme le ferait la personne.
+const enableTerrain = async (page: Page) => {
+  await page.getByRole('button', { name: 'Ouvrir le menu' }).click();
+  await page.getByRole('dialog', { name: 'Ouvrir le menu' }).getByRole('switch', { name: 'Mode Terrain' }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Plus', exact: true })).toBeVisible();
+};
+
 const SCREENS: Screen[] = [
-  { name: 'tableau de bord', path: '/', first: { text: 'Traumatismes crâniens CHU-R' } },
+  // Lot 8 : le tableau de bord est la page « A faire » ; ce qui attend la personne vient en premier.
+  { name: 'tableau de bord', path: '/', first: { selector: 'section[aria-labelledby="todo-title"] li' } },
   { name: 'liste des patients', path: '/bases/b1', first: { text: '^P-0001$' } },
+  { name: 'liste des patients — mode Terrain', path: '/bases/b1', open: enableTerrain, first: { text: '^P-0001$' } },
   { name: 'fiche patient', path: '/bases/b1/patients/p1', first: { selector: 'dd' } },
   { name: 'nouveau patient', path: '/bases/b1/patients/new/manual', first: FIRST_FIELD },
   { name: 'nouvelle rencontre', path: '/bases/b1/patients/p1/encounters/new/manual', first: FIRST_FIELD },
@@ -224,6 +234,25 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
   // Audit UI mobile, lot 4 : ce qui s'ouvre a la demande (details, « ⋯ », liste complete)
   // tient lui aussi dans l'ecran — l'empreinte SHA-256 depliee debordait.
   const ON_DEMAND: { screen: string; open: (page: Page) => Promise<void> }[] = [
+    // Lot 8 : un brouillon de la page « A faire » rouvre son formulaire ; l'identite du patient
+    // ne se lit qu'au toucher de sa ligne.
+    { screen: 'tableau de bord', open: async (page) => {
+      await expect(page.getByRole('link', { name: /^Mission : \d+ jour\(s\) restant\(s\)/ })).toBeVisible();
+      await page.getByRole('link', { name: /^Nouvelle rencontre · P-0001/ }).click();
+      await expect(page.getByLabel('Type de rencontre')).toBeVisible();
+    } },
+    { screen: 'fiche patient', open: async (page) => {
+      await expect(page.getByText('Awa Démo (fictive)')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Identité (zone restreinte)' }).click();
+      await expect(page.getByText('Awa Démo (fictive)')).toBeVisible();
+    } },
+    // Lot 8 : en mode Terrain, « Plus » mene aux autres destinations de la base.
+    { screen: 'liste des patients — mode Terrain', open: async (page) => {
+      await page.getByRole('button', { name: 'Plus', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Analyse' })).toBeVisible();
+      await page.getByRole('button', { name: 'Paramètres' }).click();
+      await expect(page.getByRole('navigation', { name: 'Paramètres' })).toBeVisible();
+    } },
     { screen: 'export', open: async (page) => {
       await page.getByText('Détails techniques').first().click();
       await expect(page.getByText(/^1{8}a{56}$/)).toBeVisible();

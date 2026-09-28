@@ -12,6 +12,7 @@ import { useBaseRepository, usePatientRepository } from '../data/RepositoryProvi
 import { recentBases } from '../lib/recentBases';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from './ThemeToggle';
+import { TerrainModeSwitch } from './TerrainModeSwitch';
 import { Logo } from './Logo';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
 import { TopBarRegistryProvider, useTopBarRegistry } from './TopBar';
@@ -260,6 +261,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <div className="shrink-0">
+        {/* Lot 8 : le mode Terrain ne sert qu'a qui parcourt les onglets d'une base (medecin). */}
+        {mayCreate && <div className="pb-1"><TerrainModeSwitch /></div>}
         <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
           <ThemeToggle />
           <LanguageSwitcher />

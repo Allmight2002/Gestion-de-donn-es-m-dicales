@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260927180000_activity_log_actor_is_self.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 409
+- Dernière migration incluse : `20260928011000_my_todo_counts.sql`
+- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 411
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1514,6 +1514,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
 | list_deleted_bases | — | DEFINER | plpgsql |
 | list_importable_template_sections | — | INVOKER | sql |
+| list_my_work_drafts | — | DEFINER | plpgsql |
 | list_patients_by_field | p_base_id uuid, p_field_key text, p_direction text, p_limit integer, p_offset integer, p_code_query text, p_ids uuid[] | INVOKER | plpgsql |
 | list_recent_client_errors | p_limit integer, p_since timestamp with time zone, p_context text | DEFINER | plpgsql |
 | list_work_drafts | p_base_id uuid, p_kind text, p_target_id uuid | DEFINER | plpgsql |
@@ -1531,6 +1532,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | mission_accounts_owned | p_base_id uuid | DEFINER | plpgsql |
 | mission_credential_envelope | p_access_id uuid | DEFINER | plpgsql |
 | move_template_section | p_version_id uuid, p_section_id uuid, p_parent_key text | DEFINER | plpgsql |
+| my_todo_counts | — | INVOKER | sql |
 | normalize_template_section_order | p_version_id uuid | INVOKER | sql |
 | open_or_resume_form_preparation | p_base_id uuid | DEFINER | plpgsql |
 | option_key_repair_plan | p_base_id uuid | DEFINER | sql |

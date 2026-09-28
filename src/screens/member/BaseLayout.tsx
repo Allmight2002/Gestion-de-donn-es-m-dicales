@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router';
-import { ChartPie, ClipboardCheck, Clock, Settings, Users } from 'lucide-react';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
+import { ChartPie, ChevronDown, ClipboardCheck, Clock, LayoutGrid, Settings, Users } from 'lucide-react';
+import { Menu, MenuItem } from '../../components/Menu';
+import { useTerrainMode } from '../../lib/terrainMode';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useBaseRepository } from '../../data/RepositoryProvider';
@@ -30,9 +32,11 @@ interface Tab {
 export function BaseLayout() {
   const { id } = useParams();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { t } = useI18n();
   const online = useOnline();
   const bases = useBaseRepository();
+  const [terrainMode] = useTerrainMode();
   const [listing, setListing] = useState<BaseListing | null>(null);
   const [name, setName] = useState('');
   const [failed, setFailed] = useState(false);
@@ -145,6 +149,13 @@ export function BaseLayout() {
     .filter((tab) => tab.subs.length > 0);
 
   const subTabs = tabs.find((tab) => tab.active)?.subs ?? [];
+  // Lot 8, mode « Terrain » (preference de l'appareil) : seul l'onglet Patients reste au premier
+  // niveau ; les autres passent dans « Plus », avec les memes destinations et les memes droits.
+  // Un compte de mission n'a deja que Patients : rien ne change pour lui.
+  const terrain = terrainMode && !isMission && tabs.length > 1;
+  const shownTabs = terrain ? tabs.slice(0, 1) : tabs;
+  const moreTabs = terrain ? tabs.slice(1) : [];
+  const moreActive = moreTabs.some((tab) => tab.active);
 
   // Audit UI mobile, lot 1 (T1-B) : sur telephone, la barre haute porte le nom de la base et le
   // retour, a la place du fil d'Ariane. Depuis un onglet, on remonte au tableau de bord ; depuis
@@ -196,9 +207,11 @@ export function BaseLayout() {
           </p>
         )}
 
-        <div ref={tabScroller} className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(tabEdges)}`}>
+        {/* En mode Terrain, deux onglets tiennent sans defilement : la barre ne defile plus, et
+            le panneau de « Plus » n'est pas rogne par elle. */}
+        <div ref={tabScroller} className={terrain ? '' : `-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${overflowFadeClass(tabEdges)}`}>
           <nav ref={tabBar} aria-label={name || t('base.navigation')} className="flex min-w-max gap-1 border-b border-slate-200">
-            {tabs.map((tab) => (
+            {shownTabs.map((tab) => (
               // L'onglet parent mene a sa premiere entree disponible et reste allume pour toutes
               // les autres : NavLink ne sait pas faire ca, l'etat actif est donc calcule ici.
               <Link
@@ -213,6 +226,23 @@ export function BaseLayout() {
                 {t(tab.labelKey)}
               </Link>
             ))}
+            {moreTabs.length > 0 && (
+              <Menu
+                triggerLabel={t('terrain.more')}
+                triggerClassName={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
+                  moreActive ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+                // Ni « ⋯ » (actions de l'ecran, dans la barre haute) : une grille de destinations.
+                triggerContent={<><LayoutGrid size={15} aria-hidden />{t('terrain.more')}<ChevronDown size={14} aria-hidden /></>}
+              >
+                {moreTabs.map((tab) => (
+                  <MenuItem key={tab.labelKey} onSelect={() => navigate(tab.subs[0]!.to)}>
+                    <tab.Icon size={15} aria-hidden />
+                    <span aria-current={tab.active ? 'page' : undefined}>{t(tab.labelKey)}</span>
+                  </MenuItem>
+                ))}
+              </Menu>
+            )}
           </nav>
         </div>
 

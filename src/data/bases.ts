@@ -189,8 +189,20 @@ export interface OptionKeyRepairResult {
   failedRecords: number;
 }
 
+/** Audit UI mobile, lot 8 : ce qui attend la personne dans une base (page « A faire »). */
+export interface BaseTodoCounts {
+  baseId: string;
+  /** Dossiers non cures auxquels manque une variable obligatoire (file « A completer »),
+   *  comptes jusqu'a 100 : la file donne le compte exact. */
+  incomplete: number;
+  /** Questions du curateur qui attendent la reponse du proprietaire. */
+  clarifications: number;
+}
+
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
+  /** Lot 8 : compteurs « A faire » de toutes les bases, en une lecture sous RLS. Facultatif. */
+  getTodoCounts?(): Promise<BaseTodoCounts[]>;
   listDeletedBases(): Promise<DeletedBase[]>;
   /** Modeles proposes au medecin : officiels (global) + ses propres gabarits (personal). */
   listTemplateModels(): Promise<PublishedTemplateOption[]>;
@@ -432,6 +444,14 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as BaseRow;
       return mapBase(row);
+    },
+
+    async getTodoCounts() {
+      const { data, error } = await client.rpc('my_todo_counts');
+      if (error) throw error;
+      return ((data ?? []) as BaseTodoCounts[]).map((row) => ({
+        baseId: row.baseId, incomplete: Number(row.incomplete) || 0, clarifications: Number(row.clarifications) || 0,
+      }));
     },
 
     async getInclusionStats(baseId) {
