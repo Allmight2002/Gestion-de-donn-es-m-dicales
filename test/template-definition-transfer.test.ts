@@ -152,6 +152,27 @@ describe('transfert d\'un jeu de variables par fichier', () => {
     expect(comparable(await exportAs(bob, result.versionId))).toEqual(comparable(d));
   });
 
+  // Registre reel construit dans l'editeur : 63 sections et des codes de variables avec
+  // majuscules et accents. L'editeur les accepte ; l'import les refusait (plafond de 60
+  // sections, format de code emprunte a la creation depuis Excel).
+  test('un registre plus grand que les plafonds d\'Excel, aux codes accentues, fait l\'aller-retour', async () => {
+    const template = (await db.admin.query(
+      "insert into template(name,owner_user_id,is_global) values('Grand registre (fictif)',$1,false) returning id", [alice])).rows[0].id;
+    const v = (await db.admin.query(
+      "insert into template_version(template_id,version_number,status) values($1,1,'draft') returning id", [template])).rows[0].id;
+    await db.admin.query(
+      `insert into template_section(template_version_id,section_key,label,display_order)
+       select $1, 'section_' || i, 'Section ' || i, i - 1 from generate_series(1, 63) i`, [v]);
+    await db.admin.query(
+      `insert into template_field(template_version_id,field_key,label,scope,section,type,display_order)
+       values ($1,'Date_admission','Date d''admission','patient','section_1','date',0),
+              ($1,'Fréquence_cardiaque','Fréquence cardiaque','patient','section_63','number',1)`, [v]);
+    const d = await exportAs(alice, v);
+    expect((d.sections as unknown[]).length).toBe(63);
+    const result = await importAs(bob, { definition: d });
+    expect(comparable(await exportAs(bob, result.versionId))).toEqual(comparable(d));
+  });
+
   test('un rejeu rend le meme resultat sans rien creer ; une cle reutilisee pour un autre contenu est refusee', async () => {
     const d = await exportAs(alice, version);
     const key = randomUUID();
@@ -169,7 +190,7 @@ describe('transfert d\'un jeu de variables par fichier', () => {
     await expect(importAs(bob, { definition: { ...d, formatVersion: 2 } })).rejects.toThrow('TEMPLATE_IMPORT_FORMAT_UNSUPPORTED');
     await expect(importAs(bob, { definition: { ...d, terminologyReleases: [{ id: release, slug: 'inconnue' }] } }))
       .rejects.toThrow('TEMPLATE_IMPORT_TERMINOLOGY_MISSING');
-    await expect(importAs(bob, { definition: { ...d, fields: [...(d.fields as object[]), { fieldKey: 'Mauvais code', label: 'X', scope: 'patient', type: 'text' }] } }))
+    await expect(importAs(bob, { definition: { ...d, fields: [...(d.fields as object[]), { fieldKey: 'orpheline', label: 'X', scope: 'patient', section: 'inexistante', type: 'text' }] } }))
       .rejects.toThrow('TEMPLATE_IMPORT_INVALID');
     // Formule vers une variable inexistante : c'est la garde existante qui tranche, et son
     // motif metier remonte tel quel.
