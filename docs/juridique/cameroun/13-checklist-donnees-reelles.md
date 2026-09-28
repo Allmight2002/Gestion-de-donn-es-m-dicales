@@ -23,7 +23,7 @@ dépôt public) ou le coffre documentaire de l'établissement.
 | ☐ | AIPD (02) validée, plan d'action A1–A9 soldé | AIPD signée + suivi d'actions | | |
 | ☐ | Formalités auprès de l'autorité de protection des données : déclaration/autorisation du traitement (art. 19) **et** autorisation de transfert international (art. 32) — ou, si l'autorité n'est pas encore opérationnelle : dossiers complets prêts, datés, et décision écrite du conseil juridique sur la conduite à tenir | Récépissés / autorisations / avis du conseil | | |
 | ☐ | DPA Supabase signé ; plan adapté souscrit ; région de production confirmée et documentée | Contrat + capture des réglages projet | | |
-| ☐ | Engagements des autres sous-traitants archivés (Vercel, SMTP, hébergeur ClamAV) | Contrats/CGV + tableau (10) à jour | | |
+| ☐ | Engagements des autres sous-traitants archivés (Vercel, Cloudflare, SMTP, hébergeur ClamAV) | Contrats/CGV + tableau (10) à jour | | |
 | ☐ | Politique de confidentialité (05) publiée sur la plateforme | URL + capture | | |
 
 ## B. Volet éthique (recherche)

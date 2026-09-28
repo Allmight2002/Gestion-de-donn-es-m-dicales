@@ -23,7 +23,7 @@ dépôt public) ou le coffre documentaire de l'établissement.
 | ☐ | AIPD (02) validée, plan d'action A1–A9 soldé | AIPD signée + suivi d'actions | | |
 | ☐ | Formalités **ANSICE** accomplies : déclaration/autorisation du traitement **et** formalité de transfert international, décisions/récépissés datés obtenus (l'ANSICE statue sous un mois — décret n° 075/PR/2019) | Récépissés / autorisations | | |
 | ☐ | DPA Supabase signé ; plan adapté souscrit ; région de production confirmée et documentée | Contrat + capture des réglages projet | | |
-| ☐ | Engagements des autres sous-traitants archivés (Vercel, SMTP, hébergeur ClamAV) | Contrats/CGV + tableau (10) à jour | | |
+| ☐ | Engagements des autres sous-traitants archivés (Vercel, Cloudflare, SMTP, hébergeur ClamAV) | Contrats/CGV + tableau (10) à jour | | |
 | ☐ | Politique de confidentialité (05) publiée sur la plateforme | URL + capture | | |
 
 ## B. Volet éthique (recherche)

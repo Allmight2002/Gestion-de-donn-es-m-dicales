@@ -2,8 +2,8 @@
 
 | Cartouche | |
 |---|---|
-| Version | 1.0 (projet) |
-| Date | 2026-07-14 |
+| Version | 1.1 (projet) |
+| Date | 2026-09-28 |
 | Statut | **PROJET — à valider** (conseil juridique, puis tenue à jour permanente) |
 | Responsable du traitement | `[À COMPLÉTER : établissement / Dr Raymond Mbassi]`, `[adresse]`, `[contact]` |
 | Référent protection des données | `[À COMPLÉTER : nom, qualité, email, téléphone]` |
@@ -112,6 +112,18 @@ saillants. Les durées renvoient à la [politique de conservation (09)](09-conse
 | Durée | Journaux techniques : rétention des plateformes (documenter) ; quarantaine : purge après verdict et réconciliation |
 | Mesures saillantes | Bucket privés + RLS Storage ; lecture par URL signée auditée (`signed-read`) ; inspection stricte activable et exigée avant données réelles |
 
+## Fiche T8 — Mesure d'audience du site (Cloudflare Web Analytics)
+
+| Rubrique | Contenu |
+|---|---|
+| Finalité | Statistiques agrégées de fréquentation et de performance du site de production (pages consultées, temps de chargement, indicateurs Web Vitals) pour piloter la qualité de service |
+| Base de licéité | `[À VALIDER par le conseil : intérêt légitime (mesure statistique sans cookie) ou consentement, selon le régime applicable à la lecture d'informations sur l'appareil]` |
+| Personnes concernées | Utilisateurs professionnels (visiteurs du site de production) |
+| Données | Origine et chemin des pages, **sans** query string ni fragment ; page précédente (même nettoyage) ; métriques de performance, avec sélecteurs CSS faits de balises et de classes (sans texte) ; moteur et version du navigateur et du système ; adresse IP vue par Cloudflare à la réception des mesures. Aucun cookie, aucun stockage sur l'appareil, **aucune donnée patient** : un chemin ne porte ni nom ni valeur clinique |
+| Sous-traitants | Cloudflare, Inc. (États-Unis ; réseau mondial), cf. [10](10-sous-traitants-transferts.md) |
+| Durée | Rétention de la plateforme Cloudflare `[à documenter]` |
+| Mesures saillantes | Script injecté au seul build de production (ni développement, ni staging, ni installation on-premise) ; CSP limitée au script du beacon et à son point de collecte ; désactivation en retirant la variable du workflow de release ([deploiement.md §5](../../deploiement.md)) |
+
 ---
 
 ## Annexe — Traitements exclus ou hors périmètre
@@ -129,3 +141,4 @@ saillants. Les durées renvoient à la [politique de conservation (09)](09-conse
 | Date | Version | Modification | Auteur |
 |---|---|---|---|
 | 2026-07-14 | 1.0 | Création (7 fiches) | `[À COMPLÉTER]` |
+| 2026-09-28 | 1.1 | Fiche T8 : mesure d'audience du site de production (Cloudflare Web Analytics, nouveau sous-traitant) | `[À COMPLÉTER]` |

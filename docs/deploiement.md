@@ -85,6 +85,24 @@ SUPABASE_SERVICE_ROLE_KEY="eyJ..." \
    - La PWA télécharge/détecte une nouvelle version mais ne l'active plus silencieusement :
      l'utilisateur choisit « Mettre à jour maintenant » ou « Plus tard ». Vérifiez ce dialogue
      après chaque déploiement et rollback, en particulier pendant une saisie en cours.
+4. **Mesure d'audience (Cloudflare Web Analytics)** : le beacon officiel n'est ajouté à
+   `dist/index.html` que si `VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN` (jeton de site public,
+   32 caractères hexadécimaux) est défini au build ; une autre valeur fait échouer le build.
+   Seule l'étape de déploiement **production** de la release coordonnée le définit : le
+   développement, la CI, le staging, les previews et l'installation on-premise restent sans
+   script tiers. La CSP de `vercel.json` n'autorise que
+   `https://static.cloudflareinsights.com/beacon.min.js` (script) et
+   `https://cloudflareinsights.com` (envoi des mesures).
+   - Données transmises : origine et chemin des pages, sans query string ni fragment (le jeton
+     d'invitation et le retour de récupération Supabase ne partent donc pas), navigation SPA,
+     métriques de performance (Web Vitals, avec des sélecteurs CSS faits de balises et de
+     classes, sans texte), moteur et version du navigateur et du système. Ni cookie, ni
+     stockage local. Un chemin ne doit jamais porter de nom ni de valeur clinique
+     ([spec-experience-utilisateur.md](spec-experience-utilisateur.md)).
+   - Cloudflare est un sous-traitant à déclarer : voir
+     [docs/juridique/](juridique/README.md) (tableau des sous-traitants, registre, AIPD).
+   - Désactiver : retirer la variable du workflow `coordinated-release.yml` ; la release
+     suivante ne contient plus le beacon.
 
 ---
 

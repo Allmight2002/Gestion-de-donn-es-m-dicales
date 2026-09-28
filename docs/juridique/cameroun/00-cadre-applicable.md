@@ -18,7 +18,7 @@ Il fonde tous les autres documents du dossier. Méthode : lecture croisée du pr
 que réellement construit ([architecture.md](../../architecture.md),
 [cahier-des-charges-metier.md](../../cahier-des-charges-metier.md)) et des textes camerounais,
 continentaux et internationaux recensés §3, complétée par les référentiels des
-sous-traitants (Supabase, Vercel). Les numéros d'articles de la loi n° 2024/017 cités ici
+sous-traitants (Supabase, Vercel, Cloudflare). Les numéros d'articles de la loi n° 2024/017 cités ici
 proviennent de sources secondaires et **doivent être vérifiés sur le texte officiel**
 (publié sur le site de la Présidence de la République) lors de la revue juridique.
 
@@ -63,6 +63,7 @@ Trois qualifications en découlent cumulativement :
 | Administrateur système | Personne habilitée, aucune donnée patient | Gère gabarits et comptes uniquement |
 | Supabase Inc. (et AWS en sous-traitance ultérieure) | **Sous-traitant** (hébergement base, auth, stockage, fonctions) | DPA à signer ; données en région `eu-west-3` (Paris) |
 | Vercel Inc. | Sous-traitant (hébergement du frontend statique ; journaux techniques) | Ne stocke pas de données patients |
+| Cloudflare, Inc. | Sous-traitant (mesure d'audience du site de production : Cloudflare Web Analytics) | Aucune donnée patient ; ni cookie ni stockage local (fiche T8 du registre) |
 | Fournisseur SMTP `[À COMPLÉTER]` | Sous-traitant (e-mails de service aux professionnels) | Aucune donnée patient dans les e-mails |
 | Hébergeur du scanner ClamAV `[À COMPLÉTER]` | Sous-traitant (analyse antivirale des fichiers téléversés) | Voit transiter les documents bruts : engagement requis |
 | Patients | **Personnes concernées** | Droits : voir [07-droits-personnes.md](07-droits-personnes.md) |
@@ -97,6 +98,9 @@ Trois qualifications en découlent cumulativement :
   données par région choisie à la création du projet (production : `[À CONFIRMER —
   staging observé en eu-west-3, Paris]`). Voir [10-sous-traitants-transferts.md](10-sous-traitants-transferts.md).
 - **Vercel** : DPA disponible ; héberge uniquement le build statique du frontend.
+- **Cloudflare** : DPA client `[à vérifier et archiver]` ; reçoit uniquement les mesures
+  d'audience du frontend de production (chemins de pages sans paramètres, performances,
+  type de navigateur).
 
 ## 4. Matrice des obligations et état de MedData
 
@@ -109,7 +113,7 @@ Trois qualifications en découlent cumulativement :
 | Sécurité et confidentialité | Fort socle : RLS 3 zones, âge calculé côté serveur, exports en liste blanche, `audit_log`, RPC-only, ClamAV, hors-ligne désactivé pour données réelles | PSSI (06) ; compléter : MFA, sauvegardes testées, monitoring (cf. [deploiement.md §8](../../deploiement.md)) |
 | Notification des violations à l'autorité et aux personnes | Aucune procédure | Procédure (08) + registre des violations |
 | Registre/documentation des traitements | Néant | Registre (01), tenu à jour |
-| Encadrement des sous-traitants | Aucun contrat signé | DPA Supabase + engagements SMTP/ClamAV/Vercel (10) |
+| Encadrement des sous-traitants | Aucun contrat signé | DPA Supabase + engagements SMTP/ClamAV/Vercel/Cloudflare (10) |
 | Transfert international (art. 32 : autorisation + garanties) | Données (fictives) déjà hébergées en UE | Dossier de transfert : autorisation de l'autorité, consentement explicite au transfert (04), garanties contractuelles (10) |
 | Délégué/référent à la protection des données (certification prévue par la loi) | Personne non désignée | Désigner un référent `[À COMPLÉTER]` ; viser la certification quand le dispositif sera opérationnel |
 | Avis éthique + AAR (loi 2022/008) | Non réalisés | Dossier (12) : comité compétent puis MINSANTE/DROS |

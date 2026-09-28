@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import { CLOUDFLARE_BEACON_URL, cloudflareWebAnalyticsTags } from '../scripts/cloudflare-web-analytics.mjs';
 
 const read = (path: string) => readFileSync(path, 'utf8');
 
@@ -308,6 +309,37 @@ describe('configuration de deploiement', () => {
     expect(headers.get('x-content-type-options')).toBe('nosniff');
     expect(headers.get('referrer-policy')).toBe('no-referrer');
     expect(headers.get('permissions-policy')).toContain('camera=()');
+  });
+
+  test('la mesure d audience Cloudflare n est armee qu au build de production, sous une CSP limitee au beacon', () => {
+    const config = JSON.parse(read('vercel.json')) as { headers: Array<{ headers: Array<{ key: string; value: string }> }> };
+    const csp = config.headers[0].headers.find((h) => h.key.toLowerCase() === 'content-security-policy')?.value ?? '';
+    const directive = (name: string) =>
+      csp.split(';').map((part) => part.trim().split(/\s+/)).find(([key]) => key === name)?.slice(1);
+
+    // Seul le fichier du beacon est autorise, pas l'origine entiere ; ses mesures partent vers le
+    // point de collecte Cloudflare, rien d'autre ne s'ouvre.
+    expect(directive('script-src')).toEqual(["'self'", CLOUDFLARE_BEACON_URL]);
+    expect(directive('connect-src')).toContain('https://cloudflareinsights.com');
+
+    // Le jeton n'est fourni qu'a l'etape qui construit et deploie la production : CI, staging et
+    // previews construisent sans beacon, donc sans aucun appel a Cloudflare.
+    const release = read('.github/workflows/coordinated-release.yml');
+    expect(release.match(/VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN/g)).toHaveLength(1);
+    const declaration = release.match(/VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN: '([^']*)'/);
+    expect(declaration).not.toBeNull();
+    // Un jeton mal forme ferait echouer le build au moment de la release : on l'arrete ici.
+    expect(cloudflareWebAnalyticsTags({ VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN: declaration![1] })).toHaveLength(1);
+    const productionFrontend = release.indexOf(
+      'Deploy frontend before strict database switch',
+      release.indexOf('\n  production:'),
+    );
+    expect(productionFrontend).toBeGreaterThan(0);
+    expect(declaration!.index).toBeGreaterThan(productionFrontend);
+    expect(declaration!.index).toBeLessThan(release.indexOf('build --prod', productionFrontend));
+    expect(read('.github/workflows/ci.yml')).not.toContain('VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN');
+    // Une installation on-premise part de cet exemple : elle reste sans mesure d'audience tierce.
+    expect(read('.env.production.example')).toMatch(/^VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN=$/m);
   });
 
   test('les E2E staging utilisent un cookie Vercel ephemere limite au deploiement exact', () => {

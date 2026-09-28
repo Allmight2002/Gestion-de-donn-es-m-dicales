@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { assertOfflineBuildPolicy } from './scripts/offline-build-policy.mjs';
+import { cloudflareWebAnalytics } from './scripts/cloudflare-web-analytics.mjs';
 
 // Version applicative = celle de package.json (source unique) -> injectee comme __APP_VERSION__.
 const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version as string;
@@ -56,6 +57,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      // Mesure d'audience : beacon Cloudflare ajoute a index.html au seul build qui fournit le
+      // jeton de site (release de production) ; perimetre et garanties dans le module.
+      cloudflareWebAnalytics(env),
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['icon.svg'],
