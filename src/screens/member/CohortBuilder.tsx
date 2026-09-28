@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import {
   Download,
   Filter,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -30,6 +31,8 @@ import { SectionCard } from '../../components/SectionCard';
 import { WorkflowSteps } from '../../components/WorkflowSteps';
 import { Checkbox } from '../../components/Checkbox';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { HelpDetails, HelpTip } from '../../components/HelpTip';
+import { Menu, MenuItem } from '../../components/Menu';
 
 const ALL_OPS: FilterOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'between'];
 const SIMPLE_OPS: FilterOp[] = ['eq', 'neq'];
@@ -392,6 +395,7 @@ export function CohortBuilder() {
       {builderOpen && (
         <div className="space-y-4">
           <WorkflowSteps
+            compact
             current={currentStep}
             steps={[
               { label: t('cohort.step_population'), description: t('cohort.step_population_hint') },
@@ -400,7 +404,7 @@ export function CohortBuilder() {
             ]}
           />
 
-          <SectionCard title={t('cohort.conditions')} description={t('cohort.conditions_hint')} icon={Filter}>
+          <SectionCard title={t('cohort.conditions')} description={t('cohort.conditions_hint')} keepDescription icon={Filter}>
             <div className="space-y-5">
               <div className="surface-muted p-2">
                 <Checkbox
@@ -487,7 +491,8 @@ export function CohortBuilder() {
                   elles seraient cherchees, puis supposees perdues. */}
               {calculatedFields.length > 0 && (
                 <p role="status" className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  {t('cohort.calculated_excluded')} <span className="font-medium">{calculatedFields.join(', ')}</span>
+                  {t('cohort.calculated_excluded')} <span className="font-medium">{calculatedFields.join(', ')}</span>{' '}
+                  <HelpDetails>{t('cohort.calculated_excluded_details')}</HelpDetails>
                 </p>
               )}
             </div>
@@ -495,7 +500,7 @@ export function CohortBuilder() {
 
           <SectionCard
             title={t('cohort.preview_title')}
-            description={counts ? t('cohort.preview_hint') : t('cohort.preview_empty')}
+            description={counts ? t('cohort.preview_hint') : t('cohort.preview_empty')} keepDescription
             icon={Users}
             actions={(
               <button type="button" onClick={() => void onPreview()} disabled={busy} className={counts ? 'btn-secondary' : 'btn-primary'}>
@@ -520,7 +525,7 @@ export function CohortBuilder() {
           </SectionCard>
 
           {counts && (
-            <SectionCard title={t('cohort.step_save')} description={t('cohort.type')} icon={Snowflake}>
+            <SectionCard title={t('cohort.step_save')} description={t('cohort.type')} keepDescription icon={Snowflake}>
               <div className="space-y-5">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className={`cursor-pointer rounded-xl border p-4 transition ${cohortType === 'snapshot' ? 'border-teal-400 bg-teal-50/70 ring-2 ring-teal-500/15' : 'border-slate-200 hover:border-slate-300'}`}>
@@ -564,8 +569,11 @@ export function CohortBuilder() {
 
       <div className="space-y-4">
         <div>
-          <h2 className="section-title">{t('cohort.list_title')}</h2>
-          <p className="section-description">{t('cohort.list_hint')}</p>
+          <div className="flex items-center gap-x-1">
+            <h2 className="section-title">{t('cohort.list_title')}</h2>
+            <HelpTip label={t('help.section')} className="-my-2.5 sm:hidden">{t('cohort.list_hint')}</HelpTip>
+          </div>
+          <p className="section-description hidden sm:block">{t('cohort.list_hint')}</p>
         </div>
         {list.length === 0 ? (
           <EmptyState
@@ -575,48 +583,56 @@ export function CohortBuilder() {
             action={!builderOpen ? <button type="button" className="btn-primary" onClick={openBuilder}><Plus size={16} aria-hidden /> {t('cohort.new')}</button> : undefined}
           />
         ) : (
-          <ul className="grid gap-3 md:grid-cols-2">
+          // Colonnes `minmax(0, 1fr)` et `min-w-0` : sans elles, le titre `truncate` (non
+          // secable) imposait sa largeur a la colonne implicite et la page debordait sur
+          // telephone, ce qui forcait le navigateur a la dezoomer en entier.
+          // Audit UI mobile, lot 4 (5.8-A) : une carte tient en deux lignes (nom, puis etat et
+          // effectif) ; ses actions passent dans « ⋯ ».
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {list.map((cohort) => (
-              <li key={cohort.id} className="card flex flex-col gap-4 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate font-semibold text-slate-900">{cohort.name}</h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {cohort.cohortType === 'snapshot'
-                        ? t('cohort.created_on').replace('{date}', cohort.snapshotAt ? formatDate(cohort.snapshotAt, lang) : '—')
-                        : t('cohort.auto_updated')}
+              <li key={cohort.id} className="card flex min-w-0 items-start gap-2 py-3 pl-4 pr-2 sm:pl-5">
+                <div className="min-w-0 flex-1 py-0.5">
+                  <h3 className="truncate font-semibold text-slate-900">{cohort.name}</h3>
+                  {cohort.cohortType === 'snapshot' ? (
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      {t('cohort.created_on').replace('{date}', cohort.snapshotAt ? formatDate(cohort.snapshotAt, lang) : '—')}
+                      {' · '}
+                      <strong className="font-semibold text-slate-900">{cohort.memberCount}</strong> {t('cohort.patients')}
                     </p>
-                  </div>
-                  <span className="badge">
-                    {cohort.cohortType === 'snapshot' ? t('cohort.snapshot') : t('cohort.dynamic')}
-                  </span>
+                  ) : (
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      {t('cohort.auto_updated')}
+                      {' · '}
+                      <span>
+                        {liveCounts[cohort.id] ? (
+                          <><strong className="font-semibold text-slate-900">{liveCounts[cohort.id].patientCount}</strong> {t('cohort.patients')} · <strong className="font-semibold text-slate-900">{liveCounts[cohort.id].encounterCount}</strong> {t('cohort.encounters')}</>
+                        ) : t('cohort.live_count_loading')}
+                      </span>{' '}
+                      <HelpDetails>{t('cohort.dynamic_export_hint')}</HelpDetails>
+                    </p>
+                  )}
                 </div>
-                {cohort.cohortType === 'snapshot' && (
-                  <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-                    <span className="text-sm text-slate-600"><strong className="text-slate-900">{cohort.memberCount}</strong> {t('cohort.patients')}</span>
-                    <button onClick={() => navigate(`/bases/${baseId}/cohorts/${cohort.id}/export`)} className="btn-secondary">
+                <Menu
+                  triggerLabel={`${t('common.actions')} · ${cohort.name}`}
+                  triggerClassName="icon-button h-11 w-11 shrink-0 cursor-pointer"
+                  triggerContent={<MoreHorizontal size={20} aria-hidden />}
+                  panelClassName="card absolute right-0 z-10 mt-2 w-56 space-y-1 p-2 shadow-lg"
+                >
+                  {cohort.cohortType === 'snapshot' ? (
+                    <MenuItem onSelect={() => navigate(`/bases/${baseId}/cohorts/${cohort.id}/export`)}>
                       <Download size={16} aria-hidden /> {t('export.open')}
-                    </button>
-                  </div>
-                )}
-                {cohort.cohortType === 'dynamic' && (
-                  <div className="space-y-3 border-t border-slate-100 pt-3">
-                    <p className="text-sm text-slate-600">
-                      {liveCounts[cohort.id] ? (
-                        <><strong className="text-slate-900">{liveCounts[cohort.id].patientCount}</strong> {t('cohort.patients')} · <strong className="text-slate-900">{liveCounts[cohort.id].encounterCount}</strong> {t('cohort.encounters')}</>
-                      ) : t('cohort.live_count_loading')}
-                    </p>
-                    <p className="text-sm text-slate-500">{t('cohort.dynamic_export_hint')}</p>
-                    <button type="button" onClick={() => void startFreeze(cohort)} disabled={busy} className="btn-secondary">
+                    </MenuItem>
+                  ) : (
+                    // Une cohorte dynamique evolue : on la fige avant de l'exporter.
+                    <MenuItem onSelect={() => void startFreeze(cohort)} disabled={busy}>
                       <Snowflake size={16} aria-hidden /> {t('cohort.freeze_now')}
-                    </button>
-                  </div>
-                )}
-                <div className="border-t border-slate-100 pt-3">
-                  <button type="button" onClick={() => setDeleteCandidate(cohort)} disabled={busy} className="btn-secondary text-red-700">
+                    </MenuItem>
+                  )}
+                  <MenuItem onSelect={() => setDeleteCandidate(cohort)} disabled={busy}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40">
                     <Trash2 size={16} aria-hidden /> {t('cohort.delete')}
-                  </button>
-                </div>
+                  </MenuItem>
+                </Menu>
               </li>
             ))}
           </ul>

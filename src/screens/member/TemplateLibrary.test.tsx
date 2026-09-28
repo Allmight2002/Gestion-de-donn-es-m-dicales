@@ -7,22 +7,35 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
+import { AuthContext, type AuthContextValue } from '../../auth/AuthProvider';
+import type { GlobalRole } from '../../auth/types';
 import { TemplateLibrary } from './TemplateLibrary';
 import { TEMPLATE_LIBRARY } from '../../domain/templateLibrary';
 import type { TemplateBundleInput, TemplateRepository } from '../../data/templates';
 import type { BaseRepository, PublishedTemplateOption } from '../../data/bases';
 
-function renderLib(bases: BaseRepository, templates: TemplateRepository) {
+const authAs = (globalRole: GlobalRole): AuthContextValue => ({
+  status: 'signed_in', user: { id: 'u1', email: null }, profile: { id: 'u1', fullName: 'Dr Test', globalRole, language: 'fr' },
+  error: null, busy: false,
+  async signIn() { return true; },
+  async signOut() { /* sans objet */ },
+  async sendPasswordReset() { return true; },
+  async updatePassword() { return true; },
+});
+
+function renderLib(bases: BaseRepository, templates: TemplateRepository, globalRole: GlobalRole = 'medecin') {
   return render(
     <I18nProvider>
-      <RepositoryProvider bases={bases} templates={templates}>
-        <MemoryRouter initialEntries={['/templates/library']}>
-          <Routes>
-            <Route path="/templates/library" element={<TemplateLibrary />} />
-            <Route path="/templates" element={<div>TEMPLATES</div>} />
-          </Routes>
-        </MemoryRouter>
-      </RepositoryProvider>
+      <AuthContext.Provider value={authAs(globalRole)}>
+        <RepositoryProvider bases={bases} templates={templates}>
+          <MemoryRouter initialEntries={['/templates/library']}>
+            <Routes>
+              <Route path="/templates/library" element={<TemplateLibrary />} />
+              <Route path="/templates" element={<div>TEMPLATES</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </AuthContext.Provider>
     </I18nProvider>,
   );
 }
@@ -63,5 +76,21 @@ describe('TemplateLibrary (F3 v2)', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Utiliser ce modèle' })[0]);
     await waitFor(() => expect(createTemplateBundle).toHaveBeenCalledTimes(1));
     expect(createTemplateBundle.mock.calls[0][0].fields).toHaveLength(first.fields.length);
+  });
+
+  // Audit UI mobile, lot 5 (5.12) : un bouton secondaire par carte, et la note sur les modeles
+  // globaux reservee a qui peut en publier.
+  test('les modeles s utilisent par un bouton secondaire ; la note d administration est reservee aux administrateurs', async () => {
+    const bases = { async listTemplateModels() { return []; } } as unknown as BaseRepository;
+    const templates = {} as unknown as TemplateRepository;
+    const { unmount } = renderLib(bases, templates);
+    const buttons = await screen.findAllByRole('button', { name: 'Utiliser ce modèle' });
+    expect(buttons.length).toBe(TEMPLATE_LIBRARY.length);
+    for (const button of buttons) expect(button).toHaveClass('btn-secondary');
+    expect(screen.queryByText(/un admin peut en créer/)).toBeNull();
+    unmount();
+
+    renderLib(bases, templates, 'system_admin');
+    expect(await screen.findByText(/un admin peut en créer/)).toBeInTheDocument();
   });
 });

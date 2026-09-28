@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { Database, Plus, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
@@ -83,6 +83,13 @@ export function Dashboard() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Decision 9 (audit UI mobile, 5.2-D) : un compte de mission n'a qu'une base
+  // (docs/spec-comptes-mission.md §4.1) ; il l'ouvre directement, sans ecran intercalaire.
+  // Sans base (fin de mission) ou hors ligne, le tableau de bord garde son explication.
+  if (isMission && online && !loading && !error && bases.length === 1) {
+    return <Navigate to={`/bases/${bases[0].base.id}`} replace />;
   }
 
   return (

@@ -19,7 +19,7 @@ possible un 2ᵉ médecin sans accès (tests de cloisonnement §7).
 
 ### 1bis. Amorçage si le compte médecin est NEUF (aucune base)
 Avant le diagnostic §3, préparer un terrain de jeu :
-1. Mes jeux de variables → **Bibliothèque de modèles** → « Utiliser ce modèle » (n'importe lequel).
+1. Mes jeux de variables → **Nouveau › Depuis la bibliothèque** → « Utiliser ce modèle » (n'importe lequel).
 2. Tableau de bord → créer la base **`QA-base`** à partir de ce jeu de variables (le sélecteur
    sépare « Modèles officiels » et « Mes jeux de variables »).
 3. Créer 3 patients `QA-001/002/003` (noms fictifs) avec 1-2 rencontres chacun, en laissant
@@ -59,8 +59,8 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
    Vérifier la barre de sous-onglets du groupe actif : **À compléter** (file d'attente, Curation),
    **Analyse** (Cohortes, Statistiques), **Paramètres** (Général, Variables, Accès, Journal).
    « Importer » est un bouton de l'en-tête de la liste des patients, plus un onglet.
-6. **Statistiques** : cartes (Patients inclus/Objectif/Progression) ; fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré » → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
-7. **Complétude par variable** : les barres s'affichent, les moins complètes en premier, couleurs (rouge/ambre/vert).
+6. **Statistiques** : indicateurs sur une ligne (Patients inclus/Objectif/Progression) ; ouvrir **Objectif de recrutement** (« Définir » ou « Modifier »), fixer un **objectif** (ex. 150 + une date) → toast « Objectif enregistré », le réglage se referme → la ligne pointillée apparaît sur la courbe et la progression se met à jour.
+7. **Complétude par variable** : pastilles de résumé (à 0 %, partielles, complètes), puis les 10 variables les moins complètes avec leurs barres (rouge/ambre/vert) ; « Voir les N variables » affiche toutes les variables par section, avec une recherche.
 8. **À compléter** : cliquer « Compléter » sur une rencontre → le formulaire d'édition s'ouvre avec les bons champs.
 
 ### 4.3 Saisie (A2, A4, B5, UI-2)
@@ -91,7 +91,7 @@ Chaque étape : noter **OK / KO / BLOQUÉ** + détail si KO + capture d'écran s
    l'écran Importer** de la nouvelle base (toast). Re-téléverser le même CSV → colonnes
    **auto-mappées** (Code patient → identifiant, les autres → variables) → aperçu → importer →
    les patients `QA-F1-*` apparaissent dans l'onglet Patients.
-16. Mes jeux de variables → « **Bibliothèque de modèles** » : les modèles s'affichent (globaux, ou les 4 par défaut avec le bandeau explicatif) ; « Utiliser ce modèle » → clone dans Mes jeux de variables.
+16. Mes jeux de variables → **Nouveau › Depuis la bibliothèque** : les modèles s'affichent (globaux, ou les 4 par défaut ; le bandeau sur les modèles globaux n'est montré qu'à un administrateur) ; « Utiliser ce modèle » → clone dans Mes jeux de variables.
 17. Supprimer les jeux de variables `QA-` créés.
 
 ### 4.5 Groupes (C2)

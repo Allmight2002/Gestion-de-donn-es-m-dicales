@@ -149,4 +149,25 @@ describe('FieldMoveDialog — UX-14(d)', () => {
     await user.keyboard('{Enter}');
     expect(onMove).toHaveBeenCalledWith({ section: 'biologie', orderedIds: ['f2', 'f3', 'f4', 'f1', 'f5'] });
   });
+
+  // Audit UI mobile, lot 6 : sur un gros modele, le repere se choisit dans une liste
+  // recherchable ; Echap la referme sans fermer la fenetre, comme une liste native.
+  test('sur un gros modèle, Échap referme la liste recherchable avant la fenêtre', async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    const many = [fields[0], ...Array.from({ length: 10 }, (_, index) => field(`g${index}`, `mesure_${index}`, `Mesure ${index}`, 'clinique'))];
+    render(<I18nProvider>
+      <FieldMoveDialog field={many[0]} fields={many} sections={sections} onCancel={onCancel} onMove={() => {}} />
+    </I18nProvider>);
+
+    const repere = screen.getByRole('combobox', { name: 'Variable de repère' });
+    await user.click(repere);
+    expect(screen.getByRole('listbox', { name: 'Variable de repère' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    await user.keyboard('{Escape}');
+    expect(onCancel).toHaveBeenCalled();
+  });
 });
+

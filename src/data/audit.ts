@@ -39,6 +39,12 @@ export interface ActivityEvent {
   at: string;
   action: string;
   actorName: string;
+  /**
+   * Audit UI mobile, lot 4 (decision 8) : l'action est celle de la personne connectee. Fourni
+   * par le serveur, jamais deduit du nom (deux homonymes seraient confondus). Absent face a un
+   * serveur anterieur : le nom de l'auteur reste affiche.
+   */
+  actorIsSelf?: boolean;
   metadata: Record<string, unknown> | null;
 }
 

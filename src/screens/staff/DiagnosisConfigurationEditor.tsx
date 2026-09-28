@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import type { DiagnosisConfiguration, FieldScope, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import type { TemplateRepository } from '../../data/templates';
 import { findProposalField } from '../../domain/proposalField';
+import { optionLabel } from '../../domain/fieldOptions';
 import { visibilityRuleOf } from '../../domain/templateRules';
 import { useI18n } from '../../i18n/useI18n';
+import { HelpDetails } from '../../components/HelpTip';
 
 /** Le responsable associe des codes ; la seule écriture d'association reste une règle L52. */
 export function DiagnosisConfigurationEditor({ version, fields, rules, sections, repo, busy, run, onDirtyChange, onOpenField, onOpenRule }: {
@@ -72,14 +75,21 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
   const association = associationOf(block);
   // Saisie locale non accusee : choisir un bloc PREREMPLIT ses codes, ce n'est donc pas une
   // modification. Seul un ecart avec l'etat enregistre protege contre la perte de saisie.
-  const dirty = draft !== null
-    || (common !== null && common !== config.commonOnlyCodes.join('\n'))
-    || (block !== '' && codes !== association.codes);
+  const configDirty = draft !== null || (common !== null && common !== config.commonOnlyCodes.join('\n'));
+  const associationDirty = block !== '' && codes !== association.codes;
+  const dirty = configDirty || associationDirty;
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  // Les codes enregistres se lisent par leurs libelles quand la variable pilote les porte
+  // (liste de choix) ; un code de terminologie reste affiche tel quel.
+  const driver = saved ? fields.find((f) => f.fieldKey === saved.diagnosisFieldKey) : undefined;
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   return <div className="card space-y-3 p-4">
-    <h3 className="font-semibold">{t('diagnosis.config_title')}</h3>
-    <p className="text-sm text-slate-600">{t('diagnosis.config_help')}</p>
+    {/* Audit UI mobile, lot 6 (5.13) : les explications passent derriere ⓘ ; les etats et
+        avertissements restent visibles. */}
+    <div className="flex items-center gap-1">
+      <h3 className="font-semibold">{t('diagnosis.config_title')}</h3>
+      <HelpDetails>{t('diagnosis.config_help')}</HelpDetails>
+    </div>
     {readOnlyMessage && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
       {readOnlyMessage}
     </p>}
@@ -96,7 +106,7 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
           {candidates.map((f) => <option key={f.id} value={f.fieldKey}>{f.label} ({f.fieldKey})</option>)}
         </select>
       </label>
-      <p className="text-sm text-slate-600">{t('diagnosis.driver_help')}</p>
+      <p className="text-sm text-slate-600">{t('diagnosis.driver_help')} <HelpDetails>{t('diagnosis.driver_help_details')}</HelpDetails></p>
       {selected?.type === 'terminology' && <label className="block">{t('diagnosis.release')}
         <input className="input" value={config.terminologyReleaseId ?? ''} onChange={(e) => setDraft({...config,terminologyReleaseId:e.target.value})} />
       </label>}
@@ -106,7 +116,8 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
           <textarea className="input" rows={3} value={common ?? config.commonOnlyCodes.join('\n')} onChange={(e) => setCommon(e.target.value)} />
         </label>
       </>}
-      <button type="button" className="btn-primary" disabled={!repo.setDiagnosisConfiguration || (!!selected && !companion)} onClick={() => {
+      {/* Un seul bouton plein a l'ecran : celui dont le formulaire porte une modification. */}
+      <button type="button" className={configDirty ? 'btn-primary' : 'btn-secondary'} disabled={!repo.setDiagnosisConfiguration || (!!selected && !companion)} onClick={() => {
         const others = (version.diagnosisConfiguration ?? []).filter((c) => c.scope !== scope);
         const next = config.diagnosisFieldKey ? [...others,{...config,commonOnlyCodes:split(common ?? config.commonOnlyCodes.join('\n'))}] : others;
         void run(() => repo.setDiagnosisConfiguration!(version.id,next)).then((ok) => {if (ok) {setDraft(null); setCommon(null);}});
@@ -128,11 +139,14 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
       </ul>
     </details>}
     {compatibleInBlocks > 0 && <p className="text-sm text-slate-600">
-      {t('diagnosis.ineligible_blocks').replace('{n}', String(compatibleInBlocks))}
+      {t('diagnosis.ineligible_blocks').replace('{n}', String(compatibleInBlocks))}{' '}
+        <HelpDetails>{t('diagnosis.ineligible_blocks_details')}</HelpDetails>
     </p>}
     {saved && <div className="space-y-3 border-t pt-3">
-      <h4 className="font-medium">{t('diagnosis.associations')}</h4>
-      <p className="text-sm text-slate-600">{t('diagnosis.association_is_rule')}</p>
+      <div className="flex items-center gap-1">
+        <h4 className="font-medium">{t('diagnosis.associations')}</h4>
+        <HelpDetails>{t('diagnosis.association_is_rule')}</HelpDetails>
+      </div>
       {(() => {
         const savedAssociations = sections.filter((s) => !s.parentSectionKey)
           .map((s) => ({ section: s, association: associationOf(s.sectionKey) }))
@@ -140,11 +154,18 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
         if (savedAssociations.length === 0) return <p className="text-sm text-slate-600">{t('diagnosis.no_association')}</p>;
         return <ul className="space-y-1 text-sm">
           {savedAssociations.map(({ section, association }) => <li key={section.id} className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs">{association.codes.split('\n').join(', ')}</span>
+            <span className="flex flex-wrap gap-1">
+              {association.codes.split('\n').filter(Boolean).map((code) => (
+                <span key={code} title={code} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  {optionLabel(driver, code)}
+                </span>
+              ))}
+            </span>
             <span aria-hidden>→</span>
             <span>{section.label}</span>
-            {onOpenRule && <button type="button" className="text-xs font-medium text-teal-700 underline underline-offset-2"
-              onClick={() => onOpenRule(association.rule!.id)}>{t('diagnosis.open_association_rule')}</button>}
+            {onOpenRule && <button type="button" className="icon-button -my-2 text-teal-700"
+              aria-label={`${t('diagnosis.open_association_rule')} · ${section.label}`} title={t('diagnosis.open_association_rule')}
+              onClick={() => onOpenRule(association.rule!.id)}><ArrowUpRight size={16} aria-hidden /></button>}
           </li>)}
         </ul>;
       })()}
@@ -157,7 +178,7 @@ export function DiagnosisConfigurationEditor({ version, fields, rules, sections,
         </label>
         <label className="block">{t('diagnosis.block_codes')}<textarea className="input" value={codes} onChange={(e) => setCodes(e.target.value)} /></label>
         {association.foreign && <p className="text-sm text-amber-700">{t('diagnosis.block_taken')}</p>}
-        <button type="button" className="btn-primary" disabled={!block || association.foreign || !split(codes).length} onClick={() => {
+        <button type="button" className={associationDirty ? 'btn-primary' : 'btn-secondary'} disabled={!block || association.foreign || !split(codes).length} onClick={() => {
           const rule = {if:{field:saved.diagnosisFieldKey,operator:'contains_any',value:split(codes),
             ...(saved.terminologyReleaseId ? {terminologyReleaseId:saved.terminologyReleaseId} : {})},then:{section:block,operator:'visible'}};
           void run(() => association.rule ? repo.updateRule(association.rule.id,rule,association.rule.message ?? '',association.rule.severity)

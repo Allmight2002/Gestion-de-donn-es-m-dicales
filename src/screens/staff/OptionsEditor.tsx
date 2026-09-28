@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { makeValueKey, optionKeys, type FieldOption } from '../../domain/fieldOptions';
 import { Checkbox } from '../../components/Checkbox';
+import { HelpDetails } from '../../components/HelpTip';
 
 /**
  * L30 — editeur des options d'une liste controlee.
@@ -65,7 +66,7 @@ export function OptionsEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="helper-text">{t('admin.options_hint')}</p>
+      <p className="helper-text">{t('admin.options_hint')} <HelpDetails>{t('admin.options_hint_details')}</HelpDetails></p>
 
       {options.length === 0 && <p className="text-xs text-slate-500">{t('admin.options_empty')}</p>}
 

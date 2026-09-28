@@ -137,7 +137,7 @@ describe('CommonLayoutEditor — UX-16', () => {
 
     // Le motif est lisible : jamais le jeton technique du contrat.
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/L’organisation a changé depuis l’ouverture de cet écran/);
+    expect(alert).toHaveTextContent(/Organisation modifiée entre-temps : rien d’enregistré, choix conservés/);
     expect(alert).not.toHaveTextContent(/COMMON_LAYOUT/);
     // Le titre saisi est toujours la : rien n'a ete recharge par-dessus.
     expect(screen.getAllByLabelText('Titre de la rubrique')[0]).toHaveValue('Contexte de la consultation');

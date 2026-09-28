@@ -3,7 +3,7 @@
 // L'ecran proposait une liste filtree sans jamais dire pourquoi une variable n'y figurait pas :
 // le concepteur cherchait une variable absente sans savoir quoi corriger. Les criteres sont
 // desormais lisibles a cote de la liste, et lus par la MEME fonction que la liste elle-meme.
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import type { TemplateRepository } from '../../data/templates';
@@ -67,7 +67,7 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
     // Le titre ne designe plus une place dans le formulaire : la variable est deplacable.
     const select = screen.getByLabelText('Variable diagnostique');
     expect(select).toBeInTheDocument();
-    expect(screen.getByText(/Son emplacement dans le formulaire est libre/)).toBeInTheDocument();
+    expect(screen.getByText(/Relie les diagnostics saisis aux blocs spécialisés/)).toBeInTheDocument();
 
     // Seule la variable compatible est proposee.
     expect([...select.querySelectorAll('option')].map((option) => option.textContent))
@@ -83,7 +83,17 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
 
     // Une variable compatible rangee dans un bloc n'est pas proposee : le dire evite de la
     // chercher, et dit ce qui la rendrait eligible.
-    expect(screen.getByText(/1 variable\(s\) compatibles appartiennent à un bloc clinique/)).toBeInTheDocument();
+    const ineligible = screen.getByText(/1 variable\(s\) compatible\(s\) dans un bloc/);
+
+    // Lot 3 : l'explication s'ouvre derriere ⓘ, sans occuper l'ecran.
+    const detailOf = (paragraph: HTMLElement, text: RegExp) => {
+      fireEvent.click(within(paragraph).getByRole('button', { name: 'En savoir plus' }));
+      const dialog = screen.getByRole('dialog', { name: 'En savoir plus' });
+      expect(dialog).toHaveTextContent(text);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fermer' }));
+    };
+    detailOf(screen.getByText(/Relie les diagnostics saisis/), /Son emplacement dans le formulaire est libre/);
+    detailOf(ineligible, /Retirer leur bloc les rendrait éligibles/);
   });
 
   test('la version brouillon inutilisée laisse les options de configuration actionnables', () => {
@@ -112,17 +122,62 @@ describe('DiagnosisConfigurationEditor — criteres lisibles (UX-16)', () => {
       onOpenRule,
     });
 
-    expect(screen.getByRole('status')).toHaveTextContent(/version est déjà utilisée/);
+    expect(screen.getByRole('status')).toHaveTextContent(/Version utilisée par des dossiers : collecte gelée/);
     expect(screen.getByLabelText('Fiche concernée')).not.toBeDisabled();
     expect(screen.getByLabelText('Variable diagnostique')).toBeDisabled();
     expect(screen.getByRole('button', { name: /Diagnostic retenu/ })).not.toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /Diagnostic retenu/ }));
     expect(onOpenField).toHaveBeenCalledWith('dx');
 
-    const openRule = screen.getByRole('button', { name: 'Voir la règle d’activation' });
+    // Audit UI mobile, lot 6 : une icone par ligne, nommee avec son bloc.
+    const openRule = screen.getByRole('button', { name: /^Voir la règle d’activation · / });
     expect(openRule).not.toBeDisabled();
     fireEvent.click(openRule);
     expect(onOpenRule).toHaveBeenCalledWith('association');
     expect(screen.getByLabelText(/Codes alternatifs déclenchant ce bloc/)).toBeDisabled();
+  });
+
+  // Audit UI mobile, lot 6 (5.13) : codes en pastilles avec leurs libelles, explications
+  // derriere ⓘ, un seul bouton plein — celui du formulaire qui porte une modification.
+  test('codes en pastilles avec libellés, explications derrière ⓘ, bouton plein seulement si modifié', () => {
+    const configuredVersion: TemplateVersion = {
+      ...version,
+      diagnosisConfiguration: [{ scope: 'patient', diagnosisFieldKey: 'dx', terminologyReleaseId: null, commonOnlyCodes: [] }],
+    };
+    const labelled = fields.map((item) => item.fieldKey === 'dx' ? {
+      ...item, allowedValues: ['avc', 'tumeur'],
+      allowedOptions: [
+        { valueKey: 'avc', label: 'Accident vasculaire cérébral', isActive: true },
+        { valueKey: 'tumeur', label: 'Tumeur rachidienne', isActive: true },
+      ],
+    } : item);
+    renderEditor({
+      version: configuredVersion,
+      fields: labelled,
+      rules: [...rules, {
+        id: 'association', severity: 'block', message: null,
+        rule: { if: { field: 'dx', operator: 'contains_any', value: ['avc', 'tumeur'] }, then: { section: 'clinique', operator: 'visible' } },
+      }],
+      onOpenRule: () => {},
+    });
+
+    const pill = screen.getByText('Accident vasculaire cérébral');
+    expect(pill).toHaveAttribute('title', 'avc');
+    expect(within(pill.closest('li') as HTMLElement).getByText('Tumeur rachidienne')).toBeInTheDocument();
+    expect(screen.queryByText(/avc, tumeur/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voir la règle d’activation · Clinique' })).toHaveClass('icon-button');
+
+    // Les deux explications ne sont plus ecrites en toutes lettres.
+    expect(screen.queryByText(/Diagnostics sélectionnables même sans bloc/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Chaque association EST la règle/)).not.toBeInTheDocument();
+
+    const saveConfig = screen.getByRole('button', { name: 'Enregistrer la configuration' });
+    const saveAssociation = screen.getByRole('button', { name: 'Enregistrer cette association' });
+    expect(saveConfig).toHaveClass('btn-secondary');
+    expect(saveAssociation).toHaveClass('btn-secondary');
+    fireEvent.change(screen.getByLabelText('Bloc racine'), { target: { value: 'clinique' } });
+    fireEvent.change(screen.getByLabelText(/Codes alternatifs déclenchant ce bloc/), { target: { value: 'avc' } });
+    expect(saveAssociation).toHaveClass('btn-primary');
+    expect(saveConfig).toHaveClass('btn-secondary');
   });
 });

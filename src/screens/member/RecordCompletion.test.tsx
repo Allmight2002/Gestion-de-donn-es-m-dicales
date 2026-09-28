@@ -76,8 +76,8 @@ function patientScreen(patients: PatientRepository): ReactElement {
 const fillReason = (text: string) => fireEvent.change(
   screen.getByLabelText(/motif de la correction/i), { target: { value: text } },
 );
-// Les deux ecrans partagent le libelle historique du bouton d'enregistrement.
-const saveButton = () => screen.getByRole('button', { name: /enregistrer la rencontre/i });
+// Le patient a son propre libelle depuis le lot 0 de l'audit UI mobile ; la rencontre garde le sien.
+const saveButton = () => screen.getByRole('button', { name: /enregistrer les modifications/i });
 const stepLabels = () => within(screen.getByRole('navigation', { name: /sommaire du formulaire/i }))
   .getAllByRole('button').map((button) => button.textContent);
 
@@ -183,7 +183,7 @@ describe('E5 — complétion des patients existants', () => {
     fillReason('complétion fictive');
     await userEvent.click(saveButton());
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/saisies locales sont conservées/i));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/saisies conservées, rechargez les données/i));
     expect(screen.getByLabelText('Ajout facultatif')).toHaveValue('complément fictif');
     expect(screen.getByLabelText(/motif de la correction/i)).toHaveValue('complétion fictive');
     expect(screen.getByRole('button', { name: /recharger les données/i })).toBeInTheDocument();
@@ -285,7 +285,7 @@ describe('E5 — la fiche annonce les ajouts et conduit à la complétion', () =
     // Rencontre : l'ajout réservé à un autre type de rencontre n'est pas annoncé.
     expect(screen.getByText(/2 variable\(s\) ajoutée\(s\) au formulaire/)).toBeInTheDocument();
     expect(screen.queryByText('Ajout reserve au suivi')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/Aucune valeur n’est créée et le statut de ce dossier reste inchangé/)).toHaveLength(2);
+    expect(screen.getAllByText(/Aucune valeur créée, statut inchangé/)).toHaveLength(2);
   });
 
   test('« Compléter cette fiche » ouvre le formulaire sur des ajouts vides', async () => {

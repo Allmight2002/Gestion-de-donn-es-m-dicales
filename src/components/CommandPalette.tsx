@@ -61,7 +61,7 @@ export function CommandPalette() {
     const missionAccount = profile?.globalRole === 'saisisseur';
     const list: Cmd[] = [
       { id: 'home', label: t('member.dashboard.title'), to: '/' },
-      { id: 'sync', label: t('status.title'), to: '/sync' },
+      { id: 'sync', label: t('sync.title'), to: '/sync' },
     ];
     if (!missionAccount) list.splice(1, 0, { id: 'templates', label: t('mytemplates.title'), to: '/templates' });
     if (profile?.globalRole === 'curateur') list.push({ id: 'pool', label: t('curation.pool_title' as MessageKey), to: '/curation' });
@@ -116,7 +116,7 @@ export function CommandPalette() {
             </li>
           ))}
         </ul>
-        <div className="border-t border-slate-100 px-4 py-1.5 text-xs text-slate-400">{t('search.hint')}</div>
+        <div className="keyboard-hint border-t border-slate-100 px-4 py-1.5 text-xs text-slate-400">{t('search.hint')}</div>
       </div>
     </div>
   );

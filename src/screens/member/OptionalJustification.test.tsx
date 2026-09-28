@@ -85,7 +85,7 @@ function renderEditPatient(
   return update;
 }
 
-const save = () => userEvent.click(screen.getByRole('button', { name: /enregistrer la rencontre/i }));
+const save = () => userEvent.click(screen.getByRole('button', { name: /enregistrer les modifications/i }));
 
 describe('motif facultatif', () => {
   test('le propriétaire enregistre une correction sans motif et rien n’est fabriqué', async () => {

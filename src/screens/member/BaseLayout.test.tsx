@@ -2,13 +2,16 @@
 // La page de base en ONGLETS — fil d'Ariane, quatre destinations selon le role/permissions,
 // sous-onglets du groupe actif, contenu enfant rendu via Outlet.
 import 'fake-indexeddb/auto';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
+import { MemoryRouter, Outlet, Route, Routes, useNavigate } from 'react-router';
+import { useState, type ReactNode } from 'react';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { BaseLayout } from './BaseLayout';
+import { useBaseFocus } from './baseFocus';
+import { TopBarRegistryProvider, useTopBarRegistry } from '../../components/TopBar';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 
 const NO_PERMS = { canViewIdentity: false, canViewRawDocuments: false, canEditStructuredData: false, canExportData: false, canManageAccess: false };
@@ -181,5 +184,130 @@ describe('BaseLayout — contexte du fil d Ariane', () => {
 
     expect(await screen.findByText('Une erreur est survenue')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Navigation dans la base' })).toBeInTheDocument();
+  });
+});
+
+// Audit UI mobile, lot 1 (T1-B) : sur telephone, la barre haute porte le nom de la base et le
+// retour ; le fil d'Ariane, qui disait la meme chose sur deux lignes, n'y est plus affiche.
+function TopBarProbe({ children }: { children: ReactNode }) {
+  const { active, registry } = useTopBarRegistry();
+  return (
+    <TopBarRegistryProvider registry={registry}>
+      {children}
+      <output aria-label="barre haute">{active ? `${active.title} | ${active.backTo} | ${active.backLabel}` : 'vide'}</output>
+    </TopBarRegistryProvider>
+  );
+}
+
+function renderWithTopBar(listing: BaseListing, entry: string) {
+  const bases = { async getBase() { return listing; } } as unknown as BaseRepository;
+  return render(
+    <I18nProvider>
+      <RepositoryProvider bases={bases}>
+        <MemoryRouter initialEntries={[entry]}>
+          <TopBarProbe>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseLayout />}>
+                <Route index element={<div>HOME</div>} />
+                <Route path="cohorts" element={<div>COHORTES</div>} />
+                <Route path="import" element={<div>IMPORT</div>} />
+              </Route>
+            </Routes>
+          </TopBarProbe>
+        </MemoryRouter>
+      </RepositoryProvider>
+    </I18nProvider>,
+  );
+}
+
+describe('BaseLayout — barre haute contextuelle (T1-B)', () => {
+  test('depuis un onglet, la barre porte la base et remonte au tableau de bord', async () => {
+    renderWithTopBar(listingWith('owner', { canExportData: true }), '/bases/b1/cohorts');
+    const bar = screen.getByRole('status', { name: 'barre haute' });
+    expect(await screen.findByText('COHORTES')).toBeInTheDocument();
+    await vi.waitFor(() => expect(bar).toHaveTextContent('Gliomes 2026 | / | Retour : Tableau de bord'));
+    // Le fil d'Ariane reste pour l'ordinateur, ou la barre haute n'existe pas.
+    expect(screen.getByRole('link', { name: 'Tableau de bord' }).closest('p')).toHaveClass('hidden', 'lg:block');
+  });
+
+  test('depuis une page interieure, le retour mene a la liste de la base', async () => {
+    renderWithTopBar(listingWith('owner'), '/bases/b1/import');
+    const bar = screen.getByRole('status', { name: 'barre haute' });
+    expect(await screen.findByText('IMPORT')).toBeInTheDocument();
+    await vi.waitFor(() => expect(bar).toHaveTextContent('Gliomes 2026 | /bases/b1 | Retour : Gliomes 2026'));
+  });
+
+  // Decision 9 : un compte de mission ouvre directement son unique base ; depuis un onglet, un
+  // retour vers le tableau de bord le renverrait ici.
+  test('compte de mission : pas de retour vers le tableau de bord depuis un onglet', async () => {
+    renderWithTopBar(listingWith('viewer', {}, { expiresAt: inDays(120), canCreateStructuredData: true }), '/bases/b1');
+    const bar = screen.getByRole('status', { name: 'barre haute' });
+    expect(await screen.findByText('HOME')).toBeInTheDocument();
+    await vi.waitFor(() => expect(bar).toHaveTextContent('Gliomes 2026 | undefined | undefined'));
+    expect(screen.queryByRole('link', { name: 'Tableau de bord' })).toBeNull();
+  });
+
+  test('compte de mission : depuis une page interieure, le retour mene toujours a la base', async () => {
+    renderWithTopBar(listingWith('viewer', {}, { expiresAt: inDays(120), canCreateStructuredData: true }), '/bases/b1/import');
+    const bar = screen.getByRole('status', { name: 'barre haute' });
+    expect(await screen.findByText('IMPORT')).toBeInTheDocument();
+    await vi.waitFor(() => expect(bar).toHaveTextContent('Gliomes 2026 | /bases/b1 | Retour : Gliomes 2026'));
+  });
+
+  test('pendant le chargement, la barre ne promet aucun nom', () => {
+    const pending = { getBase: () => new Promise<BaseListing>(() => {}) } as unknown as BaseRepository;
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={pending}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <TopBarProbe>
+              <Routes><Route path="/bases/:id" element={<BaseLayout />}><Route index element={<div>HOME</div>} /></Route></Routes>
+            </TopBarProbe>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    expect(screen.getByRole('status', { name: 'barre haute' })).toHaveTextContent('Chargement');
+  });
+});
+
+// Audit UI mobile, lot 5 (5.9 Formulaire B) : un ecran de travail en plein ecran masque le fil
+// d'Ariane et les onglets de la base, puis les rend en sortant.
+function FocusProbe() {
+  const [focused, setFocused] = useState(false);
+  useBaseFocus(focused);
+  return (
+    <>
+      <button type="button" onClick={() => setFocused(true)}>PLEIN ECRAN</button>
+      <button type="button" onClick={() => setFocused(false)}>SORTIR</button>
+    </>
+  );
+}
+
+describe('BaseLayout — plein ecran', () => {
+  test('un ecran enfant peut masquer les onglets le temps de son travail', async () => {
+    const bases = { async getBase() { return listingWith('owner'); } } as unknown as BaseRepository;
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases}>
+          <MemoryRouter initialEntries={['/bases/b1/template']}>
+            <Routes>
+              <Route path="/bases/:id" element={<BaseLayout />}>
+                {/* Comme dans AppRoutes : une garde de route intercale son propre Outlet. */}
+                <Route element={<Outlet />}>
+                  <Route path="template" element={<FocusProbe />} />
+                </Route>
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    expect(await screen.findByRole('navigation', { name: 'Gliomes 2026' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'PLEIN ECRAN' }));
+    expect(screen.queryByRole('navigation', { name: 'Gliomes 2026' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Tableau de bord' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'SORTIR' }));
+    expect(screen.getByRole('navigation', { name: 'Gliomes 2026' })).toBeInTheDocument();
   });
 });

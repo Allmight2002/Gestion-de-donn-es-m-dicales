@@ -136,7 +136,7 @@ describe('FieldForm — options a code stable (L30)', () => {
     renderExisting();
     expect(screen.queryByRole('button', { name: /^Supprimer/ })).toBeNull();
     expect(screen.getAllByLabelText('Désactiver').length).toBe(2);
-    expect(screen.getByText(/ne peut plus être supprimée/)).toBeInTheDocument();
+    expect(screen.getByText(/options désactivables, plus supprimables/)).toBeInTheDocument();
   });
 
   test('desactiver une option la transmet sans la retirer de la liste', async () => {
@@ -281,7 +281,7 @@ describe('FieldForm — valeur proposée (L28)', () => {
     expect(screen.queryByRole('status')).toBeNull();
 
     await userEvent.type(screen.getByLabelText('Valeur proposée'), 'aucune');
-    expect(screen.getByRole('status')).toHaveTextContent('fabrique de la donnée');
+    expect(screen.getByRole('status')).toHaveTextContent('la réponse proposée sera enregistrée telle quelle');
   });
 
   test('avertit sur une variable oui/non, dont la proposition devient la réponse', async () => {
@@ -565,7 +565,7 @@ describe('FieldForm — variables calculees (L35)', () => {
     await userEvent.selectOptions(screen.getByLabelText('Premier élément'), 'date_sortie');
     await userEvent.selectOptions(screen.getByLabelText('Opération'), '+');
     await userEvent.selectOptions(screen.getByLabelText('Second élément'), 'date_entree');
-    expect(screen.getByText(/Une date ou une date-heure ne se combine qu’avec une autre/)).toBeInTheDocument();
+    expect(screen.getByText(/Dates et dates-heures : uniquement soustraites entre elles/)).toBeInTheDocument();
   });
 
   test('une variable calculee n’est ni obligatoire, ni preremplie, ni bornee', async () => {
@@ -638,7 +638,7 @@ describe('FieldForm — variables calculees (L35)', () => {
       </I18nProvider>,
     );
     expect(screen.getByRole('checkbox', { name: 'Variable calculée' })).toBeDisabled();
-    expect(screen.getByText(/Aucune variable ne peut servir au calcul/)).toBeInTheDocument();
+    expect(screen.getByText(/Aucune variable utilisable : créez d’abord une variable nombre/)).toBeInTheDocument();
   });
 });
 

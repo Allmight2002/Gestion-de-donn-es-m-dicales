@@ -35,9 +35,14 @@ function renderSync() {
 describe('SyncCenter — état du système (E3)', () => {
   test('affiche connexion, version (injectée), bases hors-ligne et la section anomalies', async () => {
     renderSync();
-    expect(await screen.findByRole('heading', { level: 1, name: 'État du système' })).toBeInTheDocument();
+    // Audit UI mobile, lot 0 : la page porte le nom de son entree de menu, et les informations
+    // de build (support) sont repliees dans « Détails techniques » au lieu d'occuper l'ecran.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Synchronisation' })).toBeInTheDocument();
     expect(screen.getByText('Connexion')).toBeInTheDocument();
     expect(screen.getByText('En ligne')).toBeInTheDocument(); // navigator.onLine = true par défaut (jsdom)
+    const technical = screen.getByText('Détails techniques').closest('details')!;
+    expect(technical).not.toHaveAttribute('open');
+    expect(technical).toContainElement(screen.getByText('test-commit'));
     expect(screen.getByText('Version')).toBeInTheDocument();
     expect(screen.getByText('Commit')).toBeInTheDocument();
     expect(screen.getByText('test-commit')).toBeInTheDocument();
@@ -143,7 +148,7 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
 
     renderSync();
 
-    expect(await screen.findByText(/n’a pas été synchronisée; reconnectez-vous/i)).toBeInTheDocument();
+    expect(await screen.findByText(/non synchronisée : reconnectez-vous/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder ma version' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder les deux' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Garder la version serveur' })).not.toBeInTheDocument();
@@ -165,7 +170,7 @@ describe('SyncCenter — issue « garder les deux » (L25)', () => {
 
     expect(await screen.findByRole('button', { name: 'Garder ma version' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Garder la version serveur' })).toBeInTheDocument();
-    expect(screen.queryByText(/n’a pas été synchronisée; reconnectez-vous/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/non synchronisée : reconnectez-vous/i)).not.toBeInTheDocument();
     await purgeAllOfflineData();
     setOfflineUser(null);
   });

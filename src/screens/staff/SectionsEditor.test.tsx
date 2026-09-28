@@ -54,12 +54,15 @@ function renderEditor(options: {
 const repeatableBox = () => screen.getByRole('checkbox', { name: /Groupe répétable/ });
 
 describe('SectionsEditor — declarer un groupe repetable (L67)', () => {
-  test('la case porte la regle de decision du §3.3 en libelle secondaire', () => {
+  // Audit UI mobile, lot 0 : la regle reste attachee a chaque case (description accessible),
+  // mais n'est plus ecrite sous chacune — une seule fois pour toute la liste.
+  test('la case porte la regle de decision du §3.3, dite une seule fois pour la liste', () => {
     renderEditor();
     expect(repeatableBox()).toBeInTheDocument();
-    expect(screen.getByText(
-      'À cocher quand l’analyse comptera les occurrences elles-mêmes, et non les patients.',
-    )).toBeInTheDocument();
+    expect(repeatableBox()).toHaveAccessibleDescription(
+      /À cocher quand l’analyse comptera les occurrences elles-mêmes, et non les patients\./,
+    );
+    expect(screen.getAllByText(/occurrences elles-mêmes/)).toHaveLength(1);
   });
 
   test('§14.2 test 20 — refus explique quand une variable du bloc porte deja des donnees', async () => {
@@ -131,7 +134,7 @@ describe('SectionsEditor — declarer un groupe repetable (L67)', () => {
   test('base transversale : la case est verrouillee et l ecran dit d ou vient le verrou', () => {
     renderEditor({ observationModel: 'cross_sectional' });
     expect(repeatableBox()).toBeDisabled();
-    expect(screen.getByText(/le modèle d’observation s’est verrouillé à sa première fiche/i)).toBeInTheDocument();
+    expect(screen.getByText(/Réservé au suivi répété et aux registres d’événements ; modèle verrouillé/)).toBeInTheDocument();
   });
 
   test('retirer le caractere repetable ne passe par aucune confirmation', async () => {
@@ -166,9 +169,9 @@ describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
     });
 
     expect(boxIn('Détail')).toBeEnabled();
-    expect(within(rowOf('Détail')).getByText(
-      'À cocher quand l’analyse comptera les occurrences elles-mêmes, et non les patients.',
-    )).toBeInTheDocument();
+    expect(boxIn('Détail')).toHaveAccessibleDescription(/occurrences elles-mêmes, et non les patients/);
+    expect(boxIn('Traumatisme')).toHaveAccessibleDescription(/occurrences elles-mêmes, et non les patients/);
+    expect(screen.getAllByText(/occurrences elles-mêmes/)).toHaveLength(1);
 
     await user.click(boxIn('Détail'));
     const dialog = screen.getByRole('dialog');
@@ -209,7 +212,7 @@ describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
 
     // Le bloc racine porte un groupe : le cocher mettrait un groupe sous un groupe.
     expect(boxIn('Traumatisme')).toBeDisabled();
-    expect(within(rowOf('Traumatisme')).getByText(/un groupe ne se place pas sous un autre groupe/)).toBeInTheDocument();
+    expect(within(rowOf('Traumatisme')).getByText(/qu’un groupe répétable n’accepte pas/)).toBeInTheDocument();
     await user.click(boxIn('Traumatisme'));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onRepeatableChange).not.toHaveBeenCalled();
@@ -227,7 +230,8 @@ describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
   test('base transversale : la sous-section herite du verrou existant', () => {
     renderEditor({ sections: [trauma, detail], observationModel: 'cross_sectional' });
     expect(boxIn('Détail')).toBeDisabled();
-    expect(within(rowOf('Détail')).getByText(/le modèle d’observation s’est verrouillé/i)).toBeInTheDocument();
+    expect(boxIn('Détail')).toHaveAccessibleDescription(/modèle verrouillé ici/i);
+    expect(screen.getAllByText(/modèle verrouillé ici/i)).toHaveLength(1);
   });
 
   test('D8 : un groupe racine se place sous un bloc ; un groupe n est jamais propose comme parent', async () => {

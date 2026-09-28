@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import type { TemplateField, TemplateSection } from '../../data/types';
-import { RuleForm, RuleSummary } from './RuleForm';
+import { RuleForm, RuleSummary, ruleConditionKey, ruleConditionText } from './RuleForm';
 
 const fields: TemplateField[] = [
   {
@@ -222,45 +222,60 @@ describe('RuleForm', () => {
       </I18nProvider>,
     );
 
-    const cible = screen.getByLabelText('Variable à contrôler');
-    expect(within(cible).getAllByRole('option')).toHaveLength(31); // 30 variables + « Choisir »
+    // Audit UI mobile, lot 6 : recherche et liste ne font plus qu'une liste recherchable.
+    const cible = screen.getByRole('combobox', { name: 'Variable à contrôler' });
+    expect(screen.queryByLabelText('Rechercher une variable — Variable à contrôler')).not.toBeInTheDocument();
+    await user.click(cible);
+    const liste = screen.getByRole('listbox', { name: 'Variable à contrôler' });
+    expect(within(liste).getAllByRole('option')).toHaveLength(31); // 30 variables + « Choisir »
 
-    const recherche = screen.getByLabelText('Rechercher une variable — Variable à contrôler');
-    await user.type(recherche, 'glasgow');
-    expect(within(cible).getAllByRole('option')).toHaveLength(2);
-    expect(within(cible).getByRole('option', { name: /Score de Glasgow/ })).toBeInTheDocument();
+    await user.type(cible, 'glasgow');
+    expect(within(liste).getAllByRole('option')).toHaveLength(2);
+    await user.click(within(liste).getByRole('option', { name: /Score de Glasgow/ }));
+    // Le choix referme la liste et se lit dans le champ.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect((cible as HTMLInputElement).value).toMatch(/^Score de Glasgow/);
 
     // La variable choisie reste proposee meme si la recherche ne la retient plus :
     // filtrer ne doit jamais effacer une reponse deja donnee.
-    await user.selectOptions(cible, 'variable_27');
-    await user.clear(recherche);
-    await user.type(recherche, 'Variable 3');
-    expect(within(cible).getByRole('option', { name: /Score de Glasgow/ })).toBeInTheDocument();
-    expect(cible).toHaveValue('variable_27');
+    await user.clear(cible);
+    await user.type(cible, 'Variable 3');
+    const filtree = screen.getByRole('listbox', { name: 'Variable à contrôler' });
+    expect(within(filtree).getByRole('option', { name: /Score de Glasgow/ })).toHaveAttribute('aria-selected', 'true');
+    // Echap referme la liste sans toucher au choix.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect((cible as HTMLInputElement).value).toMatch(/^Score de Glasgow/);
   });
   test('une recherche sans resultat le dit, et la valeur choisie reste proposee', async () => {
     const user = userEvent.setup();
+    const onSubmit = vi.fn();
     const many: TemplateField[] = Array.from({ length: 12 }, (_, index) => ({
       ...fields[0], id: `m-${index}`, fieldKey: `var_${index}`, label: `Variable ${index}`, displayOrder: index,
     }));
     render(
       <I18nProvider>
-        <RuleForm fields={many} onSubmit={() => {}} />
+        <RuleForm fields={many} onSubmit={onSubmit} />
       </I18nProvider>,
     );
 
-    const cible = screen.getByLabelText('Variable à contrôler');
-    const recherche = screen.getByLabelText('Rechercher une variable — Variable à contrôler');
+    const cible = screen.getByRole('combobox', { name: 'Variable à contrôler' });
     // Sans choix en cours, une recherche vide est annoncee comme telle.
-    await user.type(recherche, 'zzzz');
+    await user.type(cible, 'zzzz');
     expect(screen.getAllByText('Aucune variable ne correspond à cette recherche').length).toBeGreaterThan(0);
 
+    // Au clavier : les fleches parcourent la liste, Entree choisit sans soumettre la regle.
+    await user.clear(cible);
+    await user.type(cible, 'Variable 3');
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect((cible as HTMLInputElement).value).toMatch(/^Variable 3/);
+
     // Avec un choix en cours, la variable choisie reste proposee : filtrer n'efface pas une reponse.
-    await user.clear(recherche);
-    await user.selectOptions(cible, 'var_3');
-    await user.type(recherche, 'zzzz');
-    expect(cible).toHaveValue('var_3');
-    expect(within(cible).getByRole('option', { name: /Variable 3/ })).toBeInTheDocument();
+    await user.clear(cible);
+    await user.type(cible, 'zzzz');
+    const liste = screen.getByRole('listbox', { name: 'Variable à contrôler' });
+    expect(within(liste).getByRole('option', { name: /Variable 3/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByText('1 variable(s) sur 12').length).toBeGreaterThan(0);
   });
 });
@@ -279,6 +294,73 @@ describe('RuleSummary', () => {
     expect(screen.getByText('Date de sortie est postérieure ou égale à Date d’admission.')).toBeInTheDocument();
     expect(screen.queryByText('Voir le JSON')).not.toBeInTheDocument();
     expect(screen.queryByText(/left_field/)).not.toBeInTheDocument();
+  });
+});
+
+// Audit UI mobile, lot 0 : la regle stocke le code de l'option (L30), mais la phrase se lit
+// avec son libelle, comme dans le formulaire qui l'a construite.
+describe('RuleSummary — libellés des options', () => {
+  const symptomes: TemplateField = {
+    ...fields[2],
+    id: 'f-symptomes',
+    fieldKey: 'symptomes',
+    label: 'Symptômes',
+    type: 'multiselect',
+    allowedValues: ['cephalees', 'hydrocephalie_trouble_du_lcr'],
+    allowedOptions: [
+      { value_key: 'cephalees', label: 'Céphalées', is_active: true },
+      { value_key: 'hydrocephalie_trouble_du_lcr', label: 'Hydrocéphalie / trouble du LCR', is_active: true },
+    ],
+  };
+  const withOptions = [...fields, symptomes];
+
+  test('une règle enregistrée affiche les libellés, et une valeur hors liste telle quelle', () => {
+    render(
+      <I18nProvider>
+        <RuleSummary
+          fields={withOptions}
+          rule={{
+            if: { field: 'symptomes', operator: 'contains_any', value: ['cephalees', 'hydrocephalie_trouble_du_lcr', 'valeur_retiree'] },
+            then: { field: 'operative_report', operator: 'visible' },
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(
+      'Si Symptômes contient au moins un de ces codes « Céphalées », « Hydrocéphalie / trouble du LCR », « valeur_retiree », alors Compte rendu opératoire est affichée.',
+    )).toBeInTheDocument();
+  });
+
+  test('l’aperçu du formulaire affiche le libellé, la règle garde le code', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm fields={withOptions} onSubmit={onSubmit} />
+      </I18nProvider>,
+    );
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'symptomes');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'Céphalées');
+    await user.selectOptions(screen.getByLabelText('Variable affichée sous condition'), 'operative_report');
+
+    expect(screen.getByText(
+      'Si Symptômes est égal à « Céphalées », alors Compte rendu opératoire est affichée.',
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/« cephalees »/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        if: { field: 'symptomes', operator: 'equals', value: 'cephalees' },
+        then: { field: 'operative_report', operator: 'visible' },
+      },
+      '',
+      'block',
+    );
   });
 });
 
@@ -316,7 +398,7 @@ describe('RuleForm — regle d\'affichage (L32)', () => {
     await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
     // Une regle d'affichage ne bloque ni n'avertit : lui demander une gravite serait faux.
     expect(screen.queryByLabelText('Sévérité')).toBeNull();
-    expect(screen.getByText(/retirée à l’enregistrement/)).toBeInTheDocument();
+    expect(screen.getByText(/masquée, ses valeurs saisies sont retirées/)).toBeInTheDocument();
   });
 
   test('refuse un cycle en nommant les variables, avant tout envoi', async () => {
@@ -430,7 +512,10 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     }
     // Absente sans un mot, elle serait cherchee puis supposee perdue.
     expect(screen.getByRole('status')).toHaveTextContent('Durée de séjour');
-    expect(screen.getByRole('status')).toHaveTextContent(/jamais se déclencher/);
+    expect(screen.getByRole('status')).toHaveTextContent(/exclues des conditions, obligations et comparaisons/);
+    // Lot 3 : le pourquoi s'ouvre derriere ⓘ.
+    fireEvent.click(within(screen.getByRole('status')).getByRole('button', { name: 'En savoir plus' }));
+    expect(screen.getByRole('dialog', { name: 'En savoir plus' })).toHaveTextContent(/jamais se déclencher/);
   });
 
   test('absente de la condition et de l\'obligation d\'une regle conditionnelle', async () => {
@@ -470,7 +555,7 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent('Durée de séjour');
-    expect(screen.getByRole('alert')).toHaveTextContent(/masquée pour toujours/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/impossible à piloter par une variable calculée/);
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer la règle' }));
     expect(onSubmit).not.toHaveBeenCalled();
@@ -492,6 +577,32 @@ describe('RuleForm — variables calculees (L35 x L32)', () => {
     );
 
     expect(screen.getByText(/Compte rendu opératoire est affichée/)).toBeInTheDocument();
-    expect(screen.getByText(/masquée pour toujours/)).toBeInTheDocument();
+    expect(screen.getByText(/impossible à piloter par une variable calculée/)).toBeInTheDocument();
   });
 });
+
+// Audit UI mobile, lot 6 (5.13-B) : le regroupement par condition n'est qu'un affichage.
+describe('regroupement des règles par condition', () => {
+  const liste = (value: unknown[], then: string) => ({ if: { field: 'dx', operator: 'in', value }, then: { field: then, operator: 'visible' } });
+
+  test('une même condition donne la même clé, quel que soit l’ordre des valeurs ; une comparaison n’en a pas', () => {
+    expect(ruleConditionKey(liste(['a', 'b'], 'x'))).toBe(ruleConditionKey(liste(['b', 'a'], 'y')));
+    expect(ruleConditionKey(liste(['a'], 'x'))).not.toBe(ruleConditionKey(liste(['a', 'b'], 'x')));
+    expect(ruleConditionKey({ operator: 'equals', left_field: 'a', right_field: 'b' })).toBeNull();
+    expect(ruleConditionKey('illisible')).toBeNull();
+  });
+
+  test('la condition se lit avec les libellés d’options, et une règle de groupe ne dit que son effet', () => {
+    const choix: TemplateField[] = [
+      { ...fields[0], fieldKey: 'chirurgie', label: 'Intervention chirurgicale réalisée', type: 'select', allowedValues: ['oui', 'non'],
+        allowedOptions: [{ valueKey: 'oui', label: 'Oui', isActive: true }, { valueKey: 'non', label: 'Non', isActive: true }] },
+      { ...fields[0], id: 'voie', fieldKey: 'voie', label: 'Voie d’abord', type: 'text' },
+    ];
+    const rule = { if: { field: 'chirurgie', operator: 'equals', value: 'oui' }, then: { field: 'voie', operator: 'visible' } };
+    expect(ruleConditionText((key) => ({ 'rule.if': 'Si', 'rule.operator.equals': 'est égal à' } as Record<string, string>)[key] ?? key, rule, choix))
+      .toBe('Si Intervention chirurgicale réalisée est égal à « Oui »');
+    render(<I18nProvider><RuleSummary rule={rule} fields={choix} consequenceOnly /></I18nProvider>);
+    expect(screen.getByText('→ Voie d’abord est affichée')).toBeInTheDocument();
+  });
+});
+

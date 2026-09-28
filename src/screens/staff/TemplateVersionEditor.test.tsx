@@ -165,7 +165,7 @@ describe('TemplateVersionEditor', () => {
     await user.click(command);
     const dialog = await screen.findByRole('dialog', { name: 'Importer un bloc réutilisable' });
     // Catalogue vide : etat explicite, jamais un ecran blanc.
-    expect(await within(dialog).findByText(/Aucun bloc à importer pour l’instant/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Aucun bloc à importer : créez-en un/)).toBeInTheDocument();
     expect(listImportableSections).toHaveBeenCalledTimes(1);
   });
 
@@ -209,14 +209,16 @@ describe('TemplateVersionEditor', () => {
       </I18nProvider>,
     );
 
-    const nextVersion = await screen.findByRole('button', { name: 'Créer la version suivante' });
-    expect(nextVersion).toBeInTheDocument();
+    // Audit UI mobile, lot 6 : la commande est rangee dans « ⋯ », a cote d'« Ajouter une variable ».
+    await user.click(await screen.findByRole('button', { name: 'Plus d’actions' }));
+    const nextVersion = screen.getByRole('button', { name: /^Créer la version suivante/ });
     await user.click(nextVersion);
     await waitFor(() => expect(createNextVersion).toHaveBeenCalledWith('template-1'));
     expect(onNewVersion).toHaveBeenCalledWith('version-4');
   });
 
   test('editeur personnel rend la creation de copie visible meme pour un brouillon vierge', async () => {
+    const user = userEvent.setup();
     const { repo } = makeRepository();
     Object.assign(repo, { createNextVersion: vi.fn(async () => ({
       id: 'version-4', templateId: 'template-1', versionNumber: 4, status: 'draft' as const,
@@ -229,8 +231,9 @@ describe('TemplateVersionEditor', () => {
       </I18nProvider>,
     );
 
-    const nextVersion = await screen.findByRole('button', { name: 'Créer la version suivante' });
-    expect(nextVersion).toHaveAttribute('title', expect.stringContaining('brouillon'));
+    await user.click(await screen.findByRole('button', { name: 'Plus d’actions' }));
+    // L'explication, autrefois reservee au survol (`title`), se lit sous la commande.
+    expect(screen.getByRole('button', { name: /^Créer la version suivante/ })).toHaveTextContent('brouillon');
   });
 
   test('serveur sans catalogue : la commande ne se rend pas du tout', async () => {
@@ -327,7 +330,7 @@ describe('TemplateVersionEditor', () => {
       renderEditor(repo);
       await importerPuisConditionner(user);
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(/ne déclare pas cette variable comme pilote diagnostique/);
+      expect(await screen.findByRole('alert')).toHaveTextContent(/non déclarée comme pilote : édition et codes invérifiables/);
       expect(screen.queryByRole('button', { name: /Créer cette règle/ })).not.toBeInTheDocument();
       // Le bloc reste visible sans condition, et l'ecran continue de le dire.
       expect(screen.getByText(/Le bloc est visible sans condition/)).toBeInTheDocument();
@@ -519,7 +522,7 @@ describe('TemplateVersionEditor — 216 variables / 24 regles (UX-14)', () => {
     await screen.findByRole('heading', { name: 'Registre fictif' });
     filterSection('bloc_0');
     fireEvent.change(screen.getByRole('combobox', { name: 'Trier l’affichage' }), { target: { value: 'label' } });
-    expect(screen.getByText(/l’ordre du formulaire est inchangé/)).toBeInTheDocument();
+    expect(screen.getByText(/Tri d’affichage seulement ; déplacement des variables suspendu/)).toBeInTheDocument();
     expect(reorderFields).not.toHaveBeenCalled();
 
     const row = structure().getByText('Variable 1').closest('[role="row"]') as HTMLElement;

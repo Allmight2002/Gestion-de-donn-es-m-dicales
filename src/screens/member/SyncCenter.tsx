@@ -15,6 +15,7 @@ import {
 } from '../../data/offlineIntake';
 import { mergeKeepBoth } from '../../domain/conflictMerge';
 import { recentClientErrors } from '../../lib/reportError';
+import { HelpDetails } from '../../components/HelpTip';
 
 function conflictValue(value: unknown, field: TemplateField | undefined, unreadable: string): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -124,10 +125,18 @@ export function SyncCenter() {
 
   return (
     <section className="max-w-3xl space-y-5 sm:space-y-6">
+      {/* Audit UI mobile, lot 0 — la page porte le nom de son entree de menu, « Synchronisation »
+          (et non « État du système »), avec son action a cote du titre. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="page-title">{t('sync.title')}</h1>
+        <button onClick={() => void sync()} disabled={busy || !online || (pending.length + intakePending.length) === 0} className="btn-primary">
+          {busy ? t('offline.saving') : `${t('sync.now')}${(pending.length + intakePending.length) ? ` (${pending.length + intakePending.length})` : ''}`}
+        </button>
+      </div>
+
       {/* E3 : etat du systeme en un coup d'oeil. */}
       <div className="space-y-3">
-        <h1 className="page-title">{t('status.title')}</h1>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-3">
           <div className="card p-3">
             <p className="text-xs text-slate-500">{t('status.connection')}</p>
             <p className={`text-sm font-medium ${online ? 'text-teal-700' : 'text-amber-700'}`}>
@@ -142,8 +151,25 @@ export function SyncCenter() {
             <p className="text-xs text-slate-500">{t('status.offline_bases')}</p>
             <p className="text-sm font-medium text-slate-700">{snapshots.length}</p>
           </div>
-          <div className="card p-3">
-            <p className="text-xs text-slate-500">{t('status.version')}</p>
+        </div>
+
+        {snapshots.length > 0 && (
+          <ul className="space-y-1 text-xs text-slate-500">
+            {snapshots.map((s) => (
+              <li key={s.baseId} className="flex items-center justify-between border-b border-slate-100 pb-1">
+                <span className="font-medium text-slate-600">{s.baseName}</span>
+                <span>{s.patientCount} {t('status.patients')} · {new Date(s.cachedAt).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Version, commit, branche et build servent au support, pas au travail quotidien :
+            replies par defaut (lot 0), jamais retires. */}
+        <details className="text-xs text-slate-500">
+          <summary className="cursor-pointer">{t('status.technical_details')}</summary>
+          <div className="mt-2">
+            <p className="text-slate-500">{t('status.version')}</p>
             <p className="text-sm font-medium text-slate-700">{__APP_VERSION__} · {import.meta.env.MODE}</p>
             <dl className="mt-2 space-y-1 text-[11px] leading-tight text-slate-500">
               <div className="flex min-w-0 gap-1">
@@ -160,18 +186,7 @@ export function SyncCenter() {
               </div>
             </dl>
           </div>
-        </div>
-
-        {snapshots.length > 0 && (
-          <ul className="space-y-1 text-xs text-slate-500">
-            {snapshots.map((s) => (
-              <li key={s.baseId} className="flex items-center justify-between border-b border-slate-100 pb-1">
-                <span className="font-medium text-slate-600">{s.baseName}</span>
-                <span>{s.patientCount} {t('status.patients')} · {new Date(s.cachedAt).toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        </details>
 
         <details className="text-xs text-slate-500">
           <summary className="cursor-pointer">{t('status.errors')} ({errors.length})</summary>
@@ -190,12 +205,6 @@ export function SyncCenter() {
         </details>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="page-title">{t('sync.title')}</h2>
-        <button onClick={() => void sync()} disabled={busy || !online || (pending.length + intakePending.length) === 0} className="btn-primary">
-          {busy ? t('offline.saving') : `${t('sync.now')}${(pending.length + intakePending.length) ? ` (${pending.length + intakePending.length})` : ''}`}
-        </button>
-      </div>
       {!online && <p className="text-sm text-amber-700">{t('sync.offline_hint')}</p>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {report && (
@@ -355,7 +364,7 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
       {!scopeUnknown && <p className="mb-2 text-xs text-red-700">{t('sync.conflict_explain')}</p>}
       {/* La version du gabarit n'accompagne pas le conflit : on l'annonce au lieu de laisser
           croire que les libelles affiches viennent de la bonne version. */}
-      {!scopeUnknown && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')}</p>}
+      {!scopeUnknown && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t('sync.conflict_version_notice')} <HelpDetails>{t('sync.conflict_version_notice_details')}</HelpDetails></p>}
       {!scopeUnknown && (
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-full text-left text-xs" aria-label={t('sync.conflict_table')}>

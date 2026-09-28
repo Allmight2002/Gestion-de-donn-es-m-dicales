@@ -18,6 +18,8 @@ import { RepeatableGroup } from './RepeatableGroup';
 import { maskedRepeatableSectionKeys, repeatableGroupFields, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
 import { pendingGroupWithdrawals } from '../../domain/groupWithdrawal';
 import { SkeletonList } from '../../components/Skeleton';
+import { FormActionBar } from '../../components/FormActionBar';
+import { useTopBar } from '../../components/TopBar';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
 import { RecordCompletionNotice } from './RecordCompletion';
@@ -328,6 +330,10 @@ export function EditPatient() {
     }
   }
 
+  // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
+  // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
+  useTopBar({ title: t('patient.edit_permanent'), onClose: back, scrolls: true });
+
   if (loading) return <SkeletonList rows={6} label={t('common.loading')} />;
 
   const repeatableSections = repeatableSectionsOf(sections);
@@ -364,8 +370,8 @@ export function EditPatient() {
     <section className="max-w-5xl space-y-5 sm:space-y-6">
       {navigation.guard}
       <div>
-        <button onClick={back} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('admin.back')}</button>
-        <h1 className="page-title mt-2">{t('patient.edit_permanent')}</h1>
+        <button onClick={back} className="text-sm font-medium text-slate-500 hover:text-teal-700 max-lg:hidden">← {t('admin.back')}</button>
+        <h1 className="page-title mt-2 max-lg:sr-only">{t('patient.edit_permanent')}</h1>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -451,12 +457,12 @@ export function EditPatient() {
         )}
 
         </fieldset>
-        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          <button type="submit" disabled={busy} className="btn-primary">{t('encounter.save')}</button>
-          <button type="button" onClick={back} className="btn-secondary">{t('common.cancel')}</button>
-          {reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
-          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
-        </div>
+        <FormActionBar
+          onCancel={back}
+          extra={reloadRequired && <button type="button" onClick={() => navigation.protect(async () => { navigation.resetBaseline(); await load(); })} className="btn-secondary">{t('form.reload_data')}</button>}
+        >
+          <button type="submit" disabled={busy} className="btn-primary max-sm:flex-1">{t('patient.save_changes')}</button>
+        </FormActionBar>
       </form>
     </section>
   );

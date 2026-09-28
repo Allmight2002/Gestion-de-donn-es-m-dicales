@@ -1,9 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { groupFieldsBySection, maskedRepeatableSectionKeys, sectionLabel, withRepeatableSteps, type SectionGroup } from '../../domain/templateSections';
 import { calculateFormProgress } from '../../domain/formProgress';
 import { useI18n } from '../../i18n/useI18n';
 import { ValidationSummary } from '../../components/ValidationSummary';
+import { BottomSheet } from '../../components/BottomSheet';
 import { findProposalField, isProposalSource } from '../../domain/proposalField';
 
 const NO_VALUES: Record<string, unknown> = {};
@@ -128,7 +131,8 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
-  const [mobileContents, setMobileContents] = useState(false);
+  // Lot 2 (5.6-B) : sur telephone, le sommaire s'ouvre en panneau bas au lieu de repousser le formulaire.
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [single, setSingle] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [nativeIssue, setNativeIssue] = useState<string | null>(null);
@@ -175,7 +179,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
 
   const reveal = (rootKey: string, targetKey?: string) => {
     setCollapsed((before) => { const next = new Set(before); next.delete(rootKey); return next; });
-    setCurrent(rootKey); setMobileContents(false);
+    setCurrent(rootKey); setSheetOpen(false);
     deferFocus(focusFrame, () => {
       const target = document.getElementById(targetKey ? fieldId(targetKey) : groupId(rootKey))
         ?? [...(host.current?.querySelectorAll<HTMLElement>('[data-proposal-key]') ?? [])].find((node) => node.dataset.proposalKey === targetKey);
@@ -197,6 +201,18 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     }
     previousGroups.current = next;
   }, [groupKeys]);
+  // Lot 2 (5.6-B) : quand le formulaire porte une barre d'action (FormActionBar), la navigation
+  // de blocs y prend place, toujours a portee de pouce ; sinon (apercu, curation), elle reste
+  // sous le bloc. La barre est rendue avec le formulaire : on la cherche des que les champs
+  // existent (sans champ, ce composant ne rend rien et n'a pas de formulaire ou chercher).
+  const [navSlots, setNavSlots] = useState<{ prev: HTMLElement; next: HTMLElement } | null>(null);
+  const hasSteps = steps.length > 0;
+  useLayoutEffect(() => {
+    const form = host.current?.closest('form');
+    const prev = form?.querySelector<HTMLElement>('[data-form-nav="prev"]') ?? null;
+    const next = form?.querySelector<HTMLElement>('[data-form-nav="next"]') ?? null;
+    setNavSlots(prev && next ? { prev, next } : null);
+  }, [hasSteps]);
   useEffect(() => {
     const form = host.current?.closest('form');
     if (!form) return;
@@ -221,6 +237,53 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     const key = toFillSteps[(index + 1) % toFillSteps.length];
     if (key) goToField(key);
   };
+  // Compte d'un bloc : requis restants, erreurs, variables ajoutees a renseigner.
+  const statsText = (root: Step) => {
+    if (values === undefined || root.key === leadingKey) return null;
+    const keys = new Set(root.group?.fields.map((field) => field.fieldKey) ?? []);
+    const missing = progress.missingKeys.filter((key) => keys.has(key)).length;
+    const errors = visibleIssues.filter((issue) => keys.has(issue.fieldKey)).length;
+    const toFill = toFillSteps.filter((key) => keys.has(key)).length;
+    if (missing === 0 && errors === 0 && toFill === 0) return null;
+    return `${t('form.required_remaining').replace('{n}', String(missing))}${errors > 0 ? ` · ${t('form.section_errors').replace('{n}', String(errors))}` : ''}${toFill > 0 ? ` · ${t('form.to_fill_remaining').replace('{n}', String(toFill))}` : ''}`;
+  };
+  const showProgress = values !== undefined && (progress.requiredKeys.size > 0 || visibleIssues.length > 0 || toFillSteps.length > 0);
+  // Le compte complet reste la phrase lue (spec UX §5.1) ; l'ecran en montre la forme courte.
+  const progressFull = `${progress.requiredKeys.size === 0 ? t('form.section_required_none')
+    : t('form.section_required_count').replace('{done}', String(progress.filledRequired)).replace('{total}', String(progress.requiredKeys.size))}${
+    visibleIssues.length > 0 ? ` — ${t('form.section_errors').replace('{n}', String(visibleIssues.length))}` : ''}${
+    toFillSteps.length > 0 ? ` — ${t('form.to_fill_count').replace('{n}', String(toFillSteps.length))}` : ''}`;
+  const progressShort = [
+    progress.requiredKeys.size === 0 ? null
+      : t('form.required_short').replace('{done}', String(progress.filledRequired)).replace('{total}', String(progress.requiredKeys.size)),
+    visibleIssues.length > 0 ? t('form.section_errors').replace('{n}', String(visibleIssues.length)) : null,
+    toFillSteps.length > 0 ? t('form.to_fill_remaining').replace('{n}', String(toFillSteps.length)) : null,
+  ].filter(Boolean).join(' · ') || t('form.section_required_none');
+  const blockList = (onSelect: (key: string) => void, withStatus: boolean) => (
+    <ol className="space-y-1 border-l-2 border-slate-200 pl-2 dark:border-slate-700">
+      {steps.map((root) => {
+        const status = withStatus ? statsText(root) : null;
+        return <li key={root.key}><button type="button" aria-current={active === root.key ? 'location' : undefined}
+          className={`min-h-11 w-full rounded-lg px-2 py-1.5 text-left text-sm ${active === root.key ? 'bg-teal-50 font-semibold text-teal-900 dark:bg-teal-950 dark:text-teal-100' : 'text-slate-600 dark:text-slate-300'}`}
+          onClick={() => onSelect(root.key)}>
+          {label(root.key)}
+          {status && <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">{status}</span>}
+        </button></li>;
+      })}
+    </ol>
+  );
+  // « Un bloc a la fois » (le defaut) et tout deplier/replier vivent avec le sommaire : ils
+  // reglent la navigation entre blocs, pas la saisie.
+  const modeControls = <div className="mt-3 space-y-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+    {steps.length > 1 && <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+      <input type="checkbox" checked={single} onChange={(event) => setSingle(event.target.checked)} className="h-4 w-4 accent-teal-700" />
+      {t('form.single_block')}
+    </label>}
+    {!single && <div className="flex flex-wrap gap-1">
+      <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set())}>{t('form.expand_all')}</button>
+      <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set(steps.map((root) => root.key)))}>{t('form.collapse_all')}</button>
+    </div>}
+  </div>;
   return <div ref={host} className="@container/sections space-y-4"
     onInvalidCapture={(event) => {
       event.preventDefault();
@@ -252,31 +315,26 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       const key = (event.target as HTMLElement).closest<HTMLElement>('[data-field-key]')?.dataset.fieldKey;
       if (key) setTouched((before) => new Set(before).add(key));
     }}>
-    <div className="space-y-2">
-      {values !== undefined && (progress.requiredKeys.size > 0 || visibleIssues.length > 0 || toFillSteps.length > 0) && <p className="text-sm text-slate-600 dark:text-slate-300">
-        {progress.requiredKeys.size === 0 ? t('form.section_required_none')
-          : t('form.section_required_count').replace('{done}', String(progress.filledRequired)).replace('{total}', String(progress.requiredKeys.size))}
-        {visibleIssues.length > 0 && ` — ${t('form.section_errors').replace('{n}', String(visibleIssues.length))}`}
-        {toFillSteps.length > 0 && ` — ${t('form.to_fill_count').replace('{n}', String(toFillSteps.length))}`}
-      </p>}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <button type="button" className="btn-secondary @min-[52rem]/sections:hidden" aria-expanded={mobileContents}
-          aria-controls={`${id}-contents`} onClick={() => setMobileContents((open) => !open)}>{t('form.sections')}</button>
-        {!single && <>
-          <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set())}>{t('form.expand_all')}</button>
-          <button type="button" className="btn-ghost min-h-11" onClick={() => setCollapsed(new Set(steps.map((root) => root.key)))}>{t('form.collapse_all')}</button>
-        </>}
-        {progress.missingKeys.length > 0 && <button type="button" className="btn-secondary" onClick={nextMissing}>
-          {t('form.next_missing')}
-        </button>}
-        {toFillSteps.length > 0 && <button type="button" className="btn-secondary" onClick={nextToFill}>
-          {t('form.next_to_fill')}
-        </button>}
-        {steps.length > 1 && <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-          <input type="checkbox" checked={single} onChange={(event) => setSingle(event.target.checked)} className="h-4 w-4 accent-teal-700" />
-          {t('form.single_block')}
-        </label>}
-      </div>
+    {/* Lot 2 (5.6-B) : une seule ligne avant le premier champ — bloc courant, avancement, et
+        acces au prochain champ obligatoire manquant. */}
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      {steps.length > 1 && <button type="button" aria-haspopup="dialog" aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}
+        className="btn-secondary min-w-0 max-w-full justify-start @min-[52rem]/sections:hidden">
+        <span className="sr-only">{t('form.contents')} : </span>
+        <span className="truncate">{rootIndex + 1}/{steps.length} · {label(steps[rootIndex]?.key ?? steps[0].key)}</span>
+        <ChevronDown size={16} aria-hidden className="shrink-0" />
+      </button>}
+      {showProgress && <span className="text-xs text-slate-600 dark:text-slate-300">
+        <span aria-hidden="true">{progressShort}</span>
+        <span className="sr-only">{progressFull}</span>
+      </span>}
+      {progress.missingKeys.length > 0 && <button type="button" onClick={nextMissing} aria-label={t('form.next_missing')} title={t('form.next_missing')}
+        className="icon-button shrink-0 border border-slate-300 text-teal-700 dark:border-slate-700 dark:text-teal-300">
+        <ArrowRight size={16} aria-hidden />
+      </button>}
+      {toFillSteps.length > 0 && <button type="button" className="btn-secondary" onClick={nextToFill}>
+        {t('form.next_to_fill')}
+      </button>}
     </div>
     {newGroup && contentSteps.some((step) => step.key === newGroup) && <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-teal-800 dark:text-teal-200">
       <span>{t('form.block_available')} {label(newGroup)}</span>
@@ -288,31 +346,30 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       message: issue.message,
     }))} onNavigate={(issue) => goToField(issue.id)} />}
     <div className="grid min-w-0 gap-4 @min-[52rem]/sections:grid-cols-[13rem_minmax(0,1fr)]">
-      <nav id={`${id}-contents`} aria-label={t('form.contents')}
-        className={`${mobileContents ? 'block' : 'hidden'} self-start @min-[52rem]/sections:block`}>
-        <ol className="space-y-1 border-l-2 border-slate-200 pl-2 dark:border-slate-700">
-          {steps.map((root) => <li key={root.key}><button type="button" aria-current={active === root.key ? 'location' : undefined}
-            className={`min-h-11 w-full rounded-lg px-2 py-1.5 text-left text-sm ${active === root.key ? 'bg-teal-50 font-semibold text-teal-900 dark:bg-teal-950 dark:text-teal-100' : 'text-slate-600 dark:text-slate-300'}`}
-            onClick={() => reveal(root.key)}>{label(root.key)}</button></li>)}
-        </ol>
+      <nav id={`${id}-contents`} aria-label={t('form.contents')} className="hidden self-start @min-[52rem]/sections:block">
+        {blockList((key) => reveal(key), false)}
+        {modeControls}
       </nav>
       <div className="min-w-0 space-y-4">
         {steps.map((root) => {
           const group = root.group;
-          const keys = new Set(group?.fields.map((field) => field.fieldKey) ?? []);
-          const missing = progress.missingKeys.filter((key) => keys.has(key)).length;
-          const errors = visibleIssues.filter((issue) => keys.has(issue.fieldKey)).length;
-          const toFill = toFillSteps.filter((key) => keys.has(key)).length;
+          const status = statsText(root);
           const expanded = single ? active === root.key : !collapsed.has(root.key);
           return <fieldset key={root.key} hidden={single && active !== root.key} aria-labelledby={`${groupId(root.key)}-title`}
             className="min-w-0 rounded-xl border border-slate-200 px-4 pb-4 dark:border-slate-700">
             <legend className="max-w-full px-1">
-              <button id={groupId(root.key)} type="button" aria-expanded={expanded} aria-controls={`${groupId(root.key)}-body`}
+              {/* Un bloc a la fois : replier le seul bloc affiche n'aurait pas de sens, le titre
+                  n'est donc plus un bouton (5.6). Il reste la cible du focus quand on y va. */}
+              {single ? <span id={groupId(root.key)} tabIndex={-1}
+                className="flex min-h-11 max-w-full flex-wrap items-center gap-x-3 gap-y-1 text-left text-sm font-semibold text-slate-800 outline-none dark:text-slate-100">
+                <span id={`${groupId(root.key)}-title`}>{label(root.key)}</span>
+                {status && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{status}</span>}
+              </span> : <button id={groupId(root.key)} type="button" aria-expanded={expanded} aria-controls={`${groupId(root.key)}-body`}
                 className="flex min-h-11 max-w-full flex-wrap items-center gap-x-3 gap-y-1 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
                 onClick={() => { setCurrent(root.key); setCollapsed((before) => { const next = new Set(before); if (next.has(root.key)) next.delete(root.key); else next.add(root.key); return next; }); }}>
                 <span aria-hidden="true">{expanded ? '▾' : '▸'}</span><span id={`${groupId(root.key)}-title`}>{label(root.key)}</span>
-                {values !== undefined && root.key !== leadingKey && (missing > 0 || errors > 0 || toFill > 0) && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{t('form.required_remaining').replace('{n}', String(missing))}{errors > 0 ? ` · ${t('form.section_errors').replace('{n}', String(errors))}` : ''}{toFill > 0 ? ` · ${t('form.to_fill_remaining').replace('{n}', String(toFill))}` : ''}</span>}
-              </button>
+                {status && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{status}</span>}
+              </button>}
             </legend>
             <div id={`${groupId(root.key)}-body`} hidden={!expanded} className="@container space-y-5">
               {root.key === leadingKey && leadingBlock?.content}
@@ -327,12 +384,29 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
             </div>
           </fieldset>;
         })}
-        {single && <div className="flex flex-wrap items-center justify-between gap-2">
+        {single && !navSlots && <div className="flex flex-wrap items-center justify-between gap-2">
           <button type="button" className="btn-secondary" disabled={rootIndex <= 0} onClick={() => reveal(steps[rootIndex - 1].key)}>{t('form.previous_block')}</button>
           <span className="text-xs text-slate-500">{rootIndex + 1} / {steps.length}</span>
           <button type="button" className="btn-secondary" disabled={rootIndex >= steps.length - 1} onClick={() => reveal(steps[rootIndex + 1].key)}>{t('form.next_block')}</button>
         </div>}
       </div>
     </div>
+    {single && steps.length > 1 && navSlots && <>
+      {createPortal(<button type="button" disabled={rootIndex <= 0} onClick={() => reveal(steps[rootIndex - 1].key)}
+        aria-label={t('form.previous_block')} title={t('form.previous_block')}
+        className="icon-button shrink-0 border border-slate-300 dark:border-slate-700">
+        <ChevronLeft size={18} aria-hidden />
+      </button>, navSlots.prev)}
+      {createPortal(<button type="button" disabled={rootIndex >= steps.length - 1} onClick={() => reveal(steps[rootIndex + 1].key)}
+        className="btn-secondary shrink-0 max-sm:px-3">
+        <span className="max-sm:sr-only">{t('form.next_block')}</span>
+        <ChevronRight size={16} aria-hidden />
+      </button>, navSlots.next)}
+    </>}
+    {sheetOpen && <BottomSheet title={t('form.contents')} onClose={() => setSheetOpen(false)}>
+      {/* Le panneau se ferme d'abord : le focus rendu au bouton du sommaire, le bloc choisi le prend. */}
+      {blockList((key) => { setSheetOpen(false); requestAnimationFrame(() => reveal(key)); }, true)}
+      {modeControls}
+    </BottomSheet>}
   </div>;
 }

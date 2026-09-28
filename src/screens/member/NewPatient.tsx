@@ -24,6 +24,8 @@ import { findProposalField, isProposalSource, proposalKeysOf } from '../../domai
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { Checkbox } from '../../components/Checkbox';
 import { SkeletonList } from '../../components/Skeleton';
+import { FormActionBar } from '../../components/FormActionBar';
+import { useTopBar, useTopBarActions } from '../../components/TopBar';
 import { DatePickerInput } from '../../components/DatePickerInput';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 import { DiagnosisCoverageNotice, useDiagnosisCoverage } from './DiagnosisCoverageNotice';
@@ -461,6 +463,13 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     navigation.resetBaseline();
   }
 
+  // Audit UI mobile, lot 1 (T1-B, T6) : sous `lg`, la barre haute porte ✕ et le titre du
+  // formulaire ; le « Retour » et le titre de la page n'y sont plus repetes.
+  useTopBar({ title: mode === 'submit' ? t('patient.submit_title') : t('patient.new'), onClose: () => navigate(`/bases/${baseId}`), scrolls: true });
+  // Lot 2 (5.6-B) : confier au staff reste une sortie de secours ; sous lg, elle passe dans « ⋯ ».
+  useTopBarActions(mode === 'manual' && maySubmitToCuration
+    ? [{ label: t('create.submit'), onSelect: () => navigate(`/bases/${baseId}/patients/new/submit`) }] : null);
+
   if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
   // Une proposition est toujours rendue avec sa source. Cela vaut aussi pour les donnees
@@ -512,18 +521,17 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       : null;
 
   const identification = <div className="space-y-4">
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700">{t('patient.code')}</span>
-          {offlineIntakeActive ? (
-            <>
-              {/* Hors-ligne : aucun RPC n'est disponible, le code reste local jusqu'au rejeu. */}
-              <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} />
-              <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-slate-500">{t('patient.code_server_hint')}</p>
-          )}
-        </label>
+        {offlineIntakeActive ? (
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">{t('patient.code')}</span>
+            {/* Hors-ligne : aucun RPC n'est disponible, le code reste local jusqu'au rejeu. */}
+            <input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} />
+            <span className="text-xs text-slate-400">{t('patient.code_hint')}</span>
+          </label>
+        ) : (
+          // Lot 2 (5.6-A) : rien a saisir ici ; une ligne suffit a dire d'ou viendra le code.
+          <p className="text-xs text-slate-500">{t('patient.code_server_hint')}</p>
+        )}
 
         {/* Le cloisonnement se voit : les champs nominatifs gardent leur cadre et leur
             avertissement, meme depuis que l'identite ouvre le formulaire comme premier bloc. */}
@@ -589,18 +597,18 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     <section className="max-w-5xl space-y-5 sm:space-y-6">
       {navigation.guard}
       <div>
-        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700">
+        <button onClick={() => navigate(`/bases/${baseId}`)} className="text-sm font-medium text-slate-500 hover:text-teal-700 max-lg:hidden">
           ← {t('admin.back')}
         </button>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="page-title">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
+          <h1 className="page-title max-lg:sr-only">{mode === 'submit' ? t('patient.submit_title') : t('patient.new')}</h1>
           {/* La saisie s'ouvre directement : confier au staff n'est plus une page intercalaire,
               mais une sortie de secours a un clic depuis le formulaire. */}
           {mode === 'manual' && maySubmitToCuration && (
             <button
               type="button"
               onClick={() => navigate(`/bases/${baseId}/patients/new/submit`)}
-              className="btn-secondary"
+              className="btn-secondary max-lg:hidden"
             >
               <Send size={16} aria-hidden /> {t('create.submit')}
             </button>
@@ -664,7 +672,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       )}
 
       <PatientDraftDialog draft={work} onCancel={() => navigate(`/bases/${baseId}`)} onNew={resetEntry} />
-      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} />
+      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} identityInForm={canViewIdentity} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
         {/* La fiche enregistree ne se ressaisit plus ici : le formulaire gele pour que l'etat
@@ -756,19 +764,17 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         )}
 
         </fieldset>
-        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-900">
-          {pendingEditorSections.size > 0 && <p role="status" className="w-full text-sm text-amber-700">{t('form.pending_editor_open')}</p>}
-          <button type="submit" disabled={busy || pendingEditorSections.size > 0 || work.loading || work.candidates.length > 0 || work.discarding} className="btn-primary">
+        <FormActionBar
+          notice={pendingEditorSections.size > 0 ? t('form.pending_editor_open') : undefined}
+          onCancel={() => navigate(`/bases/${baseId}`)}
+        >
+          <button type="submit" disabled={busy || pendingEditorSections.size > 0 || work.loading || work.candidates.length > 0 || work.discarding} className="btn-primary max-sm:flex-1">
             {/* La fiche existe : le bouton ne promet plus de l'enregistrer, il reprend ce qui
                 manque. Un « enregistrer » ici laisserait croire qu'elle ne l'est pas encore. */}
             {createdPatient ? t('form.pending_retry_all')
               : mode === 'submit' ? t('patient.submit_continue') : t('patient.save')}
           </button>
-          <button type="button" onClick={() => navigate(`/bases/${baseId}`)} className="btn-secondary">
-            {t('common.cancel')}
-          </button>
-          <span className="ml-auto text-xs text-slate-400">{t('common.save_shortcut')}</span>
-        </div>
+        </FormActionBar>
       </form>
     </section>
   );

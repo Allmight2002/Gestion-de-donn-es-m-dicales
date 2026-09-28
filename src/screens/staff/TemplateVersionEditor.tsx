@@ -1,6 +1,6 @@
 import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Ellipsis, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateRepository } from '../../data/templates';
@@ -12,7 +12,7 @@ import { fieldOptions } from '../../domain/fieldOptions';
 import { sectionLabel } from '../../domain/templateSections';
 import { fieldTypeLabel } from '../../domain/templateLabels';
 import { FormPreview } from './FormPreview';
-import { RuleForm, RuleSummary, ruleHasSeverity } from './RuleForm';
+import { RuleForm, RuleSummary, ruleConditionKey, ruleConditionText, ruleHasSeverity, ruleText } from './RuleForm';
 import { RuleBatchPanel, isBatchSource } from './RuleBatchPanel';
 import { DiagnosisConfigurationEditor } from './DiagnosisConfigurationEditor';
 import { SectionsEditor } from './SectionsEditor';
@@ -24,6 +24,11 @@ import { FieldMoveDialog, type FieldMove } from './FieldMoveDialog';
 import { templateFieldToNewField } from '../../domain/templateFields';
 import { SkeletonList } from '../../components/Skeleton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { BottomSheet } from '../../components/BottomSheet';
+import { Menu, MenuItem } from '../../components/Menu';
+import { useTopBar } from '../../components/TopBar';
+import { useNarrowViewport } from '../../lib/useNarrowViewport';
+import { overflowFadeClass, useOverflowEdges } from '../../lib/useOverflowEdges';
 import { EditorStructure, editorGroups, type EditorGroup } from './EditorStructure';
 
 interface Loaded {
@@ -55,6 +60,8 @@ const SAVE_STATE_KEYS: Record<SaveState, MessageKey> = {
   idle: 'admin.state_idle', dirty: 'admin.state_dirty', saving: 'admin.state_saving',
   saved: 'admin.state_saved', failed: 'admin.state_failed',
 };
+/** Audit UI mobile, lot 6 (5.13-A) : lignes de regles construites d'un coup. */
+const RULE_PAGE_SIZE = 20;
 /** Valeur du filtre de section designant les variables sans section (tronc commun). */
 const COMMON_SECTION_FILTER = '__common__';
 
@@ -164,6 +171,24 @@ export function TemplateVersionEditor({
   const [ruleDraftRevision, setRuleDraftRevision] = useState(0);
   const scrollPositions = useRef<Partial<Record<EditorSpace, number>>>({});
   const dirty = panelDirty || ruleDirty || diagnosisDirty || sectionsDirty || layoutDirty;
+  // Audit UI mobile, lot 6 (5.13-A) : sous 768 px, filtres et tri passent dans un panneau bas
+  // (T5-A) et les actions de ligne dans « ⋯ ». Au-dela, l'affichage d'ordinateur ne change pas.
+  const narrow = useNarrowViewport();
+  const [filtersOpen, setFiltersOpen] = useState<'structure' | 'rules' | null>(null);
+  // 5.13-A/B : regles regroupees par condition, 20 lignes a la fois. Une regle atteinte depuis
+  // ailleurs (collecte diagnostique, lot, enregistrement) deplie son groupe et sa page.
+  const [ruleLimit, setRuleLimit] = useState(RULE_PAGE_SIZE);
+  const [openRuleGroups, setOpenRuleGroups] = useState<Set<string>>(new Set());
+  const [revealRuleId, setRevealRuleId] = useState<string | null>(null);
+  const [tabScroller, tabEdges] = useOverflowEdges<HTMLDivElement>();
+  // Sous `lg`, la barre haute porte le nom du jeu et la sortie de l'editeur (T1-B) : l'en-tete
+  // de la page n'y repete ni l'un ni l'autre. En preparation de formulaire, la barre appartient
+  // deja a l'ecran hote, qui garde sa propre fermeture.
+  useTopBar(preparationMode ? null : {
+    title: templateName ?? t('admin.editor_context'),
+    onClose: () => guardAll(onBack),
+    closeLabel: t('admin.back'),
+  });
 
   useEffect(() => {
     if (!dirty) return;
@@ -483,7 +508,9 @@ export function TemplateVersionEditor({
     window.setTimeout(() => document.getElementById(`template-field-${fieldId}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 0);
   }
 
-  function scrollToRule(ruleId: string) {
+  /** Amene une regle a l'ecran : sa page et son groupe s'ouvrent au rendu suivant. */
+  function revealRule(ruleId: string) {
+    setRevealRuleId(ruleId);
     window.setTimeout(() => document.getElementById(`rule-${ruleId}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 0);
   }
 
@@ -556,6 +583,8 @@ export function TemplateVersionEditor({
     return true;
   }
 
+  const inheritedPanelRules = editing?.section
+    ? rules.filter((rule) => ruleParticipants(rule.rule).sections.includes(rootOf(editing.section!))) : [];
   const previousField = editing ? adjacentField(editing.id, -1) : null;
   const nextField = editing ? adjacentField(editing.id, 1) : null;
   // Deux relations distinctes : ce que la variable DECLENCHE, et ce dont elle est la CIBLE.
@@ -570,28 +599,283 @@ export function TemplateVersionEditor({
     }) : [],
   };
 
+  const badgeInStatus = narrow && !preparationMode;
+  const versionBadge = (
+    <span className={preparationMode ? 'text-xs text-slate-500' : 'badge'}>
+      {preparationMode ? `${t('formprep.source_version')} ${version.versionNumber}` : `${t('admin.version')} ${version.versionNumber} · ${t(`status.${version.status}`)}`}
+    </span>
+  );
+  // Controles de recherche et de filtre, rendus en grille sur ordinateur ou, sous 768 px, dans
+  // un panneau bas ouvert par « Filtres (n) » (T5-A). Un seul exemplaire est monte a la fois.
+  const variableSearch = (
+    <label className="relative block min-w-0 flex-1">
+      <span className="sr-only">{t('admin.search_variables')}</span>
+      <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input
+        type="search"
+        className="input pl-9"
+        value={search}
+        onChange={(event) => { setSearch(event.target.value); setActiveGroup(''); }}
+        placeholder={t('admin.search_variables_hint')}
+        aria-label={t('admin.search_variables')}
+      />
+    </label>
+  );
+  const sectionFilterSelect = (
+    <select id="template-section-filter" className="input" value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_section')}>
+      <option value="">{t('admin.all_sections')}</option>
+      <option value={COMMON_SECTION_FILTER}>{t('admin.common_filter')}</option>
+      {sections.map((section) => <option key={section.sectionKey} value={section.sectionKey}>{sectionLabel(t, section)}</option>)}
+    </select>
+  );
+  const typeFilterSelect = (
+    <select id="template-type-filter" className="input" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_type')}>
+      <option value="">{t('admin.all_types')}</option>
+      {FIELD_TYPES.map((type) => <option key={type} value={type}>{fieldTypeLabel(t, type)}</option>)}
+    </select>
+  );
+  const scopeFilterSelect = (
+    <select id="template-scope-filter" className="input" value={scopeFilter} onChange={(event) => { setScopeFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_scope')}>
+      <option value="">{t('admin.all_scopes')}</option>
+      {FIELD_SCOPES.map((scope) => <option key={scope} value={scope}>{t(`scope.${scope}`)}</option>)}
+    </select>
+  );
+  const requiredFilter = (
+    <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs text-slate-700">
+      <input type="checkbox" checked={requiredOnly} onChange={(event) => { setRequiredOnly(event.target.checked); setActiveGroup(''); }} />
+      {t('admin.filter_required')}
+    </label>
+  );
+  const displaySortSelect = (
+    <select
+      className="input mt-1"
+      value={displaySort}
+      aria-label={t('admin.display_sort')}
+      onChange={(event) => setDisplaySort(event.target.value as DisplaySort)}
+    >
+      {DISPLAY_SORTS.map((item) => <option key={item} value={item}>{t(SORT_LABEL_KEYS[item])}</option>)}
+    </select>
+  );
+  // Le tri est compte parmi les reglages actifs : il change l'ordre affiche.
+  const structureFilterCount = [sectionFilter, typeFilter, scopeFilter].filter(Boolean).length
+    + (requiredOnly ? 1 : 0) + (displaySort !== 'form' ? 1 : 0);
+  const ruleFilterCount = [ruleKind, ruleField, ruleRelation, ruleSection, ruleSeverity].filter(Boolean).length;
+  const ruleKindSelect = (
+    <select className="input" value={ruleKind} aria-label={t('admin.rules_kind')} onChange={(event) => setRuleKind(event.target.value)}>
+      <option value="">{t('admin.all_kinds')}</option>
+      <option value="comparison">{t('admin.rule_kind_comparison')}</option>
+      <option value="conditional">{t('admin.rule_kind_conditional')}</option>
+      <option value="visibility">{t('admin.rule_kind_visibility')}</option>
+    </select>
+  );
+  const ruleFieldSelect = (
+    <select className="input" value={ruleField} aria-label={t('admin.rules_field')} onChange={(event) => setRuleField(event.target.value)}>
+      <option value="">{t('admin.all_fields')}</option>
+      {fields.map((field) => <option key={field.id} value={field.fieldKey}>{field.label}</option>)}
+    </select>
+  );
+  const ruleRelationSelect = (
+    <select className="input" value={ruleRelation} aria-label={t('editor.rule_relation')} onChange={(event) => setRuleRelation(event.target.value)}>
+      <option value="">{t('editor.rule_relation_all')}</option>
+      <option value="source">{t('admin.rules_triggers')}</option>
+      <option value="target">{t('admin.rules_targets')}</option>
+    </select>
+  );
+  const ruleSectionSelect = (
+    <select className="input" value={ruleSection} aria-label={t('admin.rules_section')} onChange={(event) => setRuleSection(event.target.value)}>
+      <option value="">{t('admin.all_blocks')}</option>
+      {sections.filter((section) => !section.parentSectionKey).map((section) => (
+        <option key={section.sectionKey} value={section.sectionKey}>{sectionLabel(t, section)}</option>
+      ))}
+    </select>
+  );
+  const ruleSeveritySelect = (
+    <select className="input" value={ruleSeverity} aria-label={t('admin.rules_severity')} onChange={(event) => setRuleSeverity(event.target.value)}>
+      <option value="">{t('admin.all_severities')}</option>
+      <option value="block">{t('severity.block')}</option>
+      <option value="warn">{t('severity.warn')}</option>
+    </select>
+  );
+  // 5.13-B : regroupement d'AFFICHAGE par condition. Chaque regle reste unitaire (UX-14(c)),
+  // avec sa ligne, ses actions et son identifiant ; seule la condition commune n'est ecrite
+  // qu'une fois, en tete de son groupe. Rien n'est ecrit, le moteur ne change pas.
+  const ruleGroups: { key: string; rules: ValidationRule[] }[] = [];
+  const ruleGroupIndex = new Map<string, number>();
+  for (const rule of filteredRules) {
+    const key = ruleConditionKey(rule.rule) ?? `rule:${rule.id}`;
+    const at = ruleGroupIndex.get(key);
+    if (at === undefined) { ruleGroupIndex.set(key, ruleGroups.length); ruleGroups.push({ key, rules: [rule] }); }
+    else ruleGroups[at].rules.push(rule);
+  }
+  const revealIndex = revealRuleId ? ruleGroups.findIndex((group) => group.rules.some((rule) => rule.id === revealRuleId)) : -1;
+  const shownRuleGroups = ruleGroups.slice(0, revealIndex >= ruleLimit
+    ? Math.ceil((revealIndex + 1) / RULE_PAGE_SIZE) * RULE_PAGE_SIZE : ruleLimit);
+  const ruleGroupOpen = (key: string) => openRuleGroups.has(key) || (revealIndex >= 0 && ruleGroups[revealIndex].key === key);
+  const toggleRuleGroup = (key: string) => {
+    const open = ruleGroupOpen(key);
+    // Replier le groupe d'une regle atteinte depuis ailleurs ne ramene pas la liste a sa
+    // premiere page : les lignes affichees le restent.
+    if (revealIndex >= 0 && ruleGroups[revealIndex].key === key) {
+      setRevealRuleId(null);
+      setRuleLimit(Math.max(ruleLimit, shownRuleGroups.length));
+    }
+    setOpenRuleGroups((current) => {
+      const next = new Set(current);
+      if (open) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  // « → affiche 12 variables » : ce que declenche la condition, par nature d'effet.
+  const groupConsequences = (group: ValidationRule[]) => {
+    let visibleFields = 0; let visibleSections = 0; let requiredFields = 0;
+    for (const rule of group) {
+      const then = (rule.rule as { then?: { operator?: unknown; section?: unknown } }).then;
+      if (then?.operator !== 'visible') requiredFields += 1;
+      else if (typeof then.section === 'string') visibleSections += 1;
+      else visibleFields += 1;
+    }
+    return [
+      visibleFields > 0 && t('rule.group_visible_fields').replace('{n}', String(visibleFields)),
+      visibleSections > 0 && t('rule.group_visible_sections').replace('{n}', String(visibleSections)),
+      requiredFields > 0 && t('rule.group_required_fields').replace('{n}', String(requiredFields)),
+    ].filter(Boolean).join(', ');
+  };
+  const openRuleForm = (edit: ValidationRule | null, duplicate: ValidationRule | null) => guardRule(() => {
+    setEditingRule(edit); setDuplicateSource(duplicate); setRuleFormOpen(true);
+    window.setTimeout(() => ruleFormRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 0);
+  });
+  const addRuleButton = (
+    <button type="button" className="btn-secondary shrink-0" onClick={() => openRuleForm(null, null)}>
+      {t('admin.rules_add')}
+    </button>
+  );
+  const ruleRow = (r: ValidationRule, grouped: boolean) => {
+    // Dans un groupe, la variable de la condition est commune : son lien est en tete, pas
+    // repete sur chaque regle.
+    const conditionField = grouped ? (r.rule as { if?: { field?: unknown } }).if?.field : undefined;
+    const batchable = isBatchSource(r.rule) && !!repo.previewRuleBatch && !!repo.createRuleBatch;
+    return (
+      <li key={r.id} id={`rule-${r.id}`} className={`flex flex-wrap items-start justify-between gap-3 ${grouped ? 'py-2' : 'border-b border-slate-200 py-3'}`}>
+        <div className="min-w-0 flex-1">
+          <RuleSummary rule={r.rule} fields={fields} sections={sections} consequenceOnly={grouped} />
+          {/* Depuis une regle, atteindre directement les variables qu'elle cite. */}
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            {[...new Set(ruleParticipants(r.rule).fields)]
+              .filter((key) => key !== conditionField)
+              .map((key) => fields.find((field) => field.fieldKey === key))
+              .filter((field): field is TemplateField => !!field)
+              .map((field) => (
+                <button
+                  key={field.id}
+                  type="button"
+                  className="text-xs font-medium text-teal-700 underline underline-offset-2"
+                  onClick={() => revealRuleField(field)}
+                >
+                  {field.label}
+                </button>
+              ))}
+            {ruleParticipants(r.rule).sections.map((key) => <button type="button" key={key} className="text-xs font-medium text-teal-700 underline underline-offset-2"
+              onClick={() => { setReturnTo('rules'); changeSpace('structure'); selectGroup(key); }}>
+              {t('editor.open_section').replace('{section}', groups.find((group) => group.key === key)?.label ?? key)}
+            </button>)}
+          </div>
+        </div>
+        <span className="flex items-center gap-2">
+          {/* Une regle d'affichage ne bloque ni n'avertit : lui coller « Bloquant » la
+              decrirait faux. */}
+          {ruleHasSeverity(r.rule) && (
+            <span className="text-xs text-slate-500">{t(`severity.${r.severity}`)}</span>
+          )}
+          {/* Sur telephone, les actions d'une regle passent dans « ⋯ » (5.13-A). */}
+          {editable && (narrow ? (
+            <Menu
+              triggerLabel={`${t('common.actions')} · ${ruleText(t, r.rule, fields, sections) ?? t('rule.unreadable')}`}
+              triggerClassName="icon-button h-11 w-11"
+              triggerContent={<Ellipsis size={18} aria-hidden />}
+              panelClassName="card absolute right-0 z-10 mt-2 w-60 space-y-1 p-2 shadow-lg"
+            >
+              <MenuItem onSelect={() => openRuleForm(r, null)}>{t('admin.edit_rule')}</MenuItem>
+              {batchable
+                ? <MenuItem onSelect={() => setBatchSource(r)}>{t('rulebatch.open')}</MenuItem>
+                : <MenuItem onSelect={() => openRuleForm(null, r)}>{t('rulebatch.duplicate')}</MenuItem>}
+              <MenuItem onSelect={() => void run(() => repo.deleteRule(r.id))} className="btn-ghost w-full justify-start text-red-600">
+                {t('admin.delete')}
+              </MenuItem>
+            </Menu>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => openRuleForm(r, null)}
+                className="text-xs font-medium text-teal-700 hover:underline"
+              >
+                {t('admin.edit_rule')}
+              </button>
+              {/* Une condition ne se ressaisit pas variable par variable : elle s'applique
+                  a plusieurs cibles en une operation serveur. Une comparaison ou une
+                  condition de bloc n'a pas de sens multicible : elle se duplique. */}
+              {batchable ? (
+                <button type="button" onClick={() => setBatchSource(r)}
+                  className="text-xs font-medium text-teal-700 hover:underline">
+                  {t('rulebatch.open')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openRuleForm(null, r)}
+                  className="text-xs font-medium text-teal-700 hover:underline"
+                >
+                  {t('rulebatch.duplicate')}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void run(() => repo.deleteRule(r.id))}
+                className="text-xs text-red-600 hover:underline"
+              >
+                {t('admin.delete')}
+              </button>
+            </>
+          ))}
+        </span>
+      </li>
+    );
+  };
+  const filtersButton = (target: 'structure' | 'rules', count: number) => (
+    <button
+      type="button"
+      className="btn-secondary shrink-0 px-3"
+      aria-haspopup="dialog"
+      aria-label={count > 0 ? t('editor.filters_active').replace('{n}', String(count)) : t('editor.filters')}
+      onClick={() => setFiltersOpen(target)}
+    >
+      <SlidersHorizontal size={16} aria-hidden />
+      <span>{t('editor.filters')}</span>
+      {count > 0 && <span aria-hidden className="rounded-full bg-teal-600 px-1.5 text-xs font-semibold text-white">{count}</span>}
+    </button>
+  );
+
   return (
     <section className="space-y-5 sm:space-y-6">
       <div
         data-testid="template-editor-toolbar"
         className="-mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:-mx-6 sm:px-6"
       >
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <button onClick={() => guardAll(onBack)} className="btn-ghost min-h-11 px-2">
-                ← {t('admin.back')}
-              </button>
-              <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('admin.editor_context')}</span>
-              <h2 className="text-xl font-semibold tracking-tight text-slate-900">{templateName ?? t('admin.editor_context')}</h2>
-              <span className={preparationMode ? 'text-xs text-slate-500' : 'badge'}>
-                {preparationMode ? `${t('formprep.source_version')} ${version.versionNumber}` : `${t('admin.version')} ${version.versionNumber} · ${t(`status.${version.status}`)}`}
-              </span>
-            </div>
-          </div>
-          <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:justify-end">
+        {/* Audit UI mobile, lot 6 (5.13-A) : un seul bouton principal, « Ajouter une variable »,
+            plein dans l'espace Structure ou il agit ; « Créer la version suivante » passe dans
+            « ⋯ ». Sous `lg`, le retour et le nom sont dans la barre haute ; le titre reste pour
+            les lecteurs d'ecran. Sous 768 px, la version rejoint la ligne d'etat. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => guardAll(onBack)} className={`btn-ghost min-h-11 px-2${preparationMode ? '' : ' max-lg:hidden'}`}>
+            ← {t('admin.back')}
+          </button>
+          <span className={`text-xs font-medium uppercase tracking-wide text-slate-500${preparationMode ? '' : ' max-lg:hidden'}`}>{t('admin.editor_context')}</span>
+          <h2 className={`text-xl font-semibold tracking-tight text-slate-900${preparationMode ? '' : ' max-lg:sr-only'}`}>{templateName ?? t('admin.editor_context')}</h2>
+          {!badgeInStatus && versionBadge}
+          <div className="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-2 xl:basis-auto xl:justify-end">
             {editable && (
-              <button type="button" onClick={() => guardLeave(() => { setSpace('structure'); setEditing(null); setFieldFormOpen('add'); setSaveState('idle'); })} disabled={busy} className="btn-primary">
+              <button type="button" onClick={() => guardLeave(() => { setSpace('structure'); setEditing(null); setFieldFormOpen('add'); setSaveState('idle'); })} disabled={busy}
+                className={space === 'structure' ? 'btn-primary' : 'btn-secondary'}>
                 {t('admin.add_variable')}
               </button>
             )}
@@ -608,24 +892,35 @@ export function TemplateVersionEditor({
               </>
             ) : (
               onNewVersion && (
-                <button
-                  onClick={async () => {
-                    setBusy(true);
-                    try { const v = await repo.createNextVersion(version.templateId); setError(null); await onNewVersion(v.id); }
-                    catch (e) { setError(msg(e)); }
-                    finally { setBusy(false); }
-                  }}
-                  disabled={busy || dirty}
-                  className="btn-secondary"
-                  title={t('admin.new_version_hint')}
-                >
-                  {t('admin.new_version')}
-                </button>
+                // En fin de ligne : le panneau s'aligne sur le bord droit sans sortir de l'ecran.
+                <div className="ml-auto xl:ml-0">
+                  <Menu
+                    triggerLabel={t('nav.more_actions')}
+                    triggerClassName="icon-button h-11 w-11"
+                    triggerContent={<Ellipsis size={18} aria-hidden />}
+                    panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] space-y-1 p-2 shadow-lg"
+                  >
+                    <MenuItem
+                      disabled={busy || dirty}
+                      onSelect={async () => {
+                        setBusy(true);
+                        try { const v = await repo.createNextVersion(version.templateId); setError(null); await onNewVersion(v.id); }
+                        catch (e) { setError(msg(e)); }
+                        finally { setBusy(false); }
+                      }}
+                      className="btn-ghost h-auto w-full flex-col items-start justify-start py-2 text-left"
+                    >
+                      <span>{t('admin.new_version')}</span>
+                      <span className="text-xs font-normal text-slate-500">{t('admin.new_version_hint')}</span>
+                    </MenuItem>
+                  </Menu>
+                </div>
               )
             )}
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-1" role="tablist" aria-label={t('admin.spaces')}>
+        <div ref={tabScroller} className={`-mx-4 mt-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 ${overflowFadeClass(tabEdges)}`}>
+        <div className="flex min-w-max gap-1" role="tablist" aria-label={t('admin.spaces')}>
           {EDITOR_SPACES.map((item, index) => (
             <button
               key={item}
@@ -649,7 +944,7 @@ export function TemplateVersionEditor({
                 changeSpace(next);
                 document.getElementById(`editor-space-${next}`)?.focus();
               }}
-              className={`min-h-11 rounded-full px-3 text-sm font-medium ${space === item
+              className={`min-h-11 whitespace-nowrap rounded-full px-3 text-sm font-medium ${space === item
                 ? 'bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-600/20'
                 : 'text-slate-600 hover:bg-slate-100'}`}
             >
@@ -660,51 +955,51 @@ export function TemplateVersionEditor({
             </button>
           ))}
         </div>
+        </div>
       </div>
 
       {/* Recherche, filtres et compteurs restent dans le flux de la page : leur hauteur ne
           retranche plus de place a la liste pendant le defilement. */}
       <div className="space-y-2">
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+        {/* Les onglets portent deja ces compteurs : sur telephone, la ligne ne les repete pas. */}
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 max-md:hidden">
           <span>{t('admin.variable_count').replace('{n}', String(fields.length))}</span>
           <span>{sections.length} {t('admin.space_sections')} · {rules.length} {t('admin.rules')}</span>
         </p>
-        {space === 'structure' && (
+        {space === 'structure' && (narrow ? (
+          <div className="flex items-center gap-2">
+            {variableSearch}
+            {filtersButton('structure', structureFilterCount)}
+          </div>
+        ) : (
         <div className="grid gap-2 md:grid-cols-[minmax(14rem,2fr)_repeat(3,minmax(9rem,1fr))_auto]">
-          <label className="relative block">
-            <span className="sr-only">{t('admin.search_variables')}</span>
-            <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              className="input pl-9"
-              value={search}
-              onChange={(event) => { setSearch(event.target.value); setActiveGroup(''); }}
-              placeholder={t('admin.search_variables_hint')}
-              aria-label={t('admin.search_variables')}
-            />
-          </label>
-          <select id="template-section-filter" className="input" value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_section')}>
-            <option value="">{t('admin.all_sections')}</option>
-            <option value={COMMON_SECTION_FILTER}>{t('admin.common_filter')}</option>
-            {sections.map((section) => <option key={section.sectionKey} value={section.sectionKey}>{sectionLabel(t, section)}</option>)}
-          </select>
+          {variableSearch}
+          {sectionFilterSelect}
           <label className="sr-only" htmlFor="template-type-filter">{t('admin.filter_type')}</label>
-          <select id="template-type-filter" className="input" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_type')}>
-            <option value="">{t('admin.all_types')}</option>
-            {FIELD_TYPES.map((type) => <option key={type} value={type}>{fieldTypeLabel(t, type)}</option>)}
-          </select>
+          {typeFilterSelect}
           <label className="sr-only" htmlFor="template-scope-filter">{t('admin.filter_scope')}</label>
-          <select id="template-scope-filter" className="input" value={scopeFilter} onChange={(event) => { setScopeFilter(event.target.value); setActiveGroup(''); }} aria-label={t('admin.filter_scope')}>
-            <option value="">{t('admin.all_scopes')}</option>
-            {FIELD_SCOPES.map((scope) => <option key={scope} value={scope}>{t(`scope.${scope}`)}</option>)}
-          </select>
-          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs text-slate-700">
-            <input type="checkbox" checked={requiredOnly} onChange={(event) => { setRequiredOnly(event.target.checked); setActiveGroup(''); }} />
-            {t('admin.filter_required')}
-          </label>
+          {scopeFilterSelect}
+          {requiredFilter}
         </div>
+        ))}
+        {narrow && filtersOpen === 'structure' && space === 'structure' && (
+          <BottomSheet title={t('editor.filters_and_sort')} onClose={() => setFiltersOpen(null)}>
+            <div className="space-y-3">
+              <label className="form-label">{t('admin.filter_section')}{sectionFilterSelect}</label>
+              <label className="form-label">{t('admin.filter_type')}{typeFilterSelect}</label>
+              <label className="form-label">{t('admin.filter_scope')}{scopeFilterSelect}</label>
+              {requiredFilter}
+              <label className="form-label">{t('admin.display_sort')}{displaySortSelect}</label>
+              {displaySort !== 'form' && <p className="text-xs text-amber-800">{t('admin.sort_notice')}</p>}
+              <button type="button" className="btn-secondary w-full" disabled={structureFilterCount === 0}
+                onClick={() => { setSectionFilter(''); setTypeFilter(''); setScopeFilter(''); setRequiredOnly(false); setDisplaySort('form'); }}>
+                {t('admin.reset_filters')}
+              </button>
+            </div>
+          </BottomSheet>
         )}
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" aria-live="polite">
+          {badgeInStatus && versionBadge}
           <span>{t(SAVE_STATE_KEYS[panelSaveState])}</span>
           {space === 'structure' && (
             <span>{t('admin.filtered_count').replace('{shown}', String(filteredFields.length)).replace('{total}', String(fields.length))}</span>
@@ -773,7 +1068,7 @@ export function TemplateVersionEditor({
           // dans la liste, au meme endroit que les autres.
           onOpenRule={(ruleId) => {
             setBatchSource(null);
-            window.setTimeout(() => document.getElementById(`rule-${ruleId}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 0);
+            revealRule(ruleId);
           }}
         />
       )}
@@ -789,20 +1084,17 @@ export function TemplateVersionEditor({
         {returnTo === 'diagnosis' && <button type="button" className="btn-ghost mb-3" onClick={() => changeSpace('diagnosis')}>← {t('editor.return_diagnosis')}</button>}
         {/* Tri de consultation : il ne touche jamais l'ordre enregistre. Le deplacement est
             suspendu pendant qu'il est actif, sinon « monter » n'aurait plus de sens visible. */}
+        {/* Sous 768 px, le tri est dans le panneau des filtres ; l'avertissement, lui, reste
+            visible tant qu'un tri suspend le deplacement. */}
+        {narrow ? displaySort !== 'form' && <p className="mb-3 text-xs text-amber-800">{t('admin.sort_notice')}</p> : (
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <label className="flex flex-col text-xs text-slate-600">
             {t('admin.display_sort')}
-            <select
-              className="input mt-1"
-              value={displaySort}
-              aria-label={t('admin.display_sort')}
-              onChange={(event) => setDisplaySort(event.target.value as DisplaySort)}
-            >
-              {DISPLAY_SORTS.map((item) => <option key={item} value={item}>{t(SORT_LABEL_KEYS[item])}</option>)}
-            </select>
+            {displaySortSelect}
           </label>
           {displaySort !== 'form' && <p className="max-w-md text-xs text-amber-800">{t('admin.sort_notice')}</p>}
         </div>
+        )}
         {outOfFilter && (
           <p role="status" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {t('admin.out_of_filter').replace('{label}', outOfFilter.label)}
@@ -824,6 +1116,7 @@ export function TemplateVersionEditor({
           onRules={(field) => openContextRules(field ? { field: field.fieldKey } : { group: activeGroup })}
           ruleCount={(field) => ruleCountByFieldId.get(field.id) ?? 0}
           context={inheritedRules.map((rule) => <div key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>)}
+          narrow={narrow}
         />
         {fieldFormOpen && (
           <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
@@ -853,14 +1146,6 @@ export function TemplateVersionEditor({
               </div>
               {editing && (
                 <div className="space-y-3 px-4 pt-4">
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" className="btn-secondary" disabled={!previousField || busy} onClick={() => previousField && guardLeave(() => openFieldEditor(previousField))}>
-                      <ArrowLeft size={16} aria-hidden /> {t('admin.previous_variable')}
-                    </button>
-                    <button type="button" className="btn-secondary" disabled={!nextField || busy} onClick={() => nextField && guardLeave(() => openFieldEditor(nextField))}>
-                      {t('admin.next_variable')} <ArrowRight size={16} aria-hidden />
-                    </button>
-                  </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span>
                       {t('admin.panel_position')
@@ -872,15 +1157,22 @@ export function TemplateVersionEditor({
                     {!nextField && <span className="text-amber-800">{t('admin.panel_last')}</span>}
                   </div>
                   <p className="text-xs text-slate-500" aria-live="polite">{t(SAVE_STATE_KEYS[panelSaveState])}</p>
+                  {inheritedPanelRules.length === 0 && linkedRules.triggers.length === 0 && linkedRules.targets.length === 0 ? (
+                    // Audit UI mobile, lot 6 : sans regle, une ligne suffit au lieu d'un encadre.
+                    <p className="text-xs text-slate-500">
+                      {t('admin.rules_linked_none')}{' '}
+                      <button type="button" className="font-medium text-teal-700 underline underline-offset-2" onClick={() => openContextRules({ field: editing.fieldKey })}>{t('admin.rules_open_space')}</button>
+                    </p>
+                  ) : (
                   <div className="rounded-xl border border-slate-200 p-3 text-xs">
-                    {editing.section && rules.filter((rule) => ruleParticipants(rule.rule).sections.includes(rootOf(editing.section!))).map((rule) => (
+                    {inheritedPanelRules.map((rule) => (
                       <div key={rule.id} className="mb-2"><p className="font-medium">{t('editor.inherited_condition')}</p><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>
                     ))}
-                    {linkedRules.triggers.length === 0 && linkedRules.targets.length === 0 && <p className="text-slate-500">{t('admin.rules_linked_none')}</p>}
                     {linkedRules.triggers.length > 0 && <><p className="font-medium text-slate-700">{t('admin.rules_triggers')}</p><ul className="mt-1 space-y-1">{linkedRules.triggers.map((rule) => <li key={rule.id}><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></li>)}</ul></>}
                     {linkedRules.targets.length > 0 && <><p className="mt-2 font-medium text-slate-700">{t('admin.rules_targets')}</p><ul className="mt-1 space-y-1">{linkedRules.targets.map((rule) => <li key={rule.id}><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></li>)}</ul></>}
                     <button type="button" className="mt-2 font-medium text-teal-700 underline underline-offset-2" onClick={() => openContextRules({ field: editing.fieldKey })}>{t('admin.rules_open_space')}</button>
                   </div>
+                  )}
                 </div>
               )}
               <fieldset disabled={!editable || busy} className="min-w-0 flex-1 p-4">
@@ -943,13 +1235,26 @@ export function TemplateVersionEditor({
                   </>
                 )}
               </fieldset>
+              {/* Audit UI mobile, lot 6 : on passe a la variable voisine une fois la fiche lue,
+                  depuis le bas du panneau, sur une seule ligne. */}
+              {editing && (
+                <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+                  <button type="button" className="btn-secondary min-w-0 px-3" disabled={!previousField || busy} onClick={() => previousField && guardLeave(() => openFieldEditor(previousField))}>
+                    <ArrowLeft size={16} aria-hidden /> <span className="truncate">{t('admin.previous_variable')}</span>
+                  </button>
+                  <button type="button" className="btn-secondary min-w-0 px-3" disabled={!nextField || busy} onClick={() => nextField && guardLeave(() => openFieldEditor(nextField))}>
+                    <span className="truncate">{t('admin.next_variable')}</span> <ArrowRight size={16} aria-hidden />
+                  </button>
+                </div>
+              )}
             </aside>
           </div>
         )}
       </div>
 
       <div hidden={space !== 'sections'} id="editor-panel-sections" role="tabpanel" aria-labelledby="editor-space-sections" className="space-y-5">
-        <div className="border-b border-slate-200 pb-3 dark:border-slate-700">
+        {/* Sur telephone, l'onglet nomme deja l'espace : la liste vient tout de suite. */}
+        <div className="border-b border-slate-200 pb-3 max-md:hidden dark:border-slate-700">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('editor.manage_structure')}</h3>
           <p className="mt-1 text-sm text-slate-500">{t('admin.section_index_hint')}</p>
         </div>
@@ -967,6 +1272,7 @@ export function TemplateVersionEditor({
             onReorder={(orderedIds) => void run(() => repo.reorderSections!(version.id, orderedIds))}
             onImportBlock={repo.listImportableSections ? () => setImportOpen(true) : undefined}
             observationModel={observationModel}
+            narrow={narrow}
             onRepeatableChange={repo.setSectionRepeatable ? (sectionId, isRepeatable, fieldsToConvert) => void run(async () => {
               // L67 — les PORTEES partent avant l'indicateur : la base refuse un groupe
               // repetable qui contient encore une variable de portee patient. `encounterTypes`
@@ -1048,129 +1354,80 @@ export function TemplateVersionEditor({
             <button type="button" className="btn-secondary" onClick={() => setRuleContext(null)}>{t('editor.rules_global')}</button>
           </>}
         </div>}
-        <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-          {/* Ajouter une regle sans traverser les regles existantes. */}
-          {editable && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => guardRule(() => { setEditingRule(null); setDuplicateSource(null); setRuleFormOpen(true); window.setTimeout(() => ruleFormRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 0); })}
-            >
-              {t('admin.rules_add')}
-            </button>
-          )}
-        </div>
+        {/* Ajouter une regle sans traverser les regles existantes. Sur telephone, le bouton
+            partage la ligne du compteur, sous la recherche. */}
+        {!narrow && editable && <div className="mb-3 flex flex-wrap items-center justify-end gap-2">{addRuleButton}</div>}
         {/* UX-14(b) : retrouver une regle par sa variable, son bloc, son type ou sa severite. */}
-        <div hidden={!!ruleContext} className={!ruleContext ? 'mb-3 grid gap-2 md:grid-cols-[minmax(12rem,2fr)_repeat(2,minmax(9rem,1fr))] xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(9rem,1fr))]' : ''}>
+        <div hidden={!!ruleContext} className={ruleContext ? '' : narrow ? 'mb-3 flex items-center gap-2'
+          : 'mb-3 grid gap-2 md:grid-cols-[minmax(12rem,2fr)_repeat(2,minmax(9rem,1fr))] xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(9rem,1fr))]'}>
           <input
             type="search"
-            className="input"
+            className="input min-w-0 flex-1"
             value={ruleSearch}
             onChange={(event) => setRuleSearch(event.target.value)}
             aria-label={t('admin.rules_search')}
             placeholder={t('admin.rules_search_hint')}
           />
-          <select className="input" value={ruleKind} aria-label={t('admin.rules_kind')} onChange={(event) => setRuleKind(event.target.value)}>
-            <option value="">{t('admin.all_kinds')}</option>
-            <option value="comparison">{t('admin.rule_kind_comparison')}</option>
-            <option value="conditional">{t('admin.rule_kind_conditional')}</option>
-            <option value="visibility">{t('admin.rule_kind_visibility')}</option>
-          </select>
-          <select className="input" value={ruleField} aria-label={t('admin.rules_field')} onChange={(event) => setRuleField(event.target.value)}>
-            <option value="">{t('admin.all_fields')}</option>
-            {fields.map((field) => <option key={field.id} value={field.fieldKey}>{field.label}</option>)}
-          </select>
-          <select className="input" value={ruleRelation} aria-label={t('editor.rule_relation')} onChange={(event) => setRuleRelation(event.target.value)}>
-            <option value="">{t('editor.rule_relation_all')}</option>
-            <option value="source">{t('admin.rules_triggers')}</option>
-            <option value="target">{t('admin.rules_targets')}</option>
-          </select>
-          <select className="input" value={ruleSection} aria-label={t('admin.rules_section')} onChange={(event) => setRuleSection(event.target.value)}>
-            <option value="">{t('admin.all_blocks')}</option>
-            {sections.filter((section) => !section.parentSectionKey).map((section) => (
-              <option key={section.sectionKey} value={section.sectionKey}>{sectionLabel(t, section)}</option>
-            ))}
-          </select>
-          <select className="input" value={ruleSeverity} aria-label={t('admin.rules_severity')} onChange={(event) => setRuleSeverity(event.target.value)}>
-            <option value="">{t('admin.all_severities')}</option>
-            <option value="block">{t('severity.block')}</option>
-            <option value="warn">{t('severity.warn')}</option>
-          </select>
+          {narrow ? filtersButton('rules', ruleFilterCount) : <>{ruleKindSelect}{ruleFieldSelect}{ruleRelationSelect}{ruleSectionSelect}{ruleSeveritySelect}</>}
         </div>
-        <p className="mb-2 text-xs text-slate-500" aria-live="polite">
-          {t('admin.rules_count').replace('{shown}', String(filteredRules.length)).replace('{total}', String(rules.length))}
-        </p>
+        {narrow && filtersOpen === 'rules' && space === 'rules' && !ruleContext && (
+          <BottomSheet title={t('editor.filters')} onClose={() => setFiltersOpen(null)}>
+            <div className="space-y-3">
+              <label className="form-label">{t('admin.rules_kind')}{ruleKindSelect}</label>
+              <label className="form-label">{t('admin.rules_field')}{ruleFieldSelect}</label>
+              <label className="form-label">{t('editor.rule_relation')}{ruleRelationSelect}</label>
+              <label className="form-label">{t('admin.rules_section')}{ruleSectionSelect}</label>
+              <label className="form-label">{t('admin.rules_severity')}{ruleSeveritySelect}</label>
+              <button type="button" className="btn-secondary w-full" disabled={ruleFilterCount === 0}
+                onClick={() => { setRuleKind(''); setRuleField(''); setRuleRelation(''); setRuleSection(''); setRuleSeverity(''); }}>
+                {t('admin.reset_filters')}
+              </button>
+            </div>
+          </BottomSheet>
+        )}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs text-slate-500" aria-live="polite">
+            {t('admin.rules_count').replace('{shown}', String(filteredRules.length)).replace('{total}', String(rules.length))}
+          </p>
+          {narrow && editable && addRuleButton}
+        </div>
+        {/* 5.13-B : une ligne par condition ; ses regles s'ouvrent dessous. 5.13-A : 20 lignes
+            a la fois, le reste a la demande. */}
         <ul className="space-y-2 text-sm">
-          {filteredRules.map((r) => (
-            <li key={r.id} id={`rule-${r.id}`} className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 py-3">
-              <div className="min-w-0">
-                <RuleSummary rule={r.rule} fields={fields} sections={sections} />
-                {/* Depuis une regle, atteindre directement les variables qu'elle cite. */}
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                  {[...new Set(ruleParticipants(r.rule).fields)]
-                    .map((key) => fields.find((field) => field.fieldKey === key))
-                    .filter((field): field is TemplateField => !!field)
-                    .map((field) => (
-                      <button
-                        key={field.id}
-                        type="button"
-                        className="text-xs font-medium text-teal-700 underline underline-offset-2"
-                        onClick={() => revealRuleField(field)}
-                      >
-                        {field.label}
-                      </button>
-                    ))}
-                  {ruleParticipants(r.rule).sections.map((key) => <button type="button" key={key} className="text-xs font-medium text-teal-700 underline underline-offset-2"
-                    onClick={() => { setReturnTo('rules'); changeSpace('structure'); selectGroup(key); }}>
-                    {t('editor.open_section').replace('{section}', groups.find((group) => group.key === key)?.label ?? key)}
-                  </button>)}
-                </div>
-              </div>
-              <span className="flex items-center gap-2">
-                {/* Une regle d'affichage ne bloque ni n'avertit : lui coller « Bloquant » la
-                    decrirait faux. */}
-                {ruleHasSeverity(r.rule) && (
-                  <span className="text-xs text-slate-500">{t(`severity.${r.severity}`)}</span>
-                )}
-                {editable && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => guardRule(() => { setEditingRule(r); setDuplicateSource(null); setRuleFormOpen(true); window.setTimeout(() => ruleFormRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 0); })}
-                      className="text-xs font-medium text-teal-700 hover:underline"
-                    >
-                      {t('admin.edit_rule')}
-                    </button>
-                    {/* Une condition ne se ressaisit pas variable par variable : elle s'applique
-                        a plusieurs cibles en une operation serveur. Une comparaison ou une
-                        condition de bloc n'a pas de sens multicible : elle se duplique. */}
-                    {isBatchSource(r.rule) && repo.previewRuleBatch && repo.createRuleBatch ? (
-                      <button type="button" onClick={() => setBatchSource(r)}
-                        className="text-xs font-medium text-teal-700 hover:underline">
-                        {t('rulebatch.open')}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => guardRule(() => { setEditingRule(null); setDuplicateSource(r); setRuleFormOpen(true); window.setTimeout(() => ruleFormRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 0); })}
-                        className="text-xs font-medium text-teal-700 hover:underline"
-                      >
-                        {t('rulebatch.duplicate')}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void run(() => repo.deleteRule(r.id))}
-                      className="text-xs text-red-600 hover:underline"
-                    >
-                      {t('admin.delete')}
-                    </button>
-                  </>
-                )}
-              </span>
+          {shownRuleGroups.map((group) => group.rules.length === 1 ? ruleRow(group.rules[0], false) : (
+            <li key={group.key} className="border-b border-slate-200 py-2">
+              <button
+                type="button"
+                aria-expanded={ruleGroupOpen(group.key)}
+                onClick={() => toggleRuleGroup(group.key)}
+                className="flex min-h-11 w-full items-start justify-between gap-2 py-1 text-left"
+              >
+                <span className="min-w-0 text-sm text-slate-700">
+                  {ruleConditionText(t, group.rules[0].rule, fields)}
+                  {' → '}<span className="font-medium text-slate-900">{groupConsequences(group.rules)}</span>
+                </span>
+                {ruleGroupOpen(group.key)
+                  ? <ChevronDown size={16} aria-hidden className="mt-0.5 shrink-0 text-slate-500" />
+                  : <ChevronRight size={16} aria-hidden className="mt-0.5 shrink-0 text-slate-500" />}
+              </button>
+              {ruleGroupOpen(group.key) && (
+                <ul className="ml-2 space-y-1 border-l border-slate-200 pl-3">
+                  {group.rules.map((rule) => ruleRow(rule, true))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
+        {ruleGroups.length > shownRuleGroups.length && (
+          <div className="flex flex-wrap items-center gap-3 py-3">
+            <button type="button" className="btn-secondary" onClick={() => setRuleLimit(shownRuleGroups.length + RULE_PAGE_SIZE)}>
+              {t('editor.rules_show_more').replace('{n}', String(Math.min(RULE_PAGE_SIZE, ruleGroups.length - shownRuleGroups.length)))}
+            </button>
+            <p className="text-xs text-slate-500" aria-live="polite">
+              {t('editor.rules_rows_shown').replace('{shown}', String(shownRuleGroups.length)).replace('{total}', String(ruleGroups.length))}
+            </p>
+          </div>
+        )}
         {rules.length === 0 && <p className="text-sm text-slate-500">{t('admin.rules_empty')}</p>}
         {rules.length > 0 && filteredRules.length === 0 && <p className="text-sm text-slate-500">{t('admin.rules_none')}</p>}
         {editable && ruleFormOpen && (
@@ -1220,7 +1477,7 @@ export function TemplateVersionEditor({
                     if (!ok) return;
                     closeRuleForm();
                     // Revenir a la regle concernee, plutot que laisser l'ecran sur le formulaire.
-                    window.setTimeout(() => document.getElementById(`rule-${editedId}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 0);
+                    revealRule(editedId);
                   });
                 } else {
                   void run(() => repo.addRule(version.id, rule, message, severity)).then((ok) => {
@@ -1239,7 +1496,7 @@ export function TemplateVersionEditor({
           ? <DiagnosisConfigurationEditor version={version} fields={fields} rules={rules} sections={sections} repo={repo} busy={busy} run={run}
               onDirtyChange={setDiagnosisDirty}
               // Le meme objet regle, ouvert la ou il se modifie : aucune seconde configuration.
-              onOpenRule={(ruleId) => { setRuleContext(null); setReturnTo('diagnosis'); changeSpace('rules'); scrollToRule(ruleId); }}
+              onOpenRule={(ruleId) => { setRuleContext(null); setReturnTo('diagnosis'); changeSpace('rules'); revealRule(ruleId); }}
               onOpenField={(fieldKey) => {
                 const field = fields.find((candidate) => candidate.fieldKey === fieldKey);
                 if (!field) return;

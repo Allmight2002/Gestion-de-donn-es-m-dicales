@@ -17,3 +17,19 @@ export function formatDateTime(value: string | number | Date, lang: Language): s
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString(LOCALE[lang], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+
+/** « 10:32 » — l'heure seule, quand le jour est déjà donné (journal groupé par jour). */
+export function formatTime(value: string | number | Date, lang: Language): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** « 17 août » cette année, « 17 août 2025 » sinon — l'intitulé d'un jour. */
+export function formatDay(value: string | number | Date, lang: Language, now: Date = new Date()): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString(LOCALE[lang], d.getFullYear() === now.getFullYear()
+    ? { day: 'numeric', month: 'long' }
+    : { day: 'numeric', month: 'long', year: 'numeric' });
+}

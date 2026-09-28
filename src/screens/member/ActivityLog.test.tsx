@@ -46,6 +46,28 @@ describe('ActivityLog (C3)', () => {
     expect(within(list).getByText(/7 patients · 12 rencontres · 1 erreurs/)).toBeInTheDocument(); // detail (5+2)
   });
 
+  // Audit UI mobile, lot 0 — ces actions ecrites par les migrations s'affichaient en code brut
+  // (`mission_credentials_revealed`…), illisible et insecable sur telephone. Le filtre, lui,
+  // garde sa liste courte : traduire l'affichage n'ajoute aucune option.
+  test('traduit les actions de mission, de cohorte et d identite au lieu du code brut', async () => {
+    const audit = makeAudit(async () => [
+      { id: 'a1', at: '2026-08-21T10:00:00.000Z', action: 'cohort_deleted', actorName: 'Compte a798aa8b', metadata: {} },
+      { id: 'a2', at: '2026-08-20T10:00:00.000Z', action: 'mission_credentials_revealed', actorName: 'Compte a798aa8b', metadata: {} },
+      { id: 'a3', at: '2026-08-19T10:00:00.000Z', action: 'mission_credentials_creation_requested', actorName: 'Compte a798aa8b', metadata: {} },
+      { id: 'a4', at: '2026-08-18T10:00:00.000Z', action: 'patient_identity_corrected', actorName: 'Compte a798aa8b', metadata: {} },
+    ]);
+    renderActivity(audit);
+
+    // Quatre jours, quatre listes : le journal se lit par jour (lot 4).
+    expect(await screen.findAllByRole('list')).toHaveLength(4);
+    expect(screen.getByText('Cohorte supprimée')).toBeInTheDocument();
+    expect(screen.getByText('Mot de passe de mission affiché')).toBeInTheDocument();
+    expect(screen.getByText('Identifiants de mission demandés')).toBeInTheDocument();
+    expect(screen.getByText('Identité du patient corrigée')).toBeInTheDocument();
+    expect(screen.queryByText(/_/)).toBeNull();
+    expect(within(screen.getByRole('group', { name: 'Filtrer par action' })).getAllByRole('button')).toHaveLength(13);
+  });
+
   // E6 — apres une evolution du formulaire, l'historique doit repondre a « qui a change quoi,
   // quand, et vers quelle revision ». Le detail vient de l'INSTANTANE minimise par le serveur :
   // l'ecran ne relit aucune version de gabarit vivante.
@@ -112,10 +134,36 @@ describe('ActivityLog (C3)', () => {
     renderActivity(makeAudit(getBaseActivity));
 
     expect(within(await screen.findByRole('list')).getByText('Accès accordé')).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Action'), 'access_revoked');
+    const filters = within(screen.getByRole('group', { name: 'Filtrer par action' }));
+    expect(filters.getByRole('button', { name: 'Toutes les actions' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(filters.getByRole('button', { name: 'Accès révoqué' }));
+    expect(filters.getByRole('button', { name: 'Accès révoqué' })).toHaveAttribute('aria-pressed', 'true');
 
     expect(within(await screen.findByRole('list')).getByText('Accès révoqué')).toBeInTheDocument();
     expect(getBaseActivity).toHaveBeenLastCalledWith('b1', { limit: 50, action: 'access_revoked' });
+  });
+
+  // Audit UI mobile, lot 4 (5.9-B, decision 8) : une carte par jour, et « Vous » seulement quand
+  // le serveur le dit. Face a un serveur anterieur (sans drapeau), le nom reste affiche.
+  test('regroupe par jour et dit « Vous » pour ses propres actions, d apres le serveur seulement', async () => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    renderActivity(makeAudit(async () => [
+      { id: 'a1', at: now.toISOString(), action: 'export_created', actorName: 'Dr Mbassi', actorIsSelf: true, metadata: {} },
+      { id: 'a2', at: yesterday.toISOString(), action: 'access_granted', actorName: 'Dr Ngo', actorIsSelf: false, metadata: {} },
+      { id: 'a3', at: '2025-03-02T12:00:00.000Z', action: 'access_changed', actorName: 'Dr Mbassi', metadata: {} },
+    ]));
+
+    const today = await screen.findByRole('list', { name: 'Aujourd’hui' });
+    expect(within(today).getByText('Export généré')).toBeInTheDocument();
+    expect(within(today).getByText('Vous')).toBeInTheDocument();
+    expect(within(today).queryByText('Dr Mbassi')).toBeNull();
+    expect(within(screen.getByRole('list', { name: 'Hier' })).getByText('Dr Ngo')).toBeInTheDocument();
+    // Pas de drapeau : aucune deduction depuis le nom, meme identique a celui de l'appelant.
+    const older = screen.getByRole('list', { name: /2 mars 2025/ });
+    expect(within(older).getByText('Dr Mbassi')).toBeInTheDocument();
+    expect(within(older).queryByText('Vous')).toBeNull();
   });
 
   test('charge la page suivante avec un curseur temporel', async () => {

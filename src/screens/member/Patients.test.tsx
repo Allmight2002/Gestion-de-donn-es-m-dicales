@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Tests de rendu de l'etape 6 (patient) avec repositories INJECTES.
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
@@ -16,6 +16,8 @@ import type { TemplateField } from '../../data/types';
 import type { ViewPreferenceRepository } from '../../data/viewPreferences';
 import { offlineCache, type OfflineSnapshot } from '../../data/offline';
 import { setBirthDate } from '../../../test/helpers/date-picker';
+import { TopBarRegistryProvider, useTopBarRegistry } from '../../components/TopBar';
+import type { ReactNode } from 'react';
 
 // NewPatient lit le role global (la voie curation est fermee aux comptes de mission).
 vi.mock('../../auth/useAuth', () => ({
@@ -299,6 +301,33 @@ describe('BaseHome (liste patients)', () => {
     expect(screen.queryByRole('button', { name: 'Nouveau patient' })).not.toBeInTheDocument();
   });
 
+  // Audit UI mobile, lot 0 — l'encadre repetait « Préparer la saisie hors-ligne » deux fois :
+  // une fois comme etat, une fois comme bouton.
+  test('la saisie hors-ligne non preparee ne propose que son bouton, sans repeter le libelle', async () => {
+    vi.stubEnv('VITE_OFFLINE_MODE', 'demo');
+    vi.stubEnv('VITE_OFFLINE_ADMIN_ACK', 'true');
+    vi.stubEnv('VITE_OFFLINE_INTAKE', 'demo');
+    try {
+      const bases = { async getBase() { return baseListing; } } as unknown as BaseRepository;
+      const patients = { async listPatientsPage() { return { rows: [], total: 0 }; } } as unknown as PatientRepository;
+
+      render(
+        <I18nProvider>
+          <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+            <MemoryRouter initialEntries={['/bases/b1']}>
+              <Routes><Route path="/bases/:id" element={<BaseHome />} /></Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+
+      expect(await screen.findByRole('button', { name: 'Préparer la saisie hors-ligne' })).toBeInTheDocument();
+      expect(screen.getAllByText('Préparer la saisie hors-ligne')).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('masque la creation et l actualisation hors-ligne pour un acces a echeance mais garde le retrait', async () => {
     const snapshot: OfflineSnapshot = {
       dataType: 'analytic_snapshot',
@@ -567,10 +596,14 @@ describe('BaseHome (liste patients)', () => {
     await userEvent.click(within(screen.getByRole('navigation', { name: 'Pagination, bas de liste' })).getByRole('button', { name: 'Suivant' }));
     expect(await screen.findByText('P-0021')).toBeInTheDocument();
 
+    // Lot 2 (5.4-B) : le tri se regle dans un menu, a cote de la recherche.
+    await userEvent.click(screen.getByRole('button', { name: 'Changer le tri' }));
     await userEvent.selectOptions(screen.getByLabelText('Trier les patients'), 'patient_code');
     await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[3]?.sort?.field).toBe('patient_code'));
     expect(listPatientsPage.mock.calls.at(-1)?.[2]).toBe(0);
 
+    // La liste se recharge : le menu se referme, on le rouvre pour inverser l'ordre.
+    await userEvent.click(await screen.findByRole('button', { name: 'Changer le tri' }));
     await userEvent.click(screen.getByRole('button', { name: 'Ordre croissant' }));
     await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[3]?.sort?.direction).toBe('desc'));
   });
@@ -788,7 +821,7 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
     renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository);
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.click(screen.getByRole('radio', { name: 'Par identité' }));
     await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
 
     await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalled());
@@ -808,7 +841,7 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
     renderList({ listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository);
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.click(screen.getByRole('radio', { name: 'Par identité' }));
     await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'A');
 
     expect(await screen.findByText(/au moins deux caractères/)).toBeInTheDocument();
@@ -823,7 +856,7 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
     );
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Rechercher par')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Rechercher par' })).not.toBeInTheDocument();
     expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
     // Et la recherche qui reste disponible ne passe jamais par l'opération d'identité.
     await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099');
@@ -843,7 +876,7 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
     renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository, bases);
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Rechercher par'), 'name');
+    await userEvent.click(screen.getByRole('radio', { name: 'Par identité' }));
     await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
     await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1));
 
@@ -851,8 +884,98 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
     permis = false;
     await userEvent.click(screen.getByRole('button', { name: 'Effacer la recherche' }));
 
-    await waitFor(() => expect(screen.queryByLabelText('Rechercher par')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Rechercher par' })).not.toBeInTheDocument());
     expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
     expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Audit UI mobile, lot 2 (5.4-B) : sur telephone, la liste arrive sous les onglets. Le nom de
+// la base et les actions d'alimentation passent dans la barre haute, « Nouveau patient »
+// devient un bouton flottant, et chaque patient une carte.
+describe('BaseHome — téléphone (audit UI mobile, lot 2)', () => {
+  // Les colonnes choisies sont une preference conservee : un test precedent ne doit pas
+  // decider de celles que ces cartes affichent.
+  beforeEach(() => localStorage.clear());
+  const row = (n: number): PatientListItem => ({
+    id: `p${n}`, code: `P-${String(n).padStart(4, '0')}`, templateVersionId: 'v1', data: { sexe: 'M', birth_year: 1980 },
+    validationStatus: 'curated', identity: null,
+  });
+  const twoPatients = { async listPatientsPage() { return { rows: [row(1), row(2)], total: 2 }; } } as unknown as PatientRepository;
+
+  function TopBarProbe({ children }: { children: ReactNode }) {
+    const { active, actions, registry } = useTopBarRegistry();
+    return (
+      <TopBarRegistryProvider registry={registry}>
+        {children}
+        <p data-testid="barre-titre">{active?.title ?? 'aucun titre'}</p>
+        <p data-testid="barre-actions">{actions.map((action) => action.label).join(' | ') || 'aucune action'}</p>
+      </TopBarRegistryProvider>
+    );
+  }
+
+  function renderPhoneList(bases: BaseRepository = baseRepo, patients: PatientRepository = twoPatients) {
+    return render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} templates={templateRepo} patients={patients}>
+          <MemoryRouter initialEntries={['/bases/b1']}>
+            <TopBarProbe>
+              <Routes>
+                <Route path="/bases/:id" element={<BaseHome />} />
+                <Route path="/bases/:id/patients/:patientId" element={<div>FICHE PAGE</div>} />
+                <Route path="/bases/:id/patients/:patientId/encounters/new" element={<div>NOUVELLE RENCONTRE</div>} />
+              </Routes>
+            </TopBarProbe>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+  }
+
+  function withNarrowViewport(run: () => Promise<void>) {
+    return async () => {
+      const original = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: query === '(max-width: 767px)', media: query, onchange: null,
+        addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+      try { await run(); } finally { window.matchMedia = original; }
+    };
+  }
+
+  test('sous 768 px, une carte par patient ouvre sa fiche, et + ouvre une rencontre', withNarrowViewport(async () => {
+    renderPhoneList();
+    const card = await screen.findByRole('button', { name: /^P-0001/ });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // Les valeurs choisies dans « Colonnes affichées », libellees pour les lecteurs d'ecran.
+    expect(card).toHaveTextContent('P-0001Sexe : M · Annee de naissance : 1980');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter une rencontre — P-0002' }));
+    expect(await screen.findByText('NOUVELLE RENCONTRE')).toBeInTheDocument();
+  }));
+
+  test('le nom de la base passe dans la barre haute, les actions d’alimentation dans ⋯', async () => {
+    renderPhoneList();
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Registre Neuro' })).toHaveClass('max-lg:sr-only');
+    expect(screen.getByTestId('barre-actions')).toHaveTextContent('Importer');
+    // La meme action reste dans la page a partir de lg.
+    expect(screen.getByRole('button', { name: 'Importer' }).parentElement?.parentElement).toHaveClass('max-lg:hidden');
+    expect(screen.getByText(/2 patient\(s\) dans cette base · tri : Date de création, ordre croissant/)).toBeInTheDocument();
+  });
+
+  test('un compte de mission n’a rien à importer, donc rien dans ⋯', async () => {
+    const missionRepo = { async getBase() { return { ...baseListing, expiresAt: '2099-01-01T00:00:00.000Z' }; } } as unknown as BaseRepository;
+    renderPhoneList(missionRepo);
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    expect(screen.getByTestId('barre-actions')).toHaveTextContent('aucune action');
+  });
+
+  test('« Nouveau patient » devient un bouton flottant sous lg quand la liste a des patients', async () => {
+    renderPhoneList();
+    expect(await screen.findByText('P-0001')).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button', { name: 'Nouveau patient' });
+    expect(buttons).toHaveLength(2);
+    const floating = buttons.find((button) => button.classList.contains('fixed'));
+    expect(floating).toHaveClass('lg:hidden');
   });
 });

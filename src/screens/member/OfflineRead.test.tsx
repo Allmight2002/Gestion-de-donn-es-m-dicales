@@ -131,7 +131,7 @@ describe('PatientDetail hors-ligne', () => {
       [{ id: 'f-old', fieldKey: 'glasgow_score', label: 'Glasgow (cache ancien)', scope: 'encounter', type: 'integer', displayOrder: 0 }],
     ));
     renderAt('/bases/b-old-cache/patients/p-old-cache', <PatientDetail />, '/bases/:id/patients/:patientId');
-    expect(await screen.findByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
+    expect(await screen.findByText(/reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
     expect(screen.queryByText('77')).not.toBeInTheDocument();
     expect(screen.queryByText('Glasgow (cache ancien)')).not.toBeInTheDocument();
     await offlineCache.remove('b-old-cache');
@@ -152,7 +152,7 @@ describe('PatientDetail hors-ligne', () => {
     renderAt('/bases/b-grouped-cache/patients/p-grouped-cache', <PatientDetail />, '/bases/:id/patients/:patientId');
     expect(await screen.findByText('GROUP-VALUE')).toBeInTheDocument();
     expect(screen.queryByText(/ne sont pas disponibles hors ligne/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reconnectez-vous et actualisez la copie hors-ligne/)).not.toBeInTheDocument();
     // §5 : une variable du bloc ordinaire ne s'applique pas à une occurrence.
     expect(screen.queryByText('88')).not.toBeInTheDocument();
     await offlineCache.remove('b-grouped-cache');
@@ -172,7 +172,7 @@ describe('PatientDetail hors-ligne', () => {
       { v1: offlineSections },
     ));
     renderAt('/bases/b-grouped-unknown/patients/p-grouped-unknown', <PatientDetail />, '/bases/:id/patients/:patientId');
-    expect(await screen.findByText(/Reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
+    expect(await screen.findByText(/reconnectez-vous et actualisez la copie hors-ligne/)).toBeInTheDocument();
     expect(screen.queryByText('UNKNOWN-SENTINEL')).not.toBeInTheDocument();
     await offlineCache.remove('b-grouped-unknown');
   });
@@ -307,7 +307,7 @@ describe('EditEncounter hors-ligne (Phase 2)', () => {
       [{ id: 'f-old', fieldKey: 'glasgow_score', label: 'Glasgow ancien', scope: 'encounter', type: 'integer', displayOrder: 0 }],
     ));
     renderAt('/bases/b-unknown-edit/patients/p-unknown-edit/encounters/e-unknown-edit/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Reconnectez-vous pour la modifier en ligne');
+    expect(await screen.findByRole('alert')).toHaveTextContent('modifiez en ligne ou actualisez-la');
     expect(screen.queryByLabelText('Glasgow ancien')).not.toBeInTheDocument();
     expect(screen.queryByText('66')).not.toBeInTheDocument();
     expect(await outbox.count('b-unknown-edit')).toBe(0);

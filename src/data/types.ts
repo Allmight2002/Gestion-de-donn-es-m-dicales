@@ -1,7 +1,9 @@
 // DTO de l'admin gabarits (camelCase cote front).
 // Import de TYPE uniquement : efface a la compilation, donc aucun cycle a l'execution.
 import type { MissingCode } from '../domain/export';
+import type { Language } from '../i18n/messages';
 import { displayOptionValue, type FieldOption } from '../domain/fieldOptions';
+import { formatStoredDate, formatStoredDateTime } from '../lib/formatValue';
 
 /**
  * Ce dont `displayFieldValue` a besoin pour rendre le libellé d'une option (L30).
@@ -71,9 +73,14 @@ export function isMultipleTerminology(field: { type: string; isMultiple?: boolea
  *
  * Les codes de valeur manquante restent traités par l'appelant, qui seul dispose des
  * traductions.
+ *
+ * Audit UI mobile, lot 0 : avec la langue, une date ou une date-heure saisie s'affiche
+ * « 21/08/2026 14:00 » au lieu de l'ISO brut. Sans langue, le rendu historique est conservé.
  */
-export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier | null): string {
+export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier | null, lang?: Language): string {
   if (v === null || v === undefined || v === '') return vide;
+  if (lang && typeof v === 'string' && field?.type === 'date') return formatStoredDate(v, lang);
+  if (lang && typeof v === 'string' && field?.type === 'datetime') return formatStoredDateTime(v, lang);
   if (isTerminologyValue(v)) return v.label;
   // L30 : une liste controlee stocke le CODE de l'option. Sans ce passage par les
   // options, l'ecran afficherait le code, et continuerait d'afficher l'ancien texte

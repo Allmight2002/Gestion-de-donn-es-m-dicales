@@ -2,6 +2,7 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
+import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { NewField } from '../../data/types';
 import type { PublishedTemplateOption } from '../../data/bases';
@@ -15,6 +16,7 @@ import { SkeletonList } from '../../components/Skeleton';
 // (la bibliotheque n'est jamais vide).
 export function TemplateLibrary() {
   const { t } = useI18n();
+  const { profile } = useAuth();
   const navigate = useNavigate();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
@@ -70,11 +72,15 @@ export function TemplateLibrary() {
         <button onClick={() => navigate('/templates')} className="text-sm font-medium text-slate-500 hover:text-teal-700">← {t('mytemplates.title')}</button>
         <h1 className="page-title mt-2">{t('tlib.title')}</h1>
         <p className="mt-1 text-sm text-slate-500">{t('tlib.subtitle')}</p>
-        {useBuiltin && <p className="mt-1 text-xs text-amber-700">{t('tlib.builtin_note')}</p>}
+        {/* Audit UI mobile, lot 5 (5.12) : publier un modele global est l'affaire d'un
+            administrateur ; la note ne concerne que lui. */}
+        {useBuiltin && profile?.globalRole === 'system_admin' && <p className="mt-1 text-xs text-amber-700">{t('tlib.builtin_note')}</p>}
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
+      {/* Audit UI mobile, lot 5 (5.12) : « Utiliser ce modèle » en bouton secondaire, un par carte ;
+          aucun bouton plein ne se repete. */}
       <div className="grid gap-3 sm:grid-cols-2">
         {useBuiltin
           ? TEMPLATE_LIBRARY.map((m) => (
@@ -85,7 +91,7 @@ export function TemplateLibrary() {
                 </div>
                 <p className="flex-1 text-sm text-slate-500">{m.description}</p>
                 <p className="text-xs text-slate-400">{m.fields.length} {t('tlib.fields')}</p>
-                <button onClick={() => void createFrom(m.id, m.name, m.specialty, { fields: m.fields })} disabled={busy !== null} className="btn-primary self-start">
+                <button onClick={() => void createFrom(m.id, m.name, m.specialty, { fields: m.fields })} disabled={busy !== null} className="btn-secondary self-start">
                   {busy === m.id ? t('tlib.creating') : t('tlib.use')}
                 </button>
               </div>
@@ -100,7 +106,7 @@ export function TemplateLibrary() {
                 <button
                   onClick={() => void createFrom(m.versionId, m.name, m.specialty, { sourceVersionId: m.versionId })}
                   disabled={busy !== null}
-                  className="btn-primary self-start"
+                  className="btn-secondary self-start"
                 >
                   {busy === m.versionId ? t('tlib.creating') : t('tlib.use')}
                 </button>

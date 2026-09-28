@@ -156,7 +156,7 @@ pilote, et c'est ce qui rend une colonne toujours présente à l'export (série 
 | M-7 | Créer les **quatre variables de blocs** — §3.1, lignes 4 à 7 | `Bloc vide` reste sans aucune variable : c'est voulu (test D-6) |
 | M-8 | Bloc **« Collecte diagnostique optionnelle »** : *Fiche concernée* = **Rencontre**, *Variable diagnostique* = `diagnostic`, *Codes pour lesquels le socle suffit* = `anemie_ferriprive`, puis **Enregistrer la configuration** | Enregistré. La ligne « Champ de proposition existant : … (`diagnostic_autre`) » s'affiche. Aucun champ *Identifiant de la release* n'apparaît : il est réservé aux pilotes de type diagnostic |
 | M-9 | Section **« Associations diagnostic → blocs »** : *Bloc racine* = `Tuberculose`, codes = `tuberculose_pulmonaire` → **Enregistrer cette association**. Recommencer avec `Malnutrition` ← `malnutrition_aigue` | Deux règles de visibilité de bloc existent, opérateur **« contient au moins un de ces codes »**, cible **bloc** |
-| M-10 | Barre latérale → **Comptes de mission** → **Ouvrir un compte de mission** sur `QA-DIAG` | Identifiant et mot de passe temporaires remis une seule fois : les noter |
+| M-10 | Barre latérale → **Comptes de mission** → **Nouveau compte de mission** : formulaire « Ouvrir un compte de mission » sur `QA-DIAG` | Identifiant et mot de passe temporaires remis une seule fois : les noter |
 
 ### 3.1 Détail des variables à créer (M-5 à M-7)
 
@@ -303,7 +303,7 @@ fonctionnel.
 | D-4 | Ajouter `tuberculose_pulmonaire` (déjà associé à un bloc) dans les *codes pour lesquels le socle suffit* | Refusé — `DIAGNOSIS_COMMON_BLOCK_OVERLAP` : un code qui cible un bloc ne peut pas être déclaré « socle suffit » |
 | D-5 | Mettre un code absent des options (ex. `ZZZ`) dans les codes socle | Refusé — `DIAGNOSIS_CODE_UNKNOWN` |
 | D-6 | Associer le **`Bloc vide`** à un code | Refusé — `DIAGNOSIS_BLOCK_EMPTY` : un bloc sans variable saisissable de la bonne portée ne couvre rien |
-| D-7 | Poser à la main une règle d'affichage quelconque sur `Bloc générique`, puis tenter de l'associer à un diagnostic | L'écran affiche « Ce bloc porte déjà une autre condition d'affichage… » et le bouton reste **désactivé** |
+| D-7 | Poser à la main une règle d'affichage quelconque sur `Bloc générique`, puis tenter de l'associer à un diagnostic | L'écran affiche « Bloc déjà conditionné : choisissez-en un autre, ou retirez sa condition dans Règles. » et le bouton reste **désactivé** |
 | D-8 | Créer une rencontre utilisant la version, puis revenir à l'éditeur | Le bloc de configuration devient **non modifiable** (version en usage). Côté serveur : `DIAGNOSIS_VERSION_FROZEN` |
 | D-9 | Cliquer **« Créer la version suivante »** | Nouvelle version brouillon **portant la configuration recopiée par valeur** : pilote, codes socle et associations identiques |
 | D-10 | Dupliquer le gabarit, ou créer une base à partir de lui | La configuration suit la copie ; aucune référence croisée vers la version d'origine |

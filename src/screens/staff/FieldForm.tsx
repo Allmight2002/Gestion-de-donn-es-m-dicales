@@ -25,6 +25,7 @@ import type { ObservationModel } from '../../data/bases';
 import { LEGACY_SECTION_KEYS, sectionLabel } from '../../domain/templateSections';
 import { fieldTypeLabel } from '../../domain/templateLabels';
 import { Checkbox } from '../../components/Checkbox';
+import { HelpDetails } from '../../components/HelpTip';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
 const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'boolean', 'select', 'multiselect', 'terminology'];
@@ -349,6 +350,12 @@ export function FieldForm({
 
   return (
     <form onSubmit={(e) => void submit(e)} className="card grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Audit UI mobile, lot 6 : le libelle d'abord, c'est lui qu'on corrige ; la cle technique
+          suit, figee des qu'une fiche l'utilise. */}
+      <label className="form-label">
+        {t('admin.label')}
+        <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
+      </label>
       <label className="form-label">
         {t('admin.field_key')}
         <input
@@ -358,10 +365,6 @@ export function FieldForm({
           disabled={lockStructural}
           required
         />
-      </label>
-      <label className="form-label">
-        {t('admin.label')}
-        <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required />
       </label>
       <label htmlFor="field-description" className="form-label sm:col-span-2">
         {t('admin.field_description')}
@@ -452,6 +455,7 @@ export function FieldForm({
             : lockStructural
               ? t('admin.formula_locked')
               : t('admin.formula_no_operand')}
+          {!canCalculate && lockStructural && <> <HelpDetails>{t('admin.formula_locked_details')}</HelpDetails></>}
         </span>
         {calculated && (
           <fieldset className="surface-muted flex flex-col gap-3 p-3">
@@ -531,7 +535,7 @@ export function FieldForm({
                 {t(formulaProblemKey(formulaCheck.problem ?? 'syntax')).replace('{name}', formulaCheck.detail ?? '')}
               </p>
             )}
-            <p className="helper-text">{t('admin.formula_not_stored')}</p>
+            <p className="helper-text">{t('admin.formula_not_stored')} <HelpDetails>{t('admin.formula_not_stored_details')}</HelpDetails></p>
           </fieldset>
         )}
         </div>
@@ -663,9 +667,9 @@ export function FieldForm({
                 />
               ))}
             </div>
-            <p className="helper-text mt-2">{t('admin.missing_reasons_hint')}</p>
+            <p className="helper-text mt-2">{t('admin.missing_reasons_hint')} <HelpDetails>{t('admin.missing_reasons_hint_details')}</HelpDetails></p>
             {lockedReasons.length > 0 && (
-              <p className="mt-1 text-xs text-amber-700">{t('admin.missing_reasons_locked')}</p>
+              <p className="mt-1 text-xs text-amber-700">{t('admin.missing_reasons_locked')} <HelpDetails>{t('admin.missing_reasons_locked_details')}</HelpDetails></p>
             )}
           </fieldset>
         )}
@@ -732,7 +736,7 @@ export function FieldForm({
                 onChange={(e) => setDefaultValue(e.target.value)}
               />
             )}
-            <span className="helper-text">{t('admin.field_default_hint')}</span>
+            <span className="helper-text">{t('admin.field_default_hint')} <HelpDetails>{t('admin.field_default_hint_details')}</HelpDetails></span>
           </label>
           {defaultRisk && (
             <p role="status" className="text-xs text-amber-700">
@@ -783,7 +787,7 @@ export function FieldForm({
         )}
       </div>
       {editing && lockStructural && (
-        <p className="text-xs text-amber-700 sm:col-span-2 lg:col-span-3">{t('admin.field_locked_hint')}</p>
+        <p className="text-xs text-amber-700 sm:col-span-2 lg:col-span-3">{t('admin.field_locked_hint')} <HelpDetails>{t('admin.field_locked_hint_details')}</HelpDetails></p>
       )}
     </form>
   );

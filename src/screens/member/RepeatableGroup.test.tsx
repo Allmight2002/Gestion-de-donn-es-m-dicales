@@ -288,7 +288,7 @@ describe('RepeatableGroup — bascule tableau/carte (§14.2, point 14)', () => {
 describe('RepeatableGroup — actions et permissions', () => {
   test.each([
     ['lecture seule', { canWrite: false }, null],
-    ['hors ligne', { online: false }, 'Les blocs répétables ne sont pas disponibles hors ligne'],
+    ['hors ligne', { online: false }, 'Blocs répétables indisponibles hors ligne'],
     ['fiche non enregistrée', { patientId: null }, 'Ce bloc devient saisissable une fois la fiche enregistrée'],
   ] as const)('n’offre aucune écriture en état %s', (_name, state, notice) => {
     renderGroup({ rows: [occurrence('occ-1')], ...state });
@@ -496,7 +496,7 @@ describe('RepeatableGroup — groupe en sous-section (L72c)', () => {
     );
     const user = userEvent.setup();
 
-    expect(screen.getByText(/masqué pour cette fiche\. 2 occurrence\(s\) y restent enregistrée\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/masqué pour cette fiche : 2 occurrence\(s\) conservée\(s\)/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ajouter une occurrence' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Modifier l’occurrence/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();

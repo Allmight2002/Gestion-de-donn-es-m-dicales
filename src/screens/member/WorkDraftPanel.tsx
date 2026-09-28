@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { HelpTip } from '../../components/HelpTip';
 import { useI18n } from '../../i18n/useI18n';
 import type { WorkDraft } from '../../data/workDrafts';
 import type { useWorkDraft } from './useWorkDraft';
 
-export function WorkDraftPanel({ draft, online, baseId, patientId, showCandidates = true }: {
+export function WorkDraftPanel({ draft, online, baseId, patientId, showCandidates = true, identityInForm = false }: {
   draft: ReturnType<typeof useWorkDraft>;
   online: boolean;
   baseId: string;
   patientId?: string;
   showCandidates?: boolean;
+  /** Le formulaire fait saisir une identite, que le brouillon ne couvre pas : la precision reste visible. */
+  identityInForm?: boolean;
 }) {
   const { t } = useI18n();
   const [choice, setChoice] = useState<{ kind: 'resume' | 'discard'; draft: WorkDraft } | null>(null);
@@ -29,9 +32,21 @@ export function WorkDraftPanel({ draft, online, baseId, patientId, showCandidate
           : draft.protected && draft.state?.receipt
             ? t(local ? 'draft.saved_local' : 'draft.saved_server').replace('{time}', time(draft.state.receipt.updatedAt))
             : t('draft.unsaved');
-  return <div className="space-y-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
-    <p role="status" aria-live="polite" className="text-slate-700 dark:text-slate-200">{status}</p>
-    <p className="text-xs text-slate-500">{t('draft.clinical_only')}</p>
+  // Pastille : vert seulement pour un accuse recu (§4.2), jamais pour une sauvegarde en cours.
+  const saved = !draft.loading && !(draft.locked && draft.state?.status !== 'consumed') && !(!online && !local)
+    && draft.state?.status !== 'saving' && draft.protected && !!draft.state?.receipt;
+  const pending = draft.loading || draft.state?.status === 'saving';
+  const dot = saved ? 'bg-teal-600' : pending ? 'bg-slate-400' : 'bg-amber-500';
+  // Lot 2 (5.6-B) : un simple etat tient sur une ligne ; le cadre ne revient que pour une
+  // decision a prendre (erreur, brouillon a reprendre, enregistrement confirme).
+  const onlyStatus = !draft.error && draft.candidates.length === 0 && draft.completed.length === 0;
+  return <div className={onlyStatus ? 'space-y-1 text-sm' : 'space-y-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700'}>
+    <div className="flex items-center gap-2">
+      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+      <p role="status" aria-live="polite" className="min-w-0 text-slate-700 dark:text-slate-200">{status}</p>
+      {!identityInForm && <HelpTip label={t('draft.about')} className="-my-2">{t('draft.clinical_only')}</HelpTip>}
+    </div>
+    {identityInForm && <p className="text-xs text-slate-500">{t('draft.clinical_only')}</p>}
     {draft.error && <div className="space-y-2 text-amber-900 dark:text-amber-200"><p role="alert">{draft.error}</p>
       {!draft.locked && <button type="button" onClick={draft.retry} className="btn-secondary" disabled={(!online && !local) || draft.loading}>{t('draft.retry')}</button>}
       {draft.locked && <p>{t('draft.locked_hint')}</p>}
