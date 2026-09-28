@@ -125,3 +125,74 @@ describe('UX-2 brouillons analytiques privés et transactions', () => {
     expect((await db.admin.query('select state,payload from public.work_draft where id=$1', [editId])).rows[0].payload.values.sexe).toBe('M');
   });
 });
+
+// Audit UI mobile, lot 8 : la page « A faire » retrouve ses brouillons sans en connaitre la cible.
+describe('lot 8 : brouillons a reprendre (list_my_work_drafts)', () => {
+  type Listed = { id: string; baseId: string; kind: string; targetId: string | null; patientId: string | null;
+    patientCode: string | null; updatedAt: string; expiresAt: string };
+  const mine = async (uid = owner) => (await as(uid, 'select public.list_my_work_drafts() as result'))[0].result as Listed[];
+  const editor = async () => (await db.admin.query("select id from auth.users where email='editor@demo.test'")).rows[0].id as string;
+
+  test('ses brouillons actifs seulement, en metadonnees, avec le code patient pour naviguer', async () => {
+    const creation = randomUUID();
+    await save(creation, 0, payload('UX-TODO-SECRET'));
+    const seed = randomUUID();
+    await save(seed, 0, payload('UX-TODO-P'));
+    const created = await commit(seed, 1);
+    const code = (await db.admin.query('select patient_code from public.patient where id=$1', [created.id])).rows[0].patient_code;
+    const update = randomUUID();
+    await save(update, 0, payload('UX-TODO-P'), randomUUID(), owner, 'patient_update', created.id, String(created.version));
+
+    const listed = await mine();
+    const byId = new Map(listed.map((draft) => [draft.id, draft]));
+    expect(byId.get(creation)).toMatchObject({ baseId: base, kind: 'patient_create', targetId: null, patientId: null, patientCode: null });
+    expect(byId.get(update)).toMatchObject({ baseId: base, kind: 'patient_update', targetId: created.id, patientId: created.id, patientCode: code });
+    // Le brouillon consomme par l'enregistrement n'est plus a reprendre.
+    expect(byId.has(seed)).toBe(false);
+    // Jamais les reponses : ni valeurs, ni code propose par la saisie, ni proprietaire.
+    expect(JSON.stringify(listed)).not.toContain('UX-TODO-SECRET');
+    expect(Object.keys(byId.get(creation)!).sort()).toEqual(['baseId', 'expiresAt', 'id', 'kind', 'patientCode', 'patientId', 'targetId', 'updatedAt']);
+    // Un autre medecin ne voit rien des brouillons d'Alice.
+    expect((await mine(other)).some((draft) => draft.id === creation || draft.id === update)).toBe(false);
+  });
+
+  test('expire, supprime : omis ; lecture pure, sans purge ni ecriture', async () => {
+    const expired = randomUUID();
+    await save(expired);
+    await db.admin.query("update public.work_draft set expires_at=now()-interval '1 second' where id=$1", [expired]);
+    const deleted = randomUUID();
+    await save(deleted);
+    await as(owner, 'select public.delete_work_draft($1,$2,$3)', [deleted, 1, randomUUID()]);
+    const ids = (await mine()).map((draft) => draft.id);
+    expect(ids).not.toContain(expired);
+    expect(ids).not.toContain(deleted);
+    // Contrairement a list_work_drafts, la lecture ne marque rien comme expire.
+    expect((await db.admin.query('select state from public.work_draft where id=$1', [expired])).rows[0].state).toBe('active');
+  });
+
+  test('droits retires : le brouillon est omis, sans etre purge, et revient avec les droits', async () => {
+    const uid = await editor();
+    const id = randomUUID();
+    await save(id, 0, payload('UX-TODO-EDITOR'), randomUUID(), uid);
+    expect((await mine(uid)).some((draft) => draft.id === id)).toBe(true);
+    await db.admin.query('update public.base_access set revoked_at=now() where base_id=$1 and user_id=$2', [base, uid]);
+    try {
+      expect((await mine(uid)).some((draft) => draft.id === id)).toBe(false);
+      const row = (await db.admin.query('select state, payload from public.work_draft where id=$1', [id])).rows[0];
+      expect(row.state).toBe('active');
+      expect(row.payload.code).toBe('UX-TODO-EDITOR');
+    } finally {
+      await db.admin.query('update public.base_access set revoked_at=null where base_id=$1 and user_id=$2', [base, uid]);
+    }
+    expect((await mine(uid)).some((draft) => draft.id === id)).toBe(true);
+  });
+
+  test('session requise ; execution refusee a anon, accordee a authenticated', async () => {
+    await expect(db.asUser(null as unknown as string, (c) => c.query('select public.list_my_work_drafts()'))).rejects.toThrow('Authentification requise');
+    const privilege = async (role: string) => (await db.admin.query(
+      "select has_function_privilege($1, 'public.list_my_work_drafts()', 'EXECUTE') as allowed", [role])).rows[0].allowed;
+    expect(await privilege('anon')).toBe(false);
+    expect(await privilege('authenticated')).toBe(true);
+  });
+});
+

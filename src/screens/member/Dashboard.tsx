@@ -12,6 +12,7 @@ import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
+import { TodoSection } from './TodoSection';
 
 // Tableau de bord (cahier §8.3) : bases possedees + partagees. La creation de base est
 // reservee au role MEDECIN (le staff voit seulement les bases auxquelles il a acces).
@@ -175,6 +176,9 @@ export function Dashboard() {
       )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading && <SkeletonList rows={3} label={t('common.loading')} />}
+      {/* Lot 8 : ce qui attend la personne passe avant la liste des bases. En ligne seulement ;
+          les comptes de mission (mayCreate faux) n'ont pas de missions a surveiller. */}
+      {online && !loading && !error && <TodoSection bases={bases} showMissions={mayCreate} />}
       {online && (
       <div className="space-y-4">
         <div className="flex items-end justify-between gap-3">

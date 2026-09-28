@@ -47,13 +47,17 @@ export function EditPatientIdentity() {
     if (!baseId || !patientId) return;
     setLoading(true);
     try {
-      const [loadedPatient, loadedBase] = await Promise.all([
+      // Lot 8 (5.5-D2) : la fiche ne porte plus l'identite ; ce formulaire, qui l'affiche pour
+      // la corriger, la lit lui-meme par la RPC qui verifie le droit et journalise la lecture.
+      const [fetchedPatient, loadedBase, loadedIdentity] = await Promise.all([
         patients.getPatient(baseId, patientId),
         bases.getBase(baseId),
+        patients.getPatientIdentity(patientId),
       ]);
+      const loadedPatient = fetchedPatient ? { ...fetchedPatient, identity: loadedIdentity } : null;
       setPatient(loadedPatient);
       setBase(loadedBase);
-      if (loadedPatient?.identity) setIdentity(loadedPatient.identity);
+      if (loadedIdentity) setIdentity(loadedIdentity);
       setError(canCorrectPatientIdentity(loadedBase, loadedPatient) ? null : t('patient.identity_edit_forbidden'));
       loadedFor.current = `${baseId}:${patientId}`;
     } catch (cause) {

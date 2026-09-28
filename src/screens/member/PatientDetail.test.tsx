@@ -12,7 +12,7 @@ import { EditPatientIdentity } from './EditPatientIdentity';
 import { EditEncounter } from './EditEncounter';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
-import type { PatientRepository, Encounter, PatientListItem, FieldChange } from '../../data/patients';
+import type { PatientRepository, Encounter, PatientIdentityInfo, PatientListItem, FieldChange } from '../../data/patients';
 import type { AttachmentRepository } from '../../data/attachments';
 import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
@@ -54,12 +54,15 @@ const templateRepo = {
   },
 } as unknown as TemplateRepository;
 
+// Lot 8 (5.5-D2) : comme le vrai depot, la fiche arrive SANS identite ; celle-ci se lit a part,
+// par getPatientIdentity (la RPC qui verifie le droit et journalise la consultation).
 const patientView: PatientListItem = {
   id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'curated',
   version: 7,
   updatedAt: '2026-07-11T10:00:00.123456Z',
-  identity: { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null },
+  identity: null,
 };
+const jeanTest: PatientIdentityInfo = { fullName: 'Jean Test', dateOfBirth: '1980-01-01', phone: null, address: null, externalIdentifier: null };
 const encounter: Encounter = {
   id: 'e1', encounterType: 'consultation', encounterDate: '2024-06-01', validationStatus: 'complete',
   ageValue: 44, ageUnit: 'years',
@@ -72,6 +75,7 @@ function makePatients(over: Partial<PatientRepository> = {}): PatientRepository 
     async listPatients() { return []; },
     async createPatient() { return { id: '', code: '' }; },
     async getPatient() { return patientView; },
+    async getPatientIdentity() { return jeanTest; },
     async computeAge() { return 44; },
     async createEncounter() { return { id: 'e1' }; },
     async listEncounters() { return [encounter]; },
@@ -108,9 +112,11 @@ function renderAt(
 
 // Audit UI mobile, lot 2 : l'identite (D1) et les rencontres sont repliees par defaut. On les
 // deplie avant toute verification de leur contenu, positive OU negative : chercher un bouton
-// dans un bloc replie ne prouverait rien.
+// dans un bloc replie ne prouverait rien. Lot 8 (D2) : l'identite n'est lue qu'a ce toucher,
+// on attend donc qu'elle soit arrivee (ou que la lecture ait abouti) avant de conclure.
 async function openIdentity() {
   await userEvent.click(await screen.findByRole('button', { name: 'Identité (zone restreinte)' }));
+  await waitFor(() => expect(document.getElementById('patient-identity')).toHaveAttribute('aria-busy', 'false'));
 }
 async function openEncounters() {
   for (const toggle of document.querySelectorAll<HTMLElement>('button[aria-controls^="encounter-"][aria-expanded="false"]')) {
@@ -121,13 +127,13 @@ async function openEncounters() {
 describe('PatientDetail (fiche)', () => {
   test('affiche identite (si autorisee), donnees permanentes et rencontres', async () => {
     renderAt('/bases/b1/patients/p1', makePatients());
-    expect(await screen.findByText('Jean Test')).toBeInTheDocument(); // identite
-    expect(screen.getByText('Glasgow')).toBeInTheDocument(); // libelle champ rencontre
+    expect(await screen.findByText('Glasgow')).toBeInTheDocument(); // libelle champ rencontre
     expect(screen.getByText('12')).toBeInTheDocument(); // valeur de la rencontre
     expect(screen.getByText('Paludisme')).toBeInTheDocument(); // libelle lisible de la terminologie
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
     await openIdentity();
+    expect(screen.getByText('Jean Test')).toBeVisible(); // identite, lue au toucher
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
@@ -148,8 +154,7 @@ describe('PatientDetail (fiche)', () => {
 
     renderAt('/bases/b1/patients/p1', makePatients(), undefined, sansVariablePatient);
 
-    expect(await screen.findByText('Jean Test')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
     // La liste, elle, reste vide : la condition a ete DEPLACEE, pas supprimee.
     expect(screen.queryByText('Sexe')).not.toBeInTheDocument();
   });
@@ -224,7 +229,7 @@ describe('PatientDetail (fiche)', () => {
     } as unknown as BaseRepository;
 
     const { unmount } = renderAt('/bases/b1/patients/p1', makePatients({ async listEncounters() { return []; } }), undefined, templateRepo, stubAttachments, crossBase);
-    expect(await screen.findByText('Jean Test')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Rencontres' })).not.toBeInTheDocument();
     expect(screen.queryByText('Aucune rencontre.')).not.toBeInTheDocument();
     unmount();
@@ -389,15 +394,15 @@ describe('PatientDetail (fiche)', () => {
   test('ne double-journalise pas l identite cote client', async () => {
     const logIdentityRead = vi.fn(async () => {});
     renderAt('/bases/b1/patients/p1', makePatients(), { logIdentityRead } as unknown as AuditRepository);
-    await screen.findByText('Jean Test');
+    await openIdentity();
+    expect(screen.getByText('Jean Test')).toBeVisible();
     expect(logIdentityRead).not.toHaveBeenCalled();
   });
 
   test('supprimer le patient exige un motif puis appelle softDeletePatient', async () => {
     const softDeletePatient = vi.fn(async (_id: string, _reason: string) => {});
     renderAt('/bases/b1/patients/p1', makePatients({ softDeletePatient }));
-    await screen.findByText(/Jean Test/);
-    await userEvent.click(screen.getByRole('button', { name: 'Supprimer ce patient' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer ce patient' }));
     fireEvent.change(screen.getByLabelText('Motif de la suppression'), { target: { value: 'doublon' } });
     await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
     await waitFor(() => expect(softDeletePatient).toHaveBeenCalledWith('p1', 'doublon'));
@@ -411,7 +416,7 @@ describe('PatientDetail (fiche)', () => {
     };
     const viewerRepo = { async getBase() { return viewerBase; } } as unknown as BaseRepository;
     renderAt('/bases/b1/patients/p1', makePatients(), undefined, templateRepo, stubAttachments, viewerRepo);
-    await screen.findByText('Jean Test');
+    await screen.findByRole('button', { name: 'Identité (zone restreinte)' });
     expect(screen.queryByRole('button', { name: 'Supprimer ce patient' })).not.toBeInTheDocument();
   });
 
@@ -452,8 +457,8 @@ describe('PatientDetail (fiche)', () => {
       stubAttachments,
       missionRepo,
     );
-    await screen.findByText('Jean Test');
     await openIdentity();
+    expect(screen.getByText('Jean Test')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
     submitted.unmount();
 
@@ -465,8 +470,8 @@ describe('PatientDetail (fiche)', () => {
       stubAttachments,
       missionRepo,
     );
-    await screen.findByText('Jean Test');
     await openIdentity();
+    expect(screen.getByText('Jean Test')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
   });
 });
@@ -494,10 +499,12 @@ describe('EditPatientIdentity (correction nominative)', () => {
       currentUserId: 'mission-1',
     };
     const missionRepo = { async getBase() { return missionBase; } } as unknown as BaseRepository;
+    const getPatientIdentity = vi.fn(async () => jeanTest);
     renderAt(
       '/bases/b1/patients/p1/identity/edit',
       makePatients({
         getPatient: async () => missionPatient,
+        getPatientIdentity,
         findIdentityMatches: async () => [],
         updatePatientIdentity,
       }),
@@ -507,7 +514,10 @@ describe('EditPatientIdentity (correction nominative)', () => {
       missionRepo,
     );
 
-    fireEvent.change(await screen.findByLabelText('Nom complet'), { target: { value: 'Jeanne Exemple' } });
+    // Lot 8 (5.5-D2) : la fiche ne porte plus l'identite ; le formulaire la lit lui-meme.
+    expect(await screen.findByLabelText('Nom complet')).toHaveValue('Jean Test');
+    expect(getPatientIdentity).toHaveBeenCalledWith('p1');
+    fireEvent.change(screen.getByLabelText('Nom complet'), { target: { value: 'Jeanne Exemple' } });
     await setBirthDate('1981-02-03');
     fireEvent.change(screen.getByLabelText('Téléphone'), { target: { value: '+235 60 00 00 00' } });
     fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: 'Quartier fictif, N’Djamena' } });
@@ -770,16 +780,76 @@ describe('PatientDetail — fiche allégée (audit UI mobile, lot 2)', () => {
     expect(screen.getByText('Sexe')).not.toBeVisible();
   });
 
-  test('D1 : l’identité est chargée à l’ouverture de la fiche, mais repliée', async () => {
-    const getPatient = vi.fn(async () => patientView);
-    renderAt('/bases/b1/patients/p1', makePatients({ getPatient }));
+  // Lot 8 (5.5-D2) : l'identite n'est plus lue (ni journalisee) a l'ouverture de la fiche, mais
+  // au premier depliage, une seule fois ; replier puis rouvrir ne relit rien.
+  test('D2 : l’identité est lue au toucher, une seule fois, et reste repliée à l’ouverture', async () => {
+    const getPatientIdentity = vi.fn(async () => jeanTest);
+    renderAt('/bases/b1/patients/p1', makePatients({ getPatientIdentity }));
     const toggle = await screen.findByRole('button', { name: 'Identité (zone restreinte)' });
-    // Lecture — donc journal serveur — inchangée : seul l'affichage est replié.
-    expect(getPatient).toHaveBeenCalledTimes(1);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(getPatientIdentity).not.toHaveBeenCalled();
+    expect(screen.queryByText('Jean Test')).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(await screen.findByText('Jean Test')).toBeVisible();
+    expect(getPatientIdentity).toHaveBeenCalledTimes(1);
+    expect(getPatientIdentity).toHaveBeenCalledWith('p1');
+
+    await userEvent.click(toggle);
     expect(screen.getByText('Jean Test')).not.toBeVisible();
     await userEvent.click(toggle);
     expect(screen.getByText('Jean Test')).toBeVisible();
+    expect(getPatientIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  test('D2 : une panne de lecture est annoncée, et un nouveau toucher réessaie', async () => {
+    const getPatientIdentity = vi.fn<PatientRepository['getPatientIdentity']>()
+      .mockRejectedValueOnce(new Error('Lecture fictive impossible'))
+      .mockResolvedValueOnce(jeanTest);
+    renderAt('/bases/b1/patients/p1', makePatients({ getPatientIdentity }));
+    await openIdentity();
+    expect(screen.getByRole('alert')).toHaveTextContent('Lecture fictive impossible');
+    expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Identité (zone restreinte)' });
+    await userEvent.click(toggle);
+    await userEvent.click(toggle);
+    expect(await screen.findByText('Jean Test')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(getPatientIdentity).toHaveBeenCalledTimes(2);
+  });
+
+  test('D2 : sans identité enregistrée, la zone le dit et ne propose pas de correction', async () => {
+    renderAt('/bases/b1/patients/p1', makePatients({ getPatientIdentity: async () => null }));
+    await openIdentity();
+    expect(screen.getByText('Aucune identité disponible pour ce patient.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Corriger l’identité' })).not.toBeInTheDocument();
+  });
+
+  // Masquer n'est pas un controle : la RPC et la RLS ca_select refusent de toute facon. Mais sans
+  // le droit, la fiche ne propose ni la zone ni les images, et ne tente aucune lecture.
+  test('D2 : sans le droit de voir l’identité, ni zone identité, ni images, ni lecture', async () => {
+    const getPatientIdentity = vi.fn(async () => jeanTest);
+    const listAttachments = vi.fn(async () => []);
+    const noIdentity: BaseListing = {
+      ...baseListing, role: 'editor', permissions: { ...ALL_PERMS, canViewIdentity: false },
+    };
+    renderAt(
+      '/bases/b1/patients/p1', makePatients({ getPatientIdentity }), undefined, templateRepo,
+      { ...stubAttachments, listAttachments } as unknown as AttachmentRepository,
+      { async getBase() { return noIdentity; } } as unknown as BaseRepository,
+    );
+    expect(await screen.findByRole('button', { name: 'Modifier les données permanentes' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Identité (zone restreinte)' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Documents (zone restreinte)' })).not.toBeInTheDocument();
+    expect(getPatientIdentity).not.toHaveBeenCalled();
+  });
+
+  test('D2 : les images suivent le droit, sans attendre la lecture de l’identité', async () => {
+    const getPatientIdentity = vi.fn(async () => jeanTest);
+    renderAt('/bases/b1/patients/p1', makePatients({ getPatientIdentity }));
+    expect(await screen.findByRole('heading', { name: 'Documents (zone restreinte)' })).toBeInTheDocument();
+    expect(getPatientIdentity).not.toHaveBeenCalled();
   });
 
   test('les rencontres sont repliées, la plus récente en premier', async () => {

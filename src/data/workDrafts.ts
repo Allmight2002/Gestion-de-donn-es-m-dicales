@@ -39,9 +39,26 @@ export interface WorkDraftIdentity {
   externalIdentifier: string | null;
 }
 export interface WorkDraftCommitReceipt { id: string; code?: string; version?: number; updatedAt?: string }
+/**
+ * Audit UI mobile, lot 8 : brouillon serveur a reprendre, vu de la page « A faire ». Seulement
+ * des metadonnees : ni reponses, ni identite ; le code patient pseudonymise mene a la fiche.
+ */
+export interface WorkDraftSummary {
+  id: string;
+  baseId: string;
+  kind: WorkDraftKind;
+  targetId: string | null;
+  /** Patient concerne (cible, ou patient de la rencontre) ; null pour un nouveau patient. */
+  patientId: string | null;
+  patientCode: string | null;
+  updatedAt: string;
+  expiresAt: string;
+}
 export interface WorkDraftRepository {
   readonly available: boolean;
   list(context: Pick<WorkDraftContext, 'baseId' | 'kind' | 'targetId'>): Promise<WorkDraft[]>;
+  /** Lot 8 : brouillons actifs de la personne connectee, toutes bases. Facultatif. */
+  listMine?(): Promise<WorkDraftSummary[]>;
   save(context: WorkDraftContext, id: string, expectedRevision: number, operationId: string, payload: WorkDraftPayload): Promise<WorkDraftReceipt>;
   discard(id: string, expectedRevision: number, operationId: string): Promise<void>;
   commit(id: string, expectedRevision: number, operationId: string, identity?: WorkDraftIdentity): Promise<WorkDraftCommitReceipt>;
@@ -109,6 +126,9 @@ export function createWorkDraftRepository(client: SupabaseClient | null): WorkDr
         context: { baseId: row.base_id, kind: row.kind, targetId: row.target_id,
           templateVersionId: row.template_version_id, entityRevision: row.entity_revision },
       }));
+    },
+    async listMine() {
+      return rpc<WorkDraftSummary[]>('list_my_work_drafts', {});
     },
     async save(context, id, expectedRevision, operationId, payload) {
       if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > WORK_DRAFT_MAX_BYTES) throw new WorkDraftError('DRAFT_INVALID');

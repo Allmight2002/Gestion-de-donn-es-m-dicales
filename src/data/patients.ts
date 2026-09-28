@@ -61,7 +61,9 @@ export interface PatientListItem {
   updatedAt?: string | null;
   /** Auteur serveur de la fiche, requis pour limiter la correction d'identite du saisisseur. */
   createdBy?: string | null;
-  identity: PatientIdentityInfo | null; // null si pas d'acces identite
+  /** Toujours null en ligne depuis le lot 8 (5.5-D2) : l'identite ne voyage plus avec la fiche,
+   *  elle se lit a la demande par `getPatientIdentity`, qui journalise la consultation. */
+  identity: PatientIdentityInfo | null;
 }
 
 export interface NewPatientInput {
@@ -347,6 +349,11 @@ export interface PatientRepository {
   /** Rejeu IDEMPOTENT d'une creation hors-ligne : une meme cle + charge ne cree jamais deux fois. */
   replayPatientCreate(baseId: string, input: ReplayPatientCreateInput): Promise<{ id: string; code: string }>;
   getPatient(baseId: string, patientId: string): Promise<PatientListItem | null>;
+  /**
+   * Audit UI mobile, lot 8 (5.5-D2) : identite lue AU TOUCHER. La RPC verifie le droit et
+   * journalise la consultation avant de repondre ; null sans droit ou sans identite enregistree.
+   */
+  getPatientIdentity(patientId: string): Promise<PatientIdentityInfo | null>;
   /** E3 : contexte serveur historique + projection active, sans identité. */
   getPatientFormContext?(baseId: string, patientId: string): Promise<RecordFormContext | null>;
   /** Age calcule par le systeme (DOB jamais exposee). null si pas de date de naissance. */
@@ -508,8 +515,9 @@ const mapIdentity = (i: IdentityRow): PatientIdentityInfo => ({
   externalIdentifier: i.external_identifier,
 });
 // §5.8 — Element de LISTE pseudonymise : jamais d'identite. Le code (zone analytique) suffit a
-// parcourir la base ; le nom n'est revele que sur la FICHE patient (getPatient), ou chaque
-// consultation est journalisee. Les listes ne chargent donc aucune identite (rien en masse).
+// parcourir la base ; le nom n'est revele que sur demande (getPatientIdentity, au toucher sur la
+// fiche depuis le lot 8), et chaque consultation est journalisee. Les listes ne chargent donc
+// aucune identite (rien en masse).
 const toListItem = (p: PatientRow): PatientListItem => ({
   id: p.id,
   code: p.patient_code,
@@ -543,7 +551,7 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       throw new Error(NOT_CONFIGURED);
     };
     return {
-      listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, computeAge: fail, createEncounter: fail,
+      listPatients: fail, listPatientsPage: fail, fetchBaseSnapshot: fail, detectImportDuplicates: fail, findIdentityMatches: fail, createPatient: fail, getPatient: fail, getPatientIdentity: fail, computeAge: fail, createEncounter: fail,
       replayPatientCreate: fail, replayEncounterCreate: fail,
       listEncounters: fail, getEncounter: fail, updateEncounter: fail, listFieldChanges: fail,
       softDeletePatient: fail, softDeleteEncounter: fail, finalizePatient: fail, updatePatientData: fail, importRecords: fail, beginImportBatch: fail,
@@ -757,16 +765,18 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       if (resolved.error) throw resolved.error;
       const p = resolved.data;
       if (!p) return null;
-      const row = p as unknown as PatientRow;
+      // Lot 8 (5.5-D2) : ouvrir une fiche ne lit plus l'identite. Chaque lecture etant
+      // journalisee, le journal ne compte desormais que les consultations reelles.
+      return { ...toListItem(p as unknown as PatientRow), identity: null };
+    },
+
+    async getPatientIdentity(patientId) {
       // La zone identite n'est jamais lue en direct : la RPC verifie l'acces et audite
       // avant de renvoyer les champs. Sans acces identite, elle renvoie simplement [].
-      const { data: identRows, error: e2 } = await client.rpc('get_patient_identity', { p_patient_id: patientId });
-      if (e2) throw e2;
-      const i = (((identRows ?? []) as IdentityRow[])[0]) ?? null;
-      return {
-        ...toListItem(row),
-        identity: i ? mapIdentity(i) : null,
-      };
+      const { data, error } = await client.rpc('get_patient_identity', { p_patient_id: patientId });
+      if (error) throw error;
+      const row = (((data ?? []) as IdentityRow[])[0]) ?? null;
+      return row ? mapIdentity(row) : null;
     },
 
     async getPatientFormContext(baseId, patientId) {

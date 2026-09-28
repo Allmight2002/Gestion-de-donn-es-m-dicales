@@ -2,8 +2,9 @@
 // La page de base en ONGLETS — fil d'Ariane, quatre destinations selon le role/permissions,
 // sous-onglets du groupe actif, contenu enfant rendu via Outlet.
 import 'fake-indexeddb/auto';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
+import { setTerrainMode } from '../../lib/terrainMode';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Outlet, Route, Routes, useNavigate } from 'react-router';
 import { useState, type ReactNode } from 'react';
@@ -268,6 +269,56 @@ describe('BaseLayout — barre haute contextuelle (T1-B)', () => {
       </I18nProvider>,
     );
     expect(screen.getByRole('status', { name: 'barre haute' })).toHaveTextContent('Chargement');
+  });
+});
+
+// Audit UI mobile, lot 8 : mode « Terrain », preference de l'appareil. Seul Patients reste au
+// premier niveau ; « Plus » mene aux memes destinations, avec les memes conditions d'affichage.
+describe('BaseLayout — mode Terrain', () => {
+  afterEach(() => { act(() => setTerrainMode(false)); });
+
+  test('Patients, puis « Plus » avec les autres destinations du role', async () => {
+    setTerrainMode(true);
+    renderLayout(listingWith('owner'));
+    const nav = await screen.findByRole('navigation', { name: 'Gliomes 2026' });
+    expect(Array.from(nav.querySelectorAll('a'), (link) => link.textContent)).toEqual(['Patients']);
+    await userEvent.click(screen.getByRole('button', { name: 'Plus' }));
+    expect(screen.getByRole('button', { name: 'À compléter' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analyse' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Paramètres' }));
+    // Meme destination que l'onglet, et ses sous-onglets restent la pour s'orienter.
+    expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
+    expect(Array.from(screen.getByRole('navigation', { name: 'Paramètres' }).querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['Général', 'Formulaire', 'Accès', 'Journal']);
+    expect(screen.getByRole('button', { name: 'Plus' })).toHaveClass('border-teal-600');
+  });
+
+  test('« Plus » ne propose rien que le role n ouvre deja', async () => {
+    setTerrainMode(true);
+    renderLayout(listingWith('viewer'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Plus' }));
+    expect(screen.getByRole('button', { name: 'Analyse' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Paramètres' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'À compléter' })).toBeNull();
+  });
+
+  test('compte de mission : rien ne change, et l interrupteur suit en direct', async () => {
+    renderLayout(listingWith('viewer', {}, { expiresAt: inDays(120), canCreateStructuredData: true }));
+    const nav = await screen.findByRole('navigation', { name: 'Gliomes 2026' });
+    act(() => setTerrainMode(true));
+    expect(Array.from(nav.querySelectorAll('a'), (link) => link.textContent)).toEqual(['Patients']);
+    expect(screen.queryByRole('button', { name: 'Plus' })).toBeNull();
+  });
+
+  test('desactive, les quatre onglets reviennent sans rechargement', async () => {
+    setTerrainMode(true);
+    renderLayout(listingWith('owner'));
+    await screen.findByRole('button', { name: 'Plus' });
+    act(() => setTerrainMode(false));
+    const nav = screen.getByRole('navigation', { name: 'Gliomes 2026' });
+    expect(Array.from(nav.querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['Patients', 'À compléter', 'Analyse', 'Paramètres']);
+    expect(screen.queryByRole('button', { name: 'Plus' })).toBeNull();
   });
 });
 

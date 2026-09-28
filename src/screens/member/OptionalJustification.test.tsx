@@ -53,10 +53,12 @@ function listing(role: BaseListing['role'], over: Partial<BaseListing> = {}): Ba
   };
 }
 
+// Lot 8 (5.5-D2) : comme le vrai depot, la fiche arrive sans identite ; elle se lit a part.
+const identity = { fullName: 'Nom fictif', dateOfBirth: '1990-01-01', phone: null, address: null, externalIdentifier: null };
 const patient: PatientListItem = {
   id: 'p1', code: 'P-1', templateVersionId: 'v1', data: { historique: 'ancien' },
   validationStatus: 'draft', version: 3,
-  identity: { fullName: 'Nom fictif', dateOfBirth: '1990-01-01', phone: null, address: null, externalIdentifier: null },
+  identity: null,
 };
 
 type UpdatePatientData = PatientRepository['updatePatientData'];
@@ -143,6 +145,7 @@ describe('motif facultatif', () => {
     const bases = { async getBase() { return listing('owner'); } } as unknown as BaseRepository;
     const patients = {
       async getPatient() { return patient; },
+      async getPatientIdentity() { return identity; },
       async findIdentityMatches() { return []; },
       updatePatientIdentity: updateIdentity,
     } as unknown as PatientRepository;
