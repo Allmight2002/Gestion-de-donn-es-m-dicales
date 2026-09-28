@@ -159,6 +159,7 @@
         "delete_template(p_template_id uuid)",
         "delete_template_field(p_field_id uuid)",
         "duplicate_template_version(p_source_version_id uuid)",
+        "import_template_definition(p_payload jsonb, p_operation_key uuid)",
         "import_template_section(p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[])",
         "move_template_section(p_version_id uuid, p_section_id uuid, p_parent_key text)",
         "open_or_resume_form_preparation(p_base_id uuid)",

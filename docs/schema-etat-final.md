@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260928011000_my_todo_counts.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 411
+- Dernière migration incluse : `20260928120000_template_definition_transfer.sql`
+- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 413
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1390,6 +1390,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | expire_form_preparations | — | DEFINER | plpgsql |
 | export_incomplete_records | p_cohort_id uuid | INVOKER | sql |
+| export_template_definition | p_version_id uuid | INVOKER | plpgsql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_base_purge | p_operation_id uuid, p_manifest_hash text, p_actor_id uuid | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
@@ -1495,6 +1496,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | import_records | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_legacy | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
 | import_records_with_receipts | p_base_id uuid, p_rows jsonb, p_dry_run boolean, p_status text, p_conflict text, p_file_hash text, p_template_version_id uuid, p_batch_id uuid | DEFINER | plpgsql |
+| import_template_definition | p_payload jsonb, p_operation_key uuid | DEFINER | plpgsql |
 | import_template_section | p_source_version_id uuid, p_source_section_key text, p_target_version_id uuid, p_reuse_field_keys text[] | DEFINER | plpgsql |
 | invitation_permissions_still_valid | p_base_id uuid, p_actor uuid, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean | DEFINER | sql |
 | is_active_assigned_curator | p_task_id uuid | DEFINER | sql |

@@ -35,6 +35,7 @@
 | [cahier-des-charges-technique.md](cahier-des-charges-technique.md) | Spécification **technique** : comment c'est réalisé (ET) |
 | [schema-etat-final.md](schema-etat-final.md) | **Généré** (`npm run schema`) : tables, colonnes, policies RLS, triggers, fonctions |
 | [checklist-fonctionnalites-site.md](checklist-fonctionnalites-site.md) | Inventaire exhaustif des fonctionnalités, écran par écran |
+| [transfert-jeu-de-variables.md](transfert-jeu-de-variables.md) | Exporter un jeu de variables dans un fichier et le réimporter dans un autre compte ou une autre instance |
 
 ## 2. Sécurité 🟢
 

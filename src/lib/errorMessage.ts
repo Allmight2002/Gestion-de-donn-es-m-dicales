@@ -124,6 +124,22 @@ export function errorMessage(e: unknown, fallback: string): string {
   if (code === 'GROUP_WITHDRAWAL_VERSION_REFUSED') {
     return 'Cette version du formulaire masquerait des blocs qui portent des occurrences enregistrées. Elle n’a pas été appliquée.';
   }
+  // Transfert d'un jeu de variables par fichier : rien n'est cree quand l'un de ces refus tombe.
+  if (code === 'TEMPLATE_IMPORT_FORMAT_UNSUPPORTED') {
+    return "Ce fichier n'est pas un jeu de variables MedData pris en charge. Rien n'a été créé.";
+  }
+  if (code === 'TEMPLATE_IMPORT_TERMINOLOGY_MISSING') {
+    return "Ce jeu de variables utilise une nomenclature absente de ce serveur. Rien n'a été créé.";
+  }
+  if (code === 'TEMPLATE_IMPORT_INVALID') {
+    return "Ce fichier est incomplet ou incohérent (a-t-il été modifié à la main ?). Rien n'a été créé.";
+  }
+  if (code === 'TEMPLATE_IMPORT_FORBIDDEN') {
+    return "Votre rôle ne permet pas de créer un jeu de variables. Rien n'a été créé.";
+  }
+  if (code === 'TEMPLATE_EXPORT_NOT_FOUND') {
+    return "Ce jeu de variables n'existe plus ou ne vous est pas accessible.";
+  }
   if (code === 'FORM_RECORD_FORBIDDEN') {
     return "L'accès à cette fiche ou la permission de la modifier a changé. Vos saisies n'ont pas été enregistrées.";
   }

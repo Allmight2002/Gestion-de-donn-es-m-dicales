@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { MissingCode } from '../domain/export';
 import { optionKeys, toRawOptions } from '../domain/fieldOptions';
+import type { TemplateDefinition } from '../domain/templateDefinition';
 import type {
   ImportableBlock,
   RuleBatchPayload,
@@ -84,6 +85,12 @@ export interface TemplateRepository {
   /** Medecin : cree la version SUIVANTE de SON gabarit personnel (copie editable en draft).
    *  Permet de faire evoluer une variable/regle deja utilisee sans toucher l'historique (§8.2). */
   createNextVersion(templateId: string): Promise<TemplateVersion>;
+  /** Definition PORTABLE d'une version lisible (structure seule, sans identifiant interne),
+   *  destinee a etre enregistree dans un fichier. */
+  exportTemplateDefinition?(versionId: string): Promise<TemplateDefinition>;
+  /** Recree un gabarit PERSONNEL brouillon depuis un fichier de definition, en une operation
+   *  atomique et rejouable (meme cle -> meme resultat). */
+  importTemplateDefinition?(input: TemplateDefinitionImportInput): Promise<TemplateBundleResult>;
   /** Admin : promeut un gabarit (copie) en modele global propose a tous les medecins. */
   promoteToGlobal(templateId: string): Promise<void>;
   /** Renomme un gabarit (nom + specialite). Reserve au proprietaire / admin (RLS). */
@@ -104,6 +111,12 @@ export interface TemplateBundleInput {
   operationKey: string;
 }
 export interface TemplateBundleResult { templateId: string; versionId: string; baseId: string | null; }
+export interface TemplateDefinitionImportInput {
+  definition: TemplateDefinition;
+  /** Nom du nouveau gabarit ; a defaut, celui porte par le fichier. */
+  name?: string;
+  operationKey: string;
+}
 
 type VersionRow = {
   id: string;
@@ -265,7 +278,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       previewRuleBatch: fail, createRuleBatch: fail,
       deleteField: fail, reorderFields: fail, addRule: fail, updateRule: fail, deleteRule: fail, publishVersion: fail,
       archiveVersion: fail, duplicateVersion: fail, createNextVersion: fail, promoteToGlobal: fail, renameTemplate: fail,
-      deleteTemplate: fail,
+      deleteTemplate: fail, exportTemplateDefinition: fail, importTemplateDefinition: fail,
     };
   }
 
@@ -716,6 +729,23 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as VersionRow;
       return mapVersion(row);
+    },
+
+    async exportTemplateDefinition(versionId) {
+      const { data, error } = await client.rpc('export_template_definition', { p_version_id: versionId });
+      if (error) throw error;
+      return data as TemplateDefinition;
+    },
+
+    async importTemplateDefinition(input) {
+      const { data, error } = await client.rpc('import_template_definition', {
+        p_payload: { definition: input.definition, ...(input.name ? { name: input.name } : {}) },
+        p_operation_key: input.operationKey,
+      });
+      if (error) throw error;
+      clearVersionCache();
+      const row = data as { templateId: string; versionId: string };
+      return { templateId: row.templateId, versionId: row.versionId, baseId: null };
     },
 
     async promoteToGlobal(templateId) {
