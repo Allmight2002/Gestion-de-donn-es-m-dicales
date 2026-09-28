@@ -5,8 +5,8 @@
 
 export const TEMPLATE_DEFINITION_FORMAT = 'meddata.template-definition';
 export const TEMPLATE_DEFINITION_VERSION = 1;
-/** Un gabarit plafonne a 500 variables : 5 Mo couvre largement un fichier legitime. */
-export const TEMPLATE_DEFINITION_MAX_BYTES = 5 * 1024 * 1024;
+/** L import accepte jusqu a 2000 variables (~1,4 Ko chacune dans un registre reel) : 10 Mo couvre largement un fichier legitime. */
+export const TEMPLATE_DEFINITION_MAX_BYTES = 10 * 1024 * 1024;
 
 export interface TemplateDefinition {
   format: typeof TEMPLATE_DEFINITION_FORMAT;
