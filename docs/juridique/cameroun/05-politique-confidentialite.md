@@ -43,9 +43,11 @@ reçu une clairance éthique et une autorisation administrative. Détail complet
 | Compte | Nom d'affichage, e-mail professionnel, rôle, permissions par base | Authentification, habilitations, invitations |
 | Journaux d'audit | Actions sensibles horodatées (consultations d'identité, exports, changements d'accès, suppressions…) | Sécurité, imputabilité, obligations légales |
 | Journaux techniques | Adresses IP, événements de connexion (Supabase Auth), journaux d'hébergement (Vercel/Supabase) | Fonctionnement, sécurité, détection d'abus |
+| Mesure d'audience | Chemin des pages consultées (sans paramètres), métriques de performance, type de navigateur et de système (Cloudflare Web Analytics, sans cookie) | Statistiques agrégées de fréquentation et de performance du site |
 
 Base de licéité : gestion de la relation d'habilitation et obligation légale de
-sécurité. L'utilisation de la plateforme vaut acceptation de la
+sécurité ; pour la mesure d'audience : `[base de licéité à valider par le conseil]`.
+L'utilisation de la plateforme vaut acceptation de la
 [charte utilisateurs (11)](11-charte-utilisateurs.md).
 
 ## 3. Qui accède aux données ?
@@ -65,7 +67,8 @@ sécurité. L'utilisation de la plateforme vaut acceptation de la
 Les données sont hébergées auprès de **Supabase** (base de données, authentification,
 stockage de fichiers, fonctions serveur), dans la région **`[eu-west-3 — Paris,
 France]`**, avec chiffrement en transit et au repos. Le frontend statique est servi par
-**Vercel**. Les e-mails de service (confirmation, réinitialisation) sont acheminés par
+**Vercel** ; la mesure d'audience du site est confiée à **Cloudflare** (Web Analytics).
+Les e-mails de service (confirmation, réinitialisation) sont acheminés par
 `[fournisseur SMTP]`. Les fichiers téléversés sont analysés par un service antiviral
 opéré par `[hébergeur ClamAV]`. Chaque sous-traitant est lié par un accord de
 traitement des données ; liste tenue à jour dans
@@ -110,8 +113,8 @@ professionnel, elle utilise uniquement des stockages **techniques** :
 est désactivé pour les données réelles, et l'intégralité des stockages locaux
 (IndexedDB, localStorage, caches, service worker) est **purgée à la déconnexion**, à
 l'expiration de session et au changement de compte. La plateforme n'utilise aucun
-traceur publicitaire ni outil de mesure d'audience tiers `[à mettre à jour si un outil
-de supervision est ajouté]`.
+traceur publicitaire. La mesure d'audience (Cloudflare Web Analytics, voir §2.2 et §4) ne
+dépose aucun cookie et n'utilise aucun stockage sur l'appareil.
 
 ## 8. Sécurité
 

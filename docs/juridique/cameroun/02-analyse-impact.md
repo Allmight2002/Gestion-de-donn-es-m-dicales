@@ -5,7 +5,7 @@
 | Version | 1.0 (projet) |
 | Date | 2026-07-14 |
 | Statut | **PROJET — à valider** (référent protection des données, conseil juridique, avis du comité d'éthique) |
-| Traitement évalué | Registre clinique MedData (fiches T1 à T7 du [registre des traitements](01-registre-traitements.md)) |
+| Traitement évalué | Registre clinique MedData (fiches T1 à T8 du [registre des traitements](01-registre-traitements.md)) |
 | Responsable du traitement | `[À COMPLÉTER]` |
 | Rédaction / contributions | `[porteur scientifique]`, `[référent protection des données]`, `[référent technique]` |
 
@@ -47,6 +47,9 @@ exports sans identité. Architecture détaillée : [architecture.md](../../archi
   (TLS) et au repos.
 - **Frontend** : build statique servi par Vercel ; les données patients transitent
   directement du navigateur vers Supabase (Vercel ne les stocke pas).
+- **Mesure d'audience** (fiche T8) : en production uniquement, le beacon Cloudflare Web
+  Analytics transmet le chemin des pages (sans paramètres ni fragment), des métriques de
+  performance et le type de navigateur ; ni cookie ni stockage local, aucune donnée patient.
 - **Analyse antivirale** : service ClamAV opéré sur `[À COMPLÉTER : hébergeur/VPS]`,
   appelé par les fonctions Edge pour tout fichier téléversé ; fichiers suspects mis en
   quarantaine (`quarantined-uploads`).
@@ -132,6 +135,7 @@ en fait la liste opposable.
 | R10 | **Transfert international non couvert** (défaut d'autorisation art. 32) | Risque juridique | 3 | 2 | Traité par la voie de conformité : pas de donnée réelle avant autorisation + consentement + DPA (blocant dans la checklist 13) |
 | R11 | **Violation non détectée ou non notifiée dans les délais** | Absence de monitoring | 3 | 2 | Modéré : procédure (08), monitoring exigé (13), registre des violations |
 | R12 | **Curateur remontant à l'identité** | Contenu résiduel des documents | 3 | 1 | Faible : RLS (aucun accès identité), documents dé-identifiés à la source, engagement signé, accès refermé après finalisation |
+| R13 | **Fuite d'information vers le service de mesure d'audience** (donnée transmise à Cloudflare avec l'adresse d'une page) | Paramètre sensible dans une URL (jeton d'invitation, retour de récupération), évolution future des routes | 2 | 1 | Faible : le beacon retire query string et fragment ; aucun nom ni valeur clinique dans les chemins (règle produit) ; CSP limitée au beacon ; script absent hors production et désactivable à la release |
 
 **Risques jugés inacceptables sans action** : R2, R5, R8, R10, R11 → couverts par le plan
 d'action ci-dessous ; la mise en production réelle est conditionnée à sa réalisation.
@@ -141,7 +145,7 @@ d'action ci-dessous ; la mise en production réelle est conditionnée à sa réa
 | # | Action | Porteur | Échéance | Lien |
 |---|---|---|---|---|
 | A1 | Compléter et faire valider le dossier juridique (revue conseil, comité d'éthique, AAR, formalités autorité) | Porteur du projet | Avant toute donnée réelle | README §2 |
-| A2 | Signer le DPA Supabase (plan Team recommandé), documenter la région de production et les engagements SMTP/ClamAV/Vercel | Porteur + conseil | Avant données réelles | (10) |
+| A2 | Signer le DPA Supabase (plan Team recommandé), documenter la région de production et les engagements SMTP/ClamAV/Vercel/Cloudflare | Porteur + conseil | Avant données réelles | (10) |
 | A3 | Déployer les garde-fous anti-ré-identification : consigne de dé-identification des documents avant téléversement (procédure + case à cocher de responsabilité), interdiction chartée des identifiants en champ libre, revue périodique par échantillonnage | Référent PD + investigateurs | Avant données réelles, puis continu | (11) |
 | A4 | Former chaque utilisateur (sécurité, charte, procédure incident) et recueillir les engagements signés | Référent PD | Avant ouverture des comptes réels | (11) |
 | A5 | Étudier le chiffrement applicatif de la zone identité (clé hors hébergeur) — décision documentée à la montée en charge | Référent technique | Revue à `[6 mois]` après pilote | — |
