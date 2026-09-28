@@ -189,6 +189,7 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.queryByRole('link', { name: /Mes jeux de variables/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Groupes de recherche/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Corbeille/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /^Mode Terrain/ })).not.toBeInTheDocument();
   });
 
   test('saisisseur : barre laterale limitee au tableau de bord et a la synchronisation', async () => {
@@ -199,6 +200,26 @@ describe('AppShell (UI-1, barre laterale)', () => {
     expect(screen.queryByRole('link', { name: /Mes jeux de variables/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Comptes de mission/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Corbeille/ })).not.toBeInTheDocument();
+    // Lot 8 : sa base n'a deja qu'un onglet, le mode Terrain n'a rien a lui retirer.
+    expect(screen.queryByRole('switch', { name: 'Mode Terrain' })).not.toBeInTheDocument();
+  });
+
+  // Audit UI mobile, lot 8 : le mode Terrain se regle dans le menu, pour cet appareil seulement.
+  test('medecin : l interrupteur Terrain est en bas du menu et se retient sur l appareil', async () => {
+    renderShell({ id: 'u-terrain', fullName: 'Dr Terrain', globalRole: 'medecin', language: 'fr' });
+    await screen.findByText('Dr Terrain');
+    const sidebar = screen.getByRole('complementary');
+    const toggle = within(sidebar).getByRole('switch', { name: /^Mode Terrain/ });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(toggle).toHaveAccessibleDescription('Dans une base : Patients d’abord, le reste dans « Plus ».');
+    expect(toggle.closest('.shrink-0')).toContainElement(sidebar.querySelector('[aria-label="Se déconnecter"]'));
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem('meddata:terrain')).toBe('1');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(localStorage.getItem('meddata:terrain')).toBeNull();
   });
 
   test('logout avec outbox vide se deconnecte sans confirmation', async () => {

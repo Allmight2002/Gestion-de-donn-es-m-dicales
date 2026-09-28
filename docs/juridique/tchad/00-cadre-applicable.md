@@ -19,7 +19,7 @@ lecture croisée du produit tel que réellement construit
 ([architecture.md](../../architecture.md),
 [cahier-des-charges-metier.md](../../cahier-des-charges-metier.md)) et des textes
 tchadiens et internationaux recensés §3, complétée par les référentiels des
-sous-traitants (Supabase, Vercel).
+sous-traitants (Supabase, Vercel, Cloudflare).
 
 **Limite assumée.** Le texte intégral de la loi n° 007/PR/2015 et du décret
 n° 075/PR/2019 n'est pas librement accessible en ligne : les régimes exacts
@@ -72,6 +72,7 @@ cumulatives :
 | Administrateur système | Personne habilitée, aucune donnée patient | Gère gabarits et comptes uniquement |
 | Supabase Inc. (et AWS en sous-traitance ultérieure) | **Sous-traitant** (hébergement base, auth, stockage, fonctions) | DPA à signer ; données en région `eu-west-3` (Paris) |
 | Vercel Inc. | Sous-traitant (hébergement du frontend statique ; journaux techniques) | Ne stocke pas de données patients |
+| Cloudflare, Inc. | Sous-traitant (mesure d'audience du site de production : Cloudflare Web Analytics) | Aucune donnée patient ; ni cookie ni stockage local (fiche T8 du registre) |
 | Fournisseur SMTP `[À COMPLÉTER]` | Sous-traitant (e-mails de service aux professionnels) | Aucune donnée patient dans les e-mails |
 | Hébergeur du scanner ClamAV `[À COMPLÉTER]` | Sous-traitant (analyse antivirale des fichiers téléversés) | Voit transiter les documents bruts : engagement requis |
 | Patients | **Personnes concernées** | Droits : voir [07-droits-personnes.md](07-droits-personnes.md) |
@@ -105,6 +106,9 @@ cumulatives :
   Team/Enterprise) ; résidence des données par région choisie (production :
   `[À CONFIRMER — eu-west-3, Paris]`). Voir [10-sous-traitants-transferts.md](10-sous-traitants-transferts.md).
 - **Vercel** : DPA disponible ; héberge uniquement le build statique du frontend.
+- **Cloudflare** : DPA client `[à vérifier et archiver]` ; reçoit uniquement les mesures
+  d'audience du frontend de production (chemins de pages sans paramètres, performances,
+  type de navigateur).
 
 ## 4. Matrice des obligations et état de MedData
 
@@ -117,7 +121,7 @@ cumulatives :
 | Sécurité et confidentialité (lois 007 et 009/PR/2015) | Fort socle : RLS 3 zones, âge calculé serveur, exports en liste blanche, `audit_log`, RPC-only, ClamAV, hors-ligne désactivé | PSSI (06) ; compléter : MFA, sauvegardes testées, monitoring ([deploiement.md §8](../../deploiement.md)) |
 | Notification des violations | Aucune procédure | Procédure (08) + registre des violations ; notification à l'ANSICE |
 | Documentation des traitements | Néant | Registre (01), tenu à jour |
-| Encadrement des sous-traitants | Aucun contrat signé | DPA Supabase + engagements SMTP/ClamAV/Vercel (10) |
+| Encadrement des sous-traitants | Aucun contrat signé | DPA Supabase + engagements SMTP/ClamAV/Vercel/Cloudflare (10) |
 | Transfert international (hébergement UE) | Données (fictives) déjà hébergées en UE | Formalité de transfert ANSICE + consentement explicite (04) + garanties contractuelles (10) `[articles exacts à confirmer]` |
 | Référent protection des données | Personne non désignée | Désigner un référent `[À COMPLÉTER]` `[vérifier si la loi tchadienne impose un correspondant/DPO]` |
 | Avis éthique + autorisation ministérielle | Non réalisés | Dossier (12) : CNBT puis ministère |

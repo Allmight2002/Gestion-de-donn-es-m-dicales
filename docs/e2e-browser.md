@@ -39,7 +39,7 @@ incident réseau transitoire d'une régression, sans masquer une erreur locale a
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 | **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
 | **LOT13 dédié** | révocation dynamique, indisponibilité/reconnexion Supabase, idempotence après réponse perdue, import, retry d'upload, hors-ligne historique et suppression | scénarios présents dans `e2e/lot13-complete.spec.ts`, exécutés seulement par le job staging dédié ; leur présence ne vaut pas preuve actuelle d'un run réussi |
-| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 26 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
+| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 27 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
@@ -66,11 +66,12 @@ sont des couvertures **complémentaires et distinctes**, pas un substitut au par
 ## Garde-fou d'affichage sur téléphone (audit UI mobile, lot 7)
 
 `e2e/mobile-360.spec.ts` contrôle les budgets de
-[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 26 écrans, à 360 × 800 px
+[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 27 écrans, à 360 × 800 px
 en tactile :
 
 - aucun débordement horizontal ;
-- le premier contenu utile (première base, premier patient, premier champ…) commence avant 400 px ;
+- le premier contenu utile (première ligne « À faire », premier patient, premier champ…) commence
+  avant 400 px ;
 - aucune aide clavier visible au doigt (`kbd`, `.keyboard-hint`, « Ctrl … »), tiroir et palette de
   recherche compris ;
 - jamais plus d'un bouton plein visible à la fois, l'écran défilant de haut en bas.
@@ -81,7 +82,9 @@ réglage, droits d'un membre et invitation, missions terminées et « ⋯ » d'u
 formulaire en plein écran, sans les onglets de la base (lot 5) ; dans l'éditeur des jeux de
 variables, filtres et index en panneau bas, « ⋯ » d'une variable, mode « Réorganiser », fiche d'une
 variable, section dépliée et ajout d'une section, groupe de règles déplié et liste recherchable du
-formulaire de règle (lot 6).
+formulaire de règle (lot 6) ; brouillon de la page « À faire » rouvrant son formulaire, identité
+lue au toucher sur la fiche, et menu « Plus » du mode Terrain, activé par l'interrupteur du menu
+(lot 8).
 
 ```bash
 npx playwright install chromium   # une fois

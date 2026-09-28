@@ -4,8 +4,9 @@ import { CalendarDays, ChevronRight, FileText, Image as ImageIcon, Lock, Plus } 
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import type { Encounter, PatientListItem } from '../../data/patients';
+import type { Encounter, PatientIdentityInfo, PatientListItem } from '../../data/patients';
 import type { AttachmentItem } from '../../data/attachments';
+import type { BaseListing } from '../../data/bases';
 import type { MessageKey } from '../../i18n/messages';
 import { InspectionStatusBadge, RetryInspectionButton } from '../../components/InspectionStatusBadge';
 import { isInspectionReadable, isInspectionRetryable } from '../../data/inspection';
@@ -162,9 +163,19 @@ function AttachmentMedia({ isImage, label, load, onReveal, readable }: {
   );
 }
 
+// Audit UI mobile, lot 8 (5.5-D2) : etat de la zone identite, rattache au patient qu'il
+// concerne. Changer de fiche le remet donc a zero, et une reponse tardive est ignoree.
+type IdentityView = {
+  patientId: string;
+  open: boolean;
+  status: 'idle' | 'loading' | 'loaded' | 'error';
+  identity: PatientIdentityInfo | null;
+  error: string | null;
+};
+
 // Fiche patient (cahier §8.6) : Identite (si autorise) / donnees permanentes /
-// rencontres par section. La fiche identite n'est rendue que si la RLS a renvoye
-// l'identite (acces zone restreinte).
+// rencontres par section. La zone identite n'est proposee qu'avec le droit de la voir, et
+// elle n'est lue qu'au toucher (lot 8, 5.5-D2) ; le serveur reste seul juge de l'acces.
 export function PatientDetail() {
   const { id: baseId, patientId } = useParams();
   const navigate = useNavigate();
@@ -190,7 +201,12 @@ export function PatientDetail() {
   const [currentVersionId, setCurrentVersionId] = useState<string | null>(null);
   const [offlineView, setOfflineView] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
-  const [canCorrectIdentity, setCanCorrectIdentity] = useState(false);
+  // Acces de la personne a la base : decide si la zone identite et les images sont proposees.
+  const [listing, setListing] = useState<BaseListing | null>(null);
+  // D1 : l'identite est repliee en une ligne. D2 (lot 8) : elle n'est plus lue a l'ouverture de
+  // la fiche, mais au premier depliage, par la RPC qui verifie le droit et journalise la
+  // consultation avant de repondre. Le journal ne compte ainsi que les consultations reelles.
+  const [identityView, setIdentityView] = useState<IdentityView | null>(null);
   // §4.5 : dispense accordée par le serveur au propriétaire réel ; l'écran ne fait que cesser
   // d'exiger le texte. Les suppressions gardent leur confirmation, leur droit et leur audit.
   const [isCrossSectional, setIsCrossSectional] = useState(false);
@@ -254,7 +270,9 @@ export function PatientDetail() {
         const op = snap?.patients.find((pp) => pp.id === patientId) ?? null;
         setOfflineView(true);
         setCanEdit(false);
-        setCanCorrectIdentity(false);
+        // Hors ligne, aucune identite n'est gardee en memoire, meme deja lue en ligne.
+        setListing(null);
+        setIdentityView(null);
         setIsCrossSectional(false);
         setAttachments([]);
         if (!op) {
@@ -325,7 +343,7 @@ export function PatientDetail() {
       setEncounters(encs);
       setAttachments(atts);
       setCanEdit(base?.role === 'owner' || !!base?.permissions.canEditStructuredData);
-      setCanCorrectIdentity(canCorrectPatientIdentity(base, p));
+      setListing(base);
       setIsCrossSectional((base?.base.observationModel ?? 'longitudinal') === 'cross_sectional');
       if (base?.base.currentTemplateVersionId) {
         setCurrentVersionId(base.base.currentTemplateVersionId);
@@ -397,9 +415,27 @@ export function PatientDetail() {
   // Decision 3 : les valeurs vides sont masquees par defaut, un bouton les montre toutes.
   const [showEmpty, setShowEmpty] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
-  // D1 : l'identite est repliee en une ligne. Elle reste chargee (et journalisee) a l'ouverture
-  // de la fiche, exactement comme avant : seul l'affichage change.
-  const [identityOpen, setIdentityOpen] = useState(false);
+  const identityState: IdentityView = identityView && identityView.patientId === patientId
+    ? identityView
+    : { patientId: patientId ?? '', open: false, status: 'idle', identity: null, error: null };
+  // Meme regle que le serveur (can_view_identity, RLS des images) : proprietaire, ou acces qui
+  // accorde la vue de l'identite. Proposer n'autorise rien : la RPC et la RLS decident.
+  const mayViewIdentity = !offlineView && !!listing
+    && (listing.role === 'owner' || listing.permissions.canViewIdentity);
+  async function toggleIdentity() {
+    if (!patientId) return;
+    const open = !identityState.open;
+    const read = open && (identityState.status === 'idle' || identityState.status === 'error');
+    setIdentityView({ ...identityState, open, ...(read ? { status: 'loading' as const, error: null } : {}) });
+    if (!read) return;
+    try {
+      const identity = await patients.getPatientIdentity(patientId);
+      setIdentityView((view) => (view?.patientId === patientId ? { ...view, status: 'loaded', identity } : view));
+    } catch (e) {
+      const message = errorMessage(e, t('common.error'));
+      setIdentityView((view) => (view?.patientId === patientId ? { ...view, status: 'error', error: message } : view));
+    }
+  }
   const [openEncounters, setOpenEncounters] = useState<ReadonlySet<string>>(new Set());
   const toggleIn = (set: ReadonlySet<string>, key: string) => {
     const next = new Set(set);
@@ -509,6 +545,9 @@ export function PatientDetail() {
   // en base longitudinale, l'action du quotidien est « Ajouter une rencontre » et « Modifier »
   // passe en secondaire ; en base transversale, « Modifier » reste l'action principale.
   const addsEncounters = !offlineView && !isCrossSectional;
+  const shownIdentity = identityState.status === 'loaded' ? identityState.identity : null;
+  // La correction se propose sur l'identite effectivement lue, avec la meme regle qu'avant.
+  const canCorrectIdentity = canCorrectPatientIdentity(listing, { ...patient, identity: shownIdentity });
 
   return (
     <section className="max-w-4xl space-y-5 max-lg:pb-20 sm:space-y-6">
@@ -532,22 +571,33 @@ export function PatientDetail() {
         ) : undefined}
       />
 
-      {patient.identity && (
+      {mayViewIdentity && (
         <fieldset className="rounded-2xl border border-amber-200 bg-amber-50/50 px-4 text-sm shadow-sm">
           <legend className="sr-only">{t('patient.identity_section')}</legend>
-          <button type="button" aria-expanded={identityOpen} aria-controls="patient-identity"
-            onClick={() => setIdentityOpen((open) => !open)}
+          <button type="button" aria-expanded={identityState.open} aria-controls="patient-identity"
+            onClick={() => void toggleIdentity()}
             className="flex min-h-11 w-full items-center gap-2 text-left text-sm font-semibold text-amber-800 dark:text-amber-200">
             <Lock size={15} aria-hidden />
             <span className="flex-1">{t('patient.identity_section')}</span>
-            <ChevronRight size={16} aria-hidden className={`shrink-0 transition motion-reduce:transition-none ${identityOpen ? 'rotate-90' : ''}`} />
+            <ChevronRight size={16} aria-hidden className={`shrink-0 transition motion-reduce:transition-none ${identityState.open ? 'rotate-90' : ''}`} />
           </button>
-          <div id="patient-identity" hidden={!identityOpen} className="space-y-1 pb-4">
-            <div><span className="text-slate-500">{t('patient.full_name')} :</span> {patient.identity.fullName ?? '—'}</div>
-            <div><span className="text-slate-500">{t('patient.dob')} :</span> {patient.identity.dateOfBirth ?? '—'}</div>
-            <div><span className="text-slate-500">{t('patient.phone')} :</span> {patient.identity.phone ?? '—'}</div>
-            <div><span className="text-slate-500">{t('patient.address')} :</span> {patient.identity.address ?? '—'}</div>
-            <div><span className="text-slate-500">{t('patient.external_id')} :</span> {patient.identity.externalIdentifier ?? '—'}</div>
+          <div id="patient-identity" hidden={!identityState.open} aria-busy={identityState.status === 'loading'} className="space-y-1 pb-4">
+            {identityState.status === 'loading' && <p className="text-slate-500">{t('common.loading')}</p>}
+            {identityState.status === 'error' && (
+              <p role="alert" className="break-words text-red-600">{identityState.error}</p>
+            )}
+            {identityState.status === 'loaded' && !identityState.identity && (
+              <p className="text-slate-500">{t('patient.identity_none')}</p>
+            )}
+            {shownIdentity && (
+              <>
+                <div><span className="text-slate-500">{t('patient.full_name')} :</span> {shownIdentity.fullName ?? '—'}</div>
+                <div><span className="text-slate-500">{t('patient.dob')} :</span> {shownIdentity.dateOfBirth ?? '—'}</div>
+                <div><span className="text-slate-500">{t('patient.phone')} :</span> {shownIdentity.phone ?? '—'}</div>
+                <div><span className="text-slate-500">{t('patient.address')} :</span> {shownIdentity.address ?? '—'}</div>
+                <div><span className="text-slate-500">{t('patient.external_id')} :</span> {shownIdentity.externalIdentifier ?? '—'}</div>
+              </>
+            )}
             {canCorrectIdentity && (
               <button
                 type="button"
@@ -817,7 +867,9 @@ export function PatientDetail() {
       </div>
       )}
 
-      {patient.identity && (
+      {/* Lot 8 (5.5-D2) : les images suivent le DROIT de voir l'identite (RLS ca_select), et
+          non plus la presence d'une identite deja lue, qui n'est plus chargee a l'ouverture. */}
+      {mayViewIdentity && (
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">{t('image.section')}</h2>

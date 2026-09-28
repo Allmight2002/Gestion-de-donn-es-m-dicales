@@ -65,9 +65,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // +2 L72e : surcharges declaratives de update_patient et update_patient_compatible. Elles
     // controlent la permission de suppression avant tout verrou et deleguent l'ecriture de la
     // fiche aux fonctions existantes ; le predicat et les helpers de retrait restent fermes.
-    expect(signatures).toHaveLength(150);
+    // +1 audit UI mobile, lot 8 : list_my_work_drafts. La page « A faire » retrouve les
+    // brouillons de la personne connectee sans en connaitre la cible ; la table reste fermee aux
+    // clients, et la lecture ne rend que des metadonnees filtrees par les droits actuels.
+    expect(signatures).toHaveLength(151);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(162);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(163);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

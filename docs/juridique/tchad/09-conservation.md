@@ -32,6 +32,7 @@ d'information (03).
 | Comptes professionnels | `profiles`, `base_access`, invitations | Durée d'activité + **`[3 ans]`** après désactivation | Désactivation du compte | Suppression ; les actions passées restent dans `audit_log` (imputabilité) |
 | Invitations | `base_invitation` (hash de jeton) | Expiration du jeton + `[1 an]` | Expiration/consommation | Suppression |
 | Journaux techniques hébergeurs | Logs Supabase/Vercel (IP, requêtes) | Rétention par défaut des plateformes `[à documenter : consulter les politiques Supabase/Vercel]` | — | Géré par les sous-traitants (DPA) |
+| Mesure d'audience | Mesures Cloudflare Web Analytics (chemins de pages, performances, type de navigateur) | Rétention de la plateforme `[à documenter : consulter la politique Cloudflare]` | — | Géré par le sous-traitant (DPA) |
 | Sauvegardes | Sauvegardes Supabase | **`[7–30 jours]` glissants selon le plan** `[à documenter]` | Expiration automatique | Écrasement/expiration ; une donnée supprimée disparaît des sauvegardes à l'issue de la rétention |
 | Consentements papier | Originaux signés + registre des consentements | Durée du registre + **`[5 ans]`** (preuve de licéité) | Clôture | Destruction confidentielle (broyage) consignée |
 | Registres de conformité | Registre des traitements, des demandes de droits, des violations | Permanent pendant l'activité + `[5 ans]` après clôture | Clôture | Archivage par le responsable du traitement |

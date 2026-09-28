@@ -234,6 +234,16 @@ describe('Dashboard', () => {
     expect(screen.getByText(/Vos saisies restent enregistrées/)).toBeInTheDocument();
   });
 
+  // Audit UI mobile, lot 8 : ce qui attend la personne passe avant la liste de ses bases.
+  test('la section À faire précède la liste des bases', async () => {
+    const repo = { ...mockBases(), async getTodoCounts() { return [{ baseId: 'b1', incomplete: 3, clarifications: 0 }]; } } as BaseRepository;
+    renderApp(repo);
+    const todo = await screen.findByRole('heading', { level: 2, name: 'À faire' });
+    const bases = screen.getByRole('heading', { level: 2, name: 'Vos bases' });
+    expect(todo.compareDocumentPosition(bases) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^3 dossier\(s\) incomplet\(s\)/ })).toHaveAttribute('href', '/bases/b1/queue');
+  });
+
   test('un medecin sans base garde l invitation a en creer une', async () => {
     const empty = { ...mockBases(), async listMyBases() { return []; } } as unknown as BaseRepository;
     renderApp(empty);

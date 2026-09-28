@@ -16,6 +16,7 @@
 | **Supabase Inc.** (États-Unis ; infrastructure AWS) | Hébergement de la base PostgreSQL, authentification, stockage de fichiers, Edge Functions | **Toutes les zones** (identité, analytique, documents), comptes, journaux | Région du projet : **`[eu-west-3 — Paris, France — à confirmer pour la production]`** ; les données restent dans la région choisie | DPA standard (clauses contractuelles types UE incluses), SOC 2 Type 2, chiffrement transit/repos, option HIPAA/BAA (plans Team/Enterprise), liste publique des sous-traitants ultérieurs | **DPA signé** + plan avec support adapté (`Team` recommandé) | ☐ À signer |
 | **Amazon Web Services** (sous-traitant ultérieur de Supabase) | Infrastructure physique sous-jacente | Identiques (via Supabase) | Même région | Couvert par le DPA Supabase (obligations répercutées) | Via DPA Supabase | ☐ |
 | **Vercel Inc.** (États-Unis) | Hébergement du frontend statique (PWA) | **Aucune donnée patient stockée** ; journaux techniques (IP, requêtes) des utilisateurs | CDN mondial | DPA disponible ; les flux de données cliniques vont directement du navigateur à Supabase | DPA à accepter/archiver | ☐ |
+| **Cloudflare, Inc.** (États-Unis) | Mesure d'audience et de performance du site de production (Cloudflare Web Analytics) | **Aucune donnée patient** ; chemin des pages sans paramètres ni fragment, métriques de performance, type de navigateur et de système des utilisateurs ; adresse IP vue à la réception des mesures | Réseau mondial | Ni cookie ni stockage local ; script absent hors production ; DPA client Cloudflare `[à vérifier : clauses contractuelles types, certification Data Privacy Framework]` | DPA à accepter/archiver | ☐ |
 | **`[Fournisseur SMTP — à choisir]`** | E-mails de service (confirmation de compte, réinitialisation) | E-mails et noms des professionnels ; **jamais de donnée patient** | `[à documenter]` | `[selon fournisseur — privilégier un fournisseur avec DPA]` | DPA/CGV archivées | ☐ |
 | **`[Hébergeur du scanner ClamAV — à définir]`** | Analyse antivirale des fichiers téléversés | **Documents bruts en transit d'inspection** (données de santé dé-identifiées) | `[à définir — privilégier la même région UE]` | Service opéré par l'équipe (docker-compose dédié) ; sécuriser : jeton fort, accès réseau restreint, pas de rétention des fichiers après verdict | Contrat d'hébergement + engagement de confidentialité de l'opérateur | ☐ |
 | **GitHub** (Microsoft) | Hébergement du code source et CI | **Aucune donnée patient** (seed fictif uniquement) ; comptes des développeurs | Mondial | Hors périmètre données patients ; règle PSSI §10-11 (aucune donnée C1–C3 dans le dépôt) | — | ✔ (rien à signer au titre des données patients) |
@@ -56,6 +57,7 @@ Navigateur du professionnel (Tchad) ──TLS──► Supabase, région eu-west
    │                                                 │ sous-traitance ultérieure : AWS (même région)
    │                                                 │ sauvegardes : même région [à confirmer]
    ├──TLS──► Vercel (CDN mondial) : code applicatif uniquement, pas de données patients
+   ├──TLS──► Cloudflare Web Analytics (réseau mondial) : mesures d'audience, pas de données patients
    └──(fichiers téléversés)──► Edge Function ──► Scanner ClamAV [localisation à définir]
 E-mails de service (pas de données patients) ──► SMTP [localisation à documenter]
 ```
@@ -105,6 +107,7 @@ sens de la loi n° 007/PR/2015, soumis aux **formalités préalables auprès de 
 |---|---|---|---|---|
 | DPA Supabase | Supabase Inc. | `[…]` | tacite | `docs/juridique/preuves/` (hors dépôt public) |
 | DPA Vercel | Vercel Inc. | `[…]` | | |
+| DPA Cloudflare | Cloudflare, Inc. | `[…]` | | |
 | Contrat + engagement ClamAV | `[…]` | | | |
 | DPA/CGV SMTP | `[…]` | | | |
 
@@ -117,5 +120,7 @@ sens de la loi n° 007/PR/2015, soumis aux **formalités préalables auprès de 
 - ☐ Choisir le fournisseur SMTP et l'hébergeur ClamAV définitifs ; signer leurs
   engagements.
 - ☐ Accepter/archiver le DPA Vercel.
+- ☐ Accepter/archiver le DPA Cloudflare, ou retirer la mesure d'audience (variable du
+  workflow de release, voir [deploiement.md §5](../../deploiement.md)).
 - ☐ Déposer la formalité de transfert auprès de l'ANSICE avec le dossier §3.3
   (réponse sous un mois — anticiper pour ne pas en faire le chemin critique).

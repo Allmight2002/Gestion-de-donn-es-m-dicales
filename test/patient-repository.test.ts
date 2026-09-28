@@ -103,6 +103,30 @@ describe('repository patient', () => {
       updatedAt: '2026-07-13T00:00:00.000Z',
       identity: null,
     });
+    // Lot 8 (5.5-D2) : ouvrir la fiche ne lit (ni ne journalise) plus l'identite.
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  test('lot 8 : getPatientIdentity lit l identite par la RPC journalisee, et elle seule', async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ patient_code: 'PAT-FICTIF', full_name: 'Nom Fictif', date_of_birth: '2001-02-03', phone: null, address: null, external_identifier: 'EXT-1' }],
+      error: null,
+    }));
+    const from = vi.fn();
+    const repository = makePatientRepository({ rpc, from } as unknown as SupabaseClient);
+
+    await expect(repository.getPatientIdentity('patient-1')).resolves.toEqual({
+      fullName: 'Nom Fictif', dateOfBirth: '2001-02-03', phone: null, address: null, externalIdentifier: 'EXT-1',
+    });
+    expect(rpc).toHaveBeenCalledWith('get_patient_identity', { p_patient_id: 'patient-1' });
+    expect(from).not.toHaveBeenCalled();
+
+    // Sans droit (ou sans identite enregistree), la RPC ne renvoie rien : pas d'identite.
+    rpc.mockResolvedValueOnce({ data: [], error: null });
+    await expect(repository.getPatientIdentity('patient-1')).resolves.toBeNull();
+    // Une panne n'est jamais confondue avec une absence d'identite.
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'permission denied' } } as never);
+    await expect(repository.getPatientIdentity('patient-1')).rejects.toMatchObject({ code: '42501' });
   });
 });
 

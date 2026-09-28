@@ -755,6 +755,10 @@ jobs:
           VITE_OFFLINE_ADMIN_ACK: 'true'
           VITE_OFFLINE_INTAKE: demo
           ALLOW_OFFLINE_DEMO_BUILD: 'true'
+          # Mesure d'audience Cloudflare Web Analytics. Jeton de site PUBLIC (il figure dans la
+          # page servie), fourni a ce seul build : CI, staging et previews restent sans beacon.
+          # Retirer cette ligne desactive la mesure a la release suivante.
+          VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN: 'd65fbff4ab914c7ba39a311f00072bb7'
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
