@@ -301,6 +301,8 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // regle, une position ou un calcul ne peut pas fonctionner. Il LIT `new.formula` pour
       // savoir s'il a quelque chose a verifier -- il n'analyse jamais son contenu.
       'enforce_template_field_formula_rules',
+      // Transfert par fichier : ecrit la formule dans la definition exportee, telle quelle.
+      'export_template_definition',
       // E1 : recopie la formule dans la definition source de la preparation,
       // sans la decouper ni l'evaluer.
       'form_preparation_source_definition',
@@ -315,6 +317,10 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       'form_record_context_json_group_context_base',
       'form_record_field_compatible',
       'guard_template_field_update',
+      // Transfert par fichier : recopie la formule du fichier et fait passer les variables
+      // calculees apres leurs operandes. Il ne la decoupe ni ne l'evalue : la garde
+      // `enforce_template_field_formula` la valide a l'insertion.
+      'import_template_definition',
       'missing_required_fields',
       // Audit UI mobile, lot 8 : compte, pour la page « A faire », les dossiers de la file
       // « a completer ». Comme base_completion_queue_page, il lit formula seulement pour

@@ -11,6 +11,7 @@ import { Menu, MenuItem } from '../../components/Menu';
 import { TemplateVersionEditor } from './TemplateVersionEditor';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
+import { useTemplateTransfer } from '../member/useTemplateTransfer';
 
 type TemplateWithVersions = Template & { versions: TemplateVersion[] };
 
@@ -30,6 +31,12 @@ export function TemplatesAdmin() {
   const [editName, setEditName] = useState('');
   const [editSpec, setEditSpec] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  // L'import cree un gabarit personnel de l'administrateur : « Promouvoir en modele global »
+  // le publie ensuite pour tous les medecins.
+  const transfer = useTemplateTransfer((result, importedName) => {
+    void reload();
+    setSelected({ versionId: result.versionId, templateName: importedName });
+  });
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -125,10 +132,18 @@ export function TemplatesAdmin() {
     <section className="space-y-5 sm:space-y-6">
       <PageHeader
         title={t('staff.admin.title')}
-        actions={<button onClick={() => navigate('/admin/roles')} className="btn-secondary w-full sm:w-auto">
-          {t('roleadmin.title')}
-        </button>}
+        actions={<div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          {transfer.available && (
+            <button type="button" onClick={transfer.pickFile} disabled={transfer.busy} className="btn-secondary w-full sm:w-auto">
+              {t('transfer.import')}
+            </button>
+          )}
+          <button onClick={() => navigate('/admin/roles')} className="btn-secondary w-full sm:w-auto">
+            {t('roleadmin.title')}
+          </button>
+        </div>}
       />
+      {transfer.input}
 
       <form onSubmit={create} className="card grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
         <label className="form-label">
@@ -215,6 +230,15 @@ export function TemplatesAdmin() {
                       </MenuItem>
                     )}
                     <MenuItem onSelect={() => startEdit(tpl)} className="btn-ghost w-full justify-start">{t('admin.rename')}</MenuItem>
+                    {transfer.available && preferred && (
+                      <MenuItem
+                        onSelect={() => void transfer.exportVersion(preferred.id, tpl.name, preferred.versionNumber)}
+                        disabled={transfer.busy}
+                        className="btn-ghost w-full justify-start"
+                      >
+                        {t('transfer.export')}
+                      </MenuItem>
+                    )}
                     <MenuItem onSelect={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">{t('admin.delete_template')}</MenuItem>
                   </Menu>
                 </div>

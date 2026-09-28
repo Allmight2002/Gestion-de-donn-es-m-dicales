@@ -14,6 +14,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { EmptyState } from '../../components/EmptyState';
 import { SkeletonList } from '../../components/Skeleton';
 import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
+import { useTemplateTransfer } from './useTemplateTransfer';
 
 type Tpl = Template & { versions: TemplateVersion[] };
 
@@ -42,6 +43,11 @@ export function MyTemplates() {
   // fichier Excel ou la bibliotheque, et le formulaire du jeu vide s'ouvre a la demande.
   const [createOpen, setCreateOpen] = useState(false);
   const createOperationKey = useRef<string | null>(null);
+  // Un fichier importe ouvre directement son editeur, comme un jeu cree a vide.
+  const transfer = useTemplateTransfer((result, name) => {
+    void reload();
+    setSelected({ versionId: result.versionId, templateName: name });
+  });
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
 
@@ -154,9 +160,14 @@ export function MyTemplates() {
             <MenuItem onSelect={() => setCreateOpen(true)}>{t('mytemplates.new_empty')}</MenuItem>
             <MenuItem onSelect={() => navigate('/templates/from-file')}>{t('mytemplates.from_file')}</MenuItem>
             <MenuItem onSelect={() => navigate('/templates/library')}>{t('mytemplates.from_library')}</MenuItem>
+            {transfer.available && (
+              <MenuItem onSelect={transfer.pickFile} disabled={transfer.busy}>{t('transfer.import')}</MenuItem>
+            )}
           </Menu>
         )}
       />
+
+      {transfer.input}
 
       {createOpen && (
         <SectionCard title={t('mytemplates.create')} icon={FileText}>
@@ -238,6 +249,15 @@ export function MyTemplates() {
                     <MenuItem onSelect={() => startEdit(tpl)} className="btn-ghost w-full justify-start">
                       {t('admin.rename')}
                     </MenuItem>
+                    {transfer.available && preferred && (
+                      <MenuItem
+                        onSelect={() => void transfer.exportVersion(preferred.id, tpl.name, preferred.versionNumber)}
+                        disabled={transfer.busy}
+                        className="btn-ghost w-full justify-start"
+                      >
+                        {t('transfer.export')}
+                      </MenuItem>
+                    )}
                     <MenuItem onSelect={() => setConfirmId(tpl.id)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">
                       {t('admin.delete_template')}
                     </MenuItem>
