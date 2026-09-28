@@ -62,7 +62,11 @@ test.describe('@critical parcours patient critique (medecin)', () => {
     expect(patientId).not.toBeNull();
     // En ligne, le code est alloue dans la transaction serveur et apparait seulement apres
     // la creation. Le test ne fabrique donc jamais une valeur de code côté navigateur.
-    const code = (await page.locator('header .eyebrow').first().innerText()).trim();
+    // Audit UI mobile, lot 2 : le code est desormais le titre de la fiche ; le sur-titre
+    // (`.eyebrow`) n'affiche plus que « Fiche patient ».
+    const title = page.getByRole('heading', { level: 1, name: /^P-[0-9]{4,}$/ });
+    await expect(title).toBeVisible();
+    const code = (await title.innerText()).trim();
     expect(code).toMatch(/^P-[0-9]{4,}$/);
 
     // 4) verification de sa presence dans la liste de la base
