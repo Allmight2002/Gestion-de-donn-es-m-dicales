@@ -68,9 +68,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 audit UI mobile, lot 8 : list_my_work_drafts. La page « A faire » retrouve les
     // brouillons de la personne connectee sans en connaitre la cible ; la table reste fermee aux
     // clients, et la lecture ne rend que des metadonnees filtrees par les droits actuels.
-    expect(signatures).toHaveLength(151);
+    // +1 transfert par fichier : import_template_definition. Il ecrit les rubriques communes
+    // (table sans policy d'ecriture) sous le marqueur de rattachement, comme la recopie ; il
+    // verifie donc lui-meme le role medecin/administrateur et ne cree qu'un gabarit personnel.
+    expect(signatures).toHaveLength(152);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(163);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(164);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {
