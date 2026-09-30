@@ -256,6 +256,11 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
     expect(parsers).toEqual([
       'enforce_template_field_formula',        // valide la formule a l'enregistrement
       'enforce_template_field_formula_operand', // empeche un operande de disparaitre
+      // Renommage d'une variable : les formules qui l'utilisent suivent. Ces deux fonctions
+      // decoupent la forme canonique « A op B » pour remplacer l'element EGAL a l'ancien code ;
+      // elles ne deduisent aucun type et n'evaluent jamais -- la garde ci-dessus revalide.
+      'follow_template_field_key_rename',
+      'formula_with_renamed_field',
       // L58 : decoupe la forme canonique « A op B » pour NOMMER l'operande manquant avant
       // d'ecrire quoi que ce soit (IMPORT_FORMULA_OPERAND_MISSING, D8). Sans ce decoupage, le
       // refus viendrait du declencheur ci-dessus, en cours d'import et sans code stable, et la
@@ -303,6 +308,8 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       'enforce_template_field_formula_rules',
       // Transfert par fichier : ecrit la formule dans la definition exportee, telle quelle.
       'export_template_definition',
+      // Renommage d'une variable : remplace un operande dans les formules (voir plus haut).
+      'follow_template_field_key_rename',
       // E1 : recopie la formule dans la definition source de la preparation,
       // sans la decouper ni l'evaluer.
       'form_preparation_source_definition',
@@ -316,6 +323,7 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // exclure les champs calcules des obligations, sans evaluer le calcul.
       'form_record_context_json_group_context_base',
       'form_record_field_compatible',
+      'formula_with_renamed_field', // renommage d'une variable (voir plus haut)
       'guard_template_field_update',
       // Transfert par fichier : recopie la formule du fichier et fait passer les variables
       // calculees apres leurs operandes. Il ne la decoupe ni ne l'evalue : la garde
