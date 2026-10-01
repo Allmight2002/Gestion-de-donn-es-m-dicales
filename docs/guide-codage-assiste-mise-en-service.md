@@ -86,9 +86,15 @@ Secrets (Project Settings → Edge Functions → Secrets), **déjà posés pour 
 | `DEEPSEEK_API_KEY` | la clé (jamais copiée ailleurs) |
 | `TERMINOLOGY_LLM_MODEL` | facultatif (`deepseek-flash` par défaut) |
 
-⚠️ **`deepseek-flash` n'est pas qualifié** : rejoué sur le jeu de calibrage fictif, il a posé un
-code faux sans confirmation dans 2 passages sur 3
-([calibration-codage-terminologique-2026-10-01-deepseek.md](calibration-codage-terminologique-2026-10-01-deepseek.md)).
+⚠️ **Aucun modèle DeepSeek n'est qualifié** à ce jour. Rejoués sur le jeu de calibrage fictif :
+
+- **`deepseek-v4-pro`** (modèle configuré en production) a posé un code faux sans confirmation
+  dans 1 passage sur 3. Sa latence médiane (8,7 s) dépasse le délai de 8 s de la fonction :
+  environ la moitié des saisies retomberait sur le repli lexical après 8 s d'attente
+  ([calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md)).
+- **`deepseek-flash`** (valeur par défaut) a posé un code faux dans 2 passages sur 3
+  ([calibration-codage-terminologique-2026-10-01-deepseek.md](calibration-codage-terminologique-2026-10-01-deepseek.md)).
+
 Réservé aux essais sur données fictives, chaque code proposé étant vérifié.
 
 Après tout changement de secret, **redéployer** la fonction (commande ci-dessus).

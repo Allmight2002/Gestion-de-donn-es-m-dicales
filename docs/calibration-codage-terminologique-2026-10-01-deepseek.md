@@ -6,6 +6,10 @@
 > `match_terminology_candidates` et le score de `supabase/functions/code-terminology/scoring.ts` à
 > cette date. Suite du rapport [calibration-codage-terminologique-2026-10-01.md](calibration-codage-terminologique-2026-10-01.md),
 > qui ne disposait que d'interprétations simulées.
+>
+> **Modèle mesuré par erreur.** `deepseek-flash` est le modèle par défaut ; la production utilise
+> `deepseek-v4-pro`. Voir [calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md)
+> (non qualifié non plus : 1 erreur critique sur 3 passages, latence médiane 8,7 s).
 
 **Conclusion.** Avec les seuils en vigueur, DeepSeek pose **un code faux sans confirmation dans
 2 passages sur 3** (3 erreurs critiques au total). Aucun jeu de seuils de la grille ne les évite
