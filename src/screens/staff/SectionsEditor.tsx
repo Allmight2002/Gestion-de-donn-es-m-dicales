@@ -7,7 +7,7 @@
 // Le CODE INTERNE ne se modifie jamais (lecon de L30) : il est propose a la creation, puis
 // affiche en lecture seule. Seul le libelle se corrige.
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { Checkbox } from '../../components/Checkbox';
@@ -18,6 +18,7 @@ import type { ObservationModel } from '../../data/bases';
 import type { TemplateField, TemplateSection } from '../../data/types';
 import { makeValueKey } from '../../domain/fieldOptions';
 import { sectionLabel } from '../../domain/templateSections';
+import { repeatableLabels } from '../../domain/repeatableLabels';
 
 /**
  * Code interne propose depuis le libelle saisi — meme derivation que les codes d'options
@@ -35,6 +36,50 @@ export function makeSectionKey(label: string, taken: readonly string[] = []): st
   }
 }
 
+/**
+ * Libelles d'un bloc repetable a la saisie. Facultatifs : vides, l'ecran de saisie garde
+ * « Ajouter une occurrence » et « Occurrence 1 ». L'apercu se lit avant d'enregistrer.
+ */
+function RepeatLabelsForm({ section, busy, onSave, onDraft }: {
+  section: TemplateSection;
+  busy?: boolean;
+  onSave: (sectionId: string, addLabel: string | null, itemLabel: string | null) => void | Promise<unknown>;
+  onDraft: (sectionId: string, pending: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const [addLabel, setAddLabel] = useState(section.addLabel ?? '');
+  const [itemLabel, setItemLabel] = useState(section.itemLabel ?? '');
+  const changed = addLabel.trim() !== (section.addLabel ?? '') || itemLabel.trim() !== (section.itemLabel ?? '');
+  useEffect(() => { onDraft(section.id, changed); }, [changed, onDraft, section.id]);
+  useEffect(() => () => onDraft(section.id, false), [onDraft, section.id]);
+  const preview = repeatableLabels(t, { ...section, addLabel, itemLabel });
+
+  return (
+    <div className="basis-full space-y-2 border-t border-slate-100 pt-2 dark:border-slate-700">
+      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{t('section.repeat_labels_title')}</p>
+      <div className="flex flex-wrap gap-2">
+        <label className="form-label min-w-[min(14rem,100%)] flex-1">
+          {t('section.repeat_add_label')}
+          <input className="input mt-1" value={addLabel} maxLength={80} disabled={busy}
+            placeholder={t('section.repeat_add_placeholder')} onChange={(event) => setAddLabel(event.target.value)} />
+        </label>
+        <label className="form-label min-w-[min(14rem,100%)] flex-1">
+          {t('section.repeat_item_label')}
+          <input className="input mt-1" value={itemLabel} maxLength={60} disabled={busy}
+            placeholder={t('section.repeat_item_placeholder')} onChange={(event) => setItemLabel(event.target.value)} />
+        </label>
+      </div>
+      <p className="helper-text">
+        {t('section.repeat_labels_preview').replace('{add}', preview.add).replace('{rank}', preview.rank(1))}
+      </p>
+      <button type="button" className="btn-secondary min-h-11 px-3 text-xs" disabled={busy || !changed}
+        onClick={() => void onSave(section.id, addLabel.trim() || null, itemLabel.trim() || null)}>
+        {t('section.repeat_labels_save')}
+      </button>
+    </div>
+  );
+}
+
 export function SectionsEditor({
   sections,
   fields,
@@ -47,6 +92,7 @@ export function SectionsEditor({
   onReorderSiblings,
   onImportBlock,
   onRepeatableChange,
+  onRepeatLabelsChange,
   observationModel,
   onDirtyChange,
   narrow = false,
@@ -72,6 +118,13 @@ export function SectionsEditor({
    */
   onRepeatableChange?: (
     sectionId: string, isRepeatable: boolean, fieldsToConvert: TemplateField[],
+  ) => void | Promise<unknown>;
+  /**
+   * Libelles d'un bloc repetable a la saisie : bouton d'ajout et nom d'un element. Null =
+   * libelle generique. Absente quand le depot ne sait pas les ecrire : les champs ne se rendent pas.
+   */
+  onRepeatLabelsChange?: (
+    sectionId: string, addLabel: string | null, itemLabel: string | null,
   ) => void | Promise<unknown>;
   /** Modele d'observation de la base. Un groupe repetable exige des variables de rencontre. */
   observationModel?: ObservationModel;
@@ -120,8 +173,20 @@ export function SectionsEditor({
     (f) => f.scope !== 'encounter' || (f.encounterTypes?.length ?? 0) > 0,
   );
 
+  // Libelles de saisie en cours de frappe, par bloc : un brouillon non enregistre compte comme
+  // une modification locale, au meme titre qu'un renommage.
+  const [labelDraftIds, setLabelDraftIds] = useState<ReadonlySet<string>>(new Set());
+  const onLabelDraft = useCallback((sectionId: string, pending: boolean) => {
+    setLabelDraftIds((current) => {
+      if (current.has(sectionId) === pending) return current;
+      const next = new Set(current);
+      if (pending) next.add(sectionId); else next.delete(sectionId);
+      return next;
+    });
+  }, []);
+
   const editingDirty = editingId !== null && draftLabel !== originalLabel.current;
-  const dirty = (newLabel !== '' || parentKey !== '') || editingDirty;
+  const dirty = (newLabel !== '' || parentKey !== '') || editingDirty || labelDraftIds.size > 0;
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   function finishEditing() {
@@ -438,6 +503,16 @@ export function SectionsEditor({
                     <HelpTip label={t('section.repeatable')} className="-my-2">{t('section.repeatable_hint')}</HelpTip>
                   )}
                 </div>
+              )}
+              {onRepeatLabelsChange && section.isRepeatable && (
+                <RepeatLabelsForm
+                  // Recree apres chaque relecture : le brouillon repart des valeurs enregistrees.
+                  key={`${section.id}:${section.addLabel ?? ''}:${section.itemLabel ?? ''}`}
+                  section={section}
+                  busy={busy}
+                  onSave={onRepeatLabelsChange}
+                  onDraft={onLabelDraft}
+                />
               )}
             </>
           );

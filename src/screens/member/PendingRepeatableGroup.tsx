@@ -8,6 +8,7 @@ import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../.
 import { isSavedOccurrence, type PendingOccurrence } from '../../domain/pendingOccurrences';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { MAX_OCCURRENCES, RepeatableGroupTable } from './RepeatableGroup';
+import { repeatableLabels } from '../../domain/repeatableLabels';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 /**
@@ -61,7 +62,8 @@ export function PendingRepeatableGroup({
   const [announcement, setAnnouncement] = useState('');
   const draftDirty = useRef(false);
 
-  const groupLabel = section.label?.trim() || section.sectionKey;
+  const labels = repeatableLabels(t, section);
+  const groupLabel = labels.group;
   const formFields = useMemo(() => [...fields].sort((a, b) => a.displayOrder - b.displayOrder), [fields]);
   const columns = useMemo(
     () => formFields.map((field) => ({
@@ -186,7 +188,7 @@ export function PendingRepeatableGroup({
         {!masked && <button
           type="button"
           className="text-xs font-medium text-teal-700 hover:underline"
-          aria-label={t('form.repeatable_edit_occurrence').replace('{n}', String(rank)).replace('{group}', groupLabel)}
+          aria-label={labels.editAction(rank)}
           disabled={busy || editing !== null}
           onClick={() => open(pending)}
         >
@@ -195,7 +197,7 @@ export function PendingRepeatableGroup({
         <button
           type="button"
           className="text-xs font-medium text-red-700 hover:underline"
-          aria-label={t('form.repeatable_delete_occurrence').replace('{n}', String(rank)).replace('{group}', groupLabel)}
+          aria-label={labels.deleteAction(rank)}
           disabled={busy || (!masked && editing !== null)}
           onClick={() => {
             onRemove(row.id);
@@ -230,6 +232,7 @@ export function PendingRepeatableGroup({
 
       <RepeatableGroupTable
         groupLabel={groupLabel}
+        rankLabel={labels.rank}
         columns={columns}
         rows={tableRows}
         rowActions={online ? rowActions : undefined}
@@ -253,7 +256,7 @@ export function PendingRepeatableGroup({
       {online && !masked && (
         <div className="space-y-1">
           <button type="button" className="btn-secondary" disabled={limitReached || busy || editing !== null} onClick={() => open(null)}>
-            <Plus size={16} aria-hidden /> {t('form.repeatable_add')}
+            <Plus size={16} aria-hidden /> {labels.add}
           </button>
           {limitReached && (
             <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -271,8 +274,8 @@ export function PendingRepeatableGroup({
           id={formId}
           role="group"
           aria-label={editing.localId === null
-            ? t('form.repeatable_new_title').replace('{group}', groupLabel)
-            : t('form.repeatable_edit_title').replace('{n}', String(rankOf(editing.localId))).replace('{group}', groupLabel)}
+            ? labels.newTitle
+            : labels.editTitle(rankOf(editing.localId))}
           className="min-w-0 space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4 dark:border-teal-900 dark:bg-teal-950/20"
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
@@ -283,8 +286,8 @@ export function PendingRepeatableGroup({
         >
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {editing.localId === null
-              ? t('form.repeatable_new_title').replace('{group}', groupLabel)
-              : t('form.repeatable_edit_title').replace('{n}', String(rankOf(editing.localId))).replace('{group}', groupLabel)}
+              ? labels.newTitle
+              : labels.editTitle(rankOf(editing.localId))}
           </p>
 
           {/* Le moteur de champs existant, avec ses regles internes, ses valeurs par defaut et

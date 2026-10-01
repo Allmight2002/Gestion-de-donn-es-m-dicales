@@ -87,6 +87,7 @@ function templateImportInvalidReason(d: StructuredError): string {
     case 'section_key_invalid': return `Le code de bloc${key}${at} n'est pas accepté : ${KEY_FORMAT}.`;
     case 'section_label_missing': return `Le bloc${key} n'a pas de libellé.`;
     case 'section_parent_invalid': return `Le bloc${key} est rangé sous « ${text(d.parentKey)} », qui n'est pas un bloc de premier niveau du fichier.`;
+    case 'section_repeat_label_invalid': return `Les libellés de saisie du bloc${key} sont mal formés : texte du bouton d'ajout de 80 caractères au plus, nom d'un élément de 60 au plus, sans espace en début ni en fin.`;
     case 'section_duplicate': return `Le code de bloc${key} apparaît plusieurs fois.`;
     case 'group_malformed': return `Une rubrique commune du fichier est mal formée${at}.`;
     case 'group_key_invalid': return `Le code de rubrique commune${key}${at} n'est pas accepté : ${KEY_FORMAT}.`;
