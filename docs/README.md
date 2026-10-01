@@ -37,6 +37,7 @@
 | [checklist-fonctionnalites-site.md](checklist-fonctionnalites-site.md) | Inventaire exhaustif des fonctionnalités, écran par écran |
 | [codage-terminologique-assiste.md](codage-terminologique-assiste.md) | Diagnostic écrit en langage clinique, codé en CIM-11 en arrière-plan : architecture LLM + référentiel, statuts, confiance, confidentialité |
 | [transfert-jeu-de-variables.md](transfert-jeu-de-variables.md) | Exporter un jeu de variables dans un fichier et le réimporter dans un autre compte ou une autre instance |
+| [formulaires-de-saisie.md](formulaires-de-saisie.md) | Formulaires courts (« Saisie rapide », « Sortie »…) sur les variables d'une base, alimentant la même fiche |
 
 ## 2. Sécurité 🟢
 

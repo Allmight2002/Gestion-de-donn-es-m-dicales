@@ -196,6 +196,12 @@ elles organisent l'affichage des variables communes sans les transformer en bloc
 écriture passe par une opération atomique contrôlée, tandis que la lecture reste limitée aux
 gabarits que l'appelant peut déjà consulter.
 
+**Formulaires de saisie** (`base_entry_form`)
+Configuration par base, sans donnée patient : un nom, une liste ordonnée de clés de variables de
+fiche et leurs indispensables. Plusieurs formulaires courts alimentent la **même** fiche par les
+RPC habituelles ; lecture par les membres, écriture par le propriétaire, verrou optimiste. Voir
+[formulaires-de-saisie.md](formulaires-de-saisie.md).
+
 **Comptes & bases** (`profiles`, `base`, `base_access`, `base_invitation`,
 `mission_account_credential`, `mission_credential_operation`)
 `profiles` est lié à `auth.users` (on ne recrée pas de table utilisateur). Une `base`

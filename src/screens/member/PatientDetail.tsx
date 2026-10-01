@@ -40,6 +40,8 @@ import {
   groupFieldsBySection, maskedRepeatableSectionKeys, repeatableGroupFields, sectionLabel, withRepeatableSteps,
 } from '../../domain/templateSections';
 import { RepeatableGroupTable } from './RepeatableGroup';
+import { useEntryFormSelection } from './EntryFormPicker';
+import { Menu, MenuItem } from '../../components/Menu';
 import { repeatableLabels } from '../../domain/repeatableLabels';
 import { useTopBar, useTopBarActions } from '../../components/TopBar';
 
@@ -412,6 +414,8 @@ export function PatientDetail() {
     backLabel: t('nav.back_to').replace('{label}', t('base.tab_patients')),
   });
   const mayFinalize = !offlineView && canEdit && !!patient && patient.validationStatus !== 'curated';
+  // Formulaires courts : un autre chemin de saisie vers la MEME fiche, affichee ici comme d'habitude.
+  const entryForms = useEntryFormSelection(baseId, !offlineView && canEdit).forms;
   useTopBarActions(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : null);
   // Decision 3 : les valeurs vides sont masquees par defaut, un bouton les montre toutes.
   const [showEmpty, setShowEmpty] = useState(false);
@@ -626,6 +630,20 @@ export function PatientDetail() {
               <button disabled={busy} onClick={() => void finalize()} className="btn-ghost max-lg:hidden">
                 {t('patient.finalize')}
               </button>
+            )}
+            {canEdit && entryForms.length > 0 && (
+              <Menu
+                triggerLabel={t('entryform.complete_with')}
+                triggerClassName="btn-ghost"
+                triggerContent={t('entryform.complete_with')}
+                panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2 shadow-lg"
+              >
+                {entryForms.map((form) => (
+                  <MenuItem key={form.id} onSelect={() => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`)}>
+                    {form.name}
+                  </MenuItem>
+                ))}
+              </Menu>
             )}
             {canEdit && (
               <button
