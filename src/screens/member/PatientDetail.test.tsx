@@ -771,6 +771,43 @@ describe('PatientDetail — fiche allégée (audit UI mobile, lot 2)', () => {
     expect(screen.getByRole('button', { name: 'Masquer les champs vides' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('une section ou sous-section sans valeur enregistrée est masquée, rendue sur demande', async () => {
+    const nested = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'sexe', label: 'Sexe', scope: 'patient', type: 'select', allowedValues: ['M', 'F'], section: 'mere_a', displayOrder: 0 }),
+            field({ fieldKey: 'poids', label: 'Poids', scope: 'patient', type: 'number', section: 'mere_b', displayOrder: 1 }),
+            field({ fieldKey: 'taille', label: 'Taille', scope: 'patient', type: 'number', section: 'vide_a', displayOrder: 2 }),
+          ],
+          rules: [],
+          sections: [
+            { id: 's1', sectionKey: 'mere', label: 'Bloc renseigné', displayOrder: 0, parentSectionKey: null },
+            { id: 's2', sectionKey: 'mere_a', label: 'Sous-bloc renseigné', displayOrder: 1, parentSectionKey: 'mere' },
+            { id: 's3', sectionKey: 'mere_b', label: 'Sous-bloc vide', displayOrder: 2, parentSectionKey: 'mere' },
+            { id: 's4', sectionKey: 'vide', label: 'Bloc vide', displayOrder: 3, parentSectionKey: null },
+            { id: 's5', sectionKey: 'vide_a', label: 'Sous-bloc du bloc vide', displayOrder: 4, parentSectionKey: 'vide' },
+          ],
+        };
+      },
+    } as unknown as TemplateRepository;
+    renderAt('/bases/b1/patients/p1', makePatients(), undefined, nested);
+    const toggle = await screen.findByRole('button', { name: 'Afficher les champs vides (2)' });
+    expect(screen.getByText('Bloc renseigné')).toBeVisible();
+    expect(screen.getByText('Sous-bloc renseigné')).toBeVisible();
+    expect(screen.getByText('Sexe')).toBeVisible();
+    expect(screen.getByText('Sous-bloc vide')).not.toBeVisible();
+    expect(screen.getByText('Bloc vide')).not.toBeVisible();
+    expect(screen.getByText('Sous-bloc du bloc vide')).not.toBeVisible();
+
+    await userEvent.click(toggle);
+    expect(screen.getByText('Sous-bloc vide')).toBeVisible();
+    expect(screen.getByText('Bloc vide')).toBeVisible();
+    expect(screen.getByText('Sous-bloc du bloc vide')).toBeVisible();
+    expect(screen.getByText('Taille')).toBeVisible();
+  });
+
   test('une section se replie et garde son compte', async () => {
     renderAt('/bases/b1/patients/p1', makePatients(), undefined, threeFields);
     const section = await screen.findByRole('button', { name: /1 renseignée\(s\) sur 3/ });
