@@ -931,6 +931,7 @@ export const messages = {
     'terminology.coding_offline': 'Offline: the diagnosis is kept as written, without a code.',
     'terminology.no_reliable_match': 'No reliable ICD-11 match found.',
     'terminology.several_matches': 'Several possible matches:',
+    'terminology.other_matches': 'Other possible matches:',
     'terminology.to_confirm': 'to confirm',
     'terminology.confirm': 'Confirm',
     'terminology.written': 'Typed:',

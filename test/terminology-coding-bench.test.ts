@@ -4,7 +4,7 @@
 // Trois strategies, memes textes, memes conditions :
 //   * `current`    : chaine en vigueur (prompt actuel -> RPC de candidats -> score -> decision),
 //                    mesuree cote serveur (`server` : meilleur + alternatives) et telle que
-//                    l'ecran l'affiche aujourd'hui (`ui` : un seul code pour automatic/suggested) ;
+//                    l'ecran l'affiche (`ui` : un seul code quand il est pose automatiquement) ;
 //   * `memory`     : le LLM donne code + intitule, verifies dans le referentiel ;
 //   * `candidates` : `memory`, puis le LLM choisit parmi des candidats reels du referentiel.
 //
@@ -107,9 +107,13 @@ async function rpcCandidates(terms: string[]): Promise<Candidate[]> {
 const unique = (codes: Array<string | null | undefined>) =>
   codes.filter((c, i, all): c is string => !!c && all.indexOf(c) === i);
 
-/** Ce que l'ecran montre aujourd'hui (`entryFor`, src/domain/terminologyCoding.ts). */
+/**
+ * Ce que l'ecran montre (`entryFor`, src/domain/terminologyCoding.ts) : un code pose seul, une
+ * proposition a confirmer avec ses autres correspondances, ou les propositions au choix.
+ */
 function shown(d: MatchDecision): string[] {
-  if (d.status === 'automatic' || d.status === 'suggested') return unique([d.best?.code]);
+  if (d.status === 'automatic') return unique([d.best?.code]);
+  if (d.status === 'suggested') return unique([d.best?.code, ...d.alternatives.map((a) => a.code)]);
   if (d.status === 'ambiguous') return unique(d.alternatives.map((a) => a.code));
   return [];
 }

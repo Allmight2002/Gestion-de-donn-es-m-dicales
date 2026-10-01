@@ -98,6 +98,33 @@ describe('TerminologyInput — codage assiste', () => {
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.02', raw: RAW, coding: { status: 'confirmed' } });
   });
 
+  test('correspondance probable : les autres correspondances sont visibles et se choisissent', async () => {
+    const changes = renderField({ codeText: async () => coded('suggested', { score: 0.75, alternatives: [HIC, HSA] }) });
+    await writeAndLeave(RAW);
+
+    expect(await screen.findByText('Autres correspondances possibles :')).toBeInTheDocument();
+    expect(changes.at(-1)).toMatchObject({ code: 'FIC.02', coding: { status: 'suggested' } });
+    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label} FIC.01` }));
+    expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: RAW, coding: { status: 'confirmed' } });
+    // Une fois choisi, plus rien n'est a confirmer.
+    expect(screen.queryByText('Autres correspondances possibles :')).not.toBeInTheDocument();
+  });
+
+  test('reouverture : les autres correspondances d une proposition a confirmer sont restaurees', async () => {
+    const stored = {
+      code: 'FIC.02',
+      label: HSD.label,
+      raw: RAW,
+      coding: { method: 'ai_assisted', status: 'suggested', normalized: 'Hématome sous-dural chronique spontané droit', language: 'fr' },
+    };
+    const codeText = vi.fn(async () => coded('suggested', { alternatives: [HIC] }));
+    const changes = renderField({ codeText }, { initial: stored });
+
+    expect(await screen.findByText('Autres correspondances possibles :')).toBeInTheDocument();
+    expect(codeText).toHaveBeenCalledWith(RAW);
+    expect(changes).toEqual([]);
+  });
+
   test('plusieurs correspondances : rien n est impose, l utilisateur choisit', async () => {
     const changes = renderField({ codeText: async () => coded('ambiguous') });
     await writeAndLeave('Hémorragie intracrânienne spontanée');

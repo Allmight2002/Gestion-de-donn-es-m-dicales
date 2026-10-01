@@ -49,12 +49,13 @@ interface Recording {
 // Chemin par defaut : enregistrement du fournisseur QUALIFIE, garde a chaque execution.
 // TERMINOLOGY_RECORDING rejoue un autre enregistrement (ex. un fournisseur non qualifie).
 // Par defaut, les sorties reelles de deepseek-v4-pro dans la configuration recommandee (prompt
-// en vigueur, raisonnement coupe) du 1er octobre 2026 : aucun code faux impose a aucun passage.
-// Elles gardent le score contre de VRAIES interpretations a chaque execution.
+// en vigueur, qui separe les diagnostics lies ; raisonnement coupe) du 1er octobre 2026 : aucun
+// code faux impose a aucun passage. Elles gardent le score contre de VRAIES interpretations a
+// chaque execution.
 const REFERENCE_RECORDING = join(
   'test',
   'fixtures',
-  'terminologyCalibration.recorded.deepseek-v4-pro-nothinking-2026-10-01.json',
+  'terminologyCalibration.recorded.deepseek-v4-pro-nothinking-split-2026-10-01.json',
 );
 const RECORDING_PATH = process.env.TERMINOLOGY_RECORDING || REFERENCE_RECORDING;
 const recording: Recording | null = existsSync(RECORDING_PATH)
@@ -238,5 +239,6 @@ const CALIBRATED = {
   llmAutoOk: 57,
   llmUtility: 75.3 - 1e-9,
   lexicalUtility: 49.8 - 1e-9,
-  recordedUtility: 54.6 - 1e-9,
+  // Prompt qui separe les diagnostics lies : pire passage 52,6 (54,6 avec le prompt precedent).
+  recordedUtility: 52.6 - 1e-9,
 };

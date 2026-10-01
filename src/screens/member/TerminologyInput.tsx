@@ -14,6 +14,7 @@ import {
   isTerminologyValue,
   isUnmatchedTerminology,
   type TerminologyFieldEntry,
+  type TerminologyValue,
   type UnmatchedTerminologyValue,
 } from '../../data/types';
 import { useOnline } from '../../data/offline';
@@ -216,17 +217,20 @@ export function TerminologyInput({
   }
 
   // Reouverture d'une fiche : les propositions au choix ne sont pas stockees. Pour une entree
-  // non codee issue du codage assiste, le texte conserve est analyse a nouveau et les
-  // propositions sont RESTAUREES — la valeur enregistree, elle, n'est jamais modifiee ici.
-  const restorable = (multiple ? chosen : selected ? [selected] : [])
-    .filter((e): e is UnmatchedTerminologyValue =>
-      isUnmatchedTerminology(e) && e.coding.method === 'ai_assisted' && !!e.coding.normalized
-    );
-  const restoreKey = restorable.map((e) => choiceKey(e.raw, e.coding.normalized)).join('\n');
+  // issue du codage assiste encore non codee ou a confirmer, le texte conserve est analyse a
+  // nouveau et les propositions sont RESTAUREES — la valeur enregistree, elle, n'est jamais
+  // modifiee ici.
+  const restorable = (multiple ? chosen : selected ? [selected] : []).flatMap((e) => {
+    const awaiting = isUnmatchedTerminology(e) || (isTerminologyValue(e) && e.coding?.status === 'suggested');
+    return awaiting && e.raw && e.coding?.method === 'ai_assisted' && e.coding.normalized
+      ? [{ raw: e.raw, normalized: e.coding.normalized }]
+      : [];
+  });
+  const restoreKey = restorable.map((e) => choiceKey(e.raw, e.normalized)).join('\n');
   useEffect(() => {
     if (!codeText || !online) return;
     for (const entry of restorable) {
-      const key = choiceKey(entry.raw, entry.coding.normalized);
+      const key = choiceKey(entry.raw, entry.normalized);
       if (choices[key] || restoredRef.current.has(key)) continue;
       restoredRef.current.add(key);
       void codingFor(entry.raw)
@@ -236,7 +240,7 @@ export function TerminologyInput({
           const match = proposed.find((c) => choiceKey(c.raw, c.normalized) === key)
             ?? (proposed.length === 1 ? proposed[0] : undefined);
           if (!match) return;
-          setChoices((prev) => (prev[key] ? prev : { ...prev, [key]: { ...match, normalized: entry.coding.normalized ?? '' } }));
+          setChoices((prev) => (prev[key] ? prev : { ...prev, [key]: { ...match, normalized: entry.normalized } }));
         })
         .catch(() => undefined);
     }
@@ -431,6 +435,7 @@ export function TerminologyInput({
               >
                 {t('terminology.confirm')}
               </button>
+              {otherMatches(entry, index)}
             </>
           )}
         </>
@@ -480,6 +485,30 @@ export function TerminologyInput({
     );
   }
 
+  /** Autres correspondances d'une proposition a confirmer : en choisir une la confirme. */
+  function otherMatches(entry: TerminologyValue, index: number) {
+    const present = new Set(chosen.filter(isTerminologyValue).map((e) => e.code));
+    // Un code deja present dans la liste serait refuse en doublon : il n'est pas propose.
+    const options = (choices[choiceKey(entry.raw ?? '', entry.coding?.normalized)]?.options ?? [])
+      .filter((c) => c.code !== entry.code && !present.has(c.code));
+    if (options.length === 0) return null;
+    return (
+      <span role="group" aria-label={t('terminology.other_matches')} className="flex w-full flex-col items-start gap-1">
+        <span className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.other_matches')}</span>
+        {options.map((c) => (
+          <button
+            key={c.code}
+            type="button"
+            onClick={() => pick(index, c)}
+            className="text-left text-xs font-medium text-teal-700 hover:underline"
+          >
+            ○ {c.label} <span className="font-normal text-slate-500 tabular-nums">{c.code}</span>
+          </button>
+        ))}
+      </span>
+    );
+  }
+
   const chipClass = 'rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-sm text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100';
   const entryHasCoding = (entry: TerminologyFieldEntry) => !isTerminologyValue(entry) || entry.coding !== undefined;
 
@@ -513,7 +542,7 @@ export function TerminologyInput({
             {chosen.map((c, index) => (
               <li
                 key={isTerminologyValue(c) ? c.code : `${index}:${c.raw}`}
-                className={`flex items-center gap-1.5 ${chipClass}`}
+                className={`flex flex-wrap items-center gap-1.5 ${chipClass}`}
               >
                 {/* Le NUMERO est le rang, et c'est lui qui porte « le premier est le principal ». */}
                 <span className="font-medium tabular-nums">{index + 1}.</span>

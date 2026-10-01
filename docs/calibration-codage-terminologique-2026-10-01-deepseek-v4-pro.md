@@ -339,3 +339,55 @@ configuration et trois configurations enregistrées en même temps.
 - **Proposition du §7 appliquée.** L'enregistrement de référence du test devient
   `terminologyCalibration.recorded.deepseek-v4-pro-nothinking-2026-10-01.json` (configuration
   recommandée), avec un plancher `recordedUtility` de 54,6 (pire passage).
+
+## 9. Addendum — diagnostics liés et autres correspondances (1er octobre 2026, nuit)
+
+**Constat** (banc d'essai `test/terminology-coding-bench.test.ts`, `deepseek-v4-pro` sans raisonnement,
+97 cas du calibrage + 8 saisies fictives à plusieurs diagnostics, 2 passages) :
+
+- **Diagnostics liés fusionnés.** Le prompt ne séparait pas les diagnostics reliés par « associé à »,
+  « compliqué de », « sur » ou « avec ». Un seul diagnostic était alors codé. Par exemple, « Cirrhose
+  alcoolique compliquée de varices œsophagiennes » donnait DA26.0 seul, posé automatiquement.
+- **Alternatives perdues à l'écran.** Pour une proposition « à confirmer », l'écran n'affichait que le
+  meilleur code. Le serveur trouvait pourtant le bon code parmi les autres dans 19 cas de plus.
+- **Codes demandés directement au LLM, écartés.** Sur 477 codes proposés de mémoire, 155 étaient
+  justes, 246 existaient mais désignaient autre chose et 63 n'existaient pas. Le bon code ne venait
+  en tête que dans 30 % des cas, contre 79 % pour la chaîne en vigueur. Faire choisir le LLM parmi
+  les candidats du référentiel donne 81 % en tête, mais double la latence (2,6 s au lieu de 1,3 s
+  en p50) et propose plus souvent un code à tort (7 cas sans code sur 16, contre 2).
+
+**Corrections** :
+
+- le prompt sépare les diagnostics liés, avec des exemples absents du banc ;
+- l'écran affiche « Autres correspondances possibles » à côté d'une proposition à confirmer, et les
+  restaure à la réouverture d'une fiche.
+
+**Mesures après correction**, avec l'écran tel qu'il affiche désormais les correspondances :
+
+| | Prompt précédent | Prompt qui sépare les diagnostics liés |
+|---|---|---|
+| Bon code en tête (178 saisies) | 140 | 142 |
+| Bon code parmi les propositions | 159 | 157 |
+| Diagnostics retrouvés dans les saisies multiples (34) | 28 | **33** |
+| Texte sans code recevant une proposition (16) | 2 | 4 |
+| Latence p50 / p90 | 1,3 / 1,6 s | 1,3 / 1,6 s |
+
+**Calibrage rejoué avec le nouveau prompt** (3 passages,
+`terminologyCalibration.recorded.deepseek-v4-pro-nothinking-split-2026-10-01.json`, devenu
+l'enregistrement de référence) :
+
+- **0 erreur critique** à chaque passage ;
+- **utilité de 52,6 à 54,5**, contre 54,6 à 56,1 avec le prompt précédent. Le plancher
+  `recordedUtility` est abaissé à 52,6 (pire passage).
+
+Cette utilité ne compte que le premier diagnostic de chaque saisie : elle ne mesure pas le gain sur
+les saisies multiples. Les écarts par cas sont pour l'essentiel des variations d'un passage à
+l'autre. On en comptait déjà 36 dans l'enregistrement précédent.
+
+**Limites.**
+
+- Deux passages pour le banc et trois pour le calibrage.
+- Huit saisies multiples seulement.
+- Jeu fictif centré sur la neurochirurgie.
+- Les deux propositions faites à tort sur des textes sans code (« Spondylodiscite L3-L4 »,
+  « Schwannome vestibulaire ») restent soumises à confirmation.

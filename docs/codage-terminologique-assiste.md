@@ -27,8 +27,11 @@ Texte clinique ──► interprétation (LLM, sinon repli lexical)
 ```
 
 - Le LLM ne produit **aucun code**. Il développe les abréviations, distingue plusieurs
-  diagnostics dans une même saisie et reformule chacun en termes proches des intitulés CIM-11
-  (« Hémorragie sousdurale non traumatique » pour un HSD spontané).
+  diagnostics dans une même saisie — y compris reliés par « associé à », « compliqué de »,
+  « sur », « avec » — et reformule chacun en termes proches des intitulés CIM-11
+  (« Hémorragie sousdurale non traumatique » pour un HSD spontané). Demander directement les
+  codes au LLM a été mesuré et écarté : de mémoire, il en invente ou en confond la majorité
+  (banc d'essai `test/terminology-coding-bench.test.ts`).
 - Les concepts viennent **uniquement** du référentiel importé (`terminology_concept`).
 - La base revérifie chaque couple code/libellé à l'enregistrement, comme avant : un code inventé
   est refusé quelle que soit sa provenance.
@@ -47,7 +50,7 @@ Résultats affichés discrètement dans l'étiquette du diagnostic :
 | Décision serveur | Affichage | Valeur stockée |
 |---|---|---|
 | `automatic` | `✓ Hémorragie sousdurale non traumatique` + code en gris | code, statut `automatic` |
-| `suggested` | libellé « à confirmer » + bouton **Confirmer** | code, statut `suggested` → `confirmed` |
+| `suggested` | libellé « à confirmer » + bouton **Confirmer**, et « Autres correspondances possibles : ○ … » quand le serveur en a trouvé | code, statut `suggested` → `confirmed` ; choisir une autre correspondance la retient avec `confirmed` |
 | `ambiguous` | « Plusieurs correspondances possibles : ○ … ○ … » | **aucun code** tant que l'utilisateur n'a pas choisi ; le choix donne `confirmed` |
 | `unmatched` | « Aucune correspondance CIM-11 fiable trouvée. » | texte seul, statut `unmatched` |
 
@@ -60,8 +63,8 @@ déjà présent n'est pas doublé. En champ unitaire, plusieurs diagnostics reco
 choix plutôt que tronqués.
 
 **Réouverture d'une fiche.** Les propositions au choix ne sont pas stockées. Pour une entrée non
-codée issue du codage assisté (méthode `ai_assisted`, terme normalisé présent), le texte conservé
-est analysé à nouveau, une fois, et les propositions sont réaffichées. La valeur enregistrée
+codée ou « à confirmer » issue du codage assisté (méthode `ai_assisted`, terme normalisé présent),
+le texte conservé est analysé à nouveau, une fois, et les propositions sont réaffichées. La valeur enregistrée
 n'est **jamais** modifiée à cette occasion : seul un choix du médecin l'écrit. Une saisie conservée
 hors connexion ou pendant une panne (méthode `lexical`) n'est pas réanalysée en silence : le bouton
 **« Rechercher une correspondance »** la soumet à nouveau sur demande, et toute correspondance

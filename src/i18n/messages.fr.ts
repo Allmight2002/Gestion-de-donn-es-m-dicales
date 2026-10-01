@@ -936,6 +936,7 @@ export const messages = {
     'terminology.coding_offline': 'Hors connexion : le diagnostic est conservé tel qu’écrit, sans code.',
     'terminology.no_reliable_match': 'Aucune correspondance CIM-11 fiable trouvée.',
     'terminology.several_matches': 'Plusieurs correspondances possibles :',
+    'terminology.other_matches': 'Autres correspondances possibles :',
     'terminology.to_confirm': 'à confirmer',
     'terminology.confirm': 'Confirmer',
     'terminology.written': 'Saisi :',

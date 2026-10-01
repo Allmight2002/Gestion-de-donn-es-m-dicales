@@ -77,6 +77,28 @@ describe('codage assiste — valeurs produites', () => {
     expect(choices[0].options.map((c) => c.code)).toEqual(['FIC.02', 'FIC.00']);
   });
 
+  test('proposition a confirmer : les autres correspondances restent offertes au choix', () => {
+    const { entries, choices } = entriesFromResult(
+      RAW,
+      result([item({ status: 'suggested', score: 0.75, alternatives: [HSD, HIC] })]),
+      true,
+    );
+    expect(entries[0]).toMatchObject({ code: 'FIC.02', coding: { status: 'suggested' } });
+    // Le code propose n'est pas repete parmi les autres.
+    expect(choices).toEqual([{ raw: RAW, normalized: 'Hématome sous-dural chronique spontané droit', options: [HIC] }]);
+    // Un code pose automatiquement n'en porte pas.
+    expect(entriesFromResult(RAW, result([item({ alternatives: [HIC] })]), true).choices).toEqual([]);
+  });
+
+  test('champ unitaire a plusieurs diagnostics : meilleurs codes puis autres correspondances', () => {
+    const { choices } = entriesFromResult(
+      RAW,
+      result([item({ status: 'suggested', alternatives: [HIC] }), item({ best: HIC })]),
+      false,
+    );
+    expect(choices[0].options.map((c) => c.code)).toEqual(['FIC.02', 'FIC.00']);
+  });
+
   test('confirmation, choix parmi les propositions et correction manuelle', () => {
     const [suggested] = entriesFromResult(RAW, result([item({ status: 'suggested', score: 0.75 })]), false).entries;
     expect(confirmEntry(suggested as never).coding?.status).toBe('confirmed');
