@@ -218,6 +218,8 @@ export interface BaseRepository {
   setTemplateVersion(baseId: string, versionId: string): Promise<void>;
   /** Le serveur refuse tout changement des qu'une donnee existe dans la base. */
   setObservationModel(baseId: string, observationModel: ObservationModel): Promise<Base>;
+  /** Renomme la base (proprietaire seul). `expectedName` : le nom lu, refus BASE_RENAME_CONFLICT s'il a change. */
+  renameBase(baseId: string, name: string, expectedName: string): Promise<Base>;
   /** D2 : inclusions par mois + objectif (RLS : sans acces -> serie vide). */
   getInclusionStats(baseId: string): Promise<InclusionStats>;
   /** D2 : fixe/retire l'objectif d'inclusion (proprietaire seulement, RLS base_update). */
@@ -280,7 +282,7 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
     return {
       listMyBases: fail, listDeletedBases: fail, listTemplateModels: fail, createBase: fail, getBase: fail,
       softDeleteBase: fail, restoreDeletedBase: fail, purgeDeletedBase: fail, setTemplateVersion: fail, getInclusionStats: fail,
-      setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail,
+      setInclusionTarget: fail, getCompletenessStats: fail, setObservationModel: fail, renameBase: fail,
       getBaseProposalsPage: fail,
       getDiagnosisFollowupPage: fail,
       previewOptionKeyRepair: fail,
@@ -444,6 +446,16 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as BaseRow;
       return mapBase(row);
+    },
+
+    async renameBase(baseId, name, expectedName) {
+      const { data, error } = await client.rpc('rename_base', {
+        p_base_id: baseId,
+        p_name: name,
+        p_expected_name: expectedName,
+      });
+      if (error) throw error;
+      return mapBase((Array.isArray(data) ? data[0] : data) as BaseRow);
     },
 
     async getTodoCounts() {
