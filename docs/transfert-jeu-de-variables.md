@@ -20,9 +20,11 @@ directement.
 ## Contenu du fichier
 
 Format `meddata.template-definition`, version `1`, JSON lisible. Il porte la **structure
-seule** : sections (hiérarchie, blocs répétables), rubriques communes, variables avec tous
-leurs attributs (options, valeurs proposées, unités, bornes, motifs d'absence, formules,
-types de rencontre), règles et configuration diagnostique.
+seule** : sections (hiérarchie, blocs répétables et leurs libellés de saisie `addLabel` /
+`itemLabel`), rubriques communes, variables avec tous leurs attributs (options, valeurs
+proposées, unités, bornes, motifs d'absence, formules, types de rencontre), règles et
+configuration diagnostique. Les libellés de saisie sont facultatifs : un fichier antérieur,
+qui ne les porte pas, s'importe avec les libellés génériques.
 
 Il ne porte **aucune donnée patient**, aucun identifiant interne, aucun propriétaire, aucune
 base. Tout y est référencé par code (`fieldKey`, `section`, `commonGroup`). Seules les

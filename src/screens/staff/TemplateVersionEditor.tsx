@@ -1301,6 +1301,9 @@ export function TemplateVersionEditor({
               }
               await repo.setSectionRepeatable!(sectionId, isRepeatable);
             }) : undefined}
+            onRepeatLabelsChange={repo.setSectionRepeatLabels
+              ? (sectionId, addLabel, itemLabel) => run(() => repo.setSectionRepeatLabels!(sectionId, addLabel, itemLabel))
+              : undefined}
           />
         ) : editable ? (
           <div className="space-y-3">

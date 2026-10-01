@@ -4,7 +4,7 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261001100000_base_entry_forms.sql`
+- Dernière migration incluse : `20261001103000_repeatable_group_labels_transfer.sql`
 - Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 420
 
 ## Tables (colonnes, RLS, policies, triggers)
@@ -1114,6 +1114,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | source_template_version_id | uuid | oui |  |
 | source_section_key | text | oui |  |
 | is_repeatable | boolean | non | `false` |
+| add_label | text | oui |  |
+| item_label | text | oui |  |
 
 Policies :
 - `ts_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))

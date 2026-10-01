@@ -34,6 +34,8 @@ describe('errorMessage', () => {
       .toMatch(/code de bloc « Mecanisme-lesionnel » \(n° 4\) n'est pas accepté.*Rien n'a été créé\.$/);
     expect(refus({ reason: 'too_many', list: 'sections', limit: 500, count: 612 }))
       .toMatch(/612 blocs : le maximum accepté est 500/);
+    expect(refus({ reason: 'section_repeat_label_invalid', key: 'suivis', position: 2 }))
+      .toMatch(/libellés de saisie du bloc « suivis » sont mal formés/);
     expect(refus({ reason: 'field_section_unknown', key: 'geste', section: 'bloc_x' }))
       .toMatch(/variable « geste » est rangée dans le bloc « bloc_x », absent du fichier/);
     expect(refus({ reason: 'content_incoherent', stage: 'fields' })).toMatch(/étape : variables/);
