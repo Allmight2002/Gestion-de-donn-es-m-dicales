@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
-import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
@@ -371,7 +370,6 @@ export function EditPatient() {
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={groupRules}
-      requireComplete={isMissionAccount(profile)}
       patientId={patientId ?? null}
       occurrences={occurrences}
       occurrencesError={occurrencesError}

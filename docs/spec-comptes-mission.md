@@ -69,10 +69,10 @@ ni identifiant Auth secret, ni mot de passe, ni enveloppe.
 ### 4.1 Périmètre du compte de mission
 
 Le compte voit une seule base pendant la période accordée. Il peut créer des patients et des
-rencontres, corriger ses propres brouillons puis les soumettre. Une fiche patient peut être
-enregistrée incomplète tant qu'elle reste en brouillon (saisie progressive, formulaires de saisie
-courts) ; ses champs requis sont exigés à la soumission. Une rencontre doit rester complète dès le
-brouillon. Après soumission, sa fiche devient
+rencontres, corriger ses propres brouillons puis les soumettre. Une fiche patient
+ou une rencontre (occurrences de blocs répétables comprises) peut être enregistrée incomplète tant
+qu'elle reste en brouillon (saisie progressive, formulaires de saisie courts) ; ses champs requis
+sont exigés à la soumission. Après soumission, sa fiche devient
 immuable pour lui. Il ne peut ni supprimer un patient, ni exporter, ni curer, ni gérer les accès,
 les jeux de variables ou les documents bruts, ni rendre une base disponible hors ligne.
 

@@ -36,7 +36,7 @@ dossier**, sans dupliquer la base ni synchroniser deux enregistrements.
 | 1 | Une saisie rapide crée le dossier et permet de le reprendre | `NewPatient` appelle `create_patient` ; la fiche est créée en brouillon et s'ouvre aussitôt |
 | 2 | Une donnée saisie dans un formulaire est retrouvée dans les autres | Une seule fiche : tous les formulaires lisent et écrivent `patient.data` |
 | 3 | Un formulaire court préserve les champs qu'il ne contient pas | Écriture par **patch** (`v_old || p_patch` côté serveur) ; sur le chemin historique, la fiche entière chargée est renvoyée |
-| 4 | Les requis du formulaire complet ne bloquent pas un enregistrement partiel | Seuls les indispensables du formulaire court sont exigés à l'écran ; le serveur n'impose la complétude qu'au-delà du brouillon, pour tout compte (comptes de mission compris depuis `20261001120000`) |
+| 4 | Les requis du formulaire complet ne bloquent pas un enregistrement partiel | Seuls les indispensables du formulaire court sont exigés à l'écran ; le serveur n'impose la complétude qu'au-delà du brouillon, pour tout compte (comptes de mission compris depuis `20261001140000`) |
 | 5 | Règles conditionnelles cohérentes | Visibilité calculée sur **toutes** les variables et valeurs de la fiche ; les variables qui conditionnent l'affichage (y compris d'un bloc) ou le calcul d'une variable choisie sont **ajoutées automatiquement** à leur place, et signalées |
 | 6 | Les données non renseignées restent vides | Une valeur proposée par le jeu de variables n'est envoyée que si sa variable est affichée dans le formulaire courant |
 | 7 | Complétude sur les variables applicables | L'indicateur de progression ne compte que les variables visibles du formulaire courant et ses indispensables |
@@ -52,10 +52,10 @@ entière). Le passage à « complet » ou « vérifié » se fait depuis le form
 - **Membres de la base** : choisissent un formulaire à la création (« Nouveau dossier avec… » ou
   le sélecteur en haut du formulaire) ou pour compléter une fiche (« Compléter avec… »).
 - **Comptes de mission** : utilisent les formulaires courts et enregistrent une fiche partielle
-  en brouillon (migration `20261001120000_mission_partial_patient_drafts.sql`). Ils complètent
-  leur propre brouillon depuis la fiche, et la complétude reste exigée à la soumission. Les
-  rencontres et occurrences de blocs répétables gardent la règle d'origine (complètes dès le
-  brouillon).
+  en brouillon (migration `20261001140000_mission_partial_patient_drafts.sql`), de même qu'une
+  rencontre ou une occurrence de bloc répétable (`20261001150000_mission_partial_encounter_drafts.sql`).
+  Ils complètent leur propre brouillon depuis la fiche, et la complétude reste exigée à la
+  soumission.
 
 ## Sécurité et intégrité (table `base_entry_form`)
 

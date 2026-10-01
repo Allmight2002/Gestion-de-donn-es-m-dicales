@@ -522,7 +522,6 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={rules}
-      requireComplete={isMissionAccount(profile)}
       rows={pending.filter((row) => row.sectionKey === section.sectionKey)}
       online={online && !offlineIntakeActive}
       busy={busy}
