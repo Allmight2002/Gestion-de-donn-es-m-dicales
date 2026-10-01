@@ -201,4 +201,48 @@ describe('transfert d\'un jeu de variables par fichier', () => {
 
     await expect(importAs(curator, { definition: d })).rejects.toThrow('TEMPLATE_IMPORT_FORBIDDEN');
   });
+
+  // `TEMPLATE_IMPORT_INVALID` seul ne disait pas quoi corriger. Le detail porte le motif et le
+  // code de structure en cause, jamais une valeur clinique ni l'erreur SQL brute.
+  test('un refus de forme porte son motif et le code en cause, sans rien ecrire', async () => {
+    const d = await exportAs(alice, version);
+    const sections = d.sections as { key: string; parentKey: string | null }[];
+    const fields = d.fields as { fieldKey: string }[];
+    const refusal = async (definition: object) => {
+      try { await importAs(bob, { definition }); } catch (e) { return JSON.parse((e as { detail: string }).detail); }
+      throw new Error('import accepte');
+    };
+    const before = await templateCount(bob);
+
+    expect(await refusal({ ...d, sections: [...sections, { key: 'Mecanisme-lesionnel', label: 'Mécanisme' }] }))
+      .toEqual({ code: 'TEMPLATE_IMPORT_INVALID', reason: 'section_key_invalid', key: 'Mecanisme-lesionnel', position: 4 });
+    expect(await refusal({ ...d, sections: Array.from({ length: 501 }, (_, i) => ({ key: `s_${i}`, label: 'S' })) }))
+      .toEqual({ code: 'TEMPLATE_IMPORT_INVALID', reason: 'too_many', list: 'sections', limit: 500, count: 501 });
+    expect(await refusal({ ...d, sections: sections.map((s) => (s.key === 'detail' ? { ...s, parentKey: 'absent' } : s)) }))
+      .toMatchObject({ reason: 'section_parent_invalid', key: 'detail', parentKey: 'absent' });
+    expect(await refusal({ ...d, sections: [...sections, sections[0]] }))
+      .toEqual({ code: 'TEMPLATE_IMPORT_INVALID', reason: 'section_duplicate', key: sections[0].key });
+    expect(await refusal({ ...d, fields: [...fields, { fieldKey: 'orpheline', label: 'X', scope: 'patient', section: 'inexistante', type: 'text' }] }))
+      .toEqual({ code: 'TEMPLATE_IMPORT_INVALID', reason: 'field_section_unknown', key: 'orpheline', section: 'inexistante', position: 8 });
+    expect(await refusal({ ...d, fields: [...fields, { fieldKey: ' ', label: 'X' }] }))
+      .toMatchObject({ reason: 'field_key_invalid', position: 8 });
+    // Erreur de conversion pendant l'insertion : l'etape, pas le texte PostgreSQL.
+    expect(await refusal({ ...d, fields: fields.map((f) => (f.fieldKey === 'debut' ? { ...f, minValue: 'zero' } : f)) }))
+      .toEqual({ code: 'TEMPLATE_IMPORT_INVALID', reason: 'content_incoherent', stage: 'fields' });
+    expect(await templateCount(bob)).toBe(before);
+  });
+
+  // Les gardes du bloc pilote par le diagnostic tranchent l'import comme l'editeur : leur motif
+  // remonte tel quel, et l'ecran l'explique (src/lib/errorMessage.ts).
+  test('un bloc pilote par le diagnostic sans variable propre est refuse avec le motif de la garde', async () => {
+    const d = await exportAs(alice, version);
+    const before = await templateCount(bob);
+    const fields = (d.fields as { fieldKey: string }[]).filter((f) => f.fieldKey !== 'geste');
+    await expect(importAs(bob, { definition: { ...d, fields } })).rejects.toThrow('DIAGNOSIS_BLOCK_EMPTY');
+    const rules = d.rules as { rule: { then: { section?: string } } }[];
+    const blockRule = rules.find((r) => r.rule.then.section === 'bloc')!;
+    await expect(importAs(bob, { definition: { ...d, rules: [...rules, { ...blockRule, message: 'Seconde règle' }] } }))
+      .rejects.toThrow('DIAGNOSIS_BLOCK_NONCANONICAL');
+    expect(await templateCount(bob)).toBe(before);
+  });
 });
