@@ -5,7 +5,7 @@
 import 'fake-indexeddb/auto';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
@@ -283,5 +283,87 @@ describe('TerminologyInput — codage assiste', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Rechercher une correspondance' }));
     expect(await screen.findByText(/Codage indisponible pour le moment/)).toBeInTheDocument();
     expect(changes).toEqual([]);
+  });
+});
+
+// Revue post-optimisation, lot C1. B2 : un sigle de deux lettres (« IC ») est un diagnostic ;
+// il etait ignore au depart du champ, puis perdu a l'enregistrement. B3 : partir vers un autre
+// bouton du bloc (telechargement, actions d'une autre entree) laissait le texte en suspens, et
+// l'enregistrement le perdait.
+describe('TerminologyInput — depart du champ (C1)', () => {
+  const PROVISOIRE = (raw: string) => ({ raw, coding: { method: 'lexical', status: 'unmatched' } });
+
+  test('un sigle de deux caracteres est garde, puis analyse', async () => {
+    const codeText = vi.fn(async () => coded('unmatched'));
+    const changes = renderField({ codeText });
+    await writeAndLeave('IC');
+    expect(changes[0]).toEqual(PROVISOIRE('IC'));
+    expect(codeText).toHaveBeenCalledWith('IC');
+  });
+
+  test('un seul caractere n est ni garde ni analyse', async () => {
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText });
+    await writeAndLeave('I');
+    expect(changes).toEqual([]);
+    expect(codeText).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: 'Diagnostic' })).toHaveValue('I');
+  });
+
+  test('Tab vers le lien de telechargement garde le texte', async () => {
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText });
+    const box = screen.getByRole('combobox', { name: 'Diagnostic' });
+    const lien = screen.getByRole('button', { name: 'Télécharger pour rechercher hors connexion' });
+    let vers: EventTarget | null = null;
+    box.addEventListener('blur', (e) => { vers = e.relatedTarget; });
+    await userEvent.type(box, RAW);
+    await userEvent.tab();
+    expect(vers).toBe(lien);
+    expect(changes[0]).toEqual(PROVISOIRE(RAW));
+    expect(codeText).toHaveBeenCalledWith(RAW);
+  });
+
+  test('retirer une autre entree garde le texte en cours', async () => {
+    const CHOLERA = { code: 'FIC.20', label: 'Choléra' };
+    const codeText = vi.fn(() => new Promise<TerminologyCodingResult>(() => undefined));
+    const changes = renderField({ codeText }, { multiple: true, initial: [CHOLERA] });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), RAW);
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer Choléra' }));
+    expect(changes.at(-1)).toEqual([PROVISOIRE(RAW)]);
+    expect(codeText).toHaveBeenCalledWith(RAW);
+  });
+
+  test('une proposition atteinte au clavier n est pas un depart du champ', async () => {
+    const option: TerminologyOption = { id: 'o1', code: 'FIC.10', label: 'Méningiomes', kind: 'category', depth: 3 };
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ search: async () => [option], codeText });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), 'méning');
+    await screen.findByRole('option', { name: 'Méningiomes' });
+    await userEvent.tab();
+    expect(screen.getByRole('option', { name: 'Méningiomes' })).toHaveFocus();
+    expect(changes).toEqual([]);
+    await userEvent.keyboard('{Enter}');
+    expect(changes).toEqual([{ code: 'FIC.10', label: 'Méningiomes' }]);
+    expect(codeText).not.toHaveBeenCalled();
+  });
+
+  test('annuler une correction n enregistre pas le texte en cours', async () => {
+    const stored = { code: HSD.code, label: HSD.label, raw: RAW, coding: { method: 'ai_assisted', status: 'automatic' } };
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText }, { multiple: true, initial: [stored] });
+    await userEvent.click(screen.getByRole('button', { name: `Changer ${HSD.label}` }));
+    const box = screen.getByRole('combobox', { name: 'Diagnostic' });
+    await userEvent.type(box, ' gauche');
+    const annuler = screen.getByRole('button', { name: 'Annuler' });
+    // Souris ou toucher : le focus reste dans le champ, comme pour une proposition.
+    expect(fireEvent.mouseDown(annuler)).toBe(false);
+    // Clavier : aller vers « Annuler » n'est pas un depart du champ.
+    await userEvent.tab({ shift: true });
+    expect(annuler).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(changes).toEqual([]);
+    expect(codeText).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: 'Diagnostic' })).toHaveValue('');
   });
 });

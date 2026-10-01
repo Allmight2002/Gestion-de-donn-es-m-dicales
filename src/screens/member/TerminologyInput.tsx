@@ -48,7 +48,6 @@ import {
 // choix, et l'absence de correspondance laisse le texte enregistrable, non code. Le texte
 // d'origine accompagne toujours le code retenu.
 const DEBOUNCE_MS = 250;
-const MIN_CODING_LENGTH = 3;
 
 type Replacing = { index: number; entry: TerminologyFieldEntry } | null;
 
@@ -96,7 +95,8 @@ export function TerminologyInput({
   // provenance de l'analyse a reprendre si une proposition est choisie.
   const [reanalysis, setReanalysis] = useState<Record<string, 'pending' | 'none' | 'failed'>>({});
   const reanalyzedRef = useRef(new Map<string, UnmatchedTerminologyValue>());
-  const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   // La reponse du codage arrive apres coup : elle doit s'appliquer a la valeur COURANTE.
   const valueRef = useRef(value);
   valueRef.current = value;
@@ -282,7 +282,8 @@ export function TerminologyInput({
    */
   function commitText(text: string) {
     const raw = text.trim().slice(0, MAX_RAW_LENGTH);
-    if (!freeText || raw.length < MIN_CODING_LENGTH) return;
+    // Meme seuil que la recherche et le serveur : un sigle (« IC ») est un diagnostic.
+    if (!freeText || raw.length < MIN_QUERY_LENGTH) return;
     const provisional = unmatchedEntry(raw);
     const entries = currentEntries();
     const index = replacing ? replacing.index : multiple ? entries.length : 0;
@@ -320,8 +321,11 @@ export function TerminologyInput({
   }
 
   function onBlur(e: FocusEvent<HTMLInputElement>) {
-    // Un clic sur une proposition de la liste n'est pas un depart du champ.
-    if (e.relatedTarget && containerRef.current?.contains(e.relatedTarget as Node)) return;
+    // Aller vers une proposition de la liste, ou annuler une correction, n'est pas un depart
+    // du champ. Tout autre focus l'est, meme dans ce bloc (telechargement, actions d'une autre
+    // entree) : sinon le texte restait en suspens et l'enregistrement le perdait.
+    const next = e.relatedTarget as Node | null;
+    if (next && (listRef.current?.contains(next) || next === cancelRef.current)) return;
     commitText(query);
   }
 
@@ -522,7 +526,7 @@ export function TerminologyInput({
   }
 
   return (
-    <div ref={containerRef} className="space-y-1">
+    <div className="space-y-1">
       {/* Les etiquettes d'abord, la recherche EN DESSOUS et toujours visible : ajouter un
           diagnostic ne doit jamais obliger a en retirer un autre. */}
       {multiple && chosen.length > 0 && (
@@ -564,7 +568,11 @@ export function TerminologyInput({
         <p className="flex items-center gap-2 text-xs text-slate-500">
           {t('terminology.replacing')}
           <button
+            ref={cancelRef}
             type="button"
+            // Comme pour les propositions : le focus reste dans le champ, sinon le depart du
+            // champ enregistrerait la correction que l'on annule.
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => { setReplacing(null); setQuery(''); }}
             className="font-medium text-slate-600 hover:underline"
           >
@@ -603,7 +611,7 @@ export function TerminologyInput({
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {codingNotice && <p role="status" className="text-xs text-slate-500">{codingNotice}</p>}
       {visibleOptions.length > 0 && (
-        <ul id={listId} role="listbox" className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <ul ref={listRef} id={listId} role="listbox" className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
           {visibleOptions.map((o) => (
             <li key={o.id}>
               {/* Le role `option` porte sur l'element ACTIVABLE : sinon un clic sur la ligne

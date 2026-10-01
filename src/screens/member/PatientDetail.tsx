@@ -20,7 +20,7 @@ import {
   type PatientCreateEntry,
 } from '../../data/offlineIntake';
 import { withSections } from '../../data/templates';
-import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, terminologyMarks, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { addedFieldsForRecord } from '../../domain/recordCompletion';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
@@ -229,7 +229,7 @@ export function PatientDetail() {
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
       if (typeof v === 'boolean') return v ? '✓' : '✗';
       // La variable est passee pour que le LIBELLE de l'option s'affiche, et non son code.
-      return displayFieldValue(v, '—', field, lang);
+      return displayFieldValue(v, '—', field, lang, terminologyMarks(t));
     },
     [t, lang],
   );
@@ -1059,7 +1059,7 @@ function LocalPendingDetail({ baseId, entry }: { baseId: string; entry: PatientC
             {permanentEntries.map(([key, value]) => (
               <div key={key} className="min-w-0">
                 <dt className="truncate text-xs font-medium uppercase tracking-wide text-slate-400">{labels[key]?.label ?? key}</dt>
-                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field, lang)}</dd>
+                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field, lang, terminologyMarks(t))}</dd>
               </div>
             ))}
           </dl>

@@ -60,3 +60,36 @@ describe('displayFieldValue — codage assiste', () => {
       .toBe('Cholera');
   });
 });
+
+// Revue post-optimisation, lot C1 : une proposition jamais relue se lisait comme un diagnostic
+// etabli. Avec les mentions, le statut se lit ; sans elles, le rendu historique est conserve.
+describe('displayFieldValue — statut du codage assiste (C1)', () => {
+  const MARKS = { toConfirm: 'à confirmer', uncoded: 'non codé' };
+  const PROPOSE = { ...DIABETE, raw: 'DT2', coding: { method: 'ai_assisted', status: 'suggested' } };
+  const NON_CODE = { raw: 'Syndrome fictif', coding: { method: 'ai_assisted', status: 'unmatched' } };
+
+  test('une proposition se lit « à confirmer », un texte libre « non codé »', () => {
+    expect(displayFieldValue(PROPOSE, '—', null, undefined, MARKS)).toBe('Diabete de type 2 (à confirmer)');
+    expect(displayFieldValue(NON_CODE, '—', null, undefined, MARKS)).toBe('Syndrome fictif (non codé)');
+  });
+
+  test('un code verifie ne porte aucune mention', () => {
+    for (const status of ['automatic', 'confirmed', 'manually_modified']) {
+      expect(displayFieldValue({ ...CHOLERA, raw: 'cholera', coding: { method: 'ai_assisted', status } }, '—', null, undefined, MARKS))
+        .toBe('Cholera');
+    }
+    expect(displayFieldValue(CHOLERA, '—', null, undefined, MARKS)).toBe('Cholera');
+  });
+
+  test('dans une liste, chaque entree garde son statut et son rang', () => {
+    expect(displayFieldValue([CHOLERA, PROPOSE, NON_CODE], '—', null, undefined, MARKS))
+      .toBe('Cholera; Diabete de type 2 (à confirmer); Syndrome fictif (non codé)');
+  });
+
+  test('sans mentions, le rendu historique est inchange ; une valeur vide reste vide', () => {
+    expect(displayFieldValue(PROPOSE)).toBe('Diabete de type 2');
+    expect(displayFieldValue([PROPOSE, NON_CODE])).toBe('Diabete de type 2; Syndrome fictif');
+    expect(displayFieldValue(null, '—', null, undefined, MARKS)).toBe('—');
+    expect(displayFieldValue('texte', '—', null, undefined, MARKS)).toBe('texte');
+  });
+});

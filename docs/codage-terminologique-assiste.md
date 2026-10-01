@@ -42,7 +42,7 @@ Texte clinique ──► interprétation (LLM, sinon repli lexical)
 |---|---|
 | Frappe courte | Recherche classique inchangée (copie locale ou serveur), choix dans la liste. |
 | Pause de frappe | Rien n'est envoyé : chaque analyse est un appel facturé au fournisseur du LLM. |
-| Départ du champ ou Entrée sans choix | Le texte est **enregistré immédiatement, non codé** ; « Recherche de suggestions… » s'affiche avec une petite animation, puis le texte est remplacé par le résultat du codage s'il est toujours là. Entrée ne soumet jamais le formulaire. |
+| Départ du champ ou Entrée sans choix | Dès 2 caractères, comme la recherche (un sigle comme « IC » est un diagnostic), le texte est **enregistré immédiatement, non codé** ; « Recherche de suggestions… » s'affiche avec une petite animation, puis le texte est remplacé par le résultat du codage s'il est toujours là. Entrée ne soumet jamais le formulaire. Tout focus qui quitte le champ compte, y compris vers le lien de téléchargement ou les actions d'une autre entrée ; seuls la liste de propositions et « Annuler » d'une correction n'en sont pas. |
 | Clic sur une proposition de la liste | Choix classique ; le texte tapé n'est pas codé. |
 
 Résultats affichés discrètement dans l'étiquette du diagnostic :
@@ -130,6 +130,10 @@ Toute autre clé est refusée. Les messages d'erreur ne recopient jamais la vale
 
 Effets sur les autres surfaces :
 
+- **Lecture hors saisie** (fiche, liste des patients, groupes répétables, historique des
+  corrections, conflits de synchronisation) : une proposition se lit « Libellé (à confirmer) »,
+  un texte libre « texte (non codé) ». Une proposition « à confirmer » reste un code : elle
+  compte pour les règles, la couverture diagnostique et les cohortes, comme à la saisie.
 - **Règles `contains_any` et couverture diagnostique** : une entrée non codée est ignorée (ni
   déclencheur ni invalidation du reste de la liste). Parité SQL/TS couverte par
   `test/fixtures/containsAny.ts`.

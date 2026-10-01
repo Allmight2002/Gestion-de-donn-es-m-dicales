@@ -9,7 +9,7 @@ import type { FieldChange, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
-import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, terminologyMarks, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import {
   encounterScopeFieldKeys, enqueueEncounterUpdate, fieldsForOfflineVersion, isOfflineEnabled, offlineCache,
   offlineEncounterFieldScopesKnown, sectionsForOfflineVersion, useOnline, withinEncounterGroupScope,
@@ -104,7 +104,8 @@ export function EditEncounter() {
     : errorMessage(e, t('common.error'));
   const fmt = (v: unknown): string => {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
-    return displayFieldValue(v, '—');
+    // Historique : confirmer une proposition doit se lire « X (a confirmer) -> X », pas « X -> X ».
+    return displayFieldValue(v, '—', null, undefined, terminologyMarks(t));
   };
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
   const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${encounterId}`);

@@ -9,7 +9,7 @@ import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, usePatientRepository, useTemplateRepository, useViewPreferenceRepository } from '../../data/RepositoryProvider';
 import type { BaseListing, ObservationModel } from '../../data/bases';
 import type { PatientListItem, PatientSortField } from '../../data/patients';
-import { displayFieldValue } from '../../data/types';
+import { displayFieldValue, terminologyMarks, type TerminologyMarks } from '../../data/types';
 import { getTemplateFields } from '../../data/templates';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Menu, MenuItem } from '../../components/Menu';
@@ -87,6 +87,7 @@ export function BaseHome() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t, lang } = useI18n();
+  const marks = terminologyMarks(t);
   const online = useOnline();
   const { profile } = useAuth();
   const bases = useBaseRepository();
@@ -738,7 +739,7 @@ export function BaseHome() {
             <ul className="card divide-y divide-slate-100 overflow-hidden dark:divide-slate-800">
               {rows.map((p) => {
                 const shown = visibleFields.slice(0, 3)
-                  .map((f) => ({ field: f, text: formatCell(p.data[f.fieldKey], f, lang) }))
+                  .map((f) => ({ field: f, text: formatCell(p.data[f.fieldKey], f, lang, marks) }))
                   .filter((cell) => cell.text !== '—');
                 return (
                   <li key={p.id} className="flex items-stretch">
@@ -791,7 +792,7 @@ export function BaseHome() {
                         </button>
                       </td>
                       {visibleFields.map((f) => (
-                        <td key={f.id}>{formatCell(p.data[f.fieldKey], f, lang)}</td>
+                        <td key={f.id}>{formatCell(p.data[f.fieldKey], f, lang, marks)}</td>
                       ))}
                       <td className="text-right">
                         {canEdit && !isCrossSectional && (
@@ -825,9 +826,9 @@ export function BaseHome() {
   );
 }
 
-function formatCell(v: unknown, field: Column | undefined, lang: Language): string {
+function formatCell(v: unknown, field: Column | undefined, lang: Language, marks: TerminologyMarks): string {
   if (typeof v === 'boolean') return v ? '✓' : '✗';
-  return displayFieldValue(v, '—', field, lang);
+  return displayFieldValue(v, '—', field, lang, marks);
 }
 
 // MODE INTAKE-ONLY (hors-ligne) : la SEULE chose visible est la file locale de CE compte.
