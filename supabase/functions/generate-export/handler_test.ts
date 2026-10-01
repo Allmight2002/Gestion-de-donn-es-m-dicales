@@ -2794,3 +2794,122 @@ Deno.test('L72d test 24 : la ligne de comptage nomme le GROUPE, et la racine com
     }
   }
 });
+
+Deno.test('generate-export: la provenance du codage assiste sort en colonnes et au dictionnaire', async () => {
+  let uploadedBytes: Uint8Array | null = null;
+  const diagField = {
+    id: 'f_diag_principal',
+    template_version_id: TV,
+    field_key: 'diagnostic',
+    label: 'Diagnostic',
+    scope: 'encounter',
+    section: 'vitals',
+    type: 'terminology',
+    is_multiple: false,
+    unit: null,
+    allowed_values: null,
+    display_order: 4,
+  };
+  const listField = {
+    ...diagField,
+    id: 'f_diag_liste',
+    field_key: 'diagnostics',
+    label: 'Diagnostics',
+    is_multiple: true,
+    display_order: 5,
+  };
+  const coding = { method: 'ai_assisted', status: 'automatic', release: '2026-01', language: 'fr', score: 0.95 };
+  const enc = {
+    ...ENCOUNTER,
+    data: {
+      ...ENCOUNTER.data,
+      diagnostic: { code: '8B02', label: 'Hémorragie sousdurale non traumatique', raw: 'HSD spontané', coding },
+      diagnostics: [
+        { code: '1A00', label: 'Cholera' },
+        { raw: 'Syndrome fictif', coding: { method: 'ai_assisted', status: 'unmatched' } },
+      ],
+    },
+  };
+  const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
+    if (call.kind === 'storage' && call.method === 'upload') {
+      return (call.args[1] as Blob).arrayBuffer().then((buf) => {
+        uploadedBytes = new Uint8Array(buf);
+        return okResult({ path: 'p' });
+      });
+    }
+    if (call.kind === 'storage') return okResult([{}]);
+    if (call.kind === 'from') {
+      switch (call.table) {
+        case 'cohort':
+          return okResult({ id: COHORT, base_id: BASE, name: 'Cohorte Test', cohort_type: 'snapshot' });
+        case 'base':
+          return okResult({ name: 'Base Test', current_template_version_id: TV });
+        case 'cohort_member':
+          return okResult([{ patient_id: 'p1' }]);
+        case 'patient':
+          return okResult([{ id: 'p1', patient_code: 'P0001', template_version_id: TV, data: {} }]);
+        case 'cohort_encounter_member':
+          return okResult([{ encounter_id: 'e1' }]);
+        case 'encounter':
+          return okResult([enc]);
+        case 'template_field':
+          return okResult([...FIELDS, diagField, listField]);
+        case 'template_section':
+          return okResult(SECTIONS);
+        case 'template_common_group':
+          return okResult([]);
+        case 'template_version':
+          return okResult(VERSIONS);
+        case 'record_field_provenance':
+          return okResult([]);
+        case 'profiles':
+          return okResult([]);
+        case 'export_log':
+          return okResult({ id: 'exp1', format: 'xlsx' });
+      }
+    }
+    return okResult(null);
+  };
+  const custom: GenerateExportDeps = {
+    buildClients: () => ({
+      asUser: fakeSupabaseClient({
+        role: 'user',
+        user: { data: { user: { id: 'u1' } } },
+        responder: (c) => c.kind === 'rpc' ? okResult(true) : okResult(null),
+      }),
+      admin: fakeSupabaseClient({ role: 'admin', responder: adminResponder }),
+    }),
+    newId: () => 'fixed-uuid',
+    now: () => 1_700_000_000_000,
+    nowIso: () => '2026-07-12T00:00:00.000Z',
+  };
+
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('xlsx') }), custom));
+  assertEquals(status, 200);
+  const wb = XLSX.read(uploadedBytes!, { type: 'array' });
+  const donnees = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  assertEquals(donnees[0]['terminology_text__encounter__diagnostic'], 'HSD spontané');
+  assertEquals(donnees[0]['terminology_status__encounter__diagnostic'], 'automatic');
+  assertEquals(donnees[0]['terminology_score__encounter__diagnostic'], 0.95);
+  // Une liste ne porte pas sa provenance dans la feuille principale, mais dans la sienne.
+  assertEquals(
+    Object.keys(donnees[0]).some((k) => k.endsWith('__encounter__diagnostics') && k.startsWith('terminology_status')),
+    false,
+  );
+  const liste = XLSX.utils.sheet_to_json(wb.Sheets['diagnostics']) as Record<string, unknown>[];
+  assertEquals(liste.map((r) => r.status ?? ''), ['', 'unmatched']);
+  const dictionnaire = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const documentees = dictionnaire.map((r) => r.column_id).filter((c) => String(c).startsWith('terminology_'));
+  assertEquals(documentees, [
+    'terminology_code__encounter__diagnostic',
+    'terminology_text__encounter__diagnostic',
+    'terminology_status__encounter__diagnostic',
+    'terminology_method__encounter__diagnostic',
+    'terminology_score__encounter__diagnostic',
+    'terminology_normalized__encounter__diagnostic',
+    'terminology_release__encounter__diagnostic',
+    'terminology_uri__encounter__diagnostic',
+    'terminology_code__encounter__diagnostics',
+  ]);
+});

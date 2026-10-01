@@ -13,7 +13,12 @@ Deno.test('repli lexical : abreviation developpee et separateurs explicites', ()
   const items = lexicalInterpretation('HSD chronique droit; méningiome frontal');
   assertEquals(items.length, 2);
   assertEquals(items[0].normalized, 'Hématome sous-dural chronique droit');
-  assertEquals(items[0].searchTerms[0], 'Hémorragie sousdurale');
+  // Le qualificatif ecrit reste dans le terme prefere, avant l'intitule generique.
+  assertEquals(items[0].searchTerms.slice(0, 3), [
+    'Hémorragie sousdurale chronique droit',
+    'Hématome sous-dural chronique droit',
+    'Hémorragie sousdurale',
+  ]);
   assertEquals(items[1].searchTerms, ['méningiome frontal']);
 });
 

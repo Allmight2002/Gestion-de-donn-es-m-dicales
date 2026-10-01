@@ -14,6 +14,7 @@ import {
   buildMultivalueTable,
   buildPatientExport,
   buildProvenance,
+  codingColumnId,
   columnId,
   type ExportField,
   type ExportTable,
@@ -962,6 +963,11 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     // L49 : le dictionnaire suit le profil — reduit a l'interpretation en Analyse, detaille en Complet.
     const dict = buildDictionary(fields, {
       indicatorsByField,
+      // Codage assiste : le dictionnaire documente exactement les colonnes de provenance que la
+      // feuille principale porte, ni plus ni moins.
+      codingFields: new Set(
+        fields.filter((f) => main.columns.includes(codingColumnId(f, 'status'))).map((f) => columnId(f)),
+      ),
       omittedFieldKeys,
       profile: options.profile,
       blockColumns,

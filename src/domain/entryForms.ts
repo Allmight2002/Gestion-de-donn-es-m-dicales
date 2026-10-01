@@ -8,9 +8,6 @@ import { findProposalField, isProposalSource, proposalKeysOf } from './proposalF
 import { visibilityRulesOf, visibilityTargetFieldKeys } from './templateRules';
 import { repeatableFieldKeys } from './templateSections';
 
-/** Section de presentation unique d'un formulaire court : l'ordre est celui du formulaire. */
-export const ENTRY_FORM_SECTION_KEY = '__entry_form__';
-
 export interface EntryFormDefinition {
   name: string;
   fieldKeys: readonly string[];
@@ -18,8 +15,8 @@ export interface EntryFormDefinition {
 }
 
 export interface ResolvedEntryForm {
-  /** Variables proposees, dans l'ordre du formulaire, dependances inserees avant leur cible
-   *  (le champ « autre » d'une liste suit sa source, comme dans le formulaire complet). */
+  /** Variables proposees, a leur place et dans leur section du formulaire complet, dependances
+   *  comprises (le champ « autre » d'une liste suit sa source, comme dans le formulaire complet). */
   fields: TemplateField[];
   /** Variables ajoutees automatiquement : elles conditionnent l'affichage ou le calcul d'une autre. */
   dependencyKeys: Set<string>;
@@ -60,10 +57,11 @@ export function directDependencies(
 /**
  * Projette un formulaire de saisie sur les variables de fiche de la version courante.
  *
- * - l'ordre est celui choisi par le responsable, independamment des sections ;
- * - une variable qui en conditionne une autre (affichage ou calcul) est ajoutee juste avant
- *   la premiere variable qui en a besoin, recursivement : sans elle, la cible resterait
- *   masquee ou son calcul vide ;
+ * - chaque variable garde sa section, sa sous-section et son rang du formulaire complet : un
+ *   formulaire court est le formulaire complet reduit a ses variables, quel que soit l'ordre
+ *   dans lequel elles ont ete choisies ;
+ * - une variable qui en conditionne une autre (affichage ou calcul) est ajoutee, recursivement :
+ *   sans elle, la cible resterait masquee ou son calcul vide ;
  * - les variables d'un bloc repetable decrivent une occurrence et ne sont jamais proposees ;
  * - le caractere requis est celui du FORMULAIRE : les requis du formulaire complet ne bloquent
  *   pas un enregistrement partiel (le serveur garde ses propres regles selon le statut).
@@ -96,42 +94,31 @@ export function resolveEntryForm(
     if (required.has(raw)) required.add(key);
   }
 
-  const ordered: string[] = [];
-  const placed = new Set<string>();
-  const visiting = new Set<string>();
+  // Fermeture des dependances : chaque pilote ou operande utilisable rejoint le formulaire.
   const dependencyKeys = new Set<string>();
-  const visit = (key: string) => {
-    if (placed.has(key) || visiting.has(key)) return; // un cycle (refuse a l'enregistrement) ne boucle pas
-    visiting.add(key);
+  const included = new Set(requested);
+  const pending = [...requested];
+  while (pending.length > 0) {
+    const key = pending.pop()!;
     for (const dep of deps.get(key) ?? []) {
       const source = sourceOfCompanion.get(dep) ?? dep;
-      if (!usable(source)) continue;
-      if (!requested.has(source)) dependencyKeys.add(source);
-      visit(source);
+      if (!usable(source) || included.has(source)) continue;
+      included.add(source);
+      dependencyKeys.add(source);
+      pending.push(source);
     }
-    visiting.delete(key);
-    placed.add(key);
-    ordered.push(key);
-  };
-  for (const key of requested) visit(key);
-
-  // Le champ « autre » d'une liste suit sa source dans la liste : l'ecran le rend AVEC elle.
-  const withCompanions = ordered.flatMap((key) => {
-    const companion = isProposalSource(byKey.get(key)!) ? findProposalField(fields, byKey.get(key)!) : undefined;
-    return companion && companions.has(companion.fieldKey) && !groupKeys.has(companion.fieldKey) ? [key, companion.fieldKey] : [key];
-  });
-  const editableKeys = new Set(withCompanions);
-  const resolved = withCompanions.map((key, index) => ({
-    ...byKey.get(key)!,
-    section: ENTRY_FORM_SECTION_KEY,
-    sectionId: null,
-    sectionLabel: form.name,
-    sectionOrder: 0,
-    parentSectionKey: null,
-    parentSectionLabel: null,
-    displayOrder: index,
-    required: !dependencyKeys.has(key) && required.has(key),
-  } satisfies TemplateField));
+  }
+  // Le champ « autre » d'une liste suit sa source : l'ecran le rend AVEC elle.
+  for (const key of [...included]) {
+    const field = byKey.get(key)!;
+    const companion = isProposalSource(field) ? findProposalField(fields, field) : undefined;
+    if (companion && companions.has(companion.fieldKey) && !groupKeys.has(companion.fieldKey)) included.add(companion.fieldKey);
+  }
+  const editableKeys = new Set(included);
+  // L'ordre et la structure restent ceux du formulaire complet (ordre de la liste recue).
+  const resolved = fields
+    .filter((field) => included.has(field.fieldKey))
+    .map((field) => ({ ...field, required: !dependencyKeys.has(field.fieldKey) && required.has(field.fieldKey) }));
   return { fields: resolved, dependencyKeys, editableKeys, unavailableKeys };
 }
 

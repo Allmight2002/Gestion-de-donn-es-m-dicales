@@ -145,9 +145,7 @@ describe('saisie : ce que le compte de mission PEUT faire', () => {
   });
 
   test('il cree un patient MINIMAL : le code et les champs requis passent, aucun champ nominatif n est ecrit', async () => {
-    // « Minimal » porte sur l'identite : AUCUNE donnee nominative. Les champs REQUIS du
-    // gabarit (sexe, birth_year) restent exigibles : aucun brouillon partiel pour un compte
-    // de mission (regle B).
+    // « Minimal » porte sur l'identite : AUCUNE donnee nominative.
     const created = await rowsAs(studentId, CREATE_PATIENT, [
       baseId, 'MIS-001', null, null, null, null, null, '{"sexe":"M","birth_year":1990}',
     ]);
@@ -184,22 +182,34 @@ describe('saisie : ce que le compte de mission PEUT faire', () => {
     expect(submitted.validation_status).toBe('complete');
   });
 
-  test('regle B : un brouillon incomplet est refuse (patient comme rencontre)', async () => {
-    // Aucun brouillon partiel pour un compte de mission : chaque enregistrement doit
-    // porter les champs requis du gabarit (le MEDECIN, lui, peut ouvrir un brouillon vide).
+  test('fiche et rencontre partielles en brouillon acceptees, soumission complete exigee', async () => {
+    // Formulaires de saisie courts : un compte de mission enregistre une fiche INCOMPLETE en
+    // brouillon, la complete ensuite, et ne peut la soumettre qu'avec ses champs requis.
+    const partial = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002B', null, null, null, null, null, '{"sexe":"F"}']))[0];
+    expect(partial.validation_status).toBe('draft');
+    expect(partial.data).toEqual({ sexe: 'F' });
+    const UPDATE_PATIENT = 'select * from public.update_patient($1,$2::jsonb,$3,$4,$5::bigint)';
     await expect(
-      rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002B', null, null, null, null, null, '{}']),
+      rowsAs(studentId, UPDATE_PATIENT, [partial.id, '{"sexe":"F"}', 'complete', 'soumission', partial.row_version]),
     ).rejects.toThrow(/requis|manquant/i);
+    const completed = (await rowsAs(studentId, UPDATE_PATIENT, [
+      partial.id, '{"sexe":"F","birth_year":1995}', 'complete', 'soumission', partial.row_version,
+    ]))[0];
+    expect(completed.validation_status).toBe('complete');
     const patientId = (await rowsAs(studentId, CREATE_PATIENT, [baseId, 'MIS-002C', null, null, null, null, null, '{"sexe":"F","birth_year":1995}']))[0].id;
+    // Rencontre : meme regle. Brouillon partiel accepte, soumission complete exigee.
+    const encounterDraft = (await rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'draft', '{}', 'years']))[0];
+    expect(encounterDraft.validation_status).toBe('draft');
     await expect(
-      rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'draft', '{}', 'years']),
+      rowsAs(studentId, UPDATE_ENCOUNTER, [encounterDraft.id, '{}', 'complete', 'soumission', null]),
     ).rejects.toThrow(/requis|manquant/i);
-    // La soumission ('complete') est soumise a la meme completude (regle A).
     await expect(
       rowsAs(studentId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'complete', '{"glasgow_score":12}', 'years']),
     ).rejects.toThrow(/requis|manquant/i);
-    // Le medecin conserve ses brouillons partiels.
-    expect((await rowsAs(aliceId, CREATE_ENCOUNTER, [patientId, 'consultation', '2024-06-02', 'draft', '{}', 'years']))[0].validation_status).toBe('draft');
+    const submittedEncounter = (await rowsAs(studentId, UPDATE_ENCOUNTER, [
+      encounterDraft.id, JSON.stringify({ diagnosis: 'TC', glasgow_score: 12 }), 'complete', 'soumission', null,
+    ]))[0];
+    expect(submittedEncounter.validation_status).toBe('complete');
   });
 
   test('il corrige son propre brouillon de patient, verrou optimiste compris', async () => {

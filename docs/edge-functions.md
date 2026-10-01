@@ -577,10 +577,13 @@ renvoie, pour chaque diagnostic reconnu, une décision `automatic`, `suggested`,
 RPC `match_terminology_candidates` (SECURITY INVOKER, refusée à `anon`) est appelée sous
 l'identité de l'appelant.
 
-Le LLM est facultatif (`ANTHROPIC_API_KEY`, modèle `TERMINOLOGY_LLM_MODEL`) ; il ne reçoit que
+Le LLM est facultatif (`TERMINOLOGY_LLM_PROVIDER` = `anthropic` par défaut, `openai` ou `deepseek`, avec la clé
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ou `DEEPSEEK_API_KEY` et le modèle `TERMINOLOGY_LLM_MODEL`) ; il ne reçoit que
 le texte du diagnostic, nettoyé des identifiants apparents, et ne produit jamais de code. Sans
 clé, en cas de refus, de délai dépassé ou de sortie inexploitable, la fonction répond par un
 repli lexical. Le score de confiance est calculé dans la fonction, pas par le LLM. Les journaux
 ne contiennent ni texte clinique ni erreur du fournisseur ; une panne du référentiel rend
-`503 CODING_UNAVAILABLE`. Détail fonctionnel, format stocké et prérequis juridiques :
+`503 CODING_UNAVAILABLE`. `generate-export` restitue la provenance du codage (texte saisi,
+statut, méthode, score, terme normalisé, publication, URI) en colonnes `terminology_<élément>__…`
+dès qu'une fiche exportée en porte. Détail fonctionnel, format stocké et prérequis juridiques :
 [codage-terminologique-assiste.md](codage-terminologique-assiste.md).

@@ -19,7 +19,14 @@ import {
   MAX_TEXT_LENGTH,
   scrubIdentifiers,
 } from './interpret.ts';
-import { type Candidate, decide, type DiagnosisInterpretation, type ScoredCandidate } from './scoring.ts';
+import {
+  type Candidate,
+  CANDIDATE_LIMIT,
+  candidateTerms,
+  decide,
+  type DiagnosisInterpretation,
+  type ScoredCandidate,
+} from './scoring.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -82,10 +89,10 @@ async function candidatesFor(
   client: SupabaseClient,
   item: DiagnosisInterpretation,
 ): Promise<{ candidates: Candidate[]; release: string | null }> {
-  const terms = [...item.searchTerms, item.normalized, ...item.alternativeTerms]
-    .filter((t, i, all) => all.indexOf(t) === i)
-    .slice(0, 8);
-  const { data, error } = await client.rpc('match_terminology_candidates', { p_terms: terms, p_limit: 60 });
+  const { data, error } = await client.rpc('match_terminology_candidates', {
+    p_terms: candidateTerms(item),
+    p_limit: CANDIDATE_LIMIT,
+  });
   if (error) throw new Error('referentiel indisponible');
   const rows = (data ?? []) as Array<{ code: string; label: string; uri: string | null; release_version: string }>;
   return {
@@ -133,7 +140,9 @@ export async function handleCodeTerminology(req: Request, deps: CodeTerminologyD
     for (const item of interpretation.slice(0, MAX_DIAGNOSES)) {
       const found = await candidatesFor(client, item);
       release ??= found.release;
-      const decision = decide(item, found.candidates);
+      // Le texte du medecin borne ce qu'un code automatique peut affirmer (`isCovered`). Il
+      // vient de la requete, jamais de l'interpretation.
+      const decision = decide({ ...item, source: scrubbed }, found.candidates);
       items.push({
         normalized: item.normalized,
         status: decision.status,

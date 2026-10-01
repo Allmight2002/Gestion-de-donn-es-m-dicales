@@ -1,5 +1,14 @@
 import { assert, assertEquals } from '@std/assert';
-import { type Candidate, decide, type DiagnosisInterpretation, normalizeText, similarity, stems } from './scoring.ts';
+import {
+  type Candidate,
+  conceptKey,
+  decide,
+  type DiagnosisInterpretation,
+  isCovered,
+  normalizeText,
+  similarity,
+  stems,
+} from './scoring.ts';
 
 // Libelles fictifs calques sur la forme des intitules CIM-11 francais.
 const candidates = (labels: Array<[string, string]>): Candidate[] =>
@@ -15,7 +24,9 @@ const item = (searchTerms: string[], extra: Partial<DiagnosisInterpretation> = {
 
 Deno.test('normalisation : accents, tirets et ponctuation', () => {
   assertEquals(normalizeText('Hémorragie sous-durale, non traumatique'), 'hemorragie sousdurale non traumatique');
-  assertEquals(stems('Hématomes sous-duraux des méninges'), ['hematom', 'sousduraux', 'mening']);
+  assertEquals(stems('Hématomes sous-duraux des méninges'), ['hemorragi', 'sousdural', 'mening']);
+  // Le Œ majuscule ne se perd pas : « Œdème » = « oedème ».
+  assertEquals(normalizeText('Œdème cérébral'), 'oedeme cerebral');
 });
 
 Deno.test('similarite : equivalence, inclusion et absence de mot commun', () => {
@@ -80,12 +91,64 @@ Deno.test('ambiguite signalee : une proposition par entite, aucun choix impose',
   assertEquals(decision.alternatives.map((c) => c.code), ['FIC.00', 'FIC.01', 'FIC.02']);
 });
 
-Deno.test('ex aequo : jamais de selection automatique', () => {
+Deno.test('ambiguite signalee : un terme general sans correspondance n empeche pas le choix', () => {
   const decision = decide(
-    item(['Fracture os temporal']),
-    candidates([['FIC.A', "Fracture d'os temporal"], ['FIC.B', 'Fracture os temporal']]),
+    item(['Cancer du poumon'], {
+      ambiguous: true,
+      alternativeTerms: [
+        'Adénocarcinome des bronches ou du poumon',
+        'Carcinome à petites cellules des bronches ou du poumon',
+      ],
+    }),
+    candidates([
+      ['FIC.25.0', 'Adénocarcinome des bronches ou du poumon'],
+      ['FIC.25.1', 'Carcinome à petites cellules des bronches ou du poumon'],
+    ]),
   );
   assertEquals(decision.status, 'ambiguous');
+  assertEquals(decision.alternatives.map((c) => c.code), ['FIC.25.0', 'FIC.25.1']);
+});
+
+Deno.test('ex aequo : jamais de selection automatique', () => {
+  // Deux concepts distincts du referentiel, meme mots dans un autre ordre.
+  const decision = decide(
+    item(['Hémorragie intracérébrale traumatique']),
+    candidates([['FIC.A', 'Hémorragie intracérébrale traumatique'], [
+      'FIC.B',
+      'Hémorragie traumatique intracérébrale',
+    ]]),
+  );
+  assertEquals(decision.status, 'ambiguous');
+});
+
+Deno.test('categories residuelles : « Autres X » et « X, sans precision » ne concurrencent pas X', () => {
+  const decision = decide(
+    item(['Œdème cérébral traumatique']),
+    candidates([
+      ['FIC.2Y', 'Autres œdème cérébral traumatique'],
+      ['FIC.2', 'Œdème cérébral traumatique'],
+      ['FIC.2Z', 'Œdème cérébral traumatique, sans précision'],
+    ]),
+  );
+  assertEquals(decision.status, 'automatic');
+  assertEquals(decision.best?.code, 'FIC.2');
+  // Sans categorie principale, « sans precision » passe avant « Autres ».
+  const unspecified = decide(
+    item(['Céphalées']),
+    candidates([['FIC.8Y', 'Autres céphalées'], ['FIC.8Z', 'Céphalées, sans précision']]),
+  );
+  assertEquals(unspecified.best?.code, 'FIC.8Z');
+});
+
+Deno.test('negation : « non traumatique » ne vaut jamais « traumatique »', () => {
+  assert(similarity('Hémorragie extradurale traumatique', 'Hémorragie extradurale non traumatique') < 0.7);
+  assertEquals(similarity('Anévrisme cérébral non rompu', 'Anévrisme cérébral non-rompu'), 1);
+  // « spontané » se lit « non traumatique », la lateralite est ignoree.
+  assertEquals(similarity('Hématome sous-dural spontané droit', 'Hémorragie sousdurale non traumatique'), 1);
+});
+
+Deno.test('precision entre parentheses facultative', () => {
+  assertEquals(similarity("Fracture d'os temporal", "Fracture d'os temporal (de la base du crâne)"), 1);
 });
 
 Deno.test('correspondance insuffisante : non code', () => {
@@ -93,4 +156,46 @@ Deno.test('correspondance insuffisante : non code', () => {
   assertEquals(decision.status, 'unmatched');
   assertEquals(decision.best, null);
   assertEquals(decide(item(['Quoi que ce soit']), []).status, 'unmatched');
+});
+
+Deno.test('inference : un germe deduit par le LLM n est jamais pose sans confirmation', () => {
+  const pfla = item(['Pneumonie due à Streptococcus pneumoniae', 'Pneumonie bactérienne'], {
+    normalized: 'Pneumonie franche lobaire aiguë',
+    source: 'Pneumonie franche lobaire aigue',
+  });
+  assertEquals(isCovered('Pneumonie due à Streptococcus pneumoniae', pfla), false);
+  const decision = decide(
+    pfla,
+    candidates([['FIC.07', 'Pneumonie due à Streptococcus pneumoniae'], ['FIC.0', 'Pneumonie bactérienne']]),
+  );
+  assertEquals(decision.status, 'suggested');
+  assertEquals(decision.best?.code, 'FIC.07');
+});
+
+Deno.test('couverture : abreviation developpee, synonymes et mots qui situent sans preciser', () => {
+  const hsd = { normalized: 'Hématome sous-dural chronique spontané droit', source: 'HSD chronique spontané droit' };
+  assert(isCovered('Hémorragie sousdurale non traumatique', hsd));
+  assert(isCovered('Glioblastome du cerveau', { normalized: 'Glioblastome temporal gauche', source: 'GBM temporal' }));
+  assert(isCovered("Fracture d'os temporal (de la base du crâne)", { normalized: "Fracture de l'os temporal" }));
+  assertEquals(isCovered('Insuffisance rénale aigüe', { normalized: 'Insuffisance rénale' }), false);
+  // Intitule disjonctif : un cote couvert suffit ; un mot porteur hors disjonction, non.
+  assert(isCovered('Hémorragie sousdurale non traumatique du fœtus ou du nouveau-né', {
+    normalized: 'Hématome sous-dural non traumatique du nouveau-né',
+  }));
+  assert(isCovered("Anévrisme ou dissection de l'artère carotide", { normalized: 'Anévrisme carotidien' }));
+  assert(isCovered('Fracture de la première vertèbre cervicale', { normalized: "Fracture de l'atlas" }));
+  assertEquals(isCovered('Hypertension essentielle', { normalized: 'Hypertension artérielle', source: 'HTA' }), false);
+});
+
+Deno.test('sigles : VIH et HIV rejoignent l intitule developpe, « sans mention de » est facultatif', () => {
+  const label = "Maladie par le virus de l'immunodéficience humaine sans mention de tuberculose ni de paludisme";
+  assertEquals(similarity('Maladie due au VIH', label), 1);
+  assert(isCovered(label, { normalized: 'Infection par le VIH', source: 'terrain HIV' }));
+  // « …, stade clinique non precise » est le meme concept que l'intitule principal.
+  assertEquals(
+    conceptKey(
+      "Maladie due au virus de l'immunodéficience humaine sans mention de tuberculose ni de paludisme, stade clinique non précisé",
+    ),
+    conceptKey(label),
+  );
 });

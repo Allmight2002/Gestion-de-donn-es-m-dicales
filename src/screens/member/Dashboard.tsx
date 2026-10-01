@@ -27,6 +27,9 @@ export function Dashboard() {
   const [bases, setBases] = useState<BaseListing[]>([]);
   const [offlineBases, setOfflineBases] = useState<OfflineMeta[]>([]);
   const [templates, setTemplates] = useState<PublishedTemplateOption[]>([]);
+  // Vrai seulement apres un chargement REUSSI : une liste vide suite a une erreur ou a
+  // un demarrage hors ligne ne doit pas se lire comme "aucun jeu de variables".
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -53,6 +56,7 @@ export function Dashboard() {
       ]);
       setBases(b);
       setTemplates(tpl);
+      setTemplatesLoaded(true);
       setVersionId((prev) => prev || tpl[0]?.versionId || '');
       void offlineCache.list().then(setOfflineBases).catch(() => {});
       setError(null);
@@ -159,6 +163,16 @@ export function Dashboard() {
               <span className="helper-text">{t('observation.creation_hint')}</span>
             </label>
           </div>
+          {/* Indication contextuelle : seulement quand on cherche a creer une base, avec les
+              alternatives reellement disponibles (un medecin invite sans modele n'est pas gene). */}
+          {templatesLoaded && templates.length === 0 && (
+            <p className="text-sm text-amber-700">
+              {t('dashboard.no_templates_hint')}{' '}
+              <Link to="/templates" className="font-medium underline hover:text-amber-800">
+                {t('dashboard.no_templates_action')}
+              </Link>
+            </p>
+          )}
           <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <Link to="/templates/from-file" className="text-sm font-medium text-teal-700 hover:underline">
               {t('dashboard.from_file')}
@@ -171,9 +185,6 @@ export function Dashboard() {
         </SectionCard>
       )}
 
-      {mayCreate && online && templates.length === 0 && !loading && (
-        <p className="text-sm text-amber-700">{t('dashboard.no_templates_hint')}</p>
-      )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {loading && <SkeletonList rows={3} label={t('common.loading')} />}
       {/* Lot 8 : ce qui attend la personne passe avant la liste des bases. En ligne seulement ;
