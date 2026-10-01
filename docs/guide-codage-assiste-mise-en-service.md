@@ -85,20 +85,21 @@ Secrets (Project Settings → Edge Functions → Secrets), **déjà posés pour 
 | `TERMINOLOGY_LLM_PROVIDER` | `deepseek` |
 | `DEEPSEEK_API_KEY` | la clé (jamais copiée ailleurs) |
 | `TERMINOLOGY_LLM_MODEL` | `deepseek-v4-pro` (sinon `deepseek-flash` par défaut) |
-| `TERMINOLOGY_LLM_TIMEOUT_MS` | recommandé avec V4 Pro : `20000` (20 s). Défaut 8000, maximum 30000 |
-| `TERMINOLOGY_LLM_REASONING` | facultatif : `disabled` (plus rapide) ou `low` ; vide = raisonnement complet |
+| `TERMINOLOGY_LLM_TIMEOUT_MS` | recommandé : `8000` (8 s, le défaut ; maximum 30000) |
+| `TERMINOLOGY_LLM_REASONING` | recommandé avec V4 Pro : `disabled` ; `low` ou vide (raisonnement complet) déconseillés |
 
-**Qualité.** Depuis la règle de précision du 1er octobre 2026, les réponses réelles de
-`deepseek-v4-pro` et de `deepseek-flash` ne posent **aucun code faux sans confirmation** sur le
-jeu de calibrage fictif, à aucun des trois passages
-([rapport V4 Pro §6](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md)).
+**Qualité.** Avec le prompt en vigueur et `TERMINOLOGY_LLM_REASONING=disabled`, les réponses
+réelles de `deepseek-v4-pro` ne posent **aucun code faux sans confirmation** sur le jeu de
+calibrage fictif, à aucun des trois passages. Avec le raisonnement (vide ou `low`), un code
+faux est imposé dans 1 à 2 passages sur 3 (i12)
+([rapport V4 Pro §7](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md)).
 
-**Lenteur.** V4 Pro met souvent plus de 8 s : avec le délai par défaut, environ la moitié des
-saisies retomberait sur le repli lexical. D'où le délai de 20 s recommandé ; le texte est
-enregistré avant l'analyse, la saisie n'attend jamais.
+**Rapidité.** Sans raisonnement, V4 Pro répond en 1,6 s (médiane), 2,6 s au plus : le délai
+de 8 s suffit. Avec raisonnement, la médiane dépasse 8 s et 11 à 20 % des appels échouent
+faute de budget ; un délai de 20 s ne compense pas le risque d'erreur. Le texte est enregistré
+avant l'analyse, la saisie n'attend jamais.
 
-Réservé aux essais sur données fictives tant que le cadre juridique n'est pas validé, et à
-confirmer par un nouvel enregistrement avec le prompt et les réglages en vigueur.
+Réservé aux essais sur données fictives tant que le cadre juridique n'est pas validé.
 
 Après tout changement de secret, **redéployer** la fonction (commande ci-dessus).
 

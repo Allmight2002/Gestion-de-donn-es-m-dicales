@@ -213,3 +213,116 @@ réserves demeurent avant tout usage réel :
    précisé ≠ ambiguïté) : ces enregistrements sont antérieurs. Un nouvel enregistrement doit
    confirmer le résultat avec le prompt en vigueur.
 
+
+## 7. Addendum — prompt en vigueur, raisonnement et délai (1er octobre 2026, nuit)
+
+**Objet.** Mesurer le prompt en vigueur (`interpret.ts`) et les réglages
+`TERMINOLOGY_LLM_REASONING` / `TERMINOLOGY_LLM_TIMEOUT_MS`, avec la règle de précision et les
+seuils en vigueur (0,95 / 0,05 / 0,65 / 0,55 / 4). Ni le score, ni le prompt, ni les seuils, ni
+l'adaptateur n'ont été modifiés.
+
+**Méthode.** Celle du §1, `TERMINOLOGY_LLM_PROVIDER=deepseek TERMINOLOGY_LLM_MODEL=deepseek-v4-pro`,
+3 passages × 97 cas par configuration, délai de 30 s à l'enregistrement :
+
+| Configuration | `TERMINOLOGY_LLM_REASONING` | Enregistrement (`test/fixtures/…`) |
+|---|---|---|
+| Référence (§6, ancien prompt) | vide | `terminologyCalibration.recorded.deepseek-v4-pro-2026-10-01.json` |
+| Défaut | vide | `….deepseek-v4-pro-prompt2-2026-10-01.json` |
+| Low | `low` | `….deepseek-v4-pro-low-2026-10-01.json` |
+| Sans raisonnement | `disabled` | `….deepseek-v4-pro-nothinking-2026-10-01.json` |
+
+- Avant chaque configuration, un appel d'essai a vérifié que l'API accepte les paramètres
+  (`thinking`, `reasoning_effort`) : les trois répondent.
+- Variantes **délai de production 8 s et 20 s** : copie non versionnée de chaque
+  enregistrement, où toute réponse plus longue que le délai devient un repli lexical, comme dans
+  l'Edge Function. Rejeu identique.
+- La référence a été rejouée avec le score en vigueur, pour comparer à score égal.
+
+### Qualité, seuils en vigueur (passages 1 / 2 / 3)
+
+| Configuration | Critiques | Auto justes | Suggestions justes / fausses | Utilité |
+|---|---|---|---|---|
+| Référence, 30 s | 0 / 0 / 0 | 41 / 42 / 44 | 21/11 · 19/10 · 19/12 | 56,3 / 59,4 / 58,2 |
+| Référence, 20 s | 0 / 0 / 0 | 41 / 42 / 44 | 21/11 · 19/10 · 19/12 | 56,3 / 59,4 / 58,2 |
+| Référence, 8 s | 0 / 0 / 0 | 31 / 33 / 34 | 26/9 · 25/8 · 22/9 | 49,5 / 54,3 / 51,6 |
+| Défaut, 30 s et 20 s | **1 / 1 / 0** (i12) | 44 / 41 / 40 | 19/10 · 20/9 · 20/13 | 55,7 / 54,1 / 53,5 |
+| Défaut, 8 s | 0 / 0 / 0 | 32 / 34 / 32 | 22/8 · 24/9 · 22/10 | 51,4 / 53,5 / 49,2 |
+| Low, 30 s | **0 / 0 / 1** (i12) | 39 / 41 / 43 | 22/11 · 27/7 · 22/13 | 55,5 / 65,0 / 54,4 |
+| Low, 20 s | **0 / 0 / 1** (i12) | 39 / 41 / 43 | 22/11 · 28/7 · 22/13 | 55,5 / 65,2 / 54,4 |
+| Low, 8 s | 0 / 0 / 0 | 33 / 33 / 32 | 24/9 · 23/7 · 23/10 | 52,5 / 54,7 / 50,2 |
+| **Sans raisonnement**, 30 / 20 / 8 s | **0 / 0 / 0** | 40 / 40 / 42 | 24/14 · 24/14 · 20/13 | 56,0 / 54,6 / 56,1 |
+
+Les trois délais donnent le même résultat sans raisonnement : aucune réponse ne dépasse 2,7 s.
+Les variantes 8 s n'ont 0 erreur critique que parce que les réponses fautives de i12 y sont
+coupées ; 53 à 70 % des appels y passent par le repli lexical.
+
+### L'erreur critique : i12
+
+| Cas | Texte | Code posé seul | Attendu |
+|---|---|---|---|
+| i12 | « Radiculopathie L5 sur conflit discal » | 8B93 « Radiculopathie » (score 0,95) | 8B93.6 « Radiculopathie due à une atteinte des disques intervertébraux » |
+
+- Défaut, passages 1 et 2 ; low, passage 3. Les termes de recherche se terminent par le terme
+  général « Radiculopathie », qui obtient le score maximal, alors qu'aucun terme ne retrouve
+  8B93.6.
+- La règle de précision ne se déclenche pas : « conflit discal » n'est pas reconnu comme la
+  précision « atteinte des disques intervertébraux » (synonyme, pas même mot).
+- Sans raisonnement, le modèle écrit « due à une hernie discale » ou « due à un conflit
+  discal » : 8B93 reste proposé à confirmer (suggestion fausse), jamais posé seul.
+- C'est la perte de précision décrite au §4.3, cette fois par synonymie. Elle relève du score
+  ou du référentiel (synonymes), **pas corrigée ici**.
+
+### Échecs et latences (291 appels par configuration)
+
+| Configuration | Échecs (p1 / p2 / p3) | p50 | p90 | max | > 8 s (dont réussies) | > 20 s (dont réussies) | Cas instables |
+|---|---|---|---|---|---|---|---|
+| Référence | 38 (14 / 10 / 14) | 8,7 s | 20,1 s | 22,8 s | 156 (118) | 30 (1) | 36 |
+| Défaut | **57** (15 / 16 / 26) | 10,8 s | 20,2 s | 22,5 s | 204 (147) | 34 (4) | 30 |
+| Low | 31 (12 / 9 / 10) | 9,6 s | 18,9 s | 21,7 s | 173 (142) | 9 (1) | 33 |
+| **Sans raisonnement** | **1** (1 / 0 / 0) | **1,6 s** | **2,0 s** | **2,6 s** | 0 | 0 | 30 |
+
+- **Cause des échecs avec raisonnement** : toujours le budget. Cinq cas en échec rejoués
+  (c01, a01, a02, i07, t13 ; défaut), en ne lisant que `finish_reason` et le décompte de
+  jetons : `finish_reason=length`, 2 048 jetons de raisonnement, aucun contenu, 19 à 20 s.
+- **`low` réduit peu le raisonnement** : 1 100 à 1 850 jetons sur quatre cas rejoués, 11 à
+  18 s.
+- **Le nouveau prompt allonge le raisonnement** (p50 10,8 s au lieu de 8,7 s) et augmente les
+  échecs (57 au lieu de 38).
+- **Sans raisonnement** : un seul échec, une réponse invalide pour le validateur (c29,
+  passage 1).
+
+### Seuils choisis sur ces sorties
+
+Le balayage propose, sans raisonnement, un seuil automatique et de suggestion à 0,85 ; pour
+les variantes 8 s, un seuil automatique à 0,80. Ils ne sont **pas retenus** : ils abaissent
+l'exigence (même raison qu'au §6).
+
+### Recommandation
+
+- **`TERMINOLOGY_LLM_REASONING=disabled`** avec **`TERMINOLOGY_LLM_TIMEOUT_MS=8000`** (le
+  défaut).
+  - Seule configuration du prompt en vigueur sans erreur critique à aucun passage, sans
+    dépendre d'un délai qui coupe les réponses.
+  - Utilité 54,6 à 56,1 : un peu sous la référence à 20 s (56,3 à 59,4), au-dessus de toute
+    configuration avec raisonnement au délai de 8 s (49,2 à 54,7).
+  - Réponse en 1,6 s (médiane), 2,6 s au plus : 8 s laissent une large marge.
+  - Contrepartie : plus de suggestions fausses (13 à 14 au lieu de 10 à 12), toujours
+    soumises à confirmation.
+- **Délai de 20 s avec raisonnement (défaut ou `low`) : déconseillé.** Avec le prompt en
+  vigueur, il laisse passer i12 (code faux imposé) dans 1 à 2 passages sur 3.
+- **Délai de 8 s avec raisonnement : déconseillé.** Pas d'erreur critique, mais seulement par
+  coupure, et plus de la moitié des saisies attendent 8 s pour le seul repli lexical.
+
+**Proposition (non appliquée).** Faire de
+`terminologyCalibration.recorded.deepseek-v4-pro-nothinking-2026-10-01.json` l'enregistrement de
+référence du test (`REFERENCE_RECORDING`), avec un plancher `recordedUtility` de 54,6 (pire
+passage). Motifs :
+- 0 erreur critique aux 3 passages ;
+- utilité resserrée (54,6 à 56,1) et un seul échec ;
+- c'est la configuration recommandée, avec le prompt en vigueur, alors que la référence
+  actuelle a été enregistrée avec l'ancien prompt.
+
+**Limites.** Celles du §5. Trois passages par configuration ne mesurent pas une fréquence :
+l'absence d'erreur sans raisonnement est observée, pas garantie, et i12 reste à traiter par le
+score. Latences mesurées depuis un conteneur de développement, 4 appels concurrents par
+configuration et trois configurations enregistrées en même temps.
