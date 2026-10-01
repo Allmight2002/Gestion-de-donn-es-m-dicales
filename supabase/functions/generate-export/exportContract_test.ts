@@ -18,6 +18,8 @@ import {
   buildProvenance,
   checkFormula,
   codeColumnId,
+  CODING_PARTS,
+  codingColumnId,
   columnId,
   evaluateFormulaText,
   excelDateSerial,
@@ -1687,4 +1689,110 @@ Deno.test('codage assiste : un diagnostic non code sort en texte, jamais en code
   const unitaire = buildEncounterExport([rencontre({ diagnostics: NON_CODE })], [DIAG_MULTI]);
   assertEquals(unitaire.rows[0][columnId(DIAG_MULTI)], 'Syndrome fictif non repertorie');
   assertEquals(unitaire.rows[0][codeColumnId(DIAG_MULTI)], '');
+});
+
+// ---------------------------------------------------------------------------
+// Codage assiste : la provenance du codage exportee en colonnes
+// ---------------------------------------------------------------------------
+const CODE_AUTO = {
+  code: '8B02',
+  label: 'Hémorragie sousdurale non traumatique',
+  raw: 'HSD chronique spontané droit',
+  coding: {
+    method: 'ai_assisted',
+    status: 'automatic',
+    normalized: 'Hématome sous-dural chronique spontané droit',
+    release: '2026-01',
+    uri: 'https://id.example.test/fic/02',
+    language: 'fr',
+    score: 0.95,
+  },
+};
+
+Deno.test('provenance : absente des donnees, la structure d export ne change pas', () => {
+  for (const profile of ['analysis', 'complete'] as const) {
+    const table = buildEncounterExport(
+      [rencontre({ diagnostic: { code: '1A00', label: 'Cholera' } })],
+      [DIAGNOSTIC],
+      profile,
+    );
+    assertEquals(table.columns.some((c) => c.startsWith('terminology_text__')), false);
+    const dict = buildDictionary([DIAGNOSTIC], { profile });
+    assertEquals(dict.rows.some((r) => String(r.column_id).startsWith('terminology_status__')), false);
+  }
+});
+
+Deno.test('provenance : une colonne par element, juste apres le code, dans les deux profils', () => {
+  for (const profile of ['analysis', 'complete'] as const) {
+    const e2 = { ...rencontre({ diagnostic: { code: '1A00', label: 'Cholera' } }), id: 'e2' };
+    const table = buildEncounterExport([rencontre({ diagnostic: CODE_AUTO }), e2], [DIAGNOSTIC], profile);
+    const start = table.columns.indexOf(codeColumnId(DIAGNOSTIC)) + 1;
+    assertEquals(
+      table.columns.slice(start, start + CODING_PARTS.length),
+      CODING_PARTS.map((part) => codingColumnId(DIAGNOSTIC, part)),
+    );
+    const [row, legacy] = table.rows;
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'text')], 'HSD chronique spontané droit');
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'status')], 'automatic');
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'method')], 'ai_assisted');
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'score')], 0.95);
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'normalized')], 'Hématome sous-dural chronique spontané droit');
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'release')], '2026-01');
+    assertEquals(row[codingColumnId(DIAGNOSTIC, 'uri')], 'https://id.example.test/fic/02');
+    // Un choix direct, anterieur au codage assiste : cases vides, rien n'est invente.
+    for (const part of CODING_PARTS) assertEquals(legacy[codingColumnId(DIAGNOSTIC, part)], '');
+  }
+});
+
+Deno.test('provenance : un diagnostic non code garde son texte et son statut, sans code', () => {
+  const table = buildEncounterExport([rencontre({ diagnostic: NON_CODE })], [DIAGNOSTIC]);
+  assertEquals(table.rows[0][codeColumnId(DIAGNOSTIC)], '');
+  assertEquals(table.rows[0][codingColumnId(DIAGNOSTIC, 'text')], 'Syndrome fictif non repertorie');
+  assertEquals(table.rows[0][codingColumnId(DIAGNOSTIC, 'status')], 'unmatched');
+  assertEquals(table.rows[0][codingColumnId(DIAGNOSTIC, 'score')], '');
+});
+
+Deno.test('provenance : export par patient, portee patient et rencontre agregee', () => {
+  const patientDiag = champ({ fieldKey: 'antecedent', type: 'terminology', scope: 'patient' });
+  const table = buildPatientExport(
+    [{ code: 'P0001', data: { antecedent: { ...CODE_AUTO, coding: { ...CODE_AUTO.coding, status: 'confirmed' } } } }],
+    [rencontre({ diagnostic: CODE_AUTO })],
+    [patientDiag, DIAGNOSTIC],
+    'first',
+  );
+  assertEquals(table.rows[0][codingColumnId(patientDiag, 'status')], 'confirmed');
+  assertEquals(table.rows[0][codingColumnId(DIAGNOSTIC, 'status')], 'automatic');
+  // Sans rencontre retenue, les cases restent vides.
+  const vide = buildPatientExport(
+    [{ code: 'P0002', data: {} }],
+    [rencontre({ diagnostic: CODE_AUTO })],
+    [DIAGNOSTIC],
+    'first',
+  );
+  assertEquals(vide.rows.find((r) => r.patient_code === 'P0002')?.[codingColumnId(DIAGNOSTIC, 'status')], '');
+});
+
+Deno.test('provenance : le dictionnaire documente les colonnes exportees', () => {
+  const dict = buildDictionary([DIAGNOSTIC], { codingFields: new Set([columnId(DIAGNOSTIC)]) });
+  const status = dict.rows.find((r) => r.column_id === codingColumnId(DIAGNOSTIC, 'status'));
+  assertEquals(status?.type, 'terminology_status');
+  assertEquals(status?.allowed_values, 'automatic; suggested; confirmed; manually_modified; unmatched');
+  assertEquals(dict.rows.filter((r) => String(r.column_id).startsWith('terminology_')).length, 1 + CODING_PARTS.length);
+});
+
+Deno.test('provenance : la feuille d une liste la porte entree par entree', () => {
+  const e1 = rencontre({ diagnostics: [CODE_AUTO, { code: '1A00', label: 'Cholera' }, NON_CODE] });
+  const long = buildMultivalueTable(DIAG_MULTI, [], [e1]);
+  assertEquals(long.columns, ['patient_code', 'encounter_id', 'rang', 'code', 'label', ...CODING_PARTS]);
+  assertEquals(long.rows.map((r) => [r.rang, r.code, r.text, r.status]), [
+    [1, '8B02', 'HSD chronique spontané droit', 'automatic'],
+    [2, '1A00', '', ''],
+    [3, '', 'Syndrome fictif non repertorie', 'unmatched'],
+  ]);
+  // Sans provenance, la feuille garde exactement sa forme d'avant.
+  const ancien = buildMultivalueTable(DIAG_MULTI, [], [
+    rencontre({ diagnostics: [{ code: '1A00', label: 'Cholera' }] }),
+  ]);
+  assertEquals(ancien.columns, ['patient_code', 'encounter_id', 'rang', 'code', 'label']);
+  assertEquals(Object.keys(ancien.rows[0]), ['patient_code', 'encounter_id', 'rang', 'code', 'label']);
 });

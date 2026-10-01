@@ -217,6 +217,30 @@ export const codeColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => 
 export const nbColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>) => `nb__${columnId(field)}`;
 
 /**
+ * Provenance du codage terminologique assiste, exportee en colonnes : texte ecrit par le
+ * medecin, statut, methode, score, terme normalise, publication et URI du concept. Une
+ * colonne par element, prefixe `terminology_<element>__` comme la colonne de code.
+ */
+export const CODING_PARTS = ['text', 'status', 'method', 'score', 'normalized', 'release', 'uri'] as const;
+export type CodingPart = (typeof CODING_PARTS)[number];
+
+export const codingColumnId = (field: Pick<ExportField, 'scope' | 'fieldKey'>, part: CodingPart) =>
+  `terminology_${part}__${columnId(field)}`;
+
+export const codingColumnIds = (field: Pick<ExportField, 'scope' | 'fieldKey'>) =>
+  CODING_PARTS.map((part) => codingColumnId(field, part));
+
+const CODING_LABELS: Record<CodingPart, string> = {
+  text: 'texte saisi',
+  status: 'statut du codage',
+  method: 'méthode de codage',
+  score: 'score de confiance',
+  normalized: 'terme normalisé',
+  release: 'publication terminologique',
+  uri: 'URI du concept',
+};
+
+/**
  * L70 : colonne du NOMBRE d'occurrences d'un bloc repetable, en une ligne par patient. Meme
  * prefixe que le comptage d'une variable multivaluee, et pour la meme raison : c'est un
  * denombrement, pas une valeur saisie. Le suffixe est le CODE du bloc, jamais son libelle,
@@ -342,6 +366,61 @@ const isTerminologyEntryList = (v: unknown): v is Array<{ code: string; label: s
 
 const terminologyText = (v: { code: string; label: string } | { raw: string }): string =>
   isTerminologyValue(v) ? v.label : (v as { raw: string }).raw;
+
+/** Une valeur terminologique porte-t-elle une provenance (texte d'origine ou codage) ? */
+const hasCoding = (v: unknown): boolean =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) && ('raw' in v || 'coding' in v);
+
+const text = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/**
+ * Cellules de provenance d'une entree. Une entree sans provenance (choix direct dans la
+ * recherche, valeur anterieure au codage assiste) rend des cases VIDES : rien n'est invente.
+ */
+export function codingCells(v: unknown): Record<CodingPart, string | number> {
+  const entry = (hasCoding(v) ? v : {}) as { raw?: unknown; coding?: Record<string, unknown> };
+  const coding = entry.coding && typeof entry.coding === 'object' ? entry.coding : {};
+  return {
+    text: text(entry.raw),
+    status: text(coding.status),
+    method: text(coding.method),
+    score: typeof coding.score === 'number' ? coding.score : '',
+    normalized: text(coding.normalized),
+    release: text(coding.release),
+    uri: text(coding.uri),
+  };
+}
+
+/**
+ * Champs de terminologie UNITAIRES dont au moins une fiche exportee porte une provenance. Les
+ * colonnes n'existent que pour eux : une base sans codage assiste garde exactement la
+ * structure d'export d'avant ce lot. Une liste (L21) porte sa provenance dans sa feuille
+ * dediee, entree par entree, pas dans la feuille principale.
+ */
+export function fieldsWithCoding(
+  fields: ExportField[],
+  dataRows: Array<{ data?: Record<string, unknown> | null }>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const f of fields) {
+    if (f.type !== 'terminology' || f.isMultiple) continue;
+    if (dataRows.some((r) => hasCoding(r.data?.[f.fieldKey]))) out.add(columnId(f));
+  }
+  return out;
+}
+
+/** Ecrit les colonnes de provenance d'un champ unitaire, vides hors du perimetre du champ. */
+function assignCoding(
+  row: Record<string, unknown>,
+  data: Record<string, unknown> | null | undefined,
+  versionId: string | undefined,
+  field: ExportField,
+  context?: RevisionContext,
+): void {
+  const applicable = Boolean(data) && belongsToField(versionId, field, context);
+  const cells = codingCells(applicable ? data![field.fieldKey] : null);
+  for (const part of CODING_PARTS) row[codingColumnId(field, part)] = cells[part];
+}
 
 export const formatValue = (v: unknown, type?: string): unknown => {
   if (v === null || v === undefined) return '';
@@ -1536,6 +1615,7 @@ export function buildEncounterExport(
 ): ExportTable {
   const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
   const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
+  const coding = fieldsWithCoding(encFields, encounters);
   // L35 : les operandes d'une variable calculee sont de la MEME portee — l'index ne
   // contient donc que les variables de rencontre, et il est construit une seule fois.
   const encPeers = formulaFieldIndex(
@@ -1550,7 +1630,8 @@ export function buildEncounterExport(
       // E6 : la colonne d etat suit IMMEDIATEMENT la colonne de valeur, pour que l absence
       // s explique sans chercher a l autre bout du fichier.
       const state = context?.stateColumns.has(columnId(f)) ? [stateColumnId(f)] : [];
-      return [...base, ...state, ...inds];
+      const prov = coding.has(columnId(f)) ? codingColumnIds(f) : [];
+      return [...base, ...state, ...prov, ...inds];
     }),
   ];
 
@@ -1573,6 +1654,7 @@ export function buildEncounterExport(
     };
     for (const f of encFields) {
       assignField(row, e.data, e.templateVersionId, f, encPeers, profile, context, e.encounterType);
+      if (coding.has(columnId(f))) assignCoding(row, e.data, e.templateVersionId, f, context);
       assignIndicators(
         row,
         f,
@@ -1627,6 +1709,12 @@ export function buildPatientExport(
   // affirmerait « jamais selectionnee » d'une modalite qui l'a bel et bien ete. Sans bloc
   // repetable, cette liste est celle d'avant le lot, a l'identique.
   const { indicatorsByField: encIndicators } = extractMultivalueCodes(encounterFields, agregables);
+  // Memes fiches que les indicatrices : celles qui alimentent reellement la ligne patient.
+  const coding = new Set([
+    ...fieldsWithCoding(patientFields, patients),
+    ...fieldsWithCoding(encounterFields, agregables),
+  ]);
+  const codingOf = (f: ExportField) => (coding.has(columnId(f)) ? codingColumnIds(f) : []);
   // L35 : un index d'operandes PAR PORTEE. Une variable calculee permanente ne lit que des
   // donnees permanentes, une variable de rencontre que des donnees de rencontre.
   const patPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'patient'));
@@ -1636,12 +1724,12 @@ export function buildPatientExport(
   const patientCols = patientFields.flatMap((f) => {
     const base = columnsForFields([f], profile);
     const inds = (patIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
-    return [...base, ...stateOf(f), ...inds];
+    return [...base, ...stateOf(f), ...codingOf(f), ...inds];
   });
   const encounterCols = encounterFields.flatMap((f) => {
     const base = columnsForFields([f], profile);
     const inds = (encIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
-    return [...base, ...stateOf(f), ...inds];
+    return [...base, ...stateOf(f), ...codingOf(f), ...inds];
   });
 
   // FAIL-CLOSED. Un code de bloc est libre dans `^[a-z][a-z0-9_]{0,62}$` : un bloc nomme
@@ -1682,6 +1770,7 @@ export function buildPatientExport(
     const row: Record<string, unknown> = { patient_code: p.code };
     for (const f of patientFields) {
       assignField(row, p.data, p.templateVersionId, f, patPeers, profile, context, null);
+      if (coding.has(columnId(f))) assignCoding(row, p.data, p.templateVersionId, f, context);
       assignIndicators(
         row,
         f,
@@ -1697,6 +1786,7 @@ export function buildPatientExport(
     row.age_unit = e?.ageUnit ?? '';
     for (const f of encounterFields) {
       assignField(row, e ? e.data : null, e?.templateVersionId, f, encPeers, profile, context, e?.encounterType);
+      if (coding.has(columnId(f))) assignCoding(row, e?.data, e?.templateVersionId, f, context);
       assignIndicators(
         row,
         f,
@@ -1722,21 +1812,27 @@ export function buildMultivalueTable(
   patients: ExportPatient[],
   encounters: ExportEncounter[],
 ): ExportTable {
-  const columns = ['patient_code', 'encounter_id', 'rang', 'code', 'label'];
   const rows: Record<string, unknown>[] = [];
+  // Codage assiste : la provenance accompagne CHAQUE entree de la liste. Les colonnes
+  // n'apparaissent que si une entree en porte ; sinon la feuille garde sa forme d'avant.
+  let withCoding = false;
 
   const appendRows = (patientCode: string, encounterId: string, raw: unknown) => {
     // Le rang reste celui de la saisie : un texte non code occupe sa place, code vide.
-    const entries = field.type === 'terminology' && isTerminologyEntryList(raw)
-      ? raw.map((item) => isTerminologyValue(item) ? item : { code: '', label: terminologyText(item) })
+    const terminologyEntries = field.type === 'terminology' && isTerminologyEntryList(raw) ? raw : null;
+    const entries = terminologyEntries
+      ? terminologyEntries.map((item) => isTerminologyValue(item) ? item : { code: '', label: terminologyText(item) })
       : multivalueEntriesOf(field, raw);
     for (const [index, item] of entries.entries()) {
+      const source = terminologyEntries?.[index];
+      if (hasCoding(source)) withCoding = true;
       rows.push({
         patient_code: patientCode,
         encounter_id: encounterId,
         rang: index + 1,
         code: item.code,
         label: item.label,
+        ...(field.type === 'terminology' ? codingCells(source) : {}),
       });
     }
   };
@@ -1758,6 +1854,10 @@ export function buildMultivalueTable(
     }
   }
 
+  const columns = ['patient_code', 'encounter_id', 'rang', 'code', 'label', ...(withCoding ? CODING_PARTS : [])];
+  if (!withCoding) {
+    for (const row of rows) for (const part of CODING_PARTS) delete row[part];
+  }
   return { columns, rows };
 }
 
@@ -1850,6 +1950,11 @@ export function buildProvenance(entries: readonly ProvenanceEntry[]): ExportTabl
 
 export interface DictionaryOptions {
   indicatorsByField?: Map<string, IndicatorMeta[]>;
+  /**
+   * Identifiants analytiques (`columnId`) des champs dont la feuille principale porte les
+   * colonnes de provenance du codage assiste. Absent ou vide = dictionnaire d'avant le lot.
+   */
+  codingFields?: Set<string>;
   omittedFieldKeys?: Set<string>;
   // L49 : le profil Analyse porte un dictionnaire reduit aux proprietes d'interpretation ; le
   // profil `complete` conserve le dictionnaire detaille historique (versions, portee, multiplicite).
@@ -2169,6 +2274,19 @@ export function buildDictionary(fields: ExportField[], options?: DictionaryOptio
         type: 'terminology_code',
         allowed_values: '',
       },
+      ...(options?.codingFields?.has(columnId(f))
+        ? CODING_PARTS.map((part) => ({
+          ...common,
+          column_id: codingColumnId(f, part),
+          label: `${f.label} — ${CODING_LABELS[part]}`,
+          type: `terminology_${part}`,
+          allowed_values: part === 'status'
+            ? 'automatic; suggested; confirmed; manually_modified; unmatched'
+            : part === 'method'
+            ? 'ai_assisted; lexical'
+            : '',
+        }))
+        : []),
       ...derivedRows,
     ];
   });
