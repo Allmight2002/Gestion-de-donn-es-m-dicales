@@ -15,11 +15,11 @@ const draftWith = (over: Partial<Draft>): Draft => ({
   ...over,
 } as unknown as Draft);
 
-function renderPanel(draft: Draft, { identityInForm = false, online = true } = {}) {
+function renderPanel(draft: Draft, { online = true } = {}) {
   return render(
     <I18nProvider>
       <MemoryRouter>
-        <WorkDraftPanel draft={draft} online={online} baseId="b1" identityInForm={identityInForm} />
+        <WorkDraftPanel draft={draft} online={online} />
       </MemoryRouter>
     </I18nProvider>,
   );
@@ -31,8 +31,9 @@ describe('WorkDraftPanel — silencieux hors état à traiter', () => {
     ['saisie en cours', {}],
     ['sauvegarde en cours', { state: { status: 'saving' } as Draft['state'] }],
     ['brouillon sauvegardé', { protected: true, state: { status: 'saved', receipt: { updatedAt: '2026-09-27T12:32:00.000Z' } } as Draft['state'] }],
+    ['enregistrement déjà confirmé', { dirty: false, completed: [{ id: 'd1', updatedAt: '2026-09-27T12:32:00.000Z', result: { id: 'p1', code: 'P-1' }, context: { kind: 'patient_create' } }] as unknown as Draft['completed'] }],
   ])('%s : rien ne s’insère au-dessus du formulaire', (_label, over) => {
-    const { container } = renderPanel(draftWith(over), { identityInForm: true });
+    const { container } = renderPanel(draftWith(over));
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -51,10 +52,10 @@ describe('WorkDraftPanel — silencieux hors état à traiter', () => {
     expect(screen.getByRole('status')).toHaveTextContent('saisie momentanément verrouillée');
   });
 
-  test('échec : l’erreur, la reprise et la précision sur l’identité s’affichent', () => {
-    renderPanel(draftWith({ error: 'Brouillon indisponible' }), { identityInForm: true });
+  test('échec : l’erreur et la reprise s’affichent, sans précision sur l’identité', () => {
+    renderPanel(draftWith({ error: 'Brouillon indisponible' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Brouillon indisponible');
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
-    expect(screen.getByText('Données cliniques uniquement. L’identité saisie n’est pas incluse dans ce brouillon.')).toBeInTheDocument();
+    expect(screen.queryByText(/Données cliniques uniquement/)).not.toBeInTheDocument();
   });
 });

@@ -388,12 +388,17 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       // La RLS ne renvoie que les modeles lisibles (global + ses propres gabarits).
       const { data, error } = await client
         .from('template')
-        .select('id, name, specialty, is_global, template_version(id, version_number)')
+        .select('id, name, specialty, is_global, template_version(id, version_number, status)')
         .order('created_at', { ascending: true });
       if (error) throw error;
-      type Row = { id: string; name: string; specialty: string | null; is_global: boolean; template_version: { id: string; version_number: number }[] };
+      type Row = { id: string; name: string; specialty: string | null; is_global: boolean; template_version: { id: string; version_number: number; status: string }[] };
       return ((data ?? []) as Row[]).flatMap((t) => {
-        const latest = [...(t.template_version ?? [])].sort((a, b) => b.version_number - a.version_number)[0];
+        // Modele officiel : seule sa derniere version PUBLIEE est proposee ; un brouillon en
+        // cours chez le gestionnaire (ou une version archivee) ne doit pas servir de source.
+        // Jeu personnel : sa derniere version, brouillon compris (c'est l'etat normal d'un
+        // jeu que le medecin edite lui-meme).
+        const candidates = (t.template_version ?? []).filter((v) => !t.is_global || v.status === 'published');
+        const latest = [...candidates].sort((a, b) => b.version_number - a.version_number)[0];
         if (!latest) return [];
         return [{
           versionId: latest.id,

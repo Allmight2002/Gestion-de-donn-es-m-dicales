@@ -400,7 +400,7 @@ export function EditPatient() {
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} patientId={patientId} />
+      <WorkDraftPanel draft={work} online={online} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
         <fieldset disabled={busy || work.locked} className="min-w-0 space-y-5">

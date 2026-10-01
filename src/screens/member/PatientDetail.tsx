@@ -551,6 +551,26 @@ export function PatientDetail() {
   // bouton les remet toutes. Un code de donnee manquante n'est pas vide : il est affiche.
   const emptyPermanentCount = patientSteps.reduce((count, step) => count + (step.kind === 'repeatable' ? 0
     : step.group.fields.filter((f) => fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) === '—').length), 0);
+  // Une section (ou sous-section) sans aucune valeur enregistree, ni descendante qui en porte,
+  // est masquee avec ses valeurs vides ; « Afficher les champs vides » la remet.
+  const declaredParentOf = new Map((patientVersion?.sections ?? []).map((section) => [section.sectionKey, section.parentSectionKey ?? null]));
+  const stepParentOf = (step: (typeof patientSteps)[number]): string | null => step.kind === 'repeatable'
+    ? step.section.parentSectionKey ?? null
+    : step.group.parentSectionKey ?? declaredParentOf.get(step.group.key) ?? null;
+  const parentByKey = new Map(patientSteps.map((step) => [
+    step.kind === 'repeatable' ? step.section.sectionKey : step.group.key, stepParentOf(step),
+  ]));
+  const sectionsWithValues = new Set<string>();
+  for (const step of patientSteps) {
+    const hasContent = step.kind === 'repeatable'
+      || step.group.fields.some((f) => fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) !== '—');
+    if (!hasContent) continue;
+    let key: string | null = step.kind === 'repeatable' ? step.section.sectionKey : step.group.key;
+    while (key && !sectionsWithValues.has(key)) {
+      sectionsWithValues.add(key);
+      key = parentByKey.get(key) ?? declaredParentOf.get(key) ?? null;
+    }
+  }
   // 5.5 : la rencontre la plus recente en premier (la liste arrive par date croissante).
   const encountersNewestFirst = [...realEncounters].reverse();
   // Un seul bouton plein par ecran (budget de l'audit, garde-fou e2e/mobile-360.spec.ts) :
@@ -730,7 +750,8 @@ export function PatientDetail() {
           const collapsed = collapsedSections.has(step.group.key);
           const bodyId = `patient-section-${step.group.key}`;
           return (
-            <section key={step.group.key} aria-labelledby={`${bodyId}-title`}>
+            <section key={step.group.key} aria-labelledby={`${bodyId}-title`}
+              hidden={!showEmpty && !sectionsWithValues.has(step.group.key)}>
               <h3 className="m-0">
                 <button type="button" aria-expanded={!collapsed} aria-controls={bodyId}
                   onClick={() => setCollapsedSections((current) => toggleIn(current, step.group.key))}
