@@ -192,7 +192,20 @@ const bases = strict<BaseRepository>('bases', {
   async getCompletenessStats() {
     return fields.map((entry, index) => ({ fieldKey: entry.fieldKey, label: entry.label, scope: entry.scope, filled: index % 3, total: 3 }));
   },
-  async getTodoCounts() { return [{ baseId: listing.base.id, incomplete: completion.length, clarifications: 1 }]; },
+  async getTodoCounts() { return [{ baseId: listing.base.id, incomplete: completion.length, clarifications: 1, pendingCodings: 2 }]; },
+  async listPendingCodings() {
+    return {
+      hasMore: false,
+      items: [
+        { patientId: 'p1', patientCode: 'P-0001', encounterId: 'e2', encounterType: 'consultation', encounterDate: '2026-09-12',
+          fieldKey: 'diagnostics', fieldLabel: 'Diagnostics associés', position: 1, raw: 'Céphalées post-traumatiques atypiques (fictif)',
+          proposedLabel: null, status: 'unmatched' as const, updatedAt: '2026-09-28T09:00:00Z' },
+        { patientId: 'p1', patientCode: 'P-0001', encounterId: null, encounterType: null, encounterDate: null,
+          fieldKey: 'diagnostic', fieldLabel: 'Diagnostic principal', position: null, raw: 'HSD chronique droit (fictif)',
+          proposedLabel: 'Hémorragie sousdurale non traumatique', status: 'suggested' as const, updatedAt: '2026-09-27T16:00:00Z' },
+      ],
+    };
+  },
 });
 // Lot 6 : l'editeur des jeux de variables s'ouvre depuis « Mes jeux de variables » sur un
 // brouillon charge — la fixture fictive de 216 variables, 24 sections et 26 regles.

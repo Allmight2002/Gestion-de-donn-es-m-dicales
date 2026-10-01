@@ -32,13 +32,14 @@ personne qui en a la responsabilité ([deploiement.md](deploiement.md)).
 
 ### 1.1 Les migrations
 
-Le projet doit porter ces trois migrations (elles sont dans `supabase/migrations/`) :
+Le projet doit porter ces quatre migrations (elles sont dans `supabase/migrations/`) :
 
 | Migration | Rôle |
 |---|---|
 | `20261001090000_terminology_assisted_coding.sql` | texte saisi et provenance du codage dans la valeur |
 | `20261001120000_terminology_candidates_oe.sql` | recherche des candidats (« oe » = « œ ») |
 | `20261001160000_terminology_candidates_acronyms.sql` | sigles de trois lettres (VIH, AVC…) |
+| `20261001200000_todo_pending_codings.sql` | diagnostics non codés ou à confirmer dans « À faire » |
 
 Commande : `supabase db push` (voir [deploiement.md](deploiement.md) §1).
 
@@ -46,10 +47,10 @@ Commande : `supabase db push` (voir [deploiement.md](deploiement.md) §1).
 
 ```sql
 select version from supabase_migrations.schema_migrations
- where version in ('20261001090000', '20261001120000', '20261001160000');
+ where version in ('20261001090000', '20261001120000', '20261001160000', '20261001200000');
 ```
 
-Attendu : **3 lignes**.
+Attendu : **4 lignes**.
 
 ### 1.2 Un référentiel de diagnostics actif
 
@@ -165,6 +166,9 @@ Les résultats « attendus » sont ceux du référentiel versionné. L'IA peut v
 | F3 | Après A1 : « Changer », choisir un autre diagnostic dans la liste | le texte d'origine reste visible ; statut `manually_modified` à l'export |
 | F4 | Couper le réseau (onglet Réseau → Offline), saisir A1, cliquer ailleurs | « Hors connexion : le diagnostic est conservé tel qu'écrit, sans code. » ; la saisie n'est **jamais** bloquée |
 | F5 | Taper `méning` et cliquer une proposition de la liste | choix classique, aucune analyse |
+| F6 | Après C1 (sans choisir), D1 et B1 (sans confirmer), enregistrer, puis ouvrir **À faire** | la rubrique « *n* diagnostic(s) à coder » de la base compte ces trois entrées ; la liste montre `QA-P1`, la variable, le texte saisi et « non codé » / « à confirmer » ; **aucun nom ni date de naissance** |
+| F7 | Depuis cette liste, « Ouvrir la fiche » sur C1, choisir une proposition, enregistrer | la ligne disparaît de la liste et le compte baisse d'un |
+| F8 | Rouvrir la fiche de F4 (saisie hors connexion) avec le réseau, cliquer **« Rechercher une correspondance »** | les correspondances sont **proposées** ; la valeur ne change qu'après un choix |
 
 ### 3.2 L'IA est-elle vraiment utilisée ?
 

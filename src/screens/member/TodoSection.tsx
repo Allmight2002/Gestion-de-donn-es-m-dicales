@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ChevronRight, ClipboardCheck, Clock, FilePen, MessageCircleQuestion } from 'lucide-react';
+import { ChevronRight, ClipboardCheck, Clock, FilePen, MessageCircleQuestion, Stethoscope } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { MessageKey } from '../../i18n/messages';
 import { useBaseRepository, useMissionRepository, useWorkDraftRepository } from '../../data/RepositoryProvider';
@@ -16,8 +16,10 @@ import { formatDateTime } from '../../lib/formatDate';
 // Les brouillons locaux (hors ligne) restent dans « Synchronisation », qui les gere.
 const MISSION_NOTICE_DAYS = 14;
 const DRAFTS_SHOWN = 5;
-// my_todo_counts s'arrete a 100 dossiers incomplets par base : la file donne le compte exact.
+// my_todo_counts s'arrete a 100 dossiers incomplets (et a 100 diagnostics en attente) par
+// base : la file donne le compte exact.
 const INCOMPLETE_CAP = 100;
+const capped = (n: number) => (n >= INCOMPLETE_CAP ? `${INCOMPLETE_CAP}+` : String(n));
 
 const DRAFT_TITLE: Record<WorkDraftKind, MessageKey> = {
   patient_create: 'todo.draft_patient_create',
@@ -109,7 +111,13 @@ export function TodoSection({ bases, showMissions }: { bases: BaseListing[]; sho
     })),
     ...perBase.filter((c) => c.incomplete > 0).map((c) => ({
       key: `incomplete-${c.baseId}`, to: `/bases/${c.baseId}/queue`, Icon: ClipboardCheck,
-      title: t('todo.incomplete').replace('{n}', c.incomplete >= INCOMPLETE_CAP ? `${INCOMPLETE_CAP}+` : String(c.incomplete)),
+      title: t('todo.incomplete').replace('{n}', capped(c.incomplete)),
+      meta: nameOf.get(c.baseId)!,
+    })),
+    // Codage CIM-11 assiste : diagnostics restes non codes ou a confirmer a l'enregistrement.
+    ...perBase.filter((c) => (c.pendingCodings ?? 0) > 0).map((c) => ({
+      key: `codings-${c.baseId}`, to: `/bases/${c.baseId}/codings`, Icon: Stethoscope,
+      title: t('todo.pending_codings').replace('{n}', capped(c.pendingCodings!)),
       meta: nameOf.get(c.baseId)!,
     })),
     ...(soon ?? []).map((mission) => ({
