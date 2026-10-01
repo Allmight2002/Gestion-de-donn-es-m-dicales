@@ -86,6 +86,11 @@ Secrets (Project Settings → Edge Functions → Secrets), **déjà posés pour 
 | `DEEPSEEK_API_KEY` | la clé (jamais copiée ailleurs) |
 | `TERMINOLOGY_LLM_MODEL` | facultatif (`deepseek-flash` par défaut) |
 
+⚠️ **`deepseek-flash` n'est pas qualifié** : rejoué sur le jeu de calibrage fictif, il a posé un
+code faux sans confirmation dans 2 passages sur 3
+([calibration-codage-terminologique-2026-10-01-deepseek.md](calibration-codage-terminologique-2026-10-01-deepseek.md)).
+Réservé aux essais sur données fictives, chaque code proposé étant vérifié.
+
 Après tout changement de secret, **redéployer** la fonction (commande ci-dessus).
 
 **Contrôle** : Supabase → Edge Functions → `code-terminology` doit apparaître, déployée après la
