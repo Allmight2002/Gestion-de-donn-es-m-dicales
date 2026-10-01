@@ -149,6 +149,15 @@ Erreurs résiduelles notables, aucune n'impose un code :
   `TERMINOLOGY_CALIBRATION_REPORT=<chemin.json> npx vitest run --project db test/terminology-calibration.test.ts`.
   Sans la variable, le test vérifie seulement l'absence d'erreur critique et les planchers
   d'utilité.
+- **Refaire avec un fournisseur réel** (`openai` ou `deepseek`) : enregistrer d'abord ses
+  interprétations du jeu fictif, plusieurs passages, avec la clé dans l'environnement :
+  `TERMINOLOGY_LLM_PROVIDER=deepseek DEEPSEEK_API_KEY=… node scripts/record-terminology-interpretations.mjs --runs 3`.
+  Le fichier `test/fixtures/terminologyCalibration.recorded.json` (sorties brutes, modèle, date,
+  latences ; une panne vaut repli lexical, comme dans l'Edge Function) est alors lu par le test :
+  aucun code faux imposé n'est toléré à aucun passage, et le rapport ajoute une section
+  `recorded` (mesures par passage et par découpage, seuils choisis sur ces sorties, cas instables
+  d'un passage à l'autre, interprétation de chaque cas). Toute modification des seuils qui en
+  découle fait l'objet d'un nouveau rapport daté.
 
 ## 5. Addendum — règle de couverture, sigles et inférences (1er octobre 2026, après-midi)
 
