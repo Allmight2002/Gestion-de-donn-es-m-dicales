@@ -194,9 +194,10 @@ critique, et quelques codes qui ajoutaient une information repassent « à confi
 - Aucun texte clinique ni erreur du fournisseur dans les journaux ; le client ne reçoit que des
   messages choisis (`CODING_UNAVAILABLE`).
 - **Prérequis avant données réelles** : l'envoi d'un texte clinique à un fournisseur externe
-  (Anthropic) doit être couvert par le cadre juridique et éthique (contrat de sous-traitance,
-  localisation, conservation). Sans `ANTHROPIC_API_KEY`, la fonction n'appelle aucun service
-  externe et répond par le seul repli lexical.
+  (Anthropic, OpenAI, DeepSeek…) doit être couvert par le cadre juridique et éthique (contrat de
+  sous-traitance, localisation, conservation). Le choix du fournisseur en dépend : DeepSeek, par
+  exemple, traite les requêtes hors de l'Union européenne. Sans clé pour le fournisseur choisi,
+  la fonction n'appelle aucun service externe et répond par le seul repli lexical.
 
 ## 6. Configuration et déploiement
 
@@ -205,11 +206,29 @@ Secrets de l'Edge Function `code-terminology` :
 | Secret | Rôle |
 |---|---|
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | client sous l'identité de l'appelant |
-| `ANTHROPIC_API_KEY` | facultatif ; active l'interprétation par Claude |
-| `TERMINOLOGY_LLM_MODEL` | facultatif ; modèle utilisé (défaut `claude-opus-5-5`, effort `low`, délai 8 s) |
+| `TERMINOLOGY_LLM_PROVIDER` | facultatif ; `anthropic` (défaut), `openai` ou `deepseek` |
+| `ANTHROPIC_API_KEY` | facultatif ; active l'interprétation par Claude (fournisseur `anthropic`) |
+| `OPENAI_API_KEY` | facultatif ; clé du fournisseur `openai` |
+| `DEEPSEEK_API_KEY` | facultatif ; clé du fournisseur `deepseek` |
+| `TERMINOLOGY_LLM_MODEL` | modèle utilisé ; défaut `claude-opus-5-5` (anthropic) ou `deepseek-flash` (deepseek), **obligatoire** pour `openai` |
+| `TERMINOLOGY_LLM_BASE_URL` | facultatif, `openai`/`deepseek` ; autre service au contrat Chat Completions (défauts `https://api.openai.com/v1`, `https://api.deepseek.com`) |
 
-Le repli serveur sur refus (`fallbacks: "default"`) est activé ; un refus résiduel, une sortie
-inexploitable ou un délai dépassé basculent sur le repli lexical. Pour que l'URI CIM-11 soit
+Seule la clé du fournisseur choisi est lue ; sans elle (ou sans modèle pour `openai`), la
+fonction répond par le repli lexical. Les trois fournisseurs reçoivent le même prompt et le même
+texte, avec un délai de 8 s, et leur sortie passe par la même validation (`parseInterpretation`) :
+
+- `anthropic` : SDK officiel, sortie au schéma JSON, effort `low`, repli serveur sur refus
+  (`fallbacks: "default"`), une nouvelle tentative au plus ;
+- `openai` : `POST /chat/completions` par `fetch` (`openaiCompatible.ts`), Structured Outputs
+  (`response_format.json_schema`, `strict: true`), aucune nouvelle tentative ;
+- `deepseek` : même appel en mode `json_object` ; la forme JSON attendue est décrite dans le
+  prompt, puis vérifiée comme les autres.
+
+Un refus, une réponse tronquée ou filtrée, une erreur HTTP, une sortie inexploitable ou un délai
+dépassé basculent sur le repli lexical ; le corps d'erreur du fournisseur n'est ni lu ni
+journalisé. Les seuils ont été calibrés avec des interprétations simulées : après un changement
+de fournisseur ou de modèle, rejouer le calibrage avec ses sorties réelles
+([calibration-codage-terminologique-2026-10-01.md](calibration-codage-terminologique-2026-10-01.md)). Pour que l'URI CIM-11 soit
 renseignée, importer un export qui porte une colonne `Linearization URI` (ou `URI`) :
 `scripts/import-terminology.mjs` la reprend ; l'export actuel `diagnostics-fr.tsv.gz` n'en a pas.
 
