@@ -28,6 +28,14 @@ export const containsAnyCases: { name: string; value: unknown; expected: boolean
   { name: 'nested list', value: [['A']], expected: false },
   { name: 'duplicate diagnoses', value: [{ code: 'A', label: 'Alpha' }, { code: 'A', label: 'Alpha' }], expected: false },
   { name: 'more than 50 diagnoses', value: Array.from({ length: 51 }, (_, i) => ({ code: i === 0 ? 'A' : `B${i}`, label: 'Fictif' })), expected: false },
+  // Codage assiste : provenance admise, texte non code saute sans invalider la liste.
+  { name: 'diagnosis with coding provenance', value: { code: 'A', label: 'Alpha', raw: 'alpha', coding: { method: 'ai_assisted', status: 'automatic', score: 0.95 } }, expected: true },
+  { name: 'unmatched entry is skipped', value: [{ raw: 'texte libre', coding: { method: 'ai_assisted', status: 'unmatched' } }, { code: 'A', label: 'Alpha' }], expected: true },
+  { name: 'only unmatched entries', value: [{ raw: 'texte libre', coding: { method: 'lexical', status: 'unmatched' } }], expected: false },
+  { name: 'single unmatched entry', value: { raw: 'texte libre', coding: { method: 'lexical', status: 'unmatched' } }, expected: false },
+  { name: 'raw without coding invalidates list', value: [{ raw: 'texte libre' }, { code: 'A', label: 'Alpha' }], expected: false },
+  { name: 'blank unmatched text invalidates list', value: [{ raw: ' ', coding: { method: 'lexical', status: 'unmatched' } }, { code: 'A', label: 'Alpha' }], expected: false },
+  { name: 'unmatched status with code is still coded', value: { code: 'B', label: 'Beta', coding: { method: 'lexical', status: 'unmatched' } }, expected: false },
   { name: 'boolean', value: true, expected: false },
   { name: 'number', value: 1, expected: false },
 ];

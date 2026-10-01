@@ -121,6 +121,7 @@ supabase functions deploy generate-export --import-map deno.json
 supabase functions deploy reconcile-quarantine --import-map deno.json
 supabase functions deploy create-mission-account --import-map deno.json
 supabase functions deploy purge-deleted-base --import-map deno.json
+supabase functions deploy code-terminology --import-map deno.json
 # Secrets (Project Settings → Edge Functions → Secrets) :
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
@@ -136,7 +137,10 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
 ```
 `create-mission-account` exige en plus le secret distinct
 `MISSION_CREDENTIALS_ENCRYPTION_KEY`, à poser sans l'afficher selon
-[edge-functions.md](edge-functions.md) §10.5 avant son déploiement. Les huit commandes décrivent
+[edge-functions.md](edge-functions.md) §10.5 avant son déploiement. `code-terminology` accepte
+en option `ANTHROPIC_API_KEY` (et `TERMINOLOGY_LLM_MODEL`) ; sans elle, le codage assisté répond
+par son seul repli lexical — voir [codage-terminologique-assiste.md](codage-terminologique-assiste.md)
+§5 avant tout envoi de texte clinique réel à un fournisseur externe. Les neuf commandes décrivent
 la cible de source ; elles ne constituent pas une autorisation de modifier un projet cloud.
 
 > **Inspection antivirus en pause depuis le 12 août 2026**

@@ -1,5 +1,5 @@
 import type { DiagnosisContext, FieldScope, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../data/types';
-import { isTerminologyValue, isTerminologyList } from '../data/types';
+import { isTerminologyValue, isTerminologyEntryList } from '../data/types';
 import { applyOp } from './validation';
 import { visibilityRulesOf, visibilityTargetFieldKeys } from './templateRules';
 
@@ -35,7 +35,8 @@ export function calculateDiagnosisCoverage(
   let codes: string[] = [];
   if (field.type === 'terminology') {
     codes = field.isMultiple
-      ? (isTerminologyList(value) ? value.map((v) => v.code) : [])
+      // Un texte non code n'a pas de code : il ne couvre ni ne decouvre aucun bloc.
+      ? (isTerminologyEntryList(value) ? value.filter(isTerminologyValue).map((v) => v.code) : [])
       : (isTerminologyValue(value) ? [value.code] : []);
   } else if (field.type === 'multiselect') {
     if (Array.isArray(value) && value.every((v) => typeof v === 'string')) codes = value;

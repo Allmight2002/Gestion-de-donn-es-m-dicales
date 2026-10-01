@@ -54,3 +54,22 @@ describe('validateField — diagnostic multivalue (L21)', () => {
     expect(validateField(liste, [CHOLERA, CHOLERA])).toBeNull();
   });
 });
+
+// Codage assiste : le texte non code est une valeur a part entiere. Le codage ne doit jamais
+// empecher d'enregistrer le diagnostic ecrit, y compris pour un champ obligatoire.
+describe('validateField — codage assiste', () => {
+  const NON_CODE = { raw: 'Syndrome fictif', coding: { method: 'ai_assisted', status: 'unmatched' } };
+  const AVEC_PROVENANCE = { ...CHOLERA, raw: 'cholera grave', coding: { method: 'ai_assisted', status: 'automatic' } };
+
+  test('texte non code et provenance acceptes, en valeur unitaire comme en liste', () => {
+    expect(validateField(champ({ required: true }), NON_CODE)).toBeNull();
+    expect(validateField(champ(), AVEC_PROVENANCE)).toBeNull();
+    expect(validateField(champ({ isMultiple: true }), [AVEC_PROVENANCE, NON_CODE])).toBeNull();
+  });
+
+  test('un texte sans statut non code reste incomplet', () => {
+    expect(validateField(champ(), { raw: 'Syndrome fictif' })).toContain('Diagnostic incomplet');
+    expect(validateField(champ({ isMultiple: true }), [CHOLERA, { raw: ' ', coding: { method: 'lexical', status: 'unmatched' } }]))
+      .toContain('Liste de diagnostics');
+  });
+});
