@@ -326,3 +326,16 @@ passage). Motifs :
 l'absence d'erreur sans raisonnement est observée, pas garantie, et i12 reste à traiter par le
 score. Latences mesurées depuis un conteneur de développement, 4 appels concurrents par
 configuration et trois configurations enregistrées en même temps.
+
+## 8. Addendum — « conflit discal » et nouvelle référence (1er octobre 2026, nuit)
+
+- **i12 corrigé dans le score.** « discal », « discale », « discaux » et « discales » sont ramenés à
+  « disque » (`SYNONYMS`, `scoring.ts`). « Radiculopathie L5 sur conflit discal » reconnaît donc
+  8B93.6 « Radiculopathie due à une atteinte des disques intervertébraux » comme précision écrite :
+  le parent 8B93 n'est plus posé seul.
+- **Rejeu de tous les enregistrements, seuils inchangés** : 0 erreur critique sur les 15 passages
+  réels (Flash, référence V4 Pro, prompt en vigueur avec raisonnement par défaut, `low` et
+  `disabled`). Scénarios simulé (75,3) et lexical (49,8) inchangés.
+- **Proposition du §7 appliquée.** L'enregistrement de référence du test devient
+  `terminologyCalibration.recorded.deepseek-v4-pro-nothinking-2026-10-01.json` (configuration
+  recommandée), avec un plancher `recordedUtility` de 54,6 (pire passage).
