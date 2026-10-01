@@ -102,9 +102,28 @@ export function isTerminologyEntryList(v: unknown): v is TerminologyFieldEntry[]
   return Array.isArray(v) && v.length > 0 && v.every(isTerminologyEntry);
 }
 
-/** Texte lisible d'une entree : le libelle officiel, sinon le texte d'origine. */
-export function terminologyEntryText(v: TerminologyFieldEntry): string {
-  return isTerminologyValue(v) ? v.label : v.raw;
+/**
+ * Mentions d'un diagnostic lu hors saisie, traduites par l'appelant : une proposition du
+ * codage assiste encore « a confirmer », ou un texte libre « non code ». Sans elles, une
+ * proposition jamais relue se lisait comme un diagnostic etabli.
+ */
+export interface TerminologyMarks {
+  toConfirm: string;
+  uncoded: string;
+}
+
+export function terminologyMarks(t: (key: 'terminology.to_confirm' | 'terminology.uncoded') => string): TerminologyMarks {
+  return { toConfirm: t('terminology.to_confirm'), uncoded: t('terminology.uncoded') };
+}
+
+/**
+ * Texte lisible d'une entree : le libelle officiel, sinon le texte d'origine. Avec `marks`,
+ * le statut s'y ajoute. Une proposition « a confirmer » reste un code — elle compte, comme
+ * a la saisie — mais elle ne se presente plus comme verifiee.
+ */
+export function terminologyEntryText(v: TerminologyFieldEntry, marks?: TerminologyMarks): string {
+  if (!isTerminologyValue(v)) return marks ? `${v.raw} (${marks.uncoded})` : v.raw;
+  return marks && v.coding?.status === 'suggested' ? `${v.label} (${marks.toConfirm})` : v.label;
 }
 
 /**
@@ -135,13 +154,17 @@ export function isMultipleTerminology(field: { type: string; isMultiple?: boolea
  *
  * Audit UI mobile, lot 0 : avec la langue, une date ou une date-heure saisie s'affiche
  * « 21/08/2026 14:00 » au lieu de l'ISO brut. Sans langue, le rendu historique est conservé.
+ *
+ * Avec `marks`, un diagnostic « à confirmer » ou « non codé » le dit (`terminologyEntryText`).
+ * Sans `marks`, le rendu historique est conservé.
  */
-export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier | null, lang?: Language): string {
+export function displayFieldValue(
+  v: unknown, vide = '', field?: OptionCarrier | null, lang?: Language, marks?: TerminologyMarks,
+): string {
   if (v === null || v === undefined || v === '') return vide;
   if (lang && typeof v === 'string' && field?.type === 'date') return formatStoredDate(v, lang);
   if (lang && typeof v === 'string' && field?.type === 'datetime') return formatStoredDateTime(v, lang);
-  if (isTerminologyValue(v)) return v.label;
-  if (isUnmatchedTerminology(v)) return v.raw;
+  if (isTerminologyEntry(v)) return terminologyEntryText(v, marks);
   // L30 : une liste controlee stocke le CODE de l'option. Sans ce passage par les
   // options, l'ecran afficherait le code, et continuerait d'afficher l'ancien texte
   // apres une correction de libelle -- la confusion meme que le lot supprime. Une valeur
@@ -152,7 +175,7 @@ export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier |
   // L21 : AVANT le cas general des tableaux. `join` appellerait `String()` sur chaque couple
   // et rendrait « [object Object] » sur toute la colonne -- exactement la regression que la
   // spec signale pour l'export. Separateur `; `, le meme que l'export.
-  if (isTerminologyEntryList(v)) return v.map(terminologyEntryText).join('; ');
+  if (isTerminologyEntryList(v)) return v.map((entry) => terminologyEntryText(entry, marks)).join('; ');
   if (Array.isArray(v)) return v.join(', ');
   return String(v);
 }

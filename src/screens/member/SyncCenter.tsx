@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { usePatientRepository } from '../../data/RepositoryProvider';
-import { displayFieldValue, type TemplateField } from '../../data/types';
+import { displayFieldValue, terminologyMarks, type TemplateField, type TerminologyMarks } from '../../data/types';
 import {
   discardOutboxEntry, flushOutbox, offlineCache, resolveKeepBoth, resolveKeepMine, resolveKeepServer,
   retryOutboxEntry, useOnline, useOutbox, outboxEntryRequiresOnline,
@@ -17,9 +17,10 @@ import { mergeKeepBoth } from '../../domain/conflictMerge';
 import { recentClientErrors } from '../../lib/reportError';
 import { HelpDetails } from '../../components/HelpTip';
 
-function conflictValue(value: unknown, field: TemplateField | undefined, unreadable: string): string {
+function conflictValue(value: unknown, field: TemplateField | undefined, unreadable: string, marks: TerminologyMarks): string {
   if (value === null || value === undefined || value === '') return '—';
-  if (field) return displayFieldValue(value, '—', field);
+  // Un diagnostic « a confirmer » d'un cote et confirme de l'autre ne doit pas sembler identique.
+  if (field) return displayFieldValue(value, '—', field, undefined, marks);
   if (Array.isArray(value)) return value.map((item) => typeof item === 'string' ? item : JSON.stringify(item)).join(', ');
   if (typeof value === 'object') {
     try { return JSON.stringify(value); } catch { return unreadable; }
@@ -357,6 +358,7 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
   const scopeUnknown = outboxEntryRequiresOnline(entry);
   const rows = conflictRows(entry, undefined, mergeable ? merge.data : null);
   const unreadable = t('sync.unreadable_value');
+  const marks = terminologyMarks(t);
 
   return (
     <div className="card border-red-200 p-4 text-sm">
@@ -382,10 +384,10 @@ function ConflictCard({ entry, deps, onError }: { entry: OutboxEntry; deps: Flus
             ) : rows.map((row) => (
               <tr key={row.key}>
                 <th scope="row" className="max-w-48 break-words px-3 py-2 font-medium text-slate-700" title={row.key}>{row.label}</th>
-                <td className="max-w-64 break-words px-3 py-2 text-teal-800">{conflictValue(row.local, row.field, unreadable)}</td>
-                <td className="max-w-64 break-words px-3 py-2 text-slate-700">{conflictValue(row.server, row.field, unreadable)}</td>
+                <td className="max-w-64 break-words px-3 py-2 text-teal-800">{conflictValue(row.local, row.field, unreadable, marks)}</td>
+                <td className="max-w-64 break-words px-3 py-2 text-slate-700">{conflictValue(row.server, row.field, unreadable, marks)}</td>
                 <td className="max-w-64 break-words px-3 py-2 text-amber-900">
-                  {row.proposed === undefined ? '—' : conflictValue(row.proposed, row.field, unreadable)}
+                  {row.proposed === undefined ? '—' : conflictValue(row.proposed, row.field, unreadable, marks)}
                 </td>
               </tr>
             ))}

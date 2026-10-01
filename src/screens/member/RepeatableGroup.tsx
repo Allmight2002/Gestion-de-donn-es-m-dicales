@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { usePatientRepository } from '../../data/RepositoryProvider';
 import type { Encounter } from '../../data/patients';
 import {
-  displayFieldValue, type TemplateField, type TemplateSection, type ValidationRule,
+  displayFieldValue, terminologyMarks, type TemplateField, type TemplateSection, type ValidationRule,
 } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, isMissing, missingCodeOf, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
@@ -57,7 +57,7 @@ function useCellText() {
   return (value: unknown, column: OccurrenceColumn): string => {
     if (isMissing(value)) return t(`missing.${missingCodeOf(value)!}`);
     if (typeof value === 'boolean') return value ? '✓' : '✗';
-    return displayFieldValue(value, '—', column, lang);
+    return displayFieldValue(value, '—', column, lang, terminologyMarks(t));
   };
 }
 

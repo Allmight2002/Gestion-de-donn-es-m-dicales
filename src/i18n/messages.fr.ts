@@ -938,6 +938,7 @@ export const messages = {
     'terminology.several_matches': 'Plusieurs correspondances possibles :',
     'terminology.other_matches': 'Autres correspondances possibles :',
     'terminology.to_confirm': 'à confirmer',
+    'terminology.uncoded': 'non codé',
     'terminology.confirm': 'Confirmer',
     'terminology.written': 'Saisi :',
     'terminology.replacing': 'Choisissez une proposition ou réécrivez le diagnostic.',

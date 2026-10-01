@@ -933,6 +933,7 @@ export const messages = {
     'terminology.several_matches': 'Several possible matches:',
     'terminology.other_matches': 'Other possible matches:',
     'terminology.to_confirm': 'to confirm',
+    'terminology.uncoded': 'not coded',
     'terminology.confirm': 'Confirm',
     'terminology.written': 'Typed:',
     'terminology.replacing': 'Choose a suggestion or rewrite the diagnosis.',

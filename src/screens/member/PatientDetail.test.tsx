@@ -137,6 +137,37 @@ describe('PatientDetail (fiche)', () => {
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
   });
 
+  // Revue post-optimisation, C1 : une proposition du codage assiste jamais relue se lisait
+  // comme un diagnostic etabli, et un texte libre comme un diagnostic code.
+  test('un diagnostic propose se lit « à confirmer », un texte libre « non codé »', async () => {
+    const avecDiagnostics = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'antecedents', label: 'Antécédents', scope: 'patient', type: 'terminology', isMultiple: true }),
+            field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'encounter', type: 'terminology' }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const antecedents = [
+      { code: '1F40', label: 'Paludisme', raw: 'palu', coding: { method: 'ai_assisted', status: 'confirmed' } },
+      { code: '5A11', label: 'Diabète de type 2', raw: 'DT2', coding: { method: 'ai_assisted', status: 'suggested' } },
+      { raw: 'Céphalées atypiques', coding: { method: 'ai_assisted', status: 'unmatched' } },
+    ];
+    const propose = { code: '1F40', label: 'Paludisme', raw: 'palu grave', coding: { method: 'ai_assisted', status: 'suggested' } };
+    renderAt('/bases/b1/patients/p1', makePatients({
+      getPatient: async () => ({ ...patientView, data: { antecedents } }),
+      listEncounters: async () => [{ ...encounter, data: { diagnostic: propose } }],
+    }), undefined, avecDiagnostics);
+
+    expect(await screen.findByText('Paludisme; Diabète de type 2 (à confirmer); Céphalées atypiques (non codé)')).toBeInTheDocument();
+    await openEncounters();
+    expect(screen.getByText('Paludisme (à confirmer)')).toBeInTheDocument();
+  });
+
   // Regression release 177 : un gabarit SANS variable permanente visible masquait la carte
   // ENTIERE, emportant avec elle le statut du dossier, la correction des donnees permanentes
   // et la finalisation -- inatteignables depuis la fiche. La condition ne doit porter que sur
@@ -595,6 +626,20 @@ describe('EditEncounter (correction)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
     expect(updateEncounter).toHaveBeenCalledTimes(1);
     expect(updateEncounter.mock.calls[0][3]).toBe('erreur de frappe');
+  });
+
+  // C1 : confirmer une proposition ne change pas le libelle ; sans mention, l'historique lirait
+  // « Paludisme -> Paludisme ».
+  test('l historique distingue une proposition confirmee de la proposition', async () => {
+    const propose = { code: '1F40', label: 'Paludisme', raw: 'palu', coding: { method: 'ai_assisted', status: 'suggested' } };
+    const confirme = { ...propose, coding: { method: 'ai_assisted', status: 'confirmed' } };
+    renderAt('/bases/b1/patients/p1/encounters/e1/edit', makePatients({
+      listFieldChanges: async () => [{ fieldKey: 'diagnostic', oldValue: propose, newValue: confirme, reason: 'relecture', changedAt: '2024-06-02' }],
+    }));
+
+    const ligne = (await screen.findByText(/relecture/)).closest('li')!;
+    expect(within(ligne).getByText('Paludisme (à confirmer)')).toHaveClass('line-through');
+    expect(within(ligne).getByText('Paludisme', { selector: 'strong' })).toBeInTheDocument();
   });
 
   test('un ancien draft incomplet reste editable et enregistrable', async () => {
