@@ -3,7 +3,8 @@
 // Regles :
 //   * le texte ecrit par le medecin (`raw`) accompagne TOUJOURS l'entree qu'il a produite ;
 //   * seules les decisions `automatic` et `suggested` deviennent un code sans action de
-//     l'utilisateur ; `suggested` reste marque « a confirmer » ;
+//     l'utilisateur ; `suggested` reste marque « a confirmer », et les autres correspondances
+//     trouvees par le serveur sont offertes au choix a cote ;
 //   * plusieurs correspondances plausibles ne sont JAMAIS tranchees ici : l'entree reste non
 //     codee et les propositions sont offertes au choix ;
 //   * aucune correspondance fiable : le texte est conserve, non code, et reste enregistrable.
@@ -22,7 +23,10 @@ import {
 export const MAX_RAW_LENGTH = 500;
 const MAX_NORMALIZED_LENGTH = 300;
 
-/** Propositions a soumettre au choix, rattachees a l'entree non codee qu'elles concernent. */
+/**
+ * Propositions a soumettre au choix, rattachees a l'entree qu'elles concernent : une entree non
+ * codee (plusieurs correspondances), ou une proposition « a confirmer » (autres correspondances).
+ */
 export interface CodingChoice {
   raw: string;
   normalized: string;
@@ -73,7 +77,17 @@ function entryFor(
 ): { entry: TerminologyFieldEntry; choice: CodingChoice | null } {
   const coding = baseCoding(result, item.normalized);
   if ((item.status === 'automatic' || item.status === 'suggested') && item.best) {
-    return { entry: codedEntry(raw, item.best, coding, item.status), choice: null };
+    const entry = codedEntry(raw, item.best, coding, item.status);
+    // Une proposition a confirmer n'est qu'un candidat : les autres restent visibles.
+    const others = item.status === 'suggested'
+      ? (item.alternatives ?? []).filter((c, i, all) =>
+        c.code !== item.best!.code && all.findIndex((x) => x.code === c.code) === i
+      )
+      : [];
+    return {
+      entry,
+      choice: others.length ? { raw: clip(raw, MAX_RAW_LENGTH), normalized: coding.normalized ?? '', options: others } : null,
+    };
   }
   const entry = unmatchedEntry(raw, result.method, { ...coding, score: item.score });
   const options = item.status === 'ambiguous' ? item.alternatives : [];
@@ -101,8 +115,11 @@ export function entriesFromResult(
   if (!multiple && items.length > 1) {
     const normalized = items.map((i) => i.normalized).join(' ; ');
     const coding = baseCoding(result, normalized);
-    const options = items.flatMap((i) => (i.best ? [i.best] : []))
-      .filter((c, index, all) => all.findIndex((x) => x.code === c.code) === index);
+    // Le meilleur code de chaque diagnostic d'abord, puis leurs autres correspondances.
+    const options = [
+      ...items.flatMap((i) => (i.best ? [i.best] : [])),
+      ...items.flatMap((i) => (i.status === 'unmatched' ? [] : i.alternatives ?? [])),
+    ].filter((c, index, all) => all.findIndex((x) => x.code === c.code) === index);
     const entry = unmatchedEntry(raw, result.method, coding);
     return {
       entries: [entry],
