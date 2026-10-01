@@ -123,6 +123,11 @@ const SYNONYMS: Record<string, string[]> = {
   c1: ['premiere', 'vertebre', 'cervicale'],
   c2: ['deuxieme', 'vertebre', 'cervicale'],
   etage: ['fosse'],
+  // Adjectif clinique ramene au nom des intitules (« conflit discal » -> « … des disques »).
+  discal: ['disque'],
+  discale: ['disque'],
+  discaux: ['disque'],
+  discales: ['disque'],
   // Sigle francais et anglais, developpe comme dans les intitules.
   vih: ['virus', 'immunodeficience', 'humaine'],
   hiv: ['virus', 'immunodeficience', 'humaine'],
