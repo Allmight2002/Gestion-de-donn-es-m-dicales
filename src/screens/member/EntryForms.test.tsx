@@ -4,7 +4,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { ToastProvider } from '../../components/Toast';
@@ -17,9 +17,11 @@ import { EditPatient } from './EditPatient';
 import { NewPatient } from './NewPatient';
 import { BaseEntryForms } from './BaseEntryForms';
 
+const auth = vi.hoisted(() => ({ role: 'medecin' as 'medecin' | 'saisisseur' }));
 vi.mock('../../auth/useAuth', () => ({
-  useAuth: () => ({ profile: { id: 'u', fullName: 'Médecin fictif', globalRole: 'medecin', language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
+  useAuth: () => ({ profile: { id: 'u', fullName: 'Compte fictif', globalRole: auth.role, language: 'fr' }, user: { id: 'u', email: null }, signOut: () => {} }),
 }));
+beforeEach(() => { auth.role = 'medecin'; });
 
 const field = (fieldKey: string, label: string, section: string, extra: Partial<TemplateField> = {}): TemplateField => ({
   id: fieldKey, fieldKey, label, section, sectionLabel: section, type: 'text', unit: null, allowedValues: null,
@@ -107,6 +109,10 @@ describe('saisie rapide : création', () => {
     expect(screen.queryByLabelText(/Mécanisme/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/^Pathologie/), { target: { value: 'tc' } });
     expect(await screen.findByLabelText(/Mécanisme/)).toBeInTheDocument();
+    // Les sections du formulaire complet restent visibles.
+    expect(screen.getAllByText('demographie').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('diagnostic').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('clinique')).toHaveLength(0);
     // Variables du formulaire complet absentes.
     expect(screen.queryByLabelText(/Glasgow/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/scanner/i)).not.toBeInTheDocument();
@@ -138,6 +144,17 @@ describe('saisie rapide : création', () => {
     await userEvent.click(screen.getByRole('button', { name: /^enregistrer/i }));
     await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
     expect(createPatient.mock.calls[0][1].permanentData).toEqual({ sexe: 'M', issue: 'guéri' });
+  });
+
+  test('un compte de mission enregistre aussi une fiche partielle depuis un formulaire court', async () => {
+    auth.role = 'saisisseur';
+    const { patients: repo, createPatient } = patients();
+    renderAt('/bases/b1/patients/new/manual?form=f1', { patients: repo });
+    expect(await screen.findByLabelText('Formulaire de saisie')).toHaveValue('f1');
+    fireEvent.change(screen.getByLabelText(/^Sexe/), { target: { value: 'F' } });
+    await userEvent.click(screen.getByRole('button', { name: /^enregistrer/i }));
+    await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
+    expect(createPatient.mock.calls[0][1].permanentData).toEqual({ sexe: 'F' });
   });
 
   test('un lien vers un formulaire supprimé retombe sur le formulaire complet', async () => {
@@ -178,24 +195,24 @@ describe('formulaire court : complétion d’une fiche existante', () => {
 });
 
 describe('gestion des formulaires de saisie', () => {
-  test('le responsable compose, ordonne et rend indispensable une variable', async () => {
+  test('le responsable compose et rend indispensable une variable ; l’ordre suit le formulaire complet', async () => {
     const repo = entryForms([]);
     renderAt('/bases/b1/formulaires', { entryForms: repo });
     await userEvent.click(await screen.findByRole('button', { name: /nouveau formulaire/i }));
     await userEvent.type(screen.getByLabelText('Nom du formulaire'), 'Sortie');
     const available = screen.getByRole('region', { name: /variables de la base/i });
-    await userEvent.click(within(available).getByLabelText('Sexe'));
+    // Cochees dans le desordre : le formulaire garde l'ordre du formulaire complet.
     await userEvent.click(within(available).getByLabelText('Issue du séjour'));
+    await userEvent.click(within(available).getByLabelText('Sexe'));
     await userEvent.click(within(available).getByLabelText('Mécanisme du traumatisme'));
     // Dépendance annoncée : `mecanisme` exige `pathologie` à la saisie.
     expect(screen.getByText(/ajoutées automatiquement/i).parentElement).toHaveTextContent('Pathologie');
-    await userEvent.click(screen.getByRole('button', { name: 'Monter Issue du séjour' }));
     const selected = screen.getByRole('region', { name: /variables du formulaire/i });
-    await userEvent.click(within(selected).getAllByLabelText('Indispensable')[0]);
+    await userEvent.click(within(selected).getAllByLabelText('Indispensable')[2]);
     await userEvent.click(screen.getByRole('button', { name: /enregistrer le formulaire/i }));
     await waitFor(() => expect(repo.create).toHaveBeenCalledTimes(1));
     expect(repo.create).toHaveBeenCalledWith('b1', {
-      name: 'Sortie', fieldKeys: ['issue', 'sexe', 'mecanisme'], requiredKeys: ['issue'],
+      name: 'Sortie', fieldKeys: ['sexe', 'mecanisme', 'issue'], requiredKeys: ['issue'],
     });
   });
 

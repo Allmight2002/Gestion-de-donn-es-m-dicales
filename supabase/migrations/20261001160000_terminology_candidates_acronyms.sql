@@ -1,5 +1,5 @@
 -- =============================================================================
--- 20261001140000_terminology_candidates_acronyms.sql  (codage assiste : sigles courts)
+-- 20261001160000_terminology_candidates_acronyms.sql  (codage assiste : sigles courts)
 --
 -- POURQUOI. « Pneumonie ... sur terrain HIV » : la recherche de candidats ecartait tout mot de
 -- moins de quatre lettres, donc les sigles de trois lettres (VIH, HIV, AVC, IRC...) que portent

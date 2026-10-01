@@ -161,7 +161,7 @@ code automatiquement, et que les sigles courts (VIH, HIV) n'étaient pas retrouv
   se retrouve dans le texte du médecin ou dans le terme développé. Sont tolérés les mots qui
   situent sans préciser et les intitulés disjonctifs dont un côté est écrit.
 - **Sigles** : les mots de trois lettres comptent dans la recherche
-  (`20261001140000_terminology_candidates_acronyms.sql`), et VIH/HIV a des synonymes.
+  (`20261001160000_terminology_candidates_acronyms.sql`), et VIH/HIV a des synonymes.
 - **Intitulés** : les clauses « sans mention de … » sont facultatives.
 
 **Jeu étendu à 97 cas.** Cinq pièges ont été ajoutés à `dev`/`test` :

@@ -318,9 +318,9 @@ export function EncounterForm() {
     const applicable = applicableFields;
     const applicableData = submittedData;
     // Le serveur exige la completude des la sortie du brouillon ('complete') pour tous les
-    // comptes, et a CHAQUE enregistrement pour un compte de mission (aucun brouillon partiel).
-    // Le frontend reproduit exactement cette frontiere (regles bloquantes : finalisation seule).
-    const requireComplete = isMissionAccount(profile) || status !== 'draft';
+    // comptes, compte de mission compris ; un brouillon peut rester partiel. Le frontend
+    // reproduit exactement cette frontiere (regles bloquantes : finalisation seule).
+    const requireComplete = status !== 'draft';
     const fieldErrors = validateValues(applicable, applicableData, requireComplete, hidden).map((fe) =>
       `${labelOf(fe.fieldKey)} : ${fe.message}`
     );
@@ -493,7 +493,7 @@ export function EncounterForm() {
           prefilledKeys={prefilled}
           hiddenKeys={hidden}
           rules={rules}
-          requireComplete={isMissionAccount(profile) || status !== 'draft'}
+          requireComplete={status !== 'draft'}
           onChange={(k, v) => {
             // Effacer une proposition jamais confirmee retire la cle, au lieu d'enregistrer
             // une valeur vide la ou une fiche non preremplie n'aurait rien du tout.

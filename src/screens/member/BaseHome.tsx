@@ -413,7 +413,7 @@ export function BaseHome() {
   const isMissionAccess = !!listing && listing.expiresAt != null;
   const narrow = useNarrowViewport();
   // Formulaires courts de la base : un raccourci de creation, la fiche reste la meme.
-  const entryForms = useEntryFormSelection(id, canCreate && !isMissionAccess).forms;
+  const entryForms = useEntryFormSelection(id, canCreate).forms;
   // Audit UI mobile, lot 2 (5.4-B) : sur telephone, ce qui alimente la liste (import, saisie
   // hors-ligne) passe dans « ⋯ » de la barre haute ; les memes actions restent dans la page
   // a partir de `lg`. L'action du quotidien, « Nouveau patient », devient un bouton flottant.

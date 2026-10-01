@@ -1,7 +1,7 @@
 # Codage terminologique assisté (CIM-11)
 
 > 🟢 Document vivant. Décrit l'état du code au 1er octobre 2026 : migration
-> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000`, `20261001140000`),
+> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000`, `20261001160000`),
 > Edge Function `code-terminology`, champ
 > `TerminologyInput`. Seuils calibrés le 1er octobre 2026 (§4). Rien n'est déployé ; la preuve
 > navigateur et la mesure avec le vrai modèle restent à produire (§8).
@@ -148,7 +148,7 @@ Il traite aussi :
   - VIH/HIV ↔ « virus de l'immunodéficience humaine » ;
   - atlas/C1 et axis/C2 ↔ 1re et 2e vertèbres cervicales ;
 - **les sigles de trois lettres** (VIH, AVC…) : ils comptent dans la recherche de candidats
-  (migration `20261001140000`), hors mots-outils ;
+  (migration `20261001160000`), hors mots-outils ;
 - **les catégories résiduelles** : « X », « X, sans précision » et « Autres X » forment un même
   concept pour l'écart et les propositions, classés principal < « sans précision » < « Autres ».
 

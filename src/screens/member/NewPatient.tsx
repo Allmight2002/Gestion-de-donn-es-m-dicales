@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, useCurationRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
-import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
+import { hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isMultipleTerminology, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import type { IdentityMatch } from '../../data/patients';
 import { newOfflineId, useOnline } from '../../data/offline';
@@ -74,9 +74,8 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   // Confier au pool de curation releve de la curation, fermee aux comptes de mission
   // (docs/spec-comptes-mission.md §4) : la base refuse aussi cette voie.
   const maySubmitToCuration = !isMissionAccount(profile);
-  // Formulaire de saisie court (en ligne, saisie directe) : un compte de mission ne peut pas
-  // enregistrer de fiche partielle et garde donc le formulaire complet.
-  const entry = useEntryFormSelection(baseId, mode === 'manual' && !useLocalSupport && !isMissionAccount(profile));
+  // Formulaire de saisie court (en ligne, saisie directe), offert a tout compte qui cree des fiches.
+  const entry = useEntryFormSelection(baseId, mode === 'manual' && !useLocalSupport);
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -350,8 +349,6 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       setError(t('patient.identity_required'));
       return;
     }
-    // Compte de mission : aucun brouillon partiel (regle B) -- le serveur refuse aussi
-    // un patient sans ses champs requis du gabarit.
     if (mode === 'manual' && shortForm) {
       // Formulaire court : seuls SES indispensables bloquent ; la fiche reste un brouillon.
       const requiredMissing = validateValues(shortForm.fields, entryData, true, hidden).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
@@ -361,8 +358,9 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       }
     } else if (mode === 'manual') {
       const requiredMissing = [
-        ...validateValues(fields, permanentData, isMissionAccount(profile), hidden).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
-        ...(isMissionAccount(profile) ? evaluateRules(rules, permanentData, hidden).blocking : []),
+        // Une fiche nait en brouillon : saisie partielle permise a tout compte, y compris de
+        // mission ; la completude n'est exigee qu'a la soumission (le serveur le verifie).
+        ...validateValues(fields, permanentData, false, hidden).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
       ];
       if (requiredMissing.length > 0) {
         setError(requiredMissing.join(' · '));
@@ -524,7 +522,6 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={rules}
-      requireComplete={isMissionAccount(profile)}
       rows={pending.filter((row) => row.sectionKey === section.sectionKey)}
       online={online && !offlineIntakeActive}
       busy={busy}
@@ -729,13 +726,13 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
             <SectionedFields
               leadingBlock={{ label: t('patient.identification'), content: identification }}
               fields={shortForm ? shortForm.fields.filter((field) => !companionKeys.has(field.fieldKey) && !hidden.has(field.fieldKey)) : visibleFields}
-              sections={shortForm ? undefined : sections}
-              commonLayout={shortForm ? undefined : commonLayout}
+              sections={sections}
+              commonLayout={commonLayout}
               values={permanent}
               allFields={shortForm ? shortForm.fields : fields}
               hiddenKeys={hidden}
               rules={shortForm ? shortRules : rules}
-              requireComplete={shortForm ? true : isMissionAccount(profile)}
+              requireComplete={!!shortForm}
               repeatableGroup={shortForm ? undefined : renderRepeatableGroup}
               maskedRepeatableGroup={shortForm ? undefined : renderMaskedGroup}
               renderField={(field) => {
