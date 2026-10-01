@@ -1,7 +1,7 @@
 # Codage terminologique assisté (CIM-11)
 
 > 🟢 Document vivant. Décrit l'état du code au 1er octobre 2026 : migration
-> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000`, `20261001160000`),
+> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000`, `20261001160000`, `20261001200000` pour « À faire »),
 > Edge Function `code-terminology`, champ
 > `TerminologyInput`. Seuils calibrés le 1er octobre 2026 (§4). Rien n'est déployé ; la preuve
 > navigateur et la mesure avec le vrai modèle restent à produire (§8).
@@ -63,7 +63,22 @@ choix plutôt que tronqués.
 codée issue du codage assisté (méthode `ai_assisted`, terme normalisé présent), le texte conservé
 est analysé à nouveau, une fois, et les propositions sont réaffichées. La valeur enregistrée
 n'est **jamais** modifiée à cette occasion : seul un choix du médecin l'écrit. Une saisie conservée
-hors connexion ou pendant une panne (méthode `lexical`) n'est pas réanalysée en silence.
+hors connexion ou pendant une panne (méthode `lexical`) n'est pas réanalysée en silence : le bouton
+**« Rechercher une correspondance »** la soumet à nouveau sur demande, et toute correspondance
+trouvée, même claire, n'est que **proposée** (le choix donne `confirmed`, avec la provenance de
+cette nouvelle analyse).
+
+**Diagnostics en attente dans « À faire ».** Une entrée est *en attente* quand elle est non codée
+(`unmatched` : aucune correspondance, plusieurs correspondances non choisies, saisie hors
+connexion ou pendant une panne) ou proposée sans confirmation (`suggested`). La page « À faire »
+affiche par base « *n* diagnostic(s) à coder » (compte arrêté à 100, lu par `my_todo_counts()`,
+clé `pendingCodings`), qui mène à `/bases/:id/codings` : la liste (`list_pending_codings`, les
+100 plus récentes modifications d'abord) donne le code patient, la rencontre, la variable, le
+texte saisi et le statut (« non codé » / « à confirmer »), et ouvre la fiche ou la rencontre où
+le champ réaffiche ses propositions. Même périmètre que la file « À compléter » : bases où la
+personne peut modifier les données, fiches et rencontres non supprimées, **dossiers `curated`
+exclus** (déjà revus et finalisés). Aucune donnée d'identité n'est lue. Une entrée sort de la
+liste dès qu'elle est confirmée, choisie ou retirée.
 
 Les critères de cohorte (`CohortBuilder`) utilisent le même composant avec `freeText={false}` :
 un critère ne peut être qu'un concept du référentiel.
@@ -159,6 +174,7 @@ Décision, avec les seuils **calibrés le 1er octobre 2026** (`THRESHOLDS`) :
 | `ambiguous` | l'interprétation signale plusieurs entités : une proposition par entité ≥ 0,55, sinon les candidats plausibles |
 | `unmatched` | aucun candidat ≥ 0,55 |
 | `ambiguous` | ex æquo : écart < 0,025 entre deux concepts distincts au-dessus de 0,65 |
+| `suggested` | un code **plus précis** du même concept reprend ce qui est écrit (règle de précision ci-dessous) : il est proposé à confirmer, le parent en alternative |
 | `automatic` | similarité ≥ 0,95, écart ≥ 0,05 avec le deuxième concept, accord avec le terme préféré seul, **et libellé couvert par le texte du médecin** |
 | `suggested` | similarité ≥ 0,65, ou un seul candidat plausible |
 | `ambiguous` | sinon |
@@ -173,6 +189,14 @@ Sont tolérés :
 - les mots qui situent sans préciser (cerveau, cérébral, intracrânien, artère, processus,
   lobe…) ;
 - un intitulé disjonctif (« … du fœtus ou du nouveau-né ») dont un côté est écrit.
+
+**Précision : aucun code automatique n'en retire.** Si un descendant du meilleur code (hors
+« Autres » et « sans précision ») ajoute une précision qui figure dans le texte, le terme
+développé ou un terme de recherche (« aigu », « lobaire », « atteinte des disques »), le parent
+n'est pas posé seul : le descendant couvert par le texte est proposé à confirmer, le parent en
+alternative. « HSD traumatique » sans autre précision reste codé seul « Hémorragie sousdurale
+traumatique ». Règle ajoutée le 1er octobre 2026 après le rejeu des sorties réelles de DeepSeek
+([calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md) §6).
 
 Le texte du médecin est ajouté par l'Edge Function, jamais par le LLM. Le prompt interdit par
 ailleurs au LLM d'ajouter un germe, un stade, une cause ou une évolution dans le terme développé.
@@ -211,11 +235,13 @@ Secrets de l'Edge Function `code-terminology` :
 | `OPENAI_API_KEY` | facultatif ; clé du fournisseur `openai` |
 | `DEEPSEEK_API_KEY` | facultatif ; clé du fournisseur `deepseek` |
 | `TERMINOLOGY_LLM_MODEL` | modèle utilisé ; défaut `claude-opus-5-5` (anthropic) ou `deepseek-flash` (deepseek), **obligatoire** pour `openai` |
+| `TERMINOLOGY_LLM_TIMEOUT_MS` | facultatif ; délai d'interprétation en millisecondes, 8000 par défaut, borné de 2000 à 30000. Le texte est enregistré avant l'analyse : un délai plus long fait seulement attendre la proposition |
+| `TERMINOLOGY_LLM_REASONING` | facultatif, `deepseek` seulement : `disabled` coupe le raisonnement (`thinking`), `low` / `high` / `max` règlent son effort ; vide = défaut du fournisseur. Une valeur inconnue désactive le LLM (repli lexical) |
 | `TERMINOLOGY_LLM_BASE_URL` | facultatif, `openai`/`deepseek` ; autre service au contrat Chat Completions (défauts `https://api.openai.com/v1`, `https://api.deepseek.com`) |
 
 Seule la clé du fournisseur choisi est lue ; sans elle (ou sans modèle pour `openai`), la
 fonction répond par le repli lexical. Les trois fournisseurs reçoivent le même prompt et le même
-texte, avec un délai de 8 s, et leur sortie passe par la même validation (`parseInterpretation`) :
+texte, avec le même délai (`TERMINOLOGY_LLM_TIMEOUT_MS`), et leur sortie passe par la même validation (`parseInterpretation`) :
 
 - `anthropic` : SDK officiel, sortie au schéma JSON, effort `low`, repli serveur sur refus
   (`fallbacks: "default"`), une nouvelle tentative au plus ;
@@ -246,7 +272,9 @@ publication est active à la fois (`terminology_release_single_active`).
 - Seuils calibrés avec des interprétations **simulées** : refaire le calibrage avec les sorties
   du vrai modèle, enregistrées telles quelles dans le jeu annoté, avant tout usage réel.
 - Pas de post-coordination CIM-11 : la latéralité et le contexte restent dans `normalized`.
-- Les entrées non codées ne remontent pas encore comme cas « non classés » dans le suivi
-  diagnostique (L56).
+- Les entrées non codées remontent dans « À faire » (§2), mais pas encore comme cas « non
+  classés » dans le suivi diagnostique (L56).
+- Un texte qui n'a réellement aucun code CIM-11 reste « non codé » et donc dans « À faire » tant
+  qu'il n'est pas retiré ou remplacé : il n'existe pas encore de statut « vérifié, sans code ».
 - Preuve navigateur du parcours et appel réel du LLM non exécutés dans ce lot.
 - Pas de limitation de débit propre à la fonction au-delà de celles de la plateforme.

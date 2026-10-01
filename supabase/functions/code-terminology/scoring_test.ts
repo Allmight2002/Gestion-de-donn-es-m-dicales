@@ -199,3 +199,46 @@ Deno.test('sigles : VIH et HIV rejoignent l intitule developpe, « sans mention 
     conceptKey(label),
   );
 });
+
+Deno.test('precision : jamais de parent pose seul quand un code plus precis convient', () => {
+  const sdh = candidates([
+    ['FIC.6', 'Hémorragie sousdurale traumatique'],
+    ['FIC.60', 'Hémorragie sousdurale traumatique aigüe'],
+    ['FIC.61', 'Hémorragie sousdurale traumatique chronique'],
+    ['FIC.6Z', 'Hémorragie sousdurale traumatique, sans précision'],
+  ]);
+  // Terme general place en tete par le LLM : « aigu » est ecrit, le parent le perdrait.
+  const acute = decide(
+    item(['Hémorragie sousdurale traumatique', 'Hémorragie sousdurale traumatique aigüe'], {
+      normalized: 'Hématome sous-dural aigu post-traumatique',
+      source: 'HSD aigu post-traumatique',
+    }),
+    sdh,
+  );
+  assertEquals(acute.status, 'suggested');
+  assertEquals(acute.best?.code, 'FIC.60');
+  assert(acute.alternatives.some((c) => c.code === 'FIC.6'));
+
+  // Descendant plausible mais non ecrit (« due a une atteinte des disques ») : rien de seul.
+  const radiculo = decide(
+    item(['Radiculopathie due à une atteinte des disques intervertébraux', 'Radiculopathie'], {
+      normalized: 'Radiculopathie L5 sur conflit discal',
+      source: 'Radiculopathie L5 sur conflit discal',
+    }),
+    candidates([
+      ['FIC.93', 'Radiculopathie'],
+      ['FIC.936', 'Radiculopathie due à une atteinte des disques intervertébraux'],
+      ['FIC.93Z', 'Radiculopathie, sans précision'],
+    ]),
+  );
+  assert(radiculo.status !== 'automatic');
+
+  // Sans precision ecrite, le parent reste posable : seuls des descendants residuels ou
+  // etrangers au texte existent.
+  const plain = decide(
+    item(['Hémorragie sousdurale traumatique'], { source: 'HSD traumatique' }),
+    sdh,
+  );
+  assertEquals(plain.status, 'automatic');
+  assertEquals(plain.best?.code, 'FIC.6');
+});

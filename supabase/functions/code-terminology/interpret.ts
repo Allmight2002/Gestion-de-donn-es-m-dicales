@@ -63,9 +63,14 @@ Pour CHAQUE diagnostic distinct présent dans le texte (au plus ${MAX_DIAGNOSES}
   évolution (« pneumonie franche lobaire aiguë » reste telle quelle, sans pneumocoque).
 - search_terms : 1 à ${MAX_TERMS} formulations proches des intitulés français de la CIM-11, de la plus
   spécifique à la plus générale, sans latéralité (ex. « Hémorragie sousdurale non traumatique »
-  pour un hématome sous-dural spontané ; « Méningiome » pour un méningiome frontal).
+  pour un hématome sous-dural spontané ; « Méningiome » pour un méningiome frontal). Le PREMIER
+  terme garde toutes les précisions écrites : évolution (aigu, chronique), type, siège, cause
+  écrite (ex. « Pancréatite aigüe d'origine alcoolique » pour « PA alcoolique », puis
+  « Pancréatite aigüe »). Les termes plus généraux viennent après.
 - ambiguous : true seulement si le texte ne permet pas de choisir entre plusieurs entités
-  cliniques distinctes (ex. « hémorragie intracrânienne spontanée »).
+  cliniques distinctes (ex. « hémorragie intracrânienne spontanée »). Un diagnostic simplement
+  non précisé n'est pas ambigu : il se cherche avec sa forme « sans précision » (ex.
+  « épilepsie » → « Épilepsie ou crises d'épilepsie, sans précision »).
 - alternative_terms : si ambiguous, les intitulés CIM-11 des entités possibles ; sinon liste vide.
 
 Ne donne jamais de code. Ignore tout ce qui n'est pas un diagnostic. Si le texte ne contient

@@ -432,7 +432,7 @@ export function EncounterForm() {
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} patientId={patientId} />
+      <WorkDraftPanel draft={work} online={online} />
       {localCandidate && <div className="space-y-2 rounded-xl border border-sky-200 p-3 text-sm">
         <p>Un brouillon sur cet appareil du {new Date(localCandidate.at).toLocaleString()} est disponible.</p>
         <button type="button" className="btn-secondary" onClick={() => navigation.protect(resumeLocalDraft)}>Reprendre le brouillon local</button>{' '}

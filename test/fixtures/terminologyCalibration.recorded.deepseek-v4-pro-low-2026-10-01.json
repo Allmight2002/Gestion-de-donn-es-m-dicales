@@ -1,0 +1,4097 @@
+{
+  "provider": "deepseek",
+  "model": "deepseek-v4-pro",
+  "reasoning": "low",
+  "recordedAt": "2026-10-01T15:15:37.034Z",
+  "runs": 3,
+  "cases": {
+    "c01": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique spontané droit",
+            "searchTerms": [
+              "Hématome sous-dural chronique spontané",
+              "Hématome sous-dural spontané",
+              "Hématome sous-dural",
+              "Hémorragie sous-durale non traumatique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11636
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique spontané droit",
+            "searchTerms": [
+              "Hémorragie sousdurale chronique non traumatique",
+              "Hémorragie sousdurale non traumatique",
+              "Hématome sous-dural chronique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 17083
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique spontané droit",
+            "searchTerms": [
+              "Hémorragie sousdurale chronique non traumatique",
+              "Hémorragie sousdurale non traumatique",
+              "Hémorragie sousdurale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15835
+      }
+    ],
+    "c02": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural spontané gauche",
+            "searchTerms": [
+              "Hématome sous-dural non traumatique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11492
+      },
+      {
+        "items": null,
+        "ms": 19748,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": null,
+        "ms": 18817,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "c03": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural aigu post-traumatique",
+            "searchTerms": [
+              "Hématome sous-dural traumatique aigu",
+              "Hématome sous-dural traumatique",
+              "Hématome sous-dural aigu",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13843
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural aigu post-traumatique",
+            "searchTerms": [
+              "Hématome sous-dural aigu post-traumatique",
+              "Hématome sous-dural traumatique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4817
+      },
+      {
+        "items": null,
+        "ms": 19377,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "c04": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique post traumatique bilatéral",
+            "searchTerms": [
+              "Hématome sous-dural chronique post traumatique",
+              "Hématome sous-dural post traumatique",
+              "Hématome sous-dural traumatique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15187
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique post-traumatique bilatéral",
+            "searchTerms": [
+              "Hématome sous-dural chronique post-traumatique",
+              "Hématome sous-dural chronique",
+              "Hématome sous-dural traumatique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6751
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique post-traumatique bilatéral",
+            "searchTerms": [
+              "Hématome sous-dural chronique post-traumatique",
+              "Hématome sous-dural post-traumatique",
+              "Hématome sous-dural chronique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7667
+      }
+    ],
+    "c05": [
+      {
+        "items": [
+          {
+            "normalized": "Méningiome frontal droit",
+            "searchTerms": [
+              "Méningiome frontal",
+              "Méningiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5435
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningiome frontal droit",
+            "searchTerms": [
+              "Méningiome frontal",
+              "Méningiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15037
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningiome frontal droit",
+            "searchTerms": [
+              "Méningiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15110
+      }
+    ],
+    "c06": [
+      {
+        "items": [
+          {
+            "normalized": "Méningiome de la faux du cerveau",
+            "searchTerms": [
+              "Méningiome de la faux du cerveau",
+              "Méningiome",
+              "Tumeur bénigne des méninges cérébrales"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9554
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningiome de la faux du cerveau",
+            "searchTerms": [
+              "Méningiome de la faux du cerveau",
+              "Méningiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5454
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningiome de la faux du cerveau",
+            "searchTerms": [
+              "Méningiome de la faux du cerveau",
+              "Méningiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5632
+      }
+    ],
+    "c07": [
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome multiforme temporal gauche",
+            "searchTerms": [
+              "Glioblastome temporal",
+              "Glioblastome multiforme",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12918
+      },
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome temporal gauche",
+            "searchTerms": [
+              "Glioblastome temporal",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12491
+      },
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome temporal gauche",
+            "searchTerms": [
+              "Glioblastome temporal",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5854
+      }
+    ],
+    "c08": [
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome pariétal",
+            "searchTerms": [
+              "Glioblastome pariétal",
+              "Glioblastome",
+              "Tumeur maligne du cerveau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 16906
+      },
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome pariétal",
+            "searchTerms": [
+              "Glioblastome pariétal",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14725
+      },
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome pariétal",
+            "searchTerms": [
+              "Glioblastome pariétal",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8694
+      }
+    ],
+    "c09": [
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne spontanée",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne spontanée",
+              "Hémorragie sous-arachnoïdienne non traumatique",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7908
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne spontanée",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne spontanée",
+              "Hémorragie sous-arachnoïdienne non traumatique",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11153
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne spontanée",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne spontanée",
+              "Hémorragie sous-arachnoïdienne non traumatique",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8506
+      }
+    ],
+    "c10": [
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne traumatique",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne traumatique",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3703
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne traumatique",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne traumatique",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2519
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne traumatique",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne traumatique",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3285
+      }
+    ],
+    "c11": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome intracérébral spontané lobaire",
+            "searchTerms": [
+              "Hémorragie intracérébrale lobaire spontanée",
+              "Hémorragie intracérébrale lobaire",
+              "Hémorragie intracérébrale spontanée",
+              "Hémorragie intracérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11505
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome intracérébral spontané lobaire",
+            "searchTerms": [
+              "Hématome intracérébral spontané lobaire",
+              "Hémorragie intracérébrale spontanée lobaire",
+              "Hématome intracérébral spontané",
+              "Hémorragie intracérébrale non traumatique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13989
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome intracérébral spontané lobaire",
+            "searchTerms": [
+              "Hématome intracérébral spontané lobaire",
+              "Hémorragie intracérébrale spontanée lobaire",
+              "Hémorragie intracérébrale non traumatique",
+              "Hémorragie intracérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 17769
+      }
+    ],
+    "c12": [
+      {
+        "items": [
+          {
+            "normalized": "Anévrisme sylvien droit non rompu",
+            "searchTerms": [
+              "Anévrisme de l'artère cérébrale moyenne non rompu",
+              "Anévrisme cérébral non rompu",
+              "Anévrisme cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13633
+      },
+      {
+        "items": [
+          {
+            "normalized": "Anévrisme sylvien droit non rompu",
+            "searchTerms": [
+              "Anévrisme sylvien non rompu",
+              "Anévrisme cérébral non rompu",
+              "Anévrisme cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11073
+      },
+      {
+        "items": [
+          {
+            "normalized": "Anévrisme sylvien droit non rompu",
+            "searchTerms": [
+              "Anévrisme sylvien non rompu",
+              "Anévrisme cérébral non rompu",
+              "Anévrisme cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 16089
+      }
+    ],
+    "c13": [
+      {
+        "items": [
+          {
+            "normalized": "Anévrisme carotidien supraclinoïdien droit",
+            "searchTerms": [
+              "Anévrisme de l'artère carotide interne supraclinoïdienne",
+              "Anévrisme de l'artère carotide interne",
+              "Anévrisme intracrânien",
+              "Anévrisme cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10649
+      },
+      {
+        "items": [
+          {
+            "normalized": "Anévrisme carotidien supraclinoïdien droit",
+            "searchTerms": [
+              "Anévrisme carotidien supraclinoïdien",
+              "Anévrisme de l'artère carotide interne",
+              "Anévrisme intracrânien",
+              "Anévrisme, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4538
+      },
+      {
+        "items": [
+          {
+            "normalized": "Anévrisme carotidien supraclinoïdien droit",
+            "searchTerms": [
+              "Anévrisme carotidien supraclinoïdien",
+              "Anévrisme carotidien",
+              "Anévrisme de l'artère carotide"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 18144
+      }
+    ],
+    "c14": [
+      {
+        "items": [
+          {
+            "normalized": "Malformation artérioveineuse frontale",
+            "searchTerms": [
+              "Malformation artérioveineuse frontale",
+              "Malformation artérioveineuse cérébrale",
+              "Malformation artérioveineuse"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8347
+      },
+      {
+        "items": [
+          {
+            "normalized": "Malformation artérioveineuse frontale",
+            "searchTerms": [
+              "Malformation artérioveineuse cérébrale frontale",
+              "Malformation artérioveineuse cérébrale",
+              "Malformation artérioveineuse"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6005
+      },
+      {
+        "items": [
+          {
+            "normalized": "Malformation artérioveineuse frontale",
+            "searchTerms": [
+              "Malformation artérioveineuse frontale",
+              "Malformation artérioveineuse cérébrale",
+              "Malformation artérioveineuse"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5603
+      }
+    ],
+    "c15": [
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie à pression normale",
+            "searchTerms": [
+              "Hydrocéphalie à pression normale",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4163
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie à pression normale",
+            "searchTerms": [
+              "Hydrocéphalie à pression normale",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3963
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie à pression normale",
+            "searchTerms": [
+              "Hydrocéphalie à pression normale",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3474
+      }
+    ],
+    "c16": [
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie post-hémorragique",
+            "searchTerms": [
+              "Hydrocéphalie post-hémorragique",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5438
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie post-hémorragique",
+            "searchTerms": [
+              "Hydrocéphalie post-hémorragique",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4931
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie post-hémorragique",
+            "searchTerms": [
+              "Hydrocéphalie post-hémorragique",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9417
+      }
+    ],
+    "c17": [
+      {
+        "items": null,
+        "ms": 19726,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture du rocher droit",
+            "searchTerms": [
+              "Fracture du rocher",
+              "Fracture de l'os temporal",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15288
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture du rocher droit",
+            "searchTerms": [
+              "Fracture du rocher",
+              "Fracture de la partie pétreuse de l'os temporal",
+              "Fracture de l'os temporal",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15216
+      }
+    ],
+    "c18": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la voûte frontale",
+            "searchTerms": [
+              "Fracture de la voûte frontale",
+              "Fracture de la voûte du crâne",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15356
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la voûte frontale",
+            "searchTerms": [
+              "Fracture de la voûte frontale",
+              "Fracture de l'os frontal",
+              "Fracture de la voûte du crâne",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12631
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la voûte frontale",
+            "searchTerms": [
+              "Fracture de la voûte frontale",
+              "Fracture de l'os frontal",
+              "Fracture de la voûte du crâne",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10494
+      }
+    ],
+    "c19": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la première vertèbre lombaire",
+            "searchTerms": [
+              "Fracture de la première vertèbre lombaire",
+              "Fracture de vertèbre lombaire",
+              "Fracture d'une vertèbre"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12169
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la première vertèbre lombaire (L1)",
+            "searchTerms": [
+              "Fracture de la première vertèbre lombaire (L1)",
+              "Fracture d'une vertèbre lombaire",
+              "Fracture du rachis lombaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11333
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la première vertèbre lombaire",
+            "searchTerms": [
+              "Fracture de la première vertèbre lombaire",
+              "Fracture d'une vertèbre lombaire",
+              "Fracture du rachis lombaire",
+              "Fracture de vertèbre"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9151
+      }
+    ],
+    "c20": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la vertèbre T12",
+            "searchTerms": [
+              "Fracture de la vertèbre T12",
+              "Fracture de la vertèbre thoracique",
+              "Fracture vertébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7110
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la vertèbre thoracique 12",
+            "searchTerms": [
+              "Fracture de la vertèbre thoracique 12",
+              "Fracture de vertèbre thoracique",
+              "Fracture vertébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11609
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de T12",
+            "searchTerms": [
+              "Fracture de la douzième vertèbre thoracique",
+              "Fracture de vertèbre thoracique",
+              "Fracture vertébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4608
+      }
+    ],
+    "c21": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de l'odontoïde",
+            "searchTerms": [
+              "Fracture de l'odontoïde",
+              "Fracture de l'apophyse odontoïde",
+              "Fracture de C2",
+              "Fracture du rachis cervical"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9532
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de l'odontoïde",
+            "searchTerms": [
+              "Fracture de l'odontoïde",
+              "Fracture de l'apophyse odontoïde",
+              "Fracture de l'axis",
+              "Fracture de la deuxième vertèbre cervicale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14444
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de l’odontoïde",
+            "searchTerms": [
+              "Fracture de l'odontoïde",
+              "Fracture de l'apophyse odontoïde",
+              "Fracture de la dent de l'axis",
+              "Fracture de l'axis"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13699
+      }
+    ],
+    "c22": [
+      {
+        "items": [
+          {
+            "normalized": "Adénome hypophysaire non sécrétant",
+            "searchTerms": [
+              "Adénome hypophysaire non sécrétant",
+              "Adénome hypophysaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8940
+      },
+      {
+        "items": [
+          {
+            "normalized": "Adénome hypophysaire non sécrétant",
+            "searchTerms": [
+              "Adénome hypophysaire non sécrétant",
+              "Adénome hypophysaire non fonctionnel",
+              "Adénome hypophysaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10918
+      },
+      {
+        "items": [
+          {
+            "normalized": "Adénome hypophysaire non sécrétant",
+            "searchTerms": [
+              "Adénome hypophysaire non sécrétant",
+              "Adénome hypophysaire",
+              "Tumeur de l'hypophyse"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8731
+      }
+    ],
+    "c23": [
+      {
+        "items": [
+          {
+            "normalized": "Névralgie trigéminale droite",
+            "searchTerms": [
+              "Névralgie trigéminale",
+              "Névralgie du trijumeau",
+              "Névralgie faciale",
+              "Névralgie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6057
+      },
+      {
+        "items": [
+          {
+            "normalized": "Névralgie trigéminale droite",
+            "searchTerms": [
+              "Névralgie trigéminale",
+              "Névralgie du trijumeau",
+              "Névralgie faciale",
+              "Névralgie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9875
+      },
+      {
+        "items": [
+          {
+            "normalized": "Névralgie trigéminale droite",
+            "searchTerms": [
+              "Névralgie trigéminale",
+              "Névralgie du trijumeau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13060
+      }
+    ],
+    "c24": [
+      {
+        "items": null,
+        "ms": 19999,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Syndrome du canal carpien bilatéral",
+            "searchTerms": [
+              "Syndrome du canal carpien"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6739
+      },
+      {
+        "items": [
+          {
+            "normalized": "Syndrome du canal carpien bilatéral",
+            "searchTerms": [
+              "Syndrome du canal carpien"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8266
+      }
+    ],
+    "c25": [
+      {
+        "items": [
+          {
+            "normalized": "Méningite bactérienne",
+            "searchTerms": [
+              "Méningite bactérienne",
+              "Méningite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7768
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningite bactérienne",
+            "searchTerms": [
+              "Méningite bactérienne",
+              "Méningite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10439
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningite bactérienne",
+            "searchTerms": [
+              "Méningite bactérienne",
+              "Méningite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3520
+      }
+    ],
+    "c26": [
+      {
+        "items": [
+          {
+            "normalized": "Métastases cérébrales multiples",
+            "searchTerms": [
+              "Métastases cérébrales multiples",
+              "Métastases cérébrales",
+              "Tumeur maligne secondaire du cerveau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7935
+      },
+      {
+        "items": [
+          {
+            "normalized": "Métastases cérébrales multiples",
+            "searchTerms": [
+              "Métastases cérébrales multiples",
+              "Métastases cérébrales",
+              "Tumeur maligne secondaire du cerveau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4779
+      },
+      {
+        "items": [
+          {
+            "normalized": "Métastases cérébrales multiples",
+            "searchTerms": [
+              "Métastases cérébrales multiples",
+              "Métastases cérébrales",
+              "Métastases du cerveau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12903
+      }
+    ],
+    "c27": [
+      {
+        "items": [
+          {
+            "normalized": "Hypertension artérielle",
+            "searchTerms": [
+              "Hypertension artérielle",
+              "Hypertension"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15380
+      },
+      {
+        "items": null,
+        "ms": 18857,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hypertension artérielle",
+            "searchTerms": [
+              "Hypertension artérielle",
+              "Hypertension"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5460
+      }
+    ],
+    "c28": [
+      {
+        "items": [
+          {
+            "normalized": "Diabète de type 2",
+            "searchTerms": [
+              "Diabète de type 2",
+              "Diabète sucré de type 2",
+              "Diabète"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6933
+      },
+      {
+        "items": [
+          {
+            "normalized": "Diabète de type 2",
+            "searchTerms": [
+              "Diabète sucré de type 2",
+              "Diabète sucré"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3546
+      },
+      {
+        "items": [
+          {
+            "normalized": "Diabète de type 2",
+            "searchTerms": [
+              "Diabète de type 2",
+              "Diabète sucré de type 2"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12878
+      }
+    ],
+    "c29": [
+      {
+        "items": [
+          {
+            "normalized": "Diabète de type 1",
+            "searchTerms": [
+              "Diabète sucré de type 1",
+              "Diabète sucré"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5413
+      },
+      {
+        "items": [
+          {
+            "normalized": "Diabète sucré de type 1",
+            "searchTerms": [
+              "Diabète sucré de type 1",
+              "Diabète de type 1",
+              "Diabète sucré",
+              "Diabète"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14634
+      },
+      {
+        "items": [
+          {
+            "normalized": "Diabète de type 1",
+            "searchTerms": [
+              "Diabète de type 1",
+              "Diabète sucré",
+              "Diabète"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4511
+      }
+    ],
+    "c30": [
+      {
+        "items": [
+          {
+            "normalized": "Accident ischémique transitoire",
+            "searchTerms": [
+              "Accident ischémique transitoire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7240
+      },
+      {
+        "items": [
+          {
+            "normalized": "Accident ischémique transitoire",
+            "searchTerms": [
+              "Accident ischémique transitoire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4827
+      },
+      {
+        "items": [
+          {
+            "normalized": "Accident ischémique transitoire",
+            "searchTerms": [
+              "Accident ischémique transitoire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6933
+      }
+    ],
+    "c31": [
+      {
+        "items": [
+          {
+            "normalized": "Bronchopneumopathie chronique obstructive",
+            "searchTerms": [
+              "Bronchopneumopathie chronique obstructive",
+              "Maladie pulmonaire obstructive chronique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2931
+      },
+      {
+        "items": [
+          {
+            "normalized": "Bronchopneumopathie chronique obstructive",
+            "searchTerms": [
+              "Bronchopneumopathie chronique obstructive",
+              "Maladie pulmonaire obstructive chronique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6356
+      },
+      {
+        "items": [
+          {
+            "normalized": "Bronchopneumopathie chronique obstructive",
+            "searchTerms": [
+              "Bronchopneumopathie chronique obstructive",
+              "Bronchopneumopathie chronique obstructive, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12337
+      }
+    ],
+    "c32": [
+      {
+        "items": [
+          {
+            "normalized": "Appendicite aiguë",
+            "searchTerms": [
+              "Appendicite aiguë",
+              "Appendicite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4339
+      },
+      {
+        "items": [
+          {
+            "normalized": "Appendicite aiguë",
+            "searchTerms": [
+              "Appendicite aiguë",
+              "Appendicite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5158
+      },
+      {
+        "items": [
+          {
+            "normalized": "Appendicite aiguë",
+            "searchTerms": [
+              "Appendicite aiguë",
+              "Appendicite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4190
+      }
+    ],
+    "c33": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture du col fémoral gauche",
+            "searchTerms": [
+              "Fracture du col fémoral",
+              "Fracture du fémur"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7516
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture du col fémoral gauche",
+            "searchTerms": [
+              "Fracture du col fémoral",
+              "Fracture du col du fémur",
+              "Fracture du fémur"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6462
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture du col fémoral gauche",
+            "searchTerms": [
+              "Fracture du col fémoral",
+              "Fracture du col du fémur",
+              "Fracture du fémur"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12539
+      }
+    ],
+    "c34": [
+      {
+        "items": [
+          {
+            "normalized": "Sclérose en plaques rémittente",
+            "searchTerms": [
+              "Sclérose en plaques rémittente",
+              "Sclérose en plaques"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2632
+      },
+      {
+        "items": [
+          {
+            "normalized": "Sclérose en plaques rémittente",
+            "searchTerms": [
+              "Sclérose en plaques, forme récurrente-rémittente",
+              "Sclérose en plaques"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7644
+      },
+      {
+        "items": [
+          {
+            "normalized": "Sclérose en plaques rémittente",
+            "searchTerms": [
+              "Sclérose en plaques rémittente",
+              "Sclérose en plaques"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2672
+      }
+    ],
+    "c35": [
+      {
+        "items": [
+          {
+            "normalized": "Paludisme à Plasmodium falciparum",
+            "searchTerms": [
+              "Paludisme à Plasmodium falciparum",
+              "Paludisme"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5728
+      },
+      {
+        "items": [
+          {
+            "normalized": "Paludisme à falciparum",
+            "searchTerms": [
+              "Paludisme à Plasmodium falciparum",
+              "Paludisme à falciparum",
+              "Paludisme"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14416
+      },
+      {
+        "items": [
+          {
+            "normalized": "Paludisme à Plasmodium falciparum",
+            "searchTerms": [
+              "Paludisme à Plasmodium falciparum",
+              "Paludisme, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10695
+      }
+    ],
+    "c36": [
+      {
+        "items": [
+          {
+            "normalized": "Hypothyroïdie",
+            "searchTerms": [
+              "Hypothyroïdie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6085
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hypothyroïdie",
+            "searchTerms": [
+              "Hypothyroïdie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4413
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hypothyroïdie",
+            "searchTerms": [
+              "Hypothyroïdie, sans précision",
+              "Hypothyroïdie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14856
+      }
+    ],
+    "i01": [
+      {
+        "items": null,
+        "ms": 19233,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique spontané droit",
+            "searchTerms": [
+              "Hématome sous-dural chronique spontané",
+              "Hématome sous-dural chronique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13497
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural chronique spontané droit",
+            "searchTerms": [
+              "Hématome sous-dural chronique spontané",
+              "Hémorragie sousdurale chronique non traumatique",
+              "Hématome sous-dural spontané",
+              "Hémorragie sousdurale non traumatique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13392
+      }
+    ],
+    "i02": [
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome frontal",
+            "searchTerms": [
+              "Glioblastome frontal",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6364
+      },
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome frontal",
+            "searchTerms": [
+              "Glioblastome frontal",
+              "Glioblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2929
+      },
+      {
+        "items": [
+          {
+            "normalized": "Glioblastome frontal",
+            "searchTerms": [
+              "Glioblastome frontal",
+              "Glioblastome",
+              "Astrocytome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12372
+      }
+    ],
+    "i03": [
+      {
+        "items": null,
+        "ms": 20711,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Contusion frontale gauche",
+            "searchTerms": [
+              "Contusion frontale",
+              "Contusion cérébrale",
+              "Contusion du cerveau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6533
+      },
+      {
+        "items": null,
+        "ms": 21741,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "i04": [
+      {
+        "items": [
+          {
+            "normalized": "Commotion cérébrale",
+            "searchTerms": [
+              "Commotion cérébrale",
+              "Lésion cérébrale traumatique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7022
+      },
+      {
+        "items": [
+          {
+            "normalized": "Commotion cérébrale",
+            "searchTerms": [
+              "Commotion cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5786
+      },
+      {
+        "items": [
+          {
+            "normalized": "Commotion cérébrale",
+            "searchTerms": [
+              "Commotion cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11364
+      }
+    ],
+    "i05": [
+      {
+        "items": [
+          {
+            "normalized": "Œdème cérébral post-traumatique",
+            "searchTerms": [
+              "Œdème cérébral post-traumatique",
+              "Œdème cérébral traumatique",
+              "Œdème cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13091
+      },
+      {
+        "items": [
+          {
+            "normalized": "Oedème cérébral post traumatique",
+            "searchTerms": [
+              "Œdème cérébral post-traumatique",
+              "Œdème cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15732
+      },
+      {
+        "items": [
+          {
+            "normalized": "Œdème cérébral post-traumatique",
+            "searchTerms": [
+              "Œdème cérébral post-traumatique",
+              "Œdème cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14404
+      }
+    ],
+    "i06": [
+      {
+        "items": [
+          {
+            "normalized": "Fibrillation atriale permanente",
+            "searchTerms": [
+              "Fibrillation atriale permanente",
+              "Fibrillation atriale",
+              "Fibrillation auriculaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9500
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fibrillation atriale permanente",
+            "searchTerms": [
+              "Fibrillation auriculaire permanente",
+              "Fibrillation auriculaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5877
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fibrillation atriale permanente",
+            "searchTerms": [
+              "Fibrillation auriculaire permanente",
+              "Fibrillation auriculaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9702
+      }
+    ],
+    "i07": [
+      {
+        "items": null,
+        "ms": 19514,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Pneumopathie",
+            "searchTerms": [
+              "Pneumonie",
+              "Pneumopathie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 18977
+      },
+      {
+        "items": [
+          {
+            "normalized": "Pneumopathie",
+            "searchTerms": [
+              "Pneumopathie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6732
+      }
+    ],
+    "i08": [
+      {
+        "items": null,
+        "ms": 19241,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Asthme",
+            "searchTerms": [
+              "Asthme"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4224
+      },
+      {
+        "items": [
+          {
+            "normalized": "Asthme",
+            "searchTerms": [
+              "Asthme"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3203
+      }
+    ],
+    "i09": [
+      {
+        "items": [
+          {
+            "normalized": "Médulloblastome",
+            "searchTerms": [
+              "Médulloblastome",
+              "Tumeur maligne de l'encéphale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11453
+      },
+      {
+        "items": [
+          {
+            "normalized": "Médulloblastome",
+            "searchTerms": [
+              "Médulloblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 1917
+      },
+      {
+        "items": [
+          {
+            "normalized": "Médulloblastome",
+            "searchTerms": [
+              "Médulloblastome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2345
+      }
+    ],
+    "i10": [
+      {
+        "items": [
+          {
+            "normalized": "Syringomyélie",
+            "searchTerms": [
+              "Syringomyélie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2584
+      },
+      {
+        "items": [
+          {
+            "normalized": "Syringomyélie",
+            "searchTerms": [
+              "Syringomyélie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10728
+      },
+      {
+        "items": [
+          {
+            "normalized": "Syringomyélie",
+            "searchTerms": [
+              "Syringomyélie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10170
+      }
+    ],
+    "i11": [
+      {
+        "items": [
+          {
+            "normalized": "Spondylolisthésis L4-L5",
+            "searchTerms": [
+              "Spondylolisthésis lombaire L4-L5",
+              "Spondylolisthésis lombaire",
+              "Spondylolisthésis"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6531
+      },
+      {
+        "items": null,
+        "ms": 18651,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Spondylolisthésis L4-L5",
+            "searchTerms": [
+              "Spondylolisthésis L4-L5",
+              "Spondylolisthésis"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3597
+      }
+    ],
+    "i12": [
+      {
+        "items": null,
+        "ms": 19694,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": null,
+        "ms": 20391,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Radiculopathie L5 sur conflit discal",
+            "searchTerms": [
+              "Radiculopathie L5 due à un conflit discal",
+              "Radiculopathie lombaire",
+              "Radiculopathie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 19824
+      }
+    ],
+    "a01": [
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie intracrânienne spontanée",
+            "searchTerms": [
+              "Hémorragie intracrânienne non traumatique",
+              "Hémorragie intracrânienne"
+            ],
+            "ambiguous": true,
+            "alternativeTerms": [
+              "Hémorragie intracérébrale non traumatique",
+              "Hémorragie sous-arachnoïdienne non traumatique",
+              "Hémorragie sous-durale non traumatique",
+              "Hémorragie extradurale non traumatique"
+            ]
+          }
+        ],
+        "ms": 15811
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie intracrânienne spontanée",
+            "searchTerms": [
+              "Hémorragie intracrânienne spontanée",
+              "Hémorragie intracrânienne non traumatique",
+              "Hémorragie intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 18424
+      },
+      {
+        "items": null,
+        "ms": 19309,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "a02": [
+      {
+        "items": [
+          {
+            "normalized": "Saignement intracrânien post-traumatique",
+            "searchTerms": [
+              "Hémorragie intracrânienne traumatique",
+              "Hémorragie intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 17435
+      },
+      {
+        "items": [
+          {
+            "normalized": "Saignement intracrânien post-traumatique",
+            "searchTerms": [
+              "Hémorragie intracrânienne traumatique",
+              "Hémorragie intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7257
+      },
+      {
+        "items": [
+          {
+            "normalized": "Saignement intracrânien post-traumatique",
+            "searchTerms": [
+              "Hémorragie intracrânienne post-traumatique",
+              "Hémorragie intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9693
+      }
+    ],
+    "a03": [
+      {
+        "items": [
+          {
+            "normalized": "Tumeur cérébrale",
+            "searchTerms": [
+              "Tumeur cérébrale",
+              "Tumeur du cerveau",
+              "Tumeur intracrânienne",
+              "Tumeur du système nerveux central"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10508
+      },
+      {
+        "items": null,
+        "ms": 19226,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": null,
+        "ms": 19005,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "a04": [
+      {
+        "items": [
+          {
+            "normalized": "Accident vasculaire cérébral",
+            "searchTerms": [
+              "Accident vasculaire cérébral, sans précision",
+              "Accident vasculaire cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12040
+      },
+      {
+        "items": null,
+        "ms": 19412,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Accident vasculaire cérébral",
+            "searchTerms": [
+              "Accident vasculaire cérébral, sans précision",
+              "Accident vasculaire cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7570
+      }
+    ],
+    "a05": [
+      {
+        "items": null,
+        "ms": 19368,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Diabète",
+            "searchTerms": [
+              "Diabète sucré, sans précision",
+              "Diabète sucré"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10012
+      },
+      {
+        "items": [
+          {
+            "normalized": "Diabète",
+            "searchTerms": [
+              "Diabète sucré, sans précision",
+              "Diabète sucré"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11272
+      }
+    ],
+    "a06": [
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie",
+            "searchTerms": [
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4577
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie",
+            "searchTerms": [
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4142
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie",
+            "searchTerms": [
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7030
+      }
+    ],
+    "a07": [
+      {
+        "items": null,
+        "ms": 20429,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": null,
+        "ms": 18689,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": null,
+        "ms": 21006,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "a08": [
+      {
+        "items": [
+          {
+            "normalized": "Gliome",
+            "searchTerms": [
+              "Gliome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13387
+      },
+      {
+        "items": [
+          {
+            "normalized": "Gliome",
+            "searchTerms": [
+              "Gliome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10006
+      },
+      {
+        "items": [
+          {
+            "normalized": "Gliome",
+            "searchTerms": [
+              "Gliome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13006
+      }
+    ],
+    "u01": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome extra-dural temporal droit post-traumatique",
+            "searchTerms": [
+              "Hématome extra-dural temporal post-traumatique",
+              "Hématome extra-dural post-traumatique",
+              "Hématome extra-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6608
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome extradural temporal droit post-traumatique",
+            "searchTerms": [
+              "Hématome extradural temporal post-traumatique",
+              "Hématome extradural post-traumatique",
+              "Hématome extradural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7016
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome extradural temporal droit post-traumatique",
+            "searchTerms": [
+              "Hématome extradural temporal post-traumatique",
+              "Hématome extradural traumatique",
+              "Hématome extradural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5852
+      }
+    ],
+    "u02": [
+      {
+        "items": [
+          {
+            "normalized": "Hernie discale L5-S1",
+            "searchTerms": [
+              "Hernie discale L5-S1",
+              "Hernie discale lombaire",
+              "Hernie discale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5339
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hernie discale L5-S1",
+            "searchTerms": [
+              "Hernie discale L5-S1",
+              "Hernie discale lombaire",
+              "Hernie discale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8257
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hernie discale L5-S1",
+            "searchTerms": [
+              "Hernie discale L5-S1",
+              "Hernie discale lombaire"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4379
+      }
+    ],
+    "u03": [
+      {
+        "items": null,
+        "ms": 18982,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Céphalées",
+            "searchTerms": [
+              "Céphalées"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12167
+      },
+      {
+        "items": [
+          {
+            "normalized": "Céphalées",
+            "searchTerms": [
+              "Céphalée",
+              "Céphalalgie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7465
+      }
+    ],
+    "u04": [
+      {
+        "items": [
+          {
+            "normalized": "Lombalgie commune",
+            "searchTerms": [
+              "Lombalgie commune",
+              "Lombalgie non spécifique",
+              "Lombalgie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3220
+      },
+      {
+        "items": [
+          {
+            "normalized": "Lombalgie commune",
+            "searchTerms": [
+              "Lombalgie commune",
+              "Lombalgie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5616
+      },
+      {
+        "items": [
+          {
+            "normalized": "Lombalgie commune",
+            "searchTerms": [
+              "Lombalgie commune",
+              "Lombalgie",
+              "Dorsalgie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 16052
+      }
+    ],
+    "u05": [
+      {
+        "items": [],
+        "ms": 1578
+      },
+      {
+        "items": [],
+        "ms": 1905
+      },
+      {
+        "items": [],
+        "ms": 2182
+      }
+    ],
+    "u06": [
+      {
+        "items": [],
+        "ms": 5168
+      },
+      {
+        "items": [
+          {
+            "normalized": "Syndrome de Zorglub",
+            "searchTerms": [
+              "Syndrome de Zorglub"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15035
+      },
+      {
+        "items": [
+          {
+            "normalized": "Syndrome de Zorglub",
+            "searchTerms": [
+              "Syndrome de Zorglub"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13781
+      }
+    ],
+    "u07": [
+      {
+        "items": [
+          {
+            "normalized": "Schwannome vestibulaire droit",
+            "searchTerms": [
+              "Schwannome vestibulaire",
+              "Neurinome de l'acoustique",
+              "Schwannome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8286
+      },
+      {
+        "items": [
+          {
+            "normalized": "Schwannome vestibulaire droit",
+            "searchTerms": [
+              "Schwannome vestibulaire",
+              "Neurinome de l'acoustique",
+              "Schwannome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11347
+      },
+      {
+        "items": [
+          {
+            "normalized": "Schwannome vestibulaire droit",
+            "searchTerms": [
+              "Schwannome vestibulaire",
+              "Neurinome de l'acoustique",
+              "Tumeur bénigne du nerf vestibulaire",
+              "Tumeur bénigne des nerfs crâniens"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11331
+      }
+    ],
+    "u08": [
+      {
+        "items": [
+          {
+            "normalized": "Malformation de Chiari type 1",
+            "searchTerms": [
+              "Malformation de Chiari type 1",
+              "Malformation de Chiari"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5254
+      },
+      {
+        "items": [
+          {
+            "normalized": "Malformation de Chiari type 1",
+            "searchTerms": [
+              "Malformation de Chiari type 1",
+              "Malformation de Chiari"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4800
+      },
+      {
+        "items": [
+          {
+            "normalized": "Malformation de Chiari type 1",
+            "searchTerms": [
+              "Malformation de Chiari type I",
+              "Malformation de Chiari"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3120
+      }
+    ],
+    "t01": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural aigu traumatique",
+            "searchTerms": [
+              "Hématome sous-dural aigu traumatique",
+              "Hématome sous-dural traumatique",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7826
+      },
+      {
+        "items": null,
+        "ms": 20264,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": null,
+        "ms": 20092,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "t02": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural du nouveau-né",
+            "searchTerms": [
+              "Hématome sous-dural du nouveau-né",
+              "Hémorragie sous-durale du nouveau-né",
+              "Hémorragie sous-durale",
+              "Hématome sous-dural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11533
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural du nouveau-né",
+            "searchTerms": [
+              "Hématome sous-dural du nouveau-né",
+              "Hémorragie sous-durale du nouveau-né",
+              "Hématome sous-dural",
+              "Hémorragie sous-durale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9880
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome sous-dural du nouveau-né",
+            "searchTerms": [
+              "Hématome sous-dural du nouveau-né",
+              "Hémorragie sous-durale du nouveau-né",
+              "Hématome sous-dural",
+              "Hémorragie sous-durale non traumatique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11676
+      }
+    ],
+    "t03": [
+      {
+        "items": [
+          {
+            "normalized": "Hématome extradural spontané",
+            "searchTerms": [
+              "Hématome extradural non traumatique",
+              "Hématome extradural",
+              "Hémorragie extradurale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3976
+      },
+      {
+        "items": null,
+        "ms": 18585,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hématome extradural spontané",
+            "searchTerms": [
+              "Hémorragie extradurale non traumatique",
+              "Hématome extradural"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 14792
+      }
+    ],
+    "t04": [
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie intracérébrale traumatique",
+            "searchTerms": [
+              "Hémorragie intracérébrale traumatique",
+              "Hémorragie intracérébrale",
+              "Hémorragie intracrânienne traumatique",
+              "Hémorragie cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 18260
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie intracérébrale traumatique",
+            "searchTerms": [
+              "Hémorragie intracérébrale traumatique",
+              "Hémorragie intracérébrale",
+              "Hémorragie cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6746
+      },
+      {
+        "items": null,
+        "ms": 19094,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "t05": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la première vertèbre cervicale (C1)",
+            "searchTerms": [
+              "Fracture de l'atlas",
+              "Fracture du rachis cervical",
+              "Fracture de vertèbre cervicale",
+              "Fracture du rachis"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8716
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de C1",
+            "searchTerms": [
+              "Fracture de l'atlas",
+              "Fracture de la première vertèbre cervicale",
+              "Fracture d'une vertèbre cervicale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4111
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de l'atlas",
+            "searchTerms": [
+              "Fracture de l'atlas",
+              "Fracture de la première vertèbre cervicale",
+              "Fracture d'une vertèbre cervicale",
+              "Fracture de la colonne cervicale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15786
+      }
+    ],
+    "t06": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la deuxième vertèbre cervicale",
+            "searchTerms": [
+              "Fracture de la deuxième vertèbre cervicale",
+              "Fracture de l'axis",
+              "Fracture d'une vertèbre cervicale",
+              "Fracture du rachis cervical"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13647
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la deuxième vertèbre cervicale (C2)",
+            "searchTerms": [
+              "Fracture de la deuxième vertèbre cervicale",
+              "Fracture de l'axis",
+              "Fracture de vertèbre cervicale",
+              "Fracture du rachis cervical"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11494
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la deuxième vertèbre cervicale (C2)",
+            "searchTerms": [
+              "Fracture de l'axis",
+              "Fracture d'une vertèbre cervicale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8247
+      }
+    ],
+    "t07": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la base du crâne étage antérieur",
+            "searchTerms": [
+              "Fracture de la base du crâne, étage antérieur",
+              "Fracture de la base du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7062
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la base du crâne, étage antérieur",
+            "searchTerms": [
+              "Fracture de l'étage antérieur de la base du crâne",
+              "Fracture de la fosse crânienne antérieure",
+              "Fracture de la base du crâne",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9015
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture de la base du crâne étage antérieur",
+            "searchTerms": [
+              "Fracture de la base du crâne étage antérieur",
+              "Fracture de la base du crâne",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7617
+      }
+    ],
+    "t08": [
+      {
+        "items": [
+          {
+            "normalized": "Démence parkinsonienne",
+            "searchTerms": [
+              "Démence due à la maladie de Parkinson",
+              "Démence"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11804
+      },
+      {
+        "items": [
+          {
+            "normalized": "Démence parkinsonienne",
+            "searchTerms": [
+              "Démence parkinsonienne",
+              "Démence due à la maladie de Parkinson",
+              "Démence dans la maladie de Parkinson"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7846
+      },
+      {
+        "items": [
+          {
+            "normalized": "Démence parkinsonienne",
+            "searchTerms": [
+              "Démence parkinsonienne",
+              "Démence due à la maladie de Parkinson",
+              "Démence"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10941
+      }
+    ],
+    "t09": [
+      {
+        "items": [
+          {
+            "normalized": "Pneumonie franche lobaire aiguë",
+            "searchTerms": [
+              "Pneumonie franche lobaire aiguë",
+              "Pneumonie lobaire aiguë",
+              "Pneumonie aiguë",
+              "Pneumonie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9460
+      },
+      {
+        "items": [
+          {
+            "normalized": "Pneumonie franche lobaire aiguë",
+            "searchTerms": [
+              "Pneumonie lobaire aiguë",
+              "Pneumonie lobaire",
+              "Pneumonie aiguë",
+              "Pneumonie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8386
+      },
+      {
+        "items": [
+          {
+            "normalized": "Pneumonie franche lobaire aiguë",
+            "searchTerms": [
+              "Pneumonie franche lobaire aiguë",
+              "Pneumonie lobaire aiguë",
+              "Pneumonie aiguë",
+              "Pneumonie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6675
+      }
+    ],
+    "t10": [
+      {
+        "items": [
+          {
+            "normalized": "Méningite purulente",
+            "searchTerms": [
+              "Méningite purulente",
+              "Méningite bactérienne",
+              "Méningite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 17803
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningite purulente",
+            "searchTerms": [
+              "Méningite purulente",
+              "Méningite bactérienne",
+              "Méningite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9013
+      },
+      {
+        "items": [
+          {
+            "normalized": "Méningite purulente",
+            "searchTerms": [
+              "Méningite purulente",
+              "Méningite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4225
+      }
+    ],
+    "t11": [
+      {
+        "items": [
+          {
+            "normalized": "Infection par le virus de l'immunodéficience humaine",
+            "searchTerms": [
+              "Infection par le VIH",
+              "Maladie due au virus de l'immunodéficience humaine",
+              "Infection à VIH",
+              "VIH"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10048
+      },
+      {
+        "items": [
+          {
+            "normalized": "Infection par le virus de l'immunodéficience humaine",
+            "searchTerms": [
+              "Infection par le virus de l'immunodéficience humaine",
+              "Infection à VIH",
+              "Maladie due au virus de l'immunodéficience humaine"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9348
+      },
+      {
+        "items": [
+          {
+            "normalized": "Infection par le virus de l'immunodéficience humaine",
+            "searchTerms": [
+              "Infection par le VIH",
+              "Infection à VIH",
+              "Maladie due au VIH"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11052
+      }
+    ],
+    "t12": [
+      {
+        "items": null,
+        "ms": 19682,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Infection par le VIH",
+            "searchTerms": [
+              "Infection par le VIH",
+              "Maladie due au virus de l'immunodéficience humaine"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9173
+      },
+      {
+        "items": [
+          {
+            "normalized": "Infection à VIH",
+            "searchTerms": [
+              "Infection à VIH",
+              "Maladie due au virus de l'immunodéficience humaine"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9006
+      }
+    ],
+    "t13": [
+      {
+        "items": [
+          {
+            "normalized": "Infection par le virus de l'immunodéficience humaine stade 3",
+            "searchTerms": [
+              "Infection par le virus de l'immunodéficience humaine, stade clinique 3",
+              "Infection par le virus de l'immunodéficience humaine, stade 3",
+              "Maladie due au virus de l'immunodéficience humaine, stade 3",
+              "VIH, stade 3"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15830
+      },
+      {
+        "items": [
+          {
+            "normalized": "Maladie due au virus de l'immunodéficience humaine, stade clinique 3",
+            "searchTerms": [
+              "Maladie due au virus de l'immunodéficience humaine, stade clinique 3",
+              "Maladie à VIH stade 3",
+              "Infection à VIH stade 3",
+              "Maladie due au virus de l'immunodéficience humaine"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10730
+      },
+      {
+        "items": [
+          {
+            "normalized": "Virus de l'immunodéficience humaine stade 3",
+            "searchTerms": [
+              "Maladie due au virus de l'immunodéficience humaine, stade clinique 3",
+              "Maladie due au virus de l'immunodéficience humaine"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15960
+      }
+    ],
+    "h01": [
+      {
+        "items": [
+          {
+            "normalized": "Thrombophlébite cérébrale",
+            "searchTerms": [
+              "Thrombophlébite cérébrale",
+              "Thrombose veineuse cérébrale",
+              "Thrombophlébite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4077
+      },
+      {
+        "items": [
+          {
+            "normalized": "Thrombophlébite cérébrale",
+            "searchTerms": [
+              "Thrombophlébite cérébrale",
+              "Thrombose veineuse cérébrale",
+              "Thrombophlébite intracrânienne",
+              "Thrombose veineuse intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8510
+      },
+      {
+        "items": [
+          {
+            "normalized": "Thrombophlébite cérébrale",
+            "searchTerms": [
+              "Thrombophlébite cérébrale",
+              "Thrombose veineuse cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7467
+      }
+    ],
+    "h02": [
+      {
+        "items": [
+          {
+            "normalized": "Dissection de l'artère vertébrale intracrânienne",
+            "searchTerms": [
+              "Dissection de l'artère vertébrale intracrânienne",
+              "Dissection de l'artère vertébrale",
+              "Dissection artérielle"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15200
+      },
+      {
+        "items": [
+          {
+            "normalized": "Dissection vertébrale intracrânienne",
+            "searchTerms": [
+              "Dissection de l'artère vertébrale intracrânienne",
+              "Dissection de l'artère vertébrale",
+              "Dissection artérielle"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9231
+      },
+      {
+        "items": null,
+        "ms": 18920,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "h03": [
+      {
+        "items": [
+          {
+            "normalized": "Abcès cérébral frontal",
+            "searchTerms": [
+              "Abcès cérébral frontal",
+              "Abcès cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6259
+      },
+      {
+        "items": [
+          {
+            "normalized": "Abcès cérébral frontal",
+            "searchTerms": [
+              "Abcès cérébral frontal",
+              "Abcès cérébral"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9124
+      },
+      {
+        "items": [
+          {
+            "normalized": "Abcès cérébral frontal",
+            "searchTerms": [
+              "Abcès cérébral frontal",
+              "Abcès cérébral",
+              "Abcès du cerveau"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 3782
+      }
+    ],
+    "h04": [
+      {
+        "items": [
+          {
+            "normalized": "Épilepsie post-traumatique",
+            "searchTerms": [
+              "Épilepsie post-traumatique",
+              "Épilepsie due à un traumatisme crânien",
+              "Épilepsie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10918
+      },
+      {
+        "items": [
+          {
+            "normalized": "Épilepsie post-traumatique",
+            "searchTerms": [
+              "Épilepsie post-traumatique",
+              "Épilepsie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13142
+      },
+      {
+        "items": [
+          {
+            "normalized": "Épilepsie post-traumatique",
+            "searchTerms": [
+              "Épilepsie post-traumatique",
+              "Épilepsie ou crises d'épilepsie, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10449
+      }
+    ],
+    "h05": [
+      {
+        "items": [
+          {
+            "normalized": "Kyste arachnoïdien temporal",
+            "searchTerms": [
+              "Kyste arachnoïdien temporal",
+              "Kyste arachnoïdien",
+              "Kyste intracrânien"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8735
+      },
+      {
+        "items": [
+          {
+            "normalized": "Kyste arachnoïdien temporal",
+            "searchTerms": [
+              "Kyste arachnoïdien temporal",
+              "Kyste arachnoïdien"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4840
+      },
+      {
+        "items": [
+          {
+            "normalized": "Kyste arachnoïdien temporal",
+            "searchTerms": [
+              "Kyste arachnoïdien temporal",
+              "Kyste arachnoïdien cérébral",
+              "Kyste arachnoïdien"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7716
+      }
+    ],
+    "h06": [
+      {
+        "items": [
+          {
+            "normalized": "Maladie de Parkinson",
+            "searchTerms": [
+              "Maladie de Parkinson"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7077
+      },
+      {
+        "items": [
+          {
+            "normalized": "Maladie de Parkinson",
+            "searchTerms": [
+              "Maladie de Parkinson",
+              "Maladie de Parkinson, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13130
+      },
+      {
+        "items": [
+          {
+            "normalized": "Maladie de Parkinson",
+            "searchTerms": [
+              "Maladie de Parkinson",
+              "Parkinsonisme"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11164
+      }
+    ],
+    "h07": [
+      {
+        "items": [
+          {
+            "normalized": "Infarctus du myocarde antérieur",
+            "searchTerms": [
+              "Infarctus du myocarde antérieur",
+              "Infarctus du myocarde"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2472
+      },
+      {
+        "items": [
+          {
+            "normalized": "Infarctus du myocarde antérieur",
+            "searchTerms": [
+              "Infarctus du myocarde antérieur",
+              "Infarctus du myocarde"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 20207
+      },
+      {
+        "items": [
+          {
+            "normalized": "Infarctus du myocarde antérieur",
+            "searchTerms": [
+              "Infarctus du myocarde antérieur",
+              "Infarctus du myocarde"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7663
+      }
+    ],
+    "h08": [
+      {
+        "items": [
+          {
+            "normalized": "Lymphome cérébral primitif",
+            "searchTerms": [
+              "Lymphome cérébral primitif",
+              "Lymphome primitif du système nerveux central",
+              "Lymphome du système nerveux central"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13298
+      },
+      {
+        "items": [
+          {
+            "normalized": "Lymphome cérébral primitif",
+            "searchTerms": [
+              "Lymphome primitif du système nerveux central",
+              "Lymphome cérébral primitif",
+              "Lymphome cérébral",
+              "Lymphome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4829
+      },
+      {
+        "items": [
+          {
+            "normalized": "Lymphome cérébral primitif",
+            "searchTerms": [
+              "Lymphome cérébral primitif",
+              "Lymphome primitif du système nerveux central",
+              "Lymphome du système nerveux central",
+              "Lymphome malin"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 13774
+      }
+    ],
+    "h09": [
+      {
+        "items": [
+          {
+            "normalized": "Insuffisance rénale chronique stade 4",
+            "searchTerms": [
+              "Insuffisance rénale chronique stade 4",
+              "Insuffisance rénale chronique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7249
+      },
+      {
+        "items": [
+          {
+            "normalized": "Insuffisance rénale chronique stade 4",
+            "searchTerms": [
+              "Insuffisance rénale chronique stade 4",
+              "Insuffisance rénale chronique",
+              "Maladie rénale chronique"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11136
+      },
+      {
+        "items": null,
+        "ms": 19548,
+        "error": "interpretation indisponible"
+      }
+    ],
+    "h10": [
+      {
+        "items": [
+          {
+            "normalized": "Contusion temporale droite",
+            "searchTerms": [
+              "Contusion temporale",
+              "Contusion cérébrale",
+              "Contusion"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 17601
+      },
+      {
+        "items": [
+          {
+            "normalized": "Contusion temporale droite",
+            "searchTerms": [
+              "Contusion cérébrale temporale",
+              "Contusion cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6181
+      },
+      {
+        "items": [
+          {
+            "normalized": "Contusion temporale droite",
+            "searchTerms": [
+              "Contusion temporale",
+              "Contusion de la tête",
+              "Contusion crânienne",
+              "Contusion, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10148
+      }
+    ],
+    "h11": [
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie obstructive",
+            "searchTerms": [
+              "Hydrocéphalie obstructive",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2977
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie obstructive",
+            "searchTerms": [
+              "Hydrocéphalie obstructive",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 19556
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hydrocéphalie obstructive",
+            "searchTerms": [
+              "Hydrocéphalie obstructive",
+              "Hydrocéphalie"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4684
+      }
+    ],
+    "h12": [
+      {
+        "items": [
+          {
+            "normalized": "Hypertension intracrânienne idiopathique",
+            "searchTerms": [
+              "Hypertension intracrânienne idiopathique",
+              "Hypertension intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 2493
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hypertension intracrânienne idiopathique",
+            "searchTerms": [
+              "Hypertension intracrânienne idiopathique",
+              "Hypertension intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6376
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hypertension intracrânienne idiopathique",
+            "searchTerms": [
+              "Hypertension intracrânienne idiopathique",
+              "Hypertension intracrânienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4547
+      }
+    ],
+    "h13": [
+      {
+        "items": [
+          {
+            "normalized": "Fracture du crâne",
+            "searchTerms": [
+              "Fracture du crâne",
+              "Fracture du crâne, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11038
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture du crâne",
+            "searchTerms": [
+              "Fracture du crâne",
+              "Fracture du crâne, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 9572
+      },
+      {
+        "items": [
+          {
+            "normalized": "Fracture du crâne",
+            "searchTerms": [
+              "Fracture du crâne, sans précision",
+              "Fracture du crâne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8105
+      }
+    ],
+    "h14": [
+      {
+        "items": null,
+        "ms": 20520,
+        "error": "interpretation indisponible"
+      },
+      {
+        "items": [
+          {
+            "normalized": "Cancer du poumon",
+            "searchTerms": [
+              "Tumeur maligne du poumon",
+              "Cancer du poumon",
+              "Tumeur maligne des bronches ou du poumon"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 16041
+      },
+      {
+        "items": [
+          {
+            "normalized": "Cancer du poumon",
+            "searchTerms": [
+              "Tumeur maligne des bronches ou du poumon",
+              "Tumeur maligne du poumon"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15279
+      }
+    ],
+    "h15": [
+      {
+        "items": [
+          {
+            "normalized": "Hépatite C",
+            "searchTerms": [
+              "Hépatite C"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11060
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hépatite C",
+            "searchTerms": [
+              "Hépatite C",
+              "Hépatite C, sans précision"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10100
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hépatite C",
+            "searchTerms": [
+              "Hépatite C, sans précision",
+              "Hépatite C"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 15007
+      }
+    ],
+    "h16": [
+      {
+        "items": [
+          {
+            "normalized": "Épendymome du quatrième ventricule",
+            "searchTerms": [
+              "Épendymome du quatrième ventricule",
+              "Épendymome",
+              "Tumeur maligne du quatrième ventricule"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 12746
+      },
+      {
+        "items": [
+          {
+            "normalized": "Épendymome du quatrième ventricule",
+            "searchTerms": [
+              "Épendymome du quatrième ventricule",
+              "Épendymome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5023
+      },
+      {
+        "items": [
+          {
+            "normalized": "Épendymome du 4e ventricule",
+            "searchTerms": [
+              "Épendymome du quatrième ventricule",
+              "Épendymome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 7758
+      }
+    ],
+    "h17": [
+      {
+        "items": [
+          {
+            "normalized": "Craniopharyngiome",
+            "searchTerms": [
+              "Craniopharyngiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6354
+      },
+      {
+        "items": [
+          {
+            "normalized": "Craniopharyngiome",
+            "searchTerms": [
+              "Craniopharyngiome",
+              "Tumeur de la région sellaire",
+              "Tumeur cérébrale"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 17015
+      },
+      {
+        "items": [
+          {
+            "normalized": "Craniopharyngiome",
+            "searchTerms": [
+              "Craniopharyngiome"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 4056
+      }
+    ],
+    "h18": [
+      {
+        "items": [
+          {
+            "normalized": "Spondylodiscite L3-L4",
+            "searchTerms": [
+              "Spondylodiscite L3-L4",
+              "Spondylodiscite lombaire",
+              "Spondylodiscite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 10615
+      },
+      {
+        "items": [
+          {
+            "normalized": "Spondylodiscite L3-L4",
+            "searchTerms": [
+              "Spondylodiscite L3-L4",
+              "Spondylodiscite lombaire",
+              "Spondylodiscite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 8872
+      },
+      {
+        "items": [
+          {
+            "normalized": "Spondylodiscite L3-L4",
+            "searchTerms": [
+              "Spondylodiscite L3-L4",
+              "Spondylodiscite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5596
+      }
+    ],
+    "h19": [
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne anévrismale",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne anévrismale",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6517
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne anévrismale",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne anévrismale",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 11767
+      },
+      {
+        "items": [
+          {
+            "normalized": "Hémorragie sous-arachnoïdienne anévrismale",
+            "searchTerms": [
+              "Hémorragie sous-arachnoïdienne anévrismale",
+              "Hémorragie sous-arachnoïdienne"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 5862
+      }
+    ],
+    "h20": [
+      {
+        "items": [
+          {
+            "normalized": "Cholécystite aiguë lithiasique",
+            "searchTerms": [
+              "Cholécystite aiguë lithiasique",
+              "Cholécystite aiguë",
+              "Cholécystite lithiasique",
+              "Cholécystite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6630
+      },
+      {
+        "items": [
+          {
+            "normalized": "Cholécystite aiguë lithiasique",
+            "searchTerms": [
+              "Cholécystite aiguë lithiasique",
+              "Cholécystite aiguë",
+              "Cholécystite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6710
+      },
+      {
+        "items": [
+          {
+            "normalized": "Cholécystite aiguë lithiasique",
+            "searchTerms": [
+              "Cholécystite aiguë lithiasique",
+              "Cholécystite aiguë",
+              "Cholécystite"
+            ],
+            "ambiguous": false,
+            "alternativeTerms": []
+          }
+        ],
+        "ms": 6425
+      }
+    ]
+  }
+}

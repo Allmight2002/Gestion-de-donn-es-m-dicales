@@ -98,7 +98,7 @@ export function BaseLayout() {
     {
       labelKey: 'base.tab_queue',
       Icon: ClipboardCheck,
-      active: under(`${base}/queue`) || under(`${base}/propositions`) || under(`${base}/diagnostics`)
+      active: under(`${base}/queue`) || under(`${base}/codings`) || under(`${base}/propositions`) || under(`${base}/diagnostics`)
         || under(`${base}/curation`),
       subs: [
         { to: `${base}/queue`, labelKey: 'base.tab_queue', when: !!canEdit },
