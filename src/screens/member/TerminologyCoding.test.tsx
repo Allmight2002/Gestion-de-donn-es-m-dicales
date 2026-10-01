@@ -203,4 +203,41 @@ describe('TerminologyInput — codage assiste', () => {
     expect(codeText).not.toHaveBeenCalled();
     expect(changes).toEqual([]);
   });
+
+  test('reouverture : une saisie hors connexion peut etre reanalysee sur demande, sans rien imposer', async () => {
+    const stored = { raw: RAW, coding: { method: 'lexical', status: 'unmatched' } };
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText }, { initial: stored });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Rechercher une correspondance' }));
+    expect(codeText).toHaveBeenCalledWith(RAW);
+    // Meme une correspondance claire reste une proposition : la valeur ne change pas.
+    expect(await screen.findByRole('button', { name: `○ ${HSD.label}` })).toBeInTheDocument();
+    expect(changes).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: `○ ${HSD.label}` }));
+    expect(changes.at(-1)).toMatchObject({
+      code: HSD.code, label: HSD.label, raw: RAW,
+      coding: { method: 'ai_assisted', status: 'confirmed', normalized: 'Hématome sous-dural chronique spontané droit', release: '2026-01' },
+    });
+  });
+
+  test('reanalyse sans correspondance ou en panne : le texte reste, la situation est dite', async () => {
+    const stored = { raw: RAW, coding: { method: 'lexical', status: 'unmatched' } };
+    const codeText = vi.fn(async () => coded('unmatched'));
+    const changes = renderField({ codeText }, { initial: stored });
+    await userEvent.click(await screen.findByRole('button', { name: 'Rechercher une correspondance' }));
+    expect(await screen.findByText('Aucune correspondance CIM-11 fiable trouvée.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rechercher une correspondance' })).toBeNull();
+    expect(changes).toEqual([]);
+  });
+
+  test('reanalyse impossible : panne annoncee, valeur intacte', async () => {
+    const stored = { raw: RAW, coding: { method: 'lexical', status: 'unmatched' } };
+    const codeText = vi.fn(async (): Promise<TerminologyCodingResult> => { throw new Error('panne fictive'); });
+    const changes = renderField({ codeText }, { initial: stored });
+    await userEvent.click(await screen.findByRole('button', { name: 'Rechercher une correspondance' }));
+    expect(await screen.findByText(/Codage indisponible pour le moment/)).toBeInTheDocument();
+    expect(changes).toEqual([]);
+  });
 });

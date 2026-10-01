@@ -1,7 +1,7 @@
 # Codage terminologique assisté (CIM-11)
 
 > 🟢 Document vivant. Décrit l'état du code au 1er octobre 2026 : migration
-> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000`, `20261001160000`),
+> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000`, `20261001160000`, `20261001200000` pour « À faire »),
 > Edge Function `code-terminology`, champ
 > `TerminologyInput`. Seuils calibrés le 1er octobre 2026 (§4). Rien n'est déployé ; la preuve
 > navigateur et la mesure avec le vrai modèle restent à produire (§8).
@@ -63,7 +63,22 @@ choix plutôt que tronqués.
 codée issue du codage assisté (méthode `ai_assisted`, terme normalisé présent), le texte conservé
 est analysé à nouveau, une fois, et les propositions sont réaffichées. La valeur enregistrée
 n'est **jamais** modifiée à cette occasion : seul un choix du médecin l'écrit. Une saisie conservée
-hors connexion ou pendant une panne (méthode `lexical`) n'est pas réanalysée en silence.
+hors connexion ou pendant une panne (méthode `lexical`) n'est pas réanalysée en silence : le bouton
+**« Rechercher une correspondance »** la soumet à nouveau sur demande, et toute correspondance
+trouvée, même claire, n'est que **proposée** (le choix donne `confirmed`, avec la provenance de
+cette nouvelle analyse).
+
+**Diagnostics en attente dans « À faire ».** Une entrée est *en attente* quand elle est non codée
+(`unmatched` : aucune correspondance, plusieurs correspondances non choisies, saisie hors
+connexion ou pendant une panne) ou proposée sans confirmation (`suggested`). La page « À faire »
+affiche par base « *n* diagnostic(s) à coder » (compte arrêté à 100, lu par `my_todo_counts()`,
+clé `pendingCodings`), qui mène à `/bases/:id/codings` : la liste (`list_pending_codings`, les
+100 plus récentes modifications d'abord) donne le code patient, la rencontre, la variable, le
+texte saisi et le statut (« non codé » / « à confirmer »), et ouvre la fiche ou la rencontre où
+le champ réaffiche ses propositions. Même périmètre que la file « À compléter » : bases où la
+personne peut modifier les données, fiches et rencontres non supprimées, **dossiers `curated`
+exclus** (déjà revus et finalisés). Aucune donnée d'identité n'est lue. Une entrée sort de la
+liste dès qu'elle est confirmée, choisie ou retirée.
 
 Les critères de cohorte (`CohortBuilder`) utilisent le même composant avec `freeText={false}` :
 un critère ne peut être qu'un concept du référentiel.
@@ -246,7 +261,9 @@ publication est active à la fois (`terminology_release_single_active`).
 - Seuils calibrés avec des interprétations **simulées** : refaire le calibrage avec les sorties
   du vrai modèle, enregistrées telles quelles dans le jeu annoté, avant tout usage réel.
 - Pas de post-coordination CIM-11 : la latéralité et le contexte restent dans `normalized`.
-- Les entrées non codées ne remontent pas encore comme cas « non classés » dans le suivi
-  diagnostique (L56).
+- Les entrées non codées remontent dans « À faire » (§2), mais pas encore comme cas « non
+  classés » dans le suivi diagnostique (L56).
+- Un texte qui n'a réellement aucun code CIM-11 reste « non codé » et donc dans « À faire » tant
+  qu'il n'est pas retiré ou remplacé : il n'existe pas encore de statut « vérifié, sans code ».
 - Preuve navigateur du parcours et appel réel du LLM non exécutés dans ce lot.
 - Pas de limitation de débit propre à la fonction au-delà de celles de la plateforme.
