@@ -37,6 +37,7 @@
 | [checklist-fonctionnalites-site.md](checklist-fonctionnalites-site.md) | Inventaire exhaustif des fonctionnalités, écran par écran |
 | [codage-terminologique-assiste.md](codage-terminologique-assiste.md) | Diagnostic écrit en langage clinique, codé en CIM-11 en arrière-plan : architecture LLM + référentiel, statuts, confiance, confidentialité |
 | [calibration-codage-terminologique-2026-10-01.md](calibration-codage-terminologique-2026-10-01.md) | 🗄️ Preuve datée : calibrage des seuils du codage assisté sur 92 diagnostics fictifs annotés |
+| [calibration-codage-terminologique-2026-10-01-deepseek.md](calibration-codage-terminologique-2026-10-01-deepseek.md) | 🗄️ Preuve datée : rejeu du calibrage avec les sorties réelles de DeepSeek (non qualifié, seuils inchangés) |
 | [transfert-jeu-de-variables.md](transfert-jeu-de-variables.md) | Exporter un jeu de variables dans un fichier et le réimporter dans un autre compte ou une autre instance |
 | [formulaires-de-saisie.md](formulaires-de-saisie.md) | Formulaires courts (« Saisie rapide », « Sortie »…) sur les variables d'une base, alimentant la même fiche |
 

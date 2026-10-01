@@ -5,7 +5,8 @@
 //   * `llm`     : interpretations simulees du jeu annote (test/fixtures/terminologyCalibration.ts) ;
 //   * `lexical` : repli sans LLM, a partir du seul texte du medecin.
 // Plus un scenario `recorded` par passage quand un fournisseur reel a ete enregistre
-// (scripts/record-terminology-interpretations.mjs -> test/fixtures/terminologyCalibration.recorded.json).
+// (scripts/record-terminology-interpretations.mjs -> test/fixtures/terminologyCalibration.recorded.json,
+// ou le fichier designe par TERMINOLOGY_RECORDING).
 //
 // Ce test GARDE le calibrage : aucune erreur critique (code faux impose, ambiguite tranchee en
 // silence) et une utilite au moins egale a celle mesuree au calibrage. Avec
@@ -45,7 +46,10 @@ interface Recording {
   runs: number;
   cases: Record<string, RecordedRun[]>;
 }
-const RECORDING_PATH = join('test', 'fixtures', 'terminologyCalibration.recorded.json');
+// Chemin par defaut : enregistrement du fournisseur QUALIFIE, garde a chaque execution.
+// TERMINOLOGY_RECORDING rejoue un autre enregistrement (ex. un fournisseur non qualifie).
+const RECORDING_PATH = process.env.TERMINOLOGY_RECORDING ||
+  join('test', 'fixtures', 'terminologyCalibration.recorded.json');
 const recording: Recording | null = existsSync(RECORDING_PATH)
   ? JSON.parse(readFileSync(RECORDING_PATH, 'utf8')) as Recording
   : null;
@@ -163,7 +167,12 @@ describe('codage assiste — calibrage des seuils', () => {
     };
     if (recording) {
       const all = recorded.flat();
-      const recordedSelection = selectThresholds(calibration(all), calibration(scored.lexical));
+      // Peut etre impossible (erreurs critiques quels que soient les seuils) : le rapport le dit.
+      let recordedSelection: ReturnType<typeof selectThresholds> | null = null;
+      try {
+        recordedSelection = selectThresholds(calibration(all), calibration(scored.lexical));
+      } catch { /* aucun jeu de seuils sans erreur critique */ }
+      const chosen = recordedSelection?.best ?? THRESHOLDS;
       const outcomes = recorded.map((cases) => evaluate(cases, THRESHOLDS).outcomes);
       Object.assign(report, {
         recorded: {
@@ -176,9 +185,12 @@ describe('codage assiste — calibrage des seuils', () => {
           selection: recordedSelection,
           perRun: recorded.map((cases) => ({
             current: evaluate(cases, THRESHOLDS),
-            selected: evaluate(cases, recordedSelection.best),
+            selected: recordedSelection && evaluate(cases, chosen),
             ...Object.fromEntries((['dev', 'test', 'holdout'] as const).map((split) =>
-              [split, { current: evaluate(only(split, cases), THRESHOLDS), selected: evaluate(only(split, cases), recordedSelection.best) }]
+              [split, {
+                current: evaluate(only(split, cases), THRESHOLDS),
+                selected: recordedSelection && evaluate(only(split, cases), chosen),
+              }]
             )),
           })),
           // Cas dont l'issue change d'un passage a l'autre : instabilite du fournisseur.
