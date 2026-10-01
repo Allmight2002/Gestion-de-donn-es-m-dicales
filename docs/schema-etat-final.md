@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260928230000_template_definition_import_limits.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 413
+- Dernière migration incluse : `20261001090000_base_entry_forms.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 98 · Fonctions : 414
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -98,6 +98,29 @@ Triggers :
 - `trg_audit_access` — AFTER INSERT/UPDATE → `trg_audit_access_fn()`
 - `trg_base_access_escalation` — BEFORE INSERT/UPDATE → `guard_access_escalation()`
 - `trg_guard_base_access_medecin` — BEFORE INSERT/UPDATE → `guard_base_access_medecin()`
+
+### base_entry_form · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| base_id | uuid | non |  |
+| name | text | non |  |
+| field_keys | ARRAY | non |  |
+| required_keys | ARRAY | non | `'{}'::text[]` |
+| row_version | bigint | non | `1` |
+| created_by | uuid | oui | `auth.uid()` |
+| created_at | timestamp with time zone | non | `now()` |
+| updated_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `base_entry_form_delete` (DELETE) — USING (is_base_active(base_id) AND is_base_owner(base_id))
+- `base_entry_form_insert` (INSERT) — WITH CHECK (is_base_active(base_id) AND is_base_owner(base_id))
+- `base_entry_form_select` (SELECT) — USING (is_base_active(base_id) AND has_base_access(base_id))
+- `base_entry_form_update` (UPDATE) — USING (is_base_active(base_id) AND is_base_owner(base_id)) · WITH CHECK (is_base_active(base_id) AND is_base_owner(base_id))
+
+Triggers :
+- `trg_base_entry_form_guard` — BEFORE INSERT/UPDATE → `guard_base_entry_form()`
 
 ### base_invitation · RLS activée
 
@@ -1444,6 +1467,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | group_withdrawal_error | p_code text, p_details jsonb | INVOKER | plpgsql |
 | guard_access_escalation | — | INVOKER | plpgsql |
 | guard_base_access_medecin | — | DEFINER | plpgsql |
+| guard_base_entry_form | — | DEFINER | plpgsql |
 | guard_base_inclusion_target_revision | — | INVOKER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |

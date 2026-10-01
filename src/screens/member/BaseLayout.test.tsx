@@ -74,7 +74,7 @@ describe('BaseLayout — quatre destinations', () => {
     expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
     const subs = screen.getByRole('navigation', { name: 'Paramètres' });
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['Général', 'Formulaire', 'Accès', 'Journal']);
+      .toEqual(['Général', 'Formulaire', 'Saisies', 'Accès', 'Journal']);
   });
 
   test('les propositions figurent dans A completer pour le seul proprietaire', async () => {
@@ -289,7 +289,7 @@ describe('BaseLayout — mode Terrain', () => {
     // Meme destination que l'onglet, et ses sous-onglets restent la pour s'orienter.
     expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
     expect(Array.from(screen.getByRole('navigation', { name: 'Paramètres' }).querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['Général', 'Formulaire', 'Accès', 'Journal']);
+      .toEqual(['Général', 'Formulaire', 'Saisies', 'Accès', 'Journal']);
     expect(screen.getByRole('button', { name: 'Plus' })).toHaveClass('border-teal-600');
   });
 
