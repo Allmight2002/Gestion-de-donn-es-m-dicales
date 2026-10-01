@@ -27,7 +27,11 @@ export interface SimulatedInterpretation {
 }
 
 export type Expectation =
-  | { kind: 'code'; codes: string[] }
+  /**
+   * `noAuto` : codes acceptables en proposition, mais qui ajoutent une information absente du
+   * texte (germe, stade) : les poser sans confirmation est une erreur critique.
+   */
+  | { kind: 'code'; codes: string[]; noAuto?: string[] }
   /**
    * `generic` : codes qui reprennent le texte SANS rien preciser (« Hydrocephalie » ->
    * « Hydrocephalie »). Les retenir n'invente aucun detail : ce n'est pas trancher l'ambiguite.
@@ -47,6 +51,7 @@ export interface CalibrationCase {
 }
 
 const code = (...codes: string[]): Expectation => ({ kind: 'code', codes });
+const codeNoAuto = (noAuto: string[], ...codes: string[]): Expectation => ({ kind: 'code', codes, noAuto });
 const ambiguous = (...codes: string[]): Expectation => ({ kind: 'ambiguous', codes });
 const ambiguousOrGeneric = (generic: string[], ...codes: string[]): Expectation => ({ kind: 'ambiguous', codes, generic });
 const unmatched: Expectation = { kind: 'unmatched' };
@@ -288,6 +293,24 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
   { id: 't08', split: 'test', family: 'trap', text: 'Démence parkinsonienne',
     llm: llm('Démence de la maladie de Parkinson', 'Démence due à la maladie de Parkinson'),
     expect: code('6D85.0') },
+
+  // --- Inferences et sigles (ajoutes le 2026-10-01, apres l'exemple PFLA + IR + VIH) -------
+  // Le LLM simule DEDUIT un germe que le medecin n'a pas ecrit : proposable, jamais automatique.
+  { id: 't09', split: 'dev', family: 'trap', text: 'Pneumonie franche lobaire aiguë',
+    llm: llm('Pneumonie franche lobaire aiguë', 'Pneumonie due à Streptococcus pneumoniae', 'Pneumonie bactérienne'),
+    expect: codeNoAuto(['CA40.07'], 'CA40.0', 'CA40', 'CA40.Z', 'CA40.07') },
+  { id: 't10', split: 'test', family: 'trap', text: 'Méningite purulente',
+    llm: llm('Méningite purulente', 'Méningite à méningocoques', 'Méningite bactérienne'),
+    expect: codeNoAuto(['1C1C.0'], '1D01.0', '1D01.0Z', '1C1C.0') },
+  { id: 't11', split: 'dev', family: 'trap', text: 'Infection VIH',
+    llm: llm('Infection par le VIH', 'Maladie due au VIH'),
+    expect: code('1C62', '1C62.Z') },
+  { id: 't12', split: 'test', family: 'trap', text: 'Terrain HIV',
+    llm: llm('Infection par le VIH', "Maladie par le virus de l'immunodéficience humaine"),
+    expect: code('1C62', '1C62.Z') },
+  { id: 't13', split: 'dev', family: 'trap', text: 'VIH stade 3',
+    llm: llm('Infection par le VIH stade clinique 3', 'Maladie due au VIH stade clinique 3'),
+    expect: code('1C62.2') },
 
   // --- Controle inedit (holdout) : ecrit apres les corrections du score, jamais ajuste ---------
   { id: 'h01', split: 'holdout', family: 'clear', text: 'Thrombophlébite cérébrale',

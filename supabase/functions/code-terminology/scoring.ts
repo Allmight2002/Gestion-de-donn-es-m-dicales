@@ -17,6 +17,11 @@ export interface DiagnosisInterpretation {
   ambiguous: boolean;
   /** Entites distinctes a proposer au choix quand `ambiguous`. */
   alternativeTerms: string[];
+  /**
+   * Texte ecrit par le medecin, tel que transmis au codage. Il ne vient JAMAIS du LLM : avec
+   * `normalized`, il borne ce qu'un libelle peut affirmer pour etre retenu sans confirmation.
+   */
+  source?: string;
 }
 
 export interface Candidate {
@@ -86,6 +91,9 @@ const STOPWORDS = new Set([
   'precisee',
   'sai',
   'type',
+  'due',
+  'dus',
+  'dues',
   // La lateralite n'apparait pas dans les intitules : la garder ferait baisser le rappel.
   'droit',
   'droite',
@@ -109,6 +117,15 @@ const SYNONYMS: Record<string, string[]> = {
   epidurale: ['extradural'],
   atriale: ['auriculaire'],
   atrial: ['auriculaire'],
+  // Vertebres nommees comme dans les intitules.
+  atlas: ['premiere', 'vertebre', 'cervicale'],
+  axis: ['deuxieme', 'vertebre', 'cervicale'],
+  c1: ['premiere', 'vertebre', 'cervicale'],
+  c2: ['deuxieme', 'vertebre', 'cervicale'],
+  etage: ['fosse'],
+  // Sigle francais et anglais, developpe comme dans les intitules.
+  vih: ['virus', 'immunodeficience', 'humaine'],
+  hiv: ['virus', 'immunodeficience', 'humaine'],
 };
 
 /**
@@ -153,6 +170,12 @@ export function stems(text: string): string[] {
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
     if (!word || STOPWORDS.has(word)) continue;
+    // « non precise » est une mention residuelle, pas une negation qui porte : les deux mots
+    // tombent comme « sans precision ».
+    if (word === 'non' && STOPWORDS.has(words[i + 1] ?? '')) {
+      i++;
+      continue;
+    }
     let stem = stemOf(word);
     if (word === 'non' && words[i + 1]) stem = `non${stemOf(words[++i])}`;
     if (!out.includes(stem)) out.push(stem);
@@ -161,7 +184,7 @@ export function stems(text: string): string[] {
 }
 
 /** Cle d'un concept hors marqueurs residuels : « Meningiomes, sans precision » = « Meningiomes ». */
-export const conceptKey = (label: string) => stems(label).join(' ');
+export const conceptKey = (label: string) => stems(coreLabel(label)).join(' ');
 
 function sameStem(a: string, b: string): boolean {
   if (a === b) return true;
@@ -185,8 +208,60 @@ function f1(q: string[], l: string[]): number {
 export function similarity(term: string, label: string): number {
   if (normalizeText(term) === normalizeText(label)) return 1;
   const q = stems(term);
-  const core = label.replace(/\([^)]*\)/g, ' ');
+  const core = coreLabel(label);
   return Math.max(f1(q, stems(label)), core === label ? 0 : f1(q, stems(core)));
+}
+
+/**
+ * Partie de l'intitule qui AFFIRME quelque chose. Sont facultatives : une precision entre
+ * parentheses (« (de la base du crane) ») et une clause « sans mention de … », qui dit
+ * seulement ce que le texte ne mentionne pas (« … sans mention de tuberculose ni de
+ * paludisme »).
+ */
+export function coreLabel(label: string): string {
+  return label.replace(/\([^)]*\)/g, ' ').replace(/,?\s+sans mention d.*$/i, ' ');
+}
+
+/**
+ * Mots d'intitule qui situent sans rien preciser : « Glioblastome du cerveau » n'affirme rien
+ * de plus que « glioblastome ». Liste courte, mesuree au calibrage ; un mot qui designe un
+ * germe, un stade, une cause ou une localisation fine n'y figure jamais.
+ */
+const IMPLIED = new Set(stems('cerveau cérébral encéphale intracrânien maladie artère processus lobe sucré'));
+
+/**
+ * Alternatives d'un intitule disjonctif (« … du fœtus ou du nouveau-ne », « Anevrisme ou
+ * dissection … ») : le mot porteur de chaque cote du « ou ». Il suffit que le texte en couvre
+ * un pour que l'autre ne soit pas une information ajoutee.
+ */
+function disjunctions(label: string): Array<[string, string]> {
+  const words = normalizeText(label).split(' ').flatMap((w) => SYNONYMS[w] ?? [w]);
+  const pairs: Array<[string, string]> = [];
+  words.forEach((w, i) => {
+    if (w !== 'ou') return;
+    const before = words.slice(0, i).reverse().find((x) => !STOPWORDS.has(x));
+    const after = words.slice(i + 1).find((x) => !STOPWORDS.has(x));
+    if (before && after) pairs.push([stemOf(before), stemOf(after)]);
+  });
+  return pairs;
+}
+
+/**
+ * Le libelle n'affirme-t-il que ce que le medecin a ecrit ? Chaque mot porteur de l'intitule
+ * doit se retrouver dans son texte ou dans le terme developpe (abreviations, synonymes). Un
+ * germe, un stade ou une cause que seul le LLM a deduit (« Pneumonie due a Streptococcus
+ * pneumoniae » pour « pneumonie franche lobaire aigue ») ne l'est pas : la proposition
+ * reste alors a confirmer.
+ */
+export function isCovered(label: string, item: Pick<DiagnosisInterpretation, 'normalized' | 'source'>): boolean {
+  const known = [...stems(item.normalized), ...stems(item.source ?? '')];
+  const isKnown = (s: string) => IMPLIED.has(s) || known.some((k) => sameStem(k, s));
+  const core = coreLabel(label);
+  const alternatives = disjunctions(core);
+  return stems(core).every((s) =>
+    isKnown(s) ||
+    alternatives.some(([a, b]) => (s === a && isKnown(b)) || (s === b && isKnown(a)))
+  );
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -243,6 +318,8 @@ export interface ItemScores {
   preferredCode: string | null;
   /** Le meilleur candidat global est-il, au sens du concept, celui du terme prefere ? */
   agrees: boolean;
+  /** Le meilleur candidat est-il couvert par le texte du medecin (`isCovered`) ? */
+  covered: boolean;
   /** `ranked` sans les doublons residuels (« X, sans precision », « Autres X »). */
   distinct: ScoredCandidate[];
   perEntity: ScoredCandidate[];
@@ -264,6 +341,7 @@ export function scoreItem(item: DiagnosisInterpretation, candidates: Candidate[]
     preferredCode: preferred?.code ?? null,
     agrees: !!best && !!preferred &&
       (preferred.code === best.code || conceptKey(preferred.label) === keys[0]),
+    covered: !!best && isCovered(best.label, item),
     distinct,
     perEntity: item.ambiguous
       ? item.alternativeTerms
@@ -304,7 +382,8 @@ export function decideFromScores(scores: ItemScores, thresholds: Thresholds = TH
   if (best.score >= thresholds.suggested && gap < thresholds.automaticGap / 2) {
     return { status: 'ambiguous', score: round(best.score), best, alternatives: plausible };
   }
-  if (best.score >= thresholds.automatic && gap >= thresholds.automaticGap && agrees) {
+  // Seul un libelle qui n'ajoute rien au texte du medecin peut etre retenu sans confirmation.
+  if (best.score >= thresholds.automatic && gap >= thresholds.automaticGap && agrees && scores.covered) {
     return { status: 'automatic', score: round(best.score), best, alternatives: [] };
   }
   // Un seul candidat plausible : il n'y a rien a departager, on le propose a confirmer.

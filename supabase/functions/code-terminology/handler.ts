@@ -140,7 +140,9 @@ export async function handleCodeTerminology(req: Request, deps: CodeTerminologyD
     for (const item of interpretation.slice(0, MAX_DIAGNOSES)) {
       const found = await candidatesFor(client, item);
       release ??= found.release;
-      const decision = decide(item, found.candidates);
+      // Le texte du medecin borne ce qu'un code automatique peut affirmer (`isCovered`). Il
+      // vient de la requete, jamais de l'interpretation.
+      const decision = decide({ ...item, source: scrubbed }, found.candidates);
       items.push({
         normalized: item.normalized,
         status: decision.status,

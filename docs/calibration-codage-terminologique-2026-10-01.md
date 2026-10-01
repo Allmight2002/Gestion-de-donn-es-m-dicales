@@ -149,3 +149,47 @@ Erreurs résiduelles notables, aucune n'impose un code :
   `TERMINOLOGY_CALIBRATION_REPORT=<chemin.json> npx vitest run --project db test/terminology-calibration.test.ts`.
   Sans la variable, le test vérifie seulement l'absence d'erreur critique et les planchers
   d'utilité.
+
+## 5. Addendum — règle de couverture, sigles et inférences (1er octobre 2026, après-midi)
+
+**Origine.** L'exemple « Pneumonie franche lobaire aiguë associée à une insuffisance rénale sur
+terrain HIV » a montré qu'un LLM qui *déduit* une information (le pneumocoque) faisait poser un
+code automatiquement, et que les sigles courts (VIH, HIV) n'étaient pas retrouvés.
+
+**Changements.**
+- **Couverture** : un code n'est posé automatiquement que si chaque mot porteur de son intitulé
+  se retrouve dans le texte du médecin ou dans le terme développé. Sont tolérés les mots qui
+  situent sans préciser et les intitulés disjonctifs dont un côté est écrit.
+- **Sigles** : les mots de trois lettres comptent dans la recherche
+  (`20261001140000_terminology_candidates_acronyms.sql`), et VIH/HIV a des synonymes.
+- **Intitulés** : les clauses « sans mention de … » sont facultatives.
+
+**Jeu étendu à 97 cas.** Cinq pièges ont été ajoutés à `dev`/`test` :
+- deux inférences de germe (pneumocoque, méningocoque), annotées « proposable, jamais
+  automatique » ;
+- trois cas VIH.
+
+**Résultats avec les seuils en vigueur** (inchangés : 0,95 / 0,05 / 0,65 / 0,55) :
+
+| Scénario | Critiques | Auto justes | Suggestions justes / fausses | Choix justes / sans le bon code | Manqués | Rien imposé |
+|---|---|---|---|---|---|---|
+| LLM simulé | **0** | 58 | 13 / 3 | 13 / 1 | 1 | 8 |
+| Repli lexical | **0** | 28 | 26 / 7 | 8 / 1 | 19 | 8 |
+
+**Ce qui a changé sur les cas existants.** Sept codes auparavant automatiques repassent « à
+confirmer ». Chacun ajoutait une information absente du texte :
+- « Hypertension *essentielle* » pour « HTA » ;
+- « Infarctus *aigu* » pour « IDM » ;
+- « Contusion… *en foyer* » ;
+- « Métastase de *tumeur maligne* » ;
+- « Épilepsie due à des *traumatismes crâniens* » ;
+- un sous-type de lymphome ;
+- une précision discale.
+
+Les inférences de germe sont proposées, jamais posées. Les trois cas VIH sont codés juste.
+
+**Seuils.** Avec la couverture, le balayage admet désormais un seuil automatique plus bas (0,80,
+écart 0,10) sans erreur critique : la couverture assure la sécurité que ce seuil assurait seul.
+Les seuils n'ont **pas** été modifiés. Le `holdout` est déjà consulté, donc aucune mesure non
+biaisée ne soutiendrait ce changement. À reprendre avec les sorties du vrai modèle.
+

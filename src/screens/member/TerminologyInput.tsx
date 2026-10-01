@@ -12,7 +12,9 @@ import { errorMessage } from '../../lib/errorMessage';
 import {
   isTerminologyEntry,
   isTerminologyValue,
+  isUnmatchedTerminology,
   type TerminologyFieldEntry,
+  type UnmatchedTerminologyValue,
 } from '../../data/types';
 import { useOnline } from '../../data/offline';
 import {
@@ -89,6 +91,8 @@ export function TerminologyInput({
   const [choices, setChoices] = useState<Record<string, CodingChoice>>({});
   const [replacing, setReplacing] = useState<Replacing>(null);
   const prefetchRef = useRef(new Map<string, Promise<TerminologyCodingResult>>());
+  // Entrees dont les propositions ont deja ete redemandees a la reouverture (une fois chacune).
+  const restoredRef = useRef(new Set<string>());
   const containerRef = useRef<HTMLDivElement>(null);
   // La reponse du codage arrive apres coup : elle doit s'appliquer a la valeur COURANTE.
   const valueRef = useRef(value);
@@ -205,6 +209,35 @@ export function TerminologyInput({
     if (cache.size > 20) cache.delete(cache.keys().next().value!);
     return pending;
   }
+
+  // Reouverture d'une fiche : les propositions au choix ne sont pas stockees. Pour une entree
+  // non codee issue du codage assiste, le texte conserve est analyse a nouveau et les
+  // propositions sont RESTAUREES — la valeur enregistree, elle, n'est jamais modifiee ici.
+  const restorable = (multiple ? chosen : selected ? [selected] : [])
+    .filter((e): e is UnmatchedTerminologyValue =>
+      isUnmatchedTerminology(e) && e.coding.method === 'ai_assisted' && !!e.coding.normalized
+    );
+  const restoreKey = restorable.map((e) => choiceKey(e.raw, e.coding.normalized)).join('\n');
+  useEffect(() => {
+    if (!codeText || !online) return;
+    for (const entry of restorable) {
+      const key = choiceKey(entry.raw, entry.coding.normalized);
+      if (choices[key] || restoredRef.current.has(key)) continue;
+      restoredRef.current.add(key);
+      void codingFor(entry.raw)
+        .then((result) => {
+          const { choices: proposed } = entriesFromResult(entry.raw, result, multiple);
+          // Meme interpretation qu'a la saisie, ou a defaut l'unique jeu de propositions.
+          const match = proposed.find((c) => choiceKey(c.raw, c.normalized) === key)
+            ?? (proposed.length === 1 ? proposed[0] : undefined);
+          if (!match) return;
+          setChoices((prev) => (prev[key] ? prev : { ...prev, [key]: { ...match, normalized: entry.coding.normalized ?? '' } }));
+        })
+        .catch(() => undefined);
+    }
+    // `restoreKey` resume `restorable` ; `codingFor` ne depend que de refs et de `codeText`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreKey, codeText, online]);
 
   // --- Ecriture de la valeur -------------------------------------------------------------
 

@@ -28,6 +28,8 @@ const ABBREVIATIONS: Record<string, { normalized: string; terms: string[] }> = {
   dt1: { normalized: 'Diabète de type 1', terms: ['Diabète sucré de type 1'] },
   dt2: { normalized: 'Diabète de type 2', terms: ['Diabète sucré de type 2'] },
   idm: { normalized: 'Infarctus du myocarde', terms: ['Infarctus aigu du myocarde'] },
+  vih: { normalized: 'Infection par le VIH', terms: ["Maladie par le virus de l'immunodéficience humaine"] },
+  hiv: { normalized: 'Infection par le VIH', terms: ["Maladie par le virus de l'immunodéficience humaine"] },
 };
 
 /** Repli sans LLM : decoupage sur les separateurs explicites, abreviations developpees. */

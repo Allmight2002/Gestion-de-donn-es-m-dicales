@@ -59,7 +59,11 @@ export function outcomeOf(expect: Expectation, decision: MatchDecision): Outcome
     if (decision.status === 'suggested') return ok(best) || generic(best) ? 'suggest_ok' : 'suggest_wrong';
     return options.some((c) => ok(c) || generic(c)) ? 'choice_ok' : 'choice_miss';
   }
-  if (decision.status === 'automatic') return ok(best) ? 'auto_ok' : 'auto_wrong';
+  if (decision.status === 'automatic') {
+    // Un code qui ajoute une information absente du texte ne se pose jamais sans confirmation.
+    if (best !== null && (expect.noAuto ?? []).includes(best)) return 'auto_wrong';
+    return ok(best) ? 'auto_ok' : 'auto_wrong';
+  }
   if (decision.status === 'suggested') return ok(best) ? 'suggest_ok' : 'suggest_wrong';
   return options.some(ok) || ok(best) ? 'choice_ok' : 'choice_miss';
 }
