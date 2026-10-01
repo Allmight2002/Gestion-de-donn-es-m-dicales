@@ -925,7 +925,7 @@ export const messages = {
     'terminology.stale_offline': 'The local diagnosis copy will be updated when the network is available again.',
     'terminology.free_text_placeholder': 'Type the diagnosis, or search for it…',
     'terminology.no_result_free_text': 'No suggestion: leave the field to save this diagnosis as written.',
-    'terminology.coding': 'Analysing the diagnosis…',
+    'terminology.coding': 'Looking for suggestions…',
     'terminology.reanalyze': 'Look for a match',
     'terminology.coding_unavailable': 'Coding is unavailable for now: the diagnosis is kept as written.',
     'terminology.coding_offline': 'Offline: the diagnosis is kept as written, without a code.',

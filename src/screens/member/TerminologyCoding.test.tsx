@@ -110,7 +110,7 @@ describe('TerminologyInput — codage assiste', () => {
     expect(screen.queryByText('Autres correspondances possibles :')).not.toBeInTheDocument();
   });
 
-  test('reouverture : les autres correspondances d une proposition a confirmer sont restaurees', async () => {
+  test('reouverture : une proposition a confirmer n est pas reanalysee (appel facture)', async () => {
     const stored = {
       code: 'FIC.02',
       label: HSD.label,
@@ -120,9 +120,26 @@ describe('TerminologyInput — codage assiste', () => {
     const codeText = vi.fn(async () => coded('suggested', { alternatives: [HIC] }));
     const changes = renderField({ codeText }, { initial: stored });
 
-    expect(await screen.findByText('Autres correspondances possibles :')).toBeInTheDocument();
-    expect(codeText).toHaveBeenCalledWith(RAW);
+    expect(await screen.findByRole('button', { name: `Confirmer ${HSD.label}` })).toBeInTheDocument();
+    expect(codeText).not.toHaveBeenCalled();
     expect(changes).toEqual([]);
+  });
+
+  test('le texte ne part vers l analyse qu au depart du champ, jamais pendant la frappe', async () => {
+    let answer: (r: TerminologyCodingResult) => void = () => undefined;
+    const codeText = vi.fn(() => new Promise<TerminologyCodingResult>((resolve) => { answer = resolve; }));
+    renderField({ codeText });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), RAW);
+    // Une pause de frappe ne declenche rien.
+    await new Promise((r) => setTimeout(r, 1_200));
+    expect(codeText).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ailleurs' }));
+    expect(codeText).toHaveBeenCalledTimes(1);
+    // Pendant l'analyse, l'attente est annoncee.
+    expect(await screen.findByRole('status')).toHaveTextContent('Recherche de suggestions…');
+    answer(coded('automatic'));
+    expect(await screen.findByText('FIC.02')).toBeInTheDocument();
   });
 
   test('plusieurs correspondances : rien n est impose, l utilisateur choisit', async () => {

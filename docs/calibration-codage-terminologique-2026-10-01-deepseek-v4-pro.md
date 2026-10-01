@@ -359,8 +359,10 @@ configuration et trois configurations enregistrées en même temps.
 **Corrections** :
 
 - le prompt sépare les diagnostics liés, avec des exemples absents du banc ;
-- l'écran affiche « Autres correspondances possibles » à côté d'une proposition à confirmer, et les
-  restaure à la réouverture d'une fiche.
+- l'écran affiche « Autres correspondances possibles » à côté d'une proposition à confirmer
+  (pendant la saisie ; elles ne sont pas redemandées à la réouverture, chaque analyse étant
+  facturée) ;
+- le texte ne part vers l'analyse qu'au départ du champ, plus pendant les pauses de frappe.
 
 **Mesures après correction**, avec l'écran tel qu'il affiche désormais les correspondances :
 

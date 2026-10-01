@@ -41,8 +41,8 @@ Texte clinique ──► interprétation (LLM, sinon repli lexical)
 | Moment | Comportement |
 |---|---|
 | Frappe courte | Recherche classique inchangée (copie locale ou serveur), choix dans la liste. |
-| Pause de frappe sur plusieurs mots | Le codage est **préparé** en arrière-plan, rien n'est enregistré. |
-| Départ du champ ou Entrée sans choix | Le texte est **enregistré immédiatement, non codé**, puis remplacé par le résultat du codage s'il est toujours là. Entrée ne soumet jamais le formulaire. |
+| Pause de frappe | Rien n'est envoyé : chaque analyse est un appel facturé au fournisseur du LLM. |
+| Départ du champ ou Entrée sans choix | Le texte est **enregistré immédiatement, non codé** ; « Recherche de suggestions… » s'affiche avec une petite animation, puis le texte est remplacé par le résultat du codage s'il est toujours là. Entrée ne soumet jamais le formulaire. |
 | Clic sur une proposition de la liste | Choix classique ; le texte tapé n'est pas codé. |
 
 Résultats affichés discrètement dans l'étiquette du diagnostic :
@@ -63,8 +63,10 @@ déjà présent n'est pas doublé. En champ unitaire, plusieurs diagnostics reco
 choix plutôt que tronqués.
 
 **Réouverture d'une fiche.** Les propositions au choix ne sont pas stockées. Pour une entrée non
-codée ou « à confirmer » issue du codage assisté (méthode `ai_assisted`, terme normalisé présent),
-le texte conservé est analysé à nouveau, une fois, et les propositions sont réaffichées. La valeur enregistrée
+codée issue du codage assisté (méthode `ai_assisted`, terme normalisé présent), le texte conservé
+est analysé à nouveau, une fois, et les propositions sont réaffichées. Une proposition « à
+confirmer » porte déjà un code : elle n'est pas réanalysée (appel facturé), et « Changer » reste
+disponible. La valeur enregistrée
 n'est **jamais** modifiée à cette occasion : seul un choix du médecin l'écrit. Une saisie conservée
 hors connexion ou pendant une panne (méthode `lexical`) n'est pas réanalysée en silence : le bouton
 **« Rechercher une correspondance »** la soumet à nouveau sur demande, et toute correspondance
