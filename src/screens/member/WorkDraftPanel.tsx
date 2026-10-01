@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { HelpTip } from '../../components/HelpTip';
 import { useI18n } from '../../i18n/useI18n';
 import type { WorkDraft } from '../../data/workDrafts';
 import type { useWorkDraft } from './useWorkDraft';
@@ -12,40 +11,28 @@ export function WorkDraftPanel({ draft, online, baseId, patientId, showCandidate
   baseId: string;
   patientId?: string;
   showCandidates?: boolean;
-  /** Le formulaire fait saisir une identite, que le brouillon ne couvre pas : la precision reste visible. */
+  /** Le formulaire fait saisir une identite, que le brouillon ne couvre pas : la precision accompagne le panneau. */
   identityInForm?: boolean;
 }) {
   const { t } = useI18n();
   const [choice, setChoice] = useState<{ kind: 'resume' | 'discard'; draft: WorkDraft } | null>(null);
   if (!draft.enabled) return null;
   if (!showCandidates && draft.candidates.length > 0) return null;
-  if (!draft.loading && !draft.dirty && !draft.error && draft.state?.status === 'idle'
-    && draft.candidates.length === 0 && draft.completed.length === 0) return null;
   const local = draft.support === 'local';
   const time = (date: string) => new Date(date).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
-  // L'etat affiche suit le SUPPORT reellement accuse : une copie locale n'est jamais annoncee
-  // comme une revision serveur, et une ancienne reussite ne masque pas l'echec le plus recent.
-  const status = draft.loading ? t('draft.searching')
-    : draft.locked && draft.state?.status !== 'consumed' ? t('draft.locked')
-      : !online && !local ? t('draft.offline')
-        : draft.state?.status === 'saving' ? t('draft.saving')
-          : draft.protected && draft.state?.receipt
-            ? t(local ? 'draft.saved_local' : 'draft.saved_server').replace('{time}', time(draft.state.receipt.updatedAt))
-            : t('draft.unsaved');
-  // Pastille : vert seulement pour un accuse recu (§4.2), jamais pour une sauvegarde en cours.
-  const saved = !draft.loading && !(draft.locked && draft.state?.status !== 'consumed') && !(!online && !local)
-    && draft.state?.status !== 'saving' && draft.protected && !!draft.state?.receipt;
-  const pending = draft.loading || draft.state?.status === 'saving';
-  const dot = saved ? 'bg-teal-600' : pending ? 'bg-slate-400' : 'bg-amber-500';
-  // Lot 2 (5.6-B) : un simple etat tient sur une ligne ; le cadre ne revient que pour une
-  // decision a prendre (erreur, brouillon a reprendre, enregistrement confirme).
-  const onlyStatus = !draft.error && draft.candidates.length === 0 && draft.completed.length === 0;
-  return <div className={onlyStatus ? 'space-y-1 text-sm' : 'space-y-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700'}>
-    <div className="flex items-center gap-2">
-      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+  // La sauvegarde automatique reste silencieuse : saisie en cours, sauvegarde et accuse ne
+  // s'affichent pas (ils decalaient le formulaire sans rien demander). Le panneau n'apparait
+  // que pour un etat a traiter : echec, verrou, saisie non protegee hors ligne, brouillon a
+  // reprendre ou enregistrement confirme.
+  const locked = draft.locked && draft.state?.status !== 'consumed';
+  const unprotectedOffline = !online && !local && draft.dirty && !draft.loading;
+  const status = locked ? t('draft.locked') : unprotectedOffline ? t('draft.offline') : null;
+  if (!status && !draft.error && draft.candidates.length === 0 && draft.completed.length === 0) return null;
+  return <div className="space-y-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+    {status && <div className="flex items-center gap-2">
+      <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
       <p role="status" aria-live="polite" className="min-w-0 text-slate-700 dark:text-slate-200">{status}</p>
-      {!identityInForm && <HelpTip label={t('draft.about')} className="-my-2">{t('draft.clinical_only')}</HelpTip>}
-    </div>
+    </div>}
     {identityInForm && <p className="text-xs text-slate-500">{t('draft.clinical_only')}</p>}
     {draft.error && <div className="space-y-2 text-amber-900 dark:text-amber-200"><p role="alert">{draft.error}</p>
       {!draft.locked && <button type="button" onClick={draft.retry} className="btn-secondary" disabled={(!online && !local) || draft.loading}>{t('draft.retry')}</button>}
