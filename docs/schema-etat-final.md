@@ -5,7 +5,7 @@
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
 - Dernière migration incluse : `20261001103000_repeatable_group_labels_transfer.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 98 · Fonctions : 417
+- Tables : 59 · Policies RLS : 68 · Triggers : 98 · Fonctions : 419
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1160,6 +1160,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | is_selectable | boolean | non | `true` |
 | search_text | text | oui |  |
 | created_at | timestamp with time zone | non | `now()` |
+| uri | text | oui |  |
 
 Policies :
 - `terminology_concept_read` (SELECT) — USING true
@@ -1533,6 +1534,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | log_identity_read | p_patient_id uuid | DEFINER | plpgsql |
 | log_raw_document_read | p_document_id uuid | DEFINER | plpgsql |
 | log_sensitive_read | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid | DEFINER | plpgsql |
+| match_terminology_candidates | p_terms text[], p_limit integer | INVOKER | sql |
 | missing_required_fields | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |
 | mission_account_lookup | p_email text | DEFINER | plpgsql |
 | mission_accounts | p_base_id uuid | DEFINER | plpgsql |
@@ -1658,6 +1660,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | template_version_layout_fingerprint | p_version_id uuid | DEFINER | plpgsql |
 | template_version_locked | p_version_id uuid | DEFINER | sql |
 | template_version_rule_fingerprint | p_version_id uuid | DEFINER | plpgsql |
+| terminology_entry_problem | p_entry jsonb | INVOKER | plpgsql |
 | terminology_normalize | p_text text | INVOKER | sql |
 | touch_base_view_preference_updated_at | — | INVOKER | plpgsql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |

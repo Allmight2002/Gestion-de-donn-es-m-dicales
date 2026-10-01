@@ -46,3 +46,17 @@ describe('gardes de cardinalite (L21)', () => {
     expect(isMultipleTerminology({ type: 'multiselect', isMultiple: true })).toBe(false);
   });
 });
+
+describe('displayFieldValue — codage assiste', () => {
+  const NON_CODE = { raw: 'Syndrome fictif', coding: { method: 'lexical', status: 'unmatched' } };
+
+  test('un texte non code se lit tel qu ecrit, seul ou dans une liste', () => {
+    expect(displayFieldValue(NON_CODE)).toBe('Syndrome fictif');
+    expect(displayFieldValue([CHOLERA, NON_CODE])).toBe('Cholera; Syndrome fictif');
+  });
+
+  test('la provenance ne change pas le libelle affiche', () => {
+    expect(displayFieldValue({ ...CHOLERA, raw: 'cholera grave', coding: { method: 'ai_assisted', status: 'automatic' } }))
+      .toBe('Cholera');
+  });
+});
