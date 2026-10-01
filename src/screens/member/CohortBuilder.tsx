@@ -19,7 +19,7 @@ import { useBaseRepository, useCohortRepository, useTemplateRepository } from '.
 import type { CohortSummary, FilterCondition, FilterDefinition, FilterOp } from '../../data/cohorts';
 import { getTemplateFields } from '../../data/templates';
 import { fieldOptions } from '../../domain/fieldOptions';
-import { isMultipleTerminology, type TemplateField, type TerminologyValue } from '../../data/types';
+import { isMultipleTerminology, isTerminologyValue, type TemplateField, type TerminologyValue } from '../../data/types';
 import { isCalculatedField } from '../../domain/fieldFormula';
 import type { MessageKey } from '../../i18n/messages';
 // L23 : le meme composant de recherche que la saisie, en mode multivalue -- aucun second
@@ -332,7 +332,10 @@ export function CohortBuilder() {
         <TerminologyInput
           field={{ label, isMultiple: true }}
           value={draftConcepts}
-          onChange={(next) => setDraftConcepts(Array.isArray(next) ? next : next ? [next] : [])}
+          freeText={false}
+          onChange={(next) => setDraftConcepts(
+            (Array.isArray(next) ? next : next ? [next] : []).filter(isTerminologyValue),
+          )}
         />
       );
     }

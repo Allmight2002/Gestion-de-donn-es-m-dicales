@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20260928230000_template_definition_import_limits.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 413
+- Dernière migration incluse : `20261001103000_repeatable_group_labels_transfer.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 420
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -98,6 +98,29 @@ Triggers :
 - `trg_audit_access` — AFTER INSERT/UPDATE → `trg_audit_access_fn()`
 - `trg_base_access_escalation` — BEFORE INSERT/UPDATE → `guard_access_escalation()`
 - `trg_guard_base_access_medecin` — BEFORE INSERT/UPDATE → `guard_base_access_medecin()`
+
+### base_entry_form · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| id | uuid | non | `gen_random_uuid()` |
+| base_id | uuid | non |  |
+| name | text | non |  |
+| field_keys | ARRAY | non |  |
+| required_keys | ARRAY | non | `'{}'::text[]` |
+| row_version | bigint | non | `1` |
+| created_by | uuid | oui | `auth.uid()` |
+| created_at | timestamp with time zone | non | `now()` |
+| updated_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `base_entry_form_delete` (DELETE) — USING (is_base_active(base_id) AND is_base_owner(base_id))
+- `base_entry_form_insert` (INSERT) — WITH CHECK (is_base_active(base_id) AND is_base_owner(base_id))
+- `base_entry_form_select` (SELECT) — USING (is_base_active(base_id) AND has_base_access(base_id))
+- `base_entry_form_update` (UPDATE) — USING (is_base_active(base_id) AND is_base_owner(base_id)) · WITH CHECK (is_base_active(base_id) AND is_base_owner(base_id))
+
+Triggers :
+- `trg_base_entry_form_guard` — BEFORE INSERT/UPDATE → `guard_base_entry_form()`
 
 ### base_invitation · RLS activée
 
@@ -1053,6 +1076,7 @@ Triggers :
 - `trg_template_field_formula` — BEFORE INSERT/UPDATE → `enforce_template_field_formula()`
 - `trg_template_field_formula_operand` — BEFORE UPDATE/DELETE → `enforce_template_field_formula_operand()`
 - `trg_template_field_formula_rules` — BEFORE INSERT/UPDATE → `enforce_template_field_formula_rules()`
+- `trg_template_field_key_rename_follows` — AFTER UPDATE → `follow_template_field_key_rename()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
@@ -1090,6 +1114,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | source_template_version_id | uuid | oui |  |
 | source_section_key | text | oui |  |
 | is_repeatable | boolean | non | `false` |
+| add_label | text | oui |  |
+| item_label | text | oui |  |
 
 Policies :
 - `ts_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
@@ -1157,6 +1183,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | is_selectable | boolean | non | `true` |
 | search_text | text | oui |  |
 | created_at | timestamp with time zone | non | `now()` |
+| uri | text | oui |  |
 
 Policies :
 - `terminology_concept_read` (SELECT) — USING true
@@ -1398,6 +1425,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | finalize_upload_operation | p_ticket_id uuid, p_entity text, p_metadata jsonb | DEFINER | plpgsql |
 | find_identity_matches | p_base_id uuid, p_full_name text, p_date_of_birth date | DEFINER | plpgsql |
 | fips_mode | — | INVOKER | c |
+| follow_template_field_key_rename | — | INVOKER | plpgsql |
 | form_justification_status | p_base_id uuid, p_reason text | DEFINER | plpgsql |
 | form_preparation_apply_assert_definition | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
 | form_preparation_apply_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
@@ -1434,6 +1462,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_record_field_group_applicable | p_version_id uuid, p_field_key text, p_group_section_key text | INVOKER | sql |
 | form_record_merge_legacy_payload | p_historical_version uuid, p_active_version uuid, p_scope text, p_existing jsonb, p_payload jsonb | DEFINER | plpgsql |
 | form_record_value_fingerprint | p_value jsonb | DEFINER | sql |
+| formula_with_renamed_field | formula text, p_old text, p_new text | INVOKER | sql |
 | gen_random_bytes | integer | INVOKER | c |
 | gen_random_uuid | — | INVOKER | c |
 | gen_salt | text | INVOKER | c |
@@ -1444,6 +1473,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | group_withdrawal_error | p_code text, p_details jsonb | INVOKER | plpgsql |
 | guard_access_escalation | — | INVOKER | plpgsql |
 | guard_base_access_medecin | — | DEFINER | plpgsql |
+| guard_base_entry_form | — | DEFINER | plpgsql |
 | guard_base_inclusion_target_revision | — | INVOKER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
@@ -1528,6 +1558,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | log_identity_read | p_patient_id uuid | DEFINER | plpgsql |
 | log_raw_document_read | p_document_id uuid | DEFINER | plpgsql |
 | log_sensitive_read | p_action text, p_entity text, p_entity_id uuid, p_base_id uuid | DEFINER | plpgsql |
+| match_terminology_candidates | p_terms text[], p_limit integer | INVOKER | sql |
 | missing_required_fields | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |
 | mission_account_lookup | p_email text | DEFINER | plpgsql |
 | mission_accounts | p_base_id uuid | DEFINER | plpgsql |
@@ -1588,6 +1619,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | reject_cross_sectional_encounter | — | DEFINER | plpgsql |
 | reject_cross_sectional_encounter_submission | — | DEFINER | plpgsql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
+| rename_base | p_base_id uuid, p_name text, p_expected_name text | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
 | reorder_template_section_siblings | p_version_id uuid, p_parent_key text, p_section_ids uuid[] | DEFINER | plpgsql |
 | reorder_template_sections | p_version_id uuid, p_section_ids uuid[] | DEFINER | plpgsql |
@@ -1617,6 +1649,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
 | rule_value_present | v jsonb | INVOKER | sql |
+| rule_with_renamed_field | p_rule jsonb, p_old text, p_new text | INVOKER | plpgsql |
 | run_template_version_invariants | — | DEFINER | plpgsql |
 | run_template_version_invariants_delete_statement | — | DEFINER | plpgsql |
 | run_template_version_invariants_insert_statement | — | DEFINER | plpgsql |
@@ -1651,6 +1684,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | template_version_layout_fingerprint | p_version_id uuid | DEFINER | plpgsql |
 | template_version_locked | p_version_id uuid | DEFINER | sql |
 | template_version_rule_fingerprint | p_version_id uuid | DEFINER | plpgsql |
+| terminology_entry_problem | p_entry jsonb | INVOKER | plpgsql |
 | terminology_normalize | p_text text | INVOKER | sql |
 | touch_base_view_preference_updated_at | — | INVOKER | plpgsql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |

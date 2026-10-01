@@ -40,6 +40,18 @@ function humanize(message: string): string {
     return 'Cette rencontre a été modifiée entre-temps (autre utilisateur ou autre onglet). '
       + 'Rechargez la fiche pour voir la version à jour, puis réappliquez votre correction.';
   }
+  // Gardes d'un bloc pilote par le diagnostic (assert_diagnosis_configuration) : elles tombent
+  // pendant une restructuration du gabarit, sans que la contrainte soit visible a l'ecran.
+  if (/DIAGNOSIS_BLOCK_NONCANONICAL/.test(message)) {
+    return "Un bloc associé à un diagnostic ne porte qu'une seule règle d'affichage : celle du diagnostic "
+      + '(« contient l’un de … » → bloc visible). Rien n’a été enregistré. Retirez l’autre règle de ce bloc, '
+      + 'ou placez la condition sur une variable du bloc plutôt que sur le bloc lui-même.';
+  }
+  if (/DIAGNOSIS_BLOCK_EMPTY/.test(message)) {
+    return 'Un bloc associé à un diagnostic doit garder au moins une variable propre, saisissable '
+      + '(non calculée) et de même portée que le diagnostic, placée dans le bloc ou dans un sous-bloc '
+      + 'non répétable : les variables d’un groupe répétable ne comptent pas. Rien n’a été enregistré.';
+  }
   // Delai serveur depasse (PostgreSQL 57014). Le message brut (« canceling statement due to
   // statement timeout ») est un detail interne : il n'indique ni ce qui a echoue, ni quoi faire.
   // L'ecriture a pu aboutir avant l'interruption -- d'ou « rechargez » avant « reessayez ».
@@ -50,7 +62,51 @@ function humanize(message: string): string {
   return message;
 }
 
-type StructuredError = { code?: unknown; action?: unknown; hint?: unknown };
+type StructuredError = { code?: unknown; action?: unknown; hint?: unknown } & Record<string, unknown>;
+
+const KEY_FORMAT = 'une minuscule sans accent en premier, puis seulement minuscules sans accent, chiffres et « _ », 63 caractères au plus';
+const IMPORT_LISTS: Record<string, string> = {
+  sections: 'blocs', commonGroups: 'rubriques communes', fields: 'variables', rules: 'règles',
+  diagnosisConfiguration: 'configuration diagnostique', terminologyReleases: 'nomenclatures',
+};
+const IMPORT_STAGES: Record<string, string> = {
+  template: 'création du jeu', sections: 'blocs', commonGroups: 'rubriques communes', fields: 'variables',
+  rules: 'règles', diagnosisConfiguration: 'configuration diagnostique',
+};
+
+/** Motif d'un refus d'import (import_template_definition) : quoi corriger dans le fichier. */
+function templateImportInvalidReason(d: StructuredError): string {
+  const text = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '');
+  const key = text(d.key) ? ` « ${text(d.key)} »` : '';
+  const at = text(d.position) ? ` (n° ${text(d.position)})` : '';
+  switch (d.reason) {
+    case 'payload_malformed': return 'Ce fichier ne contient pas de définition de jeu de variables.';
+    case 'list_not_array': return `La liste des ${IMPORT_LISTS[text(d.list)] ?? 'éléments'} du fichier est mal formée.`;
+    case 'too_many': return `Le fichier contient ${text(d.count)} ${IMPORT_LISTS[text(d.list)] ?? 'éléments'} : le maximum accepté est ${text(d.limit)}.`;
+    case 'section_malformed': return `Un bloc du fichier est mal formé${at}.`;
+    case 'section_key_invalid': return `Le code de bloc${key}${at} n'est pas accepté : ${KEY_FORMAT}.`;
+    case 'section_label_missing': return `Le bloc${key} n'a pas de libellé.`;
+    case 'section_parent_invalid': return `Le bloc${key} est rangé sous « ${text(d.parentKey)} », qui n'est pas un bloc de premier niveau du fichier.`;
+    case 'section_repeat_label_invalid': return `Les libellés de saisie du bloc${key} sont mal formés : texte du bouton d'ajout de 80 caractères au plus, nom d'un élément de 60 au plus, sans espace en début ni en fin.`;
+    case 'section_duplicate': return `Le code de bloc${key} apparaît plusieurs fois.`;
+    case 'group_malformed': return `Une rubrique commune du fichier est mal formée${at}.`;
+    case 'group_key_invalid': return `Le code de rubrique commune${key}${at} n'est pas accepté : ${KEY_FORMAT}.`;
+    case 'group_label_missing': return `La rubrique commune${key} n'a pas de libellé.`;
+    case 'group_duplicate': return `Le code de rubrique commune${key} apparaît plusieurs fois.`;
+    case 'field_malformed': return `Une variable du fichier est mal formée${at}.`;
+    case 'field_key_invalid': return `Le code de la variable${key}${at} est vide ou entouré d'espaces.`;
+    case 'field_label_missing': return `La variable${key} n'a pas de libellé.`;
+    case 'field_section_unknown': return `La variable${key} est rangée dans le bloc « ${text(d.section)} », absent du fichier.`;
+    case 'field_group_unknown': return `La variable${key} est rangée dans la rubrique « ${text(d.group)} », absente du fichier.`;
+    case 'field_duplicate': return `Le code de variable${key} apparaît plusieurs fois.`;
+    case 'rule_malformed': return `La règle${at} du fichier est mal formée.`;
+    case 'terminology_release_malformed': return `Une nomenclature citée par le fichier est mal décrite${at}.`;
+    case 'diagnosis_configuration_malformed': return 'La configuration diagnostique du fichier est mal formée.';
+    case 'terminology_reference_unknown': return 'Une règle ou la configuration diagnostique cite une nomenclature que le fichier ne décrit pas.';
+    case 'content_incoherent': return `Le fichier est incohérent (étape : ${IMPORT_STAGES[text(d.stage)] ?? 'inconnue'}) : une valeur n'a pas le type attendu ou une contrainte n'est pas respectée. A-t-il été modifié à la main ?`;
+    default: return "Ce fichier est incomplet ou incohérent (a-t-il été modifié à la main ?).";
+  }
+}
 
 function structuredDetails(e: unknown): StructuredError | null {
   if (!e || typeof e !== 'object') return null;
@@ -132,7 +188,27 @@ export function errorMessage(e: unknown, fallback: string): string {
     return "Ce jeu de variables utilise une nomenclature absente de ce serveur. Rien n'a été créé.";
   }
   if (code === 'TEMPLATE_IMPORT_INVALID') {
-    return "Ce fichier est incomplet ou incohérent (a-t-il été modifié à la main ?). Rien n'a été créé.";
+    return `${templateImportInvalidReason(structuredDetails(e) ?? {})} Rien n'a été créé.`;
+  }  if (code === 'FIELD_KEY_DIAGNOSIS_BOUND') {
+    return 'Ce code ne peut pas être renommé : la variable pilote la configuration diagnostique, '
+      + 'ou en est la proposition « _autre ». Les deux codes doivent rester appariés : retirez '
+      + "d'abord la configuration diagnostique, renommez, puis reconfigurez-la. Rien n'a été enregistré.";
+  }
+  if (code === 'FIELD_KEY_FORMULA_INCOMPATIBLE') {
+    const formulaField = structuredDetails(e)?.formulaField;
+    return `Ce code ne peut pas être utilisé : la formule${typeof formulaField === 'string' ? ` de « ${formulaField} »` : ''} `
+      + "utilise cette variable, et une formule n'accepte que lettres sans accent, chiffres et « _ » "
+      + "(pas d'accent, d'espace ni de tiret). Rien n'a été enregistré.";
+  }
+  if (code === 'INVALID_BASE_NAME') {
+    return "Le nom de la base doit compter entre 1 et 120 caractères. Rien n'a été enregistré.";
+  }
+  if (code === 'BASE_RENAME_FORBIDDEN') {
+    return "Seul le propriétaire peut renommer cette base, et elle doit exister encore. Rien n'a été enregistré.";
+  }
+  if (code === 'BASE_RENAME_CONFLICT') {
+    return "La base a été renommée entre-temps (autre onglet ou autre appareil). Rien n'a été enregistré : "
+      + 'rechargez la page pour voir son nom actuel, puis recommencez si besoin.';
   }
   if (code === 'TEMPLATE_IMPORT_FORBIDDEN') {
     return "Votre rôle ne permet pas de créer un jeu de variables. Rien n'a été créé.";

@@ -95,6 +95,9 @@ function mockBases(): BaseRepository {
     async setObservationModel() {
       return { id: 'b1', name: 'Registre Neuro', specialty: 'neuro', ownerUserId: 'u', currentTemplateVersionId: 'v1', observationModel: 'longitudinal' as const };
     },
+    async renameBase(_id: string, name: string) {
+      return { id: 'b1', name, specialty: 'neuro', ownerUserId: 'u', currentTemplateVersionId: 'v1', observationModel: 'longitudinal' as const };
+    },
   };
 }
 

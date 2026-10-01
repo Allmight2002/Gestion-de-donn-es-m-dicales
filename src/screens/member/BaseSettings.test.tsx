@@ -9,6 +9,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import { BaseSettings } from './BaseSettings';
+import { BaseRenamedContext } from './baseFocus';
 import { offlineCache } from '../../data/offline';
 import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { PatientRepository } from '../../data/patients';
@@ -204,5 +205,61 @@ describe('BaseSettings — conversion des codes d options (L30)', () => {
     await user.click(await screen.findByRole('button', { name: 'Analyser les fiches' }));
     expect(await screen.findByText(/Aucune fiche à convertir/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Convertir les fiches' })).toBeNull();
+  });
+
+  // Le nom d'une base se fixait a la creation, sans retour possible.
+  test('le proprietaire renomme la base ; l en-tete recoit le nouveau nom', async () => {
+    const user = userEvent.setup();
+    const renameBase = vi.fn(async (_id: string, name: string) => ({ ...ownerListing.base, name }));
+    const bases = { async getBase() { return ownerListing; }, renameBase } as unknown as BaseRepository;
+    const onRenamed = vi.fn();
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={bases} patients={emptyPage}>
+          <BaseRenamedContext.Provider value={onRenamed}>
+            <MemoryRouter initialEntries={['/bases/b1/parametres']}>
+              <Routes><Route path="/bases/:id/parametres" element={<BaseSettings />} /></Routes>
+            </MemoryRouter>
+          </BaseRenamedContext.Provider>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Nom de la base/ }));
+    const input = screen.getByLabelText('Nouveau nom');
+    expect(input).toHaveValue('Registre Neuro');
+    expect(screen.getByRole('button', { name: 'Renommer' })).toBeDisabled();
+    await user.clear(input);
+    await user.type(input, 'Neurochirurgie adulte');
+    await user.click(screen.getByRole('button', { name: 'Renommer' }));
+
+    // Le nom lu part avec le nouveau : le serveur refuse s'il a change entre-temps.
+    expect(renameBase).toHaveBeenCalledWith('b1', 'Neurochirurgie adulte', 'Registre Neuro');
+    expect(onRenamed).toHaveBeenCalledWith('Neurochirurgie adulte');
+    expect(await screen.findByRole('button', { name: /Nom de la base.*Neurochirurgie adulte/ })).toBeInTheDocument();
+  });
+
+  test('un renommage concurrent est explique, et la saisie reste dans le champ', async () => {
+    const user = userEvent.setup();
+    const renameBase = vi.fn(async () => {
+      throw { code: 'P0001', message: 'BASE_RENAME_CONFLICT', details: '{"code":"BASE_RENAME_CONFLICT","action":"refresh_required"}' };
+    });
+    renderSettings({ async getBase() { return ownerListing; }, renameBase } as unknown as BaseRepository);
+
+    await user.click(await screen.findByRole('button', { name: /Nom de la base/ }));
+    const input = screen.getByLabelText('Nouveau nom');
+    await user.clear(input);
+    await user.type(input, 'Autre nom');
+    await user.click(screen.getByRole('button', { name: 'Renommer' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/renommée entre-temps/);
+    expect(input).toHaveValue('Autre nom');
+  });
+
+  test('un membre non proprietaire ne voit pas le renommage', async () => {
+    const bases = { async getBase() { return { ...ownerListing, role: 'member' }; } } as unknown as BaseRepository;
+    renderSettings(bases);
+    expect(await screen.findByRole('button', { name: /Hors-ligne/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Nom de la base/ })).toBeNull();
   });
 });

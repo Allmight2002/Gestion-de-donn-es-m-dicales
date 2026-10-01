@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Monitor, Smartphone } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import { repeatableLabels } from '../../domain/repeatableLabels';
 import type { MessageKey } from '../../i18n/messages';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
 import type { TerminologyRepository } from '../../data/terminology';
@@ -256,7 +257,9 @@ export function FormPreview({
           </>
         )}
         <button type="button" disabled className="btn-secondary mt-2 cursor-not-allowed opacity-60">
-          {t('preview.repeatable_add')}
+          {section.addLabel?.trim() || section.itemLabel?.trim()
+            ? repeatableLabels(t, section).add
+            : t('preview.repeatable_add')}
         </button>
       </div>
     );

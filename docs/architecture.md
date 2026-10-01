@@ -196,6 +196,12 @@ elles organisent l'affichage des variables communes sans les transformer en bloc
 écriture passe par une opération atomique contrôlée, tandis que la lecture reste limitée aux
 gabarits que l'appelant peut déjà consulter.
 
+**Formulaires de saisie** (`base_entry_form`)
+Configuration par base, sans donnée patient : un nom, une liste ordonnée de clés de variables de
+fiche et leurs indispensables. Plusieurs formulaires courts alimentent la **même** fiche par les
+RPC habituelles ; lecture par les membres, écriture par le propriétaire, verrou optimiste. Voir
+[formulaires-de-saisie.md](formulaires-de-saisie.md).
+
 **Comptes & bases** (`profiles`, `base`, `base_access`, `base_invitation`,
 `mission_account_credential`, `mission_credential_operation`)
 `profiles` est lié à `auth.users` (on ne recrée pas de table utilisateur). Une `base`
@@ -543,7 +549,11 @@ navigateur O6 et l'activation/release O7 ne sont pas validées. Détail :
   porter **plusieurs valeurs** (`template_field.is_multiple`, depuis
   `20260818045033_multivalue_terminology_foundation.sql`) : une liste ordonnée de 1 à 50 couples
   code/libellé, sans doublon de code, dont l'ordre est le rang. Voir
-  [spec-variables-multivaluees.md](spec-variables-multivaluees.md).
+  [spec-variables-multivaluees.md](spec-variables-multivaluees.md). Depuis
+  `20261001090000_terminology_assisted_coding.sql`, une entrée peut porter le texte écrit par le
+  médecin (`raw`) et la provenance de son codage assisté (`coding`), ou rester un texte non codé ;
+  l'Edge `code-terminology` interprète le texte (LLM facultatif) et la CIM-11 fait foi. Voir
+  [codage-terminologique-assiste.md](codage-terminologique-assiste.md).
 - **Corbeille et restauration de base** (`restore_deleted_base`) : suppression logique réversible.
   ⚠️ Comportement acté : une base restaurée **perd son rattachement au groupe de recherche**
   (le snapshot ne capture que les statuts `raw_submission`/`curation_task`).

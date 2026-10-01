@@ -28,6 +28,8 @@ import { useOnline } from '../../data/offline';
 import { useDirtyForm } from '../../lib/useUnsavedChanges';
 import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
+import { EntryFormNotice, EntryFormPicker, useEntryFormSelection } from './EntryFormPicker';
+import { resolveEntryForm, visibilityOnlyRules } from '../../domain/entryForms';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 
@@ -212,20 +214,35 @@ export function EditPatient() {
   // Le formulaire est donc RENDU avec la meme liste que la validation locale : sans cela,
   // l'ecran afficherait une erreur bloquante pour une variable que l'enregistrement accepte.
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
+  // Formulaire de saisie court : il ne change QUE les variables proposees. Valeurs, visibilite,
+  // patch et verrou restent ceux de la fiche entiere, donc tout champ absent est preserve.
+  const entry = useEntryFormSelection(baseId, !isMissionAccount(profile));
+  const shortForm = useMemo(() => {
+    if (!entry.selected) return null;
+    const resolved = resolveEntryForm(entry.selected, validationFields, rules, sections);
+    return {
+      ...resolved,
+      fields: resolved.fields.map((field) => resolved.dependencyKeys.has(field.fieldKey)
+        ? { ...field, description: [t('entryform.dependency'), field.description].filter(Boolean).join(' — ') }
+        : field),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.selected, validationFields, rules, sections]);
+  const shortRules = useMemo(() => visibilityOnlyRules(validationRules), [validationRules]);
   const completion = useMemo(() => recordCompletionSummary(recordContext), [recordContext]);
   const coverage = useDiagnosisCoverage(activeDiagnosisVersionId, diagnosisContext, 'patient', submittedData, fields, rules, sections);
   // Le serveur a decide ce qui est un ajout applicable et ce que le formulaire courant attend ;
   // l'ecran ne fait que retirer du compte ce qui vient d'etre saisi.
-  const toFillKeys = useMemo(
-    () => (completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>()),
-    [completion, values, hidden],
-  );
+  const toFillKeys = useMemo(() => {
+    const keys = completion ? stillEmptyKeys(completion.additionKeys, values, hidden) : new Set<string>();
+    return shortForm ? new Set([...keys].filter((key) => shortForm.editableKeys.has(key))) : keys;
+  }, [completion, values, hidden, shortForm]);
   // §4.5 : le serveur accepte l'absence de motif pour le proprietaire reel de la base. L'ecran
   // se contente de ne plus l'exiger ; un autre compte garde l'obligation actuelle.
-  const pendingRequiredKeys = useMemo(
-    () => (completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>()),
-    [completion, values, hidden],
-  );
+  const pendingRequiredKeys = useMemo(() => {
+    const keys = completion ? stillEmptyKeys(completion.addedObligationKeys, values, hidden) : new Set<string>();
+    return shortForm ? new Set([...keys].filter((key) => shortForm.editableKeys.has(key))) : keys;
+  }, [completion, values, hidden, shortForm]);
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -247,7 +264,17 @@ export function EditPatient() {
     if (!baseId || !patientId) return;
     if (busy) return;
     if (work.locked) { await persistPatient(); return; }
-    const block = [
+    const block = shortForm ? [
+      // Formulaire court : seuls SES indispensables bloquent. Les requis du formulaire complet
+      // ne s'imposent pas a un brouillon ; hors brouillon, le serveur verifie la fiche entiere.
+      ...validateValues(shortForm.fields, submittedData, true, hidden)
+        .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
+      ...(status !== 'draft' ? evaluateRules(
+        validationRules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
+        submittedData,
+        hidden,
+      ).blocking : []),
+    ] : [
       // En brouillon : le MEDECIN n'exige pas la completude (mais valide les valeurs
       // renseignees) ; un compte de mission, lui, ne peut jamais enregistrer de brouillon
       // partiel -- comme des la sortie du brouillon ('complete') pour tous les comptes.
@@ -379,14 +406,18 @@ export function EditPatient() {
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
         <fieldset disabled={busy || work.locked} className="min-w-0 space-y-5">
-        <label className="flex flex-col text-sm">
+        <EntryFormPicker forms={entry.forms} selected={entry.selected} onSelect={entry.select} />
+        <EntryFormNotice selected={entry.selected} problem={entry.problem} unavailableCount={shortForm?.unavailableKeys.length} />
+        {/* Un formulaire court garde le statut du dossier : le passer « complet » exigerait la
+            fiche entiere, que ce formulaire ne montre pas. */}
+        {!shortForm && <label className="flex flex-col text-sm">
           <span className="text-slate-700">{t('encounter.status')}</span>
           <select className="input mt-1 w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => (
               <option key={s} value={s} disabled={initialStatus === 'curated' && s !== 'curated'}>{t(`encstatus.${s}`)}</option>
             ))}
           </select>
-        </label>
+        </label>}
 
         {/* E5 : les variables ajoutees depuis l'enregistrement de cette fiche, comptees a partir
             du contexte serveur. Rien n'est prerempli et le statut clinique reste celui choisi. */}
@@ -395,7 +426,18 @@ export function EditPatient() {
           requiredLabels={[...pendingRequiredKeys].map(labelOf)}
         />
 
-        {fields.length === 0 ? (
+        {shortForm ? (
+          <EncounterFields
+            fields={shortForm.fields}
+            values={values}
+            hiddenKeys={hidden}
+            rules={shortRules}
+            requireComplete
+            toFillKeys={toFillKeys}
+            onChange={(k, v) => updatePatientValue(k, v)}
+            onRemove={(key) => updatePatientValue(key, undefined, true)}
+          />
+        ) : fields.length === 0 ? (
           <>
             <p className="text-sm text-slate-500">{t('patient.no_permanent_fields')}</p>
             {/* Sans variable de fiche, `SectionedFields` n'est pas rendu : le meme verdict de

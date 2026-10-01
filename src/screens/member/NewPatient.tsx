@@ -39,6 +39,8 @@ import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
 import { PatientDraftDialog } from './PatientDraftDialog';
 import { localWorkDraftRepository } from '../../data/localWorkDrafts';
+import { EntryFormNotice, EntryFormPicker, useEntryFormSelection } from './EntryFormPicker';
+import { resolveEntryForm, visibilityOnlyRules, withoutUnshownProposals } from '../../domain/entryForms';
 
 // Ecran patient (cahier v3.0). Deux modes :
 //  - 'manual'  : le medecin saisit lui-meme identite + donnees permanentes -> fiche patient.
@@ -72,6 +74,9 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   // Confier au pool de curation releve de la curation, fermee aux comptes de mission
   // (docs/spec-comptes-mission.md §4) : la base refuse aussi cette voie.
   const maySubmitToCuration = !isMissionAccount(profile);
+  // Formulaire de saisie court (en ligne, saisie directe) : un compte de mission ne peut pas
+  // enregistrer de fiche partielle et garde donc le formulaire complet.
+  const entry = useEntryFormSelection(baseId, mode === 'manual' && !useLocalSupport && !isMissionAccount(profile));
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -124,13 +129,31 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     !loading && versionId !== null,
     `${baseId}:${mode}`,
   );
+  // Formulaire court : seules les variables proposees changent. Une proposition du jeu de
+  // variables (valeur par defaut) qui n'est pas affichee n'est jamais envoyee : une donnee non
+  // renseignee reste vide, elle ne devient pas « non » ou « normal » a l'insu de la personne.
+  const shortForm = useMemo(() => {
+    if (!entry.selected) return null;
+    const resolved = resolveEntryForm(entry.selected, fields, rules, sections);
+    return {
+      ...resolved,
+      fields: resolved.fields.map((field) => resolved.dependencyKeys.has(field.fieldKey)
+        ? { ...field, description: [t('entryform.dependency'), field.description].filter(Boolean).join(' — ') }
+        : field),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.selected, fields, rules, sections]);
+  const shortRules = useMemo(() => visibilityOnlyRules(rules), [rules]);
+  const shownKeys = shortForm?.editableKeys ?? null;
+  const entryValues = useMemo(() => withoutUnshownProposals(permanent, prefilled, shownKeys), [permanent, prefilled, shownKeys]);
+
   const work = useWorkDraft({
     repository: useLocalSupport ? localWorkDraftRepository : undefined,
     support: useLocalSupport ? 'local' : 'server',
     context: mode === 'manual' && baseId && versionId ? {
       baseId, kind: 'patient_create', targetId: null, templateVersionId: versionId, entityRevision: null,
     } : null,
-    ownerId: profile?.id ?? '', payload: { values: permanent, code }, dirty: navigation.dirty, online,
+    ownerId: profile?.id ?? '', payload: { values: entryValues, code }, dirty: navigation.dirty, online,
     onRestore: (payload) => { setPermanent(payload.values); setCode(payload.code ?? ''); setPrefilled(new Set()); },
   });
 
@@ -242,6 +265,8 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
 
   const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'patient', permanentData, fields, rules, sections);
 
+  const entryData = useMemo(() => withoutUnshownProposals(permanentData, prefilled, shownKeys), [permanentData, prefilled, shownKeys]);
+
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
   const permanentRef = useRef(permanent);
@@ -327,7 +352,14 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     }
     // Compte de mission : aucun brouillon partiel (regle B) -- le serveur refuse aussi
     // un patient sans ses champs requis du gabarit.
-    if (mode === 'manual') {
+    if (mode === 'manual' && shortForm) {
+      // Formulaire court : seuls SES indispensables bloquent ; la fiche reste un brouillon.
+      const requiredMissing = validateValues(shortForm.fields, entryData, true, hidden).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`);
+      if (requiredMissing.length > 0) {
+        setError(requiredMissing.join(' · '));
+        return;
+      }
+    } else if (mode === 'manual') {
       const requiredMissing = [
         ...validateValues(fields, permanentData, isMissionAccount(profile), hidden).map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
         ...(isMissionAccount(profile) ? evaluateRules(rules, permanentData, hidden).blocking : []),
@@ -428,7 +460,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         address: canViewIdentity ? (address || null) : null,
         externalIdentifier: canViewIdentity ? (externalId.trim() || null) : null,
       };
-      const created = work.enabled ? await work.commit(identity) : await patients.createPatient(baseId, { ...identity, permanentData });
+      const created = work.enabled ? await work.commit(identity) : await patients.createPatient(baseId, { ...identity, permanentData: entryData });
       // La fiche EXISTE des cet instant. Elle est retenue avant tout rejeu : si une occurrence
       // echoue, la reprise doit partir de cette fiche-la et n'en creer aucune autre.
       setCreatedPatient({ id: created.id, code: created.code ?? null });
@@ -671,6 +703,13 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         </div>
       )}
 
+      {mode === 'manual' && (
+        <div className="space-y-2">
+          <EntryFormPicker forms={entry.forms} selected={entry.selected} onSelect={entry.select} disabled={busy || createdPatient !== null} />
+          <EntryFormNotice selected={entry.selected} problem={entry.problem} unavailableCount={shortForm?.unavailableKeys.length} />
+        </div>
+      )}
+
       <PatientDraftDialog draft={work} onCancel={() => navigate(`/bases/${baseId}`)} onNew={resetEntry} />
       <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} identityInForm={canViewIdentity} />
 
@@ -689,16 +728,16 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
         {mode === 'manual' && (
             <SectionedFields
               leadingBlock={{ label: t('patient.identification'), content: identification }}
-              fields={visibleFields}
-              sections={sections}
-              commonLayout={commonLayout}
+              fields={shortForm ? shortForm.fields.filter((field) => !companionKeys.has(field.fieldKey) && !hidden.has(field.fieldKey)) : visibleFields}
+              sections={shortForm ? undefined : sections}
+              commonLayout={shortForm ? undefined : commonLayout}
               values={permanent}
-              allFields={fields}
+              allFields={shortForm ? shortForm.fields : fields}
               hiddenKeys={hidden}
-              rules={rules}
-              requireComplete={isMissionAccount(profile)}
-              repeatableGroup={renderRepeatableGroup}
-              maskedRepeatableGroup={renderMaskedGroup}
+              rules={shortForm ? shortRules : rules}
+              requireComplete={shortForm ? true : isMissionAccount(profile)}
+              repeatableGroup={shortForm ? undefined : renderRepeatableGroup}
+              maskedRepeatableGroup={shortForm ? undefined : renderMaskedGroup}
               renderField={(field) => {
                 const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
                 return (

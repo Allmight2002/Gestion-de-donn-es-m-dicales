@@ -85,3 +85,10 @@ import_map = "../deno.json"
 [functions.purge-deleted-base]
 verify_jwt = false
 import_map = "../deno.json"
+
+# Codage terminologique assiste : texte clinique libre -> concepts du referentiel actif.
+# Lecture seule sous l'identite de l'appelant (getUser + RLS), LLM facultatif
+# (ANTHROPIC_API_KEY ; repli lexical sinon). Le JWT est verifie DANS la fonction.
+[functions.code-terminology]
+verify_jwt = false
+import_map = "../deno.json"

@@ -1646,3 +1646,45 @@ Deno.test('E6 : un champ masque par une REGLE arrive vide et se lit empty, pas n
   assertEquals(table.columns.includes(stateColumnId(masque)), false);
   assertEquals(table.rows[0][columnId(masque)], '');
 });
+
+// ---------------------------------------------------------------------------
+// Codage assiste : texte d'origine, provenance et diagnostic non code
+// ---------------------------------------------------------------------------
+const NON_CODE = {
+  raw: 'Syndrome fictif non repertorie',
+  coding: { method: 'ai_assisted', status: 'unmatched' },
+};
+
+Deno.test('codage assiste : la provenance ne change ni libelle ni code', () => {
+  const table = buildEncounterExport(
+    [rencontre({
+      diagnostics: [{
+        code: '1A00',
+        label: 'Cholera',
+        raw: 'cholera grave',
+        coding: { method: 'ai_assisted', status: 'automatic', score: 0.95 },
+      }],
+    })],
+    [DIAG_MULTI],
+  );
+  assertEquals(table.rows[0][columnId(DIAG_MULTI)], 'Cholera');
+  assertEquals(table.rows[0][codeColumnId(DIAG_MULTI)], '1A00');
+});
+
+Deno.test('codage assiste : un diagnostic non code sort en texte, jamais en code ni en indicatrice', () => {
+  const e1 = rencontre({ diagnostics: [{ code: '1A00', label: 'Cholera' }, NON_CODE] });
+  const table = buildEncounterExport([e1], [DIAG_MULTI]);
+  assertEquals(table.rows[0][columnId(DIAG_MULTI)], 'Cholera; Syndrome fictif non repertorie');
+  assertEquals(table.rows[0][codeColumnId(DIAG_MULTI)], '1A00');
+  assertEquals(table.rows[0][`nb__${columnId(DIAG_MULTI)}`], 2);
+  const { indicatorsByField } = extractMultivalueCodes([DIAG_MULTI], [{ data: e1.data }]);
+  assertEquals(indicatorsByField.get(DIAG_MULTI.fieldKey)?.map((i) => i.code), ['1A00']);
+  const long = buildMultivalueTable(DIAG_MULTI, [], [e1]);
+  assertEquals(long.rows.map((r) => [r.rang, r.code, r.label]), [
+    [1, '1A00', 'Cholera'],
+    [2, '', 'Syndrome fictif non repertorie'],
+  ]);
+  const unitaire = buildEncounterExport([rencontre({ diagnostics: NON_CODE })], [DIAG_MULTI]);
+  assertEquals(unitaire.rows[0][columnId(DIAG_MULTI)], 'Syndrome fictif non repertorie');
+  assertEquals(unitaire.rows[0][codeColumnId(DIAG_MULTI)], '');
+});

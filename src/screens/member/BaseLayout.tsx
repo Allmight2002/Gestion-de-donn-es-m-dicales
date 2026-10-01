@@ -10,7 +10,7 @@ import { offlineCache, useOnline } from '../../data/offline';
 import type { BaseListing } from '../../data/bases';
 import { useTopBar } from '../../components/TopBar';
 import { overflowFadeClass, useOverflowEdges } from '../../lib/useOverflowEdges';
-import { BaseFocusContext } from './baseFocus';
+import { BaseFocusContext, BaseRenamedContext } from './baseFocus';
 
 // La page d'une base tient en QUATRE destinations. Dix onglets de meme poids obligeaient a
 // faire defiler une barre pour atteindre ce qu'on ouvre deux fois par an, alors que la saisie
@@ -133,11 +133,12 @@ export function BaseLayout() {
       Icon: Settings,
       // `missions` n'a plus d'entree propre (la barre laterale gere tous les comptes de
       // mission d'un coup), mais un lien deja envoye ne doit pas ouvrir un ecran orphelin.
-      active: under(`${base}/parametres`) || under(`${base}/template`) || under(`${base}/access`)
+      active: under(`${base}/parametres`) || under(`${base}/template`) || under(`${base}/formulaires`) || under(`${base}/access`)
         || under(`${base}/activity`) || under(`${base}/missions`),
       subs: [
         { to: `${base}/parametres`, labelKey: 'base.tab_general', when: openToMember },
         { to: `${base}/template`, labelKey: 'base.tab_template', when: !!isOwner },
+        { to: `${base}/formulaires`, labelKey: 'base.tab_entry_forms', when: !!isOwner },
         { to: `${base}/access`, labelKey: 'base.tab_access', when: !!(isOwner || listing?.permissions.canManageAccess) },
         { to: `${base}/activity`, labelKey: 'base.tab_activity', when: openToMember },
       ],
@@ -270,7 +271,9 @@ export function BaseLayout() {
       )}
 
       <BaseFocusContext.Provider value={setFocused}>
-        <Outlet />
+        <BaseRenamedContext.Provider value={setName}>
+          <Outlet />
+        </BaseRenamedContext.Provider>
       </BaseFocusContext.Provider>
     </section>
   );

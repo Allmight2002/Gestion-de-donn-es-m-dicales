@@ -256,7 +256,7 @@ verdict de disponibilité de la version présente :
 
 | Point connu | Statut |
 |---|---|
-| `npm audit` signale des vulnérabilités **transitives d'outillage de build** (aucune en runtime de production) | Suivi ; l'`override` `brace-expansion` a depuis été porté à 5.0.9 |
+| `npm audit` signale des vulnérabilités **transitives d'outillage de build** (aucune en runtime de production) | Suivi ; l'`override` `brace-expansion` a depuis été porté à 5.0.9, puis 5.0.12 |
 | ~~1 test web en échec (`CreateFlows.test.tsx`)~~ | **Corrigé depuis.** Revérifié le 2026-08-19 : `npm run test:web` → **467/467 tests, 65/65 fichiers**, en 108 s |
 | ~~Fichiers parasites `stdout` et `tsc_output.txt` à la racine~~ | **Absents** le 2026-08-19 : ni suivis par git, ni présents dans un checkout neuf |
 | Une base restaurée depuis la corbeille **perd son rattachement au groupe de recherche** | Comportement acté, à documenter dans la spec |

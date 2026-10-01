@@ -9,6 +9,8 @@ export interface TerminologyConcept {
   depth: number;
   parentId: string | null;
   isSelectable: boolean;
+  /** URI officielle du concept, quand l'export source en fournit une. */
+  uri?: string | null;
 }
 
 export interface TerminologyParseResult {

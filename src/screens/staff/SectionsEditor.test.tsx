@@ -254,3 +254,59 @@ describe('SectionsEditor — groupe repetable en sous-section (L72b)', () => {
     expect(within(addParent).queryByRole('option', { name: 'Lésions' })).toBeNull();
   });
 });
+
+// Libellés de saisie d'un bloc répétable : bouton d'ajout et nom d'un élément.
+describe('SectionsEditor — libellés de saisie d’un bloc répétable', () => {
+  const renderLabels = (sections: TemplateSection[], onDirtyChange = vi.fn()) => {
+    const onRepeatLabelsChange = vi.fn();
+    render(
+      <I18nProvider>
+        <SectionsEditor
+          sections={sections}
+          fields={[]}
+          observationModel="longitudinal"
+          onRepeatableChange={vi.fn()}
+          onRepeatLabelsChange={onRepeatLabelsChange}
+          onDirtyChange={onDirtyChange}
+          onAdd={vi.fn()}
+          onRename={vi.fn()}
+          onDelete={vi.fn()}
+          onReorder={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    return onRepeatLabelsChange;
+  };
+
+  test('un bloc ordinaire ne propose pas ces libellés', () => {
+    renderLabels([lesions]);
+    expect(screen.queryByLabelText('Texte du bouton d’ajout')).toBeNull();
+  });
+
+  test('l’aperçu suit la frappe ; l’enregistrement envoie les deux libellés, espaces retirés', async () => {
+    const user = userEvent.setup();
+    const onDirtyChange = vi.fn();
+    const onRepeatLabelsChange = renderLabels([{ ...lesions, isRepeatable: true }], onDirtyChange);
+
+    const save = screen.getByRole('button', { name: 'Enregistrer les libellés' });
+    expect(save).toBeDisabled();
+    expect(screen.getByText('À la saisie : « Ajouter une occurrence », puis « Occurrence 1 ».')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Texte du bouton d’ajout'), '  Ajouter une lésion ');
+    await user.type(screen.getByLabelText('Nom d’un élément'), 'Lésion');
+    expect(screen.getByText('À la saisie : « Ajouter une lésion », puis « Lésion 1 ».')).toBeInTheDocument();
+    // Un brouillon non enregistré est une modification locale.
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    await user.click(save);
+    expect(onRepeatLabelsChange).toHaveBeenCalledWith('s1', 'Ajouter une lésion', 'Lésion');
+  });
+
+  test('vider un libellé enregistré revient au libellé générique (null)', async () => {
+    const user = userEvent.setup();
+    const onRepeatLabelsChange = renderLabels([{ ...lesions, isRepeatable: true, addLabel: 'Ajouter une lésion', itemLabel: 'Lésion' }]);
+    await user.clear(screen.getByLabelText('Texte du bouton d’ajout'));
+    await user.click(screen.getByRole('button', { name: 'Enregistrer les libellés' }));
+    expect(onRepeatLabelsChange).toHaveBeenCalledWith('s1', null, 'Lésion');
+  });
+});

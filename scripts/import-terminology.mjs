@@ -39,6 +39,10 @@ export function readTextFile(path) {
 
 const KINDS = new Set(['chapter', 'block', 'category']);
 
+/** En-tetes reconnus pour l'URI d'un concept, selon la forme de l'export de la source. */
+const URI_HEADERS = ['linearization uri', 'linearizationuri', 'linearization (release) uri', 'uri'];
+const URI_RE = /^https?:\/\/\S+$/;
+
 /**
  * Chapitres ECARTES par defaut : une classification complete ne contient pas que des
  * diagnostics. Les « codes d'extension » a eux seuls pesaient 17 159 entrees sur 35 664 —
@@ -153,6 +157,8 @@ export function parseTerminologyRows(text, options = {}) {
     blockId: header.indexOf('BlockId'), // facultatif
     title: header.indexOf('Title'),
     kind: header.indexOf('ClassKind'),
+    // URI officielle du concept (export de linearisation CIM-11), facultative.
+    uri: header.findIndex((h) => URI_HEADERS.includes(h.toLowerCase())),
   };
   if (idx.code < 0 || idx.title < 0 || idx.kind < 0) {
     throw new Error('En-tete attendu : Code, Title, ClassKind, DepthInKind.');
@@ -202,6 +208,7 @@ export function parseTerminologyRows(text, options = {}) {
       if (parents[d]) { parentId = parents[d]; break; }
     }
 
+    const uri = idx.uri >= 0 ? (cells[idx.uri] ?? '').trim() : '';
     const concept = {
       id: randomUUID(),
       code: code || null,
@@ -210,6 +217,8 @@ export function parseTerminologyRows(text, options = {}) {
       depth,
       parentId,
       isSelectable: kind === 'category' && code !== '',
+      // Une valeur qui n'a pas la forme d'une URI est ignoree plutot que d'echouer l'import.
+      uri: URI_RE.test(uri) && uri.length <= 300 ? uri : null,
     };
     concepts.push(concept);
     parents.length = depth; // les branches plus profondes sont refermees
@@ -296,11 +305,11 @@ export async function importTerminology(client, options) {
       const params = [];
       for (const c of slice) {
         const n = params.length;
-        values.push(`($${n + 1},$${n + 2},$${n + 3},$${n + 4},$${n + 5},$${n + 6},$${n + 7},$${n + 8})`);
-        params.push(c.id, releaseId, c.code, c.label, c.kind, c.depth, c.parentId, c.isSelectable);
+        values.push(`($${n + 1},$${n + 2},$${n + 3},$${n + 4},$${n + 5},$${n + 6},$${n + 7},$${n + 8},$${n + 9})`);
+        params.push(c.id, releaseId, c.code, c.label, c.kind, c.depth, c.parentId, c.isSelectable, c.uri ?? null);
       }
       await client.query(
-        `insert into public.terminology_concept(id, release_id, code, label, kind, depth, parent_id, is_selectable)
+        `insert into public.terminology_concept(id, release_id, code, label, kind, depth, parent_id, is_selectable, uri)
          values ${values.join(',')}`,
         params,
       );

@@ -11,6 +11,7 @@ import { SkeletonList } from '../components/Skeleton';
 const Dashboard = lazy(() => import('../screens/member/Dashboard').then((m) => ({ default: m.Dashboard })));
 const BaseHome = lazy(() => import('../screens/member/BaseHome').then((m) => ({ default: m.BaseHome })));
 const BaseTemplateEditor = lazy(() => import('../screens/member/BaseTemplateEditor').then((m) => ({ default: m.BaseTemplateEditor })));
+const BaseEntryForms = lazy(() => import('../screens/member/BaseEntryForms').then((m) => ({ default: m.BaseEntryForms })));
 const MyTemplates = lazy(() => import('../screens/member/MyTemplates').then((m) => ({ default: m.MyTemplates })));
 const TemplateFromFile = lazy(() => import('../screens/member/TemplateFromFile').then((m) => ({ default: m.TemplateFromFile })));
 const TemplateLibrary = lazy(() => import('../screens/member/TemplateLibrary').then((m) => ({ default: m.TemplateLibrary })));
@@ -188,6 +189,7 @@ export function AppRoutes() {
           <Route path="access" element={<AccessManagement />} />
           <Route path="missions" element={<RequireGlobalRole globalRoles={['medecin']}><MissionAccounts /></RequireGlobalRole>} />
           <Route path="template" element={<BaseTemplateEditor />} />
+          <Route path="formulaires" element={<RequireGlobalRole globalRoles={['medecin']}><BaseEntryForms /></RequireGlobalRole>} />
           <Route path="curation" element={<CurationBoard />} />
         </Route>
       </Route>

@@ -4,7 +4,7 @@
 //    du vide (§6) ;
 //  * évaluation des règles de cohérence JSON (opérateurs whitelist, jamais exécutées
 //    comme du code) -> erreurs bloquantes (block) ou avertissements (warn).
-import { isTerminologyList, isTerminologyValue, type TemplateField, type TemplateSection } from '../data/types';
+import { isTerminologyEntry, isTerminologyEntryList, isTerminologyValue, type TemplateField, type TemplateSection } from '../data/types';
 import {
   COMPARISON_OPERATORS,
   CONDITION_OPERATORS,
@@ -141,10 +141,12 @@ export function validateField(field: TemplateField, value: unknown, requireCompl
     // couples bien formes, rien d'autre — ni l'existence des concepts, ni les doublons, ni la
     // borne de 50, qui restent au serveur. Le tableau vide n'atteint jamais cette branche :
     // `isEmpty` l'a deja traite comme une absence de valeur.
+    // Un texte non code (codage assiste sans correspondance fiable) est une valeur a part
+    // entiere : le codage ne doit jamais empecher d'enregistrer le diagnostic ecrit.
     if (field.isMultiple) {
-      return isTerminologyList(value) ? null : 'Liste de diagnostics incomplète : choisissez des propositions';
+      return isTerminologyEntryList(value) ? null : 'Liste de diagnostics incomplète : choisissez des propositions';
     }
-    return isTerminologyValue(value) ? null : 'Diagnostic incomplet : choisissez une proposition';
+    return isTerminologyEntry(value) ? null : 'Diagnostic incomplet : choisissez une proposition';
   }
   if (field.type === 'select' && Array.isArray(field.allowedValues)) {
     if (!field.allowedValues.map(String).includes(String(value))) return 'Valeur hors liste';
@@ -205,9 +207,12 @@ export function containsAny(a: unknown, b: unknown): boolean {
   if (values.every((v) => typeof v === 'string' && v.trim() !== '')) {
     return values.some((v) => b.includes(v));
   }
-  if (values.length > 50 || !values.every((v) => isTerminologyValue(v)
-    && Object.keys(v).every((key) => key === 'code' || key === 'label'))) return false;
-  const codes = values.map((v) => (v as { code: string }).code);
+  // Codage assiste : `raw` et `coding` accompagnent le couple ; un texte non code est saute,
+  // sans invalider le reste de la liste. Miroir exact de `rule_apply_op`.
+  const allowed = new Set(['code', 'label', 'raw', 'coding']);
+  if (values.length > 50 || !values.every((v) => isTerminologyEntry(v)
+    && Object.keys(v).every((key) => allowed.has(key)))) return false;
+  const codes = values.filter(isTerminologyValue).map((v) => v.code);
   return new Set(codes).size === codes.length && codes.some((code) => b.includes(code));
 }
 

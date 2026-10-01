@@ -115,6 +115,17 @@ describe('parseTerminologyRows (T1)', () => {
     expect(skipped.unknownKind).toBe(1);
   });
 
+  // Codage assiste : l'URI de linearisation accompagne le concept quand l'export la fournit.
+  test('une colonne d URI de linearisation est reprise, une valeur mal formee ignoree', () => {
+    const { concepts } = parseTerminologyRows([
+      'Code\tTitle\tClassKind\tDepthInKind\tLinearization URI',
+      '1A00\t- - Cholera\tcategory\t1\thttp://id.example.test/fic/1',
+      '1A01\t- - Autre\tcategory\t1\tpas une uri',
+    ].join('\n'));
+    expect(concepts.map((c) => c.uri)).toEqual(['http://id.example.test/fic/1', null]);
+    expect(parseTerminologyRows(tsv('1A00\t- - Cholera\tcategory\t1')).concepts[0].uri).toBeNull();
+  });
+
   test('un en-tete inattendu est refuse plutot qu interprete au hasard', () => {
     expect(() => parseTerminologyRows('Libelle\tType\nCholera\tcategory')).toThrow(/En-tete/);
   });

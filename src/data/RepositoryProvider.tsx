@@ -16,6 +16,7 @@ import { clientErrorRepository, type ClientErrorRepository } from './clientError
 import { workDraftRepository, type WorkDraftRepository } from './workDrafts';
 import { formPreparationRepository, type FormPreparationRepository } from './formPreparations';
 import { viewPreferenceRepository, type ViewPreferenceRepository } from './viewPreferences';
+import { entryFormRepository, type EntryFormRepository } from './entryForms';
 
 interface Repositories {
   templates: TemplateRepository;
@@ -35,6 +36,7 @@ interface Repositories {
   workDrafts: WorkDraftRepository;
   formPreparations: FormPreparationRepository;
   viewPreferences: ViewPreferenceRepository;
+  entryForms: EntryFormRepository;
 }
 
 const RepositoryContext = createContext<Repositories>({
@@ -55,6 +57,7 @@ const RepositoryContext = createContext<Repositories>({
   workDrafts: workDraftRepository,
   formPreparations: formPreparationRepository,
   viewPreferences: viewPreferenceRepository,
+  entryForms: entryFormRepository,
 });
 
 export function RepositoryProvider({
@@ -76,6 +79,7 @@ export function RepositoryProvider({
   workDrafts = workDraftRepository,
   formPreparations = formPreparationRepository,
   viewPreferences = viewPreferenceRepository,
+  entryForms = entryFormRepository,
 }: {
   children: ReactNode;
   templates?: TemplateRepository;
@@ -95,9 +99,10 @@ export function RepositoryProvider({
   workDrafts?: WorkDraftRepository;
   formPreparations?: FormPreparationRepository;
   viewPreferences?: ViewPreferenceRepository;
+  entryForms?: EntryFormRepository;
 }) {
   return (
-    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors, workDrafts, formPreparations, viewPreferences }}>
+    <RepositoryContext.Provider value={{ templates, bases, patients, attachments, cohorts, exports, access, curation, admin, audit, groups, terminology, missions, clientErrors, workDrafts, formPreparations, viewPreferences, entryForms }}>
       {children}
     </RepositoryContext.Provider>
   );
@@ -169,4 +174,8 @@ export function useFormPreparationRepository(): FormPreparationRepository {
 
 export function useViewPreferenceRepository(): ViewPreferenceRepository {
   return useContext(RepositoryContext).viewPreferences;
+}
+
+export function useEntryFormRepository(): EntryFormRepository {
+  return useContext(RepositoryContext).entryForms;
 }

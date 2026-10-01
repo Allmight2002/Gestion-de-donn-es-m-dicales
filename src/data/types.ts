@@ -39,13 +39,72 @@ export type FieldType =
 export interface TerminologyValue {
   code: string;
   label: string;
+  /** Texte reellement ecrit par le medecin (codage assiste). Jamais remplace. */
+  raw?: string;
+  /** Provenance du codage assiste. Absente pour un choix direct dans la recherche. */
+  coding?: TerminologyCoding;
 }
+
+/**
+ * Statut du codage assiste : `automatic` (correspondance claire), `suggested` (proposee, a
+ * confirmer), `confirmed` (validee par l'utilisateur), `unmatched` (aucune correspondance
+ * fiable : texte libre conserve sans code), `manually_modified` (proposition remplacee).
+ */
+export type TerminologyCodingStatus = 'automatic' | 'suggested' | 'confirmed' | 'unmatched' | 'manually_modified';
+export type TerminologyCodingMethod = 'ai_assisted' | 'lexical';
+
+/** Provenance declarative ; le serveur verifie sa forme et sa coherence avec le concept. */
+export interface TerminologyCoding {
+  method: TerminologyCodingMethod;
+  status: TerminologyCodingStatus;
+  normalized?: string;
+  release?: string;
+  uri?: string;
+  language?: string;
+  score?: number;
+}
+
+/**
+ * Diagnostic en texte libre que le codage n'a pas pu rattacher au referentiel. Il reste
+ * enregistrable — le codage ne bloque jamais la saisie — mais ne porte aucun code : il ne
+ * compte dans aucune statistique par code.
+ */
+export interface UnmatchedTerminologyValue {
+  raw: string;
+  coding: TerminologyCoding & { status: 'unmatched' };
+}
+
+/** Une entree de champ terminologique : couple code/libelle, ou texte non code. */
+export type TerminologyFieldEntry = TerminologyValue | UnmatchedTerminologyValue;
 
 export function isTerminologyValue(v: unknown): v is TerminologyValue {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
   const o = v as Record<string, unknown>;
   return typeof o.code === 'string' && o.code.trim() !== ''
     && typeof o.label === 'string' && o.label.trim() !== '';
+}
+
+export function isUnmatchedTerminology(v: unknown): v is UnmatchedTerminologyValue {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  const coding = o.coding as Record<string, unknown> | null | undefined;
+  return !('code' in o) && !('label' in o)
+    && typeof o.raw === 'string' && o.raw.trim() !== ''
+    && !!coding && typeof coding === 'object' && coding.status === 'unmatched';
+}
+
+export function isTerminologyEntry(v: unknown): v is TerminologyFieldEntry {
+  return isTerminologyValue(v) || isUnmatchedTerminology(v);
+}
+
+/** Liste d'entrees (codees ou non). Meme refus du tableau vide que `isTerminologyList`. */
+export function isTerminologyEntryList(v: unknown): v is TerminologyFieldEntry[] {
+  return Array.isArray(v) && v.length > 0 && v.every(isTerminologyEntry);
+}
+
+/** Texte lisible d'une entree : le libelle officiel, sinon le texte d'origine. */
+export function terminologyEntryText(v: TerminologyFieldEntry): string {
+  return isTerminologyValue(v) ? v.label : v.raw;
 }
 
 /**
@@ -82,6 +141,7 @@ export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier |
   if (lang && typeof v === 'string' && field?.type === 'date') return formatStoredDate(v, lang);
   if (lang && typeof v === 'string' && field?.type === 'datetime') return formatStoredDateTime(v, lang);
   if (isTerminologyValue(v)) return v.label;
+  if (isUnmatchedTerminology(v)) return v.raw;
   // L30 : une liste controlee stocke le CODE de l'option. Sans ce passage par les
   // options, l'ecran afficherait le code, et continuerait d'afficher l'ancien texte
   // apres une correction de libelle -- la confusion meme que le lot supprime. Une valeur
@@ -92,7 +152,7 @@ export function displayFieldValue(v: unknown, vide = '', field?: OptionCarrier |
   // L21 : AVANT le cas general des tableaux. `join` appellerait `String()` sur chaque couple
   // et rendrait « [object Object] » sur toute la colonne -- exactement la regression que la
   // spec signale pour l'export. Separateur `; `, le meme que l'export.
-  if (isTerminologyList(v)) return v.map((x) => x.label).join('; ');
+  if (isTerminologyEntryList(v)) return v.map(terminologyEntryText).join('; ');
   if (Array.isArray(v)) return v.join(', ');
   return String(v);
 }
@@ -246,6 +306,13 @@ export interface TemplateSection {
    * la base le garantit.
    */
   isRepeatable?: boolean;
+  /**
+   * Bloc repetable : texte ENTIER du bouton d'ajout (« Ajouter une lesion »), choisi par
+   * l'auteur du formulaire. Absent ou null : libelle generique.
+   */
+  addLabel?: string | null;
+  /** Bloc repetable : nom d'UN element (« Lesion »), qui remplace « Occurrence » dans les titres. */
+  itemLabel?: string | null;
 }
 
 export interface ValidationRule {
