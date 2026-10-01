@@ -14,6 +14,7 @@ import {
   isTerminologyValue,
   isUnmatchedTerminology,
   type TerminologyFieldEntry,
+  type TerminologyValue,
   type UnmatchedTerminologyValue,
 } from '../../data/types';
 import { useOnline } from '../../data/offline';
@@ -47,9 +48,6 @@ import {
 // choix, et l'absence de correspondance laisse le texte enregistrable, non code. Le texte
 // d'origine accompagne toujours le code retenu.
 const DEBOUNCE_MS = 250;
-// Pendant une pause de frappe sur un texte clinique, le codage est PREPARE (sans rien
-// enregistrer) pour que le depart du champ affiche le resultat sans attente.
-const PREFETCH_MS = 900;
 const MIN_CODING_LENGTH = 3;
 
 type Replacing = { index: number; entry: TerminologyFieldEntry } | null;
@@ -91,7 +89,7 @@ export function TerminologyInput({
   const [codingNotice, setCodingNotice] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, CodingChoice>>({});
   const [replacing, setReplacing] = useState<Replacing>(null);
-  const prefetchRef = useRef(new Map<string, Promise<TerminologyCodingResult>>());
+  const codingCacheRef = useRef(new Map<string, Promise<TerminologyCodingResult>>());
   // Entrees dont les propositions ont deja ete redemandees a la reouverture (une fois chacune).
   const restoredRef = useRef(new Set<string>());
   // Nouvelle analyse demandee explicitement pour une entree non codee : etat par entree, et
@@ -193,18 +191,10 @@ export function TerminologyInput({
     return () => clearTimeout(timer);
   }, [query, repo, t, local]);
 
-  // Preparation du codage d'un texte clinique (plusieurs mots) pendant une pause de frappe.
-  useEffect(() => {
-    const text = query.trim();
-    if (!codeText || !online || text.split(/\s+/).length < 2 || text.length < 8) return;
-    const timer = setTimeout(() => { void codingFor(text).catch(() => undefined); }, PREFETCH_MS);
-    return () => clearTimeout(timer);
-    // `codingFor` ne depend que de refs et de `codeText`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, online, codeText]);
-
+  // Le texte ne part vers l'analyse qu'au depart du champ (ou sur Entree), jamais pendant la
+  // frappe : chaque analyse est un appel facture au fournisseur du LLM.
   function codingFor(text: string): Promise<TerminologyCodingResult> {
-    const cache = prefetchRef.current;
+    const cache = codingCacheRef.current;
     const known = cache.get(text);
     if (known) return known;
     const pending = codeText!(text);
@@ -216,17 +206,20 @@ export function TerminologyInput({
   }
 
   // Reouverture d'une fiche : les propositions au choix ne sont pas stockees. Pour une entree
-  // non codee issue du codage assiste, le texte conserve est analyse a nouveau et les
+  // NON codee issue du codage assiste, le texte conserve est analyse a nouveau et les
   // propositions sont RESTAUREES — la valeur enregistree, elle, n'est jamais modifiee ici.
-  const restorable = (multiple ? chosen : selected ? [selected] : [])
-    .filter((e): e is UnmatchedTerminologyValue =>
-      isUnmatchedTerminology(e) && e.coding.method === 'ai_assisted' && !!e.coding.normalized
-    );
-  const restoreKey = restorable.map((e) => choiceKey(e.raw, e.coding.normalized)).join('\n');
+  // Une proposition a confirmer porte deja un code : elle n'est pas reanalysee (chaque analyse
+  // est facturee) ; « Changer » reste disponible.
+  const restorable = (multiple ? chosen : selected ? [selected] : []).flatMap((e) =>
+    isUnmatchedTerminology(e) && e.coding.method === 'ai_assisted' && e.coding.normalized
+      ? [{ raw: e.raw, normalized: e.coding.normalized }]
+      : []
+  );
+  const restoreKey = restorable.map((e) => choiceKey(e.raw, e.normalized)).join('\n');
   useEffect(() => {
     if (!codeText || !online) return;
     for (const entry of restorable) {
-      const key = choiceKey(entry.raw, entry.coding.normalized);
+      const key = choiceKey(entry.raw, entry.normalized);
       if (choices[key] || restoredRef.current.has(key)) continue;
       restoredRef.current.add(key);
       void codingFor(entry.raw)
@@ -236,7 +229,7 @@ export function TerminologyInput({
           const match = proposed.find((c) => choiceKey(c.raw, c.normalized) === key)
             ?? (proposed.length === 1 ? proposed[0] : undefined);
           if (!match) return;
-          setChoices((prev) => (prev[key] ? prev : { ...prev, [key]: { ...match, normalized: entry.coding.normalized ?? '' } }));
+          setChoices((prev) => (prev[key] ? prev : { ...prev, [key]: { ...match, normalized: entry.normalized } }));
         })
         .catch(() => undefined);
     }
@@ -431,6 +424,7 @@ export function TerminologyInput({
               >
                 {t('terminology.confirm')}
               </button>
+              {otherMatches(entry, index)}
             </>
           )}
         </>
@@ -445,7 +439,7 @@ export function TerminologyInput({
       <span className="flex flex-col gap-1">
         <span className="italic">{entry.raw}</span>
         {codingCount > 0 && isProvisionalEntry(entry, entry.raw) ? (
-          <span role="status" className="text-xs text-slate-500">{t('terminology.coding')}</span>
+          <CodingIndicator label={t('terminology.coding')} />
         ) : choice ? (
           <span role="group" aria-label={t('terminology.several_matches')} className="flex flex-col items-start gap-1">
             <span className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.several_matches')}</span>
@@ -464,7 +458,7 @@ export function TerminologyInput({
           <span className="text-xs text-slate-500">{t('terminology.no_reliable_match')}</span>
         ) : null}
         {canReanalyze && (state === 'pending' ? (
-          <span role="status" className="text-xs text-slate-500">{t('terminology.coding')}</span>
+          <CodingIndicator label={t('terminology.coding')} />
         ) : state === 'failed' ? (
           <span role="status" className="text-xs text-slate-500">{t('terminology.coding_unavailable')}</span>
         ) : state === undefined ? (
@@ -476,6 +470,30 @@ export function TerminologyInput({
             {t('terminology.reanalyze')}
           </button>
         ) : null)}
+      </span>
+    );
+  }
+
+  /** Autres correspondances d'une proposition a confirmer : en choisir une la confirme. */
+  function otherMatches(entry: TerminologyValue, index: number) {
+    const present = new Set(chosen.filter(isTerminologyValue).map((e) => e.code));
+    // Un code deja present dans la liste serait refuse en doublon : il n'est pas propose.
+    const options = (choices[choiceKey(entry.raw ?? '', entry.coding?.normalized)]?.options ?? [])
+      .filter((c) => c.code !== entry.code && !present.has(c.code));
+    if (options.length === 0) return null;
+    return (
+      <span role="group" aria-label={t('terminology.other_matches')} className="flex w-full flex-col items-start gap-1">
+        <span className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.other_matches')}</span>
+        {options.map((c) => (
+          <button
+            key={c.code}
+            type="button"
+            onClick={() => pick(index, c)}
+            className="text-left text-xs font-medium text-teal-700 hover:underline"
+          >
+            ○ {c.label} <span className="font-normal text-slate-500 tabular-nums">{c.code}</span>
+          </button>
+        ))}
       </span>
     );
   }
@@ -513,7 +531,7 @@ export function TerminologyInput({
             {chosen.map((c, index) => (
               <li
                 key={isTerminologyValue(c) ? c.code : `${index}:${c.raw}`}
-                className={`flex items-center gap-1.5 ${chipClass}`}
+                className={`flex flex-wrap items-center gap-1.5 ${chipClass}`}
               >
                 {/* Le NUMERO est le rang, et c'est lui qui porte « le premier est le principal ». */}
                 <span className="font-medium tabular-nums">{index + 1}.</span>
@@ -623,5 +641,18 @@ export function TerminologyInput({
         </button>
       ) : null}
     </div>
+  );
+}
+
+/** Analyse en cours : petite animation discrete, annoncee aux lecteurs d'ecran. */
+function CodingIndicator({ label }: { label: string }) {
+  return (
+    <span role="status" className="flex items-center gap-1.5 text-xs text-slate-500">
+      <span
+        aria-hidden="true"
+        className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-teal-600 border-t-transparent motion-reduce:animate-none"
+      />
+      {label}
+    </span>
   );
 }

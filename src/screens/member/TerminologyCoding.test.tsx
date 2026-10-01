@@ -98,6 +98,50 @@ describe('TerminologyInput — codage assiste', () => {
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.02', raw: RAW, coding: { status: 'confirmed' } });
   });
 
+  test('correspondance probable : les autres correspondances sont visibles et se choisissent', async () => {
+    const changes = renderField({ codeText: async () => coded('suggested', { score: 0.75, alternatives: [HIC, HSA] }) });
+    await writeAndLeave(RAW);
+
+    expect(await screen.findByText('Autres correspondances possibles :')).toBeInTheDocument();
+    expect(changes.at(-1)).toMatchObject({ code: 'FIC.02', coding: { status: 'suggested' } });
+    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label} FIC.01` }));
+    expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: RAW, coding: { status: 'confirmed' } });
+    // Une fois choisi, plus rien n'est a confirmer.
+    expect(screen.queryByText('Autres correspondances possibles :')).not.toBeInTheDocument();
+  });
+
+  test('reouverture : une proposition a confirmer n est pas reanalysee (appel facture)', async () => {
+    const stored = {
+      code: 'FIC.02',
+      label: HSD.label,
+      raw: RAW,
+      coding: { method: 'ai_assisted', status: 'suggested', normalized: 'Hématome sous-dural chronique spontané droit', language: 'fr' },
+    };
+    const codeText = vi.fn(async () => coded('suggested', { alternatives: [HIC] }));
+    const changes = renderField({ codeText }, { initial: stored });
+
+    expect(await screen.findByRole('button', { name: `Confirmer ${HSD.label}` })).toBeInTheDocument();
+    expect(codeText).not.toHaveBeenCalled();
+    expect(changes).toEqual([]);
+  });
+
+  test('le texte ne part vers l analyse qu au depart du champ, jamais pendant la frappe', async () => {
+    let answer: (r: TerminologyCodingResult) => void = () => undefined;
+    const codeText = vi.fn(() => new Promise<TerminologyCodingResult>((resolve) => { answer = resolve; }));
+    renderField({ codeText });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), RAW);
+    // Une pause de frappe ne declenche rien.
+    await new Promise((r) => setTimeout(r, 1_200));
+    expect(codeText).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ailleurs' }));
+    expect(codeText).toHaveBeenCalledTimes(1);
+    // Pendant l'analyse, l'attente est annoncee.
+    expect(await screen.findByRole('status')).toHaveTextContent('Recherche de suggestions…');
+    answer(coded('automatic'));
+    expect(await screen.findByText('FIC.02')).toBeInTheDocument();
+  });
+
   test('plusieurs correspondances : rien n est impose, l utilisateur choisit', async () => {
     const changes = renderField({ codeText: async () => coded('ambiguous') });
     await writeAndLeave('Hémorragie intracrânienne spontanée');
