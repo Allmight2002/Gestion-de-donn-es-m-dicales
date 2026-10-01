@@ -233,6 +233,19 @@ Deno.test('precision : jamais de parent pose seul quand un code plus precis conv
   );
   assert(radiculo.status !== 'automatic');
 
+  // Meme sans terme de recherche precis : « conflit discal » ecrit suffit a ecarter le parent seul.
+  const discal = decide(
+    item(['Radiculopathie lombaire', 'Radiculopathie'], {
+      normalized: 'Radiculopathie L5 sur conflit discal',
+      source: 'Radiculopathie L5 sur conflit discal',
+    }),
+    candidates([
+      ['FIC.93', 'Radiculopathie'],
+      ['FIC.936', 'Radiculopathie due à une atteinte des disques intervertébraux'],
+    ]),
+  );
+  assert(discal.status !== 'automatic');
+
   // Sans precision ecrite, le parent reste posable : seuls des descendants residuels ou
   // etrangers au texte existent.
   const plain = decide(
