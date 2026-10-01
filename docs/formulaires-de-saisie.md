@@ -1,7 +1,7 @@
 # Formulaires de saisie (formulaires courts)
 
 🟢 Document vivant — décrit le comportement implémenté par la migration
-`20261001090000_base_entry_forms.sql` et les écrans associés.
+`20261001100000_base_entry_forms.sql` et les écrans associés.
 
 ## Besoin
 
@@ -70,7 +70,7 @@ entière). Le passage à « complet » ou « vérifié » se fait depuis le form
 
 | Élément | Emplacement |
 |---|---|
-| Migration | `supabase/migrations/20261001090000_base_entry_forms.sql` |
+| Migration | `supabase/migrations/20261001100000_base_entry_forms.sql` |
 | Dépôt | `src/data/entryForms.ts` |
 | Projection d'un formulaire (ordre, dépendances, requis) | `src/domain/entryForms.ts` |
 | Gestion | `src/screens/member/BaseEntryForms.tsx` |

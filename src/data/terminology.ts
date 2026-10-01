@@ -5,6 +5,7 @@
 // le nombre de resultats et exige deux caracteres.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { invokeEdgeFunction } from '../lib/edgeFunctionError';
 
 const NOT_CONFIGURED = 'Supabase non configure';
 
@@ -37,6 +38,30 @@ export interface TerminologyPage {
   total: number;
 }
 
+/** Concept propose par le codage assiste, avec sa similarite au terme interprete (0 a 1). */
+export interface CodedConcept {
+  code: string;
+  label: string;
+  uri: string | null;
+  score: number;
+}
+
+/** Un diagnostic reconnu dans le texte, et la decision de codage prise par le serveur. */
+export interface CodedDiagnosis {
+  normalized: string;
+  status: 'automatic' | 'suggested' | 'ambiguous' | 'unmatched';
+  score: number;
+  best: CodedConcept | null;
+  alternatives: CodedConcept[];
+}
+
+export interface TerminologyCodingResult {
+  method: 'ai_assisted' | 'lexical';
+  release: string | null;
+  language: string;
+  items: CodedDiagnosis[];
+}
+
 export interface TerminologyRepository {
   /** Recherche incrementale ; renvoie une liste vide en deca de deux caracteres. */
   search(query: string, limit?: number): Promise<TerminologyOption[]>;
@@ -44,6 +69,11 @@ export interface TerminologyRepository {
   activeRelease(): Promise<TerminologyRelease | null>;
   /** Page de concepts proposables d'une publication precise, pour constituer la copie locale. */
   listEntries(releaseId: string, offset: number, limit: number): Promise<TerminologyPage>;
+  /**
+   * Codage assiste d'un texte clinique libre. Facultatif : sans lui (apercu, tests), le
+   * champ reste une recherche classique et un texte non choisi est conserve non code.
+   */
+  codeText?(text: string): Promise<TerminologyCodingResult>;
 }
 
 /** Le serveur exige deux caracteres : inutile de l'appeler avant. */
@@ -54,7 +84,7 @@ export function makeTerminologyRepository(client: SupabaseClient | null): Termin
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { search: fail, activeRelease: fail, listEntries: fail };
+    return { search: fail, activeRelease: fail, listEntries: fail, codeText: fail };
   }
 
   return {
@@ -106,6 +136,16 @@ export function makeTerminologyRepository(client: SupabaseClient | null): Termin
         })),
         total: count,
       };
+    },
+
+    async codeText(text) {
+      // Seul le texte du diagnostic part : aucun identifiant de patient, de base ou de fiche.
+      const data = await invokeEdgeFunction<TerminologyCodingResult>(client, 'code-terminology', {
+        text,
+        language: 'fr',
+      });
+      if (!data || !Array.isArray(data.items)) throw new Error('Réponse de codage invalide');
+      return data;
     },
   };
 }

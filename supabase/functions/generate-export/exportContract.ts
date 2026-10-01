@@ -326,8 +326,22 @@ const isTerminologyValue = (v: unknown): v is { code: string; label: string } =>
   typeof (v as { code?: unknown }).code === 'string' &&
   typeof (v as { label?: unknown }).label === 'string';
 
-const isTerminologyList = (v: unknown): v is { code: string; label: string }[] =>
-  Array.isArray(v) && v.length > 0 && v.every(isTerminologyValue);
+/**
+ * Diagnostic en texte libre que le codage assiste n'a pas pu rattacher au referentiel :
+ * ni code ni libelle, seulement le texte d'origine. Il est exporte comme texte, jamais comme
+ * code, et n'alimente donc aucun indicateur.
+ */
+const isUnmatchedTerminology = (v: unknown): v is { raw: string } =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) &&
+  !('code' in v) && !('label' in v) &&
+  typeof (v as { raw?: unknown }).raw === 'string' &&
+  (v as { coding?: { status?: unknown } }).coding?.status === 'unmatched';
+
+const isTerminologyEntryList = (v: unknown): v is Array<{ code: string; label: string } | { raw: string }> =>
+  Array.isArray(v) && v.length > 0 && v.every((item) => isTerminologyValue(item) || isUnmatchedTerminology(item));
+
+const terminologyText = (v: { code: string; label: string } | { raw: string }): string =>
+  isTerminologyValue(v) ? v.label : (v as { raw: string }).raw;
 
 export const formatValue = (v: unknown, type?: string): unknown => {
   if (v === null || v === undefined) return '';
@@ -339,7 +353,8 @@ export const formatValue = (v: unknown, type?: string): unknown => {
   // Un diagnostic est un couple code + libelle (ou une liste de couples pour L22) :
   // sans ce cas, `String(v)` rendait « [object Object] » dans toute la colonne.
   if (isTerminologyValue(v)) return v.label;
-  if (isTerminologyList(v)) return v.map((item) => item.label).join('; ');
+  if (isUnmatchedTerminology(v)) return v.raw;
+  if (isTerminologyEntryList(v)) return v.map(terminologyText).join('; ');
   if (Array.isArray(v)) return v.join('; ');
   if (typeof v === 'boolean') return v ? '1' : '0';
   // D14 : conserver les nombres natifs JS pour que SheetJS produise des cellules type=n
@@ -822,7 +837,7 @@ export function evaluateFormulaText(
 
 const codeOf = (v: unknown): string => {
   if (isTerminologyValue(v)) return v.code;
-  if (isTerminologyList(v)) return v.map((item) => item.code).join('; ');
+  if (isTerminologyEntryList(v)) return v.filter(isTerminologyValue).map((item) => item.code).join('; ');
   return '';
 };
 
@@ -832,8 +847,8 @@ const nbOf = (field: ExportField, v: unknown): number | '' => {
   if (field.type === 'multiselect') {
     return Array.isArray(v) ? v.filter((item): item is string => typeof item === 'string').length : '';
   }
-  if (isTerminologyList(v)) return v.length;
-  if (isTerminologyValue(v)) return 1;
+  if (isTerminologyEntryList(v)) return v.length;
+  if (isTerminologyValue(v) || isUnmatchedTerminology(v)) return 1;
   return '';
 };
 
@@ -1391,7 +1406,8 @@ const multivalueEntriesOf = (field: ExportField, value: unknown): MultivalueEntr
       .filter((item): item is string => typeof item === 'string')
       .map((code) => ({ code, label: labelOfOption(field, code) }));
   }
-  if (isTerminologyList(value)) return value;
+  // Seules les entrees CODEES deviennent des indicateurs ; un texte non code n'a pas de code.
+  if (isTerminologyEntryList(value)) return value.filter(isTerminologyValue);
   if (isTerminologyValue(value)) return [value];
   return [];
 };
@@ -1710,7 +1726,11 @@ export function buildMultivalueTable(
   const rows: Record<string, unknown>[] = [];
 
   const appendRows = (patientCode: string, encounterId: string, raw: unknown) => {
-    for (const [index, item] of multivalueEntriesOf(field, raw).entries()) {
+    // Le rang reste celui de la saisie : un texte non code occupe sa place, code vide.
+    const entries = field.type === 'terminology' && isTerminologyEntryList(raw)
+      ? raw.map((item) => isTerminologyValue(item) ? item : { code: '', label: terminologyText(item) })
+      : multivalueEntriesOf(field, raw);
+    for (const [index, item] of entries.entries()) {
       rows.push({
         patient_code: patientCode,
         encounter_id: encounterId,

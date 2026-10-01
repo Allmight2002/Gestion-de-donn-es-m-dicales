@@ -1,7 +1,7 @@
 // Formulaires de saisie d'une base : configuration partagee entre les membres, sans aucune
 // donnee patient. Un formulaire n'est qu'une liste ordonnee de cles de variables de fiche ;
 // toutes les saisies alimentent le meme enregistrement par les RPC cliniques habituelles.
-// La RLS reserve l'ecriture au proprietaire de la base (migration 20261001090000).
+// La RLS reserve l'ecriture au proprietaire de la base (migration 20261001100000).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 

@@ -549,7 +549,11 @@ navigateur O6 et l'activation/release O7 ne sont pas validées. Détail :
   porter **plusieurs valeurs** (`template_field.is_multiple`, depuis
   `20260818045033_multivalue_terminology_foundation.sql`) : une liste ordonnée de 1 à 50 couples
   code/libellé, sans doublon de code, dont l'ordre est le rang. Voir
-  [spec-variables-multivaluees.md](spec-variables-multivaluees.md).
+  [spec-variables-multivaluees.md](spec-variables-multivaluees.md). Depuis
+  `20261001090000_terminology_assisted_coding.sql`, une entrée peut porter le texte écrit par le
+  médecin (`raw`) et la provenance de son codage assisté (`coding`), ou rester un texte non codé ;
+  l'Edge `code-terminology` interprète le texte (LLM facultatif) et la CIM-11 fait foi. Voir
+  [codage-terminologique-assiste.md](codage-terminologique-assiste.md).
 - **Corbeille et restauration de base** (`restore_deleted_base`) : suppression logique réversible.
   ⚠️ Comportement acté : une base restaurée **perd son rattachement au groupe de recherche**
   (le snapshot ne capture que les statuts `raw_submission`/`curation_task`).

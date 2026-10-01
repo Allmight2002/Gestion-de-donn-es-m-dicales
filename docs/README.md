@@ -35,6 +35,7 @@
 | [cahier-des-charges-technique.md](cahier-des-charges-technique.md) | Spécification **technique** : comment c'est réalisé (ET) |
 | [schema-etat-final.md](schema-etat-final.md) | **Généré** (`npm run schema`) : tables, colonnes, policies RLS, triggers, fonctions |
 | [checklist-fonctionnalites-site.md](checklist-fonctionnalites-site.md) | Inventaire exhaustif des fonctionnalités, écran par écran |
+| [codage-terminologique-assiste.md](codage-terminologique-assiste.md) | Diagnostic écrit en langage clinique, codé en CIM-11 en arrière-plan : architecture LLM + référentiel, statuts, confiance, confidentialité |
 | [transfert-jeu-de-variables.md](transfert-jeu-de-variables.md) | Exporter un jeu de variables dans un fichier et le réimporter dans un autre compte ou une autre instance |
 | [formulaires-de-saisie.md](formulaires-de-saisie.md) | Formulaires courts (« Saisie rapide », « Sortie »…) sur les variables d'une base, alimentant la même fiche |
 
@@ -42,7 +43,7 @@
 
 | Document | Contenu |
 |---|---|
-| [edge-functions.md](edge-functions.md) | Les 8 fonctions serveur : lecture signée auditée, inspection antivirus, export (profils `analysis`/`complete`), comptes de mission et purge D10 |
+| [edge-functions.md](edge-functions.md) | Les 9 fonctions serveur : lecture signée auditée, inspection antivirus, export (profils `analysis`/`complete`), comptes de mission, purge D10 et codage terminologique assisté |
 | [security-definer.md](security-definer.md) | Inventaire normatif des 132 signatures `authenticated` privilégiées (12 `service_role` séparées) + contrôle d'ACL |
 | [upload-inspection-operations.md](upload-inspection-operations.md) | Exploitation de la chaîne d'inspection des fichiers déposés |
 | [xlsx-security.md](xlsx-security.md) | Risques propres au traitement des tableurs |
