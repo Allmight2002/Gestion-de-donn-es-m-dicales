@@ -84,18 +84,21 @@ Secrets (Project Settings → Edge Functions → Secrets), **déjà posés pour 
 |---|---|
 | `TERMINOLOGY_LLM_PROVIDER` | `deepseek` |
 | `DEEPSEEK_API_KEY` | la clé (jamais copiée ailleurs) |
-| `TERMINOLOGY_LLM_MODEL` | facultatif (`deepseek-flash` par défaut) |
+| `TERMINOLOGY_LLM_MODEL` | `deepseek-v4-pro` (sinon `deepseek-flash` par défaut) |
+| `TERMINOLOGY_LLM_TIMEOUT_MS` | recommandé avec V4 Pro : `20000` (20 s). Défaut 8000, maximum 30000 |
+| `TERMINOLOGY_LLM_REASONING` | facultatif : `disabled` (plus rapide) ou `low` ; vide = raisonnement complet |
 
-⚠️ **Aucun modèle DeepSeek n'est qualifié** à ce jour. Rejoués sur le jeu de calibrage fictif :
+**Qualité.** Depuis la règle de précision du 1er octobre 2026, les réponses réelles de
+`deepseek-v4-pro` et de `deepseek-flash` ne posent **aucun code faux sans confirmation** sur le
+jeu de calibrage fictif, à aucun des trois passages
+([rapport V4 Pro §6](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md)).
 
-- **`deepseek-v4-pro`** (modèle configuré en production) a posé un code faux sans confirmation
-  dans 1 passage sur 3. Sa latence médiane (8,7 s) dépasse le délai de 8 s de la fonction :
-  environ la moitié des saisies retomberait sur le repli lexical après 8 s d'attente
-  ([calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md)).
-- **`deepseek-flash`** (valeur par défaut) a posé un code faux dans 2 passages sur 3
-  ([calibration-codage-terminologique-2026-10-01-deepseek.md](calibration-codage-terminologique-2026-10-01-deepseek.md)).
+**Lenteur.** V4 Pro met souvent plus de 8 s : avec le délai par défaut, environ la moitié des
+saisies retomberait sur le repli lexical. D'où le délai de 20 s recommandé ; le texte est
+enregistré avant l'analyse, la saisie n'attend jamais.
 
-Réservé aux essais sur données fictives, chaque code proposé étant vérifié.
+Réservé aux essais sur données fictives tant que le cadre juridique n'est pas validé, et à
+confirmer par un nouvel enregistrement avec le prompt et les réglages en vigueur.
 
 Après tout changement de secret, **redéployer** la fonction (commande ci-dessus).
 

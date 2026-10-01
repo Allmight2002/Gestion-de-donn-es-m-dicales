@@ -12,7 +12,8 @@
 //     node scripts/record-terminology-interpretations.mjs [--runs 3] [--out <fichier.json>]
 //   TERMINOLOGY_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... TERMINOLOGY_LLM_MODEL=claude-sonnet-5-5 \
 //     node scripts/record-terminology-interpretations.mjs ...
-// Variables facultatives : TERMINOLOGY_LLM_MODEL, TERMINOLOGY_LLM_BASE_URL (compatible OpenAI).
+// Variables facultatives : TERMINOLOGY_LLM_MODEL, TERMINOLOGY_LLM_BASE_URL (compatible OpenAI),
+// TERMINOLOGY_LLM_REASONING (DeepSeek : disabled, low, high, max), comme l'Edge Function.
 // Pour Claude, meme client que l'Edge Function (SDK officiel, claudeInterpretation), seul le
 // delai change ; modele par defaut identique a celui de la production (claude-opus-5-5).
 import { writeFileSync } from 'node:fs';
@@ -20,7 +21,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { parseArgs } from 'node:util';
 import { CALIBRATION_CASES } from '../test/fixtures/terminologyCalibration.ts';
 import { claudeInterpretation, scrubIdentifiers } from '../supabase/functions/code-terminology/interpret.ts';
-import { openAICompatibleInterpretation, PROVIDERS } from '../supabase/functions/code-terminology/openaiCompatible.ts';
+import {
+  openAICompatibleInterpretation,
+  PROVIDERS,
+  reasoningOptions,
+} from '../supabase/functions/code-terminology/openaiCompatible.ts';
 
 const { values } = parseArgs({
   options: {
@@ -44,6 +49,12 @@ if (!apiKey || !model) {
   console.error(`${defaults.keyEnv}${model ? '' : ' et TERMINOLOGY_LLM_MODEL'} requis dans l'environnement.`);
   process.exit(2);
 }
+const reasoning = process.env.TERMINOLOGY_LLM_REASONING?.trim() || null;
+const extraBody = provider === 'anthropic' ? {} : reasoningOptions(provider, reasoning ?? undefined);
+if (!extraBody || (provider === 'anthropic' && reasoning)) {
+  console.error(`TERMINOLOGY_LLM_REASONING non pris en charge pour ${provider} : ${reasoning}`);
+  process.exit(2);
+}
 const runs = Math.max(1, Number.parseInt(values.runs, 10) || 1);
 const concurrency = Math.max(1, Number.parseInt(values.concurrency, 10) || 1);
 
@@ -58,6 +69,7 @@ const service = provider === 'anthropic'
     baseUrl: process.env.TERMINOLOGY_LLM_BASE_URL?.trim() || defaults.baseUrl,
     jsonMode: defaults.jsonMode,
     timeoutMs: TIMEOUT_MS,
+    extraBody,
   });
 
 const jobs = CALIBRATION_CASES.flatMap((c) => Array.from({ length: runs }, (_, run) => ({ c, run })));
@@ -92,6 +104,7 @@ await Promise.all(Array.from({ length: concurrency }, worker));
 writeFileSync(values.out, `${JSON.stringify({
   provider,
   model,
+  reasoning,
   recordedAt: new Date().toISOString(),
   runs,
   cases,

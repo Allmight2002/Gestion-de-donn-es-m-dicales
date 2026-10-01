@@ -323,6 +323,18 @@ export interface ItemScores {
   /** `ranked` sans les doublons residuels (« X, sans precision », « Autres X »). */
   distinct: ScoredCandidate[];
   perEntity: ScoredCandidate[];
+  /**
+   * Codes PLUS PRECIS que le meilleur candidat (ses descendants, hors « Autres » et « sans
+   * precision ») dont la precision ajoutee figure dans le texte ou dans l'interpretation, avec
+   * leur couverture par le texte. Poser le parent alors que l'un d'eux convient perdrait une
+   * precision ecrite (« aigu », « sur conflit discal »).
+   */
+  refinements: Array<ScoredCandidate & { covered: boolean }>;
+}
+
+/** `child` est-il un descendant de `parent` dans la classification (« NA07.60 » sous « NA07.6 ») ? */
+export function isDescendantCode(child: string, parent: string): boolean {
+  return child.length > parent.length && child.startsWith(parent);
 }
 
 export function scoreItem(item: DiagnosisInterpretation, candidates: Candidate[]): ItemScores {
@@ -343,6 +355,7 @@ export function scoreItem(item: DiagnosisInterpretation, candidates: Candidate[]
       (preferred.code === best.code || conceptKey(preferred.label) === keys[0]),
     covered: !!best && isCovered(best.label, item),
     distinct,
+    refinements: best ? refinementsOf(best, ranked, item) : [],
     perEntity: item.ambiguous
       ? item.alternativeTerms
         .map((t) => scoreCandidates([t], candidates)[0])
@@ -350,6 +363,30 @@ export function scoreItem(item: DiagnosisInterpretation, candidates: Candidate[]
         .filter((c, i, all) => all.findIndex((x) => x.code === c.code) === i)
       : [],
   };
+}
+
+/**
+ * Descendants de `best` qui precisent ce que l'interpretation dit deja : un mot que le
+ * descendant ajoute au parent (« aigue », « disques ») se retrouve dans le texte, le terme
+ * developpe ou un terme de recherche. Sans cela (« HSD traumatique » face a « … aigue » et
+ * « … chronique »), le parent reste le code fidele.
+ */
+function refinementsOf(
+  best: ScoredCandidate,
+  ranked: ScoredCandidate[],
+  item: DiagnosisInterpretation,
+): Array<ScoredCandidate & { covered: boolean }> {
+  const parent = stems(coreLabel(best.label));
+  const said = stems([item.source ?? '', item.normalized, ...item.searchTerms, ...item.alternativeTerms].join(' '));
+  return ranked
+    .filter((c) => isDescendantCode(c.code, best.code) && residualRank(c.label) === 0)
+    .map((c) => ({ ...c, covered: isCovered(c.label, item) }))
+    .filter((c) =>
+      c.covered ||
+      stems(coreLabel(c.label))
+        .filter((s) => !parent.some((p) => sameStem(p, s)) && !IMPLIED.has(s))
+        .some((s) => said.some((w) => sameStem(w, s)))
+    );
 }
 
 /** Decision a partir des scores, pour des seuils donnes. */
@@ -381,6 +418,21 @@ export function decideFromScores(scores: ItemScores, thresholds: Thresholds = TH
   }
   if (best.score >= thresholds.suggested && gap < thresholds.automaticGap / 2) {
     return { status: 'ambiguous', score: round(best.score), best, alternatives: plausible };
+  }
+  // Un code plus precis du meme concept reprend ce qui est ecrit (`refinements`) :
+  // le parent perdrait cette precision. Rien n'est pose seul ; le plus fidele est propose.
+  const finer = scores.refinements;
+  if (finer.length > 0) {
+    const proposed = finer.find((c) => c.covered) ?? best;
+    const others = [best, ...finer].filter((c, i, all) =>
+      c.code !== proposed.code && all.findIndex((x) => x.code === c.code) === i
+    );
+    return {
+      status: 'suggested',
+      score: round(proposed.score),
+      best: proposed,
+      alternatives: others.slice(0, thresholds.maxAlternatives - 1),
+    };
   }
   // Seul un libelle qui n'ajoute rien au texte du medecin peut etre retenu sans confirmation.
   if (best.score >= thresholds.automatic && gap >= thresholds.automaticGap && agrees && scores.covered) {

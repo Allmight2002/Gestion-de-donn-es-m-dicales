@@ -159,6 +159,7 @@ Décision, avec les seuils **calibrés le 1er octobre 2026** (`THRESHOLDS`) :
 | `ambiguous` | l'interprétation signale plusieurs entités : une proposition par entité ≥ 0,55, sinon les candidats plausibles |
 | `unmatched` | aucun candidat ≥ 0,55 |
 | `ambiguous` | ex æquo : écart < 0,025 entre deux concepts distincts au-dessus de 0,65 |
+| `suggested` | un code **plus précis** du même concept reprend ce qui est écrit (règle de précision ci-dessous) : il est proposé à confirmer, le parent en alternative |
 | `automatic` | similarité ≥ 0,95, écart ≥ 0,05 avec le deuxième concept, accord avec le terme préféré seul, **et libellé couvert par le texte du médecin** |
 | `suggested` | similarité ≥ 0,65, ou un seul candidat plausible |
 | `ambiguous` | sinon |
@@ -173,6 +174,14 @@ Sont tolérés :
 - les mots qui situent sans préciser (cerveau, cérébral, intracrânien, artère, processus,
   lobe…) ;
 - un intitulé disjonctif (« … du fœtus ou du nouveau-né ») dont un côté est écrit.
+
+**Précision : aucun code automatique n'en retire.** Si un descendant du meilleur code (hors
+« Autres » et « sans précision ») ajoute une précision qui figure dans le texte, le terme
+développé ou un terme de recherche (« aigu », « lobaire », « atteinte des disques »), le parent
+n'est pas posé seul : le descendant couvert par le texte est proposé à confirmer, le parent en
+alternative. « HSD traumatique » sans autre précision reste codé seul « Hémorragie sousdurale
+traumatique ». Règle ajoutée le 1er octobre 2026 après le rejeu des sorties réelles de DeepSeek
+([calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md) §6).
 
 Le texte du médecin est ajouté par l'Edge Function, jamais par le LLM. Le prompt interdit par
 ailleurs au LLM d'ajouter un germe, un stade, une cause ou une évolution dans le terme développé.
@@ -211,11 +220,13 @@ Secrets de l'Edge Function `code-terminology` :
 | `OPENAI_API_KEY` | facultatif ; clé du fournisseur `openai` |
 | `DEEPSEEK_API_KEY` | facultatif ; clé du fournisseur `deepseek` |
 | `TERMINOLOGY_LLM_MODEL` | modèle utilisé ; défaut `claude-opus-5-5` (anthropic) ou `deepseek-flash` (deepseek), **obligatoire** pour `openai` |
+| `TERMINOLOGY_LLM_TIMEOUT_MS` | facultatif ; délai d'interprétation en millisecondes, 8000 par défaut, borné de 2000 à 30000. Le texte est enregistré avant l'analyse : un délai plus long fait seulement attendre la proposition |
+| `TERMINOLOGY_LLM_REASONING` | facultatif, `deepseek` seulement : `disabled` coupe le raisonnement (`thinking`), `low` / `high` / `max` règlent son effort ; vide = défaut du fournisseur. Une valeur inconnue désactive le LLM (repli lexical) |
 | `TERMINOLOGY_LLM_BASE_URL` | facultatif, `openai`/`deepseek` ; autre service au contrat Chat Completions (défauts `https://api.openai.com/v1`, `https://api.deepseek.com`) |
 
 Seule la clé du fournisseur choisi est lue ; sans elle (ou sans modèle pour `openai`), la
 fonction répond par le repli lexical. Les trois fournisseurs reçoivent le même prompt et le même
-texte, avec un délai de 8 s, et leur sortie passe par la même validation (`parseInterpretation`) :
+texte, avec le même délai (`TERMINOLOGY_LLM_TIMEOUT_MS`), et leur sortie passe par la même validation (`parseInterpretation`) :
 
 - `anthropic` : SDK officiel, sortie au schéma JSON, effort `low`, repli serveur sur refus
   (`fallbacks: "default"`), une nouvelle tentative au plus ;

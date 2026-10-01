@@ -171,3 +171,45 @@ total, environ la moitié des saisies attendrait 8 s pour recevoir le seul repli
 - **Un modèle, une date.** Les sorties de `deepseek-v4-pro` au 1er octobre 2026.
 - **Latences mesurées depuis un conteneur de développement**, avec 4 appels concurrents, et non
   depuis l'Edge Function : l'ordre de grandeur vaut, pas la valeur exacte.
+
+## 6. Addendum — règle de précision et décision clinique « Diabète » (1er octobre 2026, soir)
+
+**Changements.**
+- **Règle de précision** (`scoring.ts`, piste 1 du §4) : le meilleur code n'est jamais posé seul
+  quand l'un de ses descendants (hors « Autres » et « sans précision ») ajoute une précision
+  présente dans le texte, le terme développé ou un terme de recherche. Le descendant couvert par
+  le texte est alors proposé à confirmer, le parent en alternative.
+- **Décision clinique de l'utilisateur** : « Diabète » seul se code fidèlement « Diabète sucré,
+  type non précisé » (5A14). L'annotation de a05 l'accepte comme code générique ; seul un type 1
+  ou 2 imposé reste une erreur critique.
+- **Annotation c11 complétée** : pour « Hématome intracérébral spontané lobaire », 8B00.1
+  « Hémorragie lobaire » est le code le plus fidèle. La règle de précision l'a fait remonter ;
+  l'ancien code automatique 8B00 perdait « lobaire ».
+
+**Résultats, seuils inchangés** (0,95 / 0,05 / 0,65 / 0,55 / 4), mêmes enregistrements :
+
+| Scénario | Critiques | Auto justes | Suggestions justes / fausses | Utilité |
+|---|---|---|---|---|
+| V4 Pro, passages 1 / 2 / 3 | **0 / 0 / 0** | 41 / 42 / 44 | 21/11 · 19/10 · 19/12 | 56,3 / 59,4 / 58,2 |
+| Flash, passages 1 / 2 / 3 | **0 / 0 / 0** | 40 / 45 / 42 | 21/14 · 14/14 · 20/11 | 53,3 / 56,0 / 56,6 |
+| LLM simulé | 0 | 57 | 14 / 3 | 75,3 |
+| Repli lexical | 0 | 28 | 26 / 7 | 49,8 |
+
+- c03 et i12 (Flash) : le code parent n'est plus posé seul. a05 : 5A14 est conforme à la décision
+  clinique.
+- Le balayage propose d'autres seuils (Flash : automatique 0,85 ; V4 Pro : suggestion 0,90). Ils
+  ne sont **pas retenus** : abaisser le seuil automatique relâche l'exigence, et le gain est faible.
+- L'enregistrement V4 Pro devient l'**enregistrement de référence** du test : aucun code faux à
+  aucun passage, et un plancher d'utilité (56,3, pire passage). Toute modification du score qui
+  dégraderait ces sorties réelles fait échouer la CI.
+
+**Statut.** Sur la qualité, V4 Pro passe le critère (0 erreur critique sur 3 passages). Deux
+réserves demeurent avant tout usage réel :
+1. **Latence** : la médiane (8,7 s) dépasse le délai par défaut. Le délai est désormais réglable
+   (`TERMINOLOGY_LLM_TIMEOUT_MS`, jusqu'à 30 s), et le raisonnement de DeepSeek aussi
+   (`TERMINOLOGY_LLM_REASONING`). L'effet de ces réglages reste à mesurer par un nouvel
+   enregistrement.
+2. **Prompt modifié** le même jour (premier terme gardant les précisions écrites ; diagnostic non
+   précisé ≠ ambiguïté) : ces enregistrements sont antérieurs. Un nouvel enregistrement doit
+   confirmer le résultat avec le prompt en vigueur.
+

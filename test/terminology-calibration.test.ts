@@ -48,8 +48,11 @@ interface Recording {
 }
 // Chemin par defaut : enregistrement du fournisseur QUALIFIE, garde a chaque execution.
 // TERMINOLOGY_RECORDING rejoue un autre enregistrement (ex. un fournisseur non qualifie).
-const RECORDING_PATH = process.env.TERMINOLOGY_RECORDING ||
-  join('test', 'fixtures', 'terminologyCalibration.recorded.json');
+// Par defaut, les sorties reelles de deepseek-v4-pro (modele de production) du 1er octobre
+// 2026 : depuis la regle de precision, aucun code faux impose a aucun passage. Elles gardent le
+// score contre de VRAIES interpretations a chaque execution.
+const REFERENCE_RECORDING = join('test', 'fixtures', 'terminologyCalibration.recorded.deepseek-v4-pro-2026-10-01.json');
+const RECORDING_PATH = process.env.TERMINOLOGY_RECORDING || REFERENCE_RECORDING;
 const recording: Recording | null = existsSync(RECORDING_PATH)
   ? JSON.parse(readFileSync(RECORDING_PATH, 'utf8')) as Recording
   : null;
@@ -127,6 +130,11 @@ describe('codage assiste — calibrage des seuils', () => {
     expect(evaluate(scored.llm, THRESHOLDS).counts.auto_ok).toBeGreaterThanOrEqual(CALIBRATED.llmAutoOk);
     expect(evaluate(scored.llm, THRESHOLDS).utility).toBeGreaterThanOrEqual(CALIBRATED.llmUtility);
     expect(evaluate(scored.lexical, THRESHOLDS).utility).toBeGreaterThanOrEqual(CALIBRATED.lexicalUtility);
+    if (RECORDING_PATH === REFERENCE_RECORDING) {
+      recorded.forEach((cases, run) =>
+        expect(evaluate(cases, THRESHOLDS).utility, `passage ${run + 1}`).toBeGreaterThanOrEqual(CALIBRATED.recordedUtility)
+      );
+    }
   });
 
   test.runIf(!!process.env.TERMINOLOGY_CALIBRATION_REPORT)('balayage des seuils et rapport', () => {
@@ -219,5 +227,12 @@ function percentiles(values: number[]) {
   return { p50: at(0.5), p90: at(0.9), max: sorted.at(-1) ?? null, over8s: sorted.filter((v) => v > 8_000).length };
 }
 
-// Valeurs mesurees au calibrage (jeu complet, 97 cas, regle de couverture incluse) ; le calcul est deterministe.
-const CALIBRATED = { llmAutoOk: 58, llmUtility: 75.6 - 1e-9, lexicalUtility: 49.8 - 1e-9 };
+// Valeurs mesurees au calibrage (jeu complet, 97 cas, regles de couverture et de precision) ; le calcul est deterministe.
+// Regle de precision incluse (c11 passe a confirmer : 8B00.1 « Hemorragie lobaire ») ; plancher
+// `recordedUtility` : pire passage de l'enregistrement de reference.
+const CALIBRATED = {
+  llmAutoOk: 57,
+  llmUtility: 75.3 - 1e-9,
+  lexicalUtility: 49.8 - 1e-9,
+  recordedUtility: 56.3 - 1e-9,
+};
