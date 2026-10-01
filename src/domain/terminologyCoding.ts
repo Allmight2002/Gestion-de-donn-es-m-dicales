@@ -124,6 +124,24 @@ export function entriesFromResult(
   return { entries, choices };
 }
 
+/**
+ * Nouvelle analyse DEMANDEE par le medecin pour une entree restee non codee (par exemple
+ * conservee hors connexion, puis rouverte depuis « A faire ») : toute correspondance trouvee,
+ * meme claire, devient une PROPOSITION au choix, jamais une valeur. `source` porte la
+ * provenance de cette analyse, reprise si le medecin retient une proposition.
+ */
+export function proposalsFromResult(
+  entry: UnmatchedTerminologyValue,
+  result: TerminologyCodingResult,
+): { source: UnmatchedTerminologyValue; options: CodedConcept[] } {
+  const items = result.items ?? [];
+  const options = items
+    .flatMap((i) => [...(i.best ? [i.best] : []), ...(i.alternatives ?? [])])
+    .filter((c, index, all) => all.findIndex((x) => x.code === c.code) === index);
+  const normalized = items.map((i) => i.normalized).filter(Boolean).join(' ; ');
+  return { source: unmatchedEntry(entry.raw, result.method, baseCoding(result, normalized)), options };
+}
+
 /** Cle d'une entree non codee, pour retrouver ses propositions. */
 export const choiceKey = (raw: string, normalized: string | undefined) => `${raw}\u0000${normalized ?? ''}`;
 

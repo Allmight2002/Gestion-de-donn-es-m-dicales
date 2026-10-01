@@ -20,7 +20,38 @@ export interface OpenAICompatibleConfig {
   model: string;
   jsonMode: JsonMode;
   timeoutMs?: number;
+  /** Options propres au fournisseur (`reasoningOptions`) ; ne remplacent jamais modele ni messages. */
+  extraBody?: Record<string, unknown>;
   fetch?: typeof fetch;
+}
+
+/** Delai par defaut d'une interpretation : la saisie ne doit pas attendre. */
+export const DEFAULT_TIMEOUT_MS = 8_000;
+const MIN_TIMEOUT_MS = 2_000;
+const MAX_TIMEOUT_MS = 30_000;
+
+/**
+ * Delai configure (TERMINOLOGY_LLM_TIMEOUT_MS, en millisecondes), borne a 2–30 s. Le texte est
+ * enregistre AVANT l'analyse : un delai plus long fait seulement attendre la proposition.
+ */
+export function timeoutFromEnv(value: string | undefined): number {
+  const ms = Number.parseInt(value?.trim() ?? '', 10);
+  if (!Number.isFinite(ms)) return DEFAULT_TIMEOUT_MS;
+  return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, ms));
+}
+
+/**
+ * Raisonnement du modele (TERMINOLOGY_LLM_REASONING), pour DeepSeek seulement :
+ * `disabled` coupe le raisonnement (`thinking`), `low` / `high` / `max` reglent son effort
+ * (`reasoning_effort`). Vide : comportement par defaut du fournisseur. `null` : valeur inconnue.
+ */
+export function reasoningOptions(provider: string, value: string | undefined): Record<string, unknown> | null {
+  const v = value?.trim().toLowerCase();
+  if (!v) return {};
+  if (provider !== 'deepseek') return null;
+  if (v === 'disabled') return { thinking: { type: 'disabled' } };
+  if (v === 'low' || v === 'high' || v === 'max') return { thinking: { type: 'enabled' }, reasoning_effort: v };
+  return null;
 }
 
 export const PROVIDERS = {
@@ -50,8 +81,9 @@ export function openAICompatibleInterpretation(config: OpenAICompatibleConfig): 
       const response = await doFetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
-        signal: AbortSignal.timeout(config.timeoutMs ?? 8_000),
+        signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
         body: JSON.stringify({
+          ...config.extraBody,
           model: config.model,
           messages: [
             { role: 'system', content: schemaMode ? SYSTEM_PROMPT : SYSTEM_PROMPT + JSON_OBJECT_FORMAT },

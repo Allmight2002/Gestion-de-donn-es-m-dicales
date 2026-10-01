@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261001170000_global_model_source_published.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 420
+- Dernière migration incluse : `20261001200000_todo_pending_codings.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 421
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1548,6 +1548,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | list_importable_template_sections | — | INVOKER | sql |
 | list_my_work_drafts | — | DEFINER | plpgsql |
 | list_patients_by_field | p_base_id uuid, p_field_key text, p_direction text, p_limit integer, p_offset integer, p_code_query text, p_ids uuid[] | INVOKER | plpgsql |
+| list_pending_codings | p_base_id uuid, p_limit integer | INVOKER | plpgsql |
 | list_recent_client_errors | p_limit integer, p_since timestamp with time zone, p_context text | DEFINER | plpgsql |
 | list_work_drafts | p_base_id uuid, p_kind text, p_target_id uuid | DEFINER | plpgsql |
 | lock_contains_any_configuration | — | INVOKER | plpgsql |

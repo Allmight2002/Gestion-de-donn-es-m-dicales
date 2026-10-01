@@ -97,7 +97,9 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
     expect: code('NA07.7') },
   { id: 'c11', split: 'dev', family: 'clear', text: 'Hématome intracérébral spontané lobaire',
     llm: llm('Hématome intracérébral spontané lobaire', 'Hémorragie intracérébrale'),
-    expect: code('8B00', '8B00.Z') },
+    // « lobaire » est ecrit : 8B00.1 « Hemorragie lobaire » est le code le plus fidele (annotation
+    // completee le 1er octobre 2026, quand la regle de precision l'a fait remonter).
+    expect: code('8B00.1', '8B00', '8B00.Z') },
   { id: 'c12', split: 'test', family: 'clear', text: 'Anévrisme sylvien droit non rompu',
     llm: llm('Anévrisme de l’artère cérébrale moyenne droite non rompu', 'Anévrisme cérébral non-rompu'),
     expect: code('8B22.5') },
@@ -228,7 +230,9 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
     expect: ambiguous('8B11', '8B00') },
   { id: 'a05', split: 'dev', family: 'ambiguous', text: 'Diabète',
     llm: choice('Diabète', ['Diabète sucré de type 1', 'Diabète sucré de type 2']),
-    expect: ambiguous('5A10', '5A11') },
+    // Decision clinique du 1er octobre 2026 : « Diabete » seul se code fidelement
+    // « Diabete sucre, type non precise » (5A14) ; seul un type 1 ou 2 impose serait faux.
+    expect: ambiguousOrGeneric(['5A14'], '5A10', '5A11') },
   { id: 'a06', split: 'test', family: 'ambiguous', text: 'Hydrocéphalie',
     llm: choice('Hydrocéphalie', ['Hydrocéphalie communicante', 'Hydrocéphalie non-communicante']),
     expect: ambiguousOrGeneric(['8D64', '8D64.Z'], '8D64.0', '8D64.1') },

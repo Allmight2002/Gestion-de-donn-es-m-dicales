@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from '@std/assert';
-import { openAICompatibleInterpretation } from './openaiCompatible.ts';
+import { openAICompatibleInterpretation, reasoningOptions, timeoutFromEnv } from './openaiCompatible.ts';
 
 // Reponses simulees : aucun appel reseau, diagnostics fictifs.
 const VALID = {
@@ -89,4 +89,30 @@ Deno.test("compatible OpenAI : le message d'erreur ne reprend ni la reponse ni l
       service(fakeFetch(() => json({ error: { message: 'HSD droit cle-fictive' } }, 400)).impl).interpret('HSD droit'),
   );
   assertEquals((error as Error).message, 'interpretation indisponible (400)');
+});
+
+Deno.test('reglages : delai borne, raisonnement DeepSeek explicite, jamais de modele remplace', async () => {
+  assertEquals(timeoutFromEnv(undefined), 8_000);
+  assertEquals(timeoutFromEnv('20000'), 20_000);
+  assertEquals(timeoutFromEnv('500'), 2_000);
+  assertEquals(timeoutFromEnv('600000'), 30_000);
+  assertEquals(timeoutFromEnv('vingt'), 8_000);
+
+  assertEquals(reasoningOptions('deepseek', undefined), {});
+  assertEquals(reasoningOptions('deepseek', 'disabled'), { thinking: { type: 'disabled' } });
+  assertEquals(reasoningOptions('deepseek', 'LOW'), { thinking: { type: 'enabled' }, reasoning_effort: 'low' });
+  assertEquals(reasoningOptions('deepseek', 'maximum'), null);
+  assertEquals(reasoningOptions('openai', 'low'), null);
+
+  const { calls, impl } = fakeFetch(() => json(completion(JSON.stringify(VALID))));
+  await openAICompatibleInterpretation({
+    apiKey: 'cle-fictive',
+    baseUrl: 'https://llm.example.test',
+    model: 'modele-test',
+    jsonMode: 'json_object',
+    extraBody: { thinking: { type: 'disabled' }, model: 'autre' },
+    fetch: impl,
+  }).interpret('HSD droit');
+  assertEquals(calls[0].body.thinking, { type: 'disabled' });
+  assertEquals(calls[0].body.model, 'modele-test');
 });

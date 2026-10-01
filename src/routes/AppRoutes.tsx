@@ -30,6 +30,7 @@ const MissionAccounts = lazy(() => import('../screens/member/MissionAccounts').t
 const ActivityLog = lazy(() => import('../screens/member/ActivityLog').then((m) => ({ default: m.ActivityLog })));
 const BaseStats = lazy(() => import('../screens/member/BaseStats').then((m) => ({ default: m.BaseStats })));
 const CompletionQueue = lazy(() => import('../screens/member/CompletionQueue').then((m) => ({ default: m.CompletionQueue })));
+const PendingCodings = lazy(() => import('../screens/member/PendingCodings').then((m) => ({ default: m.PendingCodings })));
 const DiagnosisFollowup = lazy(() => import('../screens/member/DiagnosisFollowup').then((m) => ({ default: m.DiagnosisFollowup })));
 const BaseProposals = lazy(() => import('../screens/member/BaseProposals').then((m) => ({ default: m.BaseProposals })));
 const BaseLayout = lazy(() => import('../screens/member/BaseLayout').then((m) => ({ default: m.BaseLayout })));
@@ -181,6 +182,9 @@ export function AppRoutes() {
           <Route path="cohorts" element={<CohortBuilder />} />
           <Route path="stats" element={<BaseStats />} />
           <Route path="queue" element={<CompletionQueue />} />
+          {/* Diagnostics non codes ou a confirmer, ouverts depuis « A faire ». La RPC refuse
+              toute base que la personne ne peut pas modifier. */}
+          <Route path="codings" element={<PendingCodings />} />
           <Route path="propositions" element={<BaseProposals />} />
           {/* L56 : file des cas non couverts. Le medecin PROPRIETAIRE seul y accede ; la RPC
               le verifie de son cote, ce filtre de route n'est qu'un confort d'affichage. */}

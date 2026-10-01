@@ -23,6 +23,7 @@ import {
   confirmEntry,
   entriesFromResult,
   isProvisionalEntry,
+  proposalsFromResult,
   resolveEntry,
   unmatchedEntry,
   type CodingChoice,
@@ -93,6 +94,10 @@ export function TerminologyInput({
   const prefetchRef = useRef(new Map<string, Promise<TerminologyCodingResult>>());
   // Entrees dont les propositions ont deja ete redemandees a la reouverture (une fois chacune).
   const restoredRef = useRef(new Set<string>());
+  // Nouvelle analyse demandee explicitement pour une entree non codee : etat par entree, et
+  // provenance de l'analyse a reprendre si une proposition est choisie.
+  const [reanalysis, setReanalysis] = useState<Record<string, 'pending' | 'none' | 'failed'>>({});
+  const reanalyzedRef = useRef(new Map<string, UnmatchedTerminologyValue>());
   const containerRef = useRef<HTMLDivElement>(null);
   // La reponse du codage arrive apres coup : elle doit s'appliquer a la valeur COURANTE.
   const valueRef = useRef(value);
@@ -352,7 +357,40 @@ export function TerminologyInput({
   function pick(index: number, concept: CodedConcept) {
     const entries = currentEntries();
     const entry = entries[index];
-    if (entry) writeEntries(entries, index, [resolveEntry(entry, concept, 'confirmed')]);
+    if (!entry) return;
+    const source = isUnmatchedTerminology(entry)
+      ? reanalyzedRef.current.get(choiceKey(entry.raw, entry.coding.normalized))
+      : undefined;
+    writeEntries(entries, index, [resolveEntry(source ?? entry, concept, 'confirmed')]);
+  }
+
+  /**
+   * Entree non codee rouverte (hors connexion a la saisie, ou analyse sans resultat) : le
+   * medecin peut demander une nouvelle analyse. Les correspondances trouvees sont seulement
+   * PROPOSEES ; la valeur ne change que s'il en choisit une.
+   */
+  function reanalyze(entry: UnmatchedTerminologyValue) {
+    const key = choiceKey(entry.raw, entry.coding.normalized);
+    setReanalysis((prev) => ({ ...prev, [key]: 'pending' }));
+    void codingFor(entry.raw)
+      .then((result) => {
+        const { source, options: found } = proposalsFromResult(entry, result);
+        // Un code deja present dans la liste serait refuse en doublon : il n'est pas propose.
+        const present = new Set(currentEntries().filter(isTerminologyValue).map((e) => e.code));
+        const options = found.filter((option) => !present.has(option.code));
+        if (options.length === 0) {
+          setReanalysis((prev) => ({ ...prev, [key]: 'none' }));
+          return;
+        }
+        reanalyzedRef.current.set(key, source);
+        setChoices((prev) => ({ ...prev, [key]: { raw: entry.raw, normalized: entry.coding.normalized ?? '', options } }));
+        setReanalysis((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      })
+      .catch(() => setReanalysis((prev) => ({ ...prev, [key]: 'failed' })));
   }
 
   /** Corriger une entree issue du codage : elle reste en place tant qu'aucun choix n'est fait. */
@@ -398,7 +436,11 @@ export function TerminologyInput({
         </>
       );
     }
-    const choice = choices[choiceKey(entry.raw, entry.coding.normalized)];
+    const key = choiceKey(entry.raw, entry.coding.normalized);
+    const choice = choices[key];
+    const provisional = isProvisionalEntry(entry, entry.raw);
+    const state = reanalysis[key];
+    const canReanalyze = !!codeText && online && !choice && !(codingCount > 0 && provisional);
     return (
       <span className="flex flex-col gap-1">
         <span className="italic">{entry.raw}</span>
@@ -418,9 +460,22 @@ export function TerminologyInput({
               </button>
             ))}
           </span>
-        ) : !isProvisionalEntry(entry, entry.raw) || !codeText ? (
+        ) : !provisional || !codeText || state === 'none' ? (
           <span className="text-xs text-slate-500">{t('terminology.no_reliable_match')}</span>
         ) : null}
+        {canReanalyze && (state === 'pending' ? (
+          <span role="status" className="text-xs text-slate-500">{t('terminology.coding')}</span>
+        ) : state === 'failed' ? (
+          <span role="status" className="text-xs text-slate-500">{t('terminology.coding_unavailable')}</span>
+        ) : state === undefined ? (
+          <button
+            type="button"
+            onClick={() => reanalyze(entry)}
+            className="self-start text-xs font-medium text-teal-700 hover:underline"
+          >
+            {t('terminology.reanalyze')}
+          </button>
+        ) : null)}
       </span>
     );
   }

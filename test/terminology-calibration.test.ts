@@ -4,12 +4,15 @@
 // Deux scenarios, memes seuils :
 //   * `llm`     : interpretations simulees du jeu annote (test/fixtures/terminologyCalibration.ts) ;
 //   * `lexical` : repli sans LLM, a partir du seul texte du medecin.
+// Plus un scenario `recorded` par passage quand un fournisseur reel a ete enregistre
+// (scripts/record-terminology-interpretations.mjs -> test/fixtures/terminologyCalibration.recorded.json,
+// ou le fichier designe par TERMINOLOGY_RECORDING).
 //
 // Ce test GARDE le calibrage : aucune erreur critique (code faux impose, ambiguite tranchee en
 // silence) et une utilite au moins egale a celle mesuree au calibrage. Avec
 // TERMINOLOGY_CALIBRATION_REPORT=<chemin.json>, il refait le balayage des seuils sur `dev`,
 // mesure le resultat sur `test` et ecrit le rapport.
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -30,6 +33,31 @@ import { evaluate, type ScoredCase, selectThresholds } from './helpers/terminolo
 let db: TestDb;
 let userId: string;
 const scored: Record<'llm' | 'lexical', ScoredCase[]> = { llm: [], lexical: [] };
+
+interface RecordedRun {
+  items: Array<Omit<DiagnosisInterpretation, 'source'>> | null;
+  ms: number;
+  error?: string;
+}
+interface Recording {
+  provider: string;
+  model: string;
+  recordedAt: string;
+  runs: number;
+  cases: Record<string, RecordedRun[]>;
+}
+// Chemin par defaut : enregistrement du fournisseur QUALIFIE, garde a chaque execution.
+// TERMINOLOGY_RECORDING rejoue un autre enregistrement (ex. un fournisseur non qualifie).
+// Par defaut, les sorties reelles de deepseek-v4-pro (modele de production) du 1er octobre
+// 2026 : depuis la regle de precision, aucun code faux impose a aucun passage. Elles gardent le
+// score contre de VRAIES interpretations a chaque execution.
+const REFERENCE_RECORDING = join('test', 'fixtures', 'terminologyCalibration.recorded.deepseek-v4-pro-2026-10-01.json');
+const RECORDING_PATH = process.env.TERMINOLOGY_RECORDING || REFERENCE_RECORDING;
+const recording: Recording | null = existsSync(RECORDING_PATH)
+  ? JSON.parse(readFileSync(RECORDING_PATH, 'utf8')) as Recording
+  : null;
+/** Un tableau de cas par passage enregistre. */
+const recorded: ScoredCase[][] = [];
 
 async function candidates(item: DiagnosisInterpretation): Promise<Candidate[]> {
   const rows = await db.asUser(userId, async (c: Client) => (await c.query(
@@ -69,6 +97,13 @@ beforeAll(async () => {
     }));
     const lexical = lexicalInterpretation(c.text)[0];
     scored.lexical.push(await score(c, lexical && { ...lexical, source: c.text }));
+    for (let run = 0; run < (recording?.runs ?? 0); run++) {
+      const entry = recording!.cases[c.id]?.[run];
+      if (!entry) throw new Error(`enregistrement incomplet : ${c.id}`);
+      // Comme l'Edge Function : un echec du fournisseur bascule sur le repli lexical.
+      const item = entry.items === null ? lexical : entry.items[0];
+      (recorded[run] ??= []).push(await score(c, item && { ...item, source: c.text }));
+    }
   }
 }, 300_000);
 
@@ -83,11 +118,23 @@ describe('codage assiste — calibrage des seuils', () => {
     }
   });
 
+  test.runIf(!!recording)('fournisseur enregistre : aucun code faux impose, a chaque passage', () => {
+    recorded.forEach((cases, run) => {
+      const critical = evaluate(cases, THRESHOLDS).outcomes.filter((o) => o.outcome === 'auto_wrong');
+      expect(critical, `${recording!.model}, passage ${run + 1}`).toEqual([]);
+    });
+  });
+
   test('utilite au moins egale a celle mesuree au calibrage', () => {
     // Planchers releves au calibrage du 2026-10-01 (docs/calibration-codage-terminologique-2026-10-01.md).
     expect(evaluate(scored.llm, THRESHOLDS).counts.auto_ok).toBeGreaterThanOrEqual(CALIBRATED.llmAutoOk);
     expect(evaluate(scored.llm, THRESHOLDS).utility).toBeGreaterThanOrEqual(CALIBRATED.llmUtility);
     expect(evaluate(scored.lexical, THRESHOLDS).utility).toBeGreaterThanOrEqual(CALIBRATED.lexicalUtility);
+    if (RECORDING_PATH === REFERENCE_RECORDING) {
+      recorded.forEach((cases, run) =>
+        expect(evaluate(cases, THRESHOLDS).utility, `passage ${run + 1}`).toBeGreaterThanOrEqual(CALIBRATED.recordedUtility)
+      );
+    }
   });
 
   test.runIf(!!process.env.TERMINOLOGY_CALIBRATION_REPORT)('balayage des seuils et rapport', () => {
@@ -126,9 +173,66 @@ describe('codage assiste — calibrage des seuils', () => {
         lexical: evaluate(scored.lexical, selection.best),
       },
     };
+    if (recording) {
+      const all = recorded.flat();
+      // Peut etre impossible (erreurs critiques quels que soient les seuils) : le rapport le dit.
+      let recordedSelection: ReturnType<typeof selectThresholds> | null = null;
+      try {
+        recordedSelection = selectThresholds(calibration(all), calibration(scored.lexical));
+      } catch { /* aucun jeu de seuils sans erreur critique */ }
+      const chosen = recordedSelection?.best ?? THRESHOLDS;
+      const outcomes = recorded.map((cases) => evaluate(cases, THRESHOLDS).outcomes);
+      Object.assign(report, {
+        recorded: {
+          provider: recording.provider,
+          model: recording.model,
+          recordedAt: recording.recordedAt,
+          runs: recording.runs,
+          failures: Object.values(recording.cases).flat().filter((r) => r.items === null).length,
+          latencyMs: percentiles(Object.values(recording.cases).flat().map((r) => r.ms)),
+          selection: recordedSelection,
+          perRun: recorded.map((cases) => ({
+            current: evaluate(cases, THRESHOLDS),
+            selected: recordedSelection && evaluate(cases, chosen),
+            ...Object.fromEntries((['dev', 'test', 'holdout'] as const).map((split) =>
+              [split, {
+                current: evaluate(only(split, cases), THRESHOLDS),
+                selected: recordedSelection && evaluate(only(split, cases), chosen),
+              }]
+            )),
+          })),
+          // Cas dont l'issue change d'un passage a l'autre : instabilite du fournisseur.
+          unstable: CALIBRATION_CASES.flatMap((c, i) => {
+            const seen = outcomes.map((o) => o[i].outcome);
+            return new Set(seen).size > 1 ? [{ id: c.id, outcomes: seen }] : [];
+          }),
+          detail: recorded[0].map(({ case: c, scores }, i) => ({
+            id: c.id,
+            text: c.text,
+            expect: c.expect,
+            interpretations: recording.cases[c.id].map((r) => r.items?.[0] ?? (r.items ? null : `echec: ${r.error}`)),
+            outcomes: outcomes.map((o) => o[i].outcome),
+            preferred: scores?.preferredCode ?? null,
+          })),
+        },
+      });
+    }
     writeFileSync(process.env.TERMINOLOGY_CALIBRATION_REPORT!, JSON.stringify(report, null, 2));
   });
 });
 
-// Valeurs mesurees au calibrage (jeu complet, 97 cas, regle de couverture incluse) ; le calcul est deterministe.
-const CALIBRATED = { llmAutoOk: 58, llmUtility: 75.6 - 1e-9, lexicalUtility: 49.8 - 1e-9 };
+function percentiles(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? null;
+  return { p50: at(0.5), p90: at(0.9), max: sorted.at(-1) ?? null, over8s: sorted.filter((v) => v > 8_000).length };
+}
+
+// Valeurs mesurees au calibrage (jeu complet, 97 cas, regles de couverture et de precision) ; le calcul est deterministe.
+// Regle de precision incluse (c11 passe a confirmer : 8B00.1 « Hemorragie lobaire ») ; plancher
+// `recordedUtility` : pire passage de l'enregistrement de reference.
+const CALIBRATED = {
+  llmAutoOk: 57,
+  llmUtility: 75.3 - 1e-9,
+  lexicalUtility: 49.8 - 1e-9,
+  recordedUtility: 56.3 - 1e-9,
+};

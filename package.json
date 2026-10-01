@@ -69,6 +69,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "0.129.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.61.1",
     "@supabase/storage-js": "2.108.2",

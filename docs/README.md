@@ -37,6 +37,8 @@
 | [checklist-fonctionnalites-site.md](checklist-fonctionnalites-site.md) | Inventaire exhaustif des fonctionnalités, écran par écran |
 | [codage-terminologique-assiste.md](codage-terminologique-assiste.md) | Diagnostic écrit en langage clinique, codé en CIM-11 en arrière-plan : architecture LLM + référentiel, statuts, confiance, confidentialité |
 | [calibration-codage-terminologique-2026-10-01.md](calibration-codage-terminologique-2026-10-01.md) | 🗄️ Preuve datée : calibrage des seuils du codage assisté sur 92 diagnostics fictifs annotés |
+| [calibration-codage-terminologique-2026-10-01-deepseek.md](calibration-codage-terminologique-2026-10-01-deepseek.md) | 🗄️ Preuve datée : rejeu du calibrage avec les sorties réelles de `deepseek-flash` (non qualifié, seuils inchangés) |
+| [calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md](calibration-codage-terminologique-2026-10-01-deepseek-v4-pro.md) | 🗄️ Preuve datée : rejeu du calibrage avec `deepseek-v4-pro`, modèle de production (non qualifié, trop lent pour 8 s, seuils inchangés) |
 | [transfert-jeu-de-variables.md](transfert-jeu-de-variables.md) | Exporter un jeu de variables dans un fichier et le réimporter dans un autre compte ou une autre instance |
 | [formulaires-de-saisie.md](formulaires-de-saisie.md) | Formulaires courts (« Saisie rapide », « Sortie »…) sur les variables d'une base, alimentant la même fiche |
 
@@ -78,6 +80,7 @@
 | [qa-parcours-site.md](qa-parcours-site.md) · [instructions-agent-qa.md](instructions-agent-qa.md) | Plan de test du site déployé et cadrage de l'agent QA |
 | [plan-test-preuves-2026-08-19.md](plan-test-preuves-2026-08-19.md) | Plan de test des lots livrés (L14, corbeille, D9/D12, L20-L25, L27-L33, L11) en attente de preuve de fonctionnement sur le site déployé |
 | [guide-test-collecte-diagnostique.md](guide-test-collecte-diagnostique.md) | 🟢 Guide de test manuel des lots **L51 à L56** (blocs cliniques, visibilité de bloc, projection d'export, configuration diagnostique et suivi des cas non couverts) — preuve navigateur encore à produire |
+| [guide-codage-assiste-mise-en-service.md](guide-codage-assiste-mise-en-service.md) | 🟢 Guide administrateur du **codage CIM-11 assisté** : prérequis serveur, variable de diagnostic dans une base, liste de contrôle et dépannage |
 | [guide-test-groupes-repetables.md](guide-test-groupes-repetables.md) | 🟢 Guide de test manuel des lots **L66 à L71** (déclaration d’un bloc répétable, saisie en tableau, occurrences tamponnées à la création, applicabilité et complétude, export, hors-ligne) — preuve navigateur encore à produire |
 | [redaction-diagnostic-sauvegarde.md](redaction-diagnostic-sauvegarde.md) | Expurger un diagnostic de sauvegarde avant de le journaliser |
 
