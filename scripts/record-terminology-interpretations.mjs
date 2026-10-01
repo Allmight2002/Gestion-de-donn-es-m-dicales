@@ -10,11 +10,16 @@
 // Usage (la cle n'est lue que dans l'environnement, jamais affichee ni ecrite) :
 //   TERMINOLOGY_LLM_PROVIDER=deepseek DEEPSEEK_API_KEY=... \
 //     node scripts/record-terminology-interpretations.mjs [--runs 3] [--out <fichier.json>]
-// Variables facultatives : TERMINOLOGY_LLM_MODEL, TERMINOLOGY_LLM_BASE_URL.
+//   TERMINOLOGY_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... TERMINOLOGY_LLM_MODEL=claude-sonnet-5-5 \
+//     node scripts/record-terminology-interpretations.mjs ...
+// Variables facultatives : TERMINOLOGY_LLM_MODEL, TERMINOLOGY_LLM_BASE_URL (compatible OpenAI).
+// Pour Claude, meme client que l'Edge Function (SDK officiel, claudeInterpretation), seul le
+// delai change ; modele par defaut identique a celui de la production (claude-opus-5-5).
 import { writeFileSync } from 'node:fs';
+import Anthropic from '@anthropic-ai/sdk';
 import { parseArgs } from 'node:util';
 import { CALIBRATION_CASES } from '../test/fixtures/terminologyCalibration.ts';
-import { scrubIdentifiers } from '../supabase/functions/code-terminology/interpret.ts';
+import { claudeInterpretation, scrubIdentifiers } from '../supabase/functions/code-terminology/interpret.ts';
 import { openAICompatibleInterpretation, PROVIDERS } from '../supabase/functions/code-terminology/openaiCompatible.ts';
 
 const { values } = parseArgs({
@@ -26,11 +31,13 @@ const { values } = parseArgs({
 });
 
 const provider = (process.env.TERMINOLOGY_LLM_PROVIDER || 'deepseek').trim().toLowerCase();
-if (!(provider in PROVIDERS)) {
-  console.error(`Fournisseur non pris en charge par cet outil : ${provider} (openai ou deepseek).`);
+// Meme defaut que l'Edge Function (supabase/functions/code-terminology/index.ts).
+const ANTHROPIC = { keyEnv: 'ANTHROPIC_API_KEY', model: 'claude-opus-5-5' };
+if (provider !== 'anthropic' && !(provider in PROVIDERS)) {
+  console.error(`Fournisseur non pris en charge par cet outil : ${provider} (anthropic, openai ou deepseek).`);
   process.exit(2);
 }
-const defaults = PROVIDERS[provider];
+const defaults = provider === 'anthropic' ? ANTHROPIC : PROVIDERS[provider];
 const apiKey = process.env[defaults.keyEnv];
 const model = process.env.TERMINOLOGY_LLM_MODEL?.trim() || defaults.model;
 if (!apiKey || !model) {
@@ -40,15 +47,18 @@ if (!apiKey || !model) {
 const runs = Math.max(1, Number.parseInt(values.runs, 10) || 1);
 const concurrency = Math.max(1, Number.parseInt(values.concurrency, 10) || 1);
 
-const service = openAICompatibleInterpretation({
-  apiKey,
-  model,
-  baseUrl: process.env.TERMINOLOGY_LLM_BASE_URL?.trim() || defaults.baseUrl,
-  jsonMode: defaults.jsonMode,
-  // Plus large qu'en production : on mesure la qualite, pas la latence. Les depassements
-  // sont comptes a part.
-  timeoutMs: 30_000,
-});
+// Delai plus large qu'en production (8 s) : on mesure la qualite, pas la latence. Les
+// depassements sont comptes a part.
+const TIMEOUT_MS = 30_000;
+const service = provider === 'anthropic'
+  ? claudeInterpretation(new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 1 }), model)
+  : openAICompatibleInterpretation({
+    apiKey,
+    model,
+    baseUrl: process.env.TERMINOLOGY_LLM_BASE_URL?.trim() || defaults.baseUrl,
+    jsonMode: defaults.jsonMode,
+    timeoutMs: TIMEOUT_MS,
+  });
 
 const jobs = CALIBRATION_CASES.flatMap((c) => Array.from({ length: runs }, (_, run) => ({ c, run })));
 const cases = Object.fromEntries(CALIBRATION_CASES.map((c) => [c.id, Array(runs).fill(null)]));
@@ -65,12 +75,18 @@ async function worker() {
     } catch (error) {
       failures += 1;
       // Seul le type d'echec est garde : ni corps de reponse, ni cle.
-      cases[c.id][run] = { items: null, ms: Date.now() - started, error: String(error?.message ?? error).slice(0, 80) };
+      cases[c.id][run] = { items: null, ms: Date.now() - started, error: failureKind(error) };
     }
     done += 1;
     if (done % 20 === 0) console.log(`${done} appels sur ${CALIBRATION_CASES.length * runs}`);
   }
 }
+/** Type d'echec seulement : le message d'une erreur d'API du SDK peut reprendre le corps de reponse. */
+function failureKind(error) {
+  if (error instanceof Anthropic.APIError) return `${error.constructor.name}${error.status ? ` (${error.status})` : ''}`;
+  return String(error?.message ?? error).slice(0, 80);
+}
+
 await Promise.all(Array.from({ length: concurrency }, worker));
 
 writeFileSync(values.out, `${JSON.stringify({

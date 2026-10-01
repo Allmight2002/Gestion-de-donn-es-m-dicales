@@ -149,9 +149,19 @@ Erreurs résiduelles notables, aucune n'impose un code :
   `TERMINOLOGY_CALIBRATION_REPORT=<chemin.json> npx vitest run --project db test/terminology-calibration.test.ts`.
   Sans la variable, le test vérifie seulement l'absence d'erreur critique et les planchers
   d'utilité.
-- **Refaire avec un fournisseur réel** (`openai` ou `deepseek`) : enregistrer d'abord ses
-  interprétations du jeu fictif, plusieurs passages, avec la clé dans l'environnement :
+- **Refaire avec un fournisseur réel** (`anthropic`, `openai` ou `deepseek`) : enregistrer d'abord
+  ses interprétations du jeu fictif, plusieurs passages, avec la clé dans l'environnement :
   `TERMINOLOGY_LLM_PROVIDER=deepseek DEEPSEEK_API_KEY=… node scripts/record-terminology-interpretations.mjs --runs 3`.
+  Pour Claude, par exemple Sonnet 5.5 :
+  `TERMINOLOGY_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… TERMINOLOGY_LLM_MODEL=claude-sonnet-5-5 node scripts/record-terminology-interpretations.mjs --runs 3 --out test/fixtures/terminologyCalibration.recorded.claude-sonnet-5-5-<date>.json`.
+  - Le script appelle alors `claudeInterpretation`, le même code que l'Edge Function : SDK
+    officiel, effort `low`, sortie JSON contrainte, repli serveur sur refus.
+  - Sans `TERMINOLOGY_LLM_MODEL`, le modèle est `claude-opus-5-5`, comme en production.
+  - Seul le délai change : 30 s au lieu de 8 s.
+  - Un refus ou une erreur d'API vaut échec, donc repli lexical. Seul le type d'échec est
+    enregistré, jamais le corps de la réponse.
+  - Le chemin par défaut ci-dessous est réservé à un fournisseur **qualifié**. Un autre
+    enregistrement se rejoue avec `TERMINOLOGY_RECORDING=<fichier>`.
   Le fichier `test/fixtures/terminologyCalibration.recorded.json` (sorties brutes, modèle, date,
   latences ; une panne vaut repli lexical, comme dans l'Edge Function) est alors lu par le test :
   aucun code faux imposé n'est toléré à aucun passage, et le rapport ajoute une section
