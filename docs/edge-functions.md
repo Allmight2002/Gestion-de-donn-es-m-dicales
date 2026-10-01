@@ -26,7 +26,7 @@ l'URL uniquement apres :
 
 ### Déployer `signed-read` uniquement
 
-Ce bloc couvre la lecture signée auditée, pas les huit fonctions du dépôt. Pour une mise en ligne
+Ce bloc couvre la lecture signée auditée, pas les neuf fonctions du dépôt. Pour une mise en ligne
 complète, suivre le bloc « Deploy Edge + frontend » plus bas et les prérequis propres aux comptes de
 mission (§10.5).
 
@@ -419,7 +419,7 @@ En production, le service antivirus doit etre traite comme une dependance de sec
 
 ### Deploy Edge + frontend
 
-Cette procédure couvre les huit fonctions déclarées dans `supabase/config.toml`. Avant la ligne
+Cette procédure couvre les neuf fonctions déclarées dans `supabase/config.toml`. Avant la ligne
 `create-mission-account`, poser séparément et sans l'exposer
 `MISSION_CREDENTIALS_ENCRYPTION_KEY` selon le protocole §10.5 ; ne pas lancer ce sous-ensemble sans
 ce prérequis.
@@ -433,6 +433,7 @@ supabase functions deploy generate-export --import-map deno.json
 supabase functions deploy reconcile-quarantine --import-map deno.json
 supabase functions deploy create-mission-account --import-map deno.json
 supabase functions deploy purge-deleted-base --import-map deno.json
+supabase functions deploy code-terminology --import-map deno.json
 supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
                      SUPABASE_ANON_KEY=LA_CLE_ANON \
                      SUPABASE_SERVICE_ROLE_KEY=LA_CLE_SERVICE_ROLE \
@@ -567,3 +568,19 @@ Après purge, les octets Storage sont supprimés mais le journal des exports et 
 lisibles comme preuves détachées. Avant toute cible réelle, la sauvegarde doit être vérifiée et la
 validation finale du circuit de release doit être acquise ; le lot local D10 ne touche aucune
 cible distante.
+
+## 10.7 - Codage terminologique assisté (`code-terminology`)
+
+Reçoit `{ text, language? }` (2 à 500 caractères, `fr` seulement) d'un compte authentifié et
+renvoie, pour chaque diagnostic reconnu, une décision `automatic`, `suggested`, `ambiguous` ou
+`unmatched` avec les concepts du référentiel actif. Aucune écriture, aucun `service_role` : la
+RPC `match_terminology_candidates` (SECURITY INVOKER, refusée à `anon`) est appelée sous
+l'identité de l'appelant.
+
+Le LLM est facultatif (`ANTHROPIC_API_KEY`, modèle `TERMINOLOGY_LLM_MODEL`) ; il ne reçoit que
+le texte du diagnostic, nettoyé des identifiants apparents, et ne produit jamais de code. Sans
+clé, en cas de refus, de délai dépassé ou de sortie inexploitable, la fonction répond par un
+repli lexical. Le score de confiance est calculé dans la fonction, pas par le LLM. Les journaux
+ne contiennent ni texte clinique ni erreur du fournisseur ; une panne du référentiel rend
+`503 CODING_UNAVAILABLE`. Détail fonctionnel, format stocké et prérequis juridiques :
+[codage-terminologique-assiste.md](codage-terminologique-assiste.md).
