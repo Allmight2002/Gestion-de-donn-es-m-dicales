@@ -19,7 +19,7 @@
 //
 // Usage : `npm run e2e:mobile` (Playwright demarre le serveur de developpement s'il ne tourne
 // pas). Le banc n'existe que sur ce serveur local : contre une URL externe, le fichier est ignore.
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 test.skip(Boolean(process.env.E2E_BASE_URL), 'Banc local : servi uniquement par le serveur de developpement.');
 const VIEWPORT = { width: 360, height: 800 };
@@ -61,6 +61,11 @@ const openEditor = (tab?: string) => async (page: Page) => {
   if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
 };
 
+// Revue post-optimisation (C2) : un formulaire de saisie s'edite depuis sa ligne.
+const openEntryForm = async (page: Page) => {
+  await page.getByRole('button', { name: 'Modifier Sortie (fictif)' }).click();
+};
+
 // Lot 8 : le mode Terrain s'active dans le menu, comme le ferait la personne.
 const enableTerrain = async (page: Page) => {
   await page.getByRole('button', { name: 'Ouvrir le menu' }).click();
@@ -76,6 +81,7 @@ const SCREENS: Screen[] = [
   { name: 'liste des patients — mode Terrain', path: '/bases/b1', open: enableTerrain, first: { text: '^P-0001$' } },
   { name: 'fiche patient', path: '/bases/b1/patients/p1', first: { selector: 'dd' } },
   { name: 'nouveau patient', path: '/bases/b1/patients/new/manual', first: FIRST_FIELD },
+  { name: 'nouveau patient — formulaire court', path: '/bases/b1/patients/new/manual?form=ef1', first: FIRST_FIELD },
   { name: 'nouvelle rencontre', path: '/bases/b1/patients/p1/encounters/new/manual', first: FIRST_FIELD },
   { name: 'donnees permanentes', path: '/bases/b1/patients/p1/edit', first: FIRST_FIELD },
   { name: 'modification d’une rencontre', path: '/bases/b1/patients/p1/encounters/e1/edit', first: FIRST_FIELD },
@@ -89,6 +95,9 @@ const SCREENS: Screen[] = [
   // Lot 5 : les reglages en lignes, et la liste avant le formulaire de creation.
   { name: 'parametres', path: '/bases/b1/parametres', first: { text: '^Modèle d’observation$' } },
   { name: 'formulaire', path: '/bases/b1/template', first: { text: '^Formulaire :' } },
+  // Revue post-optimisation (C2) : les formulaires de saisie courts, la liste puis l'edition.
+  { name: 'formulaires de saisie', path: '/bases/b1/formulaires', first: { text: '^Admission \\(fictif\\)$' } },
+  { name: 'formulaire de saisie — edition', path: '/bases/b1/formulaires', open: openEntryForm, first: FIRST_FIELD },
   { name: 'acces', path: '/bases/b1/access', first: { text: 'Dr Collègue' } },
   { name: 'comptes de mission', path: '/missions', first: { text: 'Enquêteur 1' } },
   { name: 'synchronisation', path: '/sync', first: { text: '^Écritures en attente$' } },
@@ -289,6 +298,18 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       // Plein ecran : ni fil d'Ariane ni onglets de la base pendant l'edition.
       await expect(page.getByRole('navigation', { name: 'Traumatismes crâniens CHU-R (fictif)' })).toHaveCount(0);
     } },
+    // Revue post-optimisation (C2) : « ⋯ » d'un formulaire de saisie ; sections a deplier et
+    // recherche qui deplie tout.
+    { screen: 'formulaires de saisie', open: async (page) => {
+      await page.getByRole('button', { name: 'Actions · Admission (fictif)' }).click();
+      await expect(page.getByRole('button', { name: 'Supprimer' })).toBeVisible();
+    } },
+    { screen: 'formulaire de saisie — edition', open: async (page) => {
+      await page.getByRole('button', { name: /^Démographie/ }).click();
+      await expect(page.getByRole('checkbox', { name: 'Localité / quartier' })).toBeVisible();
+      await page.getByRole('searchbox', { name: 'Rechercher une variable' }).fill('vomi');
+      await expect(page.getByRole('checkbox', { name: 'Vomissements' })).toBeVisible();
+    } },
     // Lot 6 : panneaux bas, menus « ⋯ », mode Réorganiser, fiche d'une variable, sections
     // depliees, groupe de regles, formulaire de regle et sa liste recherchable.
     { screen: 'editeur — structure', open: async (page) => {
@@ -331,6 +352,48 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       await open(page);
       const width = await page.evaluate(() => document.documentElement.scrollWidth);
       expect(width, `${name} : document de ${width} px une fois ouvert, pour ${VIEWPORT.width} px`).toBeLessThanOrEqual(VIEWPORT.width);
+      expect(incidents, 'aucune erreur JavaScript, aucun depot non simule, aucune requete hors banc').toEqual([]);
+    });
+  }
+
+  // Revue post-optimisation (C2) : un panneau de menu s'affiche en entier. La largeur du document
+  // ne le dit pas : un panneau sorti par la gauche ne l'elargit pas, et un panneau recouvert par
+  // la suite de la page non plus (« + Nouveau » des jeux de variables, « ⋯ » de l'editeur).
+  const MENUS: { screen: string; trigger: (page: Page) => Locator }[] = [
+    { screen: 'mes jeux de variables', trigger: (page) => page.getByRole('button', { name: 'Nouveau', exact: true }) },
+    { screen: 'editeur — structure',
+      trigger: (page) => page.getByTestId('template-editor-toolbar').getByRole('button', { name: 'Plus d’actions' }) },
+    { screen: 'fiche patient', trigger: (page) => page.getByRole('button', { name: 'Compléter avec' }) },
+    { screen: 'formulaires de saisie', trigger: (page) => page.getByRole('button', { name: 'Actions · Admission (fictif)' }) },
+    { screen: 'cohortes', trigger: (page) => page.getByRole('button', { name: /^Actions · Glasgow ≤ 12/ }) },
+    { screen: 'comptes de mission', trigger: (page) => page.getByRole('button', { name: 'Actions · Enquêteur 1 (fictif)' }) },
+  ];
+  for (const { screen: name, trigger } of MENUS) {
+    test(`${name} : panneau de menu entierement visible`, async ({ page }) => {
+      const screen = SCREENS.find((entry) => entry.name === name)!;
+      const incidents = await openScreen(page, screen.path);
+      await screen.open?.(page);
+      await settledMeasures(page, screen);
+      const button = trigger(page);
+      await button.click();
+      await expect(button).toHaveAttribute('aria-expanded', 'true');
+      // Le panneau suit son declencheur dans le meme conteneur (src/components/Menu.tsx).
+      const report = await button.locator('xpath=following-sibling::div[1]').evaluate((panel) => {
+        const box = panel.getBoundingClientRect();
+        const hidden: string[] = [];
+        for (const fx of [0.05, 0.5, 0.95]) {
+          for (const fy of [0.1, 0.5, 0.9]) {
+            const x = box.left + box.width * fx;
+            const y = box.top + box.height * fy;
+            const hit = document.elementFromPoint(x, y);
+            if (!hit || !panel.contains(hit)) hidden.push(`${Math.round(x)},${Math.round(y)} : ${hit ? hit.tagName.toLowerCase() : 'hors de l’ecran'}`);
+          }
+        }
+        return { left: Math.round(box.left), right: Math.round(box.right), hidden };
+      });
+      expect(report.left, `${name} : panneau a ${report.left} px du bord gauche`).toBeGreaterThanOrEqual(0);
+      expect(report.right, `${name} : panneau jusqu'a ${report.right} px, pour ${VIEWPORT.width} px`).toBeLessThanOrEqual(VIEWPORT.width);
+      expect(report.hidden, `${name} : points du panneau caches ou recouverts`).toEqual([]);
       expect(incidents, 'aucune erreur JavaScript, aucun depot non simule, aucune requete hors banc').toEqual([]);
     });
   }

@@ -30,6 +30,7 @@ import type { CohortRepository, CohortSummary } from '../data/cohorts';
 import type { ExportLogItem, ExportRepository } from '../data/exports';
 import type { MissionAccount, MissionRepository } from '../data/mission';
 import type { WorkDraftSummary } from '../data/workDrafts';
+import type { EntryForm, EntryFormInput, EntryFormRepository } from '../data/entryForms';
 import type { TemplateField, TemplateSection } from '../data/types';
 import { createEditorRegistryRepository, editorRegistryVersion } from '../test/fixtures/editorRegistry';
 import { initTheme } from '../lib/theme';
@@ -176,6 +177,25 @@ const serverDrafts: WorkDraftSummary[] = [
   { id: 'd1', baseId: 'b1', kind: 'encounter_create', targetId: 'p1', patientId: 'p1', patientCode: 'P-0001', updatedAt: at(28, 8), expiresAt: at(29, 8) },
   { id: 'd2', baseId: 'b1', kind: 'patient_create', targetId: null, patientId: null, patientCode: null, updatedAt: at(27, 17), expiresAt: at(28, 17) },
 ];
+// Formulaires de saisie courts (Parametres › Saisies) : « Sortie » cite une variable retiree
+// de la base depuis, que l'ecran doit compter sans jamais afficher sa cle.
+let entryFormRows: EntryForm[] = [
+  { id: 'ef1', baseId: 'b1', name: 'Admission (fictif)', fieldKeys: ['sexe', 'localite', 'mecanisme', 'pci'], requiredKeys: ['sexe'], rowVersion: 1, updatedAt: at(26) },
+  { id: 'ef2', baseId: 'b1', name: 'Sortie (fictif)', fieldKeys: ['amnesie', 'profession', 'ancienne_variable'], requiredKeys: [], rowVersion: 1, updatedAt: at(27) },
+];
+const entryForms = strict<EntryFormRepository>('entryForms', {
+  async list(baseId: string) { return entryFormRows.filter((form) => form.baseId === baseId); },
+  async create(baseId: string, input: EntryFormInput) {
+    const created: EntryForm = { id: `ef${entryFormRows.length + 1}`, baseId, ...input, rowVersion: 1, updatedAt: new Date().toISOString() };
+    entryFormRows = [...entryFormRows, created];
+    return created;
+  },
+  async update(id: string, _expectedVersion: number, input: EntryFormInput) {
+    entryFormRows = entryFormRows.map((form) => (form.id === id ? { ...form, ...input, rowVersion: form.rowVersion + 1 } : form));
+    return entryFormRows.find((form) => form.id === id)!;
+  },
+  async remove(id: string) { entryFormRows = entryFormRows.filter((form) => form.id !== id); },
+});
 
 // --- Depots en memoire ------------------------------------------------------------------
 const bases = strict<BaseRepository>('bases', {
@@ -312,6 +332,7 @@ function Harness() {
                 };
               },
             })}
+            entryForms={entryForms}
             viewPreferences={strict('viewPreferences', {
               async getVisiblePatientFieldKeys() { return ['sexe', 'localite', 'mecanisme']; },
               async saveVisiblePatientFieldKeys() { /* memoire seule */ },

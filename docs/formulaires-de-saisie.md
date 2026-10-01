@@ -69,8 +69,9 @@ entière). Le passage à « complet » ou « vérifié » se fait depuis le form
   `row_version = <attendue>`. Un écart ne modifie rien et l'écran conserve les réglages saisis
   en demandant un rechargement.
 - Nom unique par base (insensible à la casse).
-- Une variable retirée du gabarit par une version ultérieure est ignorée à la saisie et signalée
-  dans l'éditeur ; elle est retirée du formulaire à son prochain enregistrement.
+- Une variable retirée du gabarit par une version ultérieure est ignorée à la saisie et comptée
+  dans l'éditeur, sans jamais afficher sa clé technique ; elle est retirée du formulaire à son
+  prochain enregistrement.
 
 ## Code
 

@@ -39,7 +39,7 @@ incident réseau transitoire d'une régression, sans masquer une erreur locale a
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 | **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
 | **LOT13 dédié** | révocation dynamique, indisponibilité/reconnexion Supabase, idempotence après réponse perdue, import, retry d'upload, hors-ligne historique et suppression | scénarios présents dans `e2e/lot13-complete.spec.ts`, exécutés seulement par le job staging dédié ; leur présence ne vaut pas preuve actuelle d'un run réussi |
-| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 27 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
+| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 31 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
@@ -66,7 +66,7 @@ sont des couvertures **complémentaires et distinctes**, pas un substitut au par
 ## Garde-fou d'affichage sur téléphone (audit UI mobile, lot 7)
 
 `e2e/mobile-360.spec.ts` contrôle les budgets de
-[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 27 écrans, à 360 × 800 px
+[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 31 écrans, à 360 × 800 px
 en tactile :
 
 - aucun débordement horizontal ;
@@ -84,7 +84,13 @@ variables, filtres et index en panneau bas, « ⋯ » d'une variable, mode « R�
 variable, section dépliée et ajout d'une section, groupe de règles déplié et liste recherchable du
 formulaire de règle (lot 6) ; brouillon de la page « À faire » rouvrant son formulaire, identité
 lue au toucher sur la fiche, et menu « Plus » du mode Terrain, activé par l'interrupteur du menu
-(lot 8).
+(lot 8) ; « ⋯ » d'un formulaire de saisie, sections dépliées et recherche de son édition (revue
+post-optimisation, lot C2).
+
+Un panneau de menu s'affiche en entier : ni hors de l'écran sur les côtés, ni recouvert par la
+suite de la page (« + Nouveau » des jeux de variables, « ⋯ » de la barre de l'éditeur, « Compléter
+avec » de la fiche, « ⋯ » d'un formulaire de saisie, d'une cohorte et d'une mission). La largeur du
+document ne suffit pas à le voir : un panneau sorti par la gauche ne l'élargit pas.
 
 ```bash
 npx playwright install chromium   # une fois
