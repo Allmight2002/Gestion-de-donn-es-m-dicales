@@ -138,7 +138,8 @@ supabase secrets set SUPABASE_URL=https://VOTRE-REF.supabase.co \
 `create-mission-account` exige en plus le secret distinct
 `MISSION_CREDENTIALS_ENCRYPTION_KEY`, à poser sans l'afficher selon
 [edge-functions.md](edge-functions.md) §10.5 avant son déploiement. `code-terminology` accepte
-en option `ANTHROPIC_API_KEY` (et `TERMINOLOGY_LLM_MODEL`) ; sans elle, le codage assisté répond
+en option `ANTHROPIC_API_KEY` (et `TERMINOLOGY_LLM_MODEL`), ou `TERMINOLOGY_LLM_PROVIDER` avec
+`OPENAI_API_KEY` / `DEEPSEEK_API_KEY` (§6 de codage-terminologique-assiste.md) ; sans clé, le codage assisté répond
 par son seul repli lexical — voir [codage-terminologique-assiste.md](codage-terminologique-assiste.md)
 §5 avant tout envoi de texte clinique réel à un fournisseur externe. Les neuf commandes décrivent
 la cible de source ; elles ne constituent pas une autorisation de modifier un projet cloud.

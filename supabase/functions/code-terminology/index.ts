@@ -3,19 +3,42 @@ import { createClient } from '@supabase/supabase-js';
 import { requiredEnv } from '../_shared/contracts.ts';
 import { handleCodeTerminology } from './handler.ts';
 import { claudeInterpretation, type InterpretationService } from './interpret.ts';
+import { openAICompatibleInterpretation, PROVIDERS } from './openaiCompatible.ts';
 
-// Le LLM est FACULTATIF : sans ANTHROPIC_API_KEY, le codage repond par le seul repli lexical.
-// Delai court et une seule nouvelle tentative : la saisie ne doit pas attendre.
+// Le LLM est FACULTATIF : sans cle pour le fournisseur choisi, le codage repond par le seul
+// repli lexical. Fournisseur : TERMINOLOGY_LLM_PROVIDER = anthropic (defaut), openai ou deepseek.
+// Delai court et une seule nouvelle tentative au plus : la saisie ne doit pas attendre.
 let interpreter: InterpretationService | null | undefined;
 function configuredInterpreter(): InterpretationService | null {
   if (interpreter !== undefined) return interpreter;
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  interpreter = apiKey
-    ? claudeInterpretation(
-      new Anthropic({ apiKey, timeout: 8_000, maxRetries: 1 }),
-      Deno.env.get('TERMINOLOGY_LLM_MODEL') || 'claude-opus-5-5',
-    )
-    : null;
+  const provider = (Deno.env.get('TERMINOLOGY_LLM_PROVIDER') || 'anthropic').trim().toLowerCase();
+  const model = Deno.env.get('TERMINOLOGY_LLM_MODEL')?.trim();
+  interpreter = null;
+  if (provider === 'anthropic') {
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (apiKey) {
+      interpreter = claudeInterpretation(
+        new Anthropic({ apiKey, timeout: 8_000, maxRetries: 1 }),
+        model || 'claude-opus-5-5',
+      );
+    }
+  } else if (provider === 'openai' || provider === 'deepseek') {
+    const defaults = PROVIDERS[provider];
+    const apiKey = Deno.env.get(defaults.keyEnv);
+    const chosenModel = model || defaults.model;
+    if (apiKey && chosenModel) {
+      interpreter = openAICompatibleInterpretation({
+        apiKey,
+        model: chosenModel,
+        baseUrl: Deno.env.get('TERMINOLOGY_LLM_BASE_URL')?.trim() || defaults.baseUrl,
+        jsonMode: defaults.jsonMode,
+      });
+    } else if (apiKey) {
+      console.error(`code-terminology: TERMINOLOGY_LLM_MODEL requis pour ${provider}, repli lexical`);
+    }
+  } else {
+    console.error('code-terminology: TERMINOLOGY_LLM_PROVIDER inconnu, repli lexical');
+  }
   return interpreter;
 }
 

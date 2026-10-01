@@ -49,7 +49,9 @@ beforeAll(async () => {
        ($1, 'FIC.07', 'Hémorragie sousdurale non traumatique du fœtus ou du nouveau-né', 'category', true, null),
        ($1, 'FIC.00', 'Hémorragie intracérébrale', 'category', true, null),
        ($1, 'FIC.99', 'Fracture du fémur', 'category', true, null),
-       ($1, 'FIC.BL', 'Hémorragies sousdurales', 'block', false, null)`,
+       ($1, 'FIC.BL', 'Hémorragies sousdurales', 'block', false, null),
+       ($1, 'FIC.V1', 'Maladie due au VIH stade clinique 1', 'category', true, null),
+       ($1, 'FIC.OE', 'Œdème cérébral traumatique', 'category', true, null)`,
     [release, URI],
   );
   await db.admin.query(
@@ -142,6 +144,17 @@ describe('codage assiste — regles et candidats', () => {
     expect(codes).not.toContain('FIC.99');
     // Un regroupement non selectionnable n'est jamais propose.
     expect(codes).not.toContain('FIC.BL');
+  });
+
+  test('les sigles de trois lettres et « oe » retrouvent leurs intitules', async () => {
+    const codes = async (terms: string[]) => (await db.asUser(ownerId, async (c: Client) => (await c.query(
+      'select code from public.match_terminology_candidates($1)',
+      [terms],
+    )).rows)).map((r: { code: string }) => r.code);
+    expect(await codes(['VIH'])).toContain('FIC.V1');
+    expect(await codes(['oedeme'])).toContain('FIC.OE');
+    // Un mot-outil de trois lettres ne ramene rien a lui seul.
+    expect(await codes(['des sur'])).toEqual([]);
   });
 
   test('les candidats sont reserves aux comptes authentifies', async () => {

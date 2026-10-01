@@ -59,13 +59,16 @@ beforeAll(async () => {
     activate: true,
   });
   for (const c of CALIBRATION_CASES) {
+    // Comme l'Edge Function : le texte du medecin accompagne chaque interpretation.
     scored.llm.push(await score(c, {
       normalized: c.llm.normalized,
       searchTerms: c.llm.searchTerms,
       ambiguous: c.llm.ambiguous ?? false,
       alternativeTerms: c.llm.alternativeTerms ?? [],
+      source: c.text,
     }));
-    scored.lexical.push(await score(c, lexicalInterpretation(c.text)[0]));
+    const lexical = lexicalInterpretation(c.text)[0];
+    scored.lexical.push(await score(c, lexical && { ...lexical, source: c.text }));
   }
 }, 300_000);
 
@@ -127,5 +130,5 @@ describe('codage assiste — calibrage des seuils', () => {
   });
 });
 
-// Valeurs mesurees au calibrage (jeu complet, 92 cas) ; le calcul est deterministe.
-const CALIBRATED = { llmAutoOk: 62, llmUtility: 73.3 - 1e-9, lexicalUtility: 48.8 - 1e-9 };
+// Valeurs mesurees au calibrage (jeu complet, 97 cas, regle de couverture incluse) ; le calcul est deterministe.
+const CALIBRATED = { llmAutoOk: 58, llmUtility: 75.6 - 1e-9, lexicalUtility: 49.8 - 1e-9 };

@@ -1,5 +1,14 @@
 import { assert, assertEquals } from '@std/assert';
-import { type Candidate, decide, type DiagnosisInterpretation, normalizeText, similarity, stems } from './scoring.ts';
+import {
+  type Candidate,
+  conceptKey,
+  decide,
+  type DiagnosisInterpretation,
+  isCovered,
+  normalizeText,
+  similarity,
+  stems,
+} from './scoring.ts';
 
 // Libelles fictifs calques sur la forme des intitules CIM-11 francais.
 const candidates = (labels: Array<[string, string]>): Candidate[] =>
@@ -147,4 +156,46 @@ Deno.test('correspondance insuffisante : non code', () => {
   assertEquals(decision.status, 'unmatched');
   assertEquals(decision.best, null);
   assertEquals(decide(item(['Quoi que ce soit']), []).status, 'unmatched');
+});
+
+Deno.test('inference : un germe deduit par le LLM n est jamais pose sans confirmation', () => {
+  const pfla = item(['Pneumonie due à Streptococcus pneumoniae', 'Pneumonie bactérienne'], {
+    normalized: 'Pneumonie franche lobaire aiguë',
+    source: 'Pneumonie franche lobaire aigue',
+  });
+  assertEquals(isCovered('Pneumonie due à Streptococcus pneumoniae', pfla), false);
+  const decision = decide(
+    pfla,
+    candidates([['FIC.07', 'Pneumonie due à Streptococcus pneumoniae'], ['FIC.0', 'Pneumonie bactérienne']]),
+  );
+  assertEquals(decision.status, 'suggested');
+  assertEquals(decision.best?.code, 'FIC.07');
+});
+
+Deno.test('couverture : abreviation developpee, synonymes et mots qui situent sans preciser', () => {
+  const hsd = { normalized: 'Hématome sous-dural chronique spontané droit', source: 'HSD chronique spontané droit' };
+  assert(isCovered('Hémorragie sousdurale non traumatique', hsd));
+  assert(isCovered('Glioblastome du cerveau', { normalized: 'Glioblastome temporal gauche', source: 'GBM temporal' }));
+  assert(isCovered("Fracture d'os temporal (de la base du crâne)", { normalized: "Fracture de l'os temporal" }));
+  assertEquals(isCovered('Insuffisance rénale aigüe', { normalized: 'Insuffisance rénale' }), false);
+  // Intitule disjonctif : un cote couvert suffit ; un mot porteur hors disjonction, non.
+  assert(isCovered('Hémorragie sousdurale non traumatique du fœtus ou du nouveau-né', {
+    normalized: 'Hématome sous-dural non traumatique du nouveau-né',
+  }));
+  assert(isCovered("Anévrisme ou dissection de l'artère carotide", { normalized: 'Anévrisme carotidien' }));
+  assert(isCovered('Fracture de la première vertèbre cervicale', { normalized: "Fracture de l'atlas" }));
+  assertEquals(isCovered('Hypertension essentielle', { normalized: 'Hypertension artérielle', source: 'HTA' }), false);
+});
+
+Deno.test('sigles : VIH et HIV rejoignent l intitule developpe, « sans mention de » est facultatif', () => {
+  const label = "Maladie par le virus de l'immunodéficience humaine sans mention de tuberculose ni de paludisme";
+  assertEquals(similarity('Maladie due au VIH', label), 1);
+  assert(isCovered(label, { normalized: 'Infection par le VIH', source: 'terrain HIV' }));
+  // « …, stade clinique non precise » est le meme concept que l'intitule principal.
+  assertEquals(
+    conceptKey(
+      "Maladie due au virus de l'immunodéficience humaine sans mention de tuberculose ni de paludisme, stade clinique non précisé",
+    ),
+    conceptKey(label),
+  );
 });

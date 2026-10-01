@@ -33,10 +33,13 @@ const coded = (status: 'automatic' | 'suggested' | 'ambiguous' | 'unmatched', ex
 });
 
 /** Harnais A ETAT : la reponse du codage s'applique a la valeur courante, comme dans une fiche. */
-function renderField(repo: Partial<TerminologyRepository>, opts: { multiple?: boolean; freeText?: boolean } = {}) {
+function renderField(
+  repo: Partial<TerminologyRepository>,
+  opts: { multiple?: boolean; freeText?: boolean; initial?: unknown } = {},
+) {
   const changes: unknown[] = [];
   function Harness() {
-    const [value, setValue] = useState<unknown>(null);
+    const [value, setValue] = useState<unknown>(opts.initial ?? null);
     return (
       <TerminologyInput
         field={{ label: 'Diagnostic', isMultiple: opts.multiple }}
@@ -173,5 +176,31 @@ describe('TerminologyInput — codage assiste', () => {
     expect(submit).not.toHaveBeenCalled();
     // Sans service de codage, le texte est conserve tel quel.
     expect(changes[0]).toEqual({ raw: RAW, coding: { method: 'lexical', status: 'unmatched' } });
+  });
+
+  test('reouverture : les propositions d une entree non codee sont restaurees, la valeur intacte', async () => {
+    const stored = {
+      raw: 'Hémorragie intracrânienne spontanée',
+      coding: { method: 'ai_assisted', status: 'unmatched', normalized: 'Hématome sous-dural chronique spontané droit', language: 'fr' },
+    };
+    const codeText = vi.fn(async () => coded('ambiguous'));
+    const changes = renderField({ codeText }, { initial: stored });
+
+    expect(await screen.findByText('Plusieurs correspondances possibles :')).toBeInTheDocument();
+    expect(codeText).toHaveBeenCalledTimes(1);
+    expect(codeText).toHaveBeenCalledWith(stored.raw);
+    // Rien n'est ecrit tant que le medecin n'a pas choisi.
+    expect(changes).toEqual([]);
+    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label}` }));
+    expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: stored.raw, coding: { status: 'confirmed' } });
+  });
+
+  test('reouverture : une saisie conservee hors connexion n est pas reanalysee en silence', async () => {
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText }, { initial: { raw: RAW, coding: { method: 'lexical', status: 'unmatched' } } });
+    expect(await screen.findByText(RAW)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(codeText).not.toHaveBeenCalled();
+    expect(changes).toEqual([]);
   });
 });
