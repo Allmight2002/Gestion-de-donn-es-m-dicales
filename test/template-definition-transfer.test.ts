@@ -137,19 +137,39 @@ describe('transfert d\'un jeu de variables par fichier', () => {
     expect((imported.diagnosisConfiguration as { terminologyReleaseId: string }[])[0].terminologyReleaseId).toBe(release);
   });
 
-  test('un bloc repetable garde son caractere repetable', async () => {
+  test('un bloc repetable garde son caractere repetable et ses libelles de saisie', async () => {
     const template = (await db.admin.query(
       "insert into template(name,owner_user_id,is_global) values('Répétable (fictif)',$1,false) returning id", [alice])).rows[0].id;
     const v = (await db.admin.query(
       "insert into template_version(template_id,version_number,status) values($1,1,'draft') returning id", [template])).rows[0].id;
     await db.admin.query(
-      "insert into template_section(template_version_id,section_key,label,display_order,is_repeatable) values($1,'lesions','Lésions',0,true)", [v]);
+      `insert into template_section(template_version_id,section_key,label,display_order,is_repeatable,add_label,item_label)
+       values($1,'lesions','Lésions',0,true,'Ajouter une lésion','Lésion'),($1,'suivis','Suivis',1,true,null,null)`, [v]);
     await db.admin.query(
       "insert into template_field(template_version_id,field_key,label,scope,section,type,display_order) values($1,'taille','Taille','encounter','lesions','number',0)", [v]);
     const d = await exportAs(alice, v);
-    expect(d.sections).toEqual([{ key: 'lesions', label: 'Lésions', parentKey: null, displayOrder: 0, isRepeatable: true }]);
+    expect(d.sections).toEqual([
+      { key: 'lesions', label: 'Lésions', parentKey: null, displayOrder: 0, isRepeatable: true, addLabel: 'Ajouter une lésion', itemLabel: 'Lésion' },
+      { key: 'suivis', label: 'Suivis', parentKey: null, displayOrder: 1, isRepeatable: true, addLabel: null, itemLabel: null },
+    ]);
     const result = await importAs(bob, { definition: d });
     expect(comparable(await exportAs(bob, result.versionId))).toEqual(comparable(d));
+
+    // Fichier anterieur, sans ces cles : il s'importe, libelles generiques.
+    const older = { ...d, sections: (d.sections as Record<string, unknown>[]).map(({ addLabel: _a, itemLabel: _i, ...s }) => s) };
+    const fromOlder = await importAs(bob, { definition: older });
+    expect((await exportAs(bob, fromOlder.versionId)).sections).toEqual([
+      expect.objectContaining({ key: 'lesions', addLabel: null, itemLabel: null }),
+      expect.objectContaining({ key: 'suivis', addLabel: null, itemLabel: null }),
+    ]);
+
+    // Libelle hors bornes : refus lisible, avant toute ecriture.
+    const before = await templateCount(bob);
+    const bad = { ...d, sections: (d.sections as Record<string, unknown>[]).map((s) => (s.key === 'suivis' ? { ...s, itemLabel: ' Suivi' } : s)) };
+    let detail: unknown;
+    try { await importAs(bob, { definition: bad }); } catch (e) { detail = JSON.parse((e as { detail: string }).detail); }
+    expect(detail).toEqual({ code: 'TEMPLATE_IMPORT_INVALID', reason: 'section_repeat_label_invalid', key: 'suivis', position: 2 });
+    expect(await templateCount(bob)).toBe(before);
   });
 
   // Registre reel construit dans l'editeur : 63 sections et des codes de variables avec
