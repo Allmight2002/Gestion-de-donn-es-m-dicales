@@ -109,8 +109,20 @@ Effets sur les autres surfaces :
   `test/fixtures/containsAny.ts`.
 - **Export** : le libellé (ou le texte d'origine pour une entrée non codée) part dans la colonne
   principale ; la colonne de code et les indicatrices `has__…` ne contiennent que les codes ; la
-  feuille longue garde le rang de saisie avec un code vide pour le texte non codé. La provenance
-  n'est pas encore exportée (§8).
+  feuille longue garde le rang de saisie avec un code vide pour le texte non codé.
+- **Provenance exportée en colonnes**, dans les deux profils (`analysis` et `complete`), dès
+  qu'au moins une fiche exportée en porte. Sinon, la structure de l'export reste celle d'avant.
+  - **Champ unitaire** : sept colonnes suivent la colonne de code. Le motif est
+    `terminology_<élément>__<portée>__<variable>`, et les éléments sont `text` (texte saisi),
+    `status`, `method`, `score`, `normalized`, `release` et `uri`.
+  - **Liste** (L21) : la feuille dédiée gagne les mêmes colonnes `text` … `uri`, entrée par
+    entrée et dans l'ordre de saisie ; la feuille principale n'en porte pas.
+  - **Valeur sans provenance** (choix direct, valeur antérieure) : les cases restent vides,
+    rien n'est inventé.
+  - **Dictionnaire** : il documente chaque colonne, avec les valeurs admises de `status` et de
+    `method`.
+  - **Neutralisation** : le texte saisi passe par la même neutralisation que le reste
+    (formules CSV/XLSX).
 - **Fusion de conflit hors ligne** (`mergeKeepBoth`) : une liste contenant un texte non codé n'est
   pas unie ; « garder les deux » conserve alors la version locale, sans perte.
 
@@ -189,7 +201,7 @@ publication est active à la fois (`terminology_release_single_active`).
 - Seuils calibrés avec des interprétations **simulées** : refaire le calibrage avec les sorties
   du vrai modèle, enregistrées telles quelles dans le jeu annoté, avant tout usage réel.
 - Pas de post-coordination CIM-11 : la latéralité et le contexte restent dans `normalized`.
-- La provenance (`raw`, `coding.*`) n'est pas exportée en colonnes ; les entrées non codées ne
-  remontent pas encore comme cas « non classés » dans le suivi diagnostique (L56).
+- Les entrées non codées ne remontent pas encore comme cas « non classés » dans le suivi
+  diagnostique (L56).
 - Preuve navigateur du parcours et appel réel du LLM non exécutés dans ce lot.
 - Pas de limitation de débit propre à la fonction au-delà de celles de la plateforme.
