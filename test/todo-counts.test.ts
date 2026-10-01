@@ -16,7 +16,7 @@ let baseId: string;
 
 const rowsAs = (uid: string, sql: string, params?: unknown[]) =>
   db.asUser(uid, async (c: Client) => (await c.query(sql, params)).rows);
-type Counts = { baseId: string; incomplete: number; clarifications: number };
+type Counts = { baseId: string; incomplete: number; clarifications: number; pendingCodings: number };
 const countsAs = async (uid: string): Promise<Counts[]> =>
   (await rowsAs(uid, 'select public.my_todo_counts() as c'))[0].c as Counts[];
 const countsFor = async (uid: string, base = baseId) => (await countsAs(uid)).find((c) => c.baseId === base);
@@ -62,7 +62,7 @@ describe('lot 8 : compteurs « A faire » (my_todo_counts)', () => {
 
     const mine = await countsFor(aliceId);
     expect(mine).toBeDefined();
-    expect(Object.keys(mine!).sort()).toEqual(['baseId', 'clarifications', 'incomplete']);
+    expect(Object.keys(mine!).sort()).toEqual(['baseId', 'clarifications', 'incomplete', 'pendingCodings']);
     expect(mine!.incomplete).toBeGreaterThanOrEqual(2);
     expect(mine!.incomplete).toBe(await queueTotalAs(aliceId));
   });
@@ -108,7 +108,7 @@ describe('lot 8 : compteurs « A faire » (my_todo_counts)', () => {
     expect(await countsAs(bobId)).toEqual([]);
 
     await rowsAs(bobId, CREATE_PAT, [empty, 'TODO-BOB', 'Bob Fictif', '1990-01-01', null, null, null, JSON.stringify({ sexe: 'M' })]);
-    expect(await countsAs(bobId)).toEqual([{ baseId: empty, incomplete: 1, clarifications: 0 }]);
+    expect(await countsAs(bobId)).toEqual([{ baseId: empty, incomplete: 1, clarifications: 0, pendingCodings: 0 }]);
     // Le cloisonnement tient dans les deux sens : Alice ne voit pas la base de Bob.
     expect((await countsAs(aliceId)).some((c) => c.baseId === empty)).toBe(false);
   });
@@ -124,7 +124,7 @@ describe('lot 8 : compteurs « A faire » (my_todo_counts)', () => {
       select $1::uuid, 'TODO-MASSE-' || g, $2::uuid, '{"sexe":"F"}'::jsonb, 'draft', $3::uuid
       from generate_series(1, 150) g`, [large, version, bobId]);
 
-    expect(await countsFor(bobId, large)).toEqual({ baseId: large, incomplete: 100, clarifications: 0 });
+    expect(await countsFor(bobId, large)).toEqual({ baseId: large, incomplete: 100, clarifications: 0, pendingCodings: 0 });
     expect(await queueTotalAs(bobId, large)).toBe(150);
   });
 

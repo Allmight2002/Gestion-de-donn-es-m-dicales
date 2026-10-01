@@ -102,6 +102,28 @@ describe('page « À faire » (lot 8)', () => {
     expect(await screen.findByRole('link', { name: /^100\+ dossier\(s\) incomplet\(s\)/ })).toHaveAttribute('href', '/bases/b1/queue');
   });
 
+  test('diagnostics restés non codés ou à confirmer : une rubrique par base, vers leur liste', async () => {
+    renderTodo({
+      drafts: null, showMissions: false,
+      counts: async () => [
+        { baseId: 'b1', incomplete: 0, clarifications: 0, pendingCodings: 3 },
+        { baseId: 'b2', incomplete: 4, clarifications: 0, pendingCodings: 100 },
+      ],
+    });
+    expect(await screen.findByRole('link', { name: /^3 diagnostic\(s\) à coder/ })).toHaveAttribute('href', '/bases/b1/codings');
+    expect(linkTo(/^3 diagnostic/)).toHaveTextContent('Registre A (fictif)');
+    expect(linkTo(/^100\+ diagnostic\(s\) à coder/)).toHaveAttribute('href', '/bases/b2/codings');
+    // Les dossiers incomplets viennent avant les diagnostics a coder.
+    expect(within(screen.getByRole('list')).getAllByRole('link').map((link) => link.getAttribute('href')))
+      .toEqual(['/bases/b2/queue', '/bases/b1/codings', '/bases/b2/codings']);
+  });
+
+  test('un serveur sans compteur de diagnostics n’affiche pas la rubrique', async () => {
+    renderTodo({ drafts: null, showMissions: false, counts: async () => [{ baseId: 'b1', incomplete: 2, clarifications: 0 }] });
+    await screen.findByRole('link', { name: /^2 dossier/ });
+    expect(screen.queryByRole('link', { name: /diagnostic/ })).toBeNull();
+  });
+
   test('au-delà de cinq brouillons, la liste se déplie sur demande', async () => {
     const seven = Array.from({ length: 7 }, (_, index) => draft(`x${index}`, {}));
     renderTodo({ drafts: async () => seven, counts: null, showMissions: false });
