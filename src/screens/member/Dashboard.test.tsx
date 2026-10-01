@@ -253,6 +253,29 @@ describe('Dashboard', () => {
     await screen.findByRole('button', { name: /Nouvelle base/ });
     expect(screen.queryByText('Mission terminée')).toBeNull();
   });
+
+  // Un medecin invite dans une base, sans jeu de variables lisible : pas d'avertissement
+  // permanent sur le tableau de bord ; l'indication n'apparait qu'a l'ouverture de la creation.
+  test('sans jeu de variables, l indication n apparait que dans le formulaire de creation', async () => {
+    const user = userEvent.setup();
+    const repo = { ...mockBases(), async listTemplateModels() { return []; } } as unknown as BaseRepository;
+    renderApp(repo);
+    await screen.findByText('Registre Neuro');
+    expect(screen.queryByText(/Aucun jeu de variables disponible/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Nouvelle base' }));
+    expect(screen.getByText(/Aucun jeu de variables disponible/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Créer un jeu de variables' })).toHaveAttribute('href', '/templates');
+  });
+
+  test('une erreur de chargement ne se presente pas comme une absence de jeu de variables', async () => {
+    const user = userEvent.setup();
+    const repo = { ...mockBases(), async listMyBases() { throw new Error('réseau'); } } as unknown as BaseRepository;
+    renderApp(repo);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // La liste vide affiche aussi son propre bouton "Nouvelle base" : on prend celui de l'en-tete.
+    await user.click(screen.getAllByRole('button', { name: /Nouvelle base/ })[0]);
+    expect(screen.queryByText(/Aucun jeu de variables disponible/)).toBeNull();
+  });
 });
 
 describe('BaseHome', () => {
