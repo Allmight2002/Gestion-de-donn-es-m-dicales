@@ -507,3 +507,27 @@ describe('RepeatableGroup — groupe en sous-section (L72c)', () => {
     await waitFor(() => expect(softDeleteEncounter).toHaveBeenCalledWith('occ-2', 'bloc retiré'));
   });
 });
+
+// L'auteur du formulaire nomme le bouton et un element : « Ajouter une lésion », « Lésion 1 ».
+describe('RepeatableGroup — libellés choisis par l’auteur du formulaire', () => {
+  const named: TemplateSection = { ...groupSection, addLabel: 'Ajouter une lésion', itemLabel: 'Lésion' };
+
+  test('le bouton, les lignes et la saisie portent les libellés du bloc', async () => {
+    const user = userEvent.setup();
+    renderGroup({ section: named, rows: [occurrence('occ-1')] });
+
+    expect(screen.queryByRole('button', { name: /Ajouter une occurrence/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Modifier : Lésion 1 (Lésions)' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ajouter une lésion' }));
+    expect(screen.getByRole('group', { name: 'Nouvelle saisie : Lésion (Lésions)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer : Lésion' })).toBeInTheDocument();
+  });
+
+  test('sans texte de bouton, le nom de l’élément suffit ; sans rien, les libellés génériques restent', () => {
+    const { unmount } = renderGroup({ section: { ...groupSection, itemLabel: 'Suivi' } });
+    expect(screen.getByRole('button', { name: 'Ajouter : Suivi' })).toBeInTheDocument();
+    unmount();
+    renderGroup();
+    expect(screen.getByRole('button', { name: 'Ajouter une occurrence' })).toBeInTheDocument();
+  });
+});

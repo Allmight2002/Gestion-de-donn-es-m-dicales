@@ -40,6 +40,7 @@ import {
   groupFieldsBySection, maskedRepeatableSectionKeys, repeatableGroupFields, sectionLabel, withRepeatableSteps,
 } from '../../domain/templateSections';
 import { RepeatableGroupTable } from './RepeatableGroup';
+import { repeatableLabels } from '../../domain/repeatableLabels';
 import { useTopBar, useTopBarActions } from '../../components/TopBar';
 
 // Colonne affichee (sous-ensemble commun en ligne / hors-ligne).
@@ -691,6 +692,7 @@ export function PatientDetail() {
             )}
             <RepeatableGroupTable
               groupLabel={step.section.label?.trim() || step.section.sectionKey}
+              rankLabel={repeatableLabels(t, step.section).rank}
               columns={groupColumnsOf(step.section.sectionKey)}
               rows={occurrencesOf(step.section.sectionKey)}
             />

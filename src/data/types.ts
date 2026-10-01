@@ -246,6 +246,13 @@ export interface TemplateSection {
    * la base le garantit.
    */
   isRepeatable?: boolean;
+  /**
+   * Bloc repetable : texte ENTIER du bouton d'ajout (« Ajouter une lesion »), choisi par
+   * l'auteur du formulaire. Absent ou null : libelle generique.
+   */
+  addLabel?: string | null;
+  /** Bloc repetable : nom d'UN element (« Lesion »), qui remplace « Occurrence » dans les titres. */
+  itemLabel?: string | null;
 }
 
 export interface ValidationRule {

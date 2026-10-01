@@ -9,6 +9,7 @@ import {
 import { evaluateRules, hiddenFieldKeys, isMissing, missingCodeOf, validateValues, withoutHiddenValues } from '../../domain/validation';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
 import { useNarrowViewport } from '../../lib/useNarrowViewport';
+import { repeatableLabels } from '../../domain/repeatableLabels';
 import { DeleteWithReason } from './DeleteWithReason';
 import { JustificationField } from './JustificationField';
 import { EncounterFields } from './EncounterFields';
@@ -67,9 +68,11 @@ function useCellText() {
  * action ; l'ecran de correction lui passe les actions de ligne.
  */
 export function RepeatableGroupTable({
-  groupLabel, columns, rows, loading = false, rowActions, rowNotice,
+  groupLabel, rankLabel, columns, rows, loading = false, rowActions, rowNotice,
 }: {
   groupLabel: string;
+  /** Titre d'une ligne (« Lesion 2 ») ; `rank` commence a 1. Absent : « Occurrence n ». */
+  rankLabel?: (rank: number) => string;
   columns: readonly OccurrenceColumn[];
   rows: readonly Encounter[];
   loading?: boolean;
@@ -82,7 +85,8 @@ export function RepeatableGroupTable({
   const cellText = useCellText();
   const narrow = useNarrowViewport();
   const asCards = narrow || columns.length > MAX_TABLE_COLUMNS;
-  const rankOf = (index: number) => t('form.repeatable_occurrence').replace('{n}', String(index + 1));
+  const rankOf = (index: number) => rankLabel?.(index + 1)
+    ?? t('form.repeatable_occurrence').replace('{n}', String(index + 1));
 
   if (loading) {
     return (
@@ -239,7 +243,8 @@ export function RepeatableGroup({
   const hasDrafts = Object.keys(drafts).length > 0;
   useEffect(() => { onDirtyChange?.(hasDrafts); }, [hasDrafts, onDirtyChange]);
 
-  const groupLabel = section.label?.trim() || section.sectionKey;
+  const labels = repeatableLabels(t, section);
+  const groupLabel = labels.group;
   const columns = useMemo<OccurrenceColumn[]>(
     () => [...fields].sort((a, b) => a.displayOrder - b.displayOrder).map((field) => ({
       fieldKey: field.fieldKey, label: field.label, type: field.type,
@@ -354,14 +359,14 @@ export function RepeatableGroup({
         {!masked && <button
           type="button"
           className="text-xs font-medium text-teal-700 hover:underline"
-          aria-label={t('form.repeatable_edit_occurrence').replace('{n}', String(index + 1)).replace('{group}', groupLabel)}
+          aria-label={labels.editAction(index + 1)}
           disabled={busy}
           onClick={() => open(row)}
         >
           {t('encounter.edit')}
         </button>}
         <DeleteWithReason
-          label={t('form.repeatable_delete_occurrence').replace('{n}', String(index + 1)).replace('{group}', groupLabel)}
+          label={labels.deleteAction(index + 1)}
           onConfirm={async (reason) => {
             if (!online || busy) throw new Error(t('common.error'));
             await patients.softDeleteEncounter(row.id, reason);
@@ -411,6 +416,7 @@ export function RepeatableGroup({
         : (
           <RepeatableGroupTable
             groupLabel={groupLabel}
+            rankLabel={labels.rank}
             columns={columns}
             rows={rows}
             loading={loading}
@@ -423,7 +429,7 @@ export function RepeatableGroup({
         <div className="space-y-1">
           <button type="button" className="btn-secondary" disabled={limitReached || busy}
             onClick={() => open(null)}>
-            <Plus size={16} aria-hidden /> {t('form.repeatable_add')}
+            <Plus size={16} aria-hidden /> {labels.add}
           </button>
           {limitReached && (
             <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -448,10 +454,8 @@ export function RepeatableGroup({
           id={formId}
           role="group"
           aria-label={draft.row
-            ? t('form.repeatable_edit_title')
-              .replace('{n}', String(rows.findIndex((row) => row.id === draft.row!.id) + 1))
-              .replace('{group}', groupLabel)
-            : t('form.repeatable_new_title').replace('{group}', groupLabel)}
+            ? labels.editTitle(rows.findIndex((row) => row.id === draft.row!.id) + 1)
+            : labels.newTitle}
           className="min-w-0 space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4 dark:border-teal-900 dark:bg-teal-950/20"
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
@@ -462,10 +466,8 @@ export function RepeatableGroup({
         >
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {draft.row
-              ? t('form.repeatable_edit_title')
-                .replace('{n}', String(rows.findIndex((row) => row.id === draft.row!.id) + 1))
-                .replace('{group}', groupLabel)
-              : t('form.repeatable_new_title').replace('{group}', groupLabel)}
+              ? labels.editTitle(rows.findIndex((row) => row.id === draft.row!.id) + 1)
+              : labels.newTitle}
           </p>
 
           {/* Le moteur de champs existant, avec ses regles internes, ses valeurs par defaut et
@@ -503,7 +505,7 @@ export function RepeatableGroup({
 
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-primary" disabled={busy || draft.conflict} onClick={() => void save()}>
-              {t('form.repeatable_save')}
+              {labels.save}
             </button>
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => setConfirmation('cancel')}>{t('common.cancel')}</button>
             {draft.conflict && (
