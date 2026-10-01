@@ -81,6 +81,7 @@ const SCREENS: Screen[] = [
   { name: 'modification d’une rencontre', path: '/bases/b1/patients/p1/encounters/e1/edit', first: FIRST_FIELD },
   { name: 'correction de l’identite', path: '/bases/b1/patients/p1/identity/edit', first: FIRST_FIELD },
   { name: 'dossiers a completer', path: '/bases/b1/queue', first: { text: '^P-0001$' } },
+  { name: 'diagnostics a coder', path: '/bases/b1/codings', first: { text: '^P-0001$' } },
   { name: 'journal', path: '/bases/b1/activity', first: { selector: 'li' } },
   { name: 'cohortes', path: '/bases/b1/cohorts', first: { text: 'Glasgow ≤ 12' } },
   { name: 'statistiques', path: '/bases/b1/stats', first: { text: '^Patients inclus$' } },

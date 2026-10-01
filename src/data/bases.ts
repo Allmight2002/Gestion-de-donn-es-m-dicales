@@ -197,12 +197,42 @@ export interface BaseTodoCounts {
   incomplete: number;
   /** Questions du curateur qui attendent la reponse du proprietaire. */
   clarifications: number;
+  /** Diagnostics (variables `terminology`) non codes ou a confirmer, comptes jusqu'a 100.
+   *  Absent (ou 0) quand le serveur ne connait pas encore cette rubrique. */
+  pendingCodings?: number;
+}
+
+/** Diagnostic en attente : texte non code (`unmatched`) ou code propose non confirme (`suggested`). */
+export interface PendingCoding {
+  patientId: string;
+  /** Code patient pseudonyme (table analytique), comme la file « A completer ». */
+  patientCode: string;
+  encounterId: string | null;
+  encounterType: string | null;
+  encounterDate: string | null;
+  fieldKey: string;
+  fieldLabel: string;
+  /** Rang dans une liste de diagnostics (0 = principal) ; null pour une valeur unique. */
+  position: number | null;
+  /** Texte ecrit par le medecin. */
+  raw: string | null;
+  /** Libelle propose, pour une entree `suggested`. */
+  proposedLabel: string | null;
+  status: 'unmatched' | 'suggested';
+  updatedAt: string;
+}
+
+export interface PendingCodingPage {
+  items: PendingCoding[];
+  hasMore: boolean;
 }
 
 export interface BaseRepository {
   listMyBases(): Promise<BaseListing[]>;
   /** Lot 8 : compteurs « A faire » de toutes les bases, en une lecture sous RLS. Facultatif. */
   getTodoCounts?(): Promise<BaseTodoCounts[]>;
+  /** Diagnostics en attente d'une base (la plus recente modification d'abord). Facultatif. */
+  listPendingCodings?(baseId: string, limit?: number): Promise<PendingCodingPage>;
   listDeletedBases(): Promise<DeletedBase[]>;
   /** Modeles proposes au medecin : officiels (global) + ses propres gabarits (personal). */
   listTemplateModels(): Promise<PublishedTemplateOption[]>;
@@ -358,12 +388,17 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       // La RLS ne renvoie que les modeles lisibles (global + ses propres gabarits).
       const { data, error } = await client
         .from('template')
-        .select('id, name, specialty, is_global, template_version(id, version_number)')
+        .select('id, name, specialty, is_global, template_version(id, version_number, status)')
         .order('created_at', { ascending: true });
       if (error) throw error;
-      type Row = { id: string; name: string; specialty: string | null; is_global: boolean; template_version: { id: string; version_number: number }[] };
+      type Row = { id: string; name: string; specialty: string | null; is_global: boolean; template_version: { id: string; version_number: number; status: string }[] };
       return ((data ?? []) as Row[]).flatMap((t) => {
-        const latest = [...(t.template_version ?? [])].sort((a, b) => b.version_number - a.version_number)[0];
+        // Modele officiel : seule sa derniere version PUBLIEE est proposee ; un brouillon en
+        // cours chez le gestionnaire (ou une version archivee) ne doit pas servir de source.
+        // Jeu personnel : sa derniere version, brouillon compris (c'est l'etat normal d'un
+        // jeu que le medecin edite lui-meme).
+        const candidates = (t.template_version ?? []).filter((v) => !t.is_global || v.status === 'published');
+        const latest = [...candidates].sort((a, b) => b.version_number - a.version_number)[0];
         if (!latest) return [];
         return [{
           versionId: latest.id,
@@ -463,7 +498,36 @@ export function makeBaseRepository(client: SupabaseClient | null): BaseRepositor
       if (error) throw error;
       return ((data ?? []) as BaseTodoCounts[]).map((row) => ({
         baseId: row.baseId, incomplete: Number(row.incomplete) || 0, clarifications: Number(row.clarifications) || 0,
+        pendingCodings: Number(row.pendingCodings) || 0,
       }));
+    },
+
+    async listPendingCodings(baseId, limit = 100) {
+      const { data, error } = await client.rpc('list_pending_codings', { p_base_id: baseId, p_limit: limit });
+      if (error) throw error;
+      const page = (data ?? {}) as { items?: Partial<PendingCoding>[]; hasMore?: boolean };
+      const text = (v: unknown) => (typeof v === 'string' ? v : null);
+      return {
+        items: (page.items ?? []).flatMap((row) => (
+          typeof row.patientId === 'string' && typeof row.fieldKey === 'string'
+            && (row.status === 'unmatched' || row.status === 'suggested')
+            ? [{
+              patientId: row.patientId,
+              patientCode: text(row.patientCode) ?? '',
+              encounterId: text(row.encounterId),
+              encounterType: text(row.encounterType),
+              encounterDate: text(row.encounterDate),
+              fieldKey: row.fieldKey,
+              fieldLabel: text(row.fieldLabel) ?? row.fieldKey,
+              position: typeof row.position === 'number' ? row.position : null,
+              raw: text(row.raw),
+              proposedLabel: text(row.proposedLabel),
+              status: row.status,
+              updatedAt: text(row.updatedAt) ?? '',
+            }]
+            : [])),
+        hasMore: page.hasMore === true,
+      };
     },
 
     async getInclusionStats(baseId) {

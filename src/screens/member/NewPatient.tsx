@@ -708,7 +708,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       )}
 
       <PatientDraftDialog draft={work} onCancel={() => navigate(`/bases/${baseId}`)} onNew={resetEntry} />
-      <WorkDraftPanel draft={work} online={online} baseId={baseId ?? ''} showCandidates={false} identityInForm={canViewIdentity} />
+      <WorkDraftPanel draft={work} online={online} showCandidates={false} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-6">
         {/* La fiche enregistree ne se ressaisit plus ici : le formulaire gele pour que l'etat

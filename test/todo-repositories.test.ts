@@ -31,10 +31,28 @@ describe('lot 8 : lectures de la page « A faire »', () => {
     const rpc = vi.fn(async () => ({ data: [{ baseId: 'b1', incomplete: '3', clarifications: null }], error: null }));
     const repository = makeBaseRepository({ rpc } as unknown as SupabaseClient);
 
-    await expect(repository.getTodoCounts!()).resolves.toEqual([{ baseId: 'b1', incomplete: 3, clarifications: 0 }]);
+    await expect(repository.getTodoCounts!()).resolves.toEqual([{ baseId: 'b1', incomplete: 3, clarifications: 0, pendingCodings: 0 }]);
     expect(rpc).toHaveBeenCalledWith('my_todo_counts');
 
     rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'permission denied' } } as never);
     await expect(repository.getTodoCounts!()).rejects.toMatchObject({ code: '42501' });
+  });
+
+  test('listPendingCodings lit list_pending_codings et ne garde que les champs attendus', async () => {
+    const row = {
+      patientId: 'p1', patientCode: 'P-FICTIF', encounterId: null, encounterType: null, encounterDate: null,
+      fieldKey: 'diag', fieldLabel: 'Diagnostic', position: null, raw: 'Texte fictif', proposedLabel: null,
+      status: 'unmatched', updatedAt: '2026-09-28T08:00:00Z',
+    };
+    const rpc = vi.fn(async () => ({
+      data: { items: [{ ...row, extra: 'ignore' }, { ...row, status: 'confirmed' }], hasMore: true }, error: null,
+    }));
+    const repository = makeBaseRepository({ rpc } as unknown as SupabaseClient);
+
+    await expect(repository.listPendingCodings!('b1', 20)).resolves.toEqual({ items: [row], hasMore: true });
+    expect(rpc).toHaveBeenCalledWith('list_pending_codings', { p_base_id: 'b1', p_limit: 20 });
+
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'Acces refuse' } } as never);
+    await expect(repository.listPendingCodings!('b1')).rejects.toMatchObject({ code: '42501' });
   });
 });
