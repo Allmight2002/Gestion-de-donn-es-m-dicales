@@ -71,9 +71,10 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 transfert par fichier : import_template_definition. Il ecrit les rubriques communes
     // (table sans policy d'ecriture) sous le marqueur de rattachement, comme la recopie ; il
     // verifie donc lui-meme le role medecin/administrateur et ne cree qu'un gabarit personnel.
-    expect(signatures).toHaveLength(152);
+    // +1 rename_base : renommage d une base, proprietaire seul, avec controle du nom lu.
+    expect(signatures).toHaveLength(153);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(164);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(165);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

@@ -18,3 +18,9 @@ export function useBaseFocus(active: boolean): void {
     return () => setFocused(false);
   }, [active, setFocused]);
 }
+
+/**
+ * Nouveau nom d'une base, remonte par ses reglages vers l'en-tete (fil d'Ariane) qui l'affiche.
+ * Meme raison que ci-dessus pour un contexte React plutot que celui de l'Outlet.
+ */
+export const BaseRenamedContext = createContext<((name: string) => void) | null>(null);

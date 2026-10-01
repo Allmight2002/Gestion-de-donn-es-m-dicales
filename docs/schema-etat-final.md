@@ -5,7 +5,7 @@
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
 - Dernière migration incluse : `20261001090000_terminology_assisted_coding.sql`
-- Tables : 59 · Policies RLS : 68 · Triggers : 97 · Fonctions : 415
+- Tables : 59 · Policies RLS : 68 · Triggers : 98 · Fonctions : 419
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1053,6 +1053,7 @@ Triggers :
 - `trg_template_field_formula` — BEFORE INSERT/UPDATE → `enforce_template_field_formula()`
 - `trg_template_field_formula_operand` — BEFORE UPDATE/DELETE → `enforce_template_field_formula_operand()`
 - `trg_template_field_formula_rules` — BEFORE INSERT/UPDATE → `enforce_template_field_formula_rules()`
+- `trg_template_field_key_rename_follows` — AFTER UPDATE → `follow_template_field_key_rename()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
@@ -1399,6 +1400,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | finalize_upload_operation | p_ticket_id uuid, p_entity text, p_metadata jsonb | DEFINER | plpgsql |
 | find_identity_matches | p_base_id uuid, p_full_name text, p_date_of_birth date | DEFINER | plpgsql |
 | fips_mode | — | INVOKER | c |
+| follow_template_field_key_rename | — | INVOKER | plpgsql |
 | form_justification_status | p_base_id uuid, p_reason text | DEFINER | plpgsql |
 | form_preparation_apply_assert_definition | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
 | form_preparation_apply_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
@@ -1435,6 +1437,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_record_field_group_applicable | p_version_id uuid, p_field_key text, p_group_section_key text | INVOKER | sql |
 | form_record_merge_legacy_payload | p_historical_version uuid, p_active_version uuid, p_scope text, p_existing jsonb, p_payload jsonb | DEFINER | plpgsql |
 | form_record_value_fingerprint | p_value jsonb | DEFINER | sql |
+| formula_with_renamed_field | formula text, p_old text, p_new text | INVOKER | sql |
 | gen_random_bytes | integer | INVOKER | c |
 | gen_random_uuid | — | INVOKER | c |
 | gen_salt | text | INVOKER | c |
@@ -1590,6 +1593,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | reject_cross_sectional_encounter | — | DEFINER | plpgsql |
 | reject_cross_sectional_encounter_submission | — | DEFINER | plpgsql |
 | release_curation_task | p_task_id uuid | DEFINER | plpgsql |
+| rename_base | p_base_id uuid, p_name text, p_expected_name text | DEFINER | plpgsql |
 | reorder_template_fields | p_version_id uuid, p_field_ids uuid[] | DEFINER | plpgsql |
 | reorder_template_section_siblings | p_version_id uuid, p_parent_key text, p_section_ids uuid[] | DEFINER | plpgsql |
 | reorder_template_sections | p_version_id uuid, p_section_ids uuid[] | DEFINER | plpgsql |
@@ -1619,6 +1623,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
 | rule_value_present | v jsonb | INVOKER | sql |
+| rule_with_renamed_field | p_rule jsonb, p_old text, p_new text | INVOKER | plpgsql |
 | run_template_version_invariants | — | DEFINER | plpgsql |
 | run_template_version_invariants_delete_statement | — | DEFINER | plpgsql |
 | run_template_version_invariants_insert_statement | — | DEFINER | plpgsql |

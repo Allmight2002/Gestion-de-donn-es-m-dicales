@@ -10,7 +10,7 @@ import { offlineCache, useOnline } from '../../data/offline';
 import type { BaseListing } from '../../data/bases';
 import { useTopBar } from '../../components/TopBar';
 import { overflowFadeClass, useOverflowEdges } from '../../lib/useOverflowEdges';
-import { BaseFocusContext } from './baseFocus';
+import { BaseFocusContext, BaseRenamedContext } from './baseFocus';
 
 // La page d'une base tient en QUATRE destinations. Dix onglets de meme poids obligeaient a
 // faire defiler une barre pour atteindre ce qu'on ouvre deux fois par an, alors que la saisie
@@ -270,7 +270,9 @@ export function BaseLayout() {
       )}
 
       <BaseFocusContext.Provider value={setFocused}>
-        <Outlet />
+        <BaseRenamedContext.Provider value={setName}>
+          <Outlet />
+        </BaseRenamedContext.Provider>
       </BaseFocusContext.Provider>
     </section>
   );

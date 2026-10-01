@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ChevronDown, ChevronRight, Download, Lock, Trash2 } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ConfirmationCode, normalizeConfirmationCode, randomConfirmationCode } from '../../components/ConfirmationCode';
 import { SectionCard } from '../../components/SectionCard';
 import { OptionKeyRepairPanel } from './OptionKeyRepairPanel';
+import { BaseRenamedContext } from './baseFocus';
 import { SkeletonList } from '../../components/Skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import { OfflineReadinessNotice, useAppShellReadiness } from '../../components/OfflineReadiness';
@@ -71,6 +72,9 @@ export function BaseSettings() {
   const [deleting, setDeleting] = useState(false);
   const [changingObservationModel, setChangingObservationModel] = useState(false);
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+  const [nameDraft, setNameDraft] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const onBaseRenamed = useContext(BaseRenamedContext);
   const toggleRow = (key: string) => setOpenRows((rows) => ({ ...rows, [key]: !rows[key] }));
   // La coquille ne se verifie que la ou une disponibilite hors-ligne est annoncee.
   const { readiness: shellReadiness, checking: shellChecking, check: shellCheck } = useAppShellReadiness(isOfflineEnabled() && cachedMeta !== null);
@@ -171,6 +175,27 @@ export function BaseSettings() {
     setConfirmDelete(true);
   };
 
+  // Le nom lu part avec le nouveau : si la base a ete renommee ailleurs entre-temps, le serveur
+  // refuse au lieu d'ecraser, et la saisie reste dans le champ.
+  const renameBase = useCallback(async (event: FormEvent) => {
+    event.preventDefault();
+    if (!id || !listing || listing.role !== 'owner') return;
+    const next = nameDraft.trim();
+    if (!next || next === listing.base.name) return;
+    setRenaming(true);
+    try {
+      const base = await bases.renameBase(id, next, listing.base.name);
+      setListing({ ...listing, base: { ...listing.base, name: base.name } });
+      onBaseRenamed?.(base.name);
+      setOpenRows((rows) => ({ ...rows, name: false }));
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e, t('common.error')));
+    } finally {
+      setRenaming(false);
+    }
+  }, [id, listing, nameDraft, bases, onBaseRenamed, t]);
+
   const observationModel: ObservationModel = listing?.base.observationModel ?? 'longitudinal';
   const changeObservationModel = useCallback(async (next: ObservationModel) => {
     if (!id || !listing || next === observationModel) return;
@@ -248,6 +273,29 @@ export function BaseSettings() {
       {/* Audit UI mobile, lot 5 (5.9 Général A) : une liste de reglages en lignes. Chaque ligne
           dit la valeur actuelle ; le detail s'ouvre a la demande. */}
       <ul className="card divide-y divide-slate-100 dark:divide-slate-800">
+        {isOwner && (
+          <SettingRow id="setting-name" label={t('settings.name')} value={listing.base.name}
+            open={!!openRows.name}
+            onToggle={() => { if (!openRows.name) setNameDraft(listing.base.name); toggleRow('name'); }}>
+            <form onSubmit={(event) => void renameBase(event)} className="flex max-w-md flex-wrap items-end gap-2">
+              <label className="form-label min-w-0 flex-1">
+                {t('settings.name_label')}
+                <input
+                  className="input mt-1"
+                  value={nameDraft}
+                  maxLength={120}
+                  required
+                  disabled={renaming}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                />
+              </label>
+              <button type="submit" className="btn-secondary"
+                disabled={renaming || !nameDraft.trim() || nameDraft.trim() === listing.base.name}>
+                {renaming ? t('settings.name_saving') : t('settings.name_save')}
+              </button>
+            </form>
+          </SettingRow>
+        )}
         {isOwner && (observationLocked ? (
           <li className={ROW}>
             <RowText
