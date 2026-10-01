@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useEntryFormRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { EntryFormConflictError, type EntryForm } from '../../data/entryForms';
@@ -99,6 +99,9 @@ export function BaseEntryForms() {
   }, [fields, sections]);
   const patientFields = useMemo(() => fields.filter((field) => field.scope === 'patient'), [fields]);
   const byKey = useMemo(() => new Map(available.map((field) => [field.fieldKey, field])), [available]);
+  // Un formulaire court suit l'ordre du formulaire complet : l'ordre de selection n'a pas de sens.
+  const rank = useMemo(() => new Map(available.map((field, index) => [field.fieldKey, index])), [available]);
+  const inFormOrder = (keys: string[]) => [...keys].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
   const labelOf = (key: string) => byKey.get(key)?.label ?? key;
 
   const groups = useMemo(() => {
@@ -118,16 +121,9 @@ export function BaseEntryForms() {
   const update = (change: (current: Draft) => Draft) => setDraft((current) => (current ? change(current) : current));
   const toggleField = (key: string, checked: boolean) => update((current) => ({
     ...current,
-    fieldKeys: checked ? [...current.fieldKeys.filter((k) => k !== key), key] : current.fieldKeys.filter((k) => k !== key),
+    fieldKeys: checked ? inFormOrder([...current.fieldKeys.filter((k) => k !== key), key]) : current.fieldKeys.filter((k) => k !== key),
     requiredKeys: checked ? current.requiredKeys : current.requiredKeys.filter((k) => k !== key),
   }));
-  const move = (index: number, delta: number) => update((current) => {
-    const keys = [...current.fieldKeys];
-    const target = index + delta;
-    if (target < 0 || target >= keys.length) return current;
-    [keys[index], keys[target]] = [keys[target], keys[index]];
-    return { ...current, fieldKeys: keys };
-  });
   const toggleRequired = (key: string, checked: boolean) => update((current) => ({
     ...current,
     requiredKeys: checked ? [...new Set([...current.requiredKeys, key])] : current.requiredKeys.filter((k) => k !== key),
@@ -135,7 +131,7 @@ export function BaseEntryForms() {
 
   const open = (form: EntryForm | null) => {
     setDraft(form
-      ? { id: form.id, rowVersion: form.rowVersion, name: form.name, fieldKeys: [...form.fieldKeys], requiredKeys: [...form.requiredKeys] }
+      ? { id: form.id, rowVersion: form.rowVersion, name: form.name, fieldKeys: inFormOrder(form.fieldKeys), requiredKeys: [...form.requiredKeys] }
       : EMPTY_DRAFT);
     setDraftError(null);
     setConflict(false);
@@ -271,19 +267,18 @@ export function BaseEntryForms() {
                       {draft.fieldKeys.map((key, index) => (
                         <li key={key} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
                           <span className="w-6 text-right text-xs tabular-nums text-slate-400">{index + 1}</span>
-                          <span className={`min-w-0 flex-1 ${byKey.has(key) ? '' : 'text-slate-400 line-through'}`}>{labelOf(key)}</span>
+                          <span className={`min-w-0 flex-1 ${byKey.has(key) ? '' : 'text-slate-400 line-through'}`}>
+                            {labelOf(key)}
+                            {byKey.get(key) && (
+                              <span className="block text-xs text-slate-500">{sectionLabel(t, { sectionKey: byKey.get(key)!.section, label: byKey.get(key)!.sectionLabel })}</span>
+                            )}
+                          </span>
                           <Checkbox
                             label={t('entryform.required')}
                             checked={draft.requiredKeys.includes(key)}
                             disabled={!byKey.has(key)}
                             onChange={(event) => toggleRequired(key, event.target.checked)}
                           />
-                          <button type="button" className="icon-button" aria-label={`${t('entryform.move_up')} ${labelOf(key)}`} disabled={index === 0} onClick={() => move(index, -1)}>
-                            <ArrowUp size={16} aria-hidden />
-                          </button>
-                          <button type="button" className="icon-button" aria-label={`${t('entryform.move_down')} ${labelOf(key)}`} disabled={index === draft.fieldKeys.length - 1} onClick={() => move(index, 1)}>
-                            <ArrowDown size={16} aria-hidden />
-                          </button>
                           <button type="button" className="icon-button" aria-label={`${t('entryform.remove')} ${labelOf(key)}`} onClick={() => toggleField(key, false)}>
                             <X size={16} aria-hidden />
                           </button>

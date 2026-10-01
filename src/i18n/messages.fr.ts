@@ -1955,8 +1955,6 @@ export const messages = {
     'entryform.search': 'Rechercher une variable',
     'entryform.add': 'Ajouter',
     'entryform.remove': 'Retirer',
-    'entryform.move_up': 'Monter',
-    'entryform.move_down': 'Descendre',
     'entryform.required': 'Indispensable',
     'entryform.required_hint': 'Seules ces variables bloquent l’enregistrement depuis ce formulaire.',
     'entryform.dependencies_title': 'Ajoutées automatiquement à la saisie',

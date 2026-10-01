@@ -216,7 +216,7 @@ export function EditPatient() {
   const validationFields = useMemo(() => fieldsForLocalValidation(fields, recordContext), [fields, recordContext]);
   // Formulaire de saisie court : il ne change QUE les variables proposees. Valeurs, visibilite,
   // patch et verrou restent ceux de la fiche entiere, donc tout champ absent est preserve.
-  const entry = useEntryFormSelection(baseId, !isMissionAccount(profile));
+  const entry = useEntryFormSelection(baseId, true);
   const shortForm = useMemo(() => {
     if (!entry.selected) return null;
     const resolved = resolveEntryForm(entry.selected, validationFields, rules, sections);
@@ -275,12 +275,12 @@ export function EditPatient() {
         hidden,
       ).blocking : []),
     ] : [
-      // En brouillon : le MEDECIN n'exige pas la completude (mais valide les valeurs
-      // renseignees) ; un compte de mission, lui, ne peut jamais enregistrer de brouillon
-      // partiel -- comme des la sortie du brouillon ('complete') pour tous les comptes.
-      ...validateValues(validationFields, submittedData, isMissionAccount(profile) || status !== 'draft', hidden)
+      // En brouillon, aucun compte (mission compris) n'est tenu a la completude, mais les
+      // valeurs renseignees sont validees ; des la sortie du brouillon ('complete'), tout
+      // est exige, pour tous les comptes.
+      ...validateValues(validationFields, submittedData, status !== 'draft', hidden)
         .map((fe) => `${labelOf(fe.fieldKey)} : ${fe.message}`),
-      ...(isMissionAccount(profile) || status !== 'draft' ? evaluateRules(
+      ...(status !== 'draft' ? evaluateRules(
         validationRules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
         submittedData,
         hidden,
@@ -431,6 +431,8 @@ export function EditPatient() {
             fields={shortForm.fields}
             values={values}
             hiddenKeys={hidden}
+            sections={sections}
+            commonLayout={commonLayout}
             rules={shortRules}
             requireComplete
             toFillKeys={toFillKeys}
@@ -462,7 +464,7 @@ export function EditPatient() {
             sections={sections}
             commonLayout={commonLayout}
             rules={validationRules}
-            requireComplete={isMissionAccount(profile) || status !== 'draft'}
+            requireComplete={status !== 'draft'}
             toFillKeys={toFillKeys}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}

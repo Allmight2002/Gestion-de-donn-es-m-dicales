@@ -155,26 +155,34 @@ describe('L56 enregistrement du socle', () => {
     const { baseId } = await makeBase('L56 saisie');
     const student = await makeMissionAccount(baseId, 'l56-saisie');
 
-    // Le compte de mission ne peut PAS ouvrir de brouillon partiel : la fiche est donc
-    // enregistree complete. Un diagnostic non couvert n'invente aucune variable requise --
-    // le bloc specialise est masque, donc `mesure` n'est jamais reclamee.
+    // Un diagnostic non couvert n'invente aucune variable requise -- le bloc specialise est
+    // masque, donc `mesure` n'est jamais reclamee, ni en brouillon ni a la soumission.
     const patient = (await rowsAs(student, CREATE_PAT, [baseId, 'L56-001', null, null, null, null, null,
       JSON.stringify({ ...SOCLE, diagnostics: ['C'] })]))[0];
     expect(patient.validation_status).toBe('draft');
+    const submittedPatient = (await rowsAs(student, UPDATE_PAT, [patient.id, JSON.stringify({ ...SOCLE, diagnostics: ['C'] }),
+      'complete', 'soumission fictive', patient.row_version]))[0];
+    expect(submittedPatient.validation_status).toBe('complete');
     const enc = (await rowsAs(student, CREATE_ENC, [patient.id, 'consultation', '2026-03-01', 'complete',
       JSON.stringify({ ...ENC_SOCLE, enc_diag: ['C'] }), 'years']))[0];
     expect(enc.validation_status).toBe('complete');
 
-    // Cas MIXTE : l'absence d'un bloc ne dispense pas de completer l'autre bloc applicable.
-    await expect(rowsAs(student, CREATE_PAT, [baseId, 'L56-002', null, null, null, null, null,
-      JSON.stringify({ ...SOCLE, diagnostics: ['A', 'C'] })])).rejects.toThrow('Champ requis manquant');
+    // Cas MIXTE : le brouillon partiel est accepte (saisie progressive), mais l'absence d'un
+    // bloc ne dispense pas de completer l'autre bloc applicable au moment de la soumission.
+    const partial = (await rowsAs(student, CREATE_PAT, [baseId, 'L56-002', null, null, null, null, null,
+      JSON.stringify({ ...SOCLE, diagnostics: ['A', 'C'] })]))[0];
+    expect(partial.validation_status).toBe('draft');
+    await expect(rowsAs(student, UPDATE_PAT, [partial.id, JSON.stringify({ ...SOCLE, diagnostics: ['A', 'C'] }),
+      'complete', 'soumission fictive', partial.row_version])).rejects.toThrow('Champ requis manquant');
     const mixte = (await rowsAs(student, CREATE_PAT, [baseId, 'L56-003', null, null, null, null, null,
       JSON.stringify({ ...SOCLE, diagnostics: ['A', 'C'], mesure: 'valeur fictive' })]))[0];
     expect(mixte.data.mesure).toBe('valeur fictive');
 
-    // Le socle, lui, reste exige : le mode ne rend aucun champ commun facultatif.
-    await expect(rowsAs(student, CREATE_PAT, [baseId, 'L56-004', null, null, null, null, null,
-      JSON.stringify({ diagnostics: ['C'] })])).rejects.toThrow('Champ requis manquant');
+    // Le socle, lui, reste exige a la soumission : le mode ne rend aucun champ commun facultatif.
+    const noSocle = (await rowsAs(student, CREATE_PAT, [baseId, 'L56-004', null, null, null, null, null,
+      JSON.stringify({ diagnostics: ['C'] })]))[0];
+    await expect(rowsAs(student, UPDATE_PAT, [noSocle.id, JSON.stringify({ diagnostics: ['C'] }),
+      'complete', 'soumission fictive', noSocle.row_version])).rejects.toThrow('Champ requis manquant');
 
     // Aucun droit nouveau : ni identite, ni curation, ni correction d'une fiche soumise.
     await expect(rowsAs(student, CREATE_PAT, [baseId, 'L56-005', 'Nom fictif', '1990-01-01', null, null, null,
