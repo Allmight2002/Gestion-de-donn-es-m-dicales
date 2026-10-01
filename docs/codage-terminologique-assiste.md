@@ -1,9 +1,10 @@
 # Codage terminologique assisté (CIM-11)
 
 > 🟢 Document vivant. Décrit l'état du code au 1er octobre 2026 : migration
-> `20261001090000_terminology_assisted_coding.sql`, Edge Function `code-terminology`, champ
-> `TerminologyInput`. Rien n'est déployé par ce lot ; la preuve navigateur et le calibrage des
-> seuils restent à produire (§8).
+> `20261001090000_terminology_assisted_coding.sql` (+ `20261001120000_terminology_candidates_oe.sql`),
+> Edge Function `code-terminology`, champ
+> `TerminologyInput`. Seuils calibrés le 1er octobre 2026 (§4). Rien n'est déployé ; la preuve
+> navigateur et la mesure avec le vrai modèle restent à produire (§8).
 
 **L'utilisateur écrit comme un médecin. MedData structure comme une base de données.**
 
@@ -115,20 +116,36 @@ Effets sur les autres surfaces :
 
 ## 4. Confiance
 
-Le score ne vient **pas** du LLM. `supabase/functions/code-terminology/scoring.ts` calcule, pour
-chaque candidat, une similarité F1 entre racines de mots (accents, tirets, pluriels et féminins
-neutralisés) avec chaque terme proposé, puis décide :
+Le score ne vient **pas** du LLM. Il est calculé dans
+`supabase/functions/code-terminology/scoring.ts`, pour chaque candidat : c'est une similarité
+F1 entre les racines des mots du terme et celles du libellé. Ce calcul neutralise :
+- les accents, les tirets, les pluriels et les féminins ;
+- la latéralité ;
+- les précisions entre parenthèses du libellé.
 
-| Décision | Condition (seuils initiaux, `THRESHOLDS`) |
+Il traite aussi :
+- **la négation**, soudée au mot qu'elle porte (« non traumatique » ≠ « traumatique ») ;
+- **une courte table de synonymes** (hématome/hémorragie, spontané/non traumatique,
+  épidural/extradural, atriale/auriculaire) ;
+- **les catégories résiduelles** : « X », « X, sans précision » et « Autres X » forment un même
+  concept pour l'écart et les propositions, classés principal < « sans précision » < « Autres ».
+
+Décision, avec les seuils **calibrés le 1er octobre 2026** (`THRESHOLDS`) :
+
+| Décision | Condition |
 |---|---|
-| `automatic` | similarité ≥ 0,90, écart ≥ 0,10 avec le deuxième code, et meilleur candidat identique pour le terme préféré seul (accord interprétation/référentiel) |
-| `ambiguous` | ambiguïté signalée par l'interprétation (une proposition par entité), ou ex æquo (écart < 0,05 au-dessus de 0,70) |
-| `suggested` | similarité ≥ 0,70, ou un seul candidat plausible |
-| `ambiguous` | sinon, plusieurs candidats ≥ 0,45 |
-| `unmatched` | aucun candidat ≥ 0,45 |
+| `ambiguous` | l'interprétation signale plusieurs entités : une proposition par entité ≥ 0,55, sinon les candidats plausibles |
+| `unmatched` | aucun candidat ≥ 0,55 |
+| `ambiguous` | ex æquo : écart < 0,025 entre deux concepts distincts au-dessus de 0,65 |
+| `automatic` | similarité ≥ 0,95, écart ≥ 0,05 avec le deuxième concept, et accord avec le terme préféré seul |
+| `suggested` | similarité ≥ 0,65, ou un seul candidat plausible |
+| `ambiguous` | sinon |
 
-Le rang de pré-tri SQL départage les ex æquo. **Les seuils doivent être recalibrés** sur un jeu
-de diagnostics fictifs annoté avant toute utilisation réelle.
+Le calibrage a été fait sur 92 diagnostics fictifs annotés, dont 20 inédits, dans deux
+scénarios : LLM simulé et repli lexical. Il n'a produit **aucune erreur critique** (code faux
+posé seul), y compris pour des seuils un peu plus permissifs. Méthode, résultats et limites :
+[calibration-codage-terminologique-2026-10-01.md](calibration-codage-terminologique-2026-10-01.md).
+Le test `test/terminology-calibration.test.ts` garde ces résultats sur le référentiel versionné.
 
 ## 5. Confidentialité
 
@@ -169,8 +186,8 @@ publication est active à la fois (`terminology_release_single_active`).
 
 ## 8. Limites connues et suites
 
-- Seuils non calibrés ; constituer un jeu fictif annoté (abréviations, latéralité, diagnostics
-  multiples, ambiguïtés) et mesurer précision/rappel par décision.
+- Seuils calibrés avec des interprétations **simulées** : refaire le calibrage avec les sorties
+  du vrai modèle, enregistrées telles quelles dans le jeu annoté, avant tout usage réel.
 - Pas de post-coordination CIM-11 : la latéralité et le contexte restent dans `normalized`.
 - La provenance (`raw`, `coding.*`) n'est pas exportée en colonnes ; les entrées non codées ne
   remontent pas encore comme cas « non classés » dans le suivi diagnostique (L56).
