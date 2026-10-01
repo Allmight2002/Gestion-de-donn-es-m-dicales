@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
-import { isMissionAccount } from '../../auth/logic';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { FieldChange, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
@@ -365,10 +364,9 @@ export function EditEncounter() {
     if (busy) return;
     if (work.locked) { await persistEncounter(); return; }
 
-    // Completude exigee des la sortie du brouillon ('complete') pour tous les comptes, et a
-    // CHAQUE enregistrement pour un compte de mission (aucun brouillon partiel). Regles
-    // bloquantes : finalisation seule.
-    const requireComplete = isMissionAccount(profile) || status !== 'draft';
+    // Completude exigee des la sortie du brouillon ('complete') pour tous les comptes, compte
+    // de mission compris ; un brouillon peut rester partiel. Regles bloquantes : finalisation seule.
+    const requireComplete = status !== 'draft';
     const ruleEval = evaluateRules(
       validationRules.map((r) => ({ rule: r.rule, message: r.message, severity: r.severity })),
       submittedData,
@@ -503,7 +501,7 @@ export function EditEncounter() {
           sections={sections}
           commonLayout={commonLayout}
           rules={validationRules}
-          requireComplete={isMissionAccount(profile) || status !== 'draft'}
+          requireComplete={status !== 'draft'}
           toFillKeys={toFillKeys}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}

@@ -1933,8 +1933,6 @@ export const messages = {
     'entryform.search': 'Search a variable',
     'entryform.add': 'Add',
     'entryform.remove': 'Remove',
-    'entryform.move_up': 'Move up',
-    'entryform.move_down': 'Move down',
     'entryform.required': 'Mandatory',
     'entryform.required_hint': 'Only these variables block saving from this form.',
     'entryform.dependencies_title': 'Added automatically during entry',

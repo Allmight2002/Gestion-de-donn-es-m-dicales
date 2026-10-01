@@ -2,6 +2,7 @@ import { errorMessage } from '../../lib/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, ChevronRight, FileText, Image as ImageIcon, Lock, Plus } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
+import { useAuth } from '../../auth/useAuth';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository, useAuditRepository, useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { Encounter, PatientIdentityInfo, PatientListItem } from '../../data/patients';
@@ -184,6 +185,7 @@ export function PatientDetail() {
   const navigate = useNavigate();
   const { t, lang } = useI18n();
   const online = useOnline();
+  const { profile } = useAuth();
   const bases = useBaseRepository();
   const templates = useTemplateRepository();
   const patients = usePatientRepository();
@@ -414,8 +416,13 @@ export function PatientDetail() {
     backLabel: t('nav.back_to').replace('{label}', t('base.tab_patients')),
   });
   const mayFinalize = !offlineView && canEdit && !!patient && patient.validationStatus !== 'curated';
+  // Un compte qui cree des fiches sans pouvoir les corriger (compte de mission) complete son
+  // propre brouillon : le serveur l'autorise jusqu'a la soumission, et pas au-dela.
+  const canCompleteOwnDraft = !offlineView && !!patient && !!profile && patient.validationStatus === 'draft'
+    && patient.createdBy === profile.id && listing?.canCreateStructuredData === true;
+  const canEditRecord = canEdit || canCompleteOwnDraft;
   // Formulaires courts : un autre chemin de saisie vers la MEME fiche, affichee ici comme d'habitude.
-  const entryForms = useEntryFormSelection(baseId, !offlineView && canEdit).forms;
+  const entryForms = useEntryFormSelection(baseId, !offlineView && canEditRecord).forms;
   useTopBarActions(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : null);
   // Decision 3 : les valeurs vides sont masquees par defaut, un bouton les montre toutes.
   const [showEmpty, setShowEmpty] = useState(false);
@@ -631,7 +638,7 @@ export function PatientDetail() {
                 {t('patient.finalize')}
               </button>
             )}
-            {canEdit && entryForms.length > 0 && (
+            {canEditRecord && entryForms.length > 0 && (
               <Menu
                 triggerLabel={t('entryform.complete_with')}
                 triggerClassName="btn-ghost"
@@ -645,7 +652,7 @@ export function PatientDetail() {
                 ))}
               </Menu>
             )}
-            {canEdit && (
+            {canEditRecord && (
               <button
                 onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}
                 aria-label={t('patient.edit_permanent')}
@@ -675,7 +682,7 @@ export function PatientDetail() {
         <RecordCompletionNotice
           labels={patientAdditions.map((field) => field.label)}
           requiredLabels={patientAdditions.filter((field) => field.required).map((field) => field.label)}
-          action={canEdit ? (
+          action={canEditRecord ? (
             <button
               type="button"
               onClick={() => navigate(`/bases/${baseId}/patients/${patientId}/edit`)}

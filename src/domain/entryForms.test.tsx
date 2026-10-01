@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { TemplateField, TemplateSection, ValidationRule } from '../data/types';
-import { ENTRY_FORM_SECTION_KEY, resolveEntryForm, visibilityOnlyRules, withoutUnshownProposals } from './entryForms';
+import { resolveEntryForm, visibilityOnlyRules, withoutUnshownProposals } from './entryForms';
 
 const field = (fieldKey: string, extra: Partial<TemplateField> = {}): TemplateField => ({
   id: fieldKey, fieldKey, label: fieldKey.toUpperCase(), scope: 'patient', section: 'clinique', type: 'text',
@@ -34,19 +34,19 @@ const RULES: ValidationRule[] = [
 ];
 
 describe('resolveEntryForm', () => {
-  test('garde l’ordre du formulaire, independamment des sections, et applique ses propres requis', () => {
+  test('garde sections et ordre du formulaire complet, quel que soit l’ordre de selection, et ses propres requis', () => {
     const resolved = resolveEntryForm(
       { name: 'Sortie', fieldKeys: ['date_sortie', 'sexe'], requiredKeys: ['date_sortie'] },
       FIELDS, RULES, SECTIONS,
     );
-    expect(resolved.fields.map((f) => f.fieldKey)).toEqual(['date_sortie', 'sexe']);
-    expect(resolved.fields.every((f) => f.section === ENTRY_FORM_SECTION_KEY && f.sectionLabel === 'Sortie')).toBe(true);
+    expect(resolved.fields.map((f) => f.fieldKey)).toEqual(['sexe', 'date_sortie']);
+    expect(resolved.fields.map((f) => f.section)).toEqual(['demo', 'sejour']);
     // Le requis du formulaire complet (sexe) ne bloque pas ce formulaire court.
-    expect(resolved.fields.map((f) => f.required)).toEqual([true, false]);
+    expect(resolved.fields.map((f) => f.required)).toEqual([false, true]);
     expect(resolved.dependencyKeys.size).toBe(0);
   });
 
-  test('ajoute avant elle la variable qui conditionne l’affichage d’une variable choisie (bloc compris)', () => {
+  test('ajoute la variable qui conditionne l’affichage d’une variable choisie (bloc compris)', () => {
     const resolved = resolveEntryForm(
       { name: 'Rapide', fieldKeys: ['sexe', 'glasgow'], requiredKeys: ['glasgow'] }, FIELDS, RULES, SECTIONS,
     );
@@ -63,7 +63,7 @@ describe('resolveEntryForm', () => {
       { name: 'Séjour', fieldKeys: ['duree', 'date_entree', 'ancienne', 'lesion_type'], requiredKeys: [] },
       FIELDS, RULES, SECTIONS,
     );
-    expect(resolved.fields.map((f) => f.fieldKey)).toEqual(['date_sortie', 'date_entree', 'duree']);
+    expect(resolved.fields.map((f) => f.fieldKey)).toEqual(['date_entree', 'date_sortie', 'duree']);
     expect([...resolved.dependencyKeys]).toEqual(['date_sortie']);
     expect(resolved.unavailableKeys).toEqual(['ancienne', 'lesion_type']);
   });
