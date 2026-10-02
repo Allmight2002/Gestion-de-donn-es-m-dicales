@@ -250,7 +250,11 @@ Secrets de l'Edge Function `code-terminology` :
 | `TERMINOLOGY_LLM_BASE_URL` | facultatif, `openai`/`deepseek` ; autre service au contrat Chat Completions (défauts `https://api.openai.com/v1`, `https://api.deepseek.com`) |
 
 Seule la clé du fournisseur choisi est lue ; sans elle (ou sans modèle pour `openai`), la
-fonction répond par le repli lexical. Les trois fournisseurs reçoivent le même prompt et le même
+fonction répond par le repli lexical. Au premier appel de chaque instance, la fonction écrit
+dans ses journaux la configuration retenue (« LLM deepseek / deepseek-v4-pro, raisonnement
+disabled, 8000 ms ») ou la raison du repli (« DEEPSEEK_API_KEY absente », « TERMINOLOGY_LLM_PROVIDER
+et ANTHROPIC_API_KEY absents »…), jamais la valeur d'une clé. Un nom de secret mal saisi se voit
+ainsi dans Edge Functions → `code-terminology` → Logs. Les trois fournisseurs reçoivent le même prompt et le même
 texte, avec le même délai (`TERMINOLOGY_LLM_TIMEOUT_MS`), et leur sortie passe par la même validation (`parseInterpretation`) :
 
 - `anthropic` : SDK officiel, sortie au schéma JSON, effort `low`, repli serveur sur refus
