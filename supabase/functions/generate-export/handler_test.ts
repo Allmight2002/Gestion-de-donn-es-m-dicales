@@ -24,6 +24,7 @@ import L72D_BASELINE from './l72dBaseline.json' with { type: 'json' };
 const COHORT = '123e4567-e89b-42d3-a456-426614174000';
 const BASE = '223e4567-e89b-42d3-a456-426614174000';
 const TV = '323e4567-e89b-42d3-a456-426614174000';
+const SOURCE_REVISION = `v1:${BASE}:0:0:0:0`;
 const SERVICE_KEY = 'sb_secret_service_role_key_value';
 
 const ENCOUNTER = {
@@ -123,6 +124,7 @@ interface Opts {
   sectionRows?: Array<Record<string, unknown>>;
   incompleteRecords?: Array<{ record_kind: string; record_id: string }>;
   incompleteError?: unknown;
+  revisionResults?: DbResult[];
   fromResponder?: (call: FromCall) => DbResult | undefined;
 }
 
@@ -163,6 +165,9 @@ function deps(opts: Opts = {}): GenerateExportDeps {
     call.kind === 'rpc' && call.rpc === 'can_export_data' ? okResult(opts.canExport ?? true) : okResult(null);
   const adminResponder: Responder = (call) => {
     // Filtre de completude : par defaut aucune fiche ecartee.
+    if (call.kind === 'rpc' && call.rpc === 'export_source_revision') {
+      return opts.revisionResults?.shift() ?? okResult(SOURCE_REVISION);
+    }
     if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') {
       return opts.incompleteError ? errorResult(opts.incompleteError) : okResult(opts.incompleteRecords ?? []);
     }
@@ -236,6 +241,130 @@ function deps(opts: Opts = {}): GenerateExportDeps {
 }
 
 const body = (format: 'csv' | 'xlsx' = 'csv') => ({ cohortId: COHORT, format });
+
+for (const format of ['csv', 'xlsx'] as const) {
+  for (const component of [2, 3, 4, 5]) {
+    Deno.test(`generate-export: ${format} refuse une revision modifiee (${component}) sans upload ni journal`, async () => {
+      const changed = SOURCE_REVISION.split(':');
+      changed[component] = '1';
+      const effects: string[] = [];
+      const response = await handleGenerateExport(
+        makeRequest({ body: body(format) }),
+        deps({
+          revisionResults: [okResult(SOURCE_REVISION), okResult(changed.join(':'))],
+          onStorage: (method) => effects.push(method),
+          fromResponder: (call) => {
+            if (call.table === 'export_log') effects.push('export_log');
+            return undefined;
+          },
+        }),
+      );
+      const { status, body: result } = await readResponse(response);
+      assertEquals(status, 409);
+      assertEquals(result.code, 'EXPORT_SOURCE_CHANGED');
+      assertEquals(effects, []);
+    });
+  }
+}
+
+for (const atEnd of [false, true]) {
+  for (
+    const bad of [errorResult({ message: 'RPC indisponible' }), okResult(null), okResult(0), okResult('v1:invalid')]
+  ) {
+    Deno.test(`generate-export: revision illisible refusee (${atEnd ? 'fin' : 'debut'}, ${JSON.stringify(bad)})`, async () => {
+      const effects: string[] = [];
+      const response = await handleGenerateExport(
+        makeRequest({ body: body() }),
+        deps({
+          revisionResults: [...(atEnd ? [okResult(SOURCE_REVISION)] : []), bad],
+          onStorage: (method) => effects.push(method),
+        }),
+      );
+      const { status, body: result } = await readResponse(response);
+      assertEquals(status, bad.error ? 500 : 409);
+      assertEquals(result.resource, 'source_revision');
+      assertEquals(effects, []);
+    });
+  }
+}
+
+Deno.test('generate-export: nom de cohorte relu apres ouverture de la fenetre controlee et revision journalisee', async () => {
+  let reads = 0;
+  let log: Record<string, unknown> | undefined;
+  const response = await handleGenerateExport(
+    makeRequest({ body: body() }),
+    deps({
+      fromResponder: (call) => {
+        if (call.table === 'cohort') {
+          reads++;
+          return okResult({
+            id: COHORT,
+            base_id: BASE,
+            name: reads === 1 ? 'Ancien nom' : 'Nom courant',
+            cohort_type: 'snapshot',
+          });
+        }
+        if (call.table === 'export_log') {
+          log = call.ops.find((op) => op.m === 'insert')?.a[0] as Record<string, unknown>;
+        }
+        return undefined;
+      },
+    }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(log?.cohort_name, 'Nom courant');
+  assertEquals((log?.export_options as Record<string, unknown>).source_revision, SOURCE_REVISION);
+});
+
+Deno.test('generate-export: mutation pendant la derniere lecture de provenance detectee', async () => {
+  const revisions = [okResult(SOURCE_REVISION)];
+  const effects: string[] = [];
+  let provenanceRead = false;
+  const response = await handleGenerateExport(
+    makeRequest({ body: body('xlsx') }),
+    deps({
+      revisionResults: revisions,
+      onStorage: (method) => effects.push(method),
+      fromResponder: (call) => {
+        if (call.table === 'record_field_provenance') {
+          provenanceRead = true;
+          revisions.push(okResult(`v1:${BASE}:1:0:0:0`));
+        }
+        if (call.table === 'export_log') effects.push('export_log');
+        return undefined;
+      },
+    }),
+  );
+  assertEquals(provenanceRead, true);
+  assertEquals(response.status, 409);
+  assertEquals((await readResponse(response)).body.code, 'EXPORT_SOURCE_CHANGED');
+  assertEquals(effects, []);
+});
+
+Deno.test('generate-export: rattachement de cohorte modifie apres autorisation refuse', async () => {
+  let reads = 0;
+  const effects: string[] = [];
+  const response = await handleGenerateExport(
+    makeRequest({ body: body() }),
+    deps({
+      onStorage: (method) => effects.push(method),
+      fromResponder: (call) => {
+        if (call.table === 'cohort') {
+          reads++;
+          return okResult({
+            id: COHORT,
+            base_id: reads === 1 ? BASE : TV,
+            name: 'Synthetique',
+            cohort_type: 'snapshot',
+          });
+        }
+        return undefined;
+      },
+    }),
+  );
+  assertEquals(response.status, 409);
+  assertEquals(effects, []);
+});
 
 Deno.test('nom export : base, cohorte, mode, profil, horodatage et format sont lisibles', () => {
   assertEquals(
@@ -624,6 +753,7 @@ Deno.test('generate-export: CSV genere respecte le contrat anti-formule/negatifs
   let uploaded: Uint8Array | null = null;
   // On intercepte l'upload via un responder qui capture les octets reellement ecrits.
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
     if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       const blob = call.args[1] as Blob;
@@ -727,6 +857,7 @@ Deno.test('generate-export: XLSX -> 200 avec feuilles multivaluees et types nati
   };
 
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
     if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       const blob = call.args[1] as Blob;
@@ -889,6 +1020,7 @@ Deno.test('generate-export: XLSX -> dates natives (serie + format), date invalid
   };
 
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
     if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       const blob = call.args[1] as Blob;
@@ -1007,6 +1139,7 @@ Deno.test('generate-export: Analyse produit la feuille Modalites, pas Complet (L
 
   const run = (profile?: 'analysis' | 'complete'): Promise<Response> => {
     const adminResponder: Responder = (call) => {
+      if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
       if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
       if (call.kind === 'storage' && call.method === 'upload') {
         const blob = call.args[1] as Blob;
@@ -1128,6 +1261,7 @@ Deno.test('generate-export: XLSX Analyse -> Donnees, Dictionnaire simplifie, Mod
   };
 
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
     if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       const blob = call.args[1] as Blob;
@@ -1291,6 +1425,7 @@ Deno.test('generate-export: Analyse refuse un multiselect au-dela de 100 codes, 
   const runWith = async (profile?: 'analysis' | 'complete') =>
     readResponse(
       await makeRun((call) => {
+        if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
         if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
         if (call.kind === 'storage' && call.method === 'upload') return okResult({ path: 'p' });
         if (call.kind === 'storage') return okResult([{}]);
@@ -2831,6 +2966,7 @@ Deno.test('generate-export: la provenance du codage assiste sort en colonnes et 
     },
   };
   const adminResponder: Responder = (call) => {
+    if (call.kind === 'rpc' && call.rpc === 'export_source_revision') return okResult(SOURCE_REVISION);
     if (call.kind === 'rpc' && call.rpc === 'export_incomplete_records') return okResult([]);
     if (call.kind === 'storage' && call.method === 'upload') {
       return (call.args[1] as Blob).arrayBuffer().then((buf) => {
