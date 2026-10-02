@@ -201,6 +201,10 @@ describe('gestion des formulaires de saisie', () => {
     await userEvent.click(await screen.findByRole('button', { name: /nouveau formulaire/i }));
     await userEvent.type(screen.getByLabelText('Nom du formulaire'), 'Sortie');
     const available = screen.getByRole('region', { name: /variables de la base/i });
+    // Sections repliees : on deplie celles dont on a besoin.
+    for (const section of ['sortie', 'demographie', 'diagnostic']) {
+      await userEvent.click(within(available).getByRole('button', { name: new RegExp(`^${section}`) }));
+    }
     // Cochees dans le desordre : le formulaire garde l'ordre du formulaire complet.
     await userEvent.click(within(available).getByLabelText('Issue du séjour'));
     await userEvent.click(within(available).getByLabelText('Sexe'));
@@ -229,13 +233,64 @@ describe('gestion des formulaires de saisie', () => {
     expect(screen.getByRole('button', { name: /recharger les formulaires/i })).toBeInTheDocument();
   });
 
-  test('supprimer un formulaire passe par une confirmation', async () => {
+  test('supprimer un formulaire passe par « ⋯ » puis une confirmation', async () => {
     const repo = entryForms([quick]);
     renderAt('/bases/b1/formulaires', { entryForms: repo });
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer Saisie rapide' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions · Saisie rapide' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent(/données saisies restent intactes/i);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
     await waitFor(() => expect(repo.remove).toHaveBeenCalledWith('f1', 1));
   });
+
+  // Revue post-optimisation, lot C2 : la page suit les criteres de l'audit UI mobile.
+  test('une ligne ouvre le formulaire ; Modifier et Supprimer sont dans « ⋯ », jamais au premier niveau', async () => {
+    renderAt('/bases/b1/formulaires', { entryForms: entryForms([quick]) });
+    const row = await screen.findByRole('button', { name: 'Modifier Saisie rapide' });
+    expect(row).toHaveTextContent('2 variables');
+    expect(screen.queryByRole('button', { name: /^Supprimer/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Saisie rapide' }));
+    expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Supprimer' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(row);
+    expect(screen.getByLabelText('Nom du formulaire')).toHaveValue('Saisie rapide');
+  });
+
+  test('l explication de la page s ouvre derriere ⓘ', async () => {
+    renderAt('/bases/b1/formulaires', { entryForms: entryForms([quick]) });
+    await screen.findByRole('button', { name: 'Modifier Saisie rapide' });
+    expect(screen.queryByText(/rien n’est dupliqué/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'En savoir plus' }));
+    expect(screen.getByText(/rien n’est dupliqué/)).toBeInTheDocument();
+  });
+
+  test('une variable retiree de la base est comptee, jamais affichee par sa cle, et n est pas enregistree', async () => {
+    const stale: EntryForm = { ...discharge, fieldKeys: ['issue', 'ancienne_variable'], requiredKeys: ['ancienne_variable'] };
+    const repo = entryForms([stale]);
+    renderAt('/bases/b1/formulaires', { entryForms: repo });
+    await userEvent.click(await screen.findByRole('button', { name: 'Modifier Sortie' }));
+    expect(screen.getByRole('heading', { name: 'Variables du formulaire (1)' })).toBeInTheDocument();
+    expect(screen.getByText('1 variable(s) retirée(s) de la base sont ignorées.')).toHaveAttribute('role', 'status');
+    expect(screen.queryByText(/ancienne_variable/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer le formulaire/i }));
+    await waitFor(() => expect(repo.update).toHaveBeenCalledWith('f2', 1, { name: 'Sortie', fieldKeys: ['issue'], requiredKeys: [] }));
+  });
+
+  test('les sections se replient avec leur compte ; une recherche les deplie', async () => {
+    renderAt('/bases/b1/formulaires', { entryForms: entryForms([quick]) });
+    await userEvent.click(await screen.findByRole('button', { name: 'Modifier Saisie rapide' }));
+    const available = screen.getByRole('region', { name: /variables de la base/i });
+    const diagnostic = within(available).getByRole('button', { name: 'diagnostic 1 sur 2 dans le formulaire' });
+    expect(diagnostic).toHaveAttribute('aria-expanded', 'false');
+    expect(within(available).queryByLabelText('Pathologie')).toBeNull();
+    await userEvent.click(diagnostic);
+    expect(within(available).getByLabelText('Pathologie')).not.toBeChecked();
+    expect(within(available).getByLabelText('Mécanisme du traumatisme')).toBeChecked();
+    await userEvent.type(within(available).getByRole('searchbox', { name: 'Rechercher une variable' }), 'issue');
+    expect(within(available).getByLabelText('Issue du séjour')).toBeInTheDocument();
+    expect(within(available).getByRole('button', { name: /^sortie/ })).toHaveAttribute('aria-expanded', 'true');
+  });
 });
+

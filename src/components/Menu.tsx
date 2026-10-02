@@ -13,7 +13,10 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 //  - un seul menu ouvert a la fois : le pointeur qui ouvre un second menu tombe hors du
 //    premier, qui se ferme donc avant que le second ne s'ouvre ;
 //  - ouverture vers le HAUT quand le bas de la fenetre ne laisse pas la place : sinon le
-//    menu de la DERNIERE ligne d'une liste s'ouvre hors de l'ecran.
+//    menu de la DERNIERE ligne d'une liste s'ouvre hors de l'ecran ;
+//  - jamais hors de l'ecran sur les cotes : un declencheur aligne a droite sur ordinateur
+//    passe souvent a gauche sur telephone (action d'en-tete sous le titre), et son panneau
+//    sortait alors par la gauche.
 //
 // L'API native `popover="auto"` fournit ce light-dismiss sans code, mais n'est pas
 // garantie sur les navigateurs vises (telephones anciens) : le comportement est donc
@@ -31,6 +34,26 @@ const MenuContext = createContext<MenuContextValue>({ close: () => {} });
 
 /** Ecart vertical entre le declencheur et le panneau (le `mt-2` des appelants). */
 const PANEL_GAP_PX = 8;
+/** Marge minimale entre le panneau et les bords gauche et droit de la fenetre. */
+const VIEWPORT_MARGIN_PX = 8;
+
+type Edges = Pick<DOMRect, 'left' | 'right'>;
+
+/**
+ * Decalage horizontal (px) qui garde le panneau dans la fenetre. Un panneau qui deborde prend
+ * d'abord l'alignement oppose sur son declencheur (bord gauche contre bord gauche, ou droit
+ * contre droit) ; s'il ne tient toujours pas, il est colle a la marge.
+ */
+export function panelShiftX(panel: Edges, trigger: Edges, viewportWidth: number): number {
+  const width = panel.right - panel.left;
+  if (width <= 0) return 0; // aucune mise en page (rendu hors ecran, jsdom)
+  const min = VIEWPORT_MARGIN_PX;
+  const max = viewportWidth - VIEWPORT_MARGIN_PX;
+  if (panel.left >= min && panel.right <= max) return 0;
+  const aligned = panel.left < min ? trigger.left : trigger.right - width;
+  const left = Math.min(Math.max(aligned, min), Math.max(min, max - width));
+  return left - panel.left;
+}
 
 export function Menu({
   triggerLabel,
@@ -52,6 +75,7 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const [flipUp, setFlipUp] = useState(false);
+  const [shiftX, setShiftX] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -61,10 +85,12 @@ export function Menu({
 
   // Le panneau s'ouvre sous le declencheur. Sur la derniere ligne d'une liste cette place
   // manque souvent avant le bas de la fenetre : on bascule alors au-dessus, du cote ou il y
-  // a le plus de place. Mesure avant peinture, donc sans saut visible.
+  // a le plus de place. Sur les cotes, il est ramene dans la fenetre. Mesure avant peinture,
+  // donc sans saut visible.
   useLayoutEffect(() => {
     if (!open) {
       setFlipUp(false);
+      setShiftX(0);
       return;
     }
     const panel = panelRef.current;
@@ -73,6 +99,7 @@ export function Menu({
     const rect = trigger.getBoundingClientRect();
     const below = window.innerHeight - rect.bottom;
     setFlipUp(below < panel.offsetHeight + PANEL_GAP_PX && rect.top > below);
+    setShiftX(panelShiftX(panel.getBoundingClientRect(), rect, document.documentElement.clientWidth || window.innerWidth));
   }, [open]);
 
   useEffect(() => {
@@ -112,7 +139,10 @@ export function Menu({
           ref={panelRef}
           className={panelClassName ?? 'card absolute right-0 z-10 mt-2 w-48 space-y-1 p-2 shadow-lg'}
           /* Neutralise le `mt-2` des appelants : ici c'est la mesure qui decide du cote. */
-          style={flipUp ? { top: 'auto', bottom: '100%', marginTop: 0, marginBottom: PANEL_GAP_PX } : undefined}
+          style={flipUp || shiftX ? {
+            ...(flipUp ? { top: 'auto', bottom: '100%', marginTop: 0, marginBottom: PANEL_GAP_PX } : {}),
+            ...(shiftX ? { transform: `translateX(${shiftX}px)` } : {}),
+          } : undefined}
         >
           <MenuContext.Provider value={{ close }}>{children}</MenuContext.Provider>
         </div>
