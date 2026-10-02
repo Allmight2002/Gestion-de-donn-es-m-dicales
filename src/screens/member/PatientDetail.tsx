@@ -423,7 +423,16 @@ export function PatientDetail() {
   const canEditRecord = canEdit || canCompleteOwnDraft;
   // Formulaires courts : un autre chemin de saisie vers la MEME fiche, affichee ici comme d'habitude.
   const entryForms = useEntryFormSelection(baseId, !offlineView && canEditRecord).forms;
-  useTopBarActions(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : null);
+  // Sous lg, « Compléter avec » rejoint « Finaliser » dans « ⋯ » : l'en-tete de la carte ne garde
+  // que le statut et « Modifier ». Le serveur reste juge du droit d'ecrire.
+  const topBarActions = [
+    ...(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : []),
+    ...(canEditRecord ? entryForms.map((form) => ({
+      label: t('entryform.complete_with_form').replace('{form}', form.name),
+      onSelect: () => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`),
+    })) : []),
+  ];
+  useTopBarActions(topBarActions.length > 0 ? topBarActions : null);
   // Decision 3 : les valeurs vides sont masquees par defaut, un bouton les montre toutes.
   const [showEmpty, setShowEmpty] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
@@ -659,18 +668,20 @@ export function PatientDetail() {
               </button>
             )}
             {canEditRecord && entryForms.length > 0 && (
-              <Menu
-                triggerLabel={t('entryform.complete_with')}
-                triggerClassName="btn-ghost"
-                triggerContent={t('entryform.complete_with')}
-                panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2 shadow-lg"
-              >
-                {entryForms.map((form) => (
-                  <MenuItem key={form.id} onSelect={() => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`)}>
-                    {form.name}
-                  </MenuItem>
-                ))}
-              </Menu>
+              <div className="max-lg:hidden">
+                <Menu
+                  triggerLabel={t('entryform.complete_with')}
+                  triggerClassName="btn-ghost"
+                  triggerContent={t('entryform.complete_with')}
+                  panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2 shadow-lg"
+                >
+                  {entryForms.map((form) => (
+                    <MenuItem key={form.id} onSelect={() => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`)}>
+                      {form.name}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </div>
             )}
             {canEditRecord && (
               <button

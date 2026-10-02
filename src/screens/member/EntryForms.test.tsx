@@ -101,7 +101,7 @@ describe('saisie rapide : création', () => {
   test('ne propose que ses variables, dans son ordre, avec leurs dépendances', async () => {
     const { patients: repo } = patients();
     renderAt('/bases/b1/patients/new/manual?form=f1', { patients: repo });
-    expect(await screen.findByLabelText('Formulaire de saisie')).toHaveValue('f1');
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('f1');
     expect(screen.getByText(/formulaire court/i)).toBeInTheDocument();
     // `mecanisme` dépend de `pathologie` : la variable pilote est ajoutée avant elle.
     expect(screen.getByLabelText(/^Sexe/)).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe('saisie rapide : création', () => {
     const { patients: repo, createPatient } = patients();
     renderAt('/bases/b1/patients/new/manual?form=f1', { patients: repo });
     fireEvent.change(await screen.findByLabelText(/^Sexe/), { target: { value: 'M' } });
-    await userEvent.selectOptions(screen.getByLabelText('Formulaire de saisie'), 'f2');
+    await userEvent.selectOptions(screen.getByLabelText('Formulaire'), 'f2');
     fireEvent.change(await screen.findByLabelText(/Issue du séjour/), { target: { value: 'guéri' } });
     await userEvent.click(screen.getByRole('button', { name: /^enregistrer/i }));
     await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
@@ -150,18 +150,26 @@ describe('saisie rapide : création', () => {
     auth.role = 'saisisseur';
     const { patients: repo, createPatient } = patients();
     renderAt('/bases/b1/patients/new/manual?form=f1', { patients: repo });
-    expect(await screen.findByLabelText('Formulaire de saisie')).toHaveValue('f1');
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('f1');
     fireEvent.change(screen.getByLabelText(/^Sexe/), { target: { value: 'F' } });
     await userEvent.click(screen.getByRole('button', { name: /^enregistrer/i }));
     await waitFor(() => expect(createPatient).toHaveBeenCalledTimes(1));
     expect(createPatient.mock.calls[0][1].permanentData).toEqual({ sexe: 'F' });
   });
 
+  // Revue post-optimisation, C3 : a la creation, rien n'est encore « conservé ».
+  test('à la création, l encadré dit que le reste du dossier se complétera plus tard', async () => {
+    const { patients: repo } = patients();
+    renderAt('/bases/b1/patients/new/manual?form=f1', { patients: repo });
+    expect(await screen.findByText('Formulaire court : le reste du dossier pourra être complété plus tard.')).toHaveAttribute('role', 'status');
+    expect(screen.queryByText(/conservées telles quelles/)).toBeNull();
+  });
+
   test('un lien vers un formulaire supprimé retombe sur le formulaire complet', async () => {
     const { patients: repo } = patients();
     renderAt('/bases/b1/patients/new/manual?form=disparu', { patients: repo });
     expect(await screen.findByText(/n’existe plus/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Formulaire de saisie')).toHaveValue('');
+    expect(screen.getByLabelText('Formulaire')).toHaveValue('');
   });
 });
 
@@ -184,6 +192,25 @@ describe('formulaire court : complétion d’une fiche existante', () => {
     await userEvent.click(screen.getByRole('button', { name: /enregistrer les modifications/i }));
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]).toEqual(['p1', { sexe: 'F', pathologie: 'tc', mecanisme: 'chute', glasgow: 9, issue: 'guéri' }, 'draft', '', 3]);
+  });
+
+  // Revue post-optimisation, C3 : le selecteur est au meme endroit qu'a la creation, hors du
+  // formulaire ; l'encadre parle des donnees deja saisies.
+  test('le sélecteur précède le formulaire, comme à la création', async () => {
+    const repo = { async getPatient() { return stored; }, updatePatientData: vi.fn() } as unknown as PatientRepository;
+    renderAt('/bases/b1/patients/p1/edit?form=f2', { patients: repo });
+    await screen.findByLabelText(/Issue du séjour/);
+    const picker = screen.getByLabelText('Formulaire');
+    expect(picker.closest('form')).toBeNull();
+    expect(picker.compareDocumentPosition(screen.getByLabelText(/Issue du séjour/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Formulaire court : les autres données du dossier sont conservées telles quelles.')).toBeInTheDocument();
+  });
+
+  // « Coder » (Diagnostics a coder) ouvre la fiche sur le champ concerne.
+  test('?field= ouvre le formulaire sur ce champ', async () => {
+    const repo = { async getPatient() { return stored; }, updatePatientData: vi.fn() } as unknown as PatientRepository;
+    renderAt('/bases/b1/patients/p1/edit?field=issue', { patients: repo });
+    await waitFor(() => expect(screen.getByLabelText(/Issue du séjour/)).toHaveFocus());
   });
 
   test('une donnée saisie ailleurs est retrouvée dans le formulaire court', async () => {

@@ -44,6 +44,7 @@ function renderLayout(listing: BaseListing) {
               <Route index element={<div>HOME</div>} />
               <Route path="parametres" element={<div>REGLAGES</div>} />
               <Route path="queue" element={<div>FILE</div>} />
+              <Route path="codings" element={<div>A CODER</div>} />
               <Route path="propositions" element={<div>PROPOSITIONS</div>} />
               <Route path="cohorts" element={<div>COHORTES</div>} />
               <Route path="stats" element={<div>STATS</div>} />
@@ -74,7 +75,7 @@ describe('BaseLayout — quatre destinations', () => {
     expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
     const subs = screen.getByRole('navigation', { name: 'Paramètres' });
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['Général', 'Formulaire', 'Saisies', 'Accès', 'Journal']);
+      .toEqual(['Général', 'Formulaire', 'Formulaires courts', 'Accès', 'Journal']);
   });
 
   test('les propositions figurent dans A completer pour le seul proprietaire', async () => {
@@ -84,7 +85,19 @@ describe('BaseLayout — quatre destinations', () => {
     // L56 : la file des diagnostics sans bloc rejoint ce groupe, elle aussi reservee au
     // proprietaire (la RPC le verifie de son cote).
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['À compléter', 'Propositions', 'Diagnostics', 'Curation']);
+      .toEqual(['À compléter', 'À coder', 'Propositions', 'Diagnostics', 'Curation']);
+  });
+
+  // Revue post-optimisation, C3 : « Diagnostics a coder » avait une adresse mais aucun
+  // sous-onglet. Meme droit que le serveur (`list_pending_codings`) : modifier les donnees.
+  test('« À coder » suit le droit de modifier les données, comme la file', async () => {
+    renderLayout(listingWith('viewer', { canEditStructuredData: true }));
+    await userEvent.click(await screen.findByRole('link', { name: 'À compléter' }));
+    const subs = await screen.findByRole('navigation', { name: 'À compléter' });
+    expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent)).toEqual(['À compléter', 'À coder']);
+    await userEvent.click(screen.getByRole('link', { name: 'À coder' }));
+    expect(await screen.findByText('A CODER')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'À coder' })).toHaveAttribute('aria-current', 'page');
   });
 
   test('le journal et les statistiques restent accessibles a un lecteur, ranges dans leur groupe', async () => {
@@ -289,7 +302,7 @@ describe('BaseLayout — mode Terrain', () => {
     // Meme destination que l'onglet, et ses sous-onglets restent la pour s'orienter.
     expect(await screen.findByText('REGLAGES')).toBeInTheDocument();
     expect(Array.from(screen.getByRole('navigation', { name: 'Paramètres' }).querySelectorAll('a'), (link) => link.textContent))
-      .toEqual(['Général', 'Formulaire', 'Saisies', 'Accès', 'Journal']);
+      .toEqual(['Général', 'Formulaire', 'Formulaires courts', 'Accès', 'Journal']);
     expect(screen.getByRole('button', { name: 'Plus' })).toHaveClass('border-teal-600');
   });
 

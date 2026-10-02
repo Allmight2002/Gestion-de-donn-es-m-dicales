@@ -1,7 +1,7 @@
 import { withSections } from '../../data/templates';
 import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -58,6 +58,9 @@ function excludedEncounterFieldKeys(context: RecordFormContext | null): Set<stri
 // chaque champ modifie est journalise (field_change_log) cote serveur.
 export function EditEncounter() {
   const { id: baseId, patientId, encounterId } = useParams();
+  // `?field=` (lien « Coder » de « Diagnostics a coder ») : le formulaire s'ouvre sur ce champ.
+  const [searchParams] = useSearchParams();
+  const focusFieldKey = searchParams.get('field');
   const navigate = useNavigate();
   const { t } = useI18n();
   const online = useOnline();
@@ -506,6 +509,7 @@ export function EditEncounter() {
           toFillKeys={toFillKeys}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}
+          focusFieldKey={focusFieldKey}
         />
 
         {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne

@@ -423,7 +423,7 @@ export function BaseHome() {
     topBarActions.push({ label: t('base.tab_import'), onSelect: () => navigate(`/bases/${id}/import`) });
   }
   for (const form of entryForms) {
-    topBarActions.push({ label: `${t('patient.new')} : ${form.name}`, onSelect: () => navigate(`/bases/${id}/patients/new/manual?form=${encodeURIComponent(form.id)}`) });
+    topBarActions.push({ label: t('entryform.new_patient_with').replace('{form}', form.name), onSelect: () => navigate(`/bases/${id}/patients/new/manual?form=${encodeURIComponent(form.id)}`) });
   }
   if (intakeEnabled && listing && canCreate && !isMissionAccess) {
     topBarActions.push({

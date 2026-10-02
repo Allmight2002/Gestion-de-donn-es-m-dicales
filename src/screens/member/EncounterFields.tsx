@@ -219,6 +219,7 @@ export function EncounterFields({
   repeatableGroup,
   visibilityRules,
   maskedRepeatableGroup,
+  focusFieldKey,
 }: {
   fields: TemplateField[];
   values: Record<string, unknown>;
@@ -241,6 +242,8 @@ export function EncounterFields({
   /** L72 — voir `SectionedFields` : regles de visibilite et groupe dont le bloc est masque. */
   visibilityRules?: readonly { rule: unknown }[];
   maskedRepeatableGroup?: (section: TemplateSection) => ReactNode;
+  /** Champ a ouvrir des l'affichage : voir `SectionedFields`. */
+  focusFieldKey?: string | null;
 }) {
   // Les champs compagnons sont rendus AVEC leur champ source, jamais isolement.
   const companionKeys = proposalKeysOf(fields);
@@ -265,6 +268,7 @@ export function EncounterFields({
       repeatableGroup={repeatableGroup}
       visibilityRules={visibilityRules}
       maskedRepeatableGroup={maskedRepeatableGroup}
+      focusFieldKey={focusFieldKey}
       renderField={(field) => {
         const proposal = isProposalSource(field) ? findProposalField(fields, field) : undefined;
         return (

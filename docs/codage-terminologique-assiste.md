@@ -77,10 +77,11 @@ cette nouvelle analyse).
 (`unmatched` : aucune correspondance, plusieurs correspondances non choisies, saisie hors
 connexion ou pendant une panne) ou proposée sans confirmation (`suggested`). La page « À faire »
 affiche par base « *n* diagnostic(s) à coder » (compte arrêté à 100, lu par `my_todo_counts()`,
-clé `pendingCodings`), qui mène à `/bases/:id/codings` : la liste (`list_pending_codings`, les
-100 plus récentes modifications d'abord) donne le code patient, la rencontre, la variable, le
-texte saisi et le statut (« non codé » / « à confirmer »), et ouvre la fiche ou la rencontre où
-le champ réaffiche ses propositions. Même périmètre que la file « À compléter » : bases où la
+clé `pendingCodings`), qui mène à `/bases/:id/codings`, sous-onglet « À coder » d'« À
+compléter » : la liste (`list_pending_codings`, les 100 plus récentes modifications d'abord),
+regroupée par patient, donne la rencontre, la variable, le texte saisi et le statut (« non codé » /
+« à confirmer »). Chaque ligne, « Coder », ouvre la fiche ou la rencontre directement sur le
+champ (`?field=<variable>`), qui réaffiche ses propositions. Même périmètre que la file « À compléter » : bases où la
 personne peut modifier les données, fiches et rencontres non supprimées, **dossiers `curated`
 exclus** (déjà revus et finalisés). Aucune donnée d'identité n'est lue. Une entrée sort de la
 liste dès qu'elle est confirmée, choisie ou retirée.

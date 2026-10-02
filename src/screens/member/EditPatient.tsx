@@ -1,6 +1,6 @@
 import { errorMessage, isRefreshRequiredError, structuredErrorCode } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -38,6 +38,9 @@ const STATUSES = ['draft', 'complete', 'curated'] as const;
 // qu'en visant 'curated'.
 export function EditPatient() {
   const { id: baseId, patientId } = useParams();
+  // `?field=` (lien « Coder » de « Diagnostics a coder ») : le formulaire s'ouvre sur ce champ.
+  const [searchParams] = useSearchParams();
+  const focusFieldKey = searchParams.get('field');
   const navigate = useNavigate();
   const { t } = useI18n();
   const bases = useBaseRepository();
@@ -400,12 +403,15 @@ export function EditPatient() {
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {/* Meme place qu'a la creation : sous l'en-tete, avant le brouillon et le formulaire. */}
+      <div className="space-y-1">
+        <EntryFormPicker forms={entry.forms} selected={entry.selected} onSelect={entry.select} disabled={busy || work.locked} />
+        <EntryFormNotice mode="edit" selected={entry.selected} problem={entry.problem} unavailableCount={shortForm?.unavailableKeys.length} />
+      </div>
       <WorkDraftPanel draft={work} online={online} />
 
       <form onSubmit={submit} onKeyDown={saveOnCtrlEnter} className="space-y-5">
         <fieldset disabled={busy || work.locked} className="min-w-0 space-y-5">
-        <EntryFormPicker forms={entry.forms} selected={entry.selected} onSelect={entry.select} />
-        <EntryFormNotice selected={entry.selected} problem={entry.problem} unavailableCount={shortForm?.unavailableKeys.length} />
         {/* Un formulaire court garde le statut du dossier : le passer « complet » exigerait la
             fiche entiere, que ce formulaire ne montre pas. */}
         {!shortForm && <label className="flex flex-col text-sm">
@@ -436,6 +442,7 @@ export function EditPatient() {
             toFillKeys={toFillKeys}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
+            focusFieldKey={focusFieldKey}
           />
         ) : fields.length === 0 ? (
           <>
@@ -466,6 +473,7 @@ export function EditPatient() {
             toFillKeys={toFillKeys}
             onChange={(k, v) => updatePatientValue(k, v)}
             onRemove={(key) => updatePatientValue(key, undefined, true)}
+            focusFieldKey={focusFieldKey}
             repeatableGroup={renderRepeatableGroup}
             visibilityRules={rules}
             maskedRepeatableGroup={renderMaskedGroup}

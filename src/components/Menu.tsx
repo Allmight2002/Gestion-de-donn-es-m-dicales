@@ -160,7 +160,8 @@ export function MenuItem({
   /** Action a lancer apres fermeture du menu. */
   onSelect(): void;
   children: ReactNode;
-  /** Classes du bouton ; `btn-ghost w-full justify-start` par defaut. */
+  /** Classes du bouton ; `btn-ghost w-full justify-start text-left` par defaut (un libelle long
+   * passe a la ligne sans se centrer : un bouton centre son texte par defaut). */
   className?: string;
   disabled?: boolean;
 }) {
@@ -173,7 +174,7 @@ export function MenuItem({
         onSelect();
       }}
       disabled={disabled}
-      className={className ?? 'btn-ghost w-full justify-start'}
+      className={className ?? 'btn-ghost w-full justify-start text-left'}
     >
       {children}
     </button>
