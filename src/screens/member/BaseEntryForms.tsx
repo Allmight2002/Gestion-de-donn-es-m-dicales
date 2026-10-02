@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ChevronDown, MoreHorizontal, Plus, X } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import { useBaseRepository, useEntryFormRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import { EntryFormConflictError, type EntryForm } from '../../data/entryForms';
@@ -10,6 +10,8 @@ import { proposalKeysOf } from '../../domain/proposalField';
 import { groupFieldsBySection, repeatableFieldKeys, sectionLabel } from '../../domain/templateSections';
 import { errorMessage } from '../../lib/errorMessage';
 import { PageHeader } from '../../components/PageHeader';
+import { HelpDetails } from '../../components/HelpTip';
+import { Menu, MenuItem } from '../../components/Menu';
 import { SkeletonList } from '../../components/Skeleton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Checkbox } from '../../components/Checkbox';
@@ -52,6 +54,8 @@ export function BaseEntryForms() {
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
+  // Sections de « Variables de la base » depliees ; toutes le sont pendant une recherche.
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const [toDelete, setToDelete] = useState<EntryForm | null>(null);
 
   const reloadForms = useCallback(async () => {
@@ -102,7 +106,10 @@ export function BaseEntryForms() {
   // Un formulaire court suit l'ordre du formulaire complet : l'ordre de selection n'a pas de sens.
   const rank = useMemo(() => new Map(available.map((field, index) => [field.fieldKey, index])), [available]);
   const inFormOrder = (keys: string[]) => [...keys].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
-  const labelOf = (key: string) => byKey.get(key)?.label ?? key;
+  // Libelle de toute variable de fiche, y compris une dependance hors des variables proposables :
+  // jamais de cle technique a l'ecran.
+  const labelByKey = useMemo(() => new Map(patientFields.map((field) => [field.fieldKey, field.label])), [patientFields]);
+  const labelOf = (key: string) => labelByKey.get(key) ?? key;
 
   const groups = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
@@ -116,7 +123,17 @@ export function BaseEntryForms() {
     () => (draft ? resolveEntryForm(draft, patientFields, rules, sections) : null),
     [draft, patientFields, rules, sections],
   );
-  const staleKeys = draft ? draft.fieldKeys.filter((key) => !byKey.has(key)) : [];
+  // Une variable retiree de la base depuis n'est plus proposee : elle n'est ni listee ni
+  // enregistree, seulement comptee.
+  const chosenKeys = draft ? draft.fieldKeys.filter((key) => byKey.has(key)) : [];
+  const staleCount = draft ? draft.fieldKeys.length - chosenKeys.length : 0;
+  const searching = search.trim().length > 0;
+  const toggleGroup = (key: string) => setOpenGroups((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
 
   const update = (change: (current: Draft) => Draft) => setDraft((current) => (current ? change(current) : current));
   const toggleField = (key: string, checked: boolean) => update((current) => ({
@@ -136,6 +153,7 @@ export function BaseEntryForms() {
     setDraftError(null);
     setConflict(false);
     setSearch('');
+    setOpenGroups(new Set());
   };
 
   async function save() {
@@ -202,7 +220,8 @@ export function BaseEntryForms() {
     <section className="max-w-5xl space-y-5">
       <PageHeader
         title={t('entryform.manage_title')}
-        description={t('entryform.manage_subtitle')}
+        // La phrase utile reste lisible ; son explication s'ouvre derriere ⓘ (lot 3, T3-A).
+        description={<>{t('entryform.manage_subtitle')} <HelpDetails>{t('entryform.manage_details')}</HelpDetails></>}
         keepDescription
         actions={isOwner && !draft ? (
           <button type="button" className="btn-primary" onClick={() => open(null)}>
@@ -215,24 +234,34 @@ export function BaseEntryForms() {
         <p className="text-sm text-slate-500">{t('entryform.owner_only')}</p>
       ) : (
         <>
-          <p className="helper-text">{t('entryform.manage_details')}</p>
-
           {!draft && (forms.length === 0 ? (
             <EmptyState title={t('entryform.none')} />
           ) : (
+            // La ligne ouvre le formulaire ; « ⋯ » porte Modifier et Supprimer (T4, T9) : plus aucun
+            // bouton ne dispute la largeur au nom, et l'action destructive quitte le premier niveau.
             <ul className="card divide-y divide-slate-100 dark:divide-slate-800">
               {forms.map((form) => (
-                <li key={form.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">{form.name}</span>
-                    <span className="block text-xs text-slate-500">{t('entryform.count').replace('{n}', String(form.fieldKeys.length))}</span>
-                  </span>
-                  <button type="button" className="btn-secondary" onClick={() => open(form)} aria-label={`${t('entryform.edit')} ${form.name}`}>
-                    <Pencil size={16} aria-hidden /> {t('entryform.edit')}
+                <li key={form.id} className="flex items-center gap-1 pr-2">
+                  <button
+                    type="button"
+                    onClick={() => open(form)}
+                    aria-label={`${t('entryform.edit')} ${form.name}`}
+                    className="flex min-h-14 min-w-0 flex-1 flex-col justify-center px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 sm:px-5"
+                  >
+                    <span className="block break-words text-sm font-medium text-slate-800 dark:text-slate-100">{form.name}</span>
+                    <span className="block whitespace-nowrap text-xs text-slate-500">{t('entryform.count').replace('{n}', String(form.fieldKeys.length))}</span>
                   </button>
-                  <button type="button" className="btn-ghost text-red-600" onClick={() => setToDelete(form)} aria-label={`${t('entryform.delete')} ${form.name}`}>
-                    <Trash2 size={16} aria-hidden /> {t('entryform.delete')}
-                  </button>
+                  <Menu
+                    triggerLabel={`${t('common.actions')} · ${form.name}`}
+                    triggerClassName="icon-button h-11 w-11"
+                    triggerContent={<MoreHorizontal size={20} aria-hidden />}
+                    panelClassName="card absolute right-0 z-10 mt-2 w-48 space-y-1 p-2 shadow-lg"
+                  >
+                    <MenuItem onSelect={() => open(form)}>{t('entryform.edit')}</MenuItem>
+                    <MenuItem onSelect={() => setToDelete(form)} className="flex min-h-11 w-full items-center rounded-xl px-3 text-sm font-medium text-red-600 hover:bg-red-50">
+                      {t('entryform.delete')}
+                    </MenuItem>
+                  </Menu>
                 </li>
               ))}
             </ul>
@@ -257,38 +286,43 @@ export function BaseEntryForms() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <section aria-labelledby="entryform-selected" className="min-w-0 space-y-2">
                   <h2 id="entryform-selected" className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    {t('entryform.selected').replace('{n}', String(draft.fieldKeys.length))}
+                    {t('entryform.selected').replace('{n}', String(chosenKeys.length))}
                   </h2>
                   <p className="helper-text">{t('entryform.required_hint')}</p>
-                  {draft.fieldKeys.length === 0 ? (
+                  {chosenKeys.length === 0 ? (
                     <p className="text-sm text-slate-500">{t('entryform.selected_empty')}</p>
                   ) : (
                     <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
-                      {draft.fieldKeys.map((key, index) => (
-                        <li key={key} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
-                          <span className="w-6 text-right text-xs tabular-nums text-slate-400">{index + 1}</span>
-                          <span className={`min-w-0 flex-1 ${byKey.has(key) ? '' : 'text-slate-400 line-through'}`}>
-                            {labelOf(key)}
-                            {byKey.get(key) && (
-                              <span className="block text-xs text-slate-500">{sectionLabel(t, { sectionKey: byKey.get(key)!.section, label: byKey.get(key)!.sectionLabel })}</span>
-                            )}
-                          </span>
-                          <Checkbox
-                            label={t('entryform.required')}
-                            checked={draft.requiredKeys.includes(key)}
-                            disabled={!byKey.has(key)}
-                            onChange={(event) => toggleRequired(key, event.target.checked)}
-                          />
-                          <button type="button" className="icon-button" aria-label={`${t('entryform.remove')} ${labelOf(key)}`} onClick={() => toggleField(key, false)}>
-                            <X size={16} aria-hidden />
-                          </button>
-                        </li>
-                      ))}
+                      {chosenKeys.map((key, index) => {
+                        const field = byKey.get(key)!;
+                        return (
+                          // Sur telephone, « Indispensable » passe sous le libelle : sur une seule ligne,
+                          // le libelle se reduisait a quelques pixels et chevauchait la case.
+                          <li key={key} className="flex items-start gap-2 px-3 py-1.5 text-sm">
+                            <span className="w-6 shrink-0 pt-2.5 text-right text-xs tabular-nums text-slate-400">{index + 1}</span>
+                            <div className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-2">
+                              <span className="block min-w-0 break-words pt-2 sm:flex-1 sm:py-2">
+                                {field.label}
+                                <span className="block text-xs text-slate-500">{sectionLabel(t, { sectionKey: field.section, label: field.sectionLabel })}</span>
+                              </span>
+                              <Checkbox
+                                label={t('entryform.required')}
+                                containerClassName="-ml-2 sm:ml-0 sm:shrink-0"
+                                checked={draft.requiredKeys.includes(key)}
+                                onChange={(event) => toggleRequired(key, event.target.checked)}
+                              />
+                            </div>
+                            <button type="button" className="icon-button shrink-0" aria-label={`${t('entryform.remove')} ${field.label}`} onClick={() => toggleField(key, false)}>
+                              <X size={16} aria-hidden />
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ol>
                   )}
-                  {staleKeys.length > 0 && (
+                  {staleCount > 0 && (
                     <p role="status" className="text-xs text-amber-800 dark:text-amber-200">
-                      {t('entryform.stale').replace('{list}', staleKeys.join(', '))}
+                      {t('entryform.stale_count').replace('{n}', String(staleCount))}
                     </p>
                   )}
                   {preview.dependencyKeys.size > 0 && (
@@ -310,24 +344,50 @@ export function BaseEntryForms() {
                     placeholder={t('entryform.search')}
                     onChange={(event) => setSearch(event.target.value)}
                   />
-                  <div className="max-h-[28rem] space-y-3 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+                  {/* Sections repliees, avec le compte des variables retenues : la liste suit la page
+                      au lieu de defiler dans un cadre (double defilement sur telephone). Une recherche
+                      deplie tout ; une base a une seule section la montre d'emblee. */}
+                  <div className="space-y-2">
                     {groups.length === 0 && <p className="p-2 text-sm text-slate-500">{t('entryform.no_results')}</p>}
-                    {groups.map((group) => (
-                      <fieldset key={group.key} className="min-w-0">
-                        <legend className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          {sectionLabel(t, { sectionKey: group.key, label: group.label })}
-                        </legend>
-                        {group.fields.map((field) => (
-                          <Checkbox
-                            key={field.fieldKey}
-                            label={field.label}
-                            containerClassName="w-full rounded-lg px-2 hover:bg-slate-50 dark:hover:bg-slate-800"
-                            checked={draft.fieldKeys.includes(field.fieldKey)}
-                            onChange={(event) => toggleField(field.fieldKey, event.target.checked)}
-                          />
-                        ))}
-                      </fieldset>
-                    ))}
+                    {groups.map((group, index) => {
+                      const title = sectionLabel(t, { sectionKey: group.key, label: group.label });
+                      const expanded = searching || groups.length === 1 || openGroups.has(group.key);
+                      const inForm = group.fields.filter((field) => draft.fieldKeys.includes(field.fieldKey)).length;
+                      const panelId = `entryform-group-${index}`;
+                      return (
+                        <div key={group.key} className="rounded-xl border border-slate-200 dark:border-slate-700">
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            aria-controls={panelId}
+                            disabled={searching || groups.length === 1}
+                            onClick={() => toggleGroup(group.key)}
+                            className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 disabled:cursor-default dark:text-slate-200"
+                          >
+                            <span className="min-w-0 flex-1 break-words">{title}</span>
+                            <span aria-hidden className="shrink-0 text-xs tabular-nums text-slate-500">{inForm}/{group.fields.length}</span>
+                            <span className="sr-only">
+                              {t('entryform.group_count').replace('{n}', String(inForm)).replace('{total}', String(group.fields.length))}
+                            </span>
+                            <ChevronDown size={16} aria-hidden className={`shrink-0 text-slate-400 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          {expanded && (
+                            <fieldset id={panelId} className="min-w-0 border-t border-slate-100 p-1 dark:border-slate-800">
+                              <legend className="sr-only">{title}</legend>
+                              {group.fields.map((field) => (
+                                <Checkbox
+                                  key={field.fieldKey}
+                                  label={field.label}
+                                  containerClassName="w-full rounded-lg px-2 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                  checked={draft.fieldKeys.includes(field.fieldKey)}
+                                  onChange={(event) => toggleField(field.fieldKey, event.target.checked)}
+                                />
+                              ))}
+                            </fieldset>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </section>
               </div>

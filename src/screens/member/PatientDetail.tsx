@@ -20,7 +20,7 @@ import {
   type PatientCreateEntry,
 } from '../../data/offlineIntake';
 import { withSections } from '../../data/templates';
-import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, terminologyMarks, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { addedFieldsForRecord } from '../../domain/recordCompletion';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
@@ -229,7 +229,7 @@ export function PatientDetail() {
       if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
       if (typeof v === 'boolean') return v ? '✓' : '✗';
       // La variable est passee pour que le LIBELLE de l'option s'affiche, et non son code.
-      return displayFieldValue(v, '—', field, lang);
+      return displayFieldValue(v, '—', field, lang, terminologyMarks(t));
     },
     [t, lang],
   );
@@ -423,7 +423,16 @@ export function PatientDetail() {
   const canEditRecord = canEdit || canCompleteOwnDraft;
   // Formulaires courts : un autre chemin de saisie vers la MEME fiche, affichee ici comme d'habitude.
   const entryForms = useEntryFormSelection(baseId, !offlineView && canEditRecord).forms;
-  useTopBarActions(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : null);
+  // Sous lg, « Compléter avec » rejoint « Finaliser » dans « ⋯ » : l'en-tete de la carte ne garde
+  // que le statut et « Modifier ». Le serveur reste juge du droit d'ecrire.
+  const topBarActions = [
+    ...(mayFinalize ? [{ label: t('patient.finalize'), onSelect: () => void finalize(), disabled: busy }] : []),
+    ...(canEditRecord ? entryForms.map((form) => ({
+      label: t('entryform.complete_with_form').replace('{form}', form.name),
+      onSelect: () => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`),
+    })) : []),
+  ];
+  useTopBarActions(topBarActions.length > 0 ? topBarActions : null);
   // Decision 3 : les valeurs vides sont masquees par defaut, un bouton les montre toutes.
   const [showEmpty, setShowEmpty] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
@@ -659,18 +668,20 @@ export function PatientDetail() {
               </button>
             )}
             {canEditRecord && entryForms.length > 0 && (
-              <Menu
-                triggerLabel={t('entryform.complete_with')}
-                triggerClassName="btn-ghost"
-                triggerContent={t('entryform.complete_with')}
-                panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2 shadow-lg"
-              >
-                {entryForms.map((form) => (
-                  <MenuItem key={form.id} onSelect={() => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`)}>
-                    {form.name}
-                  </MenuItem>
-                ))}
-              </Menu>
+              <div className="max-lg:hidden">
+                <Menu
+                  triggerLabel={t('entryform.complete_with')}
+                  triggerClassName="btn-ghost"
+                  triggerContent={t('entryform.complete_with')}
+                  panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2 shadow-lg"
+                >
+                  {entryForms.map((form) => (
+                    <MenuItem key={form.id} onSelect={() => navigate(`/bases/${baseId}/patients/${patientId}/edit?form=${encodeURIComponent(form.id)}`)}>
+                      {form.name}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </div>
             )}
             {canEditRecord && (
               <button
@@ -1059,7 +1070,7 @@ function LocalPendingDetail({ baseId, entry }: { baseId: string; entry: PatientC
             {permanentEntries.map(([key, value]) => (
               <div key={key} className="min-w-0">
                 <dt className="truncate text-xs font-medium uppercase tracking-wide text-slate-400">{labels[key]?.label ?? key}</dt>
-                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field, lang)}</dd>
+                <dd className="truncate">{displayFieldValue(value, '—', labels[key]?.field, lang, terminologyMarks(t))}</dd>
               </div>
             ))}
           </dl>

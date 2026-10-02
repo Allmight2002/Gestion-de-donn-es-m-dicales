@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type FocusEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { MoreHorizontal } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
+import { Menu, MenuItem } from '../../components/Menu';
 import { useTerminologyRepository } from '../../data/RepositoryProvider';
 import {
   MIN_QUERY_LENGTH,
@@ -48,7 +50,36 @@ import {
 // choix, et l'absence de correspondance laisse le texte enregistrable, non code. Le texte
 // d'origine accompagne toujours le code retenu.
 const DEBOUNCE_MS = 250;
-const MIN_CODING_LENGTH = 3;
+
+// Revue post-optimisation (C4) : la copie locale des diagnostics sert a tout l'appareil. Le lien
+// « Télécharger… » ne s'affiche donc qu'une fois par ecran, au lieu de se repeter sous chaque
+// champ : sous le premier champ de diagnostic de la page qui montre sa zone de recherche. Une
+// valeur unique deja choisie n'en montre pas ; elle ne doit donc pas retenir le lien.
+type DownloadOwner = { id: symbol; node: HTMLElement };
+let downloadOwners: readonly DownloadOwner[] = [];
+const downloadOwnerListeners = new Set<() => void>();
+const notifyDownloadOwners = () => downloadOwnerListeners.forEach((listener) => listener());
+function subscribeDownloadOwners(listener: () => void) {
+  downloadOwnerListeners.add(listener);
+  return () => { downloadOwnerListeners.delete(listener); };
+}
+function useFirstDownloadOwner(anchor: RefObject<HTMLElement | null>, active: boolean): boolean {
+  const [id] = useState(() => Symbol('terminology-download'));
+  useEffect(() => {
+    const node = anchor.current;
+    if (!active || !node) return;
+    // Rang dans la page, pas ordre d'arrivee : un champ qui retrouve sa recherche (« Changer »)
+    // reprend le lien s'il est au-dessus des autres.
+    const at = downloadOwners.findIndex((owner) => owner.node.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING);
+    downloadOwners = at < 0 ? [...downloadOwners, { id, node }] : [...downloadOwners.slice(0, at), { id, node }, ...downloadOwners.slice(at)];
+    notifyDownloadOwners();
+    return () => {
+      downloadOwners = downloadOwners.filter((owner) => owner.id !== id);
+      notifyDownloadOwners();
+    };
+  }, [active, anchor, id]);
+  return useSyncExternalStore(subscribeDownloadOwners, () => downloadOwners[0]?.id === id, () => false);
+}
 
 type Replacing = { index: number; entry: TerminologyFieldEntry } | null;
 
@@ -96,7 +127,9 @@ export function TerminologyInput({
   // provenance de l'analyse a reprendre si une proposition est choisie.
   const [reanalysis, setReanalysis] = useState<Record<string, 'pending' | 'none' | 'failed'>>({});
   const reanalyzedRef = useRef(new Map<string, UnmatchedTerminologyValue>());
-  const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   // La reponse du codage arrive apres coup : elle doit s'appliquer a la valeur COURANTE.
   const valueRef = useRef(value);
   valueRef.current = value;
@@ -106,6 +139,7 @@ export function TerminologyInput({
   // L'ordre du tableau EST le rang : il n'est ni retrie ni normalise, ici comme au serveur.
   const chosen = multiple && Array.isArray(value) ? value.filter(isTerminologyEntry) : [];
   const selected = !multiple && isTerminologyEntry(value) ? value : null;
+  const ownsDownloadLink = useFirstDownloadOwner(searchRef, !(selected && !replacing));
 
   useEffect(() => {
     const ticket = ++cacheCheckRef.current;
@@ -282,7 +316,8 @@ export function TerminologyInput({
    */
   function commitText(text: string) {
     const raw = text.trim().slice(0, MAX_RAW_LENGTH);
-    if (!freeText || raw.length < MIN_CODING_LENGTH) return;
+    // Meme seuil que la recherche et le serveur : un sigle (« IC ») est un diagnostic.
+    if (!freeText || raw.length < MIN_QUERY_LENGTH) return;
     const provisional = unmatchedEntry(raw);
     const entries = currentEntries();
     const index = replacing ? replacing.index : multiple ? entries.length : 0;
@@ -320,8 +355,11 @@ export function TerminologyInput({
   }
 
   function onBlur(e: FocusEvent<HTMLInputElement>) {
-    // Un clic sur une proposition de la liste n'est pas un depart du champ.
-    if (e.relatedTarget && containerRef.current?.contains(e.relatedTarget as Node)) return;
+    // Aller vers une proposition de la liste, ou annuler une correction, n'est pas un depart
+    // du champ. Tout autre focus l'est, meme dans ce bloc (telechargement, actions d'une autre
+    // entree) : sinon le texte restait en suspens et l'enregistrement le perdait.
+    const next = e.relatedTarget as Node | null;
+    if (next && (listRef.current?.contains(next) || next === cancelRef.current)) return;
     commitText(query);
   }
 
@@ -401,34 +439,32 @@ export function TerminologyInput({
     : options;
 
   // --- Rendu ---------------------------------------------------------------------------------
+  // Revue post-optimisation (C4) : chaque entree se lit sur trois niveaux — le diagnostic (et son
+  // statut), le texte ecrit par le medecin quand il differe, puis les actions — et chaque action
+  // est une vraie cible au doigt (40 px au moins), et non plus un lien de 16 px en text-xs.
 
-  function entryBody(entry: TerminologyFieldEntry, index: number) {
+  const entryText = (entry: TerminologyFieldEntry) => (isTerminologyValue(entry) ? entry.label : entry.raw);
+
+  /** Une proposition a choisir : toute la largeur, son code en gris a droite. */
+  function conceptButton(index: number, concept: CodedConcept) {
+    return (
+      <button
+        key={concept.code}
+        type="button"
+        onClick={() => pick(index, concept)}
+        className="flex min-h-10 w-full items-center gap-2 rounded-lg border border-teal-200 bg-white px-3 py-2 text-left text-sm text-teal-800 hover:bg-teal-50 dark:border-teal-800 dark:bg-slate-900 dark:text-teal-200 dark:hover:bg-teal-950"
+      >
+        <span aria-hidden="true">○</span>
+        <span className="min-w-0 flex-1 break-words">{concept.label}</span>
+        <span className="shrink-0 text-xs tabular-nums text-slate-500">{concept.code}</span>
+      </button>
+    );
+  }
+
+  /** Ce qui suit le diagnostic : propositions, analyse en cours ou absence de correspondance. */
+  function entryDetails(entry: TerminologyFieldEntry, index: number): ReactNode {
     if (isTerminologyValue(entry)) {
-      const status = entry.coding?.status;
-      return (
-        <>
-          <span title={entry.raw && entry.raw !== entry.label ? `${t('terminology.written')} ${entry.raw}` : undefined}>
-            {entry.coding && status !== 'suggested' ? '✓ ' : ''}{entry.label}
-          </span>
-          {entry.coding && (
-            <span className="text-xs text-slate-500 tabular-nums">{entry.code}</span>
-          )}
-          {status === 'suggested' && (
-            <>
-              <span className="text-xs text-amber-700 dark:text-amber-300">{t('terminology.to_confirm')}</span>
-              <button
-                type="button"
-                onClick={() => confirm(index)}
-                aria-label={`${t('terminology.confirm')} ${entry.label}`}
-                className="text-xs font-medium text-teal-700 hover:underline"
-              >
-                {t('terminology.confirm')}
-              </button>
-              {otherMatches(entry, index)}
-            </>
-          )}
-        </>
-      );
+      return entry.coding?.status === 'suggested' ? otherMatches(entry, index) : null;
     }
     const key = choiceKey(entry.raw, entry.coding.normalized);
     const choice = choices[key];
@@ -436,41 +472,31 @@ export function TerminologyInput({
     const state = reanalysis[key];
     const canReanalyze = !!codeText && online && !choice && !(codingCount > 0 && provisional);
     return (
-      <span className="flex flex-col gap-1">
-        <span className="italic">{entry.raw}</span>
-        {codingCount > 0 && isProvisionalEntry(entry, entry.raw) ? (
+      <>
+        {codingCount > 0 && provisional ? (
           <CodingIndicator label={t('terminology.coding')} />
         ) : choice ? (
-          <span role="group" aria-label={t('terminology.several_matches')} className="flex flex-col items-start gap-1">
-            <span className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.several_matches')}</span>
-            {choice.options.map((c) => (
-              <button
-                key={c.code}
-                type="button"
-                onClick={() => pick(index, c)}
-                className="text-left text-xs font-medium text-teal-700 hover:underline"
-              >
-                ○ {c.label}
-              </button>
-            ))}
-          </span>
+          <div role="group" aria-label={t('terminology.several_matches')} className="space-y-1.5">
+            <p className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.several_matches')}</p>
+            {choice.options.map((c) => conceptButton(index, c))}
+          </div>
         ) : !provisional || !codeText || state === 'none' ? (
-          <span className="text-xs text-slate-500">{t('terminology.no_reliable_match')}</span>
+          <p className="text-xs text-slate-500">{t('terminology.no_reliable_match')}</p>
         ) : null}
         {canReanalyze && (state === 'pending' ? (
           <CodingIndicator label={t('terminology.coding')} />
         ) : state === 'failed' ? (
-          <span role="status" className="text-xs text-slate-500">{t('terminology.coding_unavailable')}</span>
+          <p role="status" className="text-xs text-slate-500">{t('terminology.coding_unavailable')}</p>
         ) : state === undefined ? (
           <button
             type="button"
             onClick={() => reanalyze(entry)}
-            className="self-start text-xs font-medium text-teal-700 hover:underline"
+            className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm font-medium text-teal-700 hover:bg-teal-100/60 dark:text-teal-300 dark:hover:bg-teal-900/40"
           >
             {t('terminology.reanalyze')}
           </button>
         ) : null)}
-      </span>
+      </>
     );
   }
 
@@ -482,78 +508,102 @@ export function TerminologyInput({
       .filter((c) => c.code !== entry.code && !present.has(c.code));
     if (options.length === 0) return null;
     return (
-      <span role="group" aria-label={t('terminology.other_matches')} className="flex w-full flex-col items-start gap-1">
-        <span className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.other_matches')}</span>
-        {options.map((c) => (
-          <button
-            key={c.code}
-            type="button"
-            onClick={() => pick(index, c)}
-            className="text-left text-xs font-medium text-teal-700 hover:underline"
-          >
-            ○ {c.label} <span className="font-normal text-slate-500 tabular-nums">{c.code}</span>
-          </button>
-        ))}
-      </span>
+      <div role="group" aria-label={t('terminology.other_matches')} className="space-y-1.5">
+        <p className="text-xs text-slate-600 dark:text-slate-300">{t('terminology.other_matches')}</p>
+        {options.map((c) => conceptButton(index, c))}
+      </div>
     );
   }
 
-  const chipClass = 'rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-sm text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100';
+  /**
+   * Une entree : diagnostic et statut, texte ecrit, details, puis « Confirmer » pour une
+   * proposition. `rank` numerote une liste (le premier est le principal) ; `actions` porte
+   * « Changer » (valeur unique) ou « ⋯ » (liste).
+   */
+  function renderEntry(entry: TerminologyFieldEntry, index: number, rank: number | null, actions: ReactNode) {
+    const coded = isTerminologyValue(entry);
+    const suggested = coded && entry.coding?.status === 'suggested';
+    // Le texte d'origine accompagne toujours le code retenu : il se lit, il ne se survole pas.
+    const written = coded && entry.raw && entry.raw !== entry.label ? entry.raw : null;
+    return (
+      <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100">
+        <div className="flex items-start gap-2">
+          {/* Le NUMERO est le rang, et c'est lui qui porte « le premier est le principal ». */}
+          {rank !== null && <span className="pt-2 font-medium tabular-nums">{rank}.</span>}
+          <div className="min-w-0 flex-1 space-y-1.5 py-1.5">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className={coded ? 'break-words' : 'break-words italic'}>
+                {coded && entry.coding && !suggested ? '✓ ' : ''}{entryText(entry)}
+              </span>
+              {coded && entry.coding && <span className="text-xs tabular-nums text-slate-500">{entry.code}</span>}
+              {suggested && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                  {t('terminology.to_confirm')}
+                </span>
+              )}
+            </p>
+            {written && <p className="break-words text-xs text-slate-600 dark:text-slate-300">{t('terminology.written')} {written}</p>}
+            {/* La proposition d'abord, puis les autres correspondances, si l'analyse en a trouve. */}
+            {suggested && (
+              <button
+                type="button"
+                onClick={() => confirm(index)}
+                aria-label={`${t('terminology.confirm')} ${entryText(entry)}`}
+                className="btn-secondary px-3"
+              >
+                {t('terminology.confirm')}
+              </button>
+            )}
+            {entryDetails(entry, index)}
+          </div>
+          {actions}
+        </div>
+      </div>
+    );
+  }
+
   const entryHasCoding = (entry: TerminologyFieldEntry) => !isTerminologyValue(entry) || entry.coding !== undefined;
 
   if (selected && !replacing) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={`${chipClass} flex flex-wrap items-center gap-1.5`}>
-          {entryBody(selected, 0)}
-        </span>
-        <button
-          type="button"
-          // Une saisie issue du codage assiste reste affichee tant qu'aucun remplacement n'est
-          // choisi : abandonner la correction ne doit pas effacer le diagnostic ecrit.
-          onClick={() => (entryHasCoding(selected) ? startReplace(0) : onChange(null))}
-          className="text-xs font-medium text-slate-500 hover:text-slate-700"
-        >
-          {t('terminology.change')}
-        </button>
-        {codingNotice && <p role="status" className="w-full text-xs text-slate-500">{codingNotice}</p>}
+      <div className="space-y-1">
+        {renderEntry(selected, 0, null, (
+          <button
+            type="button"
+            // Une saisie issue du codage assiste reste affichee tant qu'aucun remplacement n'est
+            // choisi : abandonner la correction ne doit pas effacer le diagnostic ecrit.
+            onClick={() => (entryHasCoding(selected) ? startReplace(0) : onChange(null))}
+            className="btn-ghost shrink-0 px-3"
+          >
+            {t('terminology.change')}
+          </button>
+        ))}
+        {codingNotice && <p role="status" className="text-xs text-slate-500">{codingNotice}</p>}
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="space-y-1">
-      {/* Les etiquettes d'abord, la recherche EN DESSOUS et toujours visible : ajouter un
+    <div ref={searchRef} className="space-y-1">
+      {/* Les entrees d'abord, la recherche EN DESSOUS et toujours visible : ajouter un
           diagnostic ne doit jamais obliger a en retirer un autre. */}
       {multiple && chosen.length > 0 && (
         <>
-          <ul className="flex flex-wrap gap-2">
+          <ul className="space-y-2">
             {chosen.map((c, index) => (
-              <li
-                key={isTerminologyValue(c) ? c.code : `${index}:${c.raw}`}
-                className={`flex flex-wrap items-center gap-1.5 ${chipClass}`}
-              >
-                {/* Le NUMERO est le rang, et c'est lui qui porte « le premier est le principal ». */}
-                <span className="font-medium tabular-nums">{index + 1}.</span>
-                {entryBody(c, index)}
-                {entryHasCoding(c) && (
-                  <button
-                    type="button"
-                    onClick={() => startReplace(index)}
-                    aria-label={`${t('terminology.change')} ${isTerminologyValue(c) ? c.label : c.raw}`}
-                    className="text-xs font-medium text-slate-500 hover:text-slate-700"
+              <li key={isTerminologyValue(c) ? c.code : `${index}:${c.raw}`}>
+                {renderEntry(c, index, index + 1, (
+                  // Changer et Retirer, actions secondaires, passent dans « ⋯ » (T9) : deux
+                  // glyphes de 16 px ne sont pas des cibles au doigt.
+                  <Menu
+                    triggerLabel={`${t('common.actions')} · ${entryText(c)}`}
+                    triggerClassName="icon-button h-10 w-10 shrink-0"
+                    triggerContent={<MoreHorizontal size={18} aria-hidden />}
                   >
-                    ✎
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => remove(index)}
-                  aria-label={`${t('terminology.remove')} ${isTerminologyValue(c) ? c.label : c.raw}`}
-                  className="text-xs font-medium text-slate-500 hover:text-slate-700"
-                >
-                  ✕
-                </button>
+                    {entryHasCoding(c) && <MenuItem onSelect={() => startReplace(index)}>{t('terminology.change')}</MenuItem>}
+                    <MenuItem onSelect={() => remove(index)}>{t('terminology.remove')}</MenuItem>
+                  </Menu>
+                ))}
               </li>
             ))}
           </ul>
@@ -564,9 +614,13 @@ export function TerminologyInput({
         <p className="flex items-center gap-2 text-xs text-slate-500">
           {t('terminology.replacing')}
           <button
+            ref={cancelRef}
             type="button"
+            // Comme pour les propositions : le focus reste dans le champ, sinon le depart du
+            // champ enregistrerait la correction que l'on annule.
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => { setReplacing(null); setQuery(''); }}
-            className="font-medium text-slate-600 hover:underline"
+            className="btn-ghost -my-2 px-2 text-xs"
           >
             {t('common.cancel')}
           </button>
@@ -603,7 +657,7 @@ export function TerminologyInput({
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {codingNotice && <p role="status" className="text-xs text-slate-500">{codingNotice}</p>}
       {visibleOptions.length > 0 && (
-        <ul id={listId} role="listbox" className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <ul ref={listRef} id={listId} role="listbox" className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
           {visibleOptions.map((o) => (
             <li key={o.id}>
               {/* Le role `option` porte sur l'element ACTIVABLE : sinon un clic sur la ligne
@@ -616,7 +670,7 @@ export function TerminologyInput({
                 aria-selected={false}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(o)}
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                className="block min-h-10 w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 {o.label}
               </button>
@@ -629,17 +683,16 @@ export function TerminologyInput({
           {t(codeText ? 'terminology.no_result_free_text' : 'terminology.no_result')}
         </p>
       )}
-      {local ? (
-        <p className="text-xs text-slate-400">{t('terminology.local_ready')}</p>
-      ) : downloading === null ? (
+      {/* Copie locale prete : rien a dire. Absente : un seul lien par ecran (voir plus haut). */}
+      {!local && downloading === null && ownsDownloadLink && (
         <button
           type="button"
           onClick={() => void telecharger()}
-          className="text-xs font-medium text-teal-700 hover:underline"
+          className="btn-ghost -ml-2 px-2 text-xs text-teal-700 dark:text-teal-300"
         >
           {t('terminology.download')}
         </button>
-      ) : null}
+      )}
     </div>
   );
 }

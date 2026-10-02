@@ -4,7 +4,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Menu, MenuItem } from './Menu';
+import { Menu, MenuItem, panelShiftX } from './Menu';
 
 function triggerFor(label: string) {
   return screen.getByRole('button', { name: label });
@@ -136,4 +136,46 @@ describe('Menu (D9)', () => {
       panelHeight.mockRestore();
     }
   });
+
+  // Revue post-optimisation (C2) : a 360 px, « + Nouveau » de « Mes jeux de variables » passe a
+  // gauche sous le titre ; son panneau aligne a droite sortait de l'ecran par la gauche.
+  test('ramene dans la fenetre un panneau qui sortait par la gauche', async () => {
+    const trigger = renderOneMenu();
+    trigger.getBoundingClientRect = () => ({ ...rectAt(100, 140), left: 16, right: 128 }) as DOMRect;
+    const panelRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ ...rectAt(148, 300), left: -128, right: 128, width: 256 } as DOMRect);
+    try {
+      await userEvent.click(trigger);
+      expect(openPanel().style.transform).toBe('translateX(144px)');
+    } finally {
+      panelRect.mockRestore();
+    }
+  });
 });
+
+describe('panelShiftX — le panneau reste dans la fenetre', () => {
+  const VIEWPORT = 360;
+  test('un panneau qui tient ne bouge pas', () => {
+    expect(panelShiftX({ left: 88, right: 344 }, { left: 300, right: 344 }, VIEWPORT)).toBe(0);
+  });
+
+  test('a gauche, il s aligne sur le bord gauche du declencheur', () => {
+    expect(panelShiftX({ left: -128, right: 128 }, { left: 16, right: 128 }, VIEWPORT)).toBe(144);
+  });
+
+  test('a droite, il s aligne sur le bord droit du declencheur', () => {
+    expect(panelShiftX({ left: 250, right: 506 }, { left: 250, right: 340 }, VIEWPORT)).toBe(-166);
+  });
+
+  test('si l alignement oppose deborde aussi, il se cale sur la marge', () => {
+    // Declencheur au milieu : aligne sur son bord gauche, le panneau sortirait a droite.
+    expect(panelShiftX({ left: -60, right: 196 }, { left: 140, right: 196 }, VIEWPORT)).toBe(156);
+    // Plus large que la fenetre : le bord gauche reste visible.
+    expect(panelShiftX({ left: -100, right: 300 }, { left: 250, right: 300 }, VIEWPORT)).toBe(108);
+  });
+
+  test('sans mise en page (largeur nulle), rien ne bouge', () => {
+    expect(panelShiftX({ left: 0, right: 0 }, { left: 0, right: 0 }, VIEWPORT)).toBe(0);
+  });
+});
+

@@ -1,7 +1,7 @@
 import { withSections } from '../../data/templates';
 import { errorMessage, isRefreshRequiredError } from '../../lib/errorMessage';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuth } from '../../auth/useAuth';
 import { useBaseRepository, usePatientRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -9,7 +9,7 @@ import type { FieldChange, RecordFormContext } from '../../data/patients';
 import { buildCompatiblePatch } from '../../data/patients';
 import { definitionVersionId, fieldsForLocalValidation, isMissingRecordFormContextError, mergeRecordFormFields } from '../../data/recordFormContext';
 import { recordCompletionSummary, stillEmptyKeys } from '../../domain/recordCompletion';
-import { displayFieldValue, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
+import { displayFieldValue, terminologyMarks, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import {
   encounterScopeFieldKeys, enqueueEncounterUpdate, fieldsForOfflineVersion, isOfflineEnabled, offlineCache,
   offlineEncounterFieldScopesKnown, sectionsForOfflineVersion, useOnline, withinEncounterGroupScope,
@@ -58,6 +58,9 @@ function excludedEncounterFieldKeys(context: RecordFormContext | null): Set<stri
 // chaque champ modifie est journalise (field_change_log) cote serveur.
 export function EditEncounter() {
   const { id: baseId, patientId, encounterId } = useParams();
+  // `?field=` (lien « Coder » de « Diagnostics a coder ») : le formulaire s'ouvre sur ce champ.
+  const [searchParams] = useSearchParams();
+  const focusFieldKey = searchParams.get('field');
   const navigate = useNavigate();
   const { t } = useI18n();
   const online = useOnline();
@@ -104,7 +107,8 @@ export function EditEncounter() {
     : errorMessage(e, t('common.error'));
   const fmt = (v: unknown): string => {
     if (isMissing(v)) return t(`missing.${missingCodeOf(v)!}`);
-    return displayFieldValue(v, '—');
+    // Historique : confirmer une proposition doit se lire « X (a confirmer) -> X », pas « X -> X ».
+    return displayFieldValue(v, '—', null, undefined, terminologyMarks(t));
   };
   const { track: trackVisibilityWithdrawal } = useVisibilityWithdrawal(rules, fields, sections);
   const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${encounterId}`);
@@ -505,6 +509,7 @@ export function EditEncounter() {
           toFillKeys={toFillKeys}
           onChange={(k, v) => updateEncounterValue(k, v)}
           onRemove={(key) => updateEncounterValue(key, undefined, true)}
+          focusFieldKey={focusFieldKey}
         />
 
         {/* L56 : information NON BLOQUANTE sur les diagnostics sans bloc. Elle ne conditionne

@@ -48,9 +48,11 @@ entière). Le passage à « complet » ou « vérifié » se fait depuis le form
 ## Qui fait quoi
 
 - **Propriétaire de la base** : crée, nomme, compose, modifie et supprime les
-  formulaires (Paramètres → Saisies, route `/bases/:id/formulaires`).
-- **Membres de la base** : choisissent un formulaire à la création (« Nouveau dossier avec… » ou
-  le sélecteur en haut du formulaire) ou pour compléter une fiche (« Compléter avec… »).
+  formulaires (Paramètres → Formulaires courts, route `/bases/:id/formulaires`).
+- **Membres de la base** : choisissent un formulaire à la création (« Nouveau patient avec… »,
+  dans « ⋯ » sur téléphone, ou le sélecteur en haut du formulaire) ou pour compléter une fiche
+  (« Compléter avec… », dans « ⋯ » de la barre haute sur téléphone). Le sélecteur occupe la même
+  place en création et en modification, avant le formulaire.
 - **Comptes de mission** : utilisent les formulaires courts et enregistrent une fiche partielle
   en brouillon (migration `20261001140000_mission_partial_patient_drafts.sql`), de même qu'une
   rencontre ou une occurrence de bloc répétable (`20261001150000_mission_partial_encounter_drafts.sql`).
@@ -69,8 +71,9 @@ entière). Le passage à « complet » ou « vérifié » se fait depuis le form
   `row_version = <attendue>`. Un écart ne modifie rien et l'écran conserve les réglages saisis
   en demandant un rechargement.
 - Nom unique par base (insensible à la casse).
-- Une variable retirée du gabarit par une version ultérieure est ignorée à la saisie et signalée
-  dans l'éditeur ; elle est retirée du formulaire à son prochain enregistrement.
+- Une variable retirée du gabarit par une version ultérieure est ignorée à la saisie et comptée
+  dans l'éditeur, sans jamais afficher sa clé technique ; elle est retirée du formulaire à son
+  prochain enregistrement.
 
 ## Code
 

@@ -329,7 +329,9 @@ describe('EncounterFields — listes de diagnostics (L21)', () => {
 
   test('retirer la derniere valeur supprime la CLE, sans ecrire de tableau vide', async () => {
     const { onChange, onRemove } = renderFields({ diagnostic: [CHOLERA] });
-    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+    // Revue post-optimisation (C4) : « Retirer » est dans le menu « ⋯ » de l'entree.
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Cholera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
 
     expect(onRemove).toHaveBeenCalledWith('diagnostic');
     expect(onChange).not.toHaveBeenCalled();
@@ -337,7 +339,9 @@ describe('EncounterFields — listes de diagnostics (L21)', () => {
 
   test('retirer une valeur parmi deux enregistre la liste restante', async () => {
     const { onChange, onRemove } = renderFields({ diagnostic: [CHOLERA, DIABETE] });
-    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+    // Revue post-optimisation (C4) : « Retirer » est dans le menu « ⋯ » de l'entree.
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Cholera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
 
     expect(onChange).toHaveBeenCalledWith('diagnostic', [DIABETE]);
     expect(onRemove).not.toHaveBeenCalled();

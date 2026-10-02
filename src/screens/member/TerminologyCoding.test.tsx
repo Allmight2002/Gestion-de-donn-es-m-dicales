@@ -5,7 +5,7 @@
 import 'fake-indexeddb/auto';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { RepositoryProvider } from '../../data/RepositoryProvider';
@@ -104,7 +104,7 @@ describe('TerminologyInput — codage assiste', () => {
 
     expect(await screen.findByText('Autres correspondances possibles :')).toBeInTheDocument();
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.02', coding: { status: 'suggested' } });
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label} FIC.01` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSA.label} FIC.01` }));
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: RAW, coding: { status: 'confirmed' } });
     // Une fois choisi, plus rien n'est a confirmer.
     expect(screen.queryByText('Autres correspondances possibles :')).not.toBeInTheDocument();
@@ -148,7 +148,7 @@ describe('TerminologyInput — codage assiste', () => {
 
     expect(await screen.findByText('Plusieurs correspondances possibles :')).toBeInTheDocument();
     expect(changes.at(-1)).not.toHaveProperty('code');
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSA.label} ${HSA.code}` }));
     expect(changes.at(-1)).toMatchObject({
       code: 'FIC.01',
       raw: 'Hémorragie intracrânienne spontanée',
@@ -235,7 +235,7 @@ describe('TerminologyInput — codage assiste', () => {
     expect(codeText).toHaveBeenCalledWith(stored.raw);
     // Rien n'est ecrit tant que le medecin n'a pas choisi.
     expect(changes).toEqual([]);
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSA.label} ${HSA.code}` }));
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: stored.raw, coding: { status: 'confirmed' } });
   });
 
@@ -256,10 +256,10 @@ describe('TerminologyInput — codage assiste', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Rechercher une correspondance' }));
     expect(codeText).toHaveBeenCalledWith(RAW);
     // Meme une correspondance claire reste une proposition : la valeur ne change pas.
-    expect(await screen.findByRole('button', { name: `○ ${HSD.label}` })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: `${HSD.label} ${HSD.code}` })).toBeInTheDocument();
     expect(changes).toEqual([]);
 
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSD.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSD.label} ${HSD.code}` }));
     expect(changes.at(-1)).toMatchObject({
       code: HSD.code, label: HSD.label, raw: RAW,
       coding: { method: 'ai_assisted', status: 'confirmed', normalized: 'Hématome sous-dural chronique spontané droit', release: '2026-01' },
@@ -285,3 +285,115 @@ describe('TerminologyInput — codage assiste', () => {
     expect(changes).toEqual([]);
   });
 });
+
+// Revue post-optimisation, lot C1. B2 : un sigle de deux lettres (« IC ») est un diagnostic ;
+// il etait ignore au depart du champ, puis perdu a l'enregistrement. B3 : partir vers un autre
+// bouton du bloc (telechargement, actions d'une autre entree) laissait le texte en suspens, et
+// l'enregistrement le perdait.
+describe('TerminologyInput — depart du champ (C1)', () => {
+  const PROVISOIRE = (raw: string) => ({ raw, coding: { method: 'lexical', status: 'unmatched' } });
+
+  test('un sigle de deux caracteres est garde, puis analyse', async () => {
+    const codeText = vi.fn(async () => coded('unmatched'));
+    const changes = renderField({ codeText });
+    await writeAndLeave('IC');
+    expect(changes[0]).toEqual(PROVISOIRE('IC'));
+    expect(codeText).toHaveBeenCalledWith('IC');
+  });
+
+  test('un seul caractere n est ni garde ni analyse', async () => {
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText });
+    await writeAndLeave('I');
+    expect(changes).toEqual([]);
+    expect(codeText).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: 'Diagnostic' })).toHaveValue('I');
+  });
+
+  test('Tab vers le lien de telechargement garde le texte', async () => {
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText });
+    const box = screen.getByRole('combobox', { name: 'Diagnostic' });
+    const lien = screen.getByRole('button', { name: 'Télécharger pour rechercher hors connexion' });
+    let vers: EventTarget | null = null;
+    box.addEventListener('blur', (e) => { vers = e.relatedTarget; });
+    await userEvent.type(box, RAW);
+    await userEvent.tab();
+    expect(vers).toBe(lien);
+    expect(changes[0]).toEqual(PROVISOIRE(RAW));
+    expect(codeText).toHaveBeenCalledWith(RAW);
+  });
+
+  test('retirer une autre entree garde le texte en cours', async () => {
+    const CHOLERA = { code: 'FIC.20', label: 'Choléra' };
+    const codeText = vi.fn(() => new Promise<TerminologyCodingResult>(() => undefined));
+    const changes = renderField({ codeText }, { multiple: true, initial: [CHOLERA] });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), RAW);
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Choléra' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
+    expect(changes.at(-1)).toEqual([PROVISOIRE(RAW)]);
+    expect(codeText).toHaveBeenCalledWith(RAW);
+  });
+
+  test('une proposition atteinte au clavier n est pas un depart du champ', async () => {
+    const option: TerminologyOption = { id: 'o1', code: 'FIC.10', label: 'Méningiomes', kind: 'category', depth: 3 };
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ search: async () => [option], codeText });
+    await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), 'méning');
+    await screen.findByRole('option', { name: 'Méningiomes' });
+    await userEvent.tab();
+    expect(screen.getByRole('option', { name: 'Méningiomes' })).toHaveFocus();
+    expect(changes).toEqual([]);
+    await userEvent.keyboard('{Enter}');
+    expect(changes).toEqual([{ code: 'FIC.10', label: 'Méningiomes' }]);
+    expect(codeText).not.toHaveBeenCalled();
+  });
+
+  test('annuler une correction n enregistre pas le texte en cours', async () => {
+    const stored = { code: HSD.code, label: HSD.label, raw: RAW, coding: { method: 'ai_assisted', status: 'automatic' } };
+    const codeText = vi.fn(async () => coded('automatic'));
+    const changes = renderField({ codeText }, { multiple: true, initial: [stored] });
+    await userEvent.click(screen.getByRole('button', { name: `Actions · ${HSD.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: 'Changer' }));
+    const box = screen.getByRole('combobox', { name: 'Diagnostic' });
+    await userEvent.type(box, ' gauche');
+    const annuler = screen.getByRole('button', { name: 'Annuler' });
+    // Souris ou toucher : le focus reste dans le champ, comme pour une proposition.
+    expect(fireEvent.mouseDown(annuler)).toBe(false);
+    // Clavier : aller vers « Annuler » n'est pas un depart du champ.
+    await userEvent.tab({ shift: true });
+    expect(annuler).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(changes).toEqual([]);
+    expect(codeText).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: 'Diagnostic' })).toHaveValue('');
+  });
+});
+
+// Revue post-optimisation, lot C4 : le champ se lit et se manie au doigt.
+describe('TerminologyInput — entrees au doigt (C4)', () => {
+  const ASSISTE = { code: HSD.code, label: HSD.label, raw: RAW, coding: { method: 'ai_assisted', status: 'automatic' } };
+
+  test('le texte d origine se lit sans survol', async () => {
+    renderField({}, { initial: ASSISTE });
+    const written = await screen.findByText(`Saisi : ${RAW}`);
+    expect(written).toBeVisible();
+    expect(document.querySelector('[title]')).toBeNull();
+  });
+
+  test('dans une liste, Changer et Retirer passent dans ⋯ ; Changer seulement pour un texte analysé', async () => {
+    const CHOISI = { code: 'FIC.20', label: 'Choléra' };
+    const changes = renderField({}, { multiple: true, initial: [ASSISTE, CHOISI] });
+    expect(screen.queryByRole('button', { name: /^Retirer/ })).toBeNull();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions · Choléra' }));
+    expect(screen.queryByRole('button', { name: 'Changer' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+
+    await userEvent.click(screen.getByRole('button', { name: `Actions · ${HSD.label}` }));
+    expect(screen.getByRole('button', { name: 'Changer' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
+    expect(changes.at(-1)).toEqual([CHOISI]);
+  });
+});
+

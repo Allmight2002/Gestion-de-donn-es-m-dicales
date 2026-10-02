@@ -46,7 +46,12 @@ describe('diagnostics à coder', () => {
 
     expect(await screen.findByRole('heading', { name: 'Diagnostics à coder' })).toBeInTheDocument();
     expect(listPendingCodings).toHaveBeenCalledWith('b1', 100);
-    expect(screen.getByText('P-0002')).toBeInTheDocument();
+    // Revue post-optimisation, C3 : un groupe par patient, replie quand il y en a plusieurs.
+    const p2 = screen.getByRole('button', { name: /^P-0002/ });
+    expect(p2).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Douleur fictive atypique')).toBeNull();
+    await userEvent.click(p2);
+    await userEvent.click(screen.getByRole('button', { name: /^P-0001/ }));
     expect(screen.getByText(/Diagnostics associés · n° 2/)).toBeInTheDocument();
     expect(screen.getByText('Douleur fictive atypique')).toBeInTheDocument();
     expect(screen.getByText('non codé')).toBeInTheDocument();
@@ -54,12 +59,23 @@ describe('diagnostics à coder', () => {
     expect(screen.getByText('à confirmer')).toBeInTheDocument();
     expect(screen.getByText('Proposé : Hémorragie sousdurale non traumatique')).toBeInTheDocument();
 
-    const links = screen.getAllByRole('link', { name: 'Ouvrir la fiche' });
+    // La ligne entiere est le lien « Coder », qui ouvre le formulaire SUR le champ.
+    const links = screen.getAllByRole('link', { name: /Coder$/ });
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/bases/b1/patients/p2/encounters/e7/edit', '/bases/b1/patients/p1/edit',
+      '/bases/b1/patients/p2/encounters/e7/edit?field=diag_liste', '/bases/b1/patients/p1/edit?field=diag',
     ]);
     await userEvent.click(links[0]);
     expect(await screen.findByText('EDIT ENCOUNTER')).toBeInTheDocument();
+  });
+
+  test('les entrées d un même patient sont regroupées ; un seul patient est déplié d emblée', async () => {
+    const autre = item({ fieldKey: 'diag_liste', fieldLabel: 'Diagnostics associés', position: 0, raw: 'Céphalée fictive' });
+    renderPage({ listPendingCodings: async () => ({ items: [ITEMS[1], autre], hasMore: false }) });
+    const group = await screen.findByRole('button', { name: /^P-0001/ });
+    expect(group).toHaveTextContent('2 diagnostic(s) à coder');
+    expect(group).toBeDisabled();
+    expect(screen.getAllByRole('link', { name: /Coder$/ })).toHaveLength(2);
+    expect(screen.getByText('Céphalée fictive')).toBeInTheDocument();
   });
 
   test('liste tronquée : la page le dit', async () => {

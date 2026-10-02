@@ -405,6 +405,14 @@ export function createEditorRegistryRepository(): TemplateRepository {
       }
       currentSections = currentSections.map((section) => section.id === sectionId ? { ...section, isRepeatable } : section);
     },
+    // Libelles de saisie d'un groupe repetable, comme le depot reel : espaces de bord retires,
+    // chaine vide = libelle generique.
+    setSectionRepeatLabels: async (sectionId, addLabel, itemLabel) => {
+      const clean = (value: string | null) => value?.trim() || null;
+      currentSections = currentSections.map((section) => section.id === sectionId
+        ? { ...section, addLabel: clean(addLabel), itemLabel: clean(itemLabel) }
+        : section);
+    },
     deleteSection: async (sectionId) => {
       const section = currentSections.find((candidate) => candidate.id === sectionId);
       if (section && currentFields.some((candidate) => candidate.section === section.sectionKey)) throw new Error('Section non vide');

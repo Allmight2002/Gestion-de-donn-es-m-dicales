@@ -102,6 +102,9 @@ export function BaseLayout() {
         || under(`${base}/curation`),
       subs: [
         { to: `${base}/queue`, labelKey: 'base.tab_queue', when: !!canEdit },
+        // Diagnostics a coder : meme droit que la file et que le serveur (`list_pending_codings`
+        // exige `can_edit_structured_data`). L'ecran avait une adresse, mais aucun sous-onglet.
+        { to: `${base}/codings`, labelKey: 'base.tab_codings', when: !!canEdit },
         { to: `${base}/propositions`, labelKey: 'base.tab_proposals', when: !!isOwner },
         // L56 : la vue transversale des cas non couverts appartient au medecin proprietaire.
         { to: `${base}/diagnostics`, labelKey: 'base.tab_diagnostics', when: !!isOwner },

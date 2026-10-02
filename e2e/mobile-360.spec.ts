@@ -19,7 +19,7 @@
 //
 // Usage : `npm run e2e:mobile` (Playwright demarre le serveur de developpement s'il ne tourne
 // pas). Le banc n'existe que sur ce serveur local : contre une URL externe, le fichier est ignore.
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 test.skip(Boolean(process.env.E2E_BASE_URL), 'Banc local : servi uniquement par le serveur de developpement.');
 const VIEWPORT = { width: 360, height: 800 };
@@ -61,6 +61,11 @@ const openEditor = (tab?: string) => async (page: Page) => {
   if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
 };
 
+// Revue post-optimisation (C2) : un formulaire de saisie s'edite depuis sa ligne.
+const openEntryForm = async (page: Page) => {
+  await page.getByRole('button', { name: 'Modifier Sortie (fictif)' }).click();
+};
+
 // Lot 8 : le mode Terrain s'active dans le menu, comme le ferait la personne.
 const enableTerrain = async (page: Page) => {
   await page.getByRole('button', { name: 'Ouvrir le menu' }).click();
@@ -76,10 +81,16 @@ const SCREENS: Screen[] = [
   { name: 'liste des patients — mode Terrain', path: '/bases/b1', open: enableTerrain, first: { text: '^P-0001$' } },
   { name: 'fiche patient', path: '/bases/b1/patients/p1', first: { selector: 'dd' } },
   { name: 'nouveau patient', path: '/bases/b1/patients/new/manual', first: FIRST_FIELD },
+  { name: 'nouveau patient — formulaire court', path: '/bases/b1/patients/new/manual?form=ef1', first: FIRST_FIELD },
   { name: 'nouvelle rencontre', path: '/bases/b1/patients/p1/encounters/new/manual', first: FIRST_FIELD },
   { name: 'donnees permanentes', path: '/bases/b1/patients/p1/edit', first: FIRST_FIELD },
   { name: 'modification d’une rencontre', path: '/bases/b1/patients/p1/encounters/e1/edit', first: FIRST_FIELD },
   { name: 'correction de l’identite', path: '/bases/b1/patients/p1/identity/edit', first: FIRST_FIELD },
+  // Revue post-optimisation (C4) : les champs CIM-11, tels que « Coder » les ouvre.
+  { name: 'diagnostic principal', path: '/bases/b1/patients/p1/edit?field=diagnostic',
+    first: { text: '^Hémorragie sousdurale non traumatique$' } },
+  { name: 'diagnostics associes', path: '/bases/b1/patients/p1/encounters/e2/edit?field=diagnostics',
+    first: { text: '^Commotion cérébrale$' } },
   { name: 'dossiers a completer', path: '/bases/b1/queue', first: { text: '^P-0001$' } },
   { name: 'diagnostics a coder', path: '/bases/b1/codings', first: { text: '^P-0001$' } },
   { name: 'journal', path: '/bases/b1/activity', first: { selector: 'li' } },
@@ -89,6 +100,9 @@ const SCREENS: Screen[] = [
   // Lot 5 : les reglages en lignes, et la liste avant le formulaire de creation.
   { name: 'parametres', path: '/bases/b1/parametres', first: { text: '^Modèle d’observation$' } },
   { name: 'formulaire', path: '/bases/b1/template', first: { text: '^Formulaire :' } },
+  // Revue post-optimisation (C2) : les formulaires de saisie courts, la liste puis l'edition.
+  { name: 'formulaires de saisie', path: '/bases/b1/formulaires', first: { text: '^Admission \\(fictif\\)$' } },
+  { name: 'formulaire de saisie — edition', path: '/bases/b1/formulaires', open: openEntryForm, first: FIRST_FIELD },
   { name: 'acces', path: '/bases/b1/access', first: { text: 'Dr Collègue' } },
   { name: 'comptes de mission', path: '/missions', first: { text: 'Enquêteur 1' } },
   { name: 'synchronisation', path: '/sync', first: { text: '^Écritures en attente$' } },
@@ -171,6 +185,14 @@ function measureBudgets({ target, viewport }: { target: Target; viewport: { widt
   };
 }
 
+/** Revue post-optimisation (C4) : boutons d'une zone de moins de 40 px de cote, trop petits au doigt. */
+const smallTargets = (zone: Locator) => zone.locator('button').evaluateAll((buttons) => buttons.flatMap((button) => {
+  const box = button.getBoundingClientRect();
+  if (box.width === 0 || box.height === 0 || (box.width >= 40 && box.height >= 40)) return [];
+  const name = (button.getAttribute('aria-label') ?? button.textContent ?? '').replace(/\s+/g, ' ').trim();
+  return [`${name} : ${Math.round(box.width)} x ${Math.round(box.height)} px`];
+}));
+
 /** Ouvre un ecran du banc ; renvoie les incidents (erreur JavaScript, depot non simule, reseau). */
 async function openScreen(page: Page, path: string): Promise<string[]> {
   const incidents: string[] = [];
@@ -246,6 +268,43 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       await expect(page.getByText('Awa Démo (fictive)')).toHaveCount(0);
       await page.getByRole('button', { name: 'Identité (zone restreinte)' }).click();
       await expect(page.getByText('Awa Démo (fictive)')).toBeVisible();
+      // Revue post-optimisation (C3) : « Compléter avec » rejoint « Finaliser » dans « ⋯ ».
+      await expect(page.getByRole('button', { name: 'Compléter avec' })).toBeHidden();
+      await page.getByRole('banner').getByRole('button', { name: 'Plus d’actions' }).click();
+      await expect(page.getByRole('button', { name: 'Compléter avec Admission (fictif)' })).toBeVisible();
+    } },
+    // Revue post-optimisation (C3) : un diagnostic a coder ouvre le formulaire de sa rencontre, sur
+    // le champ a coder (que le banc porte depuis C4).
+    { screen: 'diagnostics a coder', open: async (page) => {
+      await page.getByRole('link', { name: /Coder$/ }).first().click();
+      // Champ de rencontre : seul le formulaire de la rencontre le porte.
+      await expect(page.getByRole('combobox', { name: 'Diagnostics associés' })).toBeFocused();
+    } },
+    // Revue post-optimisation (C4) : le texte ecrit se lit sans survol, chaque action d'une entree
+    // est une cible de 40 px au moins, et le telechargement n'apparait qu'une fois.
+    { screen: 'diagnostic principal', open: async (page) => {
+      const zone = page.locator('[id$="-field-diagnostic"]');
+      await expect(zone.getByText('Saisi : HSD chronique droit (fictif)')).toBeVisible();
+      await expect(zone.getByRole('button', { name: 'Confirmer Hémorragie sousdurale non traumatique' })).toBeVisible();
+      expect(await smallTargets(zone), 'diagnostic principal : cibles de moins de 40 px').toEqual([]);
+      // « Changer » rouvre la recherche, que le lien de telechargement accompagne.
+      await zone.getByRole('button', { name: 'Changer', exact: true }).click();
+      await expect(zone.getByRole('combobox', { name: 'Diagnostic principal' })).toHaveValue('HSD chronique droit (fictif)');
+      await expect(page.getByRole('button', { name: 'Télécharger pour rechercher hors connexion' })).toHaveCount(1);
+      expect(await smallTargets(zone), 'diagnostic principal en correction : cibles de moins de 40 px').toEqual([]);
+    } },
+    { screen: 'diagnostics associes', open: async (page) => {
+      const zone = page.locator('[id$="-field-diagnostics"]');
+      await expect(zone.getByText('Saisi : commotion (fictif)')).toBeVisible();
+      // Le texte non code rouvert : ses correspondances sont reproposees, en boutons pleine largeur.
+      await expect(zone.getByRole('button', { name: /^Céphalée post-traumatique aiguë/ })).toBeVisible();
+      // Un texte libre que la nomenclature ne connait pas : analyse, puis nouvelle recherche possible.
+      const champ = zone.getByRole('combobox', { name: 'Diagnostics associés' });
+      await champ.fill('Douleur cervicale (fictif)');
+      await champ.press('Enter');
+      await expect(zone.getByRole('button', { name: 'Rechercher une correspondance' })).toBeVisible();
+      expect(await smallTargets(zone), 'diagnostics associes : cibles de moins de 40 px').toEqual([]);
+      await expect(page.getByRole('button', { name: 'Télécharger pour rechercher hors connexion' })).toHaveCount(1);
     } },
     // Lot 8 : en mode Terrain, « Plus » mene aux autres destinations de la base.
     { screen: 'liste des patients — mode Terrain', open: async (page) => {
@@ -289,6 +348,18 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       // Plein ecran : ni fil d'Ariane ni onglets de la base pendant l'edition.
       await expect(page.getByRole('navigation', { name: 'Traumatismes crâniens CHU-R (fictif)' })).toHaveCount(0);
     } },
+    // Revue post-optimisation (C2) : « ⋯ » d'un formulaire de saisie ; sections a deplier et
+    // recherche qui deplie tout.
+    { screen: 'formulaires de saisie', open: async (page) => {
+      await page.getByRole('button', { name: 'Actions · Admission (fictif)' }).click();
+      await expect(page.getByRole('button', { name: 'Supprimer' })).toBeVisible();
+    } },
+    { screen: 'formulaire de saisie — edition', open: async (page) => {
+      await page.getByRole('button', { name: /^Démographie/ }).click();
+      await expect(page.getByRole('checkbox', { name: 'Localité / quartier' })).toBeVisible();
+      await page.getByRole('searchbox', { name: 'Rechercher une variable' }).fill('vomi');
+      await expect(page.getByRole('checkbox', { name: 'Vomissements' })).toBeVisible();
+    } },
     // Lot 6 : panneaux bas, menus « ⋯ », mode Réorganiser, fiche d'une variable, sections
     // depliees, groupe de regles, formulaire de regle et sa liste recherchable.
     { screen: 'editeur — structure', open: async (page) => {
@@ -308,6 +379,13 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
     { screen: 'editeur — sections', open: async (page) => {
       await page.getByRole('button', { name: /^Bloc 01 · 8 variable/ }).click();
       await expect(page.getByRole('button', { name: 'Renommer' })).toBeVisible();
+      // Revue post-optimisation (C5) : un groupe repetable resume ses libelles de saisie ; leur
+      // formulaire ne s'ouvre qu'a la demande.
+      await page.getByRole('button', { name: /^Consultations de suivi \(fictif\) · / }).click();
+      await expect(page.getByText('Libellés : « Ajouter une consultation » · « Consultation 1 »')).toBeVisible();
+      await expect(page.getByLabel('Texte du bouton d’ajout')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Modifier les libellés · Consultations de suivi (fictif)' }).click();
+      await expect(page.getByLabel('Texte du bouton d’ajout')).toHaveValue('Ajouter une consultation');
       await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
       await page.getByRole('button', { name: 'Nouvelle section' }).click();
       await expect(page.getByLabel('Nom de la section')).toBeVisible();
@@ -331,6 +409,50 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       await open(page);
       const width = await page.evaluate(() => document.documentElement.scrollWidth);
       expect(width, `${name} : document de ${width} px une fois ouvert, pour ${VIEWPORT.width} px`).toBeLessThanOrEqual(VIEWPORT.width);
+      expect(incidents, 'aucune erreur JavaScript, aucun depot non simule, aucune requete hors banc').toEqual([]);
+    });
+  }
+
+  // Revue post-optimisation (C2) : un panneau de menu s'affiche en entier. La largeur du document
+  // ne le dit pas : un panneau sorti par la gauche ne l'elargit pas, et un panneau recouvert par
+  // la suite de la page non plus (« + Nouveau » des jeux de variables, « ⋯ » de l'editeur).
+  const MENUS: { screen: string; trigger: (page: Page) => Locator }[] = [
+    { screen: 'mes jeux de variables', trigger: (page) => page.getByRole('button', { name: 'Nouveau', exact: true }) },
+    { screen: 'editeur — structure',
+      trigger: (page) => page.getByTestId('template-editor-toolbar').getByRole('button', { name: 'Plus d’actions' }) },
+    { screen: 'fiche patient', trigger: (page) => page.getByRole('banner').getByRole('button', { name: 'Plus d’actions' }) },
+    { screen: 'formulaires de saisie', trigger: (page) => page.getByRole('button', { name: 'Actions · Admission (fictif)' }) },
+    // Revue post-optimisation (C4) : « Changer » et « Retirer » d'un diagnostic de la liste.
+    { screen: 'diagnostics associes', trigger: (page) => page.getByRole('button', { name: 'Actions · Commotion cérébrale' }) },
+    { screen: 'cohortes', trigger: (page) => page.getByRole('button', { name: /^Actions · Glasgow ≤ 12/ }) },
+    { screen: 'comptes de mission', trigger: (page) => page.getByRole('button', { name: 'Actions · Enquêteur 1 (fictif)' }) },
+  ];
+  for (const { screen: name, trigger } of MENUS) {
+    test(`${name} : panneau de menu entierement visible`, async ({ page }) => {
+      const screen = SCREENS.find((entry) => entry.name === name)!;
+      const incidents = await openScreen(page, screen.path);
+      await screen.open?.(page);
+      await settledMeasures(page, screen);
+      const button = trigger(page);
+      await button.click();
+      await expect(button).toHaveAttribute('aria-expanded', 'true');
+      // Le panneau suit son declencheur dans le meme conteneur (src/components/Menu.tsx).
+      const report = await button.locator('xpath=following-sibling::div[1]').evaluate((panel) => {
+        const box = panel.getBoundingClientRect();
+        const hidden: string[] = [];
+        for (const fx of [0.05, 0.5, 0.95]) {
+          for (const fy of [0.1, 0.5, 0.9]) {
+            const x = box.left + box.width * fx;
+            const y = box.top + box.height * fy;
+            const hit = document.elementFromPoint(x, y);
+            if (!hit || !panel.contains(hit)) hidden.push(`${Math.round(x)},${Math.round(y)} : ${hit ? hit.tagName.toLowerCase() : 'hors de l’ecran'}`);
+          }
+        }
+        return { left: Math.round(box.left), right: Math.round(box.right), hidden };
+      });
+      expect(report.left, `${name} : panneau a ${report.left} px du bord gauche`).toBeGreaterThanOrEqual(0);
+      expect(report.right, `${name} : panneau jusqu'a ${report.right} px, pour ${VIEWPORT.width} px`).toBeLessThanOrEqual(VIEWPORT.width);
+      expect(report.hidden, `${name} : points du panneau caches ou recouverts`).toEqual([]);
       expect(incidents, 'aucune erreur JavaScript, aucun depot non simule, aucune requete hors banc').toEqual([]);
     });
   }

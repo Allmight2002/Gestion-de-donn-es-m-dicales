@@ -42,7 +42,7 @@ Texte clinique ──► interprétation (LLM, sinon repli lexical)
 |---|---|
 | Frappe courte | Recherche classique inchangée (copie locale ou serveur), choix dans la liste. |
 | Pause de frappe | Rien n'est envoyé : chaque analyse est un appel facturé au fournisseur du LLM. |
-| Départ du champ ou Entrée sans choix | Le texte est **enregistré immédiatement, non codé** ; « Recherche de suggestions… » s'affiche avec une petite animation, puis le texte est remplacé par le résultat du codage s'il est toujours là. Entrée ne soumet jamais le formulaire. |
+| Départ du champ ou Entrée sans choix | Dès 2 caractères, comme la recherche (un sigle comme « IC » est un diagnostic), le texte est **enregistré immédiatement, non codé** ; « Recherche de suggestions… » s'affiche avec une petite animation, puis le texte est remplacé par le résultat du codage s'il est toujours là. Entrée ne soumet jamais le formulaire. Tout focus qui quitte le champ compte, y compris vers le lien de téléchargement ou les actions d'une autre entrée ; seuls la liste de propositions et « Annuler » d'une correction n'en sont pas. |
 | Clic sur une proposition de la liste | Choix classique ; le texte tapé n'est pas codé. |
 
 Résultats affichés discrètement dans l'étiquette du diagnostic :
@@ -54,8 +54,16 @@ Résultats affichés discrètement dans l'étiquette du diagnostic :
 | `ambiguous` | « Plusieurs correspondances possibles : ○ … ○ … » | **aucun code** tant que l'utilisateur n'a pas choisi ; le choix donne `confirmed` |
 | `unmatched` | « Aucune correspondance CIM-11 fiable trouvée. » | texte seul, statut `unmatched` |
 
+**Lecture au doigt (revue post-optimisation, C4).** Chaque entrée se lit sur trois niveaux : le
+libellé et son statut (« ✓ » ou le badge « à confirmer »), code en gris ; puis « Saisi : <texte> »
+quand le texte écrit diffère du libellé — il se lit, il ne se survole plus ; puis les actions.
+Toutes sont des cibles de 40 px au moins : « Confirmer », chaque proposition « ○ » (toute la
+largeur, code en gris) et « Rechercher une correspondance ». En liste, « Changer » et « Retirer »
+sont dans le menu « ⋯ » de l'entrée (« Actions · <entrée> ») ; « Changer » n'y figure que pour une
+entrée issue du codage ou d'un texte libre. Une valeur unique garde son bouton « Changer ».
+
 Une saisie issue du codage reste affichée tant qu'aucun remplacement n'est choisi : « Changer »
-(ou ✎ en liste) ouvre la recherche pré-remplie avec le texte d'origine, et un choix manuel donne
+(dans « ⋯ » en liste) ouvre la recherche pré-remplie avec le texte d'origine, et un choix manuel donne
 le statut `manually_modified` en conservant ce texte. Hors connexion, ou si le service est en
 panne, le texte est conservé non codé et l'écran le dit ; **le codage n'empêche jamais
 d'enregistrer**. En liste (L21), chaque diagnostic reconnu devient une entrée numérotée ; un code
@@ -77,13 +85,20 @@ cette nouvelle analyse).
 (`unmatched` : aucune correspondance, plusieurs correspondances non choisies, saisie hors
 connexion ou pendant une panne) ou proposée sans confirmation (`suggested`). La page « À faire »
 affiche par base « *n* diagnostic(s) à coder » (compte arrêté à 100, lu par `my_todo_counts()`,
-clé `pendingCodings`), qui mène à `/bases/:id/codings` : la liste (`list_pending_codings`, les
-100 plus récentes modifications d'abord) donne le code patient, la rencontre, la variable, le
-texte saisi et le statut (« non codé » / « à confirmer »), et ouvre la fiche ou la rencontre où
-le champ réaffiche ses propositions. Même périmètre que la file « À compléter » : bases où la
+clé `pendingCodings`), qui mène à `/bases/:id/codings`, sous-onglet « À coder » d'« À
+compléter » : la liste (`list_pending_codings`, les 100 plus récentes modifications d'abord),
+regroupée par patient, donne la rencontre, la variable, le texte saisi et le statut (« non codé » /
+« à confirmer »). Chaque ligne, « Coder », ouvre la fiche ou la rencontre directement sur le
+champ (`?field=<variable>`), qui réaffiche ses propositions. Même périmètre que la file « À compléter » : bases où la
 personne peut modifier les données, fiches et rencontres non supprimées, **dossiers `curated`
 exclus** (déjà revus et finalisés). Aucune donnée d'identité n'est lue. Une entrée sort de la
 liste dès qu'elle est confirmée, choisie ou retirée.
+
+**Recherche hors connexion.** La copie locale du référentiel vaut pour tout l'appareil : le lien
+« Télécharger pour rechercher hors connexion » n'apparaît qu'une fois par écran, sous le premier
+champ de diagnostic qui affiche sa recherche (une valeur unique déjà choisie n'en affiche pas, et
+ne retient donc pas le lien). Une copie à jour n'est plus annoncée ; seuls restent les états
+transitoires : mise à jour de la copie en cours, copie périmée hors ligne.
 
 Les critères de cohorte (`CohortBuilder`) utilisent le même composant avec `freeText={false}` :
 un critère ne peut être qu'un concept du référentiel.
@@ -130,6 +145,10 @@ Toute autre clé est refusée. Les messages d'erreur ne recopient jamais la vale
 
 Effets sur les autres surfaces :
 
+- **Lecture hors saisie** (fiche, liste des patients, groupes répétables, historique des
+  corrections, conflits de synchronisation) : une proposition se lit « Libellé (à confirmer) »,
+  un texte libre « texte (non codé) ». Une proposition « à confirmer » reste un code : elle
+  compte pour les règles, la couverture diagnostique et les cohortes, comme à la saisie.
 - **Règles `contains_any` et couverture diagnostique** : une entrée non codée est ignorée (ni
   déclencheur ni invalidation du reste de la liste). Parité SQL/TS couverte par
   `test/fixtures/containsAny.ts`.
@@ -245,7 +264,11 @@ Secrets de l'Edge Function `code-terminology` :
 | `TERMINOLOGY_LLM_BASE_URL` | facultatif, `openai`/`deepseek` ; autre service au contrat Chat Completions (défauts `https://api.openai.com/v1`, `https://api.deepseek.com`) |
 
 Seule la clé du fournisseur choisi est lue ; sans elle (ou sans modèle pour `openai`), la
-fonction répond par le repli lexical. Les trois fournisseurs reçoivent le même prompt et le même
+fonction répond par le repli lexical. Au premier appel de chaque instance, la fonction écrit
+dans ses journaux la configuration retenue (« LLM deepseek / deepseek-v4-pro, raisonnement
+disabled, 8000 ms ») ou la raison du repli (« DEEPSEEK_API_KEY absente », « TERMINOLOGY_LLM_PROVIDER
+et ANTHROPIC_API_KEY absents »…), jamais la valeur d'une clé. Un nom de secret mal saisi se voit
+ainsi dans Edge Functions → `code-terminology` → Logs. Les trois fournisseurs reçoivent le même prompt et le même
 texte, avec le même délai (`TERMINOLOGY_LLM_TIMEOUT_MS`), et leur sortie passe par la même validation (`parseInterpretation`) :
 
 - `anthropic` : SDK officiel, sortie au schéma JSON, effort `low`, repli serveur sur refus

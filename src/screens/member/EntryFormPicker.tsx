@@ -51,11 +51,13 @@ export function EntryFormPicker({ forms, selected, onSelect, disabled = false }:
 }) {
   const { t } = useI18n();
   if (forms.length === 0) return null;
+  // Une seule ligne, au meme endroit en creation et en modification : le choix du formulaire
+  // ne doit pas repousser le premier champ sous le premier ecran.
   return (
-    <label className="flex flex-col text-sm">
+    <label className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
       <span className="text-slate-700 dark:text-slate-200">{t('entryform.picker_label')}</span>
       <select
-        className="input mt-1 w-full sm:w-72"
+        className="input w-auto min-w-0 max-w-full sm:w-72"
         value={selected?.id ?? ''}
         disabled={disabled}
         onChange={(event) => onSelect(event.target.value || null)}
@@ -67,10 +69,12 @@ export function EntryFormPicker({ forms, selected, onSelect, disabled = false }:
   );
 }
 
-export function EntryFormNotice({ selected, problem, unavailableCount }: {
+export function EntryFormNotice({ selected, problem, unavailableCount, mode }: {
   selected: EntryForm | null;
   problem: 'load' | 'missing' | null;
   unavailableCount?: number;
+  /** A la creation, rien n'est encore « conserve » : le reste du dossier se complete ensuite. */
+  mode: 'create' | 'edit';
 }) {
   const { t } = useI18n();
   if (problem) {
@@ -78,9 +82,9 @@ export function EntryFormNotice({ selected, problem, unavailableCount }: {
   }
   if (!selected) return null;
   return (
-    <p role="status" className="rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-900 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-100">
-      {t('entryform.short_notice')}
-      {unavailableCount ? <span className="block text-xs">{t('entryform.stale_count').replace('{n}', String(unavailableCount))}</span> : null}
+    <p role="status" className="text-xs text-teal-800 dark:text-teal-200">
+      {t(mode === 'create' ? 'entryform.short_notice_new' : 'entryform.short_notice')}
+      {unavailableCount ? <span className="block">{t('entryform.stale_count').replace('{n}', String(unavailableCount))}</span> : null}
     </p>
   );
 }

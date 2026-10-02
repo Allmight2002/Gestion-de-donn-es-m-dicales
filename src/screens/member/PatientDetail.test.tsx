@@ -14,6 +14,7 @@ import type { BaseRepository, BaseListing } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
 import type { PatientRepository, Encounter, PatientIdentityInfo, PatientListItem, FieldChange } from '../../data/patients';
 import type { AttachmentRepository } from '../../data/attachments';
+import type { EntryFormRepository } from '../../data/entryForms';
 import type { AuditRepository } from '../../data/audit';
 import type { TemplateField } from '../../data/types';
 import { setBirthDate } from '../../../test/helpers/date-picker';
@@ -135,6 +136,37 @@ describe('PatientDetail (fiche)', () => {
     await openIdentity();
     expect(screen.getByText('Jean Test')).toBeVisible(); // identite, lue au toucher
     expect(screen.getByRole('button', { name: 'Corriger l’identité' })).toBeInTheDocument();
+  });
+
+  // Revue post-optimisation, C1 : une proposition du codage assiste jamais relue se lisait
+  // comme un diagnostic etabli, et un texte libre comme un diagnostic code.
+  test('un diagnostic propose se lit « à confirmer », un texte libre « non codé »', async () => {
+    const avecDiagnostics = {
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const },
+          fields: [
+            field({ fieldKey: 'antecedents', label: 'Antécédents', scope: 'patient', type: 'terminology', isMultiple: true }),
+            field({ fieldKey: 'diagnostic', label: 'Diagnostic', scope: 'encounter', type: 'terminology' }),
+          ],
+          rules: [],
+        };
+      },
+    } as unknown as TemplateRepository;
+    const antecedents = [
+      { code: '1F40', label: 'Paludisme', raw: 'palu', coding: { method: 'ai_assisted', status: 'confirmed' } },
+      { code: '5A11', label: 'Diabète de type 2', raw: 'DT2', coding: { method: 'ai_assisted', status: 'suggested' } },
+      { raw: 'Céphalées atypiques', coding: { method: 'ai_assisted', status: 'unmatched' } },
+    ];
+    const propose = { code: '1F40', label: 'Paludisme', raw: 'palu grave', coding: { method: 'ai_assisted', status: 'suggested' } };
+    renderAt('/bases/b1/patients/p1', makePatients({
+      getPatient: async () => ({ ...patientView, data: { antecedents } }),
+      listEncounters: async () => [{ ...encounter, data: { diagnostic: propose } }],
+    }), undefined, avecDiagnostics);
+
+    expect(await screen.findByText('Paludisme; Diabète de type 2 (à confirmer); Céphalées atypiques (non codé)')).toBeInTheDocument();
+    await openEncounters();
+    expect(screen.getByText('Paludisme (à confirmer)')).toBeInTheDocument();
   });
 
   // Regression release 177 : un gabarit SANS variable permanente visible masquait la carte
@@ -597,6 +629,20 @@ describe('EditEncounter (correction)', () => {
     expect(updateEncounter.mock.calls[0][3]).toBe('erreur de frappe');
   });
 
+  // C1 : confirmer une proposition ne change pas le libelle ; sans mention, l'historique lirait
+  // « Paludisme -> Paludisme ».
+  test('l historique distingue une proposition confirmee de la proposition', async () => {
+    const propose = { code: '1F40', label: 'Paludisme', raw: 'palu', coding: { method: 'ai_assisted', status: 'suggested' } };
+    const confirme = { ...propose, coding: { method: 'ai_assisted', status: 'confirmed' } };
+    renderAt('/bases/b1/patients/p1/encounters/e1/edit', makePatients({
+      listFieldChanges: async () => [{ fieldKey: 'diagnostic', oldValue: propose, newValue: confirme, reason: 'relecture', changedAt: '2024-06-02' }],
+    }));
+
+    const ligne = (await screen.findByText(/relecture/)).closest('li')!;
+    expect(within(ligne).getByText('Paludisme (à confirmer)')).toHaveClass('line-through');
+    expect(within(ligne).getByText('Paludisme', { selector: 'strong' })).toBeInTheDocument();
+  });
+
   test('un ancien draft incomplet reste editable et enregistrable', async () => {
     const updateEncounter = vi.fn(
       async (_id: string, _data: Record<string, unknown>, _status: string, _reason: string) => ({ id: 'e1' }),
@@ -925,5 +971,28 @@ describe('PatientDetail — fiche allégée (audit UI mobile, lot 2)', () => {
     expect(remove.closest('header')).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Ajouter une rencontre' }).find((button) => button.classList.contains('fixed')))
       .toHaveClass('lg:hidden');
+  });
+
+  // Revue post-optimisation, C3 : a 360 px, « Brouillon · Compléter avec · Modifier » ne tenait
+  // plus dans l'en-tete de la carte. « Compléter avec » rejoint « Finaliser » dans « ⋯ ».
+  test('« Compléter avec » passe dans ⋯ sous lg et reste dans la carte à partir de lg', async () => {
+    const draft = { ...patientView, validationStatus: 'draft' as const };
+    const entryForms = {
+      async list() { return [{ id: 'f1', baseId: 'b1', name: 'Sortie', fieldKeys: ['sexe'], requiredKeys: [], rowVersion: 1, updatedAt: '' }]; },
+    } as unknown as EntryFormRepository;
+    render(
+      <I18nProvider>
+        <RepositoryProvider bases={baseRepo} templates={templateRepo} patients={makePatients({ getPatient: async () => draft })} attachments={stubAttachments} entryForms={entryForms}>
+          <MemoryRouter initialEntries={['/bases/b1/patients/p1']}>
+            <TopBarProbe>
+              <Routes><Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} /></Routes>
+            </TopBarProbe>
+          </MemoryRouter>
+        </RepositoryProvider>
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('barre')).toHaveTextContent('P-0001 | /bases/b1 || Finaliser, Compléter avec Sortie'));
+    const inCard = screen.getByRole('button', { name: 'Compléter avec' });
+    expect(inCard.closest('.max-lg\\:hidden')).not.toBeNull();
   });
 });

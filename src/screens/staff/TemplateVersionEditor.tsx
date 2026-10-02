@@ -857,9 +857,11 @@ export function TemplateVersionEditor({
 
   return (
     <section className="space-y-5 sm:space-y-6">
+      {/* `relative z-20` : le flou (`backdrop-blur`) isole la barre dans sa propre couche ; sans
+          rang explicite, la recherche qui la suit (positionnee) se peignait sur le panneau « ⋯ ». */}
       <div
         data-testid="template-editor-toolbar"
-        className="-mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:-mx-6 sm:px-6"
+        className="relative z-20 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:bg-slate-950/95 sm:-mx-6 sm:px-6"
       >
         {/* Audit UI mobile, lot 6 (5.13-A) : un seul bouton principal, « Ajouter une variable »,
             plein dans l'espace Structure ou il agit ; « Créer la version suivante » passe dans
