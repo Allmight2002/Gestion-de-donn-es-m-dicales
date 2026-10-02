@@ -54,8 +54,16 @@ Résultats affichés discrètement dans l'étiquette du diagnostic :
 | `ambiguous` | « Plusieurs correspondances possibles : ○ … ○ … » | **aucun code** tant que l'utilisateur n'a pas choisi ; le choix donne `confirmed` |
 | `unmatched` | « Aucune correspondance CIM-11 fiable trouvée. » | texte seul, statut `unmatched` |
 
+**Lecture au doigt (revue post-optimisation, C4).** Chaque entrée se lit sur trois niveaux : le
+libellé et son statut (« ✓ » ou le badge « à confirmer »), code en gris ; puis « Saisi : <texte> »
+quand le texte écrit diffère du libellé — il se lit, il ne se survole plus ; puis les actions.
+Toutes sont des cibles de 40 px au moins : « Confirmer », chaque proposition « ○ » (toute la
+largeur, code en gris) et « Rechercher une correspondance ». En liste, « Changer » et « Retirer »
+sont dans le menu « ⋯ » de l'entrée (« Actions · <entrée> ») ; « Changer » n'y figure que pour une
+entrée issue du codage ou d'un texte libre. Une valeur unique garde son bouton « Changer ».
+
 Une saisie issue du codage reste affichée tant qu'aucun remplacement n'est choisi : « Changer »
-(ou ✎ en liste) ouvre la recherche pré-remplie avec le texte d'origine, et un choix manuel donne
+(dans « ⋯ » en liste) ouvre la recherche pré-remplie avec le texte d'origine, et un choix manuel donne
 le statut `manually_modified` en conservant ce texte. Hors connexion, ou si le service est en
 panne, le texte est conservé non codé et l'écran le dit ; **le codage n'empêche jamais
 d'enregistrer**. En liste (L21), chaque diagnostic reconnu devient une entrée numérotée ; un code
@@ -85,6 +93,12 @@ champ (`?field=<variable>`), qui réaffiche ses propositions. Même périmètre 
 personne peut modifier les données, fiches et rencontres non supprimées, **dossiers `curated`
 exclus** (déjà revus et finalisés). Aucune donnée d'identité n'est lue. Une entrée sort de la
 liste dès qu'elle est confirmée, choisie ou retirée.
+
+**Recherche hors connexion.** La copie locale du référentiel vaut pour tout l'appareil : le lien
+« Télécharger pour rechercher hors connexion » n'apparaît qu'une fois par écran, sous le premier
+champ de diagnostic qui affiche sa recherche (une valeur unique déjà choisie n'en affiche pas, et
+ne retient donc pas le lien). Une copie à jour n'est plus annoncée ; seuls restent les états
+transitoires : mise à jour de la copie en cours, copie périmée hors ligne.
 
 Les critères de cohorte (`CohortBuilder`) utilisent le même composant avec `freeText={false}` :
 un critère ne peut être qu'un concept du référentiel.

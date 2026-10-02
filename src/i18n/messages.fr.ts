@@ -927,7 +927,6 @@ export const messages = {
     'terminology.rank_hint': 'Le premier diagnostic de la liste est le diagnostic principal.',
     'terminology.download': 'Télécharger pour rechercher hors connexion',
     'terminology.downloading': 'Téléchargement des diagnostics…',
-    'terminology.local_ready': 'Recherche hors connexion disponible.',
     'terminology.stale_refreshing': 'Mise à jour de la copie locale des diagnostics…',
     'terminology.stale_offline': 'La copie locale des diagnostics doit être mise à jour dès le retour du réseau.',
     'terminology.free_text_placeholder': 'Écrivez le diagnostic, ou recherchez-le…',

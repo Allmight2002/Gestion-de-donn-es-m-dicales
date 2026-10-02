@@ -922,7 +922,6 @@ export const messages = {
     'terminology.rank_hint': 'The first diagnosis in the list is the main diagnosis.',
     'terminology.download': 'Download for offline search',
     'terminology.downloading': 'Downloading diagnoses…',
-    'terminology.local_ready': 'Offline search available.',
     'terminology.stale_refreshing': 'Updating the local diagnosis copy…',
     'terminology.stale_offline': 'The local diagnosis copy will be updated when the network is available again.',
     'terminology.free_text_placeholder': 'Type the diagnosis, or search for it…',

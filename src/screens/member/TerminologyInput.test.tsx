@@ -3,6 +3,7 @@
 // c'est le couple code + libelle qui remonte — le code seul serait illisible, le libelle
 // seul casserait les statistiques au premier renommage.
 import 'fake-indexeddb/auto';
+import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -87,7 +88,8 @@ describe('TerminologyInput — listes de diagnostics (L21)', () => {
 
   test('retirer une valeur conserve les autres et leur ordre', async () => {
     const onChange = renderInput({}, [CHOLERA_V, DIABETE_V], true);
-    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Cholera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
 
     expect(onChange).toHaveBeenCalledWith([DIABETE_V]);
   });
@@ -96,7 +98,8 @@ describe('TerminologyInput — listes de diagnostics (L21)', () => {
   // demander le RETRAIT de la variable, jamais ecrire `[]`.
   test('retirer la derniere valeur demande la suppression au lieu d ecrire un tableau vide', async () => {
     const onChange = renderInput({}, [CHOLERA_V], true);
-    await userEvent.click(screen.getByRole('button', { name: 'Retirer Cholera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Cholera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
 
     expect(onChange).toHaveBeenCalledWith(null);
     expect(onChange).not.toHaveBeenCalledWith([]);
@@ -106,6 +109,71 @@ describe('TerminologyInput — listes de diagnostics (L21)', () => {
     renderInput({}, CHOLERA_V);
     expect(screen.getByText('Cholera')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+// Revue post-optimisation, lot C4 : la copie locale vaut pour tout l'appareil ; le lien qui la
+// telecharge ne se repete pas sous chaque champ de diagnostic de l'ecran.
+// Avant F6 lui aussi : il compte les liens, qu'une ecriture tardive de la copie ferait disparaitre.
+describe('TerminologyInput — telechargement hors connexion (C4)', () => {
+  test('un seul lien par ecran, sous le premier champ ; il passe au suivant si le premier disparait', async () => {
+    const repo = {
+      search: async () => [],
+      activeRelease: async () => RELEASE,
+      listEntries: async () => ({ entries: [], total: 0 }),
+    } as TerminologyRepository;
+    function Deux({ premier }: { premier: boolean }) {
+      return (
+        <I18nProvider>
+          <RepositoryProvider terminology={repo}>
+            {premier && <TerminologyInput field={{ label: 'Diagnostic principal' }} value={null} onChange={() => {}} />}
+            <TerminologyInput field={{ label: 'Diagnostics associés', isMultiple: true }} value={null} onChange={() => {}} />
+          </RepositoryProvider>
+        </I18nProvider>
+      );
+    }
+    const { rerender } = render(<Deux premier />);
+    const liens = await screen.findAllByRole('button', { name: 'Télécharger pour rechercher hors connexion' });
+    expect(liens).toHaveLength(1);
+    expect(screen.queryByText('Recherche hors connexion disponible.')).toBeNull();
+    // Le lien suit le premier champ : celui-ci precede le second dans la page.
+    expect(liens[0].compareDocumentPosition(screen.getByRole('combobox', { name: 'Diagnostics associés' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    rerender(<Deux premier={false} />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Télécharger pour rechercher hors connexion' })).toHaveLength(1));
+  });
+
+  // Une valeur unique deja choisie n'affiche pas de recherche, donc pas de lien : elle ne doit
+  // pas le retenir, sinon l'ecran n'en montrait plus aucun.
+  test('une valeur unique deja choisie laisse le lien au champ suivant, et le reprend sur « Changer »', async () => {
+    const repo = {
+      search: async () => [],
+      activeRelease: async () => RELEASE,
+      listEntries: async () => ({ entries: [], total: 0 }),
+    } as TerminologyRepository;
+    function Deux() {
+      const [principal, setPrincipal] = useState<unknown>({
+        code: CHOLERA.code, label: CHOLERA.label, raw: 'cholera', coding: { method: 'ai_assisted', status: 'confirmed' },
+      });
+      return (
+        <I18nProvider>
+          <RepositoryProvider terminology={repo}>
+            <TerminologyInput field={{ label: 'Diagnostic principal' }} value={principal} onChange={setPrincipal} />
+            <TerminologyInput field={{ label: 'Diagnostics associés', isMultiple: true }} value={null} onChange={() => {}} />
+          </RepositoryProvider>
+        </I18nProvider>
+      );
+    }
+    render(<Deux />);
+    const lien = await screen.findByRole('button', { name: 'Télécharger pour rechercher hors connexion' });
+    expect(screen.getByRole('combobox', { name: 'Diagnostics associés' }).compareDocumentPosition(lien) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Changer' }));
+    await waitFor(() => {
+      const liens = screen.getAllByRole('button', { name: 'Télécharger pour rechercher hors connexion' });
+      expect(liens).toHaveLength(1);
+      expect(liens[0].compareDocumentPosition(screen.getByRole('combobox', { name: 'Diagnostics associés' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
   });
 });
 
@@ -211,7 +279,9 @@ describe('TerminologyInput (F6)', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Mise à jour de la copie locale des diagnostics');
     expect(screen.getByRole('status').compareDocumentPosition(screen.getByRole('combobox')) & 4).toBeTruthy();
     finishDownload?.();
-    expect(await screen.findByText('Recherche hors connexion disponible.')).toBeInTheDocument();
+    // Copie a jour (revue C4) : plus rien a annoncer, et aucun lien de telechargement.
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Télécharger pour rechercher hors connexion' })).toBeNull();
   });
 
   test('annonce hors ligne qu une copie perimee sera rafraichie au retour du reseau', async () => {
@@ -238,4 +308,3 @@ describe('TerminologyInput (F6)', () => {
     window.dispatchEvent(new Event('online'));
   });
 });
-

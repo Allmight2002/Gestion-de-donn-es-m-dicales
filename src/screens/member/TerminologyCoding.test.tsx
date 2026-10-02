@@ -104,7 +104,7 @@ describe('TerminologyInput — codage assiste', () => {
 
     expect(await screen.findByText('Autres correspondances possibles :')).toBeInTheDocument();
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.02', coding: { status: 'suggested' } });
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label} FIC.01` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSA.label} FIC.01` }));
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: RAW, coding: { status: 'confirmed' } });
     // Une fois choisi, plus rien n'est a confirmer.
     expect(screen.queryByText('Autres correspondances possibles :')).not.toBeInTheDocument();
@@ -148,7 +148,7 @@ describe('TerminologyInput — codage assiste', () => {
 
     expect(await screen.findByText('Plusieurs correspondances possibles :')).toBeInTheDocument();
     expect(changes.at(-1)).not.toHaveProperty('code');
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSA.label} ${HSA.code}` }));
     expect(changes.at(-1)).toMatchObject({
       code: 'FIC.01',
       raw: 'Hémorragie intracrânienne spontanée',
@@ -235,7 +235,7 @@ describe('TerminologyInput — codage assiste', () => {
     expect(codeText).toHaveBeenCalledWith(stored.raw);
     // Rien n'est ecrit tant que le medecin n'a pas choisi.
     expect(changes).toEqual([]);
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSA.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSA.label} ${HSA.code}` }));
     expect(changes.at(-1)).toMatchObject({ code: 'FIC.01', raw: stored.raw, coding: { status: 'confirmed' } });
   });
 
@@ -256,10 +256,10 @@ describe('TerminologyInput — codage assiste', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Rechercher une correspondance' }));
     expect(codeText).toHaveBeenCalledWith(RAW);
     // Meme une correspondance claire reste une proposition : la valeur ne change pas.
-    expect(await screen.findByRole('button', { name: `○ ${HSD.label}` })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: `${HSD.label} ${HSD.code}` })).toBeInTheDocument();
     expect(changes).toEqual([]);
 
-    await userEvent.click(screen.getByRole('button', { name: `○ ${HSD.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `${HSD.label} ${HSD.code}` }));
     expect(changes.at(-1)).toMatchObject({
       code: HSD.code, label: HSD.label, raw: RAW,
       coding: { method: 'ai_assisted', status: 'confirmed', normalized: 'Hématome sous-dural chronique spontané droit', release: '2026-01' },
@@ -329,7 +329,8 @@ describe('TerminologyInput — depart du champ (C1)', () => {
     const codeText = vi.fn(() => new Promise<TerminologyCodingResult>(() => undefined));
     const changes = renderField({ codeText }, { multiple: true, initial: [CHOLERA] });
     await userEvent.type(screen.getByRole('combobox', { name: 'Diagnostic' }), RAW);
-    await userEvent.click(screen.getByRole('button', { name: 'Retirer Choléra' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions · Choléra' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
     expect(changes.at(-1)).toEqual([PROVISOIRE(RAW)]);
     expect(codeText).toHaveBeenCalledWith(RAW);
   });
@@ -352,7 +353,8 @@ describe('TerminologyInput — depart du champ (C1)', () => {
     const stored = { code: HSD.code, label: HSD.label, raw: RAW, coding: { method: 'ai_assisted', status: 'automatic' } };
     const codeText = vi.fn(async () => coded('automatic'));
     const changes = renderField({ codeText }, { multiple: true, initial: [stored] });
-    await userEvent.click(screen.getByRole('button', { name: `Changer ${HSD.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: `Actions · ${HSD.label}` }));
+    await userEvent.click(screen.getByRole('button', { name: 'Changer' }));
     const box = screen.getByRole('combobox', { name: 'Diagnostic' });
     await userEvent.type(box, ' gauche');
     const annuler = screen.getByRole('button', { name: 'Annuler' });
@@ -367,3 +369,31 @@ describe('TerminologyInput — depart du champ (C1)', () => {
     expect(screen.getByRole('combobox', { name: 'Diagnostic' })).toHaveValue('');
   });
 });
+
+// Revue post-optimisation, lot C4 : le champ se lit et se manie au doigt.
+describe('TerminologyInput — entrees au doigt (C4)', () => {
+  const ASSISTE = { code: HSD.code, label: HSD.label, raw: RAW, coding: { method: 'ai_assisted', status: 'automatic' } };
+
+  test('le texte d origine se lit sans survol', async () => {
+    renderField({}, { initial: ASSISTE });
+    const written = await screen.findByText(`Saisi : ${RAW}`);
+    expect(written).toBeVisible();
+    expect(document.querySelector('[title]')).toBeNull();
+  });
+
+  test('dans une liste, Changer et Retirer passent dans ⋯ ; Changer seulement pour un texte analysé', async () => {
+    const CHOISI = { code: 'FIC.20', label: 'Choléra' };
+    const changes = renderField({}, { multiple: true, initial: [ASSISTE, CHOISI] });
+    expect(screen.queryByRole('button', { name: /^Retirer/ })).toBeNull();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions · Choléra' }));
+    expect(screen.queryByRole('button', { name: 'Changer' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+
+    await userEvent.click(screen.getByRole('button', { name: `Actions · ${HSD.label}` }));
+    expect(screen.getByRole('button', { name: 'Changer' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
+    expect(changes.at(-1)).toEqual([CHOISI]);
+  });
+});
+

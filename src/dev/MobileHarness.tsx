@@ -31,6 +31,8 @@ import type { ExportLogItem, ExportRepository } from '../data/exports';
 import type { MissionAccount, MissionRepository } from '../data/mission';
 import type { WorkDraftSummary } from '../data/workDrafts';
 import type { EntryForm, EntryFormInput, EntryFormRepository } from '../data/entryForms';
+import type { CodedConcept, CodedDiagnosis, TerminologyCodingResult, TerminologyRepository } from '../data/terminology';
+import { normalizeQuery } from '../data/terminologyCache';
 import type { TemplateField, TemplateSection } from '../data/types';
 import { createEditorRegistryRepository, editorRegistryVersion } from '../test/fixtures/editorRegistry';
 import { initTheme } from '../lib/theme';
@@ -92,6 +94,7 @@ const sections: TemplateSection[] = [
   { id: 's2', sectionKey: 'circonstances', label: 'Circonstances du traumatisme', displayOrder: 1 },
   { id: 's3', sectionKey: 'examen', label: 'Examen initial', displayOrder: 2 },
   { id: 's4', sectionKey: 'imagerie', label: 'Imagerie', displayOrder: 3 },
+  { id: 's5', sectionKey: 'diagnostic', label: 'Diagnostic', displayOrder: 4 },
 ];
 const option = (valueKey: string, label: string) => ({ valueKey, label, isActive: true });
 const yesNo = [option('oui', 'Oui'), option('non', 'Non')];
@@ -106,11 +109,14 @@ const fields: TemplateField[] = [
   choice('amnesie', 'Amnésie post-traumatique', 'circonstances', 5),
   choice('vomissements', 'Vomissements', 'circonstances', 6),
   choice('convulsions', 'Convulsions post-traumatiques', 'circonstances', 7),
+  // Revue post-optimisation (C4) : champs CIM-11, comme « Diagnostics a coder » les annonce.
+  field({ fieldKey: 'diagnostic', label: 'Diagnostic principal', scope: 'patient', type: 'terminology', section: 'diagnostic', displayOrder: 8 }),
   field({ fieldKey: 'glasgow', label: 'Score de Glasgow', scope: 'encounter', type: 'integer', section: 'examen', required: true, minValue: 3, maxValue: 15, displayOrder: 10 }),
   choice('pupilles', 'Pupilles réactives', 'examen', 11, 'encounter'),
   choice('deficit', 'Déficit moteur', 'examen', 12, 'encounter'),
   { ...choice('scanner', 'Scanner réalisé', 'imagerie', 13, 'encounter'), required: true },
   field({ fieldKey: 'lesion', label: 'Lésion principale', scope: 'encounter', type: 'text', section: 'imagerie', displayOrder: 14 }),
+  field({ fieldKey: 'diagnostics', label: 'Diagnostics associés', scope: 'encounter', type: 'terminology', isMultiple: true, section: 'diagnostic', displayOrder: 15 }),
 ];
 const version = { id: 'v1', templateId: 't1', versionNumber: 3, status: 'published' as const };
 
@@ -120,15 +126,27 @@ const row = (n: number, sexe: string, localite: string, validationStatus: string
   data: { sexe, localite, mecanisme: 'Chute de sa hauteur', pci: 'oui' }, validationStatus, identity: null,
 });
 const rows = [row(1, 'f', 'Farcha', 'draft'), row(2, 'f', 'Farcha', 'complete'), row(3, 'm', 'Chagoua', 'complete')];
+// Revue post-optimisation (C4) : diagnostics FICTIFS (codes « FIC »), ceux que « Diagnostics a
+// coder » annonce. Le principal est une proposition a confirmer ; la rencontre e2 porte un
+// diagnostic confirme, puis un texte que le codage n'a pas su rattacher (rang 2).
+const coding = (status: 'suggested' | 'confirmed' | 'unmatched', normalized: string, score?: number) =>
+  ({ method: 'ai_assisted' as const, status, normalized, release: 'cim11-fictive', language: 'fr', ...(score === undefined ? {} : { score }) });
 const patient: PatientListItem = {
   ...rows[0], version: 3, updatedAt: '2026-09-01T10:00:00Z', createdBy: profile.id,
+  data: {
+    ...rows[0].data,
+    diagnostic: { code: 'FIC.21', label: 'Hémorragie sousdurale non traumatique', raw: 'HSD chronique droit (fictif)', coding: coding('suggested', 'hsd chronique droit', 0.81) },
+  },
   identity: { fullName: 'Awa Démo (fictive)', dateOfBirth: '2014-02-18', phone: null, address: null, externalIdentifier: null },
 };
 const encounters: Encounter[] = [
   { id: 'e1', encounterType: 'consultation', encounterDate: '2026-08-21', validationStatus: 'complete', ageValue: 12, ageUnit: 'years',
     data: { glasgow: 14, pupilles: 'oui', scanner: 'oui', lesion: 'Hématome extradural' }, updatedAt: '2026-08-21T09:00:00Z', templateVersionId: 'v1' },
   { id: 'e2', encounterType: 'consultation', encounterDate: '2026-09-12', validationStatus: 'draft', ageValue: 12, ageUnit: 'years',
-    data: { glasgow: 15, scanner: 'non' }, updatedAt: '2026-09-12T09:00:00Z', templateVersionId: 'v1' },
+    data: { glasgow: 15, scanner: 'non', diagnostics: [
+      { code: 'FIC.10', label: 'Commotion cérébrale', raw: 'commotion (fictif)', coding: coding('confirmed', 'commotion', 0.95) },
+      { raw: 'Céphalées post-traumatiques atypiques (fictif)', coding: coding('unmatched', 'céphalées post-traumatiques atypiques') },
+    ] }, updatedAt: '2026-09-12T09:00:00Z', templateVersionId: 'v1' },
 ];
 
 // --- Analyse et gestion : journal, cohortes, exports, missions, file a completer ---------
@@ -195,6 +213,46 @@ const entryForms = strict<EntryFormRepository>('entryForms', {
     return entryFormRows.find((form) => form.id === id)!;
   },
   async remove(id: string) { entryFormRows = entryFormRows.filter((form) => form.id !== id); },
+});
+
+// Revue post-optimisation (C4) : nomenclature CIM-11 FICTIVE. Le codage assiste repond apres un
+// court delai, comme le vrai service : l'ecran doit annoncer l'analyse en cours.
+const nomenclature = [
+  ['FIC.10', 'Commotion cérébrale'],
+  ['FIC.11', 'Contusion cérébrale'],
+  ['FIC.21', 'Hémorragie sousdurale non traumatique'],
+  ['FIC.22', 'Hématome sous-dural traumatique'],
+  ['FIC.23', 'Hématome extradural'],
+  ['FIC.30', 'Céphalée post-traumatique aiguë'],
+  ['FIC.31', 'Céphalée post-traumatique persistante'],
+].map(([code, label]) => ({ code, label, searchText: normalizeQuery(label) }));
+const release = { id: 'r-cim11-fictive', slug: 'cim11-fictive', version: '2026 (fictive)', conceptCount: nomenclature.length };
+const concept = (code: string, score: number): CodedConcept => {
+  const { label } = nomenclature.find((entry) => entry.code === code)!;
+  return { code, label, uri: null, score };
+};
+const terminology = strict<TerminologyRepository>('terminology', {
+  async search(query: string) {
+    const needle = normalizeQuery(query.trim());
+    return nomenclature.filter((entry) => entry.searchText.includes(needle))
+      .map(({ code, label }) => ({ id: code, code, label, kind: 'category', depth: 1 }));
+  },
+  async activeRelease() { return release; },
+  async listEntries(_releaseId: string, offset: number, limit: number) {
+    return { entries: nomenclature.slice(offset, offset + limit), total: nomenclature.length };
+  },
+  async codeText(text: string): Promise<TerminologyCodingResult> {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const normalized = text.replace(/\(fictif\)/gi, '').trim().toLocaleLowerCase('fr');
+    const item: CodedDiagnosis = /céphal/.test(normalized)
+      ? { normalized, status: 'ambiguous', score: 0.6, best: null, alternatives: [concept('FIC.30', 0.6), concept('FIC.31', 0.58)] }
+      : /hsd|sous-?dural/.test(normalized)
+        ? { normalized, status: 'suggested', score: 0.81, best: concept('FIC.21', 0.81), alternatives: [concept('FIC.22', 0.7)] }
+        : /commotion/.test(normalized)
+          ? { normalized, status: 'automatic', score: 0.95, best: concept('FIC.10', 0.95), alternatives: [] }
+          : { normalized, status: 'unmatched', score: 0, best: null, alternatives: [] };
+    return { method: 'ai_assisted', release: release.slug, language: 'fr', items: [item] };
+  },
 });
 
 // --- Depots en memoire ------------------------------------------------------------------
@@ -315,7 +373,7 @@ function Harness() {
               async logIdentityRead() { /* memoire seule */ },
             })}
             groups={strict('groups', {})}
-            terminology={strict('terminology', {})}
+            terminology={terminology}
             missions={strict<MissionRepository>('missions', { async list() { return missions; } })}
             clientErrors={strict('clientErrors', {})}
             workDrafts={strict('workDrafts', { available: false, async listMine() { return serverDrafts; } })}
