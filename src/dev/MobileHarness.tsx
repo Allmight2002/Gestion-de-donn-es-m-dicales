@@ -300,6 +300,18 @@ for (const target of [
     then: { field: target, operator: 'visible' },
   }, '', 'block');
 }
+// Revue post-optimisation (C5) : trois groupes repetables pour l'onglet Sections, aux libelles
+// de saisie nommes, reduits au nom d'un element, ou par defaut.
+for (const [sectionKey, label, addLabel, itemLabel] of [
+  ['suivi_consultations', 'Consultations de suivi (fictif)', 'Ajouter une consultation', 'Consultation'],
+  ['suivi_lesions', 'Lésions (fictif)', null, 'Lésion'],
+  ['suivi_prelevements', 'Prélèvements (fictif)', null, null],
+] as const) {
+  void registry.addSection!(editorRegistryVersion.id, sectionKey, label, null).then(async (section) => {
+    await registry.setSectionRepeatable!(section.id, true);
+    await registry.setSectionRepeatLabels!(section.id, addLabel, itemLabel);
+  });
+}
 const templates = strict<TemplateRepository>('templates', {
   // Comme le vrai depot : chaque variable porte le libelle et le rang de sa section.
   async getVersion(id: string) {

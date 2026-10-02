@@ -379,6 +379,13 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
     { screen: 'editeur — sections', open: async (page) => {
       await page.getByRole('button', { name: /^Bloc 01 · 8 variable/ }).click();
       await expect(page.getByRole('button', { name: 'Renommer' })).toBeVisible();
+      // Revue post-optimisation (C5) : un groupe repetable resume ses libelles de saisie ; leur
+      // formulaire ne s'ouvre qu'a la demande.
+      await page.getByRole('button', { name: /^Consultations de suivi \(fictif\) · / }).click();
+      await expect(page.getByText('Libellés : « Ajouter une consultation » · « Consultation 1 »')).toBeVisible();
+      await expect(page.getByLabel('Texte du bouton d’ajout')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Modifier les libellés · Consultations de suivi (fictif)' }).click();
+      await expect(page.getByLabel('Texte du bouton d’ajout')).toHaveValue('Ajouter une consultation');
       await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
       await page.getByRole('button', { name: 'Nouvelle section' }).click();
       await expect(page.getByLabel('Nom de la section')).toBeVisible();

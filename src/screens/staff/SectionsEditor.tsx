@@ -40,11 +40,12 @@ export function makeSectionKey(label: string, taken: readonly string[] = []): st
  * Libelles d'un bloc repetable a la saisie. Facultatifs : vides, l'ecran de saisie garde
  * « Ajouter une occurrence » et « Occurrence 1 ». L'apercu se lit avant d'enregistrer.
  */
-function RepeatLabelsForm({ section, busy, onSave, onDraft }: {
+function RepeatLabelsForm({ section, busy, onSave, onDraft, onCancel }: {
   section: TemplateSection;
   busy?: boolean;
   onSave: (sectionId: string, addLabel: string | null, itemLabel: string | null) => void | Promise<unknown>;
   onDraft: (sectionId: string, pending: boolean) => void;
+  onCancel: () => void;
 }) {
   const { t } = useI18n();
   const [addLabel, setAddLabel] = useState(section.addLabel ?? '');
@@ -60,7 +61,8 @@ function RepeatLabelsForm({ section, busy, onSave, onDraft }: {
       <div className="flex flex-wrap gap-2">
         <label className="form-label min-w-[min(14rem,100%)] flex-1">
           {t('section.repeat_add_label')}
-          <input className="input mt-1" value={addLabel} maxLength={80} disabled={busy}
+          {/* Ouvert a la demande : la saisie commence la ou l'on vient de toucher. */}
+          <input className="input mt-1" value={addLabel} maxLength={80} disabled={busy} autoFocus
             placeholder={t('section.repeat_add_placeholder')} onChange={(event) => setAddLabel(event.target.value)} />
         </label>
         <label className="form-label min-w-[min(14rem,100%)] flex-1">
@@ -72,9 +74,76 @@ function RepeatLabelsForm({ section, busy, onSave, onDraft }: {
       <p className="helper-text">
         {t('section.repeat_labels_preview').replace('{add}', preview.add).replace('{rank}', preview.rank(1))}
       </p>
-      <button type="button" className="btn-secondary min-h-11 px-3 text-xs" disabled={busy || !changed}
-        onClick={() => void onSave(section.id, addLabel.trim() || null, itemLabel.trim() || null)}>
-        {t('section.repeat_labels_save')}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn-secondary min-h-11 px-3 text-xs" disabled={busy || !changed}
+          onClick={() => void onSave(section.id, addLabel.trim() || null, itemLabel.trim() || null)}>
+          {t('section.repeat_labels_save')}
+        </button>
+        {/* Annuler est un choix explicite : le brouillon est abandonne, sans autre question. */}
+        <button type="button" className="btn-ghost min-h-11 px-3 text-xs" onClick={onCancel}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Revue post-optimisation (C5) : une ligne resume par bloc repetable, le formulaire a la demande.
+ * Deplie pour chaque bloc, il allongeait l'onglet Sections de pres de cinq ecrans sur un
+ * registre reel. Les libelles relus apres l'enregistrement le referment : le resume les montre.
+ */
+function RepeatLabels({ section, busy, onSave, onDraft }: {
+  section: TemplateSection;
+  busy?: boolean;
+  onSave: (sectionId: string, addLabel: string | null, itemLabel: string | null) => void | Promise<unknown>;
+  onDraft: (sectionId: string, pending: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const saved = `${section.addLabel ?? ''}\u0000${section.itemLabel ?? ''}`;
+  // Ouvert pour ces libelles-la : une relecture qui les change (enregistrement) le referme, un
+  // refus les laisse identiques et garde donc la saisie.
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  const open = openFor === saved;
+  // Ferme pour de bon : un retour ulterieur aux memes libelles ne le rouvre pas.
+  useEffect(() => { if (openFor !== null && openFor !== saved) setOpenFor(null); }, [openFor, saved]);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (open || !refocus.current) return;
+    refocus.current = false;
+    editRef.current?.focus();
+  }, [open]);
+
+  if (open) {
+    return (
+      <RepeatLabelsForm
+        section={section}
+        busy={busy}
+        onSave={(sectionId, addLabel, itemLabel) => { refocus.current = true; return onSave(sectionId, addLabel, itemLabel); }}
+        onDraft={onDraft}
+        onCancel={() => { refocus.current = true; setOpenFor(null); }}
+      />
+    );
+  }
+  const named = Boolean(section.addLabel?.trim() || section.itemLabel?.trim());
+  const labels = repeatableLabels(t, section);
+  return (
+    <div className="flex basis-full flex-wrap items-center gap-x-2 border-t border-slate-100 pt-1 dark:border-slate-700">
+      <p className="min-w-0 flex-1 basis-40 break-words text-xs text-slate-600 dark:text-slate-300">
+        {named
+          ? t('section.repeat_labels_summary').replace('{add}', labels.add).replace('{rank}', labels.rank(1))
+          : t('section.repeat_labels_default')}
+      </p>
+      <button
+        ref={editRef}
+        type="button"
+        className="btn-ghost min-h-11 px-3 text-xs"
+        disabled={busy}
+        aria-label={`${t('section.repeat_labels_edit')} · ${sectionLabel(t, section)}`}
+        onClick={() => setOpenFor(saved)}
+      >
+        {t('section.repeat_labels_edit')}
       </button>
     </div>
   );
@@ -505,9 +574,7 @@ export function SectionsEditor({
                 </div>
               )}
               {onRepeatLabelsChange && section.isRepeatable && (
-                <RepeatLabelsForm
-                  // Recree apres chaque relecture : le brouillon repart des valeurs enregistrees.
-                  key={`${section.id}:${section.addLabel ?? ''}:${section.itemLabel ?? ''}`}
+                <RepeatLabels
                   section={section}
                   busy={busy}
                   onSave={onRepeatLabelsChange}

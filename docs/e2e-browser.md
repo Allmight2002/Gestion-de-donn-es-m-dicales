@@ -89,7 +89,9 @@ post-optimisation, lot C2) ; « Compléter avec » dans « ⋯ » de la barre ha
 « Coder » d'un diagnostic qui ouvre le formulaire de sa rencontre sur le champ à coder (lot C3) ;
 champs CIM-11 ouverts sur le champ ciblé : texte d'origine lisible (« Saisi : … »), toutes les
 actions d'une entrée en cibles de 40 px au moins, propositions reproposées, texte libre analysé
-puis « Rechercher une correspondance », et un seul lien de téléchargement par écran (lot C4).
+puis « Rechercher une correspondance », et un seul lien de téléchargement par écran (lot C4) ;
+libellés de saisie d'un groupe répétable résumés en une ligne, leur formulaire ouvert à la demande
+(lot C5).
 
 Un panneau de menu s'affiche en entier : ni hors de l'écran sur les côtés, ni recouvert par la
 suite de la page (« + Nouveau » des jeux de variables, « ⋯ » de la barre de l'éditeur, « ⋯ » de la
@@ -110,6 +112,8 @@ Depuis le lot C4, le banc simule aussi une nomenclature CIM-11 fictive (codes «
 publication active, pages de la copie locale et codage assisté, qui répond après un court délai.
 La fiche `p1` porte un diagnostic principal à confirmer, la rencontre `e2` deux diagnostics
 associés (un confirmé, un texte resté non codé), ceux qu'annonce « Diagnostics à coder ».
+Depuis le lot C5, le jeu de variables de l'éditeur porte aussi trois groupes répétables : libellés
+de saisie nommés, nom d'un élément seul, et libellés par défaut.
 
 - **Dettes connues.** Un budget qu'un écran ne tient pas encore est déclaré dans `pending`, avec le
   lot qui le traitera. Il reste mesuré et signalé ; dès qu'il est tenu, le test échoue pour qu'on
