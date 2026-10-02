@@ -701,9 +701,9 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       )}
 
       {mode === 'manual' && (
-        <div className="space-y-2">
+        <div className="space-y-1">
           <EntryFormPicker forms={entry.forms} selected={entry.selected} onSelect={entry.select} disabled={busy || createdPatient !== null} />
-          <EntryFormNotice selected={entry.selected} problem={entry.problem} unavailableCount={shortForm?.unavailableKeys.length} />
+          <EntryFormNotice mode="create" selected={entry.selected} problem={entry.problem} unavailableCount={shortForm?.unavailableKeys.length} />
         </div>
       )}
 

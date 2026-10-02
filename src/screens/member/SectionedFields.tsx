@@ -48,7 +48,7 @@ function FieldFrame({ id, fieldKey, message, children }: { id: string; fieldKey:
  * controls mounted; applicability is provided by the existing engine in the caller. */
 export function SectionedFields({ fields, renderField, sections, values, allFields, rules = NO_RULES,
   hiddenKeys = NO_HIDDEN, requireComplete = false, commonLayout, leadingBlock, toFillKeys = NO_TO_FILL, repeatableGroup,
-  visibilityRules, maskedRepeatableGroup }: {
+  visibilityRules, maskedRepeatableGroup, focusFieldKey }: {
   fields: TemplateField[];
   renderField: (field: TemplateField) => ReactNode;
   sections?: readonly TemplateSection[] | null;
@@ -83,6 +83,11 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
    * elle annonce des occurrences deja enregistrees, que l'ecran laisse supprimer une a une.
    */
   maskedRepeatableGroup?: (section: TemplateSection) => ReactNode;
+  /**
+   * Champ a ouvrir des l'affichage (lien « Coder » de « Diagnostics a coder ») : son bloc
+   * s'affiche et le champ prend le focus, une seule fois. Absent de ce formulaire : ignore.
+   */
+  focusFieldKey?: string | null;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -223,6 +228,15 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     form.addEventListener('submit', onSubmit);
     return () => form.removeEventListener('submit', onSubmit);
   }, []);
+  const focusedOnce = useRef(false);
+  const focusStep = focusFieldKey ? stepFor(focusFieldKey) : null;
+  useEffect(() => {
+    if (!focusFieldKey || !focusStep || focusedOnce.current) return;
+    focusedOnce.current = true;
+    goToField(focusFieldKey);
+    // `goToField` ne lit que l'etat courant des etapes, deja resume par `focusStep`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusFieldKey, focusStep]);
 
   if (steps.length === 0) return null;
   const rootIndex = steps.findIndex((root) => root.key === active);

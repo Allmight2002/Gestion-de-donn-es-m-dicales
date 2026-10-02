@@ -255,6 +255,15 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
       await expect(page.getByText('Awa Démo (fictive)')).toHaveCount(0);
       await page.getByRole('button', { name: 'Identité (zone restreinte)' }).click();
       await expect(page.getByText('Awa Démo (fictive)')).toBeVisible();
+      // Revue post-optimisation (C3) : « Compléter avec » rejoint « Finaliser » dans « ⋯ ».
+      await expect(page.getByRole('button', { name: 'Compléter avec' })).toBeHidden();
+      await page.getByRole('banner').getByRole('button', { name: 'Plus d’actions' }).click();
+      await expect(page.getByRole('button', { name: 'Compléter avec Admission (fictif)' })).toBeVisible();
+    } },
+    // Revue post-optimisation (C3) : un diagnostic a coder ouvre le formulaire de sa rencontre.
+    { screen: 'diagnostics a coder', open: async (page) => {
+      await page.getByRole('link', { name: /Coder$/ }).first().click();
+      await expect(page.getByLabel(/Score de Glasgow/)).toBeVisible();
     } },
     // Lot 8 : en mode Terrain, « Plus » mene aux autres destinations de la base.
     { screen: 'liste des patients — mode Terrain', open: async (page) => {
@@ -363,7 +372,7 @@ test.describe('@mobile budgets de l’audit a 360 px', () => {
     { screen: 'mes jeux de variables', trigger: (page) => page.getByRole('button', { name: 'Nouveau', exact: true }) },
     { screen: 'editeur — structure',
       trigger: (page) => page.getByTestId('template-editor-toolbar').getByRole('button', { name: 'Plus d’actions' }) },
-    { screen: 'fiche patient', trigger: (page) => page.getByRole('button', { name: 'Compléter avec' }) },
+    { screen: 'fiche patient', trigger: (page) => page.getByRole('banner').getByRole('button', { name: 'Plus d’actions' }) },
     { screen: 'formulaires de saisie', trigger: (page) => page.getByRole('button', { name: 'Actions · Admission (fictif)' }) },
     { screen: 'cohortes', trigger: (page) => page.getByRole('button', { name: /^Actions · Glasgow ≤ 12/ }) },
     { screen: 'comptes de mission', trigger: (page) => page.getByRole('button', { name: 'Actions · Enquêteur 1 (fictif)' }) },

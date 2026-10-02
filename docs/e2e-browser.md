@@ -85,11 +85,12 @@ variable, section dépliée et ajout d'une section, groupe de règles déplié e
 formulaire de règle (lot 6) ; brouillon de la page « À faire » rouvrant son formulaire, identité
 lue au toucher sur la fiche, et menu « Plus » du mode Terrain, activé par l'interrupteur du menu
 (lot 8) ; « ⋯ » d'un formulaire de saisie, sections dépliées et recherche de son édition (revue
-post-optimisation, lot C2).
+post-optimisation, lot C2) ; « Compléter avec » dans « ⋯ » de la barre haute de la fiche, et
+« Coder » d'un diagnostic qui ouvre le formulaire de sa rencontre (lot C3).
 
 Un panneau de menu s'affiche en entier : ni hors de l'écran sur les côtés, ni recouvert par la
-suite de la page (« + Nouveau » des jeux de variables, « ⋯ » de la barre de l'éditeur, « Compléter
-avec » de la fiche, « ⋯ » d'un formulaire de saisie, d'une cohorte et d'une mission). La largeur du
+suite de la page (« + Nouveau » des jeux de variables, « ⋯ » de la barre de l'éditeur, « ⋯ » de la
+barre haute de la fiche, « ⋯ » d'un formulaire de saisie, d'une cohorte et d'une mission). La largeur du
 document ne suffit pas à le voir : un panneau sorti par la gauche ne l'élargit pas.
 
 ```bash
