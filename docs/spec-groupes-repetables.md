@@ -354,6 +354,13 @@ occurrences elles-mêmes, et non les patients. »*
    désactivée et l'écran explique que ce choix est verrouillé depuis la première fiche ;
 3. le réglage « types de rencontre concernés » disparaît pour ces variables (§5).
 
+**Libellés de saisie.** Sous la case, une ligne résume les libellés d'un bloc répétable, par
+exemple *Libellés : « Ajouter une lésion » · « Lésion 1 »*, ou *Libellés par défaut*. Le formulaire
+(texte du bouton d'ajout, nom d'un élément, aperçu) s'ouvre par « Modifier les libellés » et se
+referme une fois les libellés enregistrés, ou par « Annuler » (revue post-optimisation, lot C5 :
+déplié pour chaque bloc, il allongeait l'onglet Sections de près de cinq écrans). Un brouillon
+ouvert reste une modification non enregistrée de l'éditeur.
+
 **Sommaire.** Dans `EditorStructure`, un bloc répétable porte un marqueur distinct du bloc
 ordinaire — les deux ne se saisissent pas de la même façon, la structure doit le dire.
 

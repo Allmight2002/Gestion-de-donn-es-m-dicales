@@ -39,7 +39,7 @@ incident réseau transitoire d'une régression, sans masquer une erreur locale a
 | **Refus d'export** | rôle sans droit ne peut ni atteindre l'écran ni lancer d'export | oui (correction lot 10) |
 | **Saisie hors-ligne *intake-only*** | préparation du contexte → création patient/rencontre locale → rechargement → rejeu idempotent | spécification `e2e/offline-intake.spec.ts` présente ; exécution conditionnelle sur preview isolé, O6 encore à prouver |
 | **LOT13 dédié** | révocation dynamique, indisponibilité/reconnexion Supabase, idempotence après réponse perdue, import, retry d'upload, hors-ligne historique et suppression | scénarios présents dans `e2e/lot13-complete.spec.ts`, exécutés seulement par le job staging dédié ; leur présence ne vaut pas preuve actuelle d'un run réussi |
-| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 31 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
+| **Affichage sur téléphone** | budgets de l'audit UI mobile à 360 px sur 33 écrans (voir ci-dessous) | oui, sur banc local sans serveur (`npm run e2e:mobile`), hors CI de PR |
 
 Les parcours patient et export exercent **réellement l'interface** (aucune RPC n'est appelée pour
 simuler le parcours ; la couche serveur ne sert qu'au montage et au nettoyage de fixtures).
@@ -66,7 +66,7 @@ sont des couvertures **complémentaires et distinctes**, pas un substitut au par
 ## Garde-fou d'affichage sur téléphone (audit UI mobile, lot 7)
 
 `e2e/mobile-360.spec.ts` contrôle les budgets de
-[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 31 écrans, à 360 × 800 px
+[l'audit UI mobile](audits/audit-ui-mobile-2026-09-27.md) (§3 et T10) sur 33 écrans, à 360 × 800 px
 en tactile :
 
 - aucun débordement horizontal ;
@@ -86,11 +86,17 @@ formulaire de règle (lot 6) ; brouillon de la page « À faire » rouvrant son 
 lue au toucher sur la fiche, et menu « Plus » du mode Terrain, activé par l'interrupteur du menu
 (lot 8) ; « ⋯ » d'un formulaire de saisie, sections dépliées et recherche de son édition (revue
 post-optimisation, lot C2) ; « Compléter avec » dans « ⋯ » de la barre haute de la fiche, et
-« Coder » d'un diagnostic qui ouvre le formulaire de sa rencontre (lot C3).
+« Coder » d'un diagnostic qui ouvre le formulaire de sa rencontre sur le champ à coder (lot C3) ;
+champs CIM-11 ouverts sur le champ ciblé : texte d'origine lisible (« Saisi : … »), toutes les
+actions d'une entrée en cibles de 40 px au moins, propositions reproposées, texte libre analysé
+puis « Rechercher une correspondance », et un seul lien de téléchargement par écran (lot C4) ;
+libellés de saisie d'un groupe répétable résumés en une ligne, leur formulaire ouvert à la demande
+(lot C5).
 
 Un panneau de menu s'affiche en entier : ni hors de l'écran sur les côtés, ni recouvert par la
 suite de la page (« + Nouveau » des jeux de variables, « ⋯ » de la barre de l'éditeur, « ⋯ » de la
-barre haute de la fiche, « ⋯ » d'un formulaire de saisie, d'une cohorte et d'une mission). La largeur du
+barre haute de la fiche, « ⋯ » d'un formulaire de saisie, d'une cohorte, d'une mission et d'un
+diagnostic de la liste). La largeur du
 document ne suffit pas à le voir : un panneau sorti par la gauche ne l'élargit pas.
 
 ```bash
@@ -102,6 +108,12 @@ Ni compte, ni Supabase : le banc local `mobile-harness.html` (`src/dev/MobileHar
 vraies routes, la vraie coquille et les vrais écrans sur des dépôts en mémoire à données fictives. Un
 dépôt appelé pour une méthode non simulée échoue en la nommant ; toute requête hors de `127.0.0.1` est
 bloquée et fait échouer le test. Contre une URL externe (`E2E_BASE_URL`), le fichier est ignoré.
+Depuis le lot C4, le banc simule aussi une nomenclature CIM-11 fictive (codes « FIC ») : recherche,
+publication active, pages de la copie locale et codage assisté, qui répond après un court délai.
+La fiche `p1` porte un diagnostic principal à confirmer, la rencontre `e2` deux diagnostics
+associés (un confirmé, un texte resté non codé), ceux qu'annonce « Diagnostics à coder ».
+Depuis le lot C5, le jeu de variables de l'éditeur porte aussi trois groupes répétables : libellés
+de saisie nommés, nom d'un élément seul, et libellés par défaut.
 
 - **Dettes connues.** Un budget qu'un écran ne tient pas encore est déclaré dans `pending`, avec le
   lot qui le traitera. Il reste mesuré et signalé ; dès qu'il est tenu, le test échoue pour qu'on
