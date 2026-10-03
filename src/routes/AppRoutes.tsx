@@ -179,6 +179,11 @@ export function AppRoutes() {
         <Route element={<RequireGlobalRole globalRoles={HORS_MISSION}><Outlet /></RequireGlobalRole>}>
           <Route path="import" element={<ImportData />} />
           <Route path="parametres" element={<BaseSettings />} />
+          {/* Parcours principal : exporter sans avoir a constituer une cohorte. C'est la
+              premiere entree de l'onglet « Analyse » : rendu HORS du BaseLayout, il faisait
+              disparaitre les onglets et son retour ramenait aux patients. Le meme ecran sert
+              l'export d'une cohorte ; l'absence de `cohortId` fige la population a la volee. */}
+          <Route path="export" element={<RequireGlobalRole globalRoles={['medecin']}><ExportPanel /></RequireGlobalRole>} />
           <Route path="cohorts" element={<CohortBuilder />} />
           <Route path="stats" element={<BaseStats />} />
           <Route path="queue" element={<CompletionQueue />} />
@@ -213,16 +218,8 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      {/* Parcours principal : exporter sans avoir a constituer une cohorte. Le meme ecran
-          sert les deux entrees ; l'absence de `cohortId` fige la population a la volee. */}
-      <Route
-        path="/bases/:id/export"
-        element={
-          <ProtectedRoute area="member" globalRoles={['medecin']}>
-            <ExportPanel />
-          </ProtectedRoute>
-        }
-      />
+      {/* Export d'une cohorte deja constituee : parcours « focus », en pleine page. L'export
+          de la base entiere est, lui, un onglet (voir `export` sous `/bases/:id`). */}
       <Route
         path="/bases/:id/cohorts/:cohortId/export"
         element={
